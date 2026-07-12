@@ -6,7 +6,8 @@
 > [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §3. Where this
 > file adds a token, engine, or component, it is additive; where it appears to restate a base value
 > (e.g. `#288690`), the product spec remains the origin of that value. Governance:
-> [`../../packages/ui/CLAUDE.md`](../../packages/ui/CLAUDE.md) and root [`CLAUDE.md`](../../CLAUDE.md).
+> [`../../packages/ui/CLAUDE.md`](../../packages/ui/CLAUDE.md) and root
+> [`CLAUDE.md`](../../CLAUDE.md).
 
 ## Design language: "Visually Interesting Professional Minimalist"
 
@@ -15,8 +16,9 @@ surfaces — while borrowing structural rigor from **Apple HIG** (clarity, defer
 **Material** (a real elevation/tonal model), and **Fluent** (light, materials, motion coherence). It
 must look **unmistakably itself** and deliberately avoid the interchangeable "SaaS-AI-startup" look:
 no wall-to-wall gradient-on-glass cards, no purple-blue hero blur, no equal-weight bordered boxes
-stacked forever. The identity comes from **teal-anchored calm tech**, **asymmetric breathing space**,
-**tonal surface layering instead of borders**, and **fluid, spring-based motion that never bounces.**
+stacked forever. The identity comes from **teal-anchored calm tech**, **asymmetric breathing
+space**, **tonal surface layering instead of borders**, and **fluid, spring-based motion that never
+bounces.**
 
 [toc]
 
@@ -32,28 +34,28 @@ values, expressed here as the token contract components consume.
 
 #### Brand & semantic seeds
 
-| Token | Light | Dark | Role |
-| :---- | :---- | :--- | :--- |
-| `--brand` / `--primary` | `#288690` | `#288690` (tonal-lifted for contrast, see §A.2) | Primary action, active state |
-| `--success` | `#268C66` | tonal | "Complete" / approved |
-| `--warning` | `#D98216` | tonal | "In Progress" / time-sensitive |
-| `--danger` | `#D94141` | tonal | "Incomplete" / error / no-show |
-| `--bg` | `#FAFAFA` | `#1A1A1A` | Primary canvas |
-| `--surface` | `#FFFFFF` | `#212121` | Elevated cards/headers/sidebar |
-| `--text-main` | `#1A1A1A` | `#FFFFFF` | Body & headings |
-| `--text-secondary` | `#666666` | `#B3B3B3` | Labels, muted info |
-| `--text-disabled` | `#B3B3B3` | tonal | Non-interactive |
-| `--border-subtle` | `#E6E6E6` | tonal | Razor-thin indicators only (§B.4) |
-| `--focus-ring` | `#28869066` | `#28869066` | 3px focus glow, all focusable elements |
+| Token                   | Light       | Dark                                            | Role                                   |
+| :---------------------- | :---------- | :---------------------------------------------- | :------------------------------------- |
+| `--brand` / `--primary` | `#288690`   | `#288690` (tonal-lifted for contrast, see §A.2) | Primary action, active state           |
+| `--success`             | `#268C66`   | tonal                                           | "Complete" / approved                  |
+| `--warning`             | `#D98216`   | tonal                                           | "In Progress" / time-sensitive         |
+| `--danger`              | `#D94141`   | tonal                                           | "Incomplete" / error / no-show         |
+| `--bg`                  | `#FAFAFA`   | `#1A1A1A`                                       | Primary canvas                         |
+| `--surface`             | `#FFFFFF`   | `#212121`                                       | Elevated cards/headers/sidebar         |
+| `--text-main`           | `#1A1A1A`   | `#FFFFFF`                                       | Body & headings                        |
+| `--text-secondary`      | `#666666`   | `#B3B3B3`                                       | Labels, muted info                     |
+| `--text-disabled`       | `#B3B3B3`   | tonal                                           | Non-interactive                        |
+| `--border-subtle`       | `#E6E6E6`   | tonal                                           | Razor-thin indicators only (§B.4)      |
+| `--focus-ring`          | `#28869066` | `#28869066`                                     | 3px focus glow, all focusable elements |
 
 #### Contrast engineering (light **and** dark)
 
 Teal `#288690` is chosen because it clears **4.5:1 against `#FAFAFA`** for text and holds up on
 `#1A1A1A`. The rule (from `PRODUCT_SPEC.md` §Accessibility): the primary teal is verified ≥ 4.5:1
 against whatever canvas it sits on. In dark mode the raw seed is **tonally lifted** (a higher tone
-from the generated ramp, §A.2) rather than used flat, so contrast is preserved without hand-picking a
-second hex. Every semantic color ships as a **tonal ramp** (0–100), and light/dark simply select
-different tones from the *same* ramp — one source, two selections.
+from the generated ramp, §A.2) rather than used flat, so contrast is preserved without hand-picking
+a second hex. Every semantic color ships as a **tonal ramp** (0–100), and light/dark simply select
+different tones from the _same_ ramp — one source, two selections.
 
 ### A.2 Dynamic Material You integration
 
@@ -61,75 +63,86 @@ different tones from the *same* ramp — one source, two selections.
 > package permitted in the UI layer, and **only** inside `packages/ui/system/` (the theming engine).
 > It never enters a component. Recorded in `SYSTEM_ARCHITECTURE.md` §3.
 
-**Goal:** from a single **seed color** (default `#288690`, or a user's chosen accent) generate a full,
-accessible, contextual set of tonal palettes, and write them into the same `--*` CSS custom
+**Goal:** from a single **seed color** (default `#288690`, or a user's chosen accent) generate a
+full, accessible, contextual set of tonal palettes, and write them into the same `--*` CSS custom
 properties the components already read. Components stay 100% library-agnostic; only the engine knows
 Material exists.
 
 #### The mathematical path
 
 1. **Seed → HCT.** Convert the seed hex to **HCT** (Hue, Chroma, Tone) — Material's perceptual space
-   where *Tone* is a CIELAB-L\*-based lightness that maps monotonically to WCAG contrast.
+   where _Tone_ is a CIELAB-L\*-based lightness that maps monotonically to WCAG contrast.
    `argbFromHex(seed)` → `Hct.fromInt(argb)`.
-2. **HCT → key colors → `CorePalette`/`DynamicScheme`.** Build a scheme
-   (`SchemeTonalSpot`, `SchemeVibrant`, `SchemeExpressive`, `SchemeNeutral`, `SchemeContent` — user
-   selectable "flavor") from the seed's Hct. This yields five tonal palettes: **primary, secondary,
-   tertiary, neutral, neutral-variant**, each a continuous function `tone ∈ [0,100] → color`.
+2. **HCT → `CorePalette`.** `CorePalette.of(argb)` derives five tonal palettes from the seed: `a1`
+   **primary**, `a2` **secondary**, `a3` **tertiary**, `n1` **neutral**, `n2` **neutral-variant** —
+   each a continuous function `tone(0..100) → color`. (The implementation uses `CorePalette` for
+   version-robustness; the newer `DynamicScheme`/`SchemeTonalSpot` "flavor" API is an available
+   upgrade path when a scheme flavor becomes user-selectable.)
 3. **Tone selection = the light/dark switch.** A **tone** is picked per role per mode. Because tone
    correlates with contrast, the pairs are engineered, not eyeballed:
    - Light: `primary = P.tone(40)`, `on-primary = P.tone(100)`, `surface = N.tone(98)`,
      `on-surface = N.tone(10)`, `outline = NV.tone(50)`.
    - Dark: `primary = P.tone(80)`, `on-primary = P.tone(20)`, `surface = N.tone(6)`,
-     `on-surface = N.tone(90)`, `outline = NV.tone(60)`.
-   The **±40-tone** delta between a color and its `on-` pair guarantees ≥ 4.5:1 by construction.
+     `on-surface = N.tone(90)`, `outline = NV.tone(60)`. The **±40-tone** delta between a color and
+     its `on-` pair guarantees ≥ 4.5:1 by construction.
 4. **Emit CSS variables.** The engine serializes selected tones to `--primary`, `--on-primary`,
    `--surface-1…5`, `--outline`, etc., and sets them on `:root` (and on any nested
    `<DesignSystemProvider>` scope, §D.3).
 
 ```ts
-// packages/ui/system/theme-engine.ts  (illustrative — engine only, never imported by components)
-import {
-  argbFromHex, hexFromArgb, Hct, SchemeTonalSpot, MaterialDynamicColors,
-} from "npm:@material/material-color-utilities";
+// packages/ui/system/theme-engine.ts  (engine only — never imported by a component)
+import { argbFromHex, CorePalette, hexFromArgb } from "@material/material-color-utilities";
 
 /** Generate the token map for one seed + mode, ready to write to CSS custom properties. */
-export function buildScheme(seedHex: string, dark: boolean): Record<string, string> {
-  const scheme = new SchemeTonalSpot(Hct.fromInt(argbFromHex(seedHex)), dark, 0.0 /* contrast */);
-  const c = MaterialDynamicColors;
-  return {
-    "--primary": hexFromArgb(c.primary.getArgb(scheme)),
-    "--on-primary": hexFromArgb(c.onPrimary.getArgb(scheme)),
-    "--surface": hexFromArgb(c.surface.getArgb(scheme)),
-    "--surface-1": hexFromArgb(c.surfaceContainerLow.getArgb(scheme)),
-    "--surface-2": hexFromArgb(c.surfaceContainer.getArgb(scheme)),
-    "--surface-3": hexFromArgb(c.surfaceContainerHigh.getArgb(scheme)),
-    "--on-surface": hexFromArgb(c.onSurface.getArgb(scheme)),
-    "--outline": hexFromArgb(c.outline.getArgb(scheme)),
-    // …success/warning/danger run through fixed-hue sub-schemes seeded from their own base hues.
-  };
+export function buildScheme(
+	{ seed, dark }: { seed: string; dark: boolean },
+): Record<string, string> {
+	const core = CorePalette.of(argbFromHex(seed)); // a1 P · a2 · a3 · n1 N · n2 NV
+	const hx = (argb: number) => hexFromArgb(argb);
+	return dark
+		? {
+			"--primary": hx(core.a1.tone(80)),
+			"--on-primary": hx(core.a1.tone(20)),
+			"--surface": hx(core.n1.tone(6)),
+			"--surface-1": hx(core.n1.tone(10)),
+			"--on-surface": hx(core.n1.tone(90)),
+			"--outline": hx(core.n2.tone(60)),
+			// …secondary/tertiary + fixed-hue success/warning/danger seeded from their own hues.
+		}
+		: {
+			"--primary": hx(core.a1.tone(40)),
+			"--on-primary": hx(core.a1.tone(100)),
+			"--surface": hx(core.n1.tone(100)),
+			"--surface-1": hx(core.n1.tone(96)),
+			"--on-surface": hx(core.n1.tone(10)),
+			"--outline": hx(core.n2.tone(50)),
+		};
 }
 ```
 
-The `contrast` parameter (`-1…1`) is wired directly to the **high-contrast accessibility theme**
-(§A.5): raising it re-derives every tone at a wider separation with **zero component changes**.
+**High-contrast (§A.5)** widens the tonal separation: foreground tones (`on-*`, `outline`) are
+pushed further from mid-tone (50) toward the extremes, re-deriving every pair at a wider gap with
+**zero component changes**. The full implementation (semantic ramps, focus-ring alpha, the
+`applyConfig`/`bindRootTheme`/`schemeToCss` surface, and the `<DesignSystemProvider>` mount) lives
+in `packages/ui/system/`.
 
 #### Framework-level user adjustments (not per-component hacks)
 
 The engine exposes three **global** knobs, each a small set of root variables that cascade
 everywhere. Adjusting them re-themes the whole app; **components never special-case them.**
 
-| Knob | Mechanism | Root variables |
-| :--- | :-------- | :------------- |
-| **Colors** | seed + scheme flavor → §A.2 pipeline | all `--primary/-surface/-outline/…` |
-| **Border radius** | one global scale multiplier | `--radius-scale` × the `--radius-*` ramp (§A.3) |
+| Knob                 | Mechanism                            | Root variables                                         |
+| :------------------- | :----------------------------------- | :----------------------------------------------------- |
+| **Colors**           | seed + scheme flavor → §A.2 pipeline | all `--primary/-surface/-outline/…`                    |
+| **Border radius**    | one global scale multiplier          | `--radius-scale` × the `--radius-*` ramp (§A.3)        |
 | **Shadow intensity** | one global opacity/spread multiplier | `--shadow-intensity` × the `--elevation-*` ramp (§A.3) |
 
 ```css
 :root {
-  --radius-scale: 1;        /* user: 0 (sharp) … 1.6 (very round) */
-  --shadow-intensity: 1;    /* user: 0 (flat) … 1.5 (deep) */
-  --radius-base: calc(8px * var(--radius-scale));
-  --elevation-low: 0 2px 4px rgba(0,0,0, calc(0.05 * var(--shadow-intensity)));
+	--radius-scale: 1; /* user: 0 (sharp) … 1.6 (very round) */
+	--shadow-intensity: 1; /* user: 0 (flat) … 1.5 (deep) */
+	--radius-base: calc(8px * var(--radius-scale));
+	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
 }
 ```
 
@@ -145,26 +158,35 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
 
 ### A.4 Typography
 
-Scale defined in `rem` on a modular ramp; families via `--font-sans` (UI), `--font-mono` (code/`Kbd`),
-and the **accessibility-swappable** `--font-reading` (see §A.5). Weight/size/tracking are the primary
-hierarchy tools — this is load-bearing for the border-avoidance strategy in Part B.4.
+Scale defined in `rem` on a modular ramp; families via `--font-sans` (UI), `--font-mono`
+(code/`Kbd`), and the **accessibility-swappable** `--font-reading` (see §A.5). Weight/size/tracking
+are the primary hierarchy tools — this is load-bearing for the border-avoidance strategy in Part
+B.4.
 
 ### A.5 Accessibility themes (design tokens)
 
 Accessibility is a set of **token overlays** toggled at the framework level (a `data-a11y-*`
 attribute on `:root` or a `<DesignSystemProvider>` scope), never per-component patches.
 
-| Theme | Trigger | Token effect |
-| :---- | :------ | :----------- |
-| **Open-dyslexic typography** | `data-font="dyslexic"` | Remaps `--font-sans`/`--font-reading` → OpenDyslexic; widens `--tracking`, raises `--line-height`, disables italic synthesis. |
-| **Color-blindness shifts** | `data-cvd="protan\|deutan\|tritan"` | Swaps status hues for a CVD-safe set and **adds a non-color channel** (icon/shape/label) to every status token so meaning never rides on hue alone — success gets a check glyph token, danger a cross, etc. |
-| **High contrast** | `data-contrast="high"` | Drives the Material `contrast` param (§A.2) to a wider tone separation; promotes `--border-subtle` to a visible `--outline`; forces `≥ 7:1` (AAA) text. |
-| **Reduced motion** | `prefers-reduced-motion: reduce` **or** `data-motion="reduced"` | Every transition/spring collapses to `0ms` **jump-to-final** (per spec §Motion Reduction); ripples and theme-crossfades disabled; only opacity/position *end states* apply. See §B.5. |
+| Theme                        | Trigger                                                         | Token effect                                                                                                                                                                                                |
+| :--------------------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Open-dyslexic typography** | `data-font="dyslexic"`                                          | Remaps `--font-sans`/`--font-reading` → OpenDyslexic; widens `--tracking`, raises `--line-height`, disables italic synthesis.                                                                               |
+| **Color-blindness shifts**   | `data-cvd="protan\|deutan\|tritan"`                             | Swaps status hues for a CVD-safe set and **adds a non-color channel** (icon/shape/label) to every status token so meaning never rides on hue alone — success gets a check glyph token, danger a cross, etc. |
+| **High contrast**            | `data-contrast="high"`                                          | Drives the Material `contrast` param (§A.2) to a wider tone separation; promotes `--border-subtle` to a visible `--outline`; forces `≥ 7:1` (AAA) text.                                                     |
+| **Reduced motion**           | `prefers-reduced-motion: reduce` **or** `data-motion="reduced"` | Every transition/spring collapses to `0ms` **jump-to-final** (per spec §Motion Reduction); ripples and theme-crossfades disabled; only opacity/position _end states_ apply. See §B.5.                       |
 
 ```css
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-fast:0ms; --dur-medium:0ms; --dur-slow:0ms; --spring: none; }
-  *, *::before, *::after { animation: none !important; transition-duration: 0ms !important; }
+	:root {
+		--dur-fast: 0ms;
+		--dur-medium: 0ms;
+		--dur-slow: 0ms;
+		--spring: none;
+	}
+	*, *::before, *::after {
+		animation: none !important;
+		transition-duration: 0ms !important;
+	}
 }
 ```
 
@@ -176,29 +198,30 @@ attribute on `:root` or a `<DesignSystemProvider>` scope), never per-component p
 
 > **Prohibition:** Do **not** wrap every section in a full four-sided border. Bordered boxes stacked
 > uniformly are the exact "over-designed SaaS" look we reject. Full border contours are **reserved
-> for interactive elements** (buttons, inputs, selectable cards, menu items) where they signal
-> "you can act on this."
+> for interactive elements** (buttons, inputs, selectable cards, menu items) where they signal "you
+> can act on this."
 
 Separate content using this **ordered toolkit** — reach for the earliest tool that reads clearly:
 
-1. **Asymmetric spacing first.** Group by whitespace. Uneven, intentional gaps (a large space above a
-   section, tight space within it) carry hierarchy with zero ink. Use the spacing ramp, not borders.
+1. **Asymmetric spacing first.** Group by whitespace. Uneven, intentional gaps (a large space above
+   a section, tight space within it) carry hierarchy with zero ink. Use the spacing ramp, not
+   borders.
 2. **Alternating surface tints.** Distinguish adjacent regions with `--surface` vs `--surface-1/-2`
    tonal steps (Material surface-container tones), not lines. Elevation/tint = "different layer."
-3. **Typographic weight & size.** A heavier, larger label *is* the section boundary. Let type do
+3. **Typographic weight & size.** A heavier, larger label _is_ the section boundary. Let type do
    structural work.
 4. **Single-line razor-thin indicators.** When a divider is truly needed, use **one** hairline
    (`1px`, `--border-subtle`) — a `Divider`/`Separator`, never a full enclosure.
 5. **Full border contour — interactive only.** A complete outline means "interactive": buttons,
    inputs, combobox triggers, selectable/hoverable cards, focus rings.
 
-Reviewers reject any PR that boxes non-interactive content in a four-sided border where a tint step or
-spacing would read. This rule is a merge gate (root `CLAUDE.md`).
+Reviewers reject any PR that boxes non-interactive content in a four-sided border where a tint step
+or spacing would read. This rule is a merge gate (root `CLAUDE.md`).
 
 ### B.5 Fluid Motion Primitives
 
-Motion is **purposeful, fluid, and never bouncy** (reconciling the product spec's "avoid Cascading or
-Bounce effects" with spring physics: we use **critically/over-damped** springs — no overshoot).
+Motion is **purposeful, fluid, and never bouncy** (reconciling the product spec's "avoid Cascading
+or Bounce effects" with spring physics: we use **critically/over-damped** springs — no overshoot).
 
 #### Duration ramp (from spec)
 
@@ -210,11 +233,11 @@ layout shifts).
 Springs are defined by **unitless** `mass / stiffness / damping` (consumed by JS-driven animations
 in islands, e.g. splitter drag, sheet drag, kanban reorder):
 
-| Spring token | mass | stiffness | damping | Character |
-| :----------- | :--- | :-------- | :------ | :-------- |
-| `--spring-snappy` | 1 | 480 | 44 | Fast, no overshoot (menus, toggles) |
-| `--spring-standard` | 1 | 320 | 38 | Default (drawers, sheets, splitter) |
-| `--spring-gentle` | 1 | 180 | 32 | Large surfaces (layout reflow) |
+| Spring token        | mass | stiffness | damping | Character                           |
+| :------------------ | :--- | :-------- | :------ | :---------------------------------- |
+| `--spring-snappy`   | 1    | 480       | 44      | Fast, no overshoot (menus, toggles) |
+| `--spring-standard` | 1    | 320       | 38      | Default (drawers, sheets, splitter) |
+| `--spring-gentle`   | 1    | 180       | 32      | Large surfaces (layout reflow)      |
 
 Damping is chosen so the damping ratio ζ ≥ 1 (critically/over-damped) — **motion settles, never
 bounces.**
@@ -223,9 +246,9 @@ bounces.**
 
 ```css
 :root {
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);     /* Fluent-like decelerate; default */
-  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);   /* entrances */
-  --ease-exit: cubic-bezier(0.4, 0, 1, 1);         /* exits/dismiss */
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1); /* Fluent-like decelerate; default */
+	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1); /* entrances */
+	--ease-exit: cubic-bezier(0.4, 0, 1, 1); /* exits/dismiss */
 }
 ```
 
@@ -236,28 +259,30 @@ color transitions occur across the entire DOM tree at once** — no cascade, no 
 no jarring repaint.
 
 Mechanism: colors live in inherited CSS custom properties on `:root`. Changing them once triggers a
-**single** synchronized transition because every element transitions the *same* properties on the
-*same* clock:
+**single** synchronized transition because every element transitions the _same_ properties on the
+_same_ clock:
 
 ```css
 /* Applied globally; one clock, one duration → simultaneous crossfade */
-* , *::before, *::after {
-  transition: color var(--dur-slow) var(--ease-standard),
-              background-color var(--dur-slow) var(--ease-standard),
-              border-color var(--dur-slow) var(--ease-standard),
-              fill var(--dur-slow) var(--ease-standard);
+*, *::before, *::after {
+	transition:
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard);
 }
 ```
 
 For seed-driven re-theming we optionally wrap the swap in a **`View Transitions` root crossfade** so
-the whole tree fades between palettes as one frame-coherent step (feature-detected; falls back to the
-synchronized `transition` above). Reduced-motion (§A.5) collapses all of this to an instant swap.
+the whole tree fades between palettes as one frame-coherent step (feature-detected; falls back to
+the synchronized `transition` above). Reduced-motion (§A.5) collapses all of this to an instant
+swap.
 
-> **Flagged inconsistency (do not silently resolve):** `PRODUCT_SPEC.md` §Libraries specifies **D3.js
-> (Canvas-over-SVG)** for charts, while `SYSTEM_ARCHITECTURE.md` §Charts specifies **PIXI.js**. Part 3
-> of the design brief says D3.js. This spec documents the **rendering-mode switch strategy** (§C.5)
-> in an engine-agnostic way and defers the D3-vs-PIXI engine choice to a human decision — see root
-> `CLAUDE.md` "Open Conflicts."
+> **Resolved (2026-07-12):** the charting stack is **tiered** — **D3.js** for scales/geometry +
+> low-density **SVG**, **Canvas2D** for mid-density, **PIXI.js (WebGL)** for the high-density stage
+> (Gantt/pipeline, 10k+ entities). The renderer is selected on a performance metric. This reconciles
+> `PRODUCT_SPEC.md` §Libraries and `SYSTEM_ARCHITECTURE.md` §Charts; see root `CLAUDE.md` "Resolved
+> Decisions."
 
 ---
 
@@ -269,19 +294,52 @@ verbatim because every component depends only on the token contract (Part A) —
 
 ### C.1 The seven taxonomies (authoritative roster)
 
-| Sub-path | Components |
-| :------- | :--------- |
-| **`@projective/ui/layout`** | Box, Container, Grid, Row, Column, Stack, AspectRatio, Divider, Separator |
-| **`@projective/ui/navigation`** | Navbar, AppBar, Sidebar, NavigationDrawer, Breadcrumbs, Tabs, Pagination, DropdownMenu, ContextMenu, Stepper, Link |
-| **`@projective/ui/fields`** | Button, ButtonGroup, TextInput, Textarea, InputOTP, Checkbox, RadioGroup, Switch, Toggle, Select, Combobox, Autocomplete, Slider, DatePicker, TimePicker, ColorPicker, FileUpload, Dropzone, Form, FormControl |
-| **`@projective/ui/display`** | Table, DataGrid, Card, Avatar, Badge, Chip, Tag, List, ListItem, Accordion, Collapsible, Carousel, Timeline, TreeView, Icon |
-| **`@projective/ui/feedback`** | Alert, Banner, Snackbar, Toast, Dialog, Modal, Drawer, Sheet, ProgressBar, ProgressRing, Spinner, Loader, Skeleton, Tooltip, Popover |
-| **`@projective/ui/overlay`** | Backdrop, Overlay, HoverCard, Portal |
-| **`@projective/ui/utils`** | CommandPalette, Kbd, ScrollArea, EmptyState |
+| Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`@projective/ui/layout`**     | Box, Container, Grid, Row, Column, Stack, AspectRatio, Divider, Separator                                                                                                                                                                                                                                                                                                                                                             |
+| **`@projective/ui/navigation`** | Navbar, AppBar, Sidebar, NavigationDrawer, Breadcrumbs, Tabs, Pagination, DropdownMenu, ContextMenu, Stepper, Link                                                                                                                                                                                                                                                                                                                    |
+| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, DatePicker, ColorPicker, FormControl |
+| **`@projective/ui/display`**    | Table, DataGrid, Card, Avatar, Badge, Chip, Tag, List, ListItem, Accordion, Collapsible, Carousel, Timeline, TreeView, Icon                                                                                                                                                                                                                                                                                                           |
+| **`@projective/ui/feedback`**   | Alert, Banner, Snackbar, Toast, Dialog, Modal, Drawer, Sheet, ProgressBar, ProgressRing, Spinner, Loader, Skeleton, Tooltip, Popover                                                                                                                                                                                                                                                                                                  |
+| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, EmptyState                                                                                                                                                                                                                                                                                                                                                                                           |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
 > package docs describe existing implementations now re-homed under these sub-paths.
+
+**Implementation status:** `layout` is built and consumed by the app — Box, Container, Grid, Row,
+Column, Stack, AspectRatio, Divider, Separator (`packages/ui/layout/`, zero-JS server components;
+token-only BEM; `--space-*`/`--container-*`/`--font-*` tokens added to `styles/index.css`).
+
+`navigation` ships the **nested shell layout engine** (Part D): AppShell (Red) → MiddleNav (Blue) →
+PageCanvas (Green) with the ShellFrame exposed-corner curvature (top-left always; bottom-left when a
+parent track remains), persona/device gates (guest/mobile hide the sidebar and switch the top bar to
+a `--glass-blur` glass header), plus ShellTopBar, ShellSidebar, NavItem, Link, the
+`MiddleNavSplitter` and `MobileMenu` islands, and the `useSplitter`/`useFlushBottom`/`useMediaQuery`
+hooks (`packages/ui/navigation/`, wired into the app's group layouts). Shell tokens
+(`--radius-container-lg`, `--glass-blur`, `--shell-*`) added to `styles/index.css`. Remaining nav
+roster (AppBar, NavigationDrawer, Breadcrumbs, Tabs, Pagination, DropdownMenu, ContextMenu, Stepper)
+is still to build.
+
+`fields` is now built to **PrimeNG feature-parity** (`packages/ui/fields/`): 31 controls plus the
+adornment/label/group primitives and the `FormControl` wrapper, on the shared `.ui-field` token
+geometry (`fields/styles/field.css`). Interactive controls live in `fields/islands/`, zero-JS
+adornments + `Button` in `fields/components/`, the wrapper in `fields/wrappers/`; shared state /
+positioning logic in `fields/hooks/` (`useControllable`, `useId`, `useDismiss`, `useFloating`,
+`useListNavigation`) and shared vocabulary in `fields/types/`. Every bound control takes the
+signal-first `Bindable<T>` value (raw value **or** `Signal<T>`) via `useControllable`. All
+type-check, lint, and `deno fmt` clean.
+
+> **Roster rename (same-change, per §8 rule):** the original placeholder names were realigned to the
+> PrimeNG vocabulary the product brief targets — `TextInput → InputText`, `Switch → ToggleSwitch`,
+> `Toggle → ToggleButton`, `Autocomplete → AutoComplete`, and `RadioGroup` now ships alongside a
+> single `RadioButton`. PrimeNG-familiar aliases are exported where our canonical name differs
+> (`Dropdown → Select`, `InputSwitch → ToggleSwitch`). `Combobox` is covered by
+> `Select`/`AutoComplete`; `ButtonGroup`, `InputOTP`, `TimePicker` (folded into `DatePicker`'s
+> `showTime`), `FileUpload`, `Dropzone`, and `Form` remain scaffolded for a later pass. The
+> remaining five taxonomies (`navigation`, `display`, `feedback`, `overlay`, `utils`) remain
+> scaffolded.
 
 ### C.2 Engineering guidelines (merge-gated)
 
@@ -295,20 +353,20 @@ verbatim because every component depends only on the token contract (Part A) —
 ### C.3 Responsive fluidity
 
 Every component works on **Desktop / Tablet / Mobile out of the box** using **fluid** rules —
-`clamp()`/`min()`/`max()` for type & spacing, container queries where a component must adapt to *its
-own* box rather than the viewport, and CSS Grid/Flex. Breakpoint tokens: `--bp-sm 480`, `--bp-md 768`
-(the modal→bottom-sheet swap point), `--bp-lg 1024`, `--bp-xl 1280`.
+`clamp()`/`min()`/`max()` for type & spacing, container queries where a component must adapt to _its
+own_ box rather than the viewport, and CSS Grid/Flex. Breakpoint tokens: `--bp-sm 480`,
+`--bp-md 768` (the modal→bottom-sheet swap point), `--bp-lg 1024`, `--bp-xl 1280`.
 
 ### C.4 Media asset infrastructure
 
-- **Open-source fallbacks.** Placeholders/fallbacks map to external open registries (e.g. **Unsplash**
-  `https://images.unsplash.com/...` for imagery/video streams). Fallback source URLs are centralized
-  in `packages/ui/system/asset-registry.ts`, never inlined per component.
+- **Open-source fallbacks.** Placeholders/fallbacks map to external open registries (e.g.
+  **Unsplash** `https://images.unsplash.com/...` for imagery/video streams). Fallback source URLs
+  are centralized in `packages/ui/system/asset-registry.ts`, never inlined per component.
 - **Aspect-ratio enforcement (strict).** Logos, user avatars, and org/branding marks use the
-  `AspectRatio` primitive with two enforced variants: **1:1** (icon-only — favicons, avatars,
-  profile placeholders) and **3:1** (wordmark/banner marks). (`PRODUCT_SPEC.md` §Visual Identity cites
-  1:1 and 7:2 for the logo lockups specifically; the 3:1 branding-mark rule here is the general
-  container rule and is cross-referenced — resolve any exact-ratio question against the product spec.)
+  `AspectRatio` primitive with two enforced variants (resolved 2026-07-12 to match `PRODUCT_SPEC.md`
+  §Visual Identity — the SSOT): **1:1** (icon-only — favicons, avatars, profile placeholders) and
+  **7:2** (wordmark — primary header navigation / branding marks). The earlier "3:1" figure from the
+  brief is superseded; 7:2 is the actual wordmark lockup geometry.
 
 ### C.5 Performance-first Tables & Charts
 
@@ -316,22 +374,22 @@ own* box rather than the viewport, and CSS Grid/Flex. Breakpoint tokens: `--bp-s
   gap-detection data manager + `ResizeObserver` variable heights + `@preact/signals` `batch()` (the
   existing Data package architecture, re-homed under `display`).
 - **Intelligent SVG ↔ Canvas switch.** Complex charting grids (**Gantt**, **Pipeline flows**) switch
-  between **SVG** (few entities: crisp, stylable, accessible) and **high-density HTML5 Canvas** (large
-  datasets: no DOM bloat) based on a **performance metric** (entity count threshold + measured frame
-  budget). A `theme-bridge` resolves `var()`/`calc()` colors to numeric values for the canvas engine
-  so charts recolor instantly when the theme shifts (§B.5). *(Engine: D3.js per the brief; the
-  D3-vs-PIXI conflict is flagged in §B.5 for human resolution.)*
+  between **SVG** (few entities: crisp, stylable, accessible) and **high-density HTML5 Canvas**
+  (large datasets: no DOM bloat) based on a **performance metric** (entity count threshold +
+  measured frame budget). A `theme-bridge` resolves `var()`/`calc()` colors to numeric values for
+  the canvas/WebGL engine so charts recolor instantly when the theme shifts (§B.5). **Engine
+  (resolved):** tiered **D3 (SVG/math) → Canvas2D → PIXI/WebGL**, escalating by density — see §B.5.
 
 ### C.6 ARIA & context isolation
 
 - **Comprehensive ARIA.** Every interactive element ships correct `role`, name, state, focus
   management, and keyboard model (Dialog traps focus + `ESC`; Menu/Combobox roving tabindex; Tabs
   arrow-key model; etc.). ARIA is a merge gate, not a follow-up.
-- **Nested `<DesignSystemProvider>` / `DesignSystemContext`.** A nestable context exposes the **active
-  layout configuration tokens** (current mode, seed, `--radius-scale`, `--shadow-intensity`, a11y
-  flags, breakpoint) so components read live config dynamically. Nesting scopes a subtree to a
-  different theme (e.g. a always-dark preview pane inside a light app) by writing that subtree's
-  custom properties — see §D.3.
+- **Nested `<DesignSystemProvider>` / `DesignSystemContext`.** A nestable context exposes the
+  **active layout configuration tokens** (current mode, seed, `--radius-scale`,
+  `--shadow-intensity`, a11y flags, breakpoint) so components read live config dynamically. Nesting
+  scopes a subtree to a different theme (e.g. a always-dark preview pane inside a light app) by
+  writing that subtree's custom properties — see §D.3.
 
 ---
 
@@ -358,29 +416,31 @@ Preserve the functional shell architecture; modernize its execution.
 ### D.2 Middle-nav Flex Splitter
 
 The divider between the middle nav column and the main content is an **active, drag-responsive
-Splitter island** (not a static rule). It reflows the middle column into three **pixel-column-driven**
-layouts (spring: `--spring-standard`, §B.5):
+Splitter island** (not a static rule). It reflows the middle column into three
+**pixel-column-driven** layouts (spring: `--spring-standard`, §B.5):
 
-| Width band | Layout | Content |
-| :--------- | :----- | :------ |
-| **Collapsed** (narrow) | **Vertical icon-only rows** | Single icon column, tooltips on hover |
-| **Moderate** | **Icon matrix** | Multi-column icon grid with short labels |
-| **Maximized** (wide) | **Full master-detail** | Rich list + detail pane data layout |
+| Width band             | Layout                      | Content                                  |
+| :--------------------- | :-------------------------- | :--------------------------------------- |
+| **Collapsed** (narrow) | **Vertical icon-only rows** | Single icon column, tooltips on hover    |
+| **Moderate**           | **Icon matrix**             | Multi-column icon grid with short labels |
+| **Maximized** (wide)   | **Full master-detail**      | Rich list + detail pane data layout      |
 
 The Splitter is keyboard-accessible (`role="separator"`, `aria-orientation`, arrow-key resize),
 persists its width (per `SYSTEM_ARCHITECTURE.md` caching: local storage), and drives layout via a
-signal bound to a `--middle-nav-w` custom property so the reflow is a single synchronized transition.
+signal bound to a `--middle-nav-w` custom property so the reflow is a single synchronized
+transition.
 
 ### D.3 Mobile adaptive navigation
 
 Below `--bp-md` (768px) the frame adapts:
 
-- **Backdrop-filter blur** surfaces (header/drawer/sheet use `backdrop-filter: blur()` over content).
+- **Backdrop-filter blur** surfaces (header/drawer/sheet use `backdrop-filter: blur()` over
+  content).
 - **Centered micro search bar** in the header (compact, centered).
 - **Pull-out drawer side-menu** (the global sidebar becomes a `NavigationDrawer`, slides from the
   edge, focus-trapped).
-- **Ergonomic bottom utility nav bar** (thumb-reachable primary destinations), with modals/side-panels
-  auto-replaced by the **bottom sheet** (`MobilePopup`) at this breakpoint.
+- **Ergonomic bottom utility nav bar** (thumb-reachable primary destinations), with
+  modals/side-panels auto-replaced by the **bottom sheet** (`MobilePopup`) at this breakpoint.
 
 Nested `<DesignSystemProvider>` (§C.6) lets the mobile shell (e.g. a blurred overlay) carry its own
 scoped tokens without affecting the page beneath.
@@ -400,6 +460,7 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 
 ---
 
-*Related: [`PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Visual Identity ·
+_Related: [`PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Visual Identity ·
 [`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §UI ·
-[`PRODUCT_MANAGEMENT.md`](../PRODUCT_MANAGEMENT.md) · [`packages/ui/CLAUDE.md`](../../packages/ui/CLAUDE.md)*
+[`PRODUCT_MANAGEMENT.md`](../PRODUCT_MANAGEMENT.md) ·
+[`packages/ui/CLAUDE.md`](../../packages/ui/CLAUDE.md)_

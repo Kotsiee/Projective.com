@@ -1,0 +1,13 @@
+/* AspectRatio — locks a box to a ratio; media children cover it. Enforces logo/avatar ratios (§C.4). */
+.ui-aspect-ratio {
+	position: relative;
+	aspect-ratio: var(--ar, 1 / 1);
+	overflow: clip;
+}
+
+.ui-aspect-ratio > :where(img, video, picture, svg, iframe, canvas) {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+}

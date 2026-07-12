@@ -1,0 +1,149 @@
+/*
+ * OrgChart (ui-orgchart) — a top-down node hierarchy connected by CSS-drawn connector lines. Node
+ * cards are interactive (selectable/collapsible) so a full outline is allowed (§B.4); the connectors
+ * are hairlines in the token contract. The whole tree centres horizontally and scrolls inside its
+ * own container on overflow. Token-only.
+ */
+
+.ui-orgchart {
+	--oc-line: var(--border-subtle);
+	--oc-gap: var(--space-5);
+	--oc-connector: var(--space-4);
+
+	overflow: auto;
+	padding: var(--space-4);
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+}
+
+/* #region Node tree (nested lists) */
+.ui-orgchart__tree,
+.ui-orgchart__children {
+	display: flex;
+	justify-content: center;
+	align-items: flex-start;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.ui-orgchart__node {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding-inline: var(--space-2);
+	padding-block-start: var(--oc-connector);
+}
+.ui-orgchart__tree > .ui-orgchart__node {
+	padding-block-start: 0;
+}
+
+/* Vertical stem down from a parent to the horizontal bus. */
+.ui-orgchart__node::before {
+	content: "";
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 50%;
+	block-size: var(--oc-connector);
+	border-inline-start: 2px solid var(--oc-line);
+}
+.ui-orgchart__tree > .ui-orgchart__node::before {
+	display: none;
+}
+
+/* Horizontal bus across sibling group (drawn on each child, halved at the ends). */
+.ui-orgchart__node::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+	border-block-start: 2px solid var(--oc-line);
+}
+.ui-orgchart__node:first-child::after {
+	inset-inline-start: 50%;
+}
+.ui-orgchart__node:last-child::after {
+	inset-inline-end: 50%;
+}
+.ui-orgchart__node:only-child::after {
+	display: none;
+}
+/* #endregion */
+
+/* #region Children column + downward stem from a card */
+.ui-orgchart__children {
+	position: relative;
+	padding-block-start: var(--oc-gap);
+}
+.ui-orgchart__subtree {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+.ui-orgchart__subtree--has-children > .ui-orgchart__card-wrap::after {
+	content: "";
+	position: absolute;
+	inset-block-end: calc(-1 * var(--oc-gap));
+	inset-inline-start: 50%;
+	block-size: var(--oc-gap);
+	border-inline-start: 2px solid var(--oc-line);
+}
+.ui-orgchart__card-wrap {
+	position: relative;
+	display: inline-flex;
+}
+/* #endregion */
+
+/* #region Node card */
+.ui-orgchart__card {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 6rem;
+	padding: var(--space-2) var(--space-3);
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	cursor: default;
+	text-align: center;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-orgchart__card--selectable {
+	cursor: pointer;
+}
+.ui-orgchart__card:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-orgchart__card--selected {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+}
+.ui-orgchart__toggle {
+	position: absolute;
+	inset-block-end: calc(-0.5 * var(--space-5));
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	z-index: var(--z-raised, 1);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding: 0;
+	font-size: 0.75rem;
+	line-height: 1;
+	color: var(--on-surface-variant);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: 50%;
+	cursor: pointer;
+}
+.ui-orgchart__toggle:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */

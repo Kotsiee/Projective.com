@@ -1,0 +1,227 @@
+/*
+ * MegaMenu (ui-megamenu) — horizontal/vertical bar with multi-column drop panels. Columns separate
+ * by spacing + a header weight, not boxes (§B.4). The panel is fixed-positioned by `useFloating`.
+ * Token-only; reduced-motion collapses the open animation.
+ */
+
+.ui-megamenu {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+}
+.ui-megamenu--vertical {
+	align-items: stretch;
+	flex-direction: column;
+	inline-size: max-content;
+}
+.ui-megamenu__start,
+.ui-megamenu__end {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: 0 0 auto;
+}
+.ui-megamenu__end {
+	margin-inline-start: auto;
+}
+.ui-megamenu--vertical .ui-megamenu__end {
+	margin-inline-start: 0;
+	margin-block-start: auto;
+}
+
+/* #region Bar */
+.ui-megamenu__bar {
+	display: flex;
+	gap: var(--space-1);
+	min-block-size: 3rem;
+	align-items: center;
+	padding-inline: var(--space-2);
+	background: var(--surface);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-megamenu--vertical .ui-megamenu__bar {
+	flex-direction: column;
+	align-items: stretch;
+	min-block-size: 0;
+	padding: var(--space-2);
+	border-block-end: none;
+	border-inline-end: 1px solid var(--border-subtle);
+}
+.ui-megamenu__top-wrap {
+	position: relative;
+}
+.ui-megamenu__top {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	outline: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-megamenu--vertical .ui-megamenu__top {
+	inline-size: 100%;
+	justify-content: space-between;
+}
+.ui-megamenu__top:hover,
+.ui-megamenu__top--open {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-megamenu__top:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-megamenu__top--current {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-megamenu__top--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+.ui-megamenu__bar-separator {
+	inline-size: 1px;
+	margin-block: var(--space-2);
+	background: var(--border-subtle);
+}
+/* #endregion */
+
+/* #region Panel + columns */
+.ui-megamenu__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	z-index: var(--z-overlay);
+	max-inline-size: min(56rem, 96vw);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	animation: ui-megamenu-pop var(--dur-fast) var(--ease-standard);
+}
+.ui-megamenu__columns {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-5);
+	padding: var(--space-4);
+}
+.ui-megamenu__column {
+	min-inline-size: 11rem;
+	flex: 1 1 11rem;
+}
+.ui-megamenu__column-header {
+	padding: 0 var(--space-2) var(--space-2);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ui-megamenu__column-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+@keyframes ui-megamenu-pop {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+/* #endregion */
+
+/* #region Leaves */
+.ui-megamenu__leaf {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	outline: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-megamenu__leaf:hover,
+.ui-megamenu__leaf:focus-visible {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-megamenu__leaf:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-megamenu__leaf--current {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-megamenu__leaf--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+.ui-megamenu__leaf-icon,
+.ui-megamenu__icon {
+	flex: 0 0 auto;
+	inline-size: 1.25rem;
+	display: inline-flex;
+	justify-content: center;
+	color: var(--on-surface-variant);
+}
+.ui-megamenu__leaf-label,
+.ui-megamenu__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-megamenu__badge {
+	min-inline-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1.25rem;
+	text-align: center;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: 999px;
+}
+.ui-megamenu__arrow {
+	flex: 0 0 auto;
+	color: var(--on-surface-variant);
+	font-size: 0.75rem;
+}
+.ui-megamenu__separator {
+	block-size: 1px;
+	margin: var(--space-1) var(--space-2);
+	background: var(--border-subtle);
+}
+/* #endregion */
+
+@media (max-width: 767.98px) {
+	.ui-megamenu__columns {
+		flex-direction: column;
+		gap: var(--space-3);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-megamenu__panel {
+		animation-duration: 0ms;
+	}
+	.ui-megamenu__top,
+	.ui-megamenu__leaf {
+		transition-duration: 0ms;
+	}
+}

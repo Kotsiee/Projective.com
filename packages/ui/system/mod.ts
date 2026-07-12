@@ -1,13 +1,17 @@
 /**
  * @projective/ui/system — the theming engine and framework-level configuration.
  *
- * This is the ONLY place `@material/material-color-utilities` may be imported (approved exception,
- * SYSTEM_ARCHITECTURE.md §3). Responsibilities (DESIGN_SYSTEM.md Part A.2 & §C.6):
- *   - buildScheme(seedHex, dark): seed → HCT → DynamicScheme → CSS custom-property map.
- *   - DesignSystemProvider / DesignSystemContext: nestable active-config token context.
- *   - asset-registry.ts: centralized open-source (e.g. Unsplash) media fallbacks.
+ * The ONLY place `@material/material-color-utilities` is imported (approved exception,
+ * SYSTEM_ARCHITECTURE.md §3). Structure (unified convention): `types/` · `core/` · `components/`.
+ *   - types: DesignSystemConfig · ThemeMode · CvdMode · ThemeInput.
+ *   - core/theme-engine: buildScheme · schemeToCss · applyScheme (pure; SSR-safe).
+ *   - core/context: dsConfig store · DesignSystemContext · useDesignSystem · mutators · bindRootTheme
+ *     · hydrateConfigFromDom · applyConfig.
+ *   - components/DesignSystemProvider: the mount component.
  *
- * Components never import this module for values — they read the emitted `var(--*)` properties.
- * Structural scaffold only.
+ * Components never import this for values — they read the emitted `var(--*)` custom properties.
  */
-export {};
+export * from "./types/mod.ts";
+export * from "./core/theme-engine.ts";
+export * from "./core/context.ts";
+export * from "./components/DesignSystemProvider.tsx";

@@ -1,0 +1,13 @@
+/* Grid — native CSS grid, token-driven columns and gap. Zero JS. */
+.ui-grid {
+	display: grid;
+	gap: var(--grid-gap, 0);
+	grid-template-columns: repeat(var(--grid-cols, 1), minmax(0, 1fr));
+	align-items: var(--grid-align, stretch);
+	justify-items: var(--grid-justify, stretch);
+}
+
+/* Responsive auto-fit: fills as many `--grid-min`-wide tracks as fit, no media queries needed. */
+.ui-grid--auto {
+	grid-template-columns: repeat(auto-fit, minmax(min(var(--grid-min, 16rem), 100%), 1fr));
+}

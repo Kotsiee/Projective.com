@@ -1,0 +1,75 @@
+/*
+ * Inplace — click-to-edit switch. The display trigger is interactive so it may carry a hover tint;
+ * the editor region uses spacing/tint for separation, not a four-sided border (§B.4). Token-only.
+ */
+
+.ui-inplace {
+	display: inline-flex;
+	align-items: center;
+	max-inline-size: 100%;
+}
+
+/* #region Display trigger */
+.ui-inplace__display {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2rem;
+	padding: var(--space-1) var(--space-2);
+	font: inherit;
+	color: inherit;
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-inplace__display:hover {
+	background: var(--surface-1);
+}
+.ui-inplace__display:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-inplace--disabled .ui-inplace__display {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+/* #endregion */
+
+/* #region Editor */
+.ui-inplace__editor {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.ui-inplace__editor-content {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.ui-inplace__close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	font-size: 1rem;
+	line-height: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-inplace__close:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.ui-inplace__close:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */

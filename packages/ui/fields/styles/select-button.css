@@ -1,0 +1,113 @@
+/*
+ * SelectButton — a segmented single/multi choice. The group owns one shared outline + radius; the
+ * options sit flush and are separated by single interior hairlines (§B.4, like input-group). Selected
+ * segments fill with the accent. Token-only. Interactive → full outline allowed.
+ */
+
+.ui-select-button {
+	--sb-height: 2.5rem;
+	--sb-px: var(--space-4);
+	--sb-font: 0.9375rem;
+
+	display: inline-flex;
+	align-items: stretch;
+	block-size: var(--sb-height);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	overflow: hidden;
+}
+.ui-select-button--size-sm {
+	--sb-height: 2rem;
+	--sb-px: var(--space-3);
+	--sb-font: 0.8125rem;
+	border-radius: var(--radius-sm);
+}
+.ui-select-button--size-lg {
+	--sb-height: 3rem;
+	--sb-px: var(--space-5);
+	--sb-font: 1.0625rem;
+	border-radius: var(--radius-lg);
+}
+.ui-select-button--fluid {
+	display: flex;
+	inline-size: 100%;
+}
+.ui-select-button--disabled {
+	opacity: 0.55;
+	pointer-events: none;
+}
+
+/* #region Segments */
+.ui-select-button__option {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	flex: 1 1 auto;
+	padding-inline: var(--sb-px);
+	font-family: var(--font-sans);
+	font-size: var(--sb-font);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	user-select: none;
+	white-space: nowrap;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+/* Interior seams — a single hairline between adjacent segments. */
+.ui-select-button__option + .ui-select-button__option {
+	border-inline-start: 1px solid var(--border-subtle);
+}
+.ui-select-button__option:hover:not(:disabled):not([aria-pressed="true"]):not(
+	[aria-checked="true"]
+) {
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.ui-select-button__option:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-select-button__option:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Selected fill (both single `aria-checked` and multi `aria-pressed`). */
+.ui-select-button__option[aria-pressed="true"],
+.ui-select-button__option[aria-checked="true"] {
+	color: var(--on-primary);
+	background: var(--primary);
+}
+/* #endregion */
+
+/* #region Status accents */
+.ui-select-button--invalid {
+	border-color: var(--danger);
+}
+.ui-select-button--invalid .ui-select-button__option[aria-pressed="true"],
+.ui-select-button--invalid .ui-select-button__option[aria-checked="true"] {
+	background: var(--danger);
+	color: var(--on-danger);
+}
+.ui-select-button--success {
+	border-color: var(--success);
+}
+.ui-select-button--warning {
+	border-color: var(--warning);
+}
+/* #endregion */
+
+.ui-select-button__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	font-size: 1.05em;
+}

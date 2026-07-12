@@ -1,0 +1,108 @@
+/*
+ * Paginator (ui-paginator) — page control. Every button is interactive so full borders are allowed
+ * only on the active page pill; neighbouring controls lean on tonal hover fills (§B.4).
+ */
+
+.ui-paginator {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+}
+
+.ui-paginator__pages {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ui-paginator__nav-btn,
+.ui-paginator__page {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 2rem;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	color: var(--on-surface);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-paginator__nav-btn:hover:not(:disabled),
+.ui-paginator__page:hover:not(.ui-paginator__page--active) {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.ui-paginator__nav-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.ui-paginator__nav-btn:focus-visible,
+.ui-paginator__page:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-paginator__page--active {
+	color: var(--on-primary);
+	background: var(--primary);
+	font-weight: 600;
+}
+
+.ui-paginator__ellipsis {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 2rem;
+	block-size: 2rem;
+	color: var(--text-secondary);
+}
+
+.ui-paginator__rows {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: var(--space-2);
+	color: var(--text-secondary);
+}
+
+.ui-paginator__rows-select {
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+}
+
+.ui-paginator__rows-select:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-paginator__report {
+	margin-inline-start: var(--space-2);
+	color: var(--text-secondary);
+}
+
+@media (max-width: 480px) {
+	.ui-paginator__report {
+		inline-size: 100%;
+		margin-inline-start: 0;
+		order: 10;
+	}
+}

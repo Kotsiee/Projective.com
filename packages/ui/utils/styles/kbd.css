@@ -1,0 +1,41 @@
+/*
+ * Kbd — keyboard-key hint chips. Token-only; the chip is a small interactive-looking affordance so a
+ * single hairline + subtle bottom shadow is allowed to read as a physical key.
+ */
+
+.ui-kbd {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	vertical-align: baseline;
+}
+
+.ui-kbd__key {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding-inline: var(--space-2);
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	font-weight: 600;
+	line-height: 1;
+	color: var(--on-surface-variant);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-block-end-width: 2px;
+	border-radius: var(--radius-sm);
+}
+
+.ui-kbd__sep {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
+.ui-kbd--sm .ui-kbd__key {
+	min-inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+}

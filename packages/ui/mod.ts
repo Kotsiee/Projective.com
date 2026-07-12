@@ -12,10 +12,10 @@
  * by `./system` (the theming engine) — never by a component.
  */
 
-export * from "./src/layout/mod.ts";
-export * from "./src/navigation/mod.ts";
-export * from "./src/fields/mod.ts";
-export * from "./src/display/mod.ts";
-export * from "./src/feedback/mod.ts";
-export * from "./src/overlay/mod.ts";
-export * from "./src/utils/mod.ts";
+export * from "./layout/mod.ts";
+export * from "./navigation/mod.ts";
+export * from "./fields/mod.ts";
+export * from "./display/mod.ts";
+export * from "./feedback/mod.ts";
+export * from "./overlay/mod.ts";
+export * from "./utils/mod.ts";

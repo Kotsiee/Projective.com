@@ -1,0 +1,59 @@
+/*
+ * AppShell (Red zone) — the permanent outermost layout. Top bar spans the top; the global sidebar
+ * sits at the left (user persona, desktop). The content region applies the gutter that reveals the
+ * Red track on the top + left of the nested Blue/Green frame.
+ */
+.ui-app-shell {
+	display: grid;
+	grid-template-rows: var(--shell-topbar-h) 1fr;
+	grid-template-columns: auto 1fr;
+	grid-template-areas:
+		"topbar topbar"
+		"sidebar content";
+	min-block-size: 100dvh;
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.ui-app-shell--no-sidebar {
+	grid-template-columns: 1fr;
+	grid-template-areas:
+		"topbar"
+		"content";
+}
+
+.ui-app-shell__sidebar {
+	grid-area: sidebar;
+	min-block-size: 0;
+}
+
+.ui-app-shell__content {
+	grid-area: content;
+	display: flex;
+	min-block-size: 0;
+	min-inline-size: 0;
+	padding-block-start: var(--shell-gutter);
+	padding-inline-start: var(--shell-gutter);
+}
+
+.ui-app-shell__mobile-menu {
+	display: none;
+}
+
+/* Mobile: drop the desktop sidebar, reveal the mobile menu trigger, span the content full-width. */
+@media (max-width: 767px) {
+	.ui-app-shell {
+		grid-template-columns: 1fr;
+		grid-template-areas:
+			"topbar"
+			"content";
+	}
+
+	.ui-app-shell__sidebar {
+		display: none;
+	}
+
+	.ui-app-shell--user .ui-app-shell__mobile-menu {
+		display: inline-flex;
+	}
+}

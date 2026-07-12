@@ -1,0 +1,55 @@
+/*
+ * IconField / InputIcon — overlay an icon inside a text control. The field reserves inline padding on
+ * the icon side; the icon is absolutely positioned within that reserved gutter.
+ */
+
+.ui-icon-field {
+	position: relative;
+	display: inline-flex;
+	inline-size: 100%;
+}
+.ui-icon-field > .ui-field,
+.ui-icon-field > .ui-input {
+	inline-size: 100%;
+}
+.ui-icon-field--left > .ui-field .ui-field__input,
+.ui-icon-field--left > .ui-input .ui-field__input {
+	padding-inline-start: 1.6rem;
+}
+.ui-icon-field--right > .ui-field .ui-field__input,
+.ui-icon-field--right > .ui-input .ui-field__input {
+	padding-inline-end: 1.6rem;
+}
+
+.ui-input-icon {
+	position: absolute;
+	inset-block-start: 50%;
+	transform: translateY(-50%);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+	font-size: 1rem;
+	line-height: 0;
+	pointer-events: none;
+}
+.ui-icon-field--left .ui-input-icon {
+	inset-inline-start: var(--space-3);
+}
+.ui-icon-field--right .ui-input-icon {
+	inset-inline-end: var(--space-3);
+}
+.ui-input-icon--interactive {
+	pointer-events: auto;
+	cursor: pointer;
+	border: none;
+	background: none;
+	border-radius: var(--radius-xs);
+}
+.ui-input-icon--interactive:hover {
+	color: var(--on-surface);
+}
+.ui-input-icon--interactive:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}

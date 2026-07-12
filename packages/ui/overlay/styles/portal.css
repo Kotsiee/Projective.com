@@ -1,0 +1,15 @@
+/*
+ * Portal (ui-portal) — the fixed, full-viewport overlay layer. Click-through by default so it never
+ * traps pointer events outside actual overlay content; direct children (backdrop, panel) re-enable
+ * their own pointer events. Token-only; the z-index resolves from the managed overlay scale.
+ */
+
+.ui-portal {
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-portal, var(--z-overlay));
+	pointer-events: none;
+}
+.ui-portal > * {
+	pointer-events: auto;
+}

@@ -1,0 +1,67 @@
+/*
+ * Confirm surfaces — shared body layout for ConfirmDialog (in-Dialog) and ConfirmPopup (anchored).
+ * The anchored popup is an elevated interactive surface (hairline + shadow allowed, §B.4) positioned
+ * by --float-* custom properties. Token-only; presence fade/slide off [data-state].
+ */
+
+/* #region Shared body */
+.ui-confirm__body {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+}
+.ui-confirm__icon {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.25rem;
+	line-height: 1;
+	color: var(--on-surface-variant);
+}
+.ui-confirm__message {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	color: var(--on-surface);
+	line-height: 1.5;
+}
+/* #endregion */
+
+/* #region Anchored popup */
+.ui-confirm-popup {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-overlay));
+	inline-size: max-content;
+	max-inline-size: min(20rem, calc(100vw - var(--space-6)));
+	padding: var(--space-4);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	outline: none;
+	opacity: 0;
+	transform: translateY(calc(-1 * var(--space-1)));
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+.ui-confirm-popup[data-state="open"] {
+	opacity: 1;
+	transform: translateY(0);
+}
+.ui-confirm-popup__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-confirm-popup {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */

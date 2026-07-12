@@ -1,0 +1,47 @@
+/*
+ * Scroller (ui-scroller) — a flexible virtual viewport built on the same windowing primitive as
+ * VirtualScroller, adding delegated content, step loading, and skeleton loaders. Reuses
+ * `virtual-scroller.css` for the viewport/sizer/row geometry; this sheet only adds the skeleton
+ * treatment. Token-only.
+ */
+
+/* #region Skeleton loaders */
+.ui-scroller__skeleton {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	box-sizing: border-box;
+}
+.ui-scroller__skeleton-bar {
+	block-size: 0.75rem;
+	border-radius: var(--radius-xs);
+	background: linear-gradient(
+		90deg,
+		var(--surface-2) 0%,
+		var(--surface-3) 50%,
+		var(--surface-2) 100%
+	);
+	background-size: 200% 100%;
+	animation: ui-scroller-shimmer 1.2s var(--ease-standard) infinite;
+}
+.ui-scroller__skeleton-bar--full {
+	flex: 1 1 auto;
+}
+.ui-scroller__skeleton-bar--short {
+	flex: 0 0 30%;
+}
+@keyframes ui-scroller-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-scroller__skeleton-bar {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */

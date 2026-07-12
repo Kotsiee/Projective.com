@@ -1,0 +1,26 @@
+/*
+ * Textarea — multiline control built on `.ui-field`. The shared geometry sets a fixed row height for
+ * single-line inputs; a textarea grows vertically, so height is relaxed to `auto` with a floor of the
+ * base field height and stretch alignment. Token-only (DESIGN_SYSTEM.md §A).
+ */
+
+.ui-textarea {
+	block-size: auto;
+	align-items: stretch;
+	min-block-size: var(--field-height);
+	padding-block: var(--space-2);
+}
+
+.ui-textarea__input {
+	block-size: auto;
+	min-block-size: calc(var(--field-height) - 2 * var(--space-2));
+	resize: vertical;
+	line-height: 1.5;
+	overflow-y: auto;
+}
+
+/* Auto-resizing textareas are sized imperatively; the user handle would fight that. */
+.ui-textarea--auto-resize .ui-textarea__input {
+	resize: none;
+	overflow-y: hidden;
+}

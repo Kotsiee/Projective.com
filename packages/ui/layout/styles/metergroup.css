@@ -1,0 +1,88 @@
+/* MeterGroup — segmented multi-value meter. Track + legend, zero client JS. Segment colours are
+   always token references passed in via --meter-color; nothing here hardcodes a hue. */
+.ui-metergroup {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ui-metergroup__track {
+	display: flex;
+	gap: 2px;
+	overflow: hidden;
+	background: var(--surface-2);
+	border-radius: var(--radius-sm);
+}
+
+.ui-metergroup--horizontal .ui-metergroup__track {
+	flex-direction: row;
+	width: 100%;
+	height: 0.75rem;
+}
+
+.ui-metergroup--vertical .ui-metergroup__track {
+	flex-direction: column-reverse;
+	width: 0.75rem;
+	height: 12rem;
+}
+
+.ui-metergroup__segment {
+	flex: none;
+	background: var(--meter-color, var(--primary));
+	transition: flex-basis var(--dur-medium) var(--spring-standard);
+}
+
+.ui-metergroup--horizontal .ui-metergroup__segment {
+	flex-basis: var(--meter-size, 0%);
+	height: 100%;
+}
+
+.ui-metergroup--vertical .ui-metergroup__segment {
+	flex-basis: var(--meter-size, 0%);
+	width: 100%;
+}
+
+.ui-metergroup__legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ui-metergroup__legend-item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--on-surface-variant);
+	font-size: 0.875rem;
+}
+
+.ui-metergroup__swatch {
+	flex: none;
+	width: 0.625rem;
+	height: 0.625rem;
+	background: var(--meter-color, var(--primary));
+	border-radius: var(--radius-xs);
+}
+
+.ui-metergroup__icon {
+	display: inline-flex;
+	flex: none;
+}
+
+.ui-metergroup__legend-label {
+	color: var(--on-surface);
+}
+
+.ui-metergroup__legend-value {
+	color: var(--on-surface-variant);
+	font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-metergroup__segment {
+		transition: none;
+	}
+}

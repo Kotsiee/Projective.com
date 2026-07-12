@@ -1,0 +1,110 @@
+/*
+ * ProgressSpinner / ProgressRing — a shared circular-progress base. The spinner rotates the whole
+ * SVG and animates the arc's dash-offset+length for the classic "chasing" loop; ProgressRing instead
+ * sets a fixed `--ring-value` dash-offset (no rotation) for a determinate reading.
+ */
+
+.ui-progress-spinner {
+	--spin-accent: var(--primary);
+
+	display: inline-flex;
+	inline-size: var(--spinner-size, 3rem);
+	block-size: var(--spinner-size, 3rem);
+}
+
+/* #region Severities (shared by both components) */
+.ui-progress-spinner--primary,
+.ui-progress-ring--primary {
+	--spin-accent: var(--primary);
+}
+.ui-progress-spinner--secondary,
+.ui-progress-ring--secondary {
+	--spin-accent: var(--secondary);
+}
+.ui-progress-spinner--success,
+.ui-progress-ring--success {
+	--spin-accent: var(--success);
+}
+.ui-progress-spinner--info,
+.ui-progress-ring--info {
+	--spin-accent: var(--secondary);
+}
+.ui-progress-spinner--warning,
+.ui-progress-ring--warning {
+	--spin-accent: var(--warning);
+}
+.ui-progress-spinner--help,
+.ui-progress-ring--help {
+	--spin-accent: var(--tertiary);
+}
+.ui-progress-spinner--danger,
+.ui-progress-ring--danger {
+	--spin-accent: var(--danger);
+}
+/* #endregion */
+
+.ui-progress-spinner__svg {
+	inline-size: 100%;
+	block-size: 100%;
+	animation: ui-spinner-rotate 1.1s linear infinite;
+	transform-origin: center;
+}
+.ui-progress-spinner__track {
+	stroke: color-mix(in srgb, var(--spin-accent) 18%, transparent);
+}
+.ui-progress-spinner__arc {
+	stroke: var(--spin-accent);
+}
+@keyframes ui-spinner-rotate {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-progress-spinner__svg {
+		animation: none;
+	}
+}
+
+/* #region ProgressRing (determinate) */
+.ui-progress-ring {
+	--spin-accent: var(--primary);
+
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--ring-size, 3rem);
+	block-size: var(--ring-size, 3rem);
+}
+.ui-progress-ring__svg {
+	inline-size: 100%;
+	block-size: 100%;
+	transform: rotate(-90deg);
+}
+.ui-progress-ring__track {
+	stroke: var(--surface-2);
+}
+.ui-progress-ring__arc {
+	stroke: var(--spin-accent);
+	stroke-linecap: round;
+	transition: stroke-dashoffset var(--dur-slow) var(--ease-standard);
+}
+.ui-progress-ring__label {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-progress-ring__arc {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */

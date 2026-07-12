@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+_fresh/
+apps/web/dist/
+apps/web/_fresh/
+
+# Vite / caches
+.vite/
+vite.config.ts.timestamp-*
+
+# Test / coverage
+coverage/
+*.lcov
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Deno
+.deno/
+
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log

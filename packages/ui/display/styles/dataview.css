@@ -1,0 +1,155 @@
+/*
+ * DataView (ui-dataview) — a paginated/virtualized collection with a list⇄grid toggle and sorting.
+ * The header controls are interactive (full outlines allowed); the item region is content and
+ * separates rows by hairlines/spacing only (§B.4). Grid tracks use CSS grid auto-fill for responsive
+ * reflow. Token-only.
+ */
+
+.ui-dataview {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+	container-type: inline-size;
+}
+
+/* #region Header */
+.ui-dataview__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+.ui-dataview__header-lead {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+.ui-dataview__controls {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.ui-dataview__sort {
+	appearance: none;
+	block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	cursor: pointer;
+}
+.ui-dataview__sort:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-dataview__toggle {
+	display: inline-flex;
+	padding: var(--space-1);
+	gap: var(--space-1);
+	background: var(--surface-2);
+	border-radius: var(--radius-base);
+}
+.ui-dataview__toggle-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 1.75rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.ui-dataview__toggle-btn:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-dataview__toggle-btn[aria-pressed="true"] {
+	color: var(--on-surface);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+/* #endregion */
+
+/* #region Body */
+.ui-dataview__body {
+	min-block-size: 0;
+}
+.ui-dataview__list {
+	display: flex;
+	flex-direction: column;
+}
+.ui-dataview__list > .ui-dataview__item {
+	padding-block: var(--space-3);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-dataview__list > .ui-dataview__item:last-child {
+	border-block-end: none;
+}
+.ui-dataview__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--dv-grid-min, 16rem), 1fr));
+	gap: var(--space-3);
+}
+.ui-dataview__empty {
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Paginator */
+.ui-dataview__paginator {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+}
+.ui-dataview__page {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 2rem;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: transparent;
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+.ui-dataview__page:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-dataview__page:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-dataview__page[aria-current="true"] {
+	color: var(--on-primary);
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.ui-dataview__page:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.ui-dataview__page-info {
+	color: var(--text-secondary);
+	font-size: 0.8125rem;
+	margin-inline: var(--space-2);
+}
+/* #endregion */

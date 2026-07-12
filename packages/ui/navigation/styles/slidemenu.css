@@ -1,0 +1,166 @@
+/*
+ * SlideMenu (ui-slidemenu) — single-viewport sliding menu. Levels are laid out in a horizontal track
+ * translated by --slide-depth; the transform uses the over-damped --spring-standard. The header
+ * carries a back-control + current-level breadcrumb, separated by a single hairline (§B.4).
+ * Token-only; reduced-motion removes the slide.
+ */
+
+.ui-slidemenu {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	max-inline-size: 20rem;
+	overflow: hidden;
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+}
+
+/* #region Header */
+.ui-slidemenu__header {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2.75rem;
+	padding-inline: var(--space-2);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-slidemenu__back {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	font-size: 1.25rem;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+.ui-slidemenu__back:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-slidemenu__back:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-slidemenu__back:disabled {
+	opacity: 0;
+	pointer-events: none;
+}
+.ui-slidemenu__title {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	font-weight: 600;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+/* #endregion */
+
+/* #region Viewport + track */
+.ui-slidemenu__viewport {
+	position: relative;
+	inline-size: 100%;
+	overflow: hidden;
+}
+.ui-slidemenu__track {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: 100%;
+	inline-size: 100%;
+	transform: translateX(calc(var(--slide-depth, 0) * -100%));
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+.ui-slidemenu__level {
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	max-block-size: min(24rem, 70vh);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+/* #endregion */
+
+/* #region Rows */
+.ui-slidemenu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	box-sizing: border-box;
+	min-block-size: 2.75rem;
+	padding: var(--space-2) var(--space-3);
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	outline: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-slidemenu__item:hover,
+.ui-slidemenu__item:focus-visible {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-slidemenu__item:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-slidemenu__item--current {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-slidemenu__item--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+.ui-slidemenu__icon {
+	flex: 0 0 auto;
+	inline-size: 1.25rem;
+	display: inline-flex;
+	justify-content: center;
+	color: var(--on-surface-variant);
+}
+.ui-slidemenu__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-slidemenu__badge {
+	flex: 0 0 auto;
+	min-inline-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1.25rem;
+	text-align: center;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: 999px;
+}
+.ui-slidemenu__arrow {
+	flex: 0 0 auto;
+	color: var(--on-surface-variant);
+	font-size: 0.75rem;
+}
+.ui-slidemenu__separator {
+	block-size: 1px;
+	margin: var(--space-1) var(--space-2);
+	background: var(--border-subtle);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-slidemenu__track {
+		transition-duration: 0ms;
+	}
+	.ui-slidemenu__item {
+		transition-duration: 0ms;
+	}
+}

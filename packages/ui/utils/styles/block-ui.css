@@ -1,0 +1,48 @@
+/*
+ * BlockUI — scrim mask over a subtree or the whole viewport. Token-only. The mask sits above the
+ * masked content and swallows pointer events; the content is additionally `inert` from the island.
+ */
+
+.ui-block-ui {
+	position: relative;
+}
+.ui-block-ui--fullscreen {
+	position: static;
+}
+
+.ui-block-ui__mask {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: color-mix(in srgb, var(--bg) 55%, transparent);
+	border-radius: inherit;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-block-ui__mask--blur {
+	backdrop-filter: blur(2px);
+}
+
+.ui-block-ui--fullscreen .ui-block-ui__mask {
+	position: fixed;
+	inset: 0;
+	z-index: var(--block-z, var(--z-overlay));
+	border-radius: 0;
+}
+
+.ui-block-ui__content {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.9375rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-block-ui__mask {
+		transition-duration: 0ms;
+	}
+}

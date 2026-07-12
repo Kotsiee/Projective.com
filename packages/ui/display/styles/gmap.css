@@ -1,0 +1,118 @@
+/*
+ * GMap (ui-gmap) — a provider-agnostic embedded map frame. The chrome/controls are interactive (full
+ * outline allowed, §B.4); the map surface itself is content. The iframe is lazy-mounted when scrolled
+ * into view. Markers are absolutely positioned over the frame at caller-projected percentages.
+ * Token-only; no provider keys live here.
+ */
+
+.ui-gmap {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--gmap-height, 24rem);
+	overflow: hidden;
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+}
+
+/* #region Frame */
+.ui-gmap__frame {
+	inline-size: 100%;
+	block-size: 100%;
+	border: 0;
+	display: block;
+}
+.ui-gmap__placeholder {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+	font-size: 0.875rem;
+	background: var(--surface-2);
+}
+/* #endregion */
+
+/* #region Markers */
+.ui-gmap__markers {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.ui-gmap__marker {
+	position: absolute;
+	inset-inline-start: var(--marker-x, 50%);
+	inset-block-start: var(--marker-y, 50%);
+	transform: translate(-50%, -100%);
+	pointer-events: auto;
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 0;
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--marker-color, var(--primary));
+}
+.ui-gmap__marker:focus-visible {
+	outline: none;
+}
+.ui-gmap__marker-pin {
+	inline-size: 1rem;
+	block-size: 1rem;
+	background: currentColor;
+	border: 2px solid var(--surface);
+	border-radius: 50% 50% 50% 0;
+	transform: rotate(-45deg);
+	box-shadow: var(--elevation-low);
+}
+.ui-gmap__marker:focus-visible .ui-gmap__marker-pin {
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-gmap__marker-label {
+	margin-block-start: var(--space-1);
+	padding: 0.1rem var(--space-2);
+	font-size: 0.6875rem;
+	color: var(--on-surface);
+	background: var(--surface);
+	border-radius: var(--radius-xs);
+	box-shadow: var(--elevation-low);
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Chrome / controls */
+.ui-gmap__chrome {
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-end: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.ui-gmap__control {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	font-size: 1rem;
+	line-height: 1;
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	box-shadow: var(--elevation-low);
+}
+.ui-gmap__control:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-gmap__control:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */

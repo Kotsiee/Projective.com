@@ -1,0 +1,79 @@
+/*
+ * Skeleton — a tonal placeholder block on `--surface-2`/`--surface-3`. `pulse` breathes opacity;
+ * `wave` sweeps a lighter band across via a moving gradient. Both collapse to a static block under
+ * reduced-motion (handled globally by the token-duration collapse, reinforced here for the
+ * background-position/opacity properties that aren't duration-driven).
+ */
+
+.ui-skeleton {
+	display: block;
+	inline-size: var(--skeleton-width, 100%);
+	block-size: var(--skeleton-height, 1rem);
+	background: var(--surface-2);
+	border-radius: var(--skeleton-radius, var(--radius-base));
+}
+.ui-skeleton--text {
+	block-size: var(--skeleton-height, 0.9rem);
+	border-radius: var(--skeleton-radius, var(--radius-sm));
+}
+.ui-skeleton--circle {
+	inline-size: var(--skeleton-width, var(--skeleton-height, 2.5rem));
+	block-size: var(--skeleton-height, var(--skeleton-width, 2.5rem));
+	border-radius: var(--skeleton-radius, 999px);
+}
+
+.ui-skeleton-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+/* #region Animations */
+.ui-skeleton--pulse {
+	animation: ui-skeleton-pulse 1.5s var(--ease-standard) infinite;
+}
+.ui-skeleton--wave {
+	position: relative;
+	overflow: hidden;
+	background: var(--surface-2);
+}
+.ui-skeleton--wave::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--on-surface) 8%, transparent),
+		transparent
+	);
+	animation: ui-skeleton-wave 1.6s linear infinite;
+}
+@keyframes ui-skeleton-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.55;
+	}
+}
+@keyframes ui-skeleton-wave {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(100%);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-skeleton--pulse {
+		animation: none;
+		opacity: 0.75;
+	}
+	.ui-skeleton--wave::after {
+		animation: none;
+		display: none;
+	}
+}
+/* #endregion */

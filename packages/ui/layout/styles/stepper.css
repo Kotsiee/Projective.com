@@ -1,0 +1,157 @@
+/* Stepper — linear workflow track. Connectors are hairlines; only the step markers (interactive)
+   get a filled/outlined treatment. */
+.ui-stepper {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.ui-stepper__track {
+	display: flex;
+	align-items: flex-start;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ui-stepper--vertical .ui-stepper__track {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.ui-stepper__item {
+	display: flex;
+	flex: 1 1 0%;
+	align-items: center;
+}
+
+.ui-stepper--vertical .ui-stepper__item {
+	flex-direction: column;
+	align-items: stretch;
+	flex: none;
+}
+
+.ui-stepper__step {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	color: var(--on-surface-variant);
+	font: inherit;
+	cursor: pointer;
+}
+
+.ui-stepper__step:hover:not(:disabled) {
+	background: var(--surface-2);
+}
+
+.ui-stepper__step:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.ui-stepper__step:disabled {
+	color: var(--on-surface-variant);
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.ui-stepper__marker {
+	display: grid;
+	flex: none;
+	place-items: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	background: var(--surface-2);
+	border-radius: var(--radius-xl);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast)
+		var(--ease-standard);
+}
+
+.ui-stepper__step--active .ui-stepper__marker {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.ui-stepper__step--done .ui-stepper__marker {
+	background: color-mix(in srgb, var(--primary) 20%, var(--surface-2));
+	color: var(--primary);
+}
+
+.ui-stepper__check {
+	width: 0.5rem;
+	height: 0.75rem;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.ui-stepper__label {
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.ui-stepper__step--active .ui-stepper__label {
+	color: var(--on-surface);
+}
+
+.ui-stepper__connector {
+	flex: 1 1 auto;
+	height: 1px;
+	margin: 0 var(--space-2);
+	background: var(--border-subtle);
+}
+
+.ui-stepper--vertical .ui-stepper__connector {
+	width: 1px;
+	height: 1rem;
+	margin: 0 0 0 calc(var(--space-2) + 0.875rem);
+}
+
+.ui-stepper__content {
+	padding: var(--space-2) 0;
+}
+
+.ui-stepper__nav {
+	display: flex;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.ui-stepper__nav-btn {
+	padding: var(--space-2) var(--space-4);
+	background: var(--surface-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	color: var(--on-surface);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.ui-stepper__nav-btn--primary {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.ui-stepper__nav-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.ui-stepper__nav-btn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-stepper__marker {
+		transition: none;
+	}
+}

@@ -1,0 +1,38 @@
+/*
+ * MiddleNav (Blue zone) — a ShellFrame containing the nav lane + a nested content region. The
+ * content region's gutter reveals the Blue track on the top + left of the Green canvas.
+ */
+.ui-middle-nav {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	min-block-size: 0;
+}
+
+.ui-middle-nav__lane {
+	min-inline-size: 0;
+	block-size: 100%;
+	overflow: hidden;
+}
+
+.ui-middle-nav__content {
+	display: flex;
+	min-inline-size: 0;
+	min-block-size: 0;
+	padding-block-start: var(--shell-gutter);
+	padding-inline-start: var(--shell-gutter);
+}
+
+/* Mobile: collapse the lane; the Green canvas takes the full width. */
+@media (max-width: 767px) {
+	.ui-middle-nav {
+		grid-template-columns: 1fr;
+	}
+
+	.ui-middle-nav__lane {
+		display: none;
+	}
+
+	.ui-middle-nav__content {
+		padding-inline-start: var(--shell-gutter);
+	}
+}

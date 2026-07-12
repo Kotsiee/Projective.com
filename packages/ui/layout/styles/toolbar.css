@@ -1,0 +1,40 @@
+/* Toolbar — zero-JS action bar. Three groups (start/center/end) or a single bare group. */
+.ui-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	background: var(--surface-1);
+	border-radius: var(--radius-base);
+}
+
+.ui-toolbar--vertical {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.ui-toolbar__group {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.ui-toolbar__group--start {
+	justify-content: flex-start;
+}
+
+.ui-toolbar__group--center {
+	flex: 1 1 auto;
+	justify-content: center;
+}
+
+.ui-toolbar__group--end {
+	justify-content: flex-end;
+}
+
+.ui-toolbar--vertical .ui-toolbar__group {
+	flex-direction: column;
+	align-items: stretch;
+}

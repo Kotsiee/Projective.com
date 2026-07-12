@@ -1,0 +1,112 @@
+/*
+ * Image — plain `<img>` plus an optional full-screen preview overlay built on the shared Portal/
+ * Backdrop pattern (see feedback/styles/dialog.css). The preview panel fills the viewport; enter/exit
+ * animate off `[data-state]` and collapse under reduced motion via the global duration tokens.
+ */
+.ui-image {
+	display: inline-block;
+	line-height: 0;
+}
+.ui-image__img {
+	display: block;
+	max-inline-size: 100%;
+	height: auto;
+}
+
+.ui-image__trigger {
+	display: inline-block;
+	padding: 0;
+	background: none;
+	border: 0;
+	cursor: zoom-in;
+	border-radius: var(--radius-sm);
+}
+.ui-image__trigger:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* #region Preview overlay */
+.ui-image__preview {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	pointer-events: auto;
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+.ui-image__preview[data-state="open"] {
+	opacity: 1;
+}
+.ui-image__preview:focus-visible {
+	outline: none;
+}
+
+.ui-image__toolbar {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+}
+.ui-image__tool {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	color: #fff;
+	background: color-mix(in srgb, #000 45%, transparent);
+	border: 1px solid color-mix(in srgb, #fff 20%, transparent);
+	border-radius: var(--radius-sm);
+	font-size: 1.125rem;
+	line-height: 1;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-image__tool:hover:not(:disabled) {
+	background: color-mix(in srgb, #000 60%, transparent);
+}
+.ui-image__tool:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-image__tool:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.ui-image__stage {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	touch-action: none;
+}
+.ui-image__stage--pannable {
+	cursor: grab;
+}
+.ui-image__stage--pannable:active {
+	cursor: grabbing;
+}
+
+.ui-image__preview-img {
+	--image-zoom: 1;
+	--image-rotate: 0deg;
+	--image-pan-x: 0px;
+	--image-pan-y: 0px;
+
+	max-inline-size: min(90vw, 90vh);
+	max-block-size: 90vh;
+	object-fit: contain;
+	transform: translate(var(--image-pan-x), var(--image-pan-y)) scale(var(--image-zoom))
+		rotate(var(--image-rotate));
+	transition: transform var(--dur-medium) var(--ease-standard);
+	user-select: none;
+	-webkit-user-drag: none;
+}
+.ui-image__preview-img--panning {
+	transition: none;
+}
+/* #endregion */

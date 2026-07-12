@@ -4,13 +4,14 @@ Technical architecture and system directives for Projective.
 
 ## Files
 
-| File | Purpose |
-| :--- | :------ |
+| File                                               | Purpose                                                                                                                                                                                                                                                                                                 |
+| :------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | **Canonical technical source of truth** (renamed from `brain2.md`). System Directives, Islands boundary, SOLID, the `@projective/ui` taxonomy, package overviews (Fields/Data/UI/Charts/WASM), Database conventions, Security, Caching, State Hydration, Integration Blueprints, Testing, Env contract. |
 
 ## Relationship to the other pillars
 
-- **Business logic** it serves lives in [`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md).
+- **Business logic** it serves lives in
+  [`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md).
 - **Component-layer** rules it delegates live in
   [`../design-system/DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md).
 - **Per-domain schema** detail lives in [`../database/`](../database/README.md).

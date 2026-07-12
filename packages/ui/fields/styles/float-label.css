@@ -1,0 +1,53 @@
+/*
+ * FloatLabel — CSS-only floating label. The wrapped control must expose a placeholder of " " so the
+ * `:placeholder-shown` state distinguishes empty from filled. Floats on focus-within OR when filled.
+ */
+
+.ui-float-label {
+	position: relative;
+	display: inline-flex;
+	inline-size: 100%;
+}
+.ui-float-label > .ui-field,
+.ui-float-label > .ui-input {
+	inline-size: 100%;
+}
+
+.ui-float-label__label {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: var(--space-3);
+	transform: translateY(-50%);
+	transform-origin: left center;
+	pointer-events: none;
+	color: var(--text-secondary);
+	font-size: 0.9375rem;
+	background: transparent;
+	padding-inline: 0.15rem;
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		font-size var(--dur-fast) var(--ease-standard);
+}
+
+/* Floated state: focused OR the inner input is not showing its placeholder. */
+.ui-float-label:focus-within .ui-float-label__label,
+.ui-float-label:has(.ui-field__input:not(:placeholder-shown)) .ui-float-label__label {
+	transform: translateY(-160%) scale(0.82);
+	color: var(--primary);
+}
+
+/* `on` variant floats onto the top border with a surface backing to punch through it. */
+.ui-float-label--on .ui-float-label__label {
+	background: var(--surface);
+}
+
+/* `in` variant keeps the label inside, shrinking to the top of the padding box. */
+.ui-float-label--in .ui-float-label__label {
+	inset-block-start: 0.7rem;
+	transform: none;
+}
+.ui-float-label--in:focus-within .ui-float-label__label,
+.ui-float-label--in:has(.ui-field__input:not(:placeholder-shown)) .ui-float-label__label {
+	transform: translateY(-0.35rem) scale(0.78);
+}

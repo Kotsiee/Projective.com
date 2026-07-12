@@ -1,0 +1,224 @@
+/*
+ * Select (ui-select) — single-select dropdown built on the shared listbox pattern. The trigger
+ * composes `.ui-field` geometry; the popup is a fixed-positioned `role="listbox"` panel placed by
+ * `useFloating`. Token-only; a full outline is allowed on the trigger because it is interactive
+ * (§B.4). Non-interactive group headers separate by weight + tint, never by borders.
+ */
+
+/* #region Trigger */
+.ui-select {
+	cursor: pointer;
+	user-select: none;
+}
+.ui-select__trigger {
+	display: inline-flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: var(--field-gap);
+	min-inline-size: 0;
+	background: transparent;
+	border: none;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	cursor: inherit;
+	text-align: start;
+}
+.ui-select__trigger:focus {
+	outline: none;
+}
+.ui-select__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-select__label--placeholder {
+	color: var(--text-secondary);
+}
+.ui-select__chevron {
+	flex: 0 0 auto;
+	display: inline-flex;
+	color: var(--on-surface-variant);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-select--open .ui-select__chevron {
+	transform: rotate(180deg);
+}
+.ui-select__clear {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-select__clear:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-select__clear:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Panel */
+.ui-select__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	inline-size: var(--float-width, auto);
+	z-index: 1000;
+	display: flex;
+	flex-direction: column;
+	max-block-size: 16rem;
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	animation: ui-select-pop var(--dur-fast) var(--ease-standard);
+}
+.ui-select__panel--top {
+	transform-origin: bottom center;
+}
+@keyframes ui-select-pop {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-select__panel {
+		animation-duration: 0ms;
+	}
+	.ui-select__chevron {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */
+
+/* #region Filter */
+.ui-select__filter {
+	flex: 0 0 auto;
+	padding: var(--space-2);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-select__filter-input {
+	inline-size: 100%;
+	box-sizing: border-box;
+	appearance: none;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+}
+.ui-select__filter-input:focus {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-select__filter-input::placeholder {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region List + options */
+.ui-select__list {
+	flex: 1 1 auto;
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+.ui-select__list--virtual {
+	position: relative;
+}
+.ui-select__sizer {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--v-total, auto);
+}
+.ui-select__group-items {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.ui-select__group-label {
+	padding: var(--space-2) var(--space-2) var(--space-1);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ui-select__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	font-size: var(--field-font, 0.9375rem);
+	color: var(--on-surface);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+.ui-select__option--virtual {
+	position: absolute;
+	inset-inline: var(--space-1);
+	inset-block-start: var(--v-top, 0);
+	block-size: var(--v-size, auto);
+	box-sizing: border-box;
+}
+.ui-select__option[aria-selected="true"] {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--on-surface);
+	font-weight: 600;
+}
+.ui-select__option--active {
+	background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.ui-select__option[aria-selected="true"].ui-select__option--active {
+	background: color-mix(in srgb, var(--primary) 28%, transparent);
+}
+.ui-select__option--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.ui-select__option-check {
+	flex: 0 0 auto;
+	display: inline-flex;
+	inline-size: 1rem;
+	color: var(--primary);
+}
+.ui-select__option-label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-select__empty {
+	padding: var(--space-3);
+	font-size: 0.875rem;
+	color: var(--text-secondary);
+	text-align: center;
+}
+/* #endregion */

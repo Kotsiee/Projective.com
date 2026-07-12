@@ -1,0 +1,63 @@
+/* Chip — metadata pill. Tonal fill, no border (non-interactive unless `removable` adds focusability). */
+.ui-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-3);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	border-radius: 999px;
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	line-height: 1.4;
+}
+
+.ui-chip--removable {
+	padding-inline-end: var(--space-2);
+}
+.ui-chip--removable:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-chip__image {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: 999px;
+	object-fit: cover;
+}
+.ui-chip__icon {
+	display: inline-flex;
+	font-size: 1em;
+	line-height: 0;
+}
+.ui-chip__label {
+	max-inline-size: 16rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ui-chip__remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.125rem;
+	block-size: 1.125rem;
+	padding: 0;
+	color: inherit;
+	background: transparent;
+	border: 0;
+	border-radius: 999px;
+	cursor: pointer;
+	font-size: 0.9375rem;
+	line-height: 1;
+}
+.ui-chip__remove:hover {
+	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+.ui-chip__remove:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}

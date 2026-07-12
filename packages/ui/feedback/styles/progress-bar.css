@@ -1,0 +1,101 @@
+/*
+ * ProgressBar — a track on `--surface-2` with a `--pb-accent` fill. Determinate width is set via the
+ * `--progressbar-value` custom property; indeterminate uses a looping token-timed sweep, disabled
+ * under reduced-motion (a static half-filled bar communicates "in progress" without motion).
+ */
+
+.ui-progressbar {
+	--pb-accent: var(--primary);
+
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+}
+
+/* #region Severities */
+.ui-progressbar--primary {
+	--pb-accent: var(--primary);
+}
+.ui-progressbar--secondary {
+	--pb-accent: var(--secondary);
+}
+.ui-progressbar--success {
+	--pb-accent: var(--success);
+}
+.ui-progressbar--info {
+	--pb-accent: var(--secondary);
+}
+.ui-progressbar--warning {
+	--pb-accent: var(--warning);
+}
+.ui-progressbar--help {
+	--pb-accent: var(--tertiary);
+}
+.ui-progressbar--danger {
+	--pb-accent: var(--danger);
+}
+/* #endregion */
+
+.ui-progressbar__track {
+	position: relative;
+	flex: 1 1 auto;
+	block-size: 0.5rem;
+	overflow: hidden;
+	background: var(--surface-2);
+	border-radius: var(--radius-xl);
+}
+.ui-progressbar__track::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--progressbar-value, 0%);
+	background: var(--pb-accent);
+	border-radius: inherit;
+	transition: inline-size var(--dur-medium) var(--ease-standard);
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-progressbar__track::before {
+		transition-duration: 0ms;
+	}
+}
+
+.ui-progressbar__label {
+	flex: none;
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--on-surface-variant);
+	font-variant-numeric: tabular-nums;
+}
+
+/* #region Indeterminate */
+.ui-progressbar__indicator {
+	position: absolute;
+	inset-block: 0;
+	inline-size: 40%;
+	background: var(--pb-accent);
+	border-radius: inherit;
+	animation: ui-progressbar-sweep 1.6s var(--ease-standard) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-progressbar--indeterminate .ui-progressbar__track {
+		background: color-mix(in srgb, var(--pb-accent) 22%, var(--surface-2));
+	}
+	.ui-progressbar__indicator {
+		animation: none;
+		position: static;
+		inline-size: 100%;
+		background: transparent;
+	}
+}
+@keyframes ui-progressbar-sweep {
+	from {
+		inset-inline-start: -40%;
+	}
+	to {
+		inset-inline-start: 100%;
+	}
+}
+/* #endregion */

@@ -1,0 +1,95 @@
+/*
+ * InputNumber — numeric control on `.ui-field` with optional prefix/suffix adornments and
+ * increment/decrement spinner buttons (stacked or horizontal). Token-only (DESIGN_SYSTEM.md §A);
+ * full outline is allowed because the control is interactive (§B.4).
+ */
+
+.ui-input-number__input {
+	text-align: start;
+	font-variant-numeric: tabular-nums;
+}
+
+/* #region Prefix / suffix adornments (non-interactive) */
+.ui-input-number__prefix,
+.ui-input-number__suffix {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+	font-size: 0.95em;
+	flex: 0 0 auto;
+	pointer-events: none;
+}
+.ui-input-number__prefix {
+	margin-inline-end: calc(-1 * var(--space-1));
+}
+.ui-input-number__suffix {
+	margin-inline-start: calc(-1 * var(--space-1));
+}
+/* #endregion */
+
+/* #region Spinner buttons */
+.ui-input-number__buttons {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-self: stretch;
+}
+.ui-input-number__buttons--stacked {
+	flex-direction: column;
+	margin-inline-start: var(--space-2);
+	margin-inline-end: calc(-1 * var(--field-px) + var(--space-1));
+}
+.ui-input-number__button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	inline-size: 1.75rem;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	font: inherit;
+	line-height: 1;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.ui-input-number__buttons--stacked .ui-input-number__button {
+	flex: 1 1 0;
+	block-size: 0;
+	min-block-size: 0;
+}
+.ui-input-number__buttons--horizontal .ui-input-number__button {
+	block-size: 100%;
+}
+.ui-input-number__button:hover:not(:disabled) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-input-number__button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.ui-input-number__button:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+.ui-input-number__button-icon {
+	inline-size: 1em;
+	block-size: 1em;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Horizontal layout: a leading (−) and trailing (+) button flanking the input. */
+.ui-input-number--horizontal .ui-input-number__button--dec {
+	margin-inline-start: calc(-1 * var(--field-px) + var(--space-1));
+	margin-inline-end: var(--space-2);
+}
+.ui-input-number--horizontal .ui-input-number__button--inc {
+	margin-inline-start: var(--space-2);
+	margin-inline-end: calc(-1 * var(--field-px) + var(--space-1));
+}
+/* #endregion */

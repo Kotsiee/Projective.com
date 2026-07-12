@@ -1,0 +1,16 @@
+/* Stack — flexbox in one direction with a consistent gap. Row/Column are thin presets. */
+.ui-stack {
+	display: flex;
+	flex-direction: var(--stack-dir, column);
+	gap: var(--stack-gap, 0);
+	align-items: var(--stack-align, stretch);
+	justify-content: var(--stack-justify, flex-start);
+}
+
+.ui-stack--inline {
+	display: inline-flex;
+}
+
+.ui-stack--wrap {
+	flex-wrap: wrap;
+}

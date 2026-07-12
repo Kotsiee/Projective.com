@@ -1,0 +1,172 @@
+/*
+ * CommandPalette — centred modal launcher. Token-only. The panel is an elevated interactive surface
+ * (outline allowed, §B.4); group headings separate via type weight + tint, not borders. Under
+ * `--bp-md` the panel docks near the top for thumb reach.
+ */
+
+.ui-cmdk {
+	position: fixed;
+	inset: 0;
+	z-index: var(--cmdk-z, var(--z-overlay));
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding-block-start: 12vh;
+	padding-inline: var(--space-4);
+}
+
+.ui-cmdk__backdrop {
+	position: fixed;
+	inset: 0;
+	background: color-mix(in srgb, var(--bg) 60%, transparent);
+	backdrop-filter: blur(2px);
+	animation: ui-cmdk-fade var(--dur-fast) var(--ease-standard);
+}
+
+.ui-cmdk__panel {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	max-inline-size: var(--container-sm);
+	max-block-size: 70vh;
+	background: var(--surface-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	animation: ui-cmdk-rise var(--dur-medium) var(--ease-emphasized);
+}
+
+/* #region Search */
+.ui-cmdk__search {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-cmdk__search-icon {
+	font-size: 1.1rem;
+	color: var(--text-secondary);
+	line-height: 0;
+}
+.ui-cmdk__input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	appearance: none;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 1rem;
+	padding: 0;
+}
+.ui-cmdk__input::placeholder {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region List */
+.ui-cmdk__list {
+	margin: 0;
+	padding: var(--space-2);
+	list-style: none;
+	overflow-y: auto;
+}
+.ui-cmdk__group + .ui-cmdk__group {
+	margin-block-start: var(--space-2);
+}
+.ui-cmdk__group-label {
+	padding: var(--space-1) var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-secondary);
+}
+.ui-cmdk__group-items {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ui-cmdk__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-sm);
+	color: var(--on-surface);
+	cursor: pointer;
+	user-select: none;
+}
+.ui-cmdk__option--active {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.ui-cmdk__option--disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.ui-cmdk__option-icon {
+	display: inline-flex;
+	inline-size: 1.25rem;
+	justify-content: center;
+	color: var(--on-surface-variant);
+	line-height: 0;
+}
+.ui-cmdk__option-label {
+	flex: 1 1 auto;
+	font-size: 0.9375rem;
+}
+.ui-cmdk__option-badge {
+	padding-inline: var(--space-2);
+	font-size: 0.75rem;
+	color: var(--on-surface-variant);
+	background: var(--surface-3);
+	border-radius: 999px;
+}
+.ui-cmdk__option-shortcut {
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-sm);
+	padding-inline: var(--space-1);
+}
+
+.ui-cmdk__empty {
+	padding: var(--space-5);
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: 0.9375rem;
+}
+/* #endregion */
+
+@keyframes ui-cmdk-fade {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes ui-cmdk-rise {
+	from {
+		opacity: 0;
+		transform: translateY(var(--space-3));
+	}
+}
+
+@media (max-width: 768px) {
+	.ui-cmdk {
+		padding-block-start: var(--space-4);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-cmdk__backdrop,
+	.ui-cmdk__panel {
+		animation-duration: 0ms;
+	}
+}

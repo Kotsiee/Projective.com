@@ -1,20 +1,48 @@
 {
-	"$comment": "Root Deno 2.x workspace. Members are added here as each package is scaffolded. Path aliases per documentation/architecture/SYSTEM_ARCHITECTURE.md §2. Do NOT list a member directory that does not yet exist — Deno errors on missing members.",
-	"workspace": [
-		"./packages/ui"
-	],
-	"imports": {
-		"@ui/": "./packages/ui/src/",
-		"@features/": "./apps/web/features/",
-		"@server/services/": "./packages/backend/services/"
-	},
-	"fmt": {
-		"useTabs": true,
-		"lineWidth": 100,
-		"semiColons": true,
-		"singleQuote": false
-	},
-	"lint": {
-		"rules": { "tags": ["recommended"] }
-	}
+  "$comment": "Root Deno 2.x workspace. Members are added here as each package is scaffolded. Path aliases per documentation/architecture/SYSTEM_ARCHITECTURE.md §2. Do NOT list a member directory that does not yet exist — Deno errors on missing members.",
+  "workspace": ["./packages/ui", "./apps/web"],
+  "nodeModulesDir": "auto",
+  "imports": {
+    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1",
+    "@ui/": "./packages/ui/",
+    "@web/": "./apps/web/",
+    "@features/": "./apps/web/features/",
+    "@server/services/": "./packages/backend/services/",
+    "@std/assert": "jsr:@std/assert@^1.0.19",
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
+    "@std/http": "jsr:@std/http@^1.0.25",
+    "@preact/signals": "npm:@preact/signals@^2.9.0",
+    "@std/regexp": "jsr:@std/regexp@^1.0.1",
+    "@std/testing": "jsr:@std/testing@^1.0.17",
+    "@tabler/icons-preact": "npm:@tabler/icons-preact@^3.41.1",
+    "d3-array": "npm:d3-array@^3.2.4",
+    "d3-scale": "npm:d3-scale@^4.0.2",
+    "d3-shape": "npm:d3-shape@^3.2.0",
+    "d3-time": "npm:d3-time@^3.1.0",
+    "djwt": "jsr:@zaubrik/djwt@^3.0.2",
+    "fresh": "jsr:@fresh/core@^2.2.2",
+    "marked": "npm:marked@^17.0.5",
+    "pixi.js": "npm:pixi.js@^8.17.1",
+    "preact": "npm:preact@^10.29.0",
+    "quill": "npm:quill@^2.0.3",
+    "quill-delta-to-html": "npm:quill-delta-to-html@^0.12.1",
+    "supabase": "npm:supabase@^2.105.0",
+    "supabaseClient": "npm:@supabase/supabase-js@2.76.1",
+    "vite": "npm:vite@7.2.2",
+    "zod": "npm:zod@^4.3.6"
+  },
+  "tasks": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "fmt": {
+    "useTabs": true,
+    "lineWidth": 100,
+    "semiColons": true,
+    "singleQuote": false
+  },
+  "lint": {
+    "rules": { "tags": ["recommended"] }
+  }
 }

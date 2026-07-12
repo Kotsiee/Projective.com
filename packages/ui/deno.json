@@ -4,20 +4,27 @@
 	"description": "Projective umbrella UI package — copy-paste-portable, token-driven, Pure CSS + BEM. See documentation/design-system/DESIGN_SYSTEM.md.",
 	"exports": {
 		".": "./mod.ts",
-		"./layout": "./src/layout/mod.ts",
-		"./navigation": "./src/navigation/mod.ts",
-		"./fields": "./src/fields/mod.ts",
-		"./display": "./src/display/mod.ts",
-		"./feedback": "./src/feedback/mod.ts",
-		"./overlay": "./src/overlay/mod.ts",
-		"./utils": "./src/utils/mod.ts",
+		"./layout": "./layout/mod.ts",
+		"./navigation": "./navigation/mod.ts",
+		"./fields": "./fields/mod.ts",
+		"./display": "./display/mod.ts",
+		"./feedback": "./feedback/mod.ts",
+		"./overlay": "./overlay/mod.ts",
+		"./utils": "./utils/mod.ts",
+		"./hooks": "./hooks/mod.ts",
 		"./system": "./system/mod.ts",
 		"./styles": "./styles/index.css"
 	},
 	"imports": {
-		"preact": "npm:preact@^10.19.0",
-		"@preact/signals": "npm:@preact/signals@^1.2.0",
+		"preact": "npm:preact@^10.29.0",
+		"preact/hooks": "npm:preact@^10.29.0/hooks",
+		"preact/jsx-runtime": "npm:preact@^10.29.0/jsx-runtime",
+		"@preact/signals": "npm:@preact/signals@^2.9.0",
 		"@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0"
+	},
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"jsxImportSource": "preact"
 	},
 	"exclude": ["dist", "coverage"]
 }

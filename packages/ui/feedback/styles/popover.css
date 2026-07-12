@@ -1,0 +1,90 @@
+/*
+ * Popover / OverlayPanel (ui-popover) — click-triggered anchored flyout. Elevated interactive surface
+ * (hairline + shadow allowed, §B.4) positioned by --float-* custom properties. Token-only; presence
+ * fade/slide off [data-state]. Optional arrow points back at the anchor.
+ */
+
+.ui-popover {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	inline-size: var(--float-width, auto);
+	z-index: var(--z-portal, var(--z-overlay));
+	min-inline-size: 12rem;
+	max-inline-size: min(var(--container-sm), calc(100vw - var(--space-6)));
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	outline: none;
+	opacity: 0;
+	transform: translateY(calc(-1 * var(--space-1)));
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+.ui-popover--top,
+.ui-popover--top-start,
+.ui-popover--top-end {
+	transform: translateY(var(--space-1));
+}
+.ui-popover[data-state="open"] {
+	opacity: 1;
+	transform: translateY(0);
+}
+.ui-popover__content {
+	padding: var(--space-4);
+	overflow: auto;
+	overscroll-behavior: contain;
+	max-block-size: min(24rem, calc(100vh - var(--space-8)));
+}
+
+/* #region Arrow */
+.ui-popover__arrow {
+	position: absolute;
+	inline-size: 0.625rem;
+	block-size: 0.625rem;
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	transform: rotate(45deg);
+}
+.ui-popover--bottom .ui-popover__arrow,
+.ui-popover--bottom-start .ui-popover__arrow,
+.ui-popover--bottom-end .ui-popover__arrow {
+	inset-block-start: -0.34rem;
+	inset-inline-start: var(--space-4);
+	border-inline-end: none;
+	border-block-end: none;
+}
+.ui-popover--top .ui-popover__arrow,
+.ui-popover--top-start .ui-popover__arrow,
+.ui-popover--top-end .ui-popover__arrow {
+	inset-block-end: -0.34rem;
+	inset-inline-start: var(--space-4);
+	border-inline-start: none;
+	border-block-start: none;
+}
+.ui-popover--right .ui-popover__arrow,
+.ui-popover--right-start .ui-popover__arrow,
+.ui-popover--right-end .ui-popover__arrow {
+	inset-inline-start: -0.34rem;
+	inset-block-start: var(--space-4);
+	border-inline-end: none;
+	border-block-start: none;
+}
+.ui-popover--left .ui-popover__arrow,
+.ui-popover--left-start .ui-popover__arrow,
+.ui-popover--left-end .ui-popover__arrow {
+	inset-inline-end: -0.34rem;
+	inset-block-start: var(--space-4);
+	border-inline-start: none;
+	border-block-end: none;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-popover {
+		transition-duration: 0ms;
+	}
+}

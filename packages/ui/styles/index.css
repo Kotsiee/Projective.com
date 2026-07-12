@@ -33,6 +33,60 @@
 	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
 	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
 	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
+	/* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
+	   reflow and any physics-flavoured motion; expressed as easing curves for CSS transitions. */
+	--spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
+	--spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
+
+	/* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
+	   layered surface stacks predictably. The OverlayManager increments from --z-overlay. --- */
+	--z-base: 0;
+	--z-raised: 10;
+	--z-sticky: 100;
+	--z-nav: 200;
+	--z-backdrop: 1000;
+	--z-overlay: 1100; /* dialogs / drawers / popovers — manager stacks upward from here */
+	--z-toast: 1600;
+	--z-tooltip: 1700;
+	--z-max: 2147483000;
+
+	/* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
+	   literal px used in `@media`/container queries and are exposed for JS/container-query logic. --- */
+	--bp-sm: 480px;
+	--bp-md: 768px; /* modal → bottom-sheet swap point (Part D.3) */
+	--bp-lg: 1024px;
+	--bp-xl: 1280px;
+
+	/* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
+	--space-0: 0;
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2rem;
+	--space-7: 3rem;
+	--space-8: 4rem;
+
+	/* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
+	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+	--font-reading: var(--font-sans);
+
+	/* --- Container max-widths (§C.3) --- */
+	--container-sm: 40rem;
+	--container-md: 48rem;
+	--container-lg: 64rem;
+	--container-xl: 80rem;
+
+	/* --- Navigation shell (Part D) --- */
+	--radius-container-lg: var(--radius-lg); /* nested-frame exposed-corner curvature (12px) */
+	--glass-blur: 18px; /* backdrop-filter blur for guest/mobile glass header */
+	--shell-gutter: var(--space-2); /* parent-track thickness revealed between nested frames */
+	--shell-topbar-h: 48px;
+	--shell-sidebar-w: 64px; /* collapsed icon rail */
+	--shell-sidebar-w-expanded: 224px;
+	--shell-lane-w: 280px; /* middle-nav (Blue) lane default width */
 
 	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	   runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */

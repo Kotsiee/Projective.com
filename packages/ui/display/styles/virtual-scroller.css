@@ -1,0 +1,87 @@
+/*
+ * VirtualScroller (ui-vscroll) — the reusable windowed-rendering primitive. Only the rows inside the
+ * viewport (plus overscan) are in the DOM; a spacer `__sizer` reserves the full scroll extent and
+ * each row is absolutely positioned at its measured offset. Token-only; the viewport is a scroll
+ * surface, not decorated content, so it carries no border (§B.4).
+ */
+
+/* #region Viewport */
+.ui-vscroll {
+	position: relative;
+	inline-size: 100%;
+	overscroll-behavior: contain;
+}
+.ui-vscroll--own {
+	overflow: auto;
+	block-size: var(--vs-height, 20rem);
+	inline-size: var(--vs-width, 100%);
+}
+.ui-vscroll--horizontal.ui-vscroll--own {
+	overflow: auto;
+}
+.ui-vscroll--both.ui-vscroll--own {
+	overflow: auto;
+}
+.ui-vscroll--window {
+	overflow: visible;
+}
+/* #endregion */
+
+/* #region Sizer + rows */
+.ui-vscroll__sizer {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--vs-total-block, auto);
+}
+.ui-vscroll--horizontal .ui-vscroll__sizer {
+	block-size: 100%;
+	inline-size: var(--vs-total-inline, auto);
+}
+.ui-vscroll__item {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--v-start, 0);
+	block-size: var(--v-size, auto);
+	box-sizing: border-box;
+}
+.ui-vscroll--horizontal .ui-vscroll__item {
+	inset-block: 0;
+	inset-inline: auto;
+	inset-inline-start: var(--v-start, 0);
+	inline-size: var(--v-size, auto);
+	block-size: 100%;
+}
+/* #endregion */
+
+/* #region Loading */
+.ui-vscroll__loader {
+	position: sticky;
+	inset-block-end: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-3);
+	color: var(--text-secondary);
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+.ui-vscroll__spinner {
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+	border: 2px solid var(--outline);
+	border-inline-end-color: transparent;
+	border-radius: 50%;
+	animation: ui-vscroll-spin 0.6s linear infinite;
+}
+@keyframes ui-vscroll-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-vscroll__spinner {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */

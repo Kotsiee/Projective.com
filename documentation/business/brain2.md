@@ -15,11 +15,11 @@
 
 ## Where things went
 
-| Section | New canonical home |
-| :------ | :----------------- |
+| Section                                                                                                 | New canonical home                                                                            |
+| :------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------- |
 | System Directives, Islands boundary, SOLID, Packages, WASM, Security, Caching, State Hydration, Testing | [`documentation/architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) |
-| Database conventions (migration ranges, pgvector, storage lifecycle, Edge Functions) | mirrored in [`documentation/database/`](../database/README.md) (already the per-domain SSOT) |
-| Integration Blueprints (Stripe, Conferencing) + Environment Variable Contract | [`documentation/api/README.md`](../api/README.md) |
+| Database conventions (migration ranges, pgvector, storage lifecycle, Edge Functions)                    | mirrored in [`documentation/database/`](../database/README.md) (already the per-domain SSOT)  |
+| Integration Blueprints (Stripe, Conferencing) + Environment Variable Contract                           | [`documentation/api/README.md`](../api/README.md)                                             |
 
 The technical directives remain **absolutely binding**. The rename did not relax them — see the root
 [`CLAUDE.md`](../../CLAUDE.md) and [`documentation/CLAUDE.md`](../CLAUDE.md).

@@ -1,0 +1,13 @@
+/* PageCanvas (Green zone) — the central stage. A ShellFrame that owns the main scroll region. */
+.ui-page-canvas {
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+}
+
+.ui-page-canvas__scroll {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+}

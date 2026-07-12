@@ -1,0 +1,76 @@
+/*
+ * Card — tonal container. Non-interactive content (§B.4): separation comes from a surface tint,
+ * radius, and spacing, never a four-sided border. The one hairline permitted sets the footer off
+ * from the body, exactly like Divider.
+ */
+.ui-card {
+	display: flex;
+	flex-direction: column;
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	color: var(--on-surface);
+}
+
+/* #region Variants — tonal surface only, no border */
+.ui-card--elevated {
+	background: var(--surface-1);
+	box-shadow: var(--elevation-low);
+}
+.ui-card--filled {
+	background: var(--surface-2);
+}
+.ui-card--flat {
+	background: var(--surface);
+}
+.ui-card--raised {
+	box-shadow: var(--elevation-medium);
+}
+/* #endregion */
+
+.ui-card__media {
+	display: block;
+	line-height: 0;
+}
+.ui-card__media img {
+	display: block;
+	inline-size: 100%;
+	block-size: auto;
+	object-fit: cover;
+}
+
+.ui-card__header {
+	padding: var(--space-4) var(--space-4) 0;
+}
+.ui-card__title {
+	font-size: 1.0625rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+.ui-card__subtitle {
+	margin-block-start: var(--space-1);
+	font-size: 0.875rem;
+	color: var(--on-surface-variant);
+}
+
+.ui-card__body {
+	padding: var(--space-4);
+	color: var(--text-secondary);
+	flex: 1 1 auto;
+}
+.ui-card__header + .ui-card__body {
+	padding-block-start: var(--space-3);
+}
+
+.ui-card__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0 var(--space-4) var(--space-4);
+}
+
+.ui-card__footer {
+	padding: var(--space-3) var(--space-4);
+	border-block-start: 1px solid var(--border-subtle);
+	font-size: 0.875rem;
+	color: var(--on-surface-variant);
+}

@@ -1,0 +1,11 @@
+/*
+ * @projective/ui/layout — aggregate stylesheet. Import once from a client entry so every layout
+ * component's BEM styles are delivered (server-only components can't inject their own CSS under
+ * Fresh SSR). Per-component `import "./x.css"` remains for client/SPA use + intent.
+ */
+@import "./box.css";
+@import "./container.css";
+@import "./grid.css";
+@import "./stack.css";
+@import "./aspect-ratio.css";
+@import "./divider.css";

@@ -1,0 +1,123 @@
+/*
+ * Steps (ui-steps) — horizontal wizard indicator. Markers are the only "boxed" shapes (circular, so
+ * exempt from the four-sided-border rule); the connector is a single hairline under the marker row
+ * (§B.4). Reduced motion collapses the completion-fill transition to 0ms (global token + local guard).
+ */
+
+.ui-steps {
+	font-family: var(--font-sans);
+}
+
+.ui-steps__list {
+	display: flex;
+	align-items: flex-start;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ui-steps__item {
+	position: relative;
+	display: flex;
+	flex: 1 1 0;
+	justify-content: center;
+}
+
+.ui-steps__item:not(:last-child)::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 1rem;
+	inset-inline-start: 50%;
+	inline-size: 100%;
+	block-size: 2px;
+	background: var(--border-subtle);
+	z-index: 0;
+	transition: background-color var(--dur-medium) var(--ease-standard);
+}
+
+.ui-steps__item--complete:not(:last-child)::after {
+	background: var(--primary);
+}
+
+.ui-steps__trigger {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	max-inline-size: 9rem;
+	padding: 0;
+	font: inherit;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.ui-steps__trigger--disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+.ui-steps__trigger:focus-visible {
+	outline: none;
+}
+
+.ui-steps__trigger:focus-visible .ui-steps__marker {
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-steps__marker {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	font-size: 0.875rem;
+	font-weight: 700;
+	color: var(--on-surface-variant, var(--text-secondary));
+	background: var(--surface-2);
+	border-radius: 999px;
+	transition:
+		background-color var(--dur-medium) var(--ease-standard),
+		color var(--dur-medium) var(--ease-standard);
+}
+
+.ui-steps__trigger--current .ui-steps__marker {
+	color: var(--on-primary);
+	background: var(--primary);
+}
+
+.ui-steps__trigger--complete .ui-steps__marker {
+	color: var(--on-primary);
+	background: var(--primary);
+}
+
+.ui-steps__label {
+	font-size: 0.8125rem;
+	text-align: center;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-inline-size: 100%;
+}
+
+.ui-steps__trigger--current .ui-steps__label {
+	color: var(--on-surface);
+	font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-steps__item::after,
+	.ui-steps__marker {
+		transition-duration: 0ms;
+	}
+}
+
+@media (max-width: 480px) {
+	.ui-steps__label {
+		display: none;
+	}
+}

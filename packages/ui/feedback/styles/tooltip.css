@@ -1,0 +1,34 @@
+/*
+ * Tooltip (ui-tooltip) — hover/focus micro-popup. Inverted high-contrast chip positioned by
+ * --float-* custom properties. Token-only; short fade off [data-state], collapsed under reduced
+ * motion. The anchor is an inline wrapper so it lays out with the element it describes.
+ */
+
+.ui-tooltip__anchor {
+	display: inline-flex;
+}
+.ui-tooltip {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	z-index: var(--z-tooltip);
+	max-inline-size: var(--container-sm);
+	padding: var(--space-1) var(--space-2);
+	font-size: 0.8125rem;
+	line-height: 1.4;
+	color: var(--surface);
+	background: var(--on-surface);
+	border-radius: var(--radius-sm);
+	box-shadow: var(--elevation-medium);
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-tooltip[data-state="open"] {
+	opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-tooltip {
+		transition-duration: 0ms;
+	}
+}

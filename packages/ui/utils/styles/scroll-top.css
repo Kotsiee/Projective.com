@@ -1,0 +1,63 @@
+/*
+ * ScrollTop — corner back-to-top button. Interactive, so a full circular affordance with elevation is
+ * on-brand (§B.4). Token-only. Fades + lifts in when visible; reduced-motion collapses the transition.
+ */
+
+.ui-scroll-top {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+	padding: 0;
+	color: var(--on-primary);
+	background: var(--primary);
+	border: none;
+	border-radius: 999px;
+	box-shadow: var(--elevation-medium);
+	cursor: pointer;
+	opacity: 0;
+	transform: translateY(var(--space-3));
+	pointer-events: none;
+	transition:
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--ease-standard),
+		filter var(--dur-fast) var(--ease-standard);
+}
+
+.ui-scroll-top--fixed {
+	position: fixed;
+	inset-block-end: var(--space-5);
+	inset-inline-end: var(--space-5);
+	z-index: var(--z-raised);
+}
+.ui-scroll-top--sticky {
+	position: sticky;
+	inset-block-end: var(--space-5);
+	margin-inline-start: auto;
+}
+
+.ui-scroll-top--visible {
+	opacity: 1;
+	transform: none;
+	pointer-events: auto;
+}
+
+.ui-scroll-top:hover {
+	filter: brightness(0.94);
+}
+.ui-scroll-top:focus-visible {
+	outline: none;
+	box-shadow: var(--elevation-medium), 0 0 0 3px var(--focus-ring);
+}
+
+.ui-scroll-top__icon {
+	font-size: 1.25rem;
+	line-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-scroll-top {
+		transition-duration: 0ms;
+	}
+}

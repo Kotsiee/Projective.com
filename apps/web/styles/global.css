@@ -1,0 +1,97 @@
+/*
+ * Projective app-frame styles.
+ *
+ * Consumes the token contract from `@projective/ui/styles` (imported first in client.ts). This file
+ * defines only the outer application frame — the signature corner-curve framing from DESIGN_SYSTEM.md
+ * Part D — plus minimal skeleton-page typography. Component styling lives in @projective/ui.
+ */
+
+:root {
+	color-scheme: light dark;
+}
+
+body {
+	margin: 0;
+	font-family: var(--font-sans, system-ui, sans-serif);
+	color: var(--on-surface, #1a1a1a);
+	background: var(--bg, #fafafa);
+}
+
+/* Signature corner-curve app frame (DESIGN_SYSTEM.md Part D.1). */
+.app-frame {
+	min-height: 100dvh;
+	padding: clamp(0px, 1vw, 12px);
+	box-sizing: border-box;
+}
+
+.app-frame__canvas {
+	min-height: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
+	border-radius: var(--radius-xl, 16px);
+	background: var(--surface, #fff);
+	overflow: clip;
+}
+
+/* Skeleton page body — replaced by real feature layouts. */
+.page {
+	padding: clamp(1rem, 4vw, 3rem);
+}
+
+.page__title {
+	margin: 0 0 0.25rem;
+	font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.page__path {
+	margin: 0 0 1rem;
+	color: var(--text-secondary, #666);
+}
+
+.page__note {
+	color: var(--text-secondary, #666);
+	max-width: 60ch;
+}
+
+/* Shell brand slot + middle-nav lane (app-side chrome around @projective/ui/navigation). */
+.brand {
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+.lane-nav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1, 0.25rem);
+	padding: var(--space-2, 0.5rem) 0;
+}
+
+/* Nested-theme scope wrapper (DesignSystemProvider, non-root). */
+.ds-scope {
+	display: contents;
+}
+
+/* Demo topbar hosting the theme toggle. */
+.app-frame__topbar {
+	display: flex;
+	justify-content: flex-end;
+	padding: 0.5rem clamp(1rem, 4vw, 3rem);
+}
+
+.theme-toggle {
+	border: 1px solid var(--outline, #ccc);
+	background: var(--surface-1, #f2f2f2);
+	color: var(--on-surface, #1a1a1a);
+	border-radius: var(--radius-base, 8px);
+	padding: 0.375rem 0.75rem;
+	font: inherit;
+	cursor: pointer;
+	transition: background-color var(--dur-fast, 150ms) var(--ease-standard, ease);
+}
+
+.theme-toggle:hover {
+	background: var(--surface-2, #e9e9e9);
+}
+
+.theme-toggle:focus-visible {
+	outline: 3px solid var(--focus-ring, rgba(40, 134, 144, 0.4));
+	outline-offset: 2px;
+}

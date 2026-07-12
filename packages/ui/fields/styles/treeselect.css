@@ -1,0 +1,214 @@
+/*
+ * TreeSelect — a combobox trigger opening a floating expandable tree. The trigger composes
+ * `.ui-field`; the panel is a fixed floating surface positioned by `useFloating` (`--ts-*`). Nodes
+ * indent by `--ts-level`. Token-only; full outline allowed on the interactive trigger (§B.4).
+ */
+
+.ui-treeselect {
+	display: inline-block;
+	position: relative;
+}
+.ui-treeselect--fluid {
+	display: block;
+	inline-size: 100%;
+}
+
+/* #region Trigger */
+.ui-treeselect__trigger {
+	justify-content: space-between;
+	inline-size: 100%;
+	text-align: start;
+	cursor: pointer;
+	color: var(--field-fg);
+	background: var(--field-bg);
+}
+.ui-treeselect__value {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ui-treeselect__value--placeholder {
+	color: var(--text-secondary);
+}
+.ui-treeselect__arrow {
+	flex: 0 0 auto;
+	inline-size: 0.5em;
+	block-size: 0.5em;
+	border-inline-end: 2px solid var(--on-surface-variant);
+	border-block-end: 2px solid var(--on-surface-variant);
+	transform: rotate(45deg) translate(-0.1em, -0.1em);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-field--open .ui-treeselect__arrow {
+	transform: rotate(-135deg) translate(-0.1em, -0.1em);
+}
+/* #endregion */
+
+/* #region Panel */
+.ui-treeselect__panel {
+	position: fixed;
+	inset-block-start: var(--ts-top, 0);
+	inset-inline-start: var(--ts-left, 0);
+	inline-size: var(--ts-width, auto);
+	min-inline-size: 14rem;
+	z-index: 1000;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-medium);
+	visibility: hidden;
+	animation: ui-treeselect-in var(--dur-fast) var(--ease-standard);
+}
+.ui-treeselect__panel[data-placement] {
+	visibility: visible;
+}
+
+.ui-treeselect__filter {
+	padding: var(--space-2);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-treeselect__filter-input {
+	inline-size: 100%;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+}
+.ui-treeselect__filter-input:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-treeselect__tree {
+	max-block-size: 16rem;
+	overflow-y: auto;
+	padding-block: var(--space-1);
+	outline: none;
+}
+/* #endregion */
+
+/* #region Nodes */
+.ui-treeselect__node {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: var(--space-1);
+	padding-inline-start: calc(var(--space-2) + (var(--ts-level, 1) - 1) * var(--space-4));
+	padding-inline-end: var(--space-3);
+	font-size: 0.9375rem;
+	cursor: pointer;
+}
+.ui-treeselect__node--active {
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.ui-treeselect__node--selected {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-treeselect__node--disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.ui-treeselect__toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	inline-size: 1.25em;
+	block-size: 1.25em;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-treeselect__toggle--leaf {
+	cursor: default;
+}
+.ui-treeselect__chevron {
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-inline-end: 2px solid currentColor;
+	border-block-end: 2px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-treeselect__chevron--open {
+	transform: rotate(45deg);
+}
+
+.ui-treeselect__checkbox {
+	flex: 0 0 auto;
+	inline-size: 1.05em;
+	block-size: 1.05em;
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-xs);
+	background: var(--surface);
+	position: relative;
+}
+.ui-treeselect__checkbox--checked,
+.ui-treeselect__checkbox--mixed {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.ui-treeselect__checkbox--checked::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 0.08em;
+	inset-inline-start: 0.32em;
+	inline-size: 0.28em;
+	block-size: 0.55em;
+	border-inline-end: 2px solid var(--on-primary);
+	border-block-end: 2px solid var(--on-primary);
+	transform: rotate(45deg);
+}
+.ui-treeselect__checkbox--mixed::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline: 0.2em;
+	block-size: 2px;
+	background: var(--on-primary);
+	transform: translateY(-50%);
+}
+
+.ui-treeselect__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ui-treeselect__empty {
+	padding-block: var(--space-2);
+	padding-inline: var(--space-3);
+	color: var(--text-secondary);
+	font-size: 0.9375rem;
+}
+
+@keyframes ui-treeselect-in {
+	from {
+		opacity: 0;
+		transform: translateY(-0.25rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-treeselect__panel {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */

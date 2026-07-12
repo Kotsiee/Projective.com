@@ -1,0 +1,14 @@
+/*
+ * @projective/ui/navigation — aggregate stylesheet. Import once from a client entry so the shell
+ * layout engine's BEM styles are delivered (server-only components can't inject their own CSS under
+ * Fresh SSR). Per-component `import "./x.css"` remains for client/SPA use + intent.
+ */
+@import "./shell-frame.css";
+@import "./app-shell.css";
+@import "./top-bar.css";
+@import "./sidebar.css";
+@import "./middle-nav.css";
+@import "./page-canvas.css";
+@import "./nav.css";
+@import "./splitter.css";
+@import "./mobile-menu.css";

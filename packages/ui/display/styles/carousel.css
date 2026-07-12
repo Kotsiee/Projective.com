@@ -1,0 +1,159 @@
+/*
+ * Carousel — a single flex track slid via `transform`. `--carousel-shift` (%) is the logical page
+ * offset; `--carousel-drag` (px) layers a live pointer-drag delta on top so the two compose without
+ * extra JS math. `--carousel-item-size` sizes each slide as a fraction of the viewport (`numVisible`).
+ */
+
+.ui-carousel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+}
+
+.ui-carousel__header,
+.ui-carousel__footer {
+	padding-block: var(--space-1);
+}
+
+.ui-carousel__content {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ui-carousel--vertical .ui-carousel__content {
+	flex-direction: column;
+}
+
+.ui-carousel__viewport {
+	flex: 1 1 auto;
+	overflow: clip;
+	min-inline-size: 0;
+	touch-action: pan-y;
+}
+
+.ui-carousel--vertical .ui-carousel__viewport {
+	touch-action: pan-x;
+}
+
+.ui-carousel__track {
+	display: flex;
+	will-change: transform;
+	transition: transform var(--dur-medium) var(--ease-standard);
+	transform: translate3d(calc(var(--carousel-shift, 0%) + var(--carousel-drag, 0px)), 0, 0);
+}
+
+.ui-carousel--vertical .ui-carousel__track {
+	flex-direction: column;
+	block-size: 100%;
+	transform: translate3d(0, calc(var(--carousel-shift, 0%) + var(--carousel-drag, 0px)), 0);
+}
+
+.ui-carousel__track--notransition {
+	transition: none;
+}
+
+.ui-carousel__item {
+	flex: 0 0 var(--carousel-item-size, 100%);
+	min-inline-size: 0;
+	padding-inline: var(--space-2);
+}
+
+.ui-carousel--vertical .ui-carousel__item {
+	padding-inline: 0;
+	padding-block: var(--space-2);
+}
+
+.ui-carousel__nav {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	align-self: center;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	font-size: 1rem;
+	line-height: 1;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-carousel__nav:hover:not(:disabled) {
+	background: var(--surface-3);
+}
+
+.ui-carousel__nav:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-carousel__nav:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.ui-carousel__indicators {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+}
+
+.ui-carousel__indicator {
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: var(--outline);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-carousel__indicator:hover {
+	background: var(--text-secondary);
+}
+
+.ui-carousel__indicator--active {
+	background: var(--primary);
+	transform: scale(1.25);
+}
+
+.ui-carousel__indicator:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-carousel__live {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+	.ui-carousel__nav {
+		inline-size: 2rem;
+		block-size: 2rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-carousel__track {
+		transition-duration: 0ms;
+	}
+	.ui-carousel__indicator {
+		transition-duration: 0ms;
+	}
+}

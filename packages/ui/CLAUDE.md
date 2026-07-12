@@ -2,15 +2,14 @@
 
 Local contract for the umbrella UI package. The **authoritative spec** is
 [`documentation/design-system/DESIGN_SYSTEM.md`](../../documentation/design-system/DESIGN_SYSTEM.md);
-this file is the short, enforceable summary. It sits under the root
-[`CLAUDE.md`](../../CLAUDE.md).
+this file is the short, enforceable summary. It sits under the root [`CLAUDE.md`](../../CLAUDE.md).
 
 ## What this package is
 
 A single, decoupled, **copy-paste-portable** component library with multi-export sub-paths
 (`deno.json` → `exports`). Consumers import a taxonomy: `@projective/ui/layout` · `/navigation` ·
-`/fields` · `/display` · `/feedback` · `/overlay` · `/utils`. It plugs into external projects verbatim
-because it depends only on the token contract — never on app code.
+`/fields` · `/display` · `/feedback` · `/overlay` · `/utils`. It plugs into external projects
+verbatim because it depends only on the token contract — never on app code.
 
 ## Hard rules (merge gates)
 
@@ -20,8 +19,8 @@ because it depends only on the token contract — never on app code.
    `system/`. A component importing it fails review.
 3. **Signal-first**, dumb islands (no DB/Supabase; `fetch` internal routes only).
 4. **Separation hierarchy** (DESIGN_SYSTEM.md §B.4): no four-sided borders on non-interactive
-   content — spacing, tonal surface tints, type weight, single hairlines. Full borders =
-   interactive only.
+   content — spacing, tonal surface tints, type weight, single hairlines. Full borders = interactive
+   only.
 5. **Accessibility**: reduced-motion jump-to-final; open-dyslexic / CVD / high-contrast token
    overlays; comprehensive ARIA + focus management on every interactive element.
 6. **Responsive** on Desktop/Tablet/Mobile out of the box (fluid `clamp()`/container queries).
@@ -30,13 +29,21 @@ because it depends only on the token contract — never on app code.
 
 ## Structure
 
+Unified 7-folder convention (`components/ islands/ styles/ hooks/ wrappers/ types/ core/`),
+populated as needed. No `src/` wrapper.
+
 ```
 packages/ui/
-├── deno.json          # name, version, sub-path exports, scoped npm deps
-├── mod.ts             # umbrella barrel (re-exports every taxonomy)
-├── src/<taxonomy>/    # layout · navigation · fields · display · feedback · overlay · utils
-├── system/            # theming engine + DesignSystemProvider + asset-registry (ONLY Material import site)
-└── styles/index.css   # framework-level token contract + synchronized theme transition
+├── deno.json           # sub-path exports, scoped npm deps
+├── mod.ts              # umbrella barrel (re-exports every taxonomy)
+├── core/  types/       # PACKAGE-shared helpers (cx, styleVars, spacing, flex) & primitive types
+├── styles/index.css    # framework-level token contract + synchronized theme transition
+├── layout/             # sub-package → components/ + styles/ (+ mod.ts)
+├── fields/             # PrimeNG-parity controls → islands/ components/ wrappers/ hooks/ styles/ core/ types/
+├── system/             # theming sub-package → components/ + core/ + types/ (ONLY Material import site)
+└── navigation/ display/ feedback/ overlay/ utils/   # sub-packages (stubs → grow into the 7 folders)
 ```
 
-No page routes or business logic in this package — those live in `apps/web`.
+Each sub-package mirrors the same folder shape internally and imports package-shared code from
+`../core/` and `../types/`. No page routes or business logic in this package — those live in
+`apps/web`.

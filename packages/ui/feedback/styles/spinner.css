@@ -1,0 +1,77 @@
+/*
+ * Spinner / Loader — the small inline sibling of ProgressSpinner. Kept in its own stylesheet (per
+ * component-per-file convention) even though the technique is identical, so either can evolve (e.g. a
+ * dedicated inline-in-button treatment) without touching the larger indicator.
+ */
+
+.ui-spinner {
+	--spin-accent: var(--primary);
+
+	display: inline-flex;
+	vertical-align: middle;
+	inline-size: var(--spinner-size, 1.25rem);
+	block-size: var(--spinner-size, 1.25rem);
+}
+
+/* #region Severities */
+.ui-spinner--primary {
+	--spin-accent: var(--primary);
+}
+.ui-spinner--secondary {
+	--spin-accent: var(--secondary);
+}
+.ui-spinner--success {
+	--spin-accent: var(--success);
+}
+.ui-spinner--info {
+	--spin-accent: var(--secondary);
+}
+.ui-spinner--warning {
+	--spin-accent: var(--warning);
+}
+.ui-spinner--help {
+	--spin-accent: var(--tertiary);
+}
+.ui-spinner--danger {
+	--spin-accent: var(--danger);
+}
+/* #endregion */
+
+.ui-spinner__svg {
+	inline-size: 100%;
+	block-size: 100%;
+	animation: ui-spin-rotate 0.9s linear infinite;
+	transform-origin: center;
+}
+.ui-spinner__track {
+	stroke: color-mix(in srgb, var(--spin-accent) 18%, transparent);
+}
+.ui-spinner__arc {
+	stroke: var(--spin-accent);
+}
+@keyframes ui-spin-rotate {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-spinner__svg {
+		animation: none;
+	}
+}
+
+/* #region Loader */
+.ui-loader {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3);
+	padding: var(--space-6);
+	color: var(--on-surface-variant);
+}
+.ui-loader__label {
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+}
+/* #endregion */

@@ -1,0 +1,77 @@
+/*
+ * Accordion — headers are interactive (buttons), so the focus ring/full outline is appropriate
+ * there; the tab list itself uses hairlines between rows, not a boxed container (§B.4). Panels
+ * animate with a grid-rows trick (no JS height measurement) so `transition-duration: 0` (reduced
+ * motion, styles/index.css) collapses it to an instant jump-to-final automatically.
+ */
+.ui-accordion {
+	display: flex;
+	flex-direction: column;
+	background: var(--surface-1);
+	border-radius: var(--radius-base);
+	overflow: hidden;
+}
+
+.ui-accordion__tab:not(:last-child) {
+	border-block-end: 1px solid var(--border-subtle);
+}
+
+.ui-accordion__heading {
+	margin: 0;
+}
+
+.ui-accordion__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-3) var(--space-4);
+	font: inherit;
+	font-weight: 600;
+	color: var(--on-surface);
+	text-align: start;
+	background: transparent;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-accordion__header:hover:not(:disabled) {
+	background: var(--surface-2);
+}
+.ui-accordion__header:focus-visible {
+	outline: none;
+	border-color: var(--focus-ring);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-accordion__header:disabled {
+	color: var(--on-surface-variant);
+	cursor: not-allowed;
+}
+
+.ui-accordion__chevron {
+	display: inline-flex;
+	flex-shrink: 0;
+	transition: transform var(--dur-medium) var(--ease-standard);
+}
+.ui-accordion__tab--open .ui-accordion__chevron {
+	transform: rotate(180deg);
+}
+
+.ui-accordion__panel {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-medium) var(--ease-standard);
+}
+.ui-accordion__panel--open {
+	grid-template-rows: 1fr;
+}
+.ui-accordion__panel-inner {
+	min-block-size: 0;
+	overflow: hidden;
+	padding-inline: var(--space-4);
+	color: var(--text-secondary);
+}
+.ui-accordion__panel--open .ui-accordion__panel-inner {
+	padding-block: 0 var(--space-4);
+}

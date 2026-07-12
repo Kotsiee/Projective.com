@@ -1,0 +1,172 @@
+/*
+ * Menu (ui-menu) — vertical MenuItem list, inline or anchored popup. The list surface is a tonal
+ * panel; rows are interactive so they may carry hover/active fills, but group labels and separators
+ * lean on weight + hairlines rather than boxes (§B.4). Token-only; popup is fixed-positioned by
+ * `useFloating` writing `--float-*`.
+ */
+
+/* #region Root + trigger */
+.ui-menu {
+	display: block;
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+}
+.ui-menu--popup {
+	position: relative;
+	display: inline-flex;
+}
+.ui-menu__trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-block-size: 2.25rem;
+	min-inline-size: 2.25rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	color: var(--on-surface);
+	background: transparent;
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	cursor: pointer;
+}
+.ui-menu__trigger:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-menu__trigger:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region List surface */
+.ui-menu__list {
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	outline: none;
+}
+.ui-menu--popup .ui-menu__list {
+	max-block-size: min(20rem, 60vh);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+.ui-menu__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	z-index: var(--z-overlay);
+	min-inline-size: 12rem;
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	animation: ui-menu-pop var(--dur-fast) var(--ease-standard);
+}
+.ui-menu__panel--top {
+	transform-origin: bottom center;
+}
+@keyframes ui-menu-pop {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+/* #endregion */
+
+/* #region Rows */
+.ui-menu__row {
+	display: block;
+}
+.ui-menu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	box-sizing: border-box;
+	padding: var(--space-2) var(--space-3);
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-menu__item:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-menu__item--active {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.ui-menu__item--current {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-menu__item--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+.ui-menu__icon {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	color: var(--on-surface-variant);
+}
+.ui-menu__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-menu__shortcut {
+	flex: 0 0 auto;
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+.ui-menu__badge {
+	flex: 0 0 auto;
+	min-inline-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1.25rem;
+	text-align: center;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: 999px;
+}
+/* #endregion */
+
+/* #region Group label + separator */
+.ui-menu__group-label {
+	padding: var(--space-2) var(--space-3) var(--space-1);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ui-menu__separator {
+	block-size: 1px;
+	margin: var(--space-1) var(--space-2);
+	background: var(--border-subtle);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-menu__panel {
+		animation-duration: 0ms;
+	}
+	.ui-menu__item {
+		transition-duration: 0ms;
+	}
+}

@@ -1,0 +1,206 @@
+/*
+ * Dialog (ui-dialog) — modal/modeless surface. The outer layer aligns the panel to one of nine
+ * positions; the panel is an elevated interactive surface, so a hairline + shadow is allowed (§B.4).
+ * Header/footer separate from the body by a single hairline, never a four-sided box. Token-only;
+ * enter/exit off [data-state]; positioned dialogs dock as a bottom sheet under --bp-md.
+ */
+
+/* #region Layer + positioning */
+.ui-dialog {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	padding: var(--space-4);
+	pointer-events: none;
+}
+.ui-dialog__panel {
+	pointer-events: auto;
+}
+.ui-dialog--pos-center {
+	align-items: center;
+	justify-content: center;
+}
+.ui-dialog--pos-top {
+	align-items: flex-start;
+	justify-content: center;
+}
+.ui-dialog--pos-bottom {
+	align-items: flex-end;
+	justify-content: center;
+}
+.ui-dialog--pos-left {
+	align-items: center;
+	justify-content: flex-start;
+}
+.ui-dialog--pos-right {
+	align-items: center;
+	justify-content: flex-end;
+}
+.ui-dialog--pos-top-left {
+	align-items: flex-start;
+	justify-content: flex-start;
+}
+.ui-dialog--pos-top-right {
+	align-items: flex-start;
+	justify-content: flex-end;
+}
+.ui-dialog--pos-bottom-left {
+	align-items: flex-end;
+	justify-content: flex-start;
+}
+.ui-dialog--pos-bottom-right {
+	align-items: flex-end;
+	justify-content: flex-end;
+}
+/* #endregion */
+
+/* #region Panel */
+.ui-dialog__panel {
+	display: flex;
+	flex-direction: column;
+	inline-size: var(--dlg-w, auto);
+	block-size: var(--dlg-h, auto);
+	min-inline-size: min(20rem, 100%);
+	max-inline-size: min(var(--container-md), calc(100vw - var(--space-6)));
+	max-block-size: calc(100vh - var(--space-6));
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	transform: translate(var(--dlg-x, 0), var(--dlg-y, 0)) scale(0.96);
+	opacity: 0;
+	transition:
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard);
+}
+.ui-dialog__panel[data-state="open"] {
+	opacity: 1;
+	transform: translate(var(--dlg-x, 0), var(--dlg-y, 0)) scale(1);
+}
+.ui-dialog__panel--free {
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+.ui-dialog--maximized .ui-dialog__panel {
+	inline-size: 100%;
+	block-size: 100%;
+	max-inline-size: none;
+	max-block-size: none;
+	border-radius: var(--radius-base);
+}
+/* #endregion */
+
+/* #region Header / body / footer */
+.ui-dialog__header {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-5);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-dialog__header--draggable {
+	cursor: grab;
+	touch-action: none;
+}
+.ui-dialog__title {
+	flex: 1 1 auto;
+	margin: 0;
+	min-inline-size: 0;
+	font-size: 1.0625rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--on-surface);
+}
+.ui-dialog__actions {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+.ui-dialog__action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	font-size: 1rem;
+	line-height: 1;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+.ui-dialog__action:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-dialog__action:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-dialog__close {
+	font-size: 1.25rem;
+}
+.ui-dialog__body {
+	flex: 1 1 auto;
+	padding: var(--space-5);
+	overflow: auto;
+	overscroll-behavior: contain;
+	color: var(--on-surface);
+}
+.ui-dialog__footer {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	padding: var(--space-4) var(--space-5);
+	border-block-start: 1px solid var(--border-subtle);
+}
+.ui-dialog__grip {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-end: 0;
+	inline-size: 1rem;
+	block-size: 1rem;
+	cursor: nwse-resize;
+	touch-action: none;
+	background:
+		linear-gradient(
+			135deg,
+			transparent 50%,
+			var(--outline) 50%,
+			var(--outline) 62%,
+			transparent 62%,
+			transparent 74%,
+			var(--outline) 74%,
+			var(--outline) 86%,
+			transparent 86%
+		);
+}
+/* #endregion */
+
+/* #region Bottom sheet (< --bp-md) */
+.ui-dialog--sheet {
+	align-items: flex-end;
+	justify-content: center;
+	padding: 0;
+}
+.ui-dialog--sheet .ui-dialog__panel {
+	inline-size: 100%;
+	max-inline-size: none;
+	border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+	transform: translateY(100%);
+}
+.ui-dialog--sheet .ui-dialog__panel[data-state="open"] {
+	transform: translateY(0);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-dialog__panel {
+		transition-duration: 0ms;
+	}
+}

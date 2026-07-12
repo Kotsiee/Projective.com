@@ -1,0 +1,52 @@
+/*
+ * Knob — a circular dial rendered as SVG arcs. Token-only (DESIGN_SYSTEM.md §A). The range (track)
+ * arc and value arc take their colour from `--ui-knob-*` custom properties (which default to tokens),
+ * so callers stay on the token contract. The dial is interactive and may own a focus ring (§B.4).
+ */
+
+.ui-knob {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.ui-knob__svg {
+	inline-size: var(--ui-knob-diameter, 100px);
+	block-size: var(--ui-knob-diameter, 100px);
+	touch-action: none;
+	cursor: pointer;
+	border-radius: 50%;
+}
+.ui-knob__svg:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.ui-knob__range {
+	fill: none;
+	stroke: var(--ui-knob-range-color, var(--surface-2));
+}
+.ui-knob__value {
+	fill: none;
+	stroke: var(--ui-knob-value-color, var(--primary));
+}
+.ui-knob__text {
+	fill: var(--on-surface);
+	font-family: var(--font-sans);
+	font-weight: 600;
+	text-anchor: middle;
+	dominant-baseline: central;
+}
+
+/* #region States */
+.ui-knob--readonly .ui-knob__svg {
+	cursor: default;
+}
+.ui-knob--disabled {
+	opacity: 0.55;
+	pointer-events: none;
+}
+.ui-knob--disabled .ui-knob__svg {
+	cursor: not-allowed;
+}
+/* #endregion */

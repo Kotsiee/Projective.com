@@ -449,9 +449,9 @@ The `@projective/ui` package also contains standard atomic components following 
 design patterns and variable architecture. The **authoritative design-system spec** — the token
 contract, the consolidated `@projective/ui` sub-path taxonomy, the `<DesignSystemProvider>` context
 engine, and the per-component state/variant matrices — lives in
-[`documentation/design-system/`](../design-system/DESIGN_SYSTEM.md) and the root `CLAUDE.md`
-"Design System & Component Architecture" guardrails. Treat those as the source of truth for the
-component layer; this section stays a narrative overview, not a duplicate of the matrices.
+[`documentation/design-system/`](../design-system/DESIGN_SYSTEM.md) and the root `CLAUDE.md` "Design
+System & Component Architecture" guardrails. Treat those as the source of truth for the component
+layer; this section stays a narrative overview, not a duplicate of the matrices.
 
 ##### Visual Components
 
@@ -511,9 +511,12 @@ This package provides high-performance data visualization tools ranging from pro
 
 #### Visualization Strategy
 
-1. **Hybrid Rendering:** We use standard Preact/HTML for UI controls and headers to ensure
-   accessibility and ease of styling. For the data "stage" (timeline/plots), we use **PIXI.js** to
-   handle thousands of entities at 60FPS.
+1. **Hybrid, tiered rendering** (resolved 2026-07-12 — see root `CLAUDE.md` "Resolved Decisions"):
+   Preact/HTML for UI controls and headers (accessibility, styling). For the data "stage" the
+   renderer escalates by density: **D3.js** for scale/geometry math + **low-density SVG**;
+   **Canvas2D** for mid-density; **PIXI.js (WebGL)** for the high-density stage (thousands–100k+
+   entities at 60 FPS), fed by the Rust/WASM geometry engine. Selection is automatic on a
+   performance metric (entity count + frame budget).
 2. **Theme Bridging:** A specialized `theme-bridge.ts` utility synchronizes CSS variables (HSL) from
    the `variables.md` context into Hex values for Canvas rendering, ensuring perfect theme
    consistency.
@@ -977,8 +980,9 @@ ENCRYPTION_KEY=XXXX-XXXX # 32-byte hex for Edge Function/Vault encryption
 This file is a **verbatim move** of the former `brain2.md` with exactly two governed edits. Nothing
 else — no directive, no rule, no code block — was altered, softened, or dropped.
 
-1. **Renamed** `documentation/business/brain2.md` → `documentation/architecture/SYSTEM_ARCHITECTURE.md`.
-   A redirect stub remains at the old path so existing references keep resolving.
+1. **Renamed** `documentation/business/brain2.md` →
+   `documentation/architecture/SYSTEM_ARCHITECTURE.md`. A redirect stub remains at the old path so
+   existing references keep resolving.
 2. **§2 UI sub-path taxonomy updated** from the former `atoms/fields/charts/data/time/files/system`
    split to the seven professional taxonomies now declared in `packages/ui/deno.json`:
    `layout / navigation / fields / display / feedback / overlay / utils`. The old aliases are marked

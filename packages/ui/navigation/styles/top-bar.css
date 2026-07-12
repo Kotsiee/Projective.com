@@ -1,0 +1,48 @@
+/* ShellTopBar (Red zone) — top horizontal utility bar. Glass on guest + mobile (no boxed lines). */
+.ui-shell-topbar {
+	grid-area: topbar;
+	block-size: var(--shell-topbar-h);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding-inline: var(--space-3);
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.ui-shell-topbar__lead {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.ui-shell-topbar__center {
+	flex: 0 1 min(420px, 100%);
+	margin-inline: auto;
+}
+
+.ui-shell-topbar__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+
+/* Glass: transparent + backdrop blur, with a single hairline instead of a heavy boxed border. */
+.ui-shell-topbar--glass {
+	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur, 18px));
+	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	border-block-end: 1px solid color-mix(in srgb, var(--outline) 30%, transparent);
+}
+
+@media (max-width: 767px) {
+	.ui-shell-topbar {
+		position: sticky;
+		inset-block-start: 0;
+		z-index: var(--z-nav, 200);
+		background: color-mix(in srgb, var(--surface) 62%, transparent);
+		backdrop-filter: blur(var(--glass-blur, 18px));
+		-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	}
+}

@@ -1,0 +1,145 @@
+/*
+ * Field foundation — shared control geometry, variants, statuses and helper pieces for the whole
+ * fields taxonomy. Token-only (DESIGN_SYSTEM.md §A); no hardcoded hex/radius/duration/shadow. Every
+ * input-shaped control composes `.ui-field` for a single source of size/variant/status truth.
+ *
+ * Separation hierarchy (§B.4): a full outline is allowed here because inputs ARE interactive.
+ */
+
+/* #region Size ramp — resolved into per-control custom properties */
+.ui-field {
+	--field-height: 2.5rem; /* 40px — spec input height */
+	--field-px: var(--space-3);
+	--field-font: 0.9375rem;
+	--field-gap: var(--space-2);
+	--field-radius: var(--radius-base);
+	--field-border: var(--outline);
+	--field-bg: var(--surface);
+	--field-fg: var(--on-surface);
+	--field-accent: var(--primary);
+	--field-on-accent: var(--on-primary);
+
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--field-gap);
+	block-size: var(--field-height);
+	padding-inline: var(--field-px);
+	font-family: var(--font-sans);
+	font-size: var(--field-font);
+	line-height: 1.4;
+	color: var(--field-fg);
+	background: var(--field-bg);
+	border: 1px solid var(--field-border);
+	border-radius: var(--field-radius);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-field--size-sm {
+	--field-height: 2rem;
+	--field-px: var(--space-2);
+	--field-font: 0.8125rem;
+	--field-radius: var(--radius-sm);
+}
+.ui-field--size-lg {
+	--field-height: 3rem;
+	--field-px: var(--space-4);
+	--field-font: 1.0625rem;
+	--field-radius: var(--radius-lg);
+}
+/* #endregion */
+
+/* #region Variants */
+.ui-field--filled {
+	--field-bg: var(--surface-2);
+	--field-border: transparent;
+}
+.ui-field--transparent {
+	--field-bg: transparent;
+	--field-border: transparent;
+}
+.ui-field--fluid {
+	display: flex;
+	inline-size: 100%;
+}
+/* #endregion */
+
+/* #region Interaction states */
+.ui-field:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
+	--field-border: var(--on-surface-variant);
+}
+.ui-field--focused,
+.ui-field:focus-within {
+	--field-border: var(--field-accent);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+	outline: none;
+}
+.ui-field--disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+.ui-field--readonly {
+	--field-bg: var(--surface-1);
+}
+/* #endregion */
+
+/* #region Validation statuses (paired with icon channel by consumers for CVD, §A.5) */
+.ui-field--invalid {
+	--field-border: var(--danger);
+	--field-accent: var(--danger);
+}
+.ui-field--success {
+	--field-border: var(--success);
+	--field-accent: var(--success);
+}
+.ui-field--warning {
+	--field-border: var(--warning);
+	--field-accent: var(--warning);
+}
+/* #endregion */
+
+/* #region The raw editable element inside a control */
+.ui-field__input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	appearance: none;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	padding: 0;
+	block-size: 100%;
+}
+.ui-field__input::placeholder {
+	color: var(--text-secondary);
+	opacity: 1;
+}
+/* #endregion */
+
+/* #region Label / hint / error helpers (separation via weight + tint, not borders — §B.4) */
+.ui-field-label {
+	display: inline-block;
+	margin-block-end: var(--space-1);
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.ui-field-label__required {
+	margin-inline-start: 0.15em;
+	color: var(--danger);
+}
+.ui-field-hint {
+	margin-block-start: var(--space-1);
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+.ui-field-hint--error {
+	color: var(--danger);
+}
+/* #endregion */

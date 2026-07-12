@@ -1,0 +1,83 @@
+/*
+ * Rating — a star radiogroup. Token-only (DESIGN_SYSTEM.md §A). Filled stars carry the primary
+ * accent; empty stars use the neutral outline. No four-sided borders (§B.4): separation is by fill
+ * and weight. Each star is an interactive control and may own a focus ring.
+ */
+
+.ui-rating {
+	--rating-size: 1.5rem;
+	--rating-gap: var(--space-1);
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--rating-gap);
+}
+
+.ui-rating--size-sm {
+	--rating-size: 1.125rem;
+}
+.ui-rating--size-lg {
+	--rating-size: 2rem;
+}
+
+/* #region Star + cancel controls */
+.ui-rating__star,
+.ui-rating__cancel {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--rating-size);
+	block-size: var(--rating-size);
+	padding: 0;
+	background: none;
+	border: none;
+	color: var(--outline);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+.ui-rating__star:focus-visible,
+.ui-rating__cancel:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+	border-radius: var(--radius-sm);
+}
+.ui-rating__star--on {
+	color: var(--primary);
+}
+.ui-rating__cancel {
+	color: var(--text-secondary);
+	margin-inline-end: var(--space-1);
+}
+.ui-rating__cancel:hover {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Icon glyphs */
+.ui-rating__icon {
+	inline-size: 100%;
+	block-size: 100%;
+	display: block;
+}
+/* #endregion */
+
+/* #region States */
+.ui-rating--readonly .ui-rating__star,
+.ui-rating--disabled .ui-rating__star,
+.ui-rating--disabled .ui-rating__cancel {
+	cursor: default;
+}
+.ui-rating--disabled {
+	opacity: 0.55;
+	pointer-events: none;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-rating__star,
+	.ui-rating__cancel {
+		transition: none;
+	}
+}

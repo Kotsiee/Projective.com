@@ -1,0 +1,124 @@
+/*
+ * ToggleSwitch — a token-only sliding on/off control exposed as `role="switch"`. The track recolours
+ * and the knob translates on `--dur-fast`/`--ease-standard`; both collapse under reduced motion. Full
+ * outline is allowed: interactive (§B.4).
+ */
+
+.ui-switch {
+	--sw-track-w: 2.5rem;
+	--sw-track-h: 1.5rem;
+	--sw-knob: 1.125rem;
+	--sw-pad: 0.1875rem;
+	--sw-font: 0.9375rem;
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: var(--sw-font);
+	color: var(--on-surface);
+	cursor: pointer;
+	user-select: none;
+}
+
+.ui-switch--size-sm {
+	--sw-track-w: 2rem;
+	--sw-track-h: 1.25rem;
+	--sw-knob: 0.875rem;
+	--sw-font: 0.8125rem;
+}
+.ui-switch--size-lg {
+	--sw-track-w: 3.25rem;
+	--sw-track-h: 1.875rem;
+	--sw-knob: 1.5rem;
+	--sw-font: 1.0625rem;
+}
+
+.ui-switch--disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+/* #region Track (the button element) */
+.ui-switch__track {
+	position: relative;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	inline-size: var(--sw-track-w);
+	block-size: var(--sw-track-h);
+	padding: var(--sw-pad);
+	background: var(--surface-3);
+	border: 1px solid var(--outline);
+	border-radius: 999px;
+	cursor: inherit;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-switch__track:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-switch__track[aria-checked="true"] {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+/* #endregion */
+
+/* #region Knob */
+.ui-switch__knob {
+	inline-size: var(--sw-knob);
+	block-size: var(--sw-knob);
+	background: var(--on-primary);
+	border-radius: 50%;
+	box-shadow: var(--elevation-low);
+	transform: translateX(0);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-switch__track[aria-checked="true"] .ui-switch__knob {
+	transform: translateX(calc(var(--sw-track-w) - var(--sw-knob) - 2 * var(--sw-pad)));
+}
+/* #endregion */
+
+/* #region Status accents */
+.ui-switch--invalid .ui-switch__track {
+	border-color: var(--danger);
+}
+.ui-switch--invalid .ui-switch__track[aria-checked="true"] {
+	background: var(--danger);
+	border-color: var(--danger);
+}
+.ui-switch--success .ui-switch__track[aria-checked="true"] {
+	background: var(--success);
+	border-color: var(--success);
+}
+.ui-switch--warning .ui-switch__track[aria-checked="true"] {
+	background: var(--warning);
+	border-color: var(--warning);
+}
+/* #endregion */
+
+.ui-switch__label {
+	line-height: 1.3;
+}
+.ui-switch__native {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-switch__track,
+	.ui-switch__knob {
+		transition-duration: 0ms;
+	}
+}

@@ -1,0 +1,51 @@
+/*
+ * AnimateOnScroll — built-in reveal animations. Token durations/eases only; reduced-motion collapses
+ * the durations globally so `--ui-aos--in` jumps straight to the final state (no motion). The resting
+ * (out) state sets the pre-animation transform/opacity; `--in` transitions to neutral.
+ */
+
+.ui-aos {
+	transition:
+		opacity var(--dur-slow) var(--ease-emphasized),
+		transform var(--dur-slow) var(--ease-emphasized);
+	will-change: opacity, transform;
+}
+
+/* #region Built-in out (resting) states */
+.ui-aos--fade {
+	opacity: 0;
+}
+.ui-aos--slide-up {
+	opacity: 0;
+	transform: translateY(var(--space-6));
+}
+.ui-aos--slide-down {
+	opacity: 0;
+	transform: translateY(calc(-1 * var(--space-6)));
+}
+.ui-aos--slide-left {
+	opacity: 0;
+	transform: translateX(var(--space-6));
+}
+.ui-aos--slide-right {
+	opacity: 0;
+	transform: translateX(calc(-1 * var(--space-6)));
+}
+.ui-aos--zoom {
+	opacity: 0;
+	transform: scale(0.92);
+}
+/* #endregion */
+
+/* #region In state — resolved for every built-in */
+.ui-aos--in {
+	opacity: 1;
+	transform: none;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-aos {
+		transition-duration: 0ms;
+	}
+}

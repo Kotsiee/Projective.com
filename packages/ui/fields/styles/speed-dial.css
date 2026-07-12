@@ -1,0 +1,90 @@
+/*
+ * SpeedDial — a FAB that fans round sub-action buttons out along a line or arc. TypeScript emits each
+ * item's `--sd-x`/`--sd-y` offset; the CSS turns them into a transform, scaled by `--sd-unit` (a
+ * token-derived gap for `linear`, `1px` for the arc types). Opening staggers items by `--sd-stagger`
+ * per `--sd-delay` step. Reduced motion collapses every duration/delay to instant (jump-to-final).
+ */
+
+.ui-speed-dial {
+	position: relative;
+	display: inline-flex;
+	--sd-unit: 1px;
+}
+.ui-speed-dial--linear {
+	/* One item + a gap, composed from space tokens (no raw lengths). */
+	--sd-unit: calc(var(--space-6) + var(--space-3));
+}
+
+/* #region FAB */
+.ui-speed-dial__fab {
+	position: relative;
+	z-index: 2;
+}
+/* #endregion */
+
+/* #region Fan-out list */
+.ui-speed-dial__list {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	z-index: 1;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.ui-speed-dial__item {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	--sd-tx: calc(var(--sd-x, 0) * var(--sd-unit));
+	--sd-ty: calc(var(--sd-y, 0) * var(--sd-unit));
+	transform: translate(-50%, -50%) scale(0.4);
+	opacity: 0;
+	pointer-events: none;
+	transition:
+		transform var(--dur-medium) var(--ease-emphasized),
+		opacity var(--dur-fast) var(--ease-standard);
+	transition-delay: calc(var(--sd-delay, 0) * var(--sd-stagger, 0ms));
+}
+.ui-speed-dial--open .ui-speed-dial__item {
+	transform: translate(calc(-50% + var(--sd-tx)), calc(-50% + var(--sd-ty))) scale(1);
+	opacity: 1;
+	pointer-events: auto;
+}
+/* #endregion */
+
+/* #region Tooltip */
+.ui-speed-dial__tooltip {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-end: calc(100% + var(--space-2));
+	transform: translateY(-50%);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	white-space: nowrap;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-sm);
+	box-shadow: var(--elevation-low);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-speed-dial__item:hover .ui-speed-dial__tooltip,
+.ui-speed-dial__item:focus-within .ui-speed-dial__tooltip {
+	opacity: 1;
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.ui-speed-dial__item,
+	.ui-speed-dial__tooltip {
+		transition-duration: 0ms;
+		transition-delay: 0ms;
+	}
+}
+/* #endregion */

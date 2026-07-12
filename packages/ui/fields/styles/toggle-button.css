@@ -1,0 +1,86 @@
+/*
+ * ToggleButton — a two-state (on/off) button. Its own BEM block that borrows the button visual
+ * language on the token contract: an outlined resting state that fills with the accent when pressed.
+ * Full outline allowed: interactive (§B.4).
+ */
+
+.ui-toggle-button {
+	--tb-accent: var(--primary);
+	--tb-on: var(--on-primary);
+	--tb-height: 2.5rem;
+	--tb-px: var(--space-4);
+	--tb-font: 0.9375rem;
+
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	block-size: var(--tb-height);
+	padding-inline: var(--tb-px);
+	font-family: var(--font-sans);
+	font-size: var(--tb-font);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--tb-accent);
+	background: transparent;
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	user-select: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-toggle-button:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--tb-accent) 10%, transparent);
+}
+.ui-toggle-button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-toggle-button:active:not(:disabled) {
+	transform: translateY(0.5px);
+}
+.ui-toggle-button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* #region Pressed (on) state */
+.ui-toggle-button[aria-pressed="true"] {
+	color: var(--tb-on);
+	background: var(--tb-accent);
+	border-color: var(--tb-accent);
+}
+.ui-toggle-button[aria-pressed="true"]:hover:not(:disabled) {
+	filter: brightness(0.94);
+}
+/* #endregion */
+
+/* #region Sizes */
+.ui-toggle-button--size-sm {
+	--tb-height: 2rem;
+	--tb-px: var(--space-3);
+	--tb-font: 0.8125rem;
+}
+.ui-toggle-button--size-lg {
+	--tb-height: 3rem;
+	--tb-px: var(--space-5);
+	--tb-font: 1.0625rem;
+}
+.ui-toggle-button--fluid {
+	display: flex;
+	inline-size: 100%;
+}
+/* #endregion */
+
+.ui-toggle-button__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	font-size: 1.05em;
+}

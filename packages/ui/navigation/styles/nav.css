@@ -1,0 +1,73 @@
+/* Link + NavItem — nav atoms. Full borders reserved for interactive elements only (§B.4). */
+.ui-link {
+	color: var(--primary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+.ui-link:hover {
+	text-decoration: underline;
+}
+
+.ui-link--active {
+	font-weight: 600;
+}
+
+.ui-link:focus-visible {
+	outline: 3px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.ui-nav-item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: 40px;
+	margin-inline: var(--space-2);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--on-surface-variant, var(--text-secondary));
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.ui-nav-item:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.ui-nav-item--active {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--on-surface);
+}
+
+.ui-nav-item:focus-visible {
+	outline: 3px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.ui-nav-item__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 24px;
+	block-size: 24px;
+	flex: 0 0 auto;
+}
+
+.ui-nav-item__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Collapsed rail: hide labels, center icons on the shared axis (Part D.1). */
+.ui-shell-sidebar:not(.ui-shell-sidebar--expanded) .ui-nav-item {
+	justify-content: center;
+	margin-inline: var(--space-1);
+	padding-inline: 0;
+}
+
+.ui-shell-sidebar:not(.ui-shell-sidebar--expanded) .ui-nav-item__label {
+	display: none;
+}

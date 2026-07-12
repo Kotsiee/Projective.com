@@ -1,0 +1,163 @@
+/*
+ * AutoComplete — a combobox text input with a floating suggestion listbox. Composes `.ui-field`
+ * (styles/field.css) for the control geometry; the panel is a fixed-position floating surface driven
+ * by `useFloating` (`--ac-*` custom properties). Token-only; the full outline is allowed on the
+ * control because it is interactive (§B.4).
+ */
+
+.ui-autocomplete {
+	display: inline-block;
+	position: relative;
+}
+.ui-autocomplete--fluid {
+	display: block;
+	inline-size: 100%;
+}
+
+/* #region Control (composes .ui-field) */
+.ui-autocomplete__control {
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	cursor: text;
+}
+.ui-autocomplete--multiple .ui-autocomplete__control {
+	block-size: auto;
+	min-block-size: var(--field-height);
+	padding-block: var(--space-1);
+}
+.ui-autocomplete__input {
+	flex: 1 1 6ch;
+}
+/* #endregion */
+
+/* #region Tokens (chips) */
+.ui-autocomplete__token {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: 0;
+	padding-inline: var(--space-2);
+	block-size: calc(var(--field-height) - var(--space-3));
+	font-size: 0.85em;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	border-radius: var(--radius-sm);
+}
+.ui-autocomplete__token-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.15em;
+	block-size: 1.15em;
+	padding: 0;
+	font-size: 1.1em;
+	line-height: 1;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-autocomplete__token-remove:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+.ui-autocomplete__token-remove:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Dropdown trigger */
+.ui-autocomplete__trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	inline-size: 1.5em;
+	block-size: 1.5em;
+	margin-inline-start: calc(-1 * var(--space-1));
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-autocomplete__trigger:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.ui-autocomplete__chevron {
+	inline-size: 0.5em;
+	block-size: 0.5em;
+	border-inline-end: 2px solid currentColor;
+	border-block-end: 2px solid currentColor;
+	transform: rotate(45deg) translate(-0.1em, -0.1em);
+}
+.ui-field--open .ui-autocomplete__chevron {
+	transform: rotate(-135deg) translate(-0.1em, -0.1em);
+}
+/* #endregion */
+
+/* #region Floating panel */
+.ui-autocomplete__panel {
+	position: fixed;
+	inset-block-start: var(--ac-top, 0);
+	inset-inline-start: var(--ac-left, 0);
+	inline-size: var(--ac-width, auto);
+	z-index: 1000;
+	max-block-size: 16rem;
+	overflow-y: auto;
+	padding-block: var(--space-1);
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-medium);
+	visibility: hidden;
+	animation: ui-autocomplete-in var(--dur-fast) var(--ease-standard);
+}
+.ui-autocomplete__panel[data-placement] {
+	visibility: visible;
+}
+
+.ui-autocomplete__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-3);
+	font-size: 0.9375rem;
+	cursor: pointer;
+}
+.ui-autocomplete__option--active {
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.ui-autocomplete__option--disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.ui-autocomplete__empty {
+	padding-block: var(--space-2);
+	padding-inline: var(--space-3);
+	color: var(--text-secondary);
+	font-size: 0.9375rem;
+}
+
+@keyframes ui-autocomplete-in {
+	from {
+		opacity: 0;
+		transform: translateY(-0.25rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-autocomplete__panel {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */

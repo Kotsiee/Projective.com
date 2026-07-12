@@ -1,0 +1,106 @@
+/* Panel — titled content region. Single hairline under the header (§B.4); body on a tonal surface,
+   never a boxed border. Collapse uses a grid `0fr -> 1fr` track so height animates without JS. */
+.ui-panel {
+	display: flex;
+	flex-direction: column;
+	background: var(--surface-1);
+	border-radius: var(--radius-base);
+}
+
+.ui-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+	border-bottom: 1px solid var(--border-subtle);
+}
+
+.ui-panel__title-row {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.ui-panel__toggle {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-width: 0;
+	padding: var(--space-1) var(--space-2);
+	margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.ui-panel__toggle:hover {
+	background: var(--surface-2);
+}
+
+.ui-panel__toggle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.ui-panel__chevron {
+	flex: none;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-right: 2px solid var(--on-surface-variant);
+	border-bottom: 2px solid var(--on-surface-variant);
+	transform: rotate(45deg);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-panel__chevron[data-collapsed="true"] {
+	transform: rotate(-45deg);
+}
+
+.ui-panel__title {
+	overflow: hidden;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ui-panel__icons {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ui-panel__collapse {
+	display: grid;
+	grid-template-rows: 1fr;
+	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
+}
+
+.ui-panel__collapse[data-collapsed="true"] {
+	grid-template-rows: 0fr;
+}
+
+.ui-panel__body {
+	overflow: hidden;
+	min-height: 0;
+	padding: var(--space-4);
+}
+
+.ui-panel__body--settled {
+	visibility: hidden;
+}
+
+.ui-panel__footer {
+	padding: var(--space-3) var(--space-4);
+	border-top: 1px solid var(--border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-panel__chevron {
+		transition: none;
+	}
+}

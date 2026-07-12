@@ -1,0 +1,17 @@
+/*
+ * FormControl — the label/control/hint stack. Grouping via spacing + type weight only (no bordering
+ * box — §B.4). The label/hint helper classes live in field.css; this file owns the vertical rhythm.
+ */
+
+.ui-form-control {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+}
+.ui-form-control__control {
+	display: flex;
+	inline-size: 100%;
+}
+.ui-form-control__control > * {
+	inline-size: 100%;
+}

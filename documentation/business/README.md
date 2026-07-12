@@ -3,10 +3,11 @@
 ## Hierarchy
 
 - **[PRODUCT_SPEC.md](PRODUCT_SPEC.md)** (formerly `brain.md`) is the absolute source of truth for
-  all **business** logic and workflows; **[../architecture/SYSTEM_ARCHITECTURE.md](../architecture/SYSTEM_ARCHITECTURE.md)**
-  (formerly `brain2.md`) is authoritative for **architectural** rules. Every other file in this
-  folder is supplementary — it either fills a gap those two leave abstract, or covers material
-  (investor narrative, market data) they intentionally don't.
+  all **business** logic and workflows;
+  **[../architecture/SYSTEM_ARCHITECTURE.md](../architecture/SYSTEM_ARCHITECTURE.md)** (formerly
+  `brain2.md`) is authoritative for **architectural** rules. Every other file in this folder is
+  supplementary — it either fills a gap those two leave abstract, or covers material (investor
+  narrative, market data) they intentionally don't.
 - For UI component APIs, design tokens, the theming engine, and the component taxonomy, see
   [../design-system/DESIGN_SYSTEM.md](../design-system/DESIGN_SYSTEM.md); for Deno/Fresh technical
   directives see [../architecture/SYSTEM_ARCHITECTURE.md](../architecture/SYSTEM_ARCHITECTURE.md) —

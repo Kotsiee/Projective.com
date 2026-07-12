@@ -1,0 +1,67 @@
+/*
+ * Terminal — monospace command line on a tonal dark surface. Token-only. The frame is interactive
+ * (hosts the input), so a hairline outline is allowed (§B.4).
+ */
+
+.ui-terminal {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	min-block-size: 12rem;
+	padding: var(--space-3);
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: var(--on-surface);
+	background: var(--surface-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	cursor: text;
+}
+
+.ui-terminal__scroll {
+	max-block-size: 100%;
+	block-size: 100%;
+	overflow-y: auto;
+}
+
+.ui-terminal__welcome {
+	margin-block-end: var(--space-2);
+	color: var(--text-secondary);
+	white-space: pre-wrap;
+}
+
+.ui-terminal__line {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.ui-terminal__line--command {
+	color: var(--on-surface);
+}
+.ui-terminal__line--response {
+	color: var(--on-surface-variant);
+}
+
+.ui-terminal__prompt-row {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+}
+.ui-terminal__prompt {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-terminal__input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	appearance: none;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	padding: 0;
+}
+.ui-terminal__input::placeholder {
+	color: var(--text-secondary);
+}

@@ -1,0 +1,81 @@
+/*
+ * List / ListItem — rows separated by a single hairline (§B.4), never boxed individually. Interactive
+ * rows (`--interactive`) get a real focus ring on their inner control, which full borders are fine on
+ * (interactive content is exempt).
+ */
+.ui-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	background: var(--surface-1);
+	border-radius: var(--radius-base);
+	overflow: hidden;
+}
+
+.ui-list__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	color: var(--on-surface);
+}
+.ui-list__item:not(:last-child) {
+	border-block-end: 1px solid var(--border-subtle);
+}
+
+.ui-list--dense .ui-list__item {
+	padding-block: var(--space-2);
+}
+
+.ui-list__item--disabled {
+	color: var(--on-surface-variant);
+	opacity: 0.6;
+}
+
+.ui-list__leading,
+.ui-list__trailing {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+.ui-list__content {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* #region Interactive row */
+.ui-list__item--interactive {
+	padding: 0;
+}
+.ui-list__control {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-3) var(--space-4);
+	font: inherit;
+	color: inherit;
+	text-align: start;
+	text-decoration: none;
+	background: transparent;
+	border: 1px solid transparent;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-list__control:hover {
+	background: var(--surface-2);
+}
+.ui-list__control:focus-visible {
+	outline: none;
+	border-color: var(--focus-ring);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-list__item--disabled .ui-list__control {
+	cursor: not-allowed;
+	pointer-events: none;
+}
+/* #endregion */

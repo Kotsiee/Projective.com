@@ -2,27 +2,27 @@
 
 Home for **per-route API tables**, endpoint contracts, integration blueprints, and the environment
 contract. This folder expands the flat sitemap in
-[`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Sitemap into concrete
-`routes/api/...` handler documentation as those handlers are implemented.
+[`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Sitemap into concrete `routes/api/...`
+handler documentation as those handlers are implemented.
 
 ## Authority & pointers
 
 - **Route list (SSOT):** the sitemap table in
   [`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §"Sitemap and Route Overview".
 - **Integration blueprints (Stripe, Conferencing):** currently authoritative in
-  [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
-  §"Integration Blueprints". Expand provider-specific flows here as they are built.
+  [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §"Integration
+  Blueprints". Expand provider-specific flows here as they are built.
 - **Environment variable contract:**
-  [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
-  §"Environment Variable Contract". Use `XXXX-XXXX` placeholders everywhere.
+  [`../architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §"Environment
+  Variable Contract". Use `XXXX-XXXX` placeholders everywhere.
 
 ## Conventions (from `SYSTEM_ARCHITECTURE.md` §2)
 
-- **Thin routes, fat services.** Each documented endpoint states: method + path, Zod request/response
-  schema (`@projective/types`), auth guard, the Service it delegates to, and RLS assumptions.
+- **Thin routes, fat services.** Each documented endpoint states: method + path, Zod
+  request/response schema (`@projective/types`), auth guard, the Service it delegates to, and RLS
+  assumptions.
 - **Route groups:** `routes/(public)/`, `routes/(dashboard)/`, and the wildcard profile namespace
-  (`routes/[handle]/` — see the `[handle]`/`[profile]` conflict in root
-  [`CLAUDE.md`](../../CLAUDE.md) §8, unresolved).
+  `routes/[handle]/` (canonical — resolved 2026-07-12; see root [`CLAUDE.md`](../../CLAUDE.md) §8).
 
 ## Status
 

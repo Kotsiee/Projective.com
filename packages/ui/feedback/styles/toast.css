@@ -1,0 +1,257 @@
+/*
+ * Toast — a fixed-position stack anchored to one of nine points at `--z-toast`. Items are cards on
+ * `--surface` with an `--elevation-medium` resting shadow; the accent pair mirrors Message/Button.
+ * Drag (`--toast-drag`) and computed opacity (`--toast-opacity`) are written by the island per pointer
+ * frame; enter/exit and the countdown bar are pure CSS so reduced-motion collapses them for free.
+ */
+
+.ui-toast {
+	position: fixed;
+	z-index: var(--z-toast);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: min(24rem, calc(100vw - var(--space-6)));
+	max-block-size: calc(100vh - var(--space-6));
+	padding: var(--space-4);
+	pointer-events: none;
+	overflow: visible;
+}
+
+/* #region Nine positions */
+.ui-toast--top-left {
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	align-items: flex-start;
+}
+.ui-toast--top-center {
+	inset-block-start: 0;
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	align-items: center;
+}
+.ui-toast--top-right {
+	inset-block-start: 0;
+	inset-inline-end: 0;
+	align-items: flex-end;
+}
+.ui-toast--center-left {
+	inset-block-start: 50%;
+	inset-inline-start: 0;
+	transform: translateY(-50%);
+	align-items: flex-start;
+}
+.ui-toast--center {
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	transform: translate(-50%, -50%);
+	align-items: center;
+}
+.ui-toast--center-right {
+	inset-block-start: 50%;
+	inset-inline-end: 0;
+	transform: translateY(-50%);
+	align-items: flex-end;
+}
+.ui-toast--bottom-left {
+	inset-block-end: 0;
+	inset-inline-start: 0;
+	align-items: flex-start;
+	flex-direction: column-reverse;
+}
+.ui-toast--bottom-center {
+	inset-block-end: 0;
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	align-items: center;
+	flex-direction: column-reverse;
+}
+.ui-toast--bottom-right {
+	inset-block-end: 0;
+	inset-inline-end: 0;
+	align-items: flex-end;
+	flex-direction: column-reverse;
+}
+/* #endregion */
+
+/* #region Item card */
+.ui-toast__item {
+	--toast-accent: var(--secondary);
+	--toast-on: var(--on-primary);
+
+	position: relative;
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-3) var(--space-4);
+	overflow: hidden;
+	color: var(--on-surface);
+	background: var(--surface);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-medium);
+	pointer-events: auto;
+	touch-action: pan-y;
+	opacity: var(--toast-opacity, 1);
+	transform: translateX(var(--toast-drag, 0px));
+	transition:
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--ease-standard);
+}
+.ui-toast__item--dragging {
+	transition: none;
+}
+.ui-toast__item--enter {
+	opacity: 0;
+	transform: translateY(-10px) scale(0.97);
+}
+.ui-toast__item--exit {
+	transform: translateX(var(--toast-drag, 0px)) scale(0.96);
+}
+
+.ui-toast__item--primary {
+	--toast-accent: var(--primary);
+	--toast-on: var(--on-primary);
+}
+.ui-toast__item--secondary {
+	--toast-accent: var(--secondary);
+	--toast-on: var(--on-surface);
+}
+.ui-toast__item--success {
+	--toast-accent: var(--success);
+	--toast-on: var(--on-success);
+}
+.ui-toast__item--info {
+	--toast-accent: var(--secondary);
+	--toast-on: var(--on-primary);
+}
+.ui-toast__item--warning {
+	--toast-accent: var(--warning);
+	--toast-on: var(--on-warning);
+}
+.ui-toast__item--help {
+	--toast-accent: var(--tertiary);
+	--toast-on: var(--on-primary);
+}
+.ui-toast__item--danger {
+	--toast-accent: var(--danger);
+	--toast-on: var(--on-danger);
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-toast__item {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */
+
+/* #region Parts */
+.ui-toast__icon {
+	display: inline-flex;
+	flex: none;
+	inline-size: 1.25em;
+	block-size: 1.25em;
+	color: var(--toast-accent);
+}
+.ui-toast__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+.ui-toast__body {
+	flex: 1 1 auto;
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	line-height: 1.4;
+}
+.ui-toast__summary {
+	display: block;
+	font-weight: 600;
+}
+.ui-toast__detail {
+	display: block;
+	margin-block-start: 0.125rem;
+	color: var(--on-surface-variant);
+}
+.ui-toast__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.ui-toast__close svg {
+	inline-size: 1rem;
+	block-size: 1rem;
+}
+.ui-toast__close:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.ui-toast__close:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Countdown affordance */
+.ui-toast__progress {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-start: 0;
+	block-size: 3px;
+	background: var(--toast-accent);
+	animation: ui-toast-countdown linear forwards;
+	animation-duration: var(--toast-life, 3000ms);
+}
+.ui-toast__progress--paused {
+	animation-play-state: paused;
+}
+@keyframes ui-toast-countdown {
+	from {
+		inline-size: 100%;
+	}
+	to {
+		inline-size: 0%;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-toast__progress {
+		animation: none;
+		display: none;
+	}
+}
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 480px) {
+	.ui-toast {
+		inline-size: calc(100vw - var(--space-4));
+		padding: var(--space-3);
+	}
+	.ui-toast--top-left,
+	.ui-toast--top-right,
+	.ui-toast--top-center {
+		inset-inline-start: 0;
+		inset-inline-end: 0;
+		inset-block-start: 0;
+		transform: none;
+		align-items: stretch;
+	}
+	.ui-toast--bottom-left,
+	.ui-toast--bottom-right,
+	.ui-toast--bottom-center {
+		inset-inline-start: 0;
+		inset-inline-end: 0;
+		inset-block-end: 0;
+		transform: none;
+		align-items: stretch;
+	}
+}
+/* #endregion */

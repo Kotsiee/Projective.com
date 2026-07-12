@@ -1,0 +1,202 @@
+/*
+ * ColorPicker — swatch trigger + saturation/hue editing panel.
+ *
+ * Token-only for chrome (surface, border, radius, motion, focus). The EXCEPTION sanctioned for this
+ * component: the saturation square, hue rail and preview backgrounds are genuine colour values
+ * (white/black overlays, the hue spectrum, and the live `--cp-*` colours computed in TS) because a
+ * colour picker's whole purpose is to render arbitrary colour — those cannot be tokenized.
+ */
+
+.ui-colorpicker {
+	position: relative;
+	display: inline-block;
+	--cp-swatch: 2.25rem;
+}
+.ui-colorpicker--size-sm {
+	--cp-swatch: 1.75rem;
+}
+.ui-colorpicker--size-lg {
+	--cp-swatch: 2.75rem;
+}
+.ui-colorpicker--disabled {
+	opacity: 0.55;
+	pointer-events: none;
+}
+
+/* #region Trigger */
+.ui-colorpicker__trigger {
+	display: inline-flex;
+	inline-size: var(--cp-swatch);
+	block-size: var(--cp-swatch);
+	padding: 3px;
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-colorpicker__trigger:hover {
+	border-color: var(--on-surface-variant);
+}
+.ui-colorpicker__trigger:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-colorpicker__swatch {
+	flex: 1 1 auto;
+	border-radius: var(--radius-xs);
+	background: var(--cp-solid, #ff0000);
+}
+/* #endregion */
+
+/* #region Panel */
+.ui-colorpicker__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, 0);
+	inset-inline-start: var(--float-left, 0);
+	z-index: 1000;
+	inline-size: 15rem;
+	padding: var(--space-3);
+	background: var(--surface-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+	animation: ui-colorpicker-in var(--dur-fast) var(--ease-standard);
+}
+.ui-colorpicker__panel--inline {
+	position: static;
+	box-shadow: none;
+	animation: none;
+}
+@keyframes ui-colorpicker-in {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-colorpicker__panel {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */
+
+/* #region Saturation / brightness area */
+.ui-colorpicker__area {
+	position: relative;
+	inline-size: 100%;
+	block-size: 9rem;
+	border-radius: var(--radius-sm);
+	background: var(--cp-hue, #ff0000);
+	cursor: crosshair;
+	touch-action: none;
+}
+.ui-colorpicker__area:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-colorpicker__area-white,
+.ui-colorpicker__area-black {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	pointer-events: none;
+}
+.ui-colorpicker__area-white {
+	background: linear-gradient(to right, #ffffff, rgba(255, 255, 255, 0));
+}
+.ui-colorpicker__area-black {
+	background: linear-gradient(to top, #000000, rgba(0, 0, 0, 0));
+}
+.ui-colorpicker__area-thumb {
+	position: absolute;
+	inset-block-start: var(--cp-y, 0%);
+	inset-inline-start: var(--cp-x, 100%);
+	inline-size: 0.85rem;
+	block-size: 0.85rem;
+	transform: translate(-50%, -50%);
+	border: 2px solid #ffffff;
+	border-radius: 50%;
+	box-shadow: var(--elevation-low);
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Hue rail + preview */
+.ui-colorpicker__sliders {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-block-start: var(--space-3);
+}
+.ui-colorpicker__preview {
+	flex: 0 0 auto;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border-radius: 50%;
+	border: 1px solid var(--outline);
+	background: var(--cp-solid, #ff0000);
+}
+.ui-colorpicker__hue {
+	position: relative;
+	flex: 1 1 auto;
+	block-size: 0.85rem;
+	border-radius: 999px;
+	cursor: pointer;
+	touch-action: none;
+	background: linear-gradient(
+		to right,
+		#ff0000 0%,
+		#ffff00 17%,
+		#00ff00 33%,
+		#00ffff 50%,
+		#0000ff 67%,
+		#ff00ff 83%,
+		#ff0000 100%
+	);
+}
+.ui-colorpicker__hue:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-colorpicker__hue-thumb {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: var(--cp-x, 0%);
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	transform: translate(-50%, -50%);
+	border: 2px solid #ffffff;
+	border-radius: 50%;
+	box-shadow: var(--elevation-low);
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Hex input */
+.ui-colorpicker__hex {
+	inline-size: 100%;
+	margin-block-start: var(--space-3);
+	box-sizing: border-box;
+	padding-block: var(--space-1);
+	padding-inline: var(--space-2);
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+	text-align: center;
+}
+.ui-colorpicker__hex:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */

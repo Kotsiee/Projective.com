@@ -1,0 +1,74 @@
+/* Tag — compact status label. A small inline chip, not a content boundary; outlined is acceptable. */
+.ui-tag {
+	--tag-accent: var(--primary);
+	--tag-on: var(--on-primary);
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: 0.1875rem;
+	padding-inline: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.75rem;
+	font-weight: 600;
+	line-height: 1.3;
+	border-radius: var(--radius-xs);
+	border: 1px solid transparent;
+}
+
+.ui-tag--rounded {
+	border-radius: 999px;
+}
+
+/* #region Severities — set the accent pair only */
+.ui-tag--primary {
+	--tag-accent: var(--primary);
+	--tag-on: var(--on-primary);
+}
+.ui-tag--secondary {
+	--tag-accent: var(--secondary);
+	--tag-on: var(--on-surface);
+}
+.ui-tag--success {
+	--tag-accent: var(--success);
+	--tag-on: var(--on-success);
+}
+.ui-tag--info {
+	--tag-accent: var(--secondary);
+	--tag-on: var(--on-primary);
+}
+.ui-tag--warning {
+	--tag-accent: var(--warning);
+	--tag-on: var(--on-warning);
+}
+.ui-tag--help {
+	--tag-accent: var(--tertiary);
+	--tag-on: var(--on-primary);
+}
+.ui-tag--danger {
+	--tag-accent: var(--danger);
+	--tag-on: var(--on-danger);
+}
+/* #endregion */
+
+/* #region Variants */
+.ui-tag--filled {
+	color: var(--tag-on);
+	background: var(--tag-accent);
+}
+.ui-tag--outlined {
+	color: var(--tag-accent);
+	background: transparent;
+	border-color: var(--tag-accent);
+}
+.ui-tag--subtle {
+	color: var(--tag-accent);
+	background: color-mix(in srgb, var(--tag-accent) 16%, transparent);
+}
+/* #endregion */
+
+.ui-tag__icon {
+	display: inline-flex;
+	font-size: 1em;
+	line-height: 0;
+}

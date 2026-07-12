@@ -1,0 +1,312 @@
+/*
+ * MultiSelect (ui-multiselect) — multi-select dropdown on the shared listbox pattern. Trigger
+ * composes `.ui-field`; selected values render as comma text or removable chips. The popup mirrors
+ * `select.css` (checkbox-per-row, optional select-all + filter header). Token-only; full outlines
+ * only on the interactive trigger/chips/checkboxes (§B.4).
+ */
+
+/* #region Trigger */
+.ui-multiselect {
+	cursor: pointer;
+	user-select: none;
+	min-block-size: var(--field-height);
+	block-size: auto;
+	flex-wrap: wrap;
+}
+.ui-multiselect__trigger {
+	display: inline-flex;
+	flex: 1 1 auto;
+	align-items: center;
+	min-inline-size: 0;
+	background: transparent;
+	border: none;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	cursor: inherit;
+	text-align: start;
+}
+.ui-multiselect__trigger:focus {
+	outline: none;
+}
+.ui-multiselect__value {
+	display: flex;
+	flex: 1 1 auto;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	padding-block: var(--space-1);
+}
+.ui-multiselect__placeholder {
+	color: var(--text-secondary);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-multiselect__summary {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-multiselect__chevron {
+	flex: 0 0 auto;
+	display: inline-flex;
+	color: var(--on-surface-variant);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-multiselect--open .ui-multiselect__chevron {
+	transform: rotate(180deg);
+}
+.ui-multiselect__clear {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-multiselect__clear:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-multiselect__clear:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Chips */
+.ui-multiselect__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	padding: 0 var(--space-1) 0 var(--space-2);
+	font-size: 0.8125rem;
+	line-height: 1.6;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-xs);
+}
+.ui-multiselect__chip-label {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-multiselect__chip-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1rem;
+	block-size: 1rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-multiselect__chip-remove:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+.ui-multiselect__chip-remove:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Panel */
+.ui-multiselect__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	inline-size: var(--float-width, auto);
+	z-index: 1000;
+	display: flex;
+	flex-direction: column;
+	max-block-size: 18rem;
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	animation: ui-multiselect-pop var(--dur-fast) var(--ease-standard);
+}
+@keyframes ui-multiselect-pop {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-multiselect__panel {
+		animation-duration: 0ms;
+	}
+	.ui-multiselect__chevron {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */
+
+/* #region Panel header (select-all + filter) */
+.ui-multiselect__header {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	border-block-end: 1px solid var(--border-subtle);
+}
+.ui-multiselect__select-all {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	text-align: start;
+}
+.ui-multiselect__select-all:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.ui-multiselect__filter-input {
+	inline-size: 100%;
+	box-sizing: border-box;
+	appearance: none;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+}
+.ui-multiselect__filter-input:focus {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-multiselect__filter-input::placeholder {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region List + options */
+.ui-multiselect__list {
+	flex: 1 1 auto;
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+.ui-multiselect__list--virtual {
+	position: relative;
+}
+.ui-multiselect__sizer {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--v-total, auto);
+}
+.ui-multiselect__group-items {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.ui-multiselect__group-label {
+	padding: var(--space-2) var(--space-2) var(--space-1);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.ui-multiselect__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+.ui-multiselect__option--virtual {
+	position: absolute;
+	inset-inline: var(--space-1);
+	inset-block-start: var(--v-top, 0);
+	block-size: var(--v-size, auto);
+	box-sizing: border-box;
+}
+.ui-multiselect__option--active {
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.ui-multiselect__option--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.ui-multiselect__option-label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-multiselect__empty {
+	padding: var(--space-3);
+	font-size: 0.875rem;
+	color: var(--text-secondary);
+	text-align: center;
+}
+/* #endregion */
+
+/* #region Checkbox mark (shared by option rows + select-all) */
+.ui-multiselect__checkbox {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	color: var(--on-primary);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-xs);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+.ui-multiselect__checkbox[aria-checked="true"],
+.ui-multiselect__checkbox[aria-checked="mixed"] {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.ui-multiselect__checkbox svg {
+	inline-size: 0.8em;
+	block-size: 0.8em;
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-multiselect__checkbox {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */

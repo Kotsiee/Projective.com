@@ -1,0 +1,136 @@
+/*
+ * RadioButton + RadioGroup — token-only single-choice control. Each option keeps a real hidden
+ * `<input type="radio">` for form + native semantics; the styled `__box`/`__dot` mirror `:checked`.
+ * The group is a roving-tabindex `role="radiogroup"`. Full outline allowed: interactive (§B.4).
+ */
+
+.ui-radio {
+	--rb-size: 1.25rem;
+	--rb-font: 0.9375rem;
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: var(--rb-font);
+	color: var(--on-surface);
+	cursor: pointer;
+	user-select: none;
+}
+
+.ui-radio--size-sm {
+	--rb-size: 1rem;
+	--rb-font: 0.8125rem;
+}
+.ui-radio--size-lg {
+	--rb-size: 1.5rem;
+	--rb-font: 1.0625rem;
+}
+
+.ui-radio--disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+/* #region Visually-hidden native radio (focusable + form-submittable) */
+.ui-radio__input {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+/* #endregion */
+
+/* #region Styled ring + dot */
+.ui-radio__box {
+	position: relative;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--rb-size);
+	block-size: var(--rb-size);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: 50%;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-radio:hover .ui-radio__box {
+	border-color: var(--on-surface-variant);
+}
+.ui-radio__dot {
+	inline-size: 52%;
+	block-size: 52%;
+	border-radius: 50%;
+	background: var(--primary);
+	opacity: 0;
+	transform: scale(0.4);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+.ui-radio__input:checked + .ui-radio__box {
+	border-color: var(--primary);
+}
+.ui-radio__input:checked + .ui-radio__box .ui-radio__dot {
+	opacity: 1;
+	transform: scale(1);
+}
+.ui-radio__input:focus-visible + .ui-radio__box {
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Status accents */
+.ui-radio--invalid .ui-radio__box {
+	border-color: var(--danger);
+}
+.ui-radio--invalid .ui-radio__dot {
+	background: var(--danger);
+}
+.ui-radio--success .ui-radio__box {
+	border-color: var(--success);
+}
+.ui-radio--warning .ui-radio__box {
+	border-color: var(--warning);
+}
+/* #endregion */
+
+.ui-radio__label {
+	line-height: 1.3;
+}
+
+/* #region Group layout */
+.ui-radio-group {
+	display: inline-flex;
+	gap: var(--space-3);
+}
+.ui-radio-group--vertical {
+	flex-direction: column;
+	align-items: flex-start;
+}
+.ui-radio-group--horizontal {
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+}
+.ui-radio-group--fluid {
+	display: flex;
+	inline-size: 100%;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-radio__box,
+	.ui-radio__dot {
+		transition-duration: 0ms;
+	}
+}

@@ -6,8 +6,8 @@
 > lifecycles, the sitemap, and visual identity. Its technical counterpart is
 > [`documentation/architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md)
 > (formerly `brain2.md`). If any other document conflicts with this one on a business rule, **this
-> file wins.** Governance: root [`CLAUDE.md`](../../CLAUDE.md), folder
-> [`CLAUDE.md`](CLAUDE.md), and [`documentation/CLAUDE.md`](../CLAUDE.md).
+> file wins.** Governance: root [`CLAUDE.md`](../../CLAUDE.md), folder [`CLAUDE.md`](CLAUDE.md), and
+> [`documentation/CLAUDE.md`](../CLAUDE.md).
 
 App Name: Projective
 
@@ -143,11 +143,12 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   as a Client/Operator can unlock a Freelancer profile at any time from the **Become a Partner**
   conversion page (`/become-partner`) — the freelancer suite layers on top of the same identity and
   reputation, and the two are switched from the account menu. A freelancer profile carries the
-  seller's **skills** (used for discovery ranking); it does **not** carry an hourly rate — Projective
-  does not treat a signalling hourly rate as a platform field. Unlocking is free, idempotent, and
-  immediately activates the Freelancer persona. Reaching the profile's **go-live milestone** (a
-  baseline of photo, headline, story, and skills) is what lets a freelancer publish publicly, sell
-  premium services, and apply to workspaces — this can happen before the profile is 100% complete.
+  seller's **skills** (used for discovery ranking); it does **not** carry an hourly rate —
+  Projective does not treat a signalling hourly rate as a platform field. Unlocking is free,
+  idempotent, and immediately activates the Freelancer persona. Reaching the profile's **go-live
+  milestone** (a baseline of photo, headline, story, and skills) is what lets a freelancer publish
+  publicly, sell premium services, and apply to workspaces — this can happen before the profile is
+  100% complete.
 - **Draft-First Creation:** Creating a Team is deliberately low-friction — a member supplies only a
   display **Name** and a unique alphanumeric **`@handle`**. The Team is created instantly in a
   **Draft/Unverified** state; branding, contribution splits, roles, and member invitations are
@@ -312,9 +313,9 @@ the platform's workflows, providing a centralised point of management for work r
 team members.
 
 - **Client / Operator Mode (Visibility Gate):** The Businesses space is a client-side surface gated
-  by an account-level **Client / Operator Mode** modifier. An account only sees the Businesses
-  space — and can only create or manage Businesses — once it has opted into Operator Mode. This
-  keeps the client/hiring surface out of the way for accounts that operate purely as freelancers.
+  by an account-level **Client / Operator Mode** modifier. An account only sees the Businesses space
+  — and can only create or manage Businesses — once it has opted into Operator Mode. This keeps the
+  client/hiring surface out of the way for accounts that operate purely as freelancers.
 - **Draft-First Creation:** Creating a Business is low-friction — the owner supplies only a display
   **Name** and a unique alphanumeric **`@handle`**. The Business is created instantly in a
   **Draft/Unverified** state; legal name, logo, billing details, member roles, and financial setup
@@ -467,9 +468,9 @@ protected; a timestamp once unlocked), read via `projects.is_protected_phase`.
    `pii_masked = true`). Enforcement lives in SQL so it cannot be bypassed via direct writes; the
    `@projective/backend` `PIIFilter` mirrors the same rules for instant client feedback.
 2. **The "Projective Unlock" (`handover_unlocked_at` set)**: When the **final escrow releases**
-   (`projects.approve_stage` settles the last stage) — or the project is force-completed — the filter
-   switches off for that project's threads and the full, unrestricted file library unlocks, allowing
-   the "Contact Handover."
+   (`projects.approve_stage` settles the last stage) — or the project is force-completed — the
+   filter switches off for that project's threads and the full, unrestricted file library unlocks,
+   allowing the "Contact Handover."
 
 ---
 
@@ -503,7 +504,8 @@ Designed for organizations managing multiple projects and teams.
 - **Analytics:** Provides a macro-view of organizational burn-rate across all departments. The
   `org.get_business_finance` wrapper reads live balances, transaction lines and escrow allocations
   directly from the ledger. Its former `/dashboard` overview page has been retired in favour of the
-  persona-adaptive `/home` engagement feed; the dedicated business finance surface is being re-homed.
+  persona-adaptive `/home` engagement feed; the dedicated business finance surface is being
+  re-homed.
 - **Opening Platform Credit (MVP demo path):** On creation every Business Wallet is seeded with a
   one-time promotional platform credit so the internal-wallet flow is exercisable end-to-end — a
   business can fund a Stage (debiting the credit into Escrow) and watch the hold/release move real
@@ -1202,77 +1204,77 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
 
 ## Sitemap and Route Overview
 
-| Category      | Path / Route              | Sub-Path                 | Description                 |
-| :------------ | :------------------------ | :----------------------- | :-------------------------- |
-| **Auth**      | `/onboarding`             |                          | User onboarding flow        |
-|               | `/reset`                  |                          | Reset password              |
-|               | `/verify`                 |                          | Account verification        |
-|               | `/login`                  |                          | User login                  |
-|               | `/register`               |                          | User registration           |
-|               | `/forgot-password`        |                          | Password recovery           |
+| Category      | Path / Route              | Sub-Path                 | Description                                                                                 |
+| :------------ | :------------------------ | :----------------------- | :------------------------------------------------------------------------------------------ |
+| **Auth**      | `/onboarding`             |                          | User onboarding flow                                                                        |
+|               | `/reset`                  |                          | Reset password                                                                              |
+|               | `/verify`                 |                          | Account verification                                                                        |
+|               | `/login`                  |                          | User login                                                                                  |
+|               | `/register`               |                          | User registration                                                                           |
+|               | `/forgot-password`        |                          | Password recovery                                                                           |
 | **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker) |
-|               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite) |
-|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner` |
-|               | `/business`               |                          | Show all businesses         |
-|               | `/business/create`        |                          | Create a new business       |
-|               | `/business/[business id]` | `index`                  | View business details       |
-|               |                           | `members`                | View business members       |
-|               |                           | `settings`               | Edit business settings      |
-|               |                           | `projects`               | View business projects      |
-|               |                           | `billing`                | Stripe Connect integration  |
-|               |                           | `invoices`               |                             |
-|               | `/connections`            | `index`                  | View network connections    |
-|               | `/messages`               | `index`                  | All messages list           |
-|               | `/messages/[message id]`  | `chat`                   | Active conversation         |
-|               |                           | `details`                | Message/Contact info        |
-|               |                           | `files/index`            | List shared files           |
-|               |                           | `files/[file id]`        | View specific file          |
-|               | `/settings`               | `index`                  | General account settings    |
-|               | `/teams`                  | `index`                  | Show all teams              |
-|               | `/teams/create`           |                          | Create a new team           |
-|               | `/teams/[team id]`        | `index`                  | View team details           |
-|               |                           | `members`                | View team members           |
-|               |                           | `settings`               | Edit team settings          |
-|               |                           | `projects`               | View team projects          |
-|               |                           | `vault`                  | Shared wallet access        |
-|               | `/analytics`              | `index`                  | Performance data            |
-|               | `/wallet`                 | `index`                  | Overview of wallets         |
-|               |                           | `create`                 | Setup new wallet            |
-|               |                           | `[wallet id]`            | View specific wallet        |
-|               | `/projects`               | `index`                  | List all projects           |
-|               | `/projects/create`        |                          | Start a new project         |
-|               | `/projects/[project id]`  | `index` / `details`      | Project overview            |
-|               |                           | `board`                  | Task/Kanban board           |
-|               |                           | `finance`                | Project budget/costs        |
-|               |                           | `settings`               | Project configuration       |
-|               |                           | `team`                   | Project-specific members    |
-|               |                           | `timeline`               | Roadmap view                |
-|               |                           | `calendar`               | Project dates               |
-|               |                           | `[stage id]/index`       | Specific stage view         |
-|               |                           | `[stage id]/review`      | Stage approval/review       |
-|               |                           | `[stage id]/files`       | Stage-specific files        |
-|               |                           | `[stage id]/submissions` | Stage deliverables          |
-|               | `/disputes`               | `index`                  |                             |
-|               |                           | `[dispute id]`           |                             |
-|               | `/legal`                  | `index`                  |                             |
-|               |                           | `audit-packs`            |                             |
-|               |                           | `transfers`              |                             |
-|               | `/services`               | `index`                  |                             |
-|               |                           | `create`                 |                             |
-|               |                           | `availability`           |                             |
-| **Public**    | `/index`                  |                          | Landing Page                |
-|               | `/about`                  |                          | Company information         |
-|               | `/explore`                |                          | Discovery/Search            |
-|               | `/[profile]`              | `index`                  | Public profile home         |
-|               |                           | `reviews`                | User reviews/ratings        |
-|               |                           | `teams`                  | Public team listings        |
-|               |                           | `projects`               | Public project showcase     |
-|               |                           | `services`               | Offered services            |
-|               |                           | `products`               | Products for sale           |
-|               |                           | `articles`               | Blog/Published posts        |
-|               |                           | `portfolio`              | Work portfolio items        |
-|               | `/help/[...article path]` | `index`                  | Documentation / Help center |
-|               | `/view/[entity type]`     | `index`                  | Public entity viewer        |
+|               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                    |
+|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                       |
+|               | `/business`               |                          | Show all businesses                                                                         |
+|               | `/business/create`        |                          | Create a new business                                                                       |
+|               | `/business/[business id]` | `index`                  | View business details                                                                       |
+|               |                           | `members`                | View business members                                                                       |
+|               |                           | `settings`               | Edit business settings                                                                      |
+|               |                           | `projects`               | View business projects                                                                      |
+|               |                           | `billing`                | Stripe Connect integration                                                                  |
+|               |                           | `invoices`               |                                                                                             |
+|               | `/connections`            | `index`                  | View network connections                                                                    |
+|               | `/messages`               | `index`                  | All messages list                                                                           |
+|               | `/messages/[message id]`  | `chat`                   | Active conversation                                                                         |
+|               |                           | `details`                | Message/Contact info                                                                        |
+|               |                           | `files/index`            | List shared files                                                                           |
+|               |                           | `files/[file id]`        | View specific file                                                                          |
+|               | `/settings`               | `index`                  | General account settings                                                                    |
+|               | `/teams`                  | `index`                  | Show all teams                                                                              |
+|               | `/teams/create`           |                          | Create a new team                                                                           |
+|               | `/teams/[team id]`        | `index`                  | View team details                                                                           |
+|               |                           | `members`                | View team members                                                                           |
+|               |                           | `settings`               | Edit team settings                                                                          |
+|               |                           | `projects`               | View team projects                                                                          |
+|               |                           | `vault`                  | Shared wallet access                                                                        |
+|               | `/analytics`              | `index`                  | Performance data                                                                            |
+|               | `/wallet`                 | `index`                  | Overview of wallets                                                                         |
+|               |                           | `create`                 | Setup new wallet                                                                            |
+|               |                           | `[wallet id]`            | View specific wallet                                                                        |
+|               | `/projects`               | `index`                  | List all projects                                                                           |
+|               | `/projects/create`        |                          | Start a new project                                                                         |
+|               | `/projects/[project id]`  | `index` / `details`      | Project overview                                                                            |
+|               |                           | `board`                  | Task/Kanban board                                                                           |
+|               |                           | `finance`                | Project budget/costs                                                                        |
+|               |                           | `settings`               | Project configuration                                                                       |
+|               |                           | `team`                   | Project-specific members                                                                    |
+|               |                           | `timeline`               | Roadmap view                                                                                |
+|               |                           | `calendar`               | Project dates                                                                               |
+|               |                           | `[stage id]/index`       | Specific stage view                                                                         |
+|               |                           | `[stage id]/review`      | Stage approval/review                                                                       |
+|               |                           | `[stage id]/files`       | Stage-specific files                                                                        |
+|               |                           | `[stage id]/submissions` | Stage deliverables                                                                          |
+|               | `/disputes`               | `index`                  |                                                                                             |
+|               |                           | `[dispute id]`           |                                                                                             |
+|               | `/legal`                  | `index`                  |                                                                                             |
+|               |                           | `audit-packs`            |                                                                                             |
+|               |                           | `transfers`              |                                                                                             |
+|               | `/services`               | `index`                  |                                                                                             |
+|               |                           | `create`                 |                                                                                             |
+|               |                           | `availability`           |                                                                                             |
+| **Public**    | `/index`                  |                          | Landing Page                                                                                |
+|               | `/about`                  |                          | Company information                                                                         |
+|               | `/explore`                |                          | Discovery/Search                                                                            |
+|               | `/[handle]`               | `index`                  | Public profile home                                                                         |
+|               |                           | `reviews`                | User reviews/ratings                                                                        |
+|               |                           | `teams`                  | Public team listings                                                                        |
+|               |                           | `projects`               | Public project showcase                                                                     |
+|               |                           | `services`               | Offered services                                                                            |
+|               |                           | `products`               | Products for sale                                                                           |
+|               |                           | `articles`               | Blog/Published posts                                                                        |
+|               |                           | `portfolio`              | Work portfolio items                                                                        |
+|               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                 |
+|               | `/view/[entity type]`     | `index`                  | Public entity viewer                                                                        |
 
 ---
 
@@ -1330,9 +1332,15 @@ high-complexity tasks, wrapped in our own **Islands Architecture** boundaries:
 
 - **Rich Text Editing:** Powered by **Quill.js**. Wrapped to ensure proper lifecycle management
   within Preact.
-- **Data Visualization:** Powered by **D3.js**.
-  - **Strategy:** We strictly prefer **Canvas rendering over SVG** for high-density charts (Gantt,
-    Line Graphs, Scatter Plots) to prevent DOM bloat during large-scale project tracking.
+- **Data Visualization:** **Tiered rendering** (resolved 2026-07-12 — see root `CLAUDE.md` "Resolved
+  Decisions"):
+  - **D3.js** owns scales, geometry, and path math, and renders **low-density charts as SVG**
+    (crisp, stylable, accessible).
+  - **Canvas2D** renders **mid-density** charts to avoid DOM bloat.
+  - **PIXI.js (WebGL)** renders the **high-density "stage"** (Gantt timelines, pipeline flows, 10k+
+    entities at 60 FPS), fed by the Rust/WASM geometry engine.
+  - The renderer is selected automatically by a performance metric (entity count + measured frame
+    budget). This supersedes the earlier "strictly Canvas-over-SVG" wording.
 - **Drag & Drop:** Custom wrappers around native browser APIs to support Kanban ticket movement
   without the overhead of heavy external libraries.
 
@@ -1364,40 +1372,49 @@ Projective follows a Domain-Driven Design (DDD) approach within a Deno 2.x Works
 structure ensures that features are encapsulated, logic is shared efficiently via local packages,
 and the Fresh 2.x (Vite-based) routing remains thin and performant.
 
+### The Unified Internal Structure (features, packages, sub-packages)
+
+Every **feature**, **package**, and **sub-package** organizes its files into the same seven folders.
+This is a template, not a mandate to create empty directories — populate the folders a unit actually
+needs; the menu is fixed so any unit is navigable the same way.
+
+| Folder        | Holds                                                       |
+| :------------ | :---------------------------------------------------------- |
+| `components/` | Preact components (Pure CSS + BEM, token-only, zero/low JS) |
+| `islands/`    | Hydrated, interactive components (`*.island.tsx`)           |
+| `styles/`     | Component-specific BEM CSS                                  |
+| `hooks/`      | Custom Preact hooks                                         |
+| `wrappers/`   | HOCs / provider wrappers                                    |
+| `types/`      | TS interfaces / Zod schemas                                 |
+| `core/`       | Critical logic & helpers                                    |
+
 ### 1. Shared Packages (`/packages/*`)
 
-Each package contains a `mod.ts` as the entry point and a `deno.json` for workspace-specific
-configuration.
-
 ```text
-packages/[package-name]/
-├── src/                # Implementation logic
-├── components/         # Shared UI primitives (Pure Preact)
-├── core/               # Critical business rules and logic
-├── hooks/              # Custom Preact hooks
-├── styles/             # Component-specific BEM CSS
-├── types/              # Zod schemas and TS Interfaces
-├── utils/              # Helper functions
-├── wrappers/           # HOCs and provider wrappers
-├── deno.json           # Package configuration
-└── mod.ts              # Main entry point for the workspace
+packages/[package]/
+├── components/ islands/ styles/ hooks/ wrappers/ types/ core/   # (populate as needed)
+├── [sub-package]/      # multi-export taxonomy — mirrors the same 7-folder shape internally
+│   ├── components/ styles/ types/ … + mod.ts
+├── deno.json           # package config + multi-export sub-paths
+└── mod.ts              # entry barrel
 ```
 
-### 2. Feature-Based Application Structure (/apps/web/features/)
+Package-wide shared helpers/types live at the **package-level** `core/`/`types/`; a sub-package
+(e.g. `@projective/ui/layout`) imports those and adds its own `components/`, `styles/`, etc. (See
+`packages/ui/` for the reference implementation: package `core/`+`types/`, sub-packages `layout/`
+and `system/`.)
 
-To prevent the /routes directory from becoming bloated, we utilize a "Feature Folder" pattern. The
-/routes directory in the root simply imports and exports the "Fat" components from these feature
-directories.
+### 2. Feature-Based Application Structure (`/apps/web/features/`)
+
+To keep `/routes` thin, a "Feature Folder" pattern hosts the fat controllers; `routes/` re-exports
+them. Features use the same seven folders and **may add** `routes/` (fat page components) and
+`services/` (feature-specific API/logic) for this pattern.
 
 ```text
 apps/web/features/[feature-group]/[sub-feature]/
-├── components/         # Local, route-specific components
-├── contexts/           # Local state management (Signals/Context)
-├── contracts/          # Feature-specific interfaces
-├── islands/            # Hydrated components (*.island.tsx)
-├── routes/             # "Fat" page components (Controller logic)
-├── services/           # Feature-specific API callers/logic
-└── styles/             # Feature-specific BEM CSS mapping
+├── components/ islands/ styles/ hooks/ wrappers/ types/ core/   # the unified seven
+├── routes/             # (feature-only) "fat" page components
+└── services/           # (feature-only) API callers / logic
 ```
 
 ### 3. Fresh 2.x Vite Configuration
@@ -1411,22 +1428,22 @@ of concerns.
  * apps/web/vite.config.ts
  * Configures the Fresh 2.x Vite environment for Projective.
  */
-import { defineConfig } from 'vite';
-import fresh from '@fresh/vite';
+import { defineConfig } from "vite";
+import fresh from "@fresh/vite";
 
 export default defineConfig({
 	plugins: [
 		fresh({
-			serverEntry: './main.ts',
-			clientEntry: './client.ts',
+			serverEntry: "./main.ts",
+			clientEntry: "./client.ts",
 			// Define centralized directories for standard Fresh behavior
-			islandsDir: './islands',
-			routeDir: './routes',
-			staticDir: ['static', 'generated'],
+			islandsDir: "./islands",
+			routeDir: "./routes",
+			staticDir: ["static", "generated"],
 			// Allow Fresh to discover islands within the features/ directory
 			islandSpecifiers: [
-				'./features/**/islands/*.island.tsx',
-				'@projective/ui/*.island.tsx',
+				"./features/**/islands/*.island.tsx",
+				"@projective/ui/*.island.tsx",
 			],
 			// Ignore folders to prevent route collisions during crawling
 			ignore: [/[\\/]internal[\\/]/],

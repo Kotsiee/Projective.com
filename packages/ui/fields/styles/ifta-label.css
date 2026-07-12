@@ -1,0 +1,30 @@
+/*
+ * IftaLabel — static in-field top-aligned label. The label pins to the top of the field; the wrapped
+ * input reserves top padding so value + label stack without overlap. No animation (denser than
+ * FloatLabel).
+ */
+
+.ui-ifta-label {
+	position: relative;
+	display: inline-flex;
+	inline-size: 100%;
+}
+.ui-ifta-label > .ui-field,
+.ui-ifta-label > .ui-input {
+	inline-size: 100%;
+	--field-height: 3.25rem;
+	align-items: flex-end;
+	padding-block: 1.1rem var(--space-2);
+}
+.ui-ifta-label__label {
+	position: absolute;
+	inset-block-start: 0.4rem;
+	inset-inline-start: var(--space-3);
+	pointer-events: none;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+.ui-ifta-label:focus-within .ui-ifta-label__label {
+	color: var(--primary);
+}

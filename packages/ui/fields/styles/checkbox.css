@@ -1,0 +1,191 @@
+/*
+ * Checkbox + TriStateCheckbox — a token-only boolean/third-state control. The real <input> is
+ * visually hidden but keeps focus + form semantics; the styled `__box` mirrors its state via the
+ * native `:checked`/`:indeterminate` pseudos (Checkbox) or a `data-state` attribute (TriState). Full
+ * outline is allowed: these are interactive (§B.4).
+ */
+
+.ui-checkbox {
+	--cb-size: 1.25rem;
+	--cb-radius: var(--radius-sm);
+	--cb-font: 0.9375rem;
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: var(--cb-font);
+	color: var(--on-surface);
+	cursor: pointer;
+	user-select: none;
+}
+
+.ui-checkbox--size-sm {
+	--cb-size: 1rem;
+	--cb-radius: var(--radius-xs);
+	--cb-font: 0.8125rem;
+}
+.ui-checkbox--size-lg {
+	--cb-size: 1.5rem;
+	--cb-radius: var(--radius-base);
+	--cb-font: 1.0625rem;
+}
+
+.ui-checkbox--disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+/* #region Visually-hidden native control (kept focusable for keyboard + form submit) */
+.ui-checkbox__input {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+/* #endregion */
+
+/* #region The styled box */
+.ui-checkbox__box {
+	position: relative;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--cb-size);
+	block-size: var(--cb-size);
+	color: var(--on-primary);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--cb-radius);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-checkbox:hover .ui-checkbox__box {
+	border-color: var(--on-surface-variant);
+}
+
+/* Checked / indeterminate fills — driven by native pseudos so visuals need zero JS. */
+.ui-checkbox__input:checked + .ui-checkbox__box,
+.ui-checkbox__input:indeterminate + .ui-checkbox__box {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.ui-checkbox__input:focus-visible + .ui-checkbox__box {
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Glyphs: hidden until the matching state is active. */
+.ui-checkbox__check,
+.ui-checkbox__dash {
+	opacity: 0;
+	transform: scale(0.6);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+.ui-checkbox__check {
+	inline-size: 68%;
+	block-size: 68%;
+}
+.ui-checkbox__dash {
+	position: absolute;
+	inline-size: 58%;
+	block-size: 2px;
+	border-radius: var(--radius-xs);
+	background: currentColor;
+}
+.ui-checkbox__input:checked + .ui-checkbox__box .ui-checkbox__check {
+	opacity: 1;
+	transform: scale(1);
+}
+.ui-checkbox__input:indeterminate + .ui-checkbox__box .ui-checkbox__check {
+	opacity: 0;
+}
+.ui-checkbox__input:indeterminate + .ui-checkbox__box .ui-checkbox__dash {
+	opacity: 1;
+	transform: scale(1);
+}
+/* #endregion */
+
+/* #region Status accents */
+.ui-checkbox--invalid .ui-checkbox__box {
+	border-color: var(--danger);
+}
+.ui-checkbox--invalid .ui-checkbox__input:checked + .ui-checkbox__box,
+.ui-checkbox--invalid .ui-checkbox__input:indeterminate + .ui-checkbox__box {
+	background: var(--danger);
+	border-color: var(--danger);
+}
+.ui-checkbox--success .ui-checkbox__box {
+	border-color: var(--success);
+}
+.ui-checkbox--warning .ui-checkbox__box {
+	border-color: var(--warning);
+}
+/* #endregion */
+
+.ui-checkbox__label {
+	line-height: 1.3;
+}
+.ui-checkbox__required {
+	margin-inline-start: 0.15em;
+	color: var(--danger);
+}
+
+/* #region TriStateCheckbox — a role=checkbox button cycling empty / true / false */
+.ui-tristate-checkbox {
+	appearance: none;
+	background: none;
+	padding: 0;
+}
+.ui-tristate-checkbox .ui-checkbox__cross {
+	inline-size: 60%;
+	block-size: 60%;
+	opacity: 0;
+	transform: scale(0.6);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+.ui-tristate-checkbox[data-state="true"] .ui-checkbox__box,
+.ui-tristate-checkbox[data-state="false"] .ui-checkbox__box {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.ui-tristate-checkbox[data-state="false"] .ui-checkbox__box {
+	background: var(--danger);
+	border-color: var(--danger);
+}
+.ui-tristate-checkbox[data-state="true"] .ui-checkbox__check {
+	opacity: 1;
+	transform: scale(1);
+}
+.ui-tristate-checkbox[data-state="false"] .ui-checkbox__cross {
+	opacity: 1;
+	transform: scale(1);
+}
+.ui-tristate-checkbox:focus-visible {
+	outline: none;
+}
+.ui-tristate-checkbox:focus-visible .ui-checkbox__box {
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-checkbox__box,
+	.ui-checkbox__check,
+	.ui-checkbox__dash,
+	.ui-tristate-checkbox .ui-checkbox__cross {
+		transition-duration: 0ms;
+	}
+}

@@ -1,0 +1,253 @@
+/*
+ * TreeTable (ui-treetable) — tabular tree on the token contract. Shares the grid-track alignment
+ * strategy of ui-table; the first column adds a depth indent (`--ui-treetable-indent` × step) and a
+ * disclosure toggle. Separation is hairlines + tonal header tint only (§B.4).
+ */
+
+/* #region Shell */
+.ui-treetable {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	overflow: hidden;
+}
+.ui-treetable--flex {
+	block-size: 100%;
+}
+/* #endregion */
+
+/* #region Rows + cells */
+.ui-treetable__row {
+	display: grid;
+	grid-template-columns: var(--ui-treetable-cols);
+	align-items: stretch;
+	min-inline-size: max-content;
+}
+.ui-treetable__cell {
+	display: flex;
+	align-items: center;
+	justify-content: var(--ui-treetable-align, start);
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ui-treetable__cell--check {
+	justify-content: center;
+	padding-inline: var(--space-2);
+}
+/* #endregion */
+
+/* #region Header */
+.ui-treetable__thead {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: var(--z-sticky);
+	background: var(--surface-2);
+}
+.ui-treetable__row--head {
+	border-block-end: 1px solid var(--outline);
+	font-size: 0.8125rem;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	color: var(--on-surface-variant);
+	text-transform: uppercase;
+}
+.ui-treetable__cell--head {
+	padding: 0;
+}
+.ui-treetable__head-button {
+	display: inline-flex;
+	flex: 1 1 auto;
+	align-items: center;
+	justify-content: inherit;
+	gap: var(--space-1);
+	inline-size: 100%;
+	block-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	font: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	color: inherit;
+	background: transparent;
+	border: none;
+	cursor: default;
+}
+.ui-treetable__cell--sortable .ui-treetable__head-button {
+	cursor: pointer;
+}
+.ui-treetable__head-button:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-treetable__head-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ui-treetable__sort-icon {
+	flex: 0 0 auto;
+	font-size: 0.75em;
+	opacity: 0.7;
+}
+.ui-treetable__cell--head[aria-sort="ascending"] .ui-treetable__sort-icon,
+.ui-treetable__cell--head[aria-sort="descending"] .ui-treetable__sort-icon {
+	opacity: 1;
+	color: var(--primary);
+}
+/* #endregion */
+
+/* #region Hierarchical node */
+.ui-treetable__node {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+.ui-treetable__indent {
+	flex: 0 0 auto;
+	inline-size: calc(var(--ui-treetable-indent, 0) * var(--space-5));
+}
+.ui-treetable__toggle {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-treetable__toggle--placeholder {
+	cursor: default;
+}
+.ui-treetable__toggle:not(.ui-treetable__toggle--placeholder):focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-treetable__toggle-icon {
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-treetable__toggle[aria-expanded="true"] .ui-treetable__toggle-icon {
+	transform: rotate(90deg);
+}
+.ui-treetable__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ui-treetable__checkbox {
+	inline-size: 1rem;
+	block-size: 1rem;
+	accent-color: var(--primary);
+	cursor: pointer;
+}
+/* #endregion */
+
+/* #region Body */
+.ui-treetable__tbody {
+	position: relative;
+	min-block-size: 0;
+	flex: 1 1 auto;
+	overflow-x: auto;
+}
+.ui-treetable__tbody--scroll {
+	overflow-y: auto;
+	block-size: var(--ui-treetable-body-h, auto);
+	max-block-size: var(--ui-treetable-body-h, 28rem);
+	overscroll-behavior: contain;
+}
+.ui-treetable__tbody--virtual {
+	overflow-anchor: none;
+}
+.ui-treetable__row:not(.ui-treetable__row--head) {
+	border-block-end: 1px solid var(--border-subtle);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+	cursor: pointer;
+}
+.ui-treetable__row:not(.ui-treetable__row--head):hover {
+	background: var(--surface-1);
+}
+.ui-treetable__row:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-treetable__row--selected {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.ui-treetable__row--selected:hover {
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+/* #endregion */
+
+/* #region Empty + overlay */
+.ui-treetable__row--empty {
+	grid-template-columns: 1fr;
+	cursor: default;
+}
+.ui-treetable__empty {
+	grid-column: 1 / -1;
+	padding: var(--space-7) var(--space-4);
+	text-align: center;
+	color: var(--text-secondary);
+}
+.ui-treetable__overlay {
+	position: absolute;
+	inset: 0;
+	z-index: var(--z-raised);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+.ui-treetable__spinner {
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border: 3px solid var(--outline);
+	border-block-start-color: var(--primary);
+	border-radius: 50%;
+	animation: ui-treetable-spin 0.7s linear infinite;
+}
+@keyframes ui-treetable-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+/* #endregion */
+
+/* #region Virtual */
+.ui-treetable__sizer {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--v-total, auto);
+}
+.ui-treetable__virtual-row {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--v-top, 0);
+}
+/* #endregion */
+
+/* #region Motion guard */
+@media (prefers-reduced-motion: reduce) {
+	.ui-treetable__spinner {
+		animation-duration: 0ms;
+	}
+	.ui-treetable__row,
+	.ui-treetable__toggle-icon {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */

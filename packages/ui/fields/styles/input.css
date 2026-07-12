@@ -1,0 +1,38 @@
+/*
+ * InputText + adornment slots. Builds on `.ui-field` (styles/field.css). Adornments are the shared
+ * anchor for IconField / InputIcon and for InputText `start`/`end` slots.
+ */
+
+.ui-input--block {
+	display: flex;
+	inline-size: 100%;
+}
+
+.ui-input__input {
+	/* Inherit .ui-field__input; kept for BEM addressability + future overrides. */
+	text-overflow: ellipsis;
+}
+
+/* #region Adornments (non-interactive text/icon inside the control) */
+.ui-input__adornment {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+	font-size: 0.95em;
+	flex: 0 0 auto;
+	pointer-events: none;
+}
+.ui-input__adornment--start {
+	margin-inline-end: calc(-1 * var(--space-1));
+}
+.ui-input__adornment--end {
+	margin-inline-start: calc(-1 * var(--space-1));
+}
+/* Interactive adornments (e.g. a clear button) re-enable pointer events. */
+.ui-input__adornment button,
+.ui-input__adornment a,
+.ui-input__adornment [role="button"] {
+	pointer-events: auto;
+}
+/* #endregion */

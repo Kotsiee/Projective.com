@@ -1,0 +1,13 @@
+/* Box — the base layout primitive. Real declarations here; components pass token refs as vars. */
+.ui-box {
+	box-sizing: border-box;
+	min-width: 0;
+	padding: var(--box-pt, 0) var(--box-pr, 0) var(--box-pb, 0) var(--box-pl, 0);
+	margin: var(--box-mt, 0) var(--box-mr, 0) var(--box-mb, 0) var(--box-ml, 0);
+	background: var(--box-bg, transparent);
+	border-radius: var(--box-radius, 0);
+}
+
+.ui-box--grow {
+	flex: 1 1 0%;
+}

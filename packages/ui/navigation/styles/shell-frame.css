@@ -1,0 +1,20 @@
+/*
+ * ShellFrame — a nested layout layer (DESIGN_SYSTEM.md Part D). Top-left ALWAYS curved; bottom-left
+ * curves only when a parent track remains beneath (data-flush-bottom="false"). Right corners stay
+ * flush to the far viewport edges. No layout `display` here — each zone sets its own.
+ */
+.ui-shell-frame {
+	--frame-bl-radius: 0;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	min-inline-size: 0;
+	background: var(--frame-surface, var(--surface));
+	color: var(--on-surface);
+	border-start-start-radius: var(--radius-container-lg);
+	border-end-start-radius: var(--frame-bl-radius);
+	overflow: clip;
+}
+
+.ui-shell-frame[data-flush-bottom="false"] {
+	--frame-bl-radius: var(--radius-container-lg);
+}

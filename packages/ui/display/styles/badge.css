@@ -1,0 +1,91 @@
+/* Badge — small count/status pill. No border: severity is carried by fill colour + text. */
+.ui-badge {
+	--badge-accent: var(--primary);
+	--badge-on: var(--on-primary);
+
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding-inline: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--badge-on);
+	background: var(--badge-accent);
+	border-radius: var(--radius-sm);
+	white-space: nowrap;
+}
+
+.ui-badge--rounded {
+	border-radius: 999px;
+}
+
+/* #region Severities */
+.ui-badge--primary {
+	--badge-accent: var(--primary);
+	--badge-on: var(--on-primary);
+}
+.ui-badge--secondary {
+	--badge-accent: var(--secondary);
+	--badge-on: var(--on-surface);
+}
+.ui-badge--success {
+	--badge-accent: var(--success);
+	--badge-on: var(--on-success);
+}
+.ui-badge--info {
+	--badge-accent: var(--secondary);
+	--badge-on: var(--on-primary);
+}
+.ui-badge--warning {
+	--badge-accent: var(--warning);
+	--badge-on: var(--on-warning);
+}
+.ui-badge--help {
+	--badge-accent: var(--tertiary);
+	--badge-on: var(--on-primary);
+}
+.ui-badge--danger {
+	--badge-accent: var(--danger);
+	--badge-on: var(--on-danger);
+}
+/* #endregion */
+
+/* #region Sizes */
+.ui-badge--size-sm {
+	min-inline-size: 1rem;
+	block-size: 1rem;
+	font-size: 0.625rem;
+	padding-inline: var(--space-1);
+}
+.ui-badge--size-lg {
+	min-inline-size: 1.5rem;
+	block-size: 1.5rem;
+	font-size: 0.75rem;
+	padding-inline: var(--space-3);
+}
+/* #endregion */
+
+.ui-badge--dot {
+	min-inline-size: 0.5rem;
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	padding: 0;
+	border-radius: 999px;
+}
+
+/* #region OverlayBadge */
+.ui-overlay-badge {
+	position: relative;
+	display: inline-flex;
+}
+.ui-overlay-badge__badge {
+	position: absolute;
+	inset-block-start: -0.35rem;
+	inset-inline-end: -0.35rem;
+	box-shadow: 0 0 0 2px var(--surface);
+}
+/* #endregion */

@@ -1,0 +1,136 @@
+/*
+ * PanelMenu (ui-panelmenu) — accordion sidebar. Sections separate by tint + a single hairline and a
+ * disclosure caret, never by four-sided boxes (§B.4). Expansion animates with a grid-rows height
+ * transition on --dur-medium; collapsed subtrees are removed from the tab order via visibility.
+ * Token-only; reduced-motion jumps to the final state.
+ */
+
+.ui-panelmenu {
+	display: block;
+	inline-size: 100%;
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+}
+.ui-panelmenu__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.ui-panelmenu__item {
+	display: block;
+}
+
+/* #region Rows */
+.ui-panelmenu__header,
+.ui-panelmenu__leaf {
+	--level: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	box-sizing: border-box;
+	min-block-size: 2.5rem;
+	padding-block: var(--space-2);
+	padding-inline-end: var(--space-3);
+	padding-inline-start: calc(var(--space-3) + var(--level) * var(--space-4));
+	font: inherit;
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	text-align: start;
+	text-decoration: none;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	outline: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-panelmenu__header {
+	font-weight: 600;
+}
+.ui-panelmenu__header:hover,
+.ui-panelmenu__leaf:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-panelmenu__header:focus-visible,
+.ui-panelmenu__leaf:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-panelmenu__header--disabled,
+.ui-panelmenu__leaf--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.ui-panelmenu__leaf--current {
+	color: var(--primary);
+	font-weight: 600;
+	box-shadow: inset 3px 0 0 var(--primary);
+}
+.ui-panelmenu__toggle {
+	flex: 0 0 auto;
+	inline-size: 1rem;
+	color: var(--on-surface-variant);
+	font-size: 0.75rem;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-panelmenu__icon {
+	flex: 0 0 auto;
+	inline-size: 1.25rem;
+	display: inline-flex;
+	justify-content: center;
+	color: var(--on-surface-variant);
+}
+.ui-panelmenu__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-panelmenu__badge {
+	flex: 0 0 auto;
+	min-inline-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1.25rem;
+	text-align: center;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: 999px;
+}
+.ui-panelmenu__separator {
+	block-size: 1px;
+	margin: var(--space-1) var(--space-3);
+	background: var(--border-subtle);
+}
+/* #endregion */
+
+/* #region Collapsible content */
+.ui-panelmenu__content {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-medium) var(--ease-standard);
+}
+.ui-panelmenu__content--open {
+	grid-template-rows: 1fr;
+}
+.ui-panelmenu__content-inner {
+	overflow: hidden;
+	min-block-size: 0;
+	visibility: hidden;
+	transition: visibility 0s linear var(--dur-medium);
+}
+.ui-panelmenu__content--open > .ui-panelmenu__content-inner {
+	visibility: visible;
+	transition-delay: 0s;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-panelmenu__content,
+	.ui-panelmenu__toggle,
+	.ui-panelmenu__header,
+	.ui-panelmenu__leaf {
+		transition-duration: 0ms;
+	}
+}

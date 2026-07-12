@@ -6,15 +6,13 @@
 > numbers, state machine, and edge cases that `brain.md` deliberately leaves abstract. It
 > consolidates the former `monetization.md`, `payout.md`, and `wallets.md`.
 >
-> **⚠️ Unresolved conflict:** This document and `investor-summary.md` disagree on the platform
-> service fee — this file (and the wallet ledger example below) consistently say **5%**, while
-> `investor-summary.md` states **10%**. Neither figure appears in `brain.md`. Resolve which is
-> current before using either number externally.
->
-> **Implemented value:** the escrow engine now operationalizes **5%** — `security.platform_params`
-> `platform_fee_bp = 500` (set in migration `0305`), applied on escrow release by
-> `finance.fn_release_ticket_escrow`. The `investor-summary.md` 10% figure remains **unreconciled**
-> for external/investor use; this note preserves the conflict rather than erasing it.
+> **✅ Resolved (2026-07-12):** the platform service fee is **5%**, plus payment-processor (Stripe)
+> fees passed through — this is now canonical. `investor-summary.md` has been corrected from its
+> former 10% figure to match. The escrow engine already operationalizes 5% —
+> `security.platform_params` `platform_fee_bp = 500` (migration `0305`), applied on escrow release
+> by `finance.fn_release_ticket_escrow`. Decision logged in the root `CLAUDE.md` "Resolved
+> Decisions" table. **Stripe processing costs are separate from the 5% and are passed through** (see
+> §1.1 and §9), not absorbed into the service fee.
 
 ---
 

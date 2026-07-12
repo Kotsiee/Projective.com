@@ -1,0 +1,216 @@
+/*
+ * Tree (ui-tree) — hierarchical navigator on the token contract. Depth is expressed as inline
+ * padding (`--ui-tree-indent` × step); disclosure toggles, checkboxes and drop indicators are the
+ * only bordered/outlined affordances (§B.4). Selection is a tonal tint, never a full border.
+ */
+
+/* #region Shell */
+.ui-tree {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	overflow: hidden;
+}
+.ui-tree--flex {
+	block-size: 100%;
+}
+/* #endregion */
+
+/* #region Filter */
+.ui-tree__filter {
+	flex: 0 0 auto;
+	padding: var(--space-2);
+	border-block-end: 1px solid var(--border-subtle);
+	background: var(--surface-1);
+}
+.ui-tree__filter-input {
+	inline-size: 100%;
+	box-sizing: border-box;
+	appearance: none;
+	block-size: 2rem;
+	padding-inline: var(--space-3);
+	font: inherit;
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-sm);
+}
+.ui-tree__filter-input:focus {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-tree__filter-input::placeholder {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region List */
+.ui-tree__list {
+	position: relative;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	padding: var(--space-1);
+}
+.ui-tree__list--scroll {
+	overflow-y: auto;
+	block-size: var(--ui-tree-body-h, auto);
+	max-block-size: var(--ui-tree-body-h, 24rem);
+	overscroll-behavior: contain;
+}
+.ui-tree__list--virtual {
+	overflow-anchor: none;
+}
+.ui-tree__empty {
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Node */
+.ui-tree__node {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: var(--space-1);
+	padding-inline-start: calc(var(--ui-tree-indent, 0) * var(--space-4) + var(--space-1));
+	padding-inline-end: var(--space-2);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-tree__node:hover {
+	background: var(--surface-1);
+}
+.ui-tree__node--focused,
+.ui-tree__node:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-tree__node--selected {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	font-weight: 600;
+}
+.ui-tree__node--selected:hover {
+	background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.ui-tree__indent {
+	flex: 0 0 auto;
+	inline-size: 0;
+}
+.ui-tree__toggle {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding: 0;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+.ui-tree__toggle--placeholder {
+	cursor: default;
+	visibility: hidden;
+}
+.ui-tree__toggle-icon {
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-tree__node[aria-expanded="true"] > .ui-tree__toggle .ui-tree__toggle-icon {
+	transform: rotate(90deg);
+}
+.ui-tree__checkbox {
+	flex: 0 0 auto;
+	inline-size: 1rem;
+	block-size: 1rem;
+	accent-color: var(--primary);
+	cursor: pointer;
+}
+.ui-tree__icon {
+	flex: 0 0 auto;
+	display: inline-flex;
+	color: var(--on-surface-variant);
+}
+.ui-tree__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ui-tree__mark {
+	padding-inline: 0.05em;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--warning) 45%, transparent);
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Drag + drop indicators */
+.ui-tree__node--drop-inside {
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+	box-shadow: inset 0 0 0 2px var(--primary);
+}
+.ui-tree__node--drop-before::before,
+.ui-tree__node--drop-after::after {
+	content: "";
+	position: absolute;
+	inset-inline: var(--space-1);
+	block-size: 2px;
+	background: var(--primary);
+}
+.ui-tree__node--drop-before::before {
+	inset-block-start: 0;
+}
+.ui-tree__node--drop-after::after {
+	inset-block-end: 0;
+}
+/* #endregion */
+
+/* #region Context menu */
+.ui-tree__context {
+	position: absolute;
+	inset-inline-end: var(--space-2);
+	inset-block-start: 100%;
+	z-index: var(--z-overlay);
+	min-inline-size: 10rem;
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+}
+/* #endregion */
+
+/* #region Virtual */
+.ui-tree__sizer {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--v-total, auto);
+}
+.ui-tree__virtual-row {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--v-top, 0);
+}
+/* #endregion */
+
+/* #region Motion guard */
+@media (prefers-reduced-motion: reduce) {
+	.ui-tree__node,
+	.ui-tree__toggle-icon {
+		transition-duration: 0ms;
+	}
+}
+/* #endregion */

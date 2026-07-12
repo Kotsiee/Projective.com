@@ -1,0 +1,39 @@
+/*
+ * Divider / Separator — the razor-thin single-line indicator (§B.4). NOT a four-sided border;
+ * reserved as the one hairline between regions when spacing/tint alone won't read.
+ */
+.ui-divider {
+	border: 0;
+	margin: 0;
+	flex-shrink: 0;
+	background: var(--border-subtle);
+}
+
+.ui-divider--horizontal {
+	block-size: 1px;
+	inline-size: 100%;
+}
+
+.ui-divider--vertical {
+	inline-size: 1px;
+	align-self: stretch;
+	min-block-size: 1em;
+}
+
+/* Labelled divider: a centered caption flanked by two hairlines. */
+.ui-divider--labelled {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3, 0.75rem);
+	background: none;
+	color: var(--text-secondary);
+	font-size: 0.8125rem;
+}
+
+.ui-divider--labelled::before,
+.ui-divider--labelled::after {
+	content: "";
+	flex: 1 1 0%;
+	block-size: 1px;
+	background: var(--border-subtle);
+}

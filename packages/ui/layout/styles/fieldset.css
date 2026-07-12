@@ -1,0 +1,79 @@
+/* Fieldset — semantic grouping. The legend outline is the single sanctioned exception to "no full
+   borders on non-interactive content": a <fieldset> groups interactive controls, so a hairline
+   outline is the correct affordance, not decoration. */
+.ui-fieldset {
+	min-width: 0;
+	margin: 0;
+	padding: var(--space-4);
+	background: var(--surface-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+}
+
+.ui-fieldset__legend {
+	padding: 0 var(--space-2);
+	font-weight: 600;
+}
+
+.ui-fieldset__toggle {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	color: inherit;
+	font: inherit;
+	font-weight: inherit;
+	cursor: pointer;
+}
+
+.ui-fieldset__toggle:hover {
+	background: var(--surface-2);
+}
+
+.ui-fieldset__toggle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.ui-fieldset__chevron {
+	flex: none;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-right: 2px solid var(--on-surface-variant);
+	border-bottom: 2px solid var(--on-surface-variant);
+	transform: rotate(45deg);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-fieldset__chevron[data-collapsed="true"] {
+	transform: rotate(-45deg);
+}
+
+.ui-fieldset__collapse {
+	display: grid;
+	grid-template-rows: 1fr;
+	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
+}
+
+.ui-fieldset__collapse[data-collapsed="true"] {
+	grid-template-rows: 0fr;
+}
+
+.ui-fieldset__body {
+	overflow: hidden;
+	min-height: 0;
+	padding-top: var(--space-3);
+}
+
+.ui-fieldset__body--settled {
+	visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-fieldset__chevron {
+		transition: none;
+	}
+}

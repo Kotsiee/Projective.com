@@ -1,0 +1,43 @@
+/*
+ * Ripple directive styles (Cat 10). The `useRipple` hook appends `.ui-ripple` spans into a
+ * `.ui-ripple-host`. Token-only; the ripple tint defaults to translucent `currentColor` so it reads
+ * on any severity surface. Suppressed under reduced-motion (the hook never spawns a span there, and
+ * the animation collapses to 0ms as a belt-and-braces guard).
+ */
+
+.ui-ripple-host {
+	position: relative;
+	overflow: hidden;
+}
+
+/* Wrapper emitted by the <Ripple> directive component: hugs its single child and provides the
+ * positioning context before hydration adds `.ui-ripple-host`. */
+.ui-ripple-wrap {
+	position: relative;
+	display: inline-flex;
+	overflow: hidden;
+	border-radius: inherit;
+}
+
+.ui-ripple {
+	position: absolute;
+	border-radius: 50%;
+	pointer-events: none;
+	transform: scale(0);
+	background: color-mix(in srgb, currentColor 30%, transparent);
+	animation: ui-ripple-expand var(--dur-slow) var(--ease-standard);
+}
+
+@keyframes ui-ripple-expand {
+	to {
+		transform: scale(1);
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-ripple {
+		animation-duration: 0ms;
+		display: none;
+	}
+}

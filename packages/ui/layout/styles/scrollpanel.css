@@ -1,0 +1,76 @@
+/* ScrollPanel — custom thin scrollbars over a natively-scrolling viewport (wheel/touch/keyboard all
+   work natively; only the visible thumb is bespoke). Track thickness + thumb tokens only. */
+.ui-scrollpanel {
+	position: relative;
+	min-width: 0;
+}
+
+.ui-scrollpanel__viewport {
+	height: var(--scrollpanel-height, 100%);
+	overflow: auto;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.ui-scrollpanel__viewport::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+}
+
+.ui-scrollpanel__viewport:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.ui-scrollpanel__content {
+	min-width: 100%;
+	width: max-content;
+}
+
+.ui-scrollpanel__track {
+	position: absolute;
+	pointer-events: none;
+	z-index: var(--z-raised);
+}
+
+.ui-scrollpanel__track--x {
+	right: var(--space-1);
+	bottom: 2px;
+	left: var(--space-1);
+	height: 8px;
+}
+
+.ui-scrollpanel__track--y {
+	top: var(--space-1);
+	right: 2px;
+	bottom: var(--space-1);
+	width: 8px;
+}
+
+.ui-scrollpanel__thumb {
+	position: absolute;
+	pointer-events: auto;
+	background: color-mix(in srgb, var(--on-surface-variant) 45%, transparent);
+	border-radius: var(--radius-xl);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+	touch-action: none;
+}
+
+.ui-scrollpanel__track--x .ui-scrollpanel__thumb {
+	top: 0;
+	left: var(--thumb-offset, 0);
+	width: var(--thumb-size, 24px);
+	height: 100%;
+}
+
+.ui-scrollpanel__track--y .ui-scrollpanel__thumb {
+	top: var(--thumb-offset, 0);
+	left: 0;
+	width: 100%;
+	height: var(--thumb-size, 24px);
+}
+
+.ui-scrollpanel__thumb:hover,
+.ui-scrollpanel__thumb:active {
+	background: color-mix(in srgb, var(--on-surface-variant) 70%, transparent);
+}

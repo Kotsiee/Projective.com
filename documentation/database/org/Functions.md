@@ -6,8 +6,8 @@ backfilled. See `brain2.md`'s Database section for the migration-numbering and R
 
 ## `org.enable_freelancer_profile(p_payload jsonb) → jsonb`
 
-**Migration:** `supabase/migrations/0313_freelancer_conversion.sql` · **Security:** `SECURITY DEFINER`
-· **Grant:** `authenticated`.
+**Migration:** `supabase/migrations/0313_freelancer_conversion.sql` · **Security:**
+`SECURITY DEFINER` · **Grant:** `authenticated`.
 
 The self-serve "Become a Partner" conversion — how a user who onboarded as a Client/Operator unlocks
 a freelancer profile after the fact (persona is no longer fixed at signup; cf.
@@ -16,10 +16,12 @@ a freelancer profile after the fact (persona is no longer fixed at signup; cf.
 
 In one transaction it:
 
-1. **Links** the freelancer record — `INSERT INTO org.freelancer_profiles (user_id, skills) … ON
-   CONFLICT (user_id) DO NOTHING` (the table is keyed by `user_id`; optional starter `skills` come
-   from `p_payload`).
-2. **Flips** `org.users_public.is_freelancer = true` (the denormalised flag `getMe` + nav gates read).
+1. **Links** the freelancer record —
+   `INSERT INTO org.freelancer_profiles (user_id, skills) … ON
+   CONFLICT (user_id) DO NOTHING`
+   (the table is keyed by `user_id`; optional starter `skills` come from `p_payload`).
+2. **Flips** `org.users_public.is_freelancer = true` (the denormalised flag `getMe` + nav gates
+   read).
 3. **Activates** the freelancer persona — upserts `security.session_context`
    (`active_profile_type = 'freelancer'`, `active_profile_id = user_id`), leaving any active team.
 4. **Audits** a genuine conversion only — `security.audit_logs` `freelancer.unlocked` (written from

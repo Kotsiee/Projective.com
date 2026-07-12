@@ -1,0 +1,139 @@
+/*
+ * TabMenu (ui-tabmenu) — top-bar anchor-style tab strip. The strip itself carries only a single
+ * bottom hairline (§B.4); the sliding ink-bar is the active indicator. Reduced motion collapses the
+ * ink-bar slide and the chevron scroll to an instant jump.
+ */
+
+.ui-tabmenu {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+	font-family: var(--font-sans);
+	border-block-end: 1px solid var(--border-subtle);
+}
+
+.ui-tabmenu__scroll {
+	flex: 1 1 auto;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.ui-tabmenu__scroll::-webkit-scrollbar {
+	display: none;
+}
+
+.ui-tabmenu__list {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-inline-size: max-content;
+}
+
+.ui-tabmenu__item {
+	display: flex;
+}
+
+.ui-tabmenu__tab {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+	font: inherit;
+	font-size: 0.9375rem;
+	font-weight: 500;
+	white-space: nowrap;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	text-decoration: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-tabmenu__tab:hover {
+	color: var(--on-surface);
+}
+
+.ui-tabmenu__tab--active {
+	color: var(--primary);
+	font-weight: 600;
+}
+
+.ui-tabmenu__tab--disabled {
+	color: var(--text-secondary);
+	opacity: 0.5;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+.ui-tabmenu__tab:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 3px var(--focus-ring);
+	border-radius: var(--radius-sm);
+}
+
+.ui-tabmenu__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.ui-tabmenu__badge {
+	min-inline-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1.25rem;
+	text-align: center;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: 999px;
+}
+
+.ui-tabmenu__ink {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-start: var(--ink-left, 0);
+	inline-size: var(--ink-width, 0);
+	block-size: 2px;
+	background: var(--primary);
+	transition:
+		inset-inline-start var(--dur-medium) var(--ease-standard),
+		inline-size var(--dur-medium) var(--ease-standard);
+}
+
+.ui-tabmenu__chevron {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	font-size: 1rem;
+	color: var(--on-surface-variant, var(--text-secondary));
+	background: var(--surface);
+	border: none;
+	cursor: pointer;
+}
+
+.ui-tabmenu__chevron:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.ui-tabmenu__chevron:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 3px var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-tabmenu__ink {
+		transition-duration: 0ms;
+	}
+
+	.ui-tabmenu__scroll {
+		scroll-behavior: auto;
+	}
+}

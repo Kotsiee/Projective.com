@@ -1,0 +1,39 @@
+/*
+ * HoverCard (ui-hovercard) — anchored rich preview. The trigger is an inline anchor; the panel is a
+ * fixed, floating surface positioned by --float-* custom properties. Elevated interactive surface, so
+ * a hairline + shadow is allowed. Token-only; presence fade/slide off [data-state].
+ */
+
+.ui-hovercard {
+	display: inline-flex;
+}
+.ui-hovercard__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	z-index: var(--z-overlay);
+	max-inline-size: var(--container-sm);
+	padding: var(--space-4);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+	opacity: 0;
+	transform: translateY(calc(-1 * var(--space-1)));
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+.ui-hovercard__panel--top {
+	transform: translateY(var(--space-1));
+}
+.ui-hovercard__panel[data-state="open"] {
+	opacity: 1;
+	transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-hovercard__panel {
+		transition-duration: 0ms;
+	}
+}

@@ -1,0 +1,28 @@
+/*
+ * Backdrop (ui-backdrop) — modal dimming scrim. Neutral tint over the whole layer; the fade runs off
+ * the [data-state] flip so both enter and exit animate. Closed state is fully transparent and
+ * click-through. Token-only.
+ */
+
+.ui-backdrop {
+	position: absolute;
+	inset: 0;
+	background: color-mix(in srgb, var(--on-surface) 42%, transparent);
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+.ui-backdrop--blur {
+	backdrop-filter: blur(var(--glass-blur));
+}
+.ui-backdrop[data-state="open"] {
+	opacity: 1;
+}
+.ui-backdrop[data-state="closed"] {
+	opacity: 0;
+	pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-backdrop {
+		transition-duration: 0ms;
+	}
+}

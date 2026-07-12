@@ -1,0 +1,193 @@
+/*
+ * Button — every PrimeNG treatment on the token contract. One accent pair (`--btn-accent` /
+ * `--btn-on`) is set per severity, then variants recolour fill/text/border from it. Full outline is
+ * allowed: buttons are interactive (§B.4).
+ */
+
+.ui-button {
+	--btn-accent: var(--primary);
+	--btn-on: var(--on-primary);
+	--btn-height: 2.5rem;
+	--btn-px: var(--space-4);
+	--btn-font: 0.9375rem;
+
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	block-size: var(--btn-height);
+	padding-inline: var(--btn-px);
+	font-family: var(--font-sans);
+	font-size: var(--btn-font);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--btn-on);
+	background: var(--btn-accent);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	user-select: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+.ui-button:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.ui-button:hover:not(:disabled) {
+	filter: brightness(0.94);
+}
+.ui-button:active:not(:disabled) {
+	transform: translateY(0.5px);
+}
+.ui-button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* #region Severities — set the accent pair only */
+.ui-button--primary {
+	--btn-accent: var(--primary);
+	--btn-on: var(--on-primary);
+}
+.ui-button--secondary {
+	--btn-accent: var(--secondary);
+	--btn-on: var(--on-surface);
+}
+.ui-button--success {
+	--btn-accent: var(--success);
+	--btn-on: var(--on-success);
+}
+.ui-button--info {
+	--btn-accent: var(--secondary);
+	--btn-on: var(--on-primary);
+}
+.ui-button--warning {
+	--btn-accent: var(--warning);
+	--btn-on: var(--on-warning);
+}
+.ui-button--help {
+	--btn-accent: var(--tertiary);
+	--btn-on: var(--on-primary);
+}
+.ui-button--danger {
+	--btn-accent: var(--danger);
+	--btn-on: var(--on-danger);
+}
+/* #endregion */
+
+/* #region Variants */
+.ui-button--outlined {
+	background: transparent;
+	color: var(--btn-accent);
+	border-color: var(--btn-accent);
+}
+.ui-button--outlined:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--btn-accent) 10%, transparent);
+	filter: none;
+}
+.ui-button--text {
+	background: transparent;
+	color: var(--btn-accent);
+	border-color: transparent;
+}
+.ui-button--text:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--btn-accent) 12%, transparent);
+	filter: none;
+}
+.ui-button--link {
+	background: transparent;
+	color: var(--btn-accent);
+	border-color: transparent;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	padding-inline: var(--space-1);
+}
+.ui-button--link:hover:not(:disabled) {
+	filter: none;
+	text-decoration-thickness: 2px;
+}
+/* #endregion */
+
+/* #region Modifiers */
+.ui-button--raised {
+	box-shadow: var(--elevation-low);
+}
+.ui-button--raised:hover:not(:disabled) {
+	box-shadow: var(--elevation-medium);
+}
+.ui-button--rounded {
+	border-radius: 999px;
+}
+.ui-button--fluid {
+	display: flex;
+	inline-size: 100%;
+}
+.ui-button--size-sm {
+	--btn-height: 2rem;
+	--btn-px: var(--space-3);
+	--btn-font: 0.8125rem;
+}
+.ui-button--size-lg {
+	--btn-height: 3rem;
+	--btn-px: var(--space-5);
+	--btn-font: 1.0625rem;
+}
+.ui-button--icon-only {
+	--btn-px: 0;
+	inline-size: var(--btn-height);
+	padding: 0;
+}
+/* #endregion */
+
+/* #region Parts */
+.ui-button__icon,
+.ui-button__spinner {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	font-size: 1.05em;
+}
+.ui-button__spinner {
+	inline-size: 1em;
+	block-size: 1em;
+	border: 2px solid currentColor;
+	border-inline-end-color: transparent;
+	border-radius: 50%;
+	animation: ui-button-spin 0.6s linear infinite;
+}
+.ui-button--loading .ui-button__label {
+	opacity: 0.85;
+}
+.ui-button__badge {
+	position: absolute;
+	inset-block-start: -0.4rem;
+	inset-inline-end: -0.4rem;
+	min-inline-size: 1.1rem;
+	block-size: 1.1rem;
+	padding-inline: 0.3rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.6875rem;
+	font-weight: 700;
+	color: var(--on-danger);
+	background: var(--danger);
+	border-radius: 999px;
+}
+@keyframes ui-button-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-button__spinner {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */

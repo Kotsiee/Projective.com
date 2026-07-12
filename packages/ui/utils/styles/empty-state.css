@@ -1,0 +1,77 @@
+/*
+ * EmptyState — centred placeholder on a tonal surface tint. Separation hierarchy (§B.4): no
+ * four-sided border on this non-interactive content; depth comes from a `--surface-1` tint, spacing
+ * and type weight. Token-only.
+ */
+
+.ui-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3);
+	padding-block: var(--space-7);
+	padding-inline: var(--space-5);
+	text-align: center;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+}
+
+.ui-empty--sm {
+	gap: var(--space-2);
+	padding-block: var(--space-5);
+}
+.ui-empty--lg {
+	gap: var(--space-4);
+	padding-block: var(--space-8);
+}
+
+/* #region Parts */
+.ui-empty__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 3rem;
+	block-size: 3rem;
+	font-size: 2rem;
+	line-height: 0;
+	color: var(--on-surface-variant);
+}
+.ui-empty--sm .ui-empty__icon {
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	font-size: 1.5rem;
+}
+.ui-empty--lg .ui-empty__icon {
+	inline-size: 4rem;
+	block-size: 4rem;
+	font-size: 2.75rem;
+}
+
+.ui-empty__title {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 1.0625rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.ui-empty__description {
+	margin: 0;
+	max-inline-size: var(--container-sm);
+	font-family: var(--font-sans);
+	font-size: 0.9375rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+.ui-empty__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+}
+/* #endregion */
