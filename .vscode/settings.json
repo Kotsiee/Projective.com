@@ -1,0 +1,40 @@
+{
+	"[javascript]": {
+		"editor.defaultFormatter": "denoland.vscode-deno"
+	},
+	"[javascriptreact]": {
+		"editor.defaultFormatter": "denoland.vscode-deno"
+	},
+	"[sql]": {
+		"editor.defaultFormatter": "cweijan.vscode-postgresql-client2"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "denoland.vscode-deno"
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "denoland.vscode-deno"
+	},
+	"cSpell.words": ["normalise", "PROJECTIVE", "supabase", "tabler"],
+	"deno.enable": true,
+	"deno.lint": true,
+	"deno.unstable": [
+		"bare-node-builtins",
+		"byonm",
+		"sloppy-imports",
+		"unsafe-proto",
+		"webgpu",
+		"broadcast-channel",
+		"worker-options",
+		"cron",
+		"kv",
+		"ffi",
+		"fs",
+		"http",
+		"net"
+	],
+	"editor.defaultFormatter": "denoland.vscode-deno",
+	"files.exclude": {
+		"node_modules": true
+	},
+	"editor.formatOnSave": true
+}

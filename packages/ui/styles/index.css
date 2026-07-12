@@ -1,0 +1,65 @@
+/*
+ * @projective/ui/styles — global token contract entry point.
+ *
+ * This file is the single import a consumer needs to receive the Projective token layer. It is the
+ * CSS side of DESIGN_SYSTEM.md Part A (Foundations). Component BEM stylesheets are imported by their
+ * own modules; this file defines only the framework-level custom properties and the synchronized
+ * theme-transition rule.
+ *
+ * Populated per DESIGN_SYSTEM.md — structural scaffold only below.
+ */
+
+:root {
+	/* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
+	--radius-scale: 1;
+	--shadow-intensity: 1;
+
+	/* --- Radius ramp (§A.3) --- */
+	--radius-xs: calc(4px * var(--radius-scale));
+	--radius-sm: calc(6px * var(--radius-scale));
+	--radius-base: calc(8px * var(--radius-scale));
+	--radius-lg: calc(12px * var(--radius-scale));
+	--radius-xl: calc(16px * var(--radius-scale));
+
+	/* --- Elevation ramp (§A.3) --- */
+	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
+	--elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
+	--elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
+
+	/* --- Motion (§B.5) --- */
+	--dur-fast: 150ms;
+	--dur-medium: 250ms;
+	--dur-slow: 350ms;
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
+	   runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
+}
+
+/* Simultaneous, frame-coherent theme crossfade — one clock across the whole tree (§B.5). */
+*,
+*::before,
+*::after {
+	transition:
+		color var(--dur-slow) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard),
+		fill var(--dur-slow) var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--dur-fast: 0ms;
+		--dur-medium: 0ms;
+		--dur-slow: 0ms;
+	}
+
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0ms !important;
+		animation: none !important;
+	}
+}

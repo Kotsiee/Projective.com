@@ -1,0 +1,20 @@
+{
+	"$comment": "Root Deno 2.x workspace. Members are added here as each package is scaffolded. Path aliases per documentation/architecture/SYSTEM_ARCHITECTURE.md §2. Do NOT list a member directory that does not yet exist — Deno errors on missing members.",
+	"workspace": [
+		"./packages/ui"
+	],
+	"imports": {
+		"@ui/": "./packages/ui/src/",
+		"@features/": "./apps/web/features/",
+		"@server/services/": "./packages/backend/services/"
+	},
+	"fmt": {
+		"useTabs": true,
+		"lineWidth": 100,
+		"semiColons": true,
+		"singleQuote": false
+	},
+	"lint": {
+		"rules": { "tags": ["recommended"] }
+	}
+}
