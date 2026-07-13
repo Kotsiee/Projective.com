@@ -1,0 +1,1600 @@
+/*
+ * auth.css — the redesigned auth/onboarding surface (join · login · forgot-password · verify).
+ *
+ * Design intent (this pass): a fixed, NON-SCROLLING two-column experience tuned for the updated
+ * lower-contrast palette. Softness over outlines — inputs and sections read through surface tint,
+ * depth, and spacing rather than hard borders (DESIGN_SYSTEM.md §B.4). One intentional glassmorphic
+ * card lives in the summary panel (a scoped, deliberate use — not wall-to-wall glass). Step changes
+ * slide/fade; the live "passport" values pop in with an elastic ease. Token-only, strict BEM.
+ * Reduced-motion is honoured globally (styles/index.css) — every animation below collapses there.
+ */
+
+/* Lock the whole page — the auth surface owns the viewport; nothing scrolls behind it. */
+:root:has(.auth),
+body:has(.auth) {
+	overflow: hidden;
+	height: 100dvh;
+}
+
+/* #region Frame */
+.auth {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	grid-template-columns: 1fr;
+	height: 100dvh;
+	overflow: hidden;
+	background: var(--bg);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+}
+
+@media (min-width: 880px) {
+	.auth {
+		grid-template-columns: clamp(22rem, 42%, 32rem) minmax(0, 1fr);
+	}
+	.auth--wide {
+		grid-template-columns: clamp(22rem, 40%, 34rem) minmax(0, 1fr);
+	}
+}
+
+.auth__aside {
+	display: none;
+	position: relative;
+	overflow: hidden;
+	min-height: 0;
+}
+
+@media (min-width: 880px) {
+	.auth__aside {
+		display: block;
+	}
+}
+
+.auth__main {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	height: 100dvh;
+}
+
+.auth__topbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding: var(--space-4) var(--space-5);
+	flex: none;
+}
+
+.auth__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+	text-decoration: none;
+	color: inherit;
+	font-weight: 650;
+	border-radius: var(--radius-sm);
+}
+
+.auth__brand:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.auth__mark {
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
+	border-radius: var(--radius-sm);
+	background: radial-gradient(
+		120% 120% at 30% 20%,
+		color-mix(in srgb, var(--primary) 70%, white),
+		var(--primary)
+	);
+	box-shadow: var(--elevation-low);
+}
+
+.auth__brand-text {
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+}
+
+/* The centred stage. min-height:0 lets it shrink; overflow guarded so the page never scrolls. */
+.auth__stage {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	padding: var(--space-3) clamp(var(--space-4), 5vw, var(--space-7)) var(--space-6);
+	overflow: hidden;
+}
+
+.auth__panel {
+	inline-size: 100%;
+	max-width: 27rem;
+	max-height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.auth--wide .auth__panel {
+	max-width: 34rem;
+}
+
+.auth__footer {
+	margin-top: var(--space-4);
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+	text-align: center;
+}
+/* #endregion */
+
+/* #region Summary panel (left) */
+.auth-summary {
+	position: relative;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	padding: clamp(var(--space-5), 3vw, var(--space-7));
+	color: var(--on-surface);
+	isolation: isolate;
+}
+
+/* Calm tonal backdrop + soft primary aura — the surface the glass card blurs over. */
+.auth-summary::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -2;
+	background:
+		radial-gradient(
+			90% 60% at 12% 8%,
+			color-mix(in srgb, var(--primary) 26%, transparent),
+			transparent 70%
+		),
+		radial-gradient(
+		80% 70% at 100% 100%,
+		color-mix(in srgb, var(--tertiary, var(--primary)) 20%, transparent),
+		transparent 70%
+	),
+		var(--surface-1);
+}
+
+.auth-summary__illustration {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	overflow: hidden;
+	opacity: 0.9;
+}
+
+.auth-summary__copy {
+	flex: none;
+	max-width: 24rem;
+}
+
+.auth-motif-wrap {
+	margin-bottom: var(--space-4);
+	animation: authCopyIn var(--dur-medium) var(--spring-standard);
+}
+
+.auth-motif {
+	inline-size: 4rem;
+	block-size: 4rem;
+	display: block;
+}
+
+.auth-aura {
+	inline-size: 100%;
+	block-size: 100%;
+	animation: authFloat 14s var(--ease-standard) infinite;
+}
+
+.auth-summary__eyebrow {
+	margin: 0 0 var(--space-3);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--primary);
+}
+
+.auth-summary__title {
+	margin: 0 0 var(--space-3);
+	font-size: clamp(1.5rem, 1rem + 1.8vw, 2.2rem);
+	line-height: 1.12;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+.auth-summary__lede {
+	margin: 0;
+	font-size: 1rem;
+	line-height: 1.55;
+	color: var(--text-secondary);
+}
+
+/* Elastic swap for the dynamic copy. */
+.auth-summary__title,
+.auth-summary__lede {
+	animation: authCopyIn var(--dur-medium) var(--spring-standard);
+}
+
+.auth-summary__spacer {
+	flex: 1;
+	min-height: var(--space-5);
+}
+
+/* #region Glass passport card */
+.passport {
+	position: relative;
+	border-radius: var(--radius-xl);
+	padding: var(--space-5);
+	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+	border: 1px solid color-mix(in srgb, var(--on-surface) 12%, transparent);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+}
+
+.passport::after {
+	/* soft sheen */
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(135deg, color-mix(in srgb, white 18%, transparent), transparent 45%);
+	pointer-events: none;
+}
+
+.passport__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-bottom: var(--space-4);
+}
+
+.passport__avatar img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.passport__note {
+	font-size: 1.1rem;
+	line-height: 1.35;
+	font-weight: 600;
+}
+
+.auth-row-split {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin: var(--space-1) 0 var(--space-4);
+}
+
+.passport__avatar {
+	inline-size: 3rem;
+	block-size: 3rem;
+	border-radius: var(--radius-lg);
+	object-fit: cover;
+	display: grid;
+	place-items: center;
+	font-weight: 700;
+	font-size: 1.1rem;
+	color: var(--on-primary);
+	background: radial-gradient(
+		120% 120% at 30% 20%,
+		color-mix(in srgb, var(--primary) 75%, white),
+		var(--primary)
+	);
+	box-shadow: var(--elevation-low);
+	flex: none;
+	overflow: hidden;
+}
+
+.passport__brand {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.passport__brand-label {
+	font-size: 0.68rem;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	font-weight: 700;
+}
+
+.passport__badge {
+	align-self: flex-start;
+	font-size: 0.72rem;
+	font-weight: 650;
+	padding: 2px var(--space-2);
+	border-radius: var(--radius-xl);
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+	color: var(--primary);
+	text-transform: capitalize;
+}
+
+.passport__name {
+	font-size: 1.35rem;
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: -0.01em;
+	min-height: 1.5em;
+}
+
+.passport__name--ghost {
+	color: var(--text-disabled, var(--text-secondary));
+	opacity: 0.5;
+	font-weight: 500;
+}
+
+.passport__handle {
+	font-family: var(--font-mono);
+	font-size: 0.9rem;
+	color: var(--primary);
+	margin-top: 2px;
+	min-height: 1.3em;
+}
+
+.passport__email {
+	font-size: 0.85rem;
+	color: var(--text-secondary);
+	margin-top: var(--space-1);
+	min-height: 1.2em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.passport__divider {
+	height: 1px;
+	margin: var(--space-4) 0;
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+
+.passport__chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	min-height: 1.6rem;
+}
+
+.passport__chip {
+	font-size: 0.72rem;
+	font-weight: 550;
+	padding: 3px var(--space-2);
+	border-radius: var(--radius-xl);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+
+.passport__chip--empty {
+	color: var(--text-secondary);
+	opacity: 0.6;
+}
+
+.passport__meta {
+	display: flex;
+	justify-content: space-between;
+	margin-top: var(--space-4);
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+
+.passport__meta strong {
+	color: var(--on-surface);
+	font-weight: 650;
+}
+
+/* Elastic pop when a value fills in. Keyed remount replays this. */
+.pop {
+	display: inline-block;
+	animation: authPop var(--dur-medium) var(--spring-standard);
+}
+/* #endregion */
+
+.auth-summary__progress {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-top: var(--space-5);
+}
+
+.auth-summary__dot {
+	height: 6px;
+	flex: 1;
+	max-inline-size: 2.5rem;
+	border-radius: var(--radius-xl);
+	background: color-mix(in srgb, var(--on-surface) 14%, transparent);
+	transition: background-color var(--dur-medium) var(--ease-standard);
+}
+
+.auth-summary__dot.is-active {
+	background: var(--primary);
+}
+
+.auth-summary__dot.is-done {
+	background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.auth-summary__step-label {
+	margin-left: var(--space-3);
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Headings */
+.auth-heading {
+	margin-bottom: var(--space-5);
+	flex: none;
+}
+
+.auth-heading__title {
+	margin: 0 0 var(--space-2);
+	font-size: clamp(1.4rem, 1.1rem + 1vw, 1.9rem);
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+}
+
+.auth-heading__subtitle {
+	margin: 0;
+	color: var(--text-secondary);
+	line-height: 1.5;
+	font-size: 0.95rem;
+}
+
+.auth-heading__subtitle a,
+.auth-link {
+	color: var(--primary);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.auth-heading__subtitle a:hover,
+.auth-link:hover {
+	text-decoration: underline;
+}
+/* #endregion */
+
+/* #region Step orchestration */
+.auth-wizard {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1;
+}
+
+/*
+ * The animated step body. Keyed remount replays the enter animation on every step change.
+ *
+ * TRANSFORM SAFETY: the field controls inside render their overlay panels (Select / MultiSelect /
+ * DatePicker) with `position: fixed`, and a transformed ancestor would re-base those fixed panels to
+ * this box instead of the viewport. The slide below is therefore a SELF-CLEARING enter animation —
+ * it has no `forwards` fill, so once the ~0.5s enter finishes the element reverts to its base
+ * (`transform: none`) and no containing block remains. Panels only open on interaction, well after
+ * the enter settles, so they still resolve against the viewport. Do NOT add a persistent `transform`
+ * to this element or a `forwards`-filled slide.
+ */
+.auth-step {
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-width: thin;
+	padding-right: 2px;
+	/*
+	 * Deliberate, felt slide-and-fade (~0.5s, ease-out). The keyframe is NOT `forwards`, so the
+	 * element settles back to its base (transform: none) once it finishes — leaving no persistent
+	 * transform to re-base the field controls' `position:fixed` overlay panels (Select/DatePicker).
+	 * Direction comes from `data-dir` so Back slides the opposite way.
+	 */
+	animation: stepInFwd 0.5s var(--ease-emphasized);
+}
+
+.auth-step[data-dir="-1"] {
+	animation-name: stepInBack;
+}
+
+.auth-form__grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-3) var(--space-4);
+}
+
+@media (max-width: 520px) {
+	.auth-form__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.auth-field-row {
+	margin-bottom: var(--space-4);
+}
+
+.auth-field-row:last-child {
+	margin-bottom: 0;
+}
+
+/* Nav actions pinned under the step. */
+.auth-actions {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	margin-top: var(--space-5);
+	flex: none;
+}
+
+.auth-actions--between {
+	justify-content: space-between;
+}
+
+.auth-actions__spacer {
+	flex: 1;
+}
+
+.auth-skip {
+	background: none;
+	border: 0;
+	color: var(--text-secondary);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	padding: var(--space-2);
+	border-radius: var(--radius-sm);
+}
+
+.auth-skip:hover {
+	color: var(--on-surface);
+}
+
+.auth-skip:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.auth-alt {
+	margin-top: var(--space-5);
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: 0.9rem;
+	flex: none;
+}
+/* #endregion */
+
+/* #region Choice cards (account type / intent) */
+.auth-choices {
+	display: grid;
+	gap: var(--space-3);
+	margin-bottom: var(--space-2);
+}
+
+.auth-choices--2 {
+	grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 520px) {
+	.auth-choices--2 {
+		grid-template-columns: 1fr;
+	}
+}
+
+.auth-choice {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--space-1);
+	padding: var(--space-4) var(--space-4) var(--space-5);
+	border-radius: var(--radius-xl);
+	background: var(--surface-1);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-medium) var(--ease-standard),
+		box-shadow var(--dur-medium) var(--spring-standard),
+		transform var(--dur-medium) var(--spring-standard);
+}
+
+.auth-choice:hover {
+	background: var(--surface-2);
+	transform: translateY(-3px);
+}
+
+/* Neutral (un-chosen) — nothing is highlighted until the user makes a conscious pick. */
+.auth-choice.is-neutral {
+	background: var(--surface-1);
+	box-shadow: none;
+}
+
+.auth-choice.is-active {
+	background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+	box-shadow: 0 0 0 2px var(--primary), var(--elevation-medium);
+	transform: translateY(-3px);
+}
+
+.auth-choice:has(.auth-choice__native:focus-visible) {
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.auth-choice__native {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* The illustration is the focal point — large, full-width, no boxed background. */
+.auth-choice__art {
+	display: block;
+	inline-size: 100%;
+	max-inline-size: 9rem;
+	margin-bottom: var(--space-2);
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.auth-choice__art svg {
+	inline-size: 100%;
+	block-size: auto;
+	display: block;
+	overflow: visible;
+}
+
+.auth-choice:hover .auth-choice__art,
+.auth-choice.is-active .auth-choice__art {
+	transform: scale(1.04);
+}
+
+.auth-choice__title {
+	font-weight: 700;
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+}
+
+.auth-choice__desc {
+	font-size: 0.85rem;
+	color: var(--text-secondary);
+	line-height: 1.4;
+	max-inline-size: 16rem;
+}
+/* #endregion */
+
+/* #region Field softening — scoped overrides so @projective/ui controls read as filled + soft */
+.auth .ui-field__label,
+.auth .ui-field-label {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.auth .ui-input,
+.auth .ui-password__control,
+.auth .ui-select__trigger,
+.auth .ui-multiselect__trigger,
+.auth .ui-datepicker__trigger,
+.auth .ui-chips,
+.auth .ui-autocomplete__control {
+	background: var(--surface-2);
+	border-color: transparent;
+	border-radius: var(--radius-lg);
+	box-shadow: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.auth .ui-input:hover,
+.auth .ui-password__control:hover,
+.auth .ui-select__trigger:hover,
+.auth .ui-multiselect__trigger:hover,
+.auth .ui-datepicker__trigger:hover,
+.auth .ui-chips:hover {
+	background: color-mix(in srgb, var(--surface-3) 80%, var(--surface-2));
+}
+
+.auth .ui-input:focus-within,
+.auth .ui-password__control:focus-within,
+.auth .ui-select__trigger:focus-visible,
+.auth .ui-select--open .ui-select__trigger,
+.auth .ui-multiselect__trigger:focus-visible,
+.auth .ui-datepicker__trigger:focus-within,
+.auth .ui-chips:focus-within,
+.auth .ui-autocomplete__control:focus-within {
+	background: var(--surface);
+	border-color: transparent;
+	box-shadow: 0 0 0 2px var(--primary), var(--elevation-low);
+}
+
+/* Invalid state: soft danger ring, not a hard outline. */
+.auth .ui-form-control--invalid .ui-input,
+.auth .ui-form-control--invalid .ui-password__control,
+.auth .ui-form-control--invalid .ui-select__trigger,
+.auth .ui-form-control--invalid .ui-datepicker__trigger {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 60%, transparent);
+}
+
+.auth .ui-form-control {
+	margin: 0;
+}
+
+/* SelectButton → soft segmented control. */
+.auth .ui-select-button {
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+	padding: var(--space-1);
+	gap: var(--space-1);
+	border: 0;
+}
+
+.auth .ui-select-button__option {
+	border-radius: var(--radius-base);
+	border: 0;
+	background: transparent;
+	color: var(--text-secondary);
+	font-weight: 600;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.auth .ui-select-button__option[aria-checked="true"],
+.auth .ui-select-button__option[aria-pressed="true"] {
+	background: var(--surface);
+	color: var(--primary);
+	box-shadow: var(--elevation-low);
+}
+
+.auth .ui-button--fluid {
+	width: 100%;
+}
+/* #endregion */
+
+/* #region Banners, age note */
+.auth-banner {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+	margin-bottom: var(--space-4);
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-lg);
+	font-size: 0.9rem;
+	line-height: 1.45;
+}
+
+.auth-banner--error {
+	background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+	color: var(--on-surface);
+}
+
+.auth-banner--success {
+	background: color-mix(in srgb, var(--success) 14%, var(--surface));
+	color: var(--on-surface);
+}
+
+.auth-banner--info {
+	background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+	color: var(--on-surface);
+}
+
+.auth-banner__icon {
+	flex: none;
+	inline-size: 1.2rem;
+	block-size: 1.2rem;
+	margin-top: 0.1rem;
+}
+
+.auth-banner__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+.auth-agenote {
+	display: flex;
+	gap: var(--space-3);
+	margin-top: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-lg);
+	font-size: 0.85rem;
+	line-height: 1.45;
+}
+
+.auth-agenote--restricted {
+	background: color-mix(in srgb, var(--warning) 15%, var(--surface));
+}
+
+.auth-agenote--blocked {
+	background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+
+.auth-agenote__icon {
+	flex: none;
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+}
+
+.auth-agenote__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+/* #endregion */
+
+/* #region OAuth / SSO */
+.auth-oauth {
+	display: grid;
+	gap: var(--space-3);
+	margin-bottom: var(--space-4);
+}
+
+.auth-oauth__btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-height: 2.9rem;
+	padding-inline: var(--space-4);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	border: 0;
+	border-radius: var(--radius-lg);
+	font-weight: 600;
+	font-size: 0.95rem;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.auth-oauth__btn:hover {
+	background: var(--surface-3);
+}
+
+.auth-oauth__btn:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.auth-oauth__glyph {
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+	flex: none;
+}
+
+.auth-divider {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin: var(--space-4) 0;
+	color: var(--text-secondary);
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+
+/* SSO reveal panel */
+.auth-sso {
+	overflow: hidden;
+	transition:
+		max-height var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+.auth-sso__hint {
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	margin: 0 0 var(--space-3);
+	line-height: 1.4;
+}
+/* #endregion */
+
+/* #region Prefill acknowledgement */
+.auth-prefill {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-bottom: var(--space-4);
+	padding: var(--space-3);
+	background: color-mix(in srgb, var(--primary) 8%, var(--surface-1));
+	border-radius: var(--radius-lg);
+}
+
+.auth-prefill__avatar {
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	border-radius: 50%;
+	object-fit: cover;
+	flex: none;
+}
+
+.auth-prefill__text {
+	font-size: 0.85rem;
+	line-height: 1.4;
+	color: var(--text-secondary);
+}
+
+.auth-prefill__text strong {
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region OTP boxes (verify / reset) */
+.auth-otp-field {
+	margin-bottom: var(--space-4);
+}
+
+.auth-otp-field .auth-otp__label {
+	display: block;
+	font-size: 0.85rem;
+	font-weight: 600;
+	margin-bottom: var(--space-2);
+}
+
+.auth-otp {
+	display: flex;
+	gap: var(--space-2);
+	justify-content: space-between;
+}
+
+.auth-otp__box {
+	inline-size: 100%;
+	max-inline-size: 3.4rem;
+	aspect-ratio: 3 / 4;
+	text-align: center;
+	font-size: 1.5rem;
+	font-weight: 700;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 0;
+	border-radius: var(--radius-lg);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.auth-otp__box:focus {
+	outline: none;
+	background: var(--surface);
+	box-shadow: 0 0 0 2px var(--primary), var(--elevation-low);
+}
+
+.auth-otp.is-invalid .auth-otp__box {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 60%, transparent);
+}
+
+.auth-resend {
+	margin-top: var(--space-3);
+	font-size: 0.9rem;
+	color: var(--text-secondary);
+	text-align: center;
+}
+
+.auth-resend__btn {
+	border: 0;
+	background: none;
+	color: var(--primary);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 0;
+}
+
+.auth-resend__btn:disabled {
+	color: var(--text-secondary);
+	cursor: default;
+}
+
+.auth-fielderror {
+	margin: var(--space-2) 0 0;
+	font-size: 0.82rem;
+	color: var(--danger);
+	line-height: 1.4;
+}
+
+.auth-remember {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.9rem;
+	color: var(--on-surface);
+	cursor: pointer;
+	margin-bottom: var(--space-2);
+}
+
+.auth-remember input {
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	accent-color: var(--primary);
+}
+
+.auth-fineprint {
+	margin: var(--space-3) 0 0;
+	font-size: 0.76rem;
+	color: var(--text-secondary);
+	line-height: 1.4;
+	text-align: center;
+}
+/* #endregion */
+
+/* #region Keyframes */
+@keyframes stepFade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes stepInFwd {
+	from {
+		opacity: 0;
+		transform: translateX(2rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+@keyframes stepInBack {
+	from {
+		opacity: 0;
+		transform: translateX(-2rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+@keyframes authPop {
+	from {
+		opacity: 0;
+		transform: scale(0.94);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes authCopyIn {
+	from {
+		opacity: 0;
+		transform: translateY(0.4rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes authFloat {
+	0%, 100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-8px);
+	}
+}
+
+@keyframes heroSpin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes heroSceneIn {
+	from {
+		opacity: 0;
+		transform: scale(0.92);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes heroGlyphIn {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes heroBlobA {
+	0%, 100% {
+		transform: translate(0, 0);
+	}
+	50% {
+		transform: translate(10px, -18px);
+	}
+}
+
+@keyframes heroBlobB {
+	0%, 100% {
+		transform: translate(0, 0);
+	}
+	50% {
+		transform: translate(-14px, 12px);
+	}
+}
+/* #endregion */
+
+/* #region Join — deep-primary sidebar (the reimagined onboarding aside) */
+.join-aside {
+	position: relative;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	padding: clamp(var(--space-5), 3.2vw, var(--space-7));
+	color: var(--on-primary);
+	isolation: isolate;
+	overflow: hidden;
+	/* Deep, saturated primary field — the "original" bold sidebar (no glass card over it). */
+	background:
+		radial-gradient(
+			120% 90% at 12% 0%,
+			color-mix(in srgb, var(--primary) 72%, white 12%),
+			transparent 58%
+		),
+		radial-gradient(
+		110% 90% at 100% 100%,
+		color-mix(in srgb, var(--tertiary, var(--primary)) 50%, var(--primary)),
+		transparent 62%
+	),
+		linear-gradient(158deg, var(--primary), color-mix(in srgb, var(--primary) 58%, black));
+}
+
+.join-aside__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+	align-self: flex-start;
+	color: var(--on-primary);
+	text-decoration: none;
+	font-weight: 700;
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+	border-radius: var(--radius-sm);
+	flex: none;
+}
+
+.join-aside__brand:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--on-primary) 55%, transparent);
+}
+
+.join-aside__mark {
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
+	border-radius: var(--radius-sm);
+	background: radial-gradient(
+		120% 120% at 30% 20%,
+		color-mix(in srgb, var(--on-primary) 92%, transparent),
+		color-mix(in srgb, var(--on-primary) 60%, transparent)
+	);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+/* The single, large, adaptive illustration — the focal point of the whole panel. */
+.join-aside__scene {
+	flex: 1;
+	min-height: 0;
+	display: grid;
+	place-items: center;
+	padding: var(--space-4) 0;
+	animation: heroSceneIn 0.6s var(--ease-emphasized);
+}
+
+.join-hero {
+	inline-size: 100%;
+	max-inline-size: 24rem;
+	block-size: auto;
+	max-block-size: 100%;
+	display: block;
+	overflow: visible;
+}
+
+.join-hero__orbit {
+	transform-box: fill-box;
+	transform-origin: center;
+	animation: heroSpin 60s linear infinite;
+}
+
+.join-hero__blob--a {
+	transform-box: fill-box;
+	transform-origin: center;
+	animation: heroBlobA 13s var(--ease-standard) infinite;
+}
+
+.join-hero__blob--b {
+	transform-box: fill-box;
+	transform-origin: center;
+	animation: heroBlobB 16s var(--ease-standard) infinite;
+}
+
+/* Progress arc — `--hero-progress` (0–1) with pathLength=100 keeps the dash math trivial. */
+.join-hero__progress {
+	stroke-dasharray: 100;
+	stroke-dashoffset: calc(100 - var(--hero-progress, 0) * 100);
+	transition: stroke-dashoffset 0.6s var(--ease-emphasized);
+}
+
+.join-hero__glyph {
+	animation: heroGlyphIn 0.6s var(--ease-emphasized);
+}
+
+/* Expressive copy — imaginative titles in a thin lead + bold emphasis, never "Step 1.2". */
+.join-aside__copy {
+	flex: none;
+	max-width: 26rem;
+}
+
+.join-aside__kicker {
+	margin: 0 0 var(--space-3);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--on-primary) 78%, transparent);
+	animation: authCopyIn 0.5s var(--spring-standard);
+}
+
+.join-aside__title {
+	margin: 0 0 var(--space-3);
+	font-size: clamp(2rem, 1.3rem + 2.4vw, 3rem);
+	line-height: 1.04;
+	letter-spacing: -0.03em;
+	animation: authCopyIn 0.55s var(--spring-standard);
+}
+
+.join-aside__title-lead {
+	display: block;
+	font-weight: 200;
+	font-style: italic;
+	opacity: 0.82;
+}
+
+.join-aside__title-strong {
+	display: block;
+	font-weight: 750;
+}
+
+.join-aside__lede {
+	margin: 0;
+	font-size: 1.02rem;
+	line-height: 1.55;
+	color: color-mix(in srgb, var(--on-primary) 84%, transparent);
+	animation: authCopyIn 0.6s var(--spring-standard);
+}
+
+.join-aside__foot {
+	flex: none;
+	margin-top: var(--space-5);
+}
+
+.join-aside__progress {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.join-aside__tick {
+	height: 5px;
+	flex: 1;
+	max-inline-size: 3rem;
+	border-radius: var(--radius-xl);
+	background: color-mix(in srgb, var(--on-primary) 22%, transparent);
+	transition:
+		background-color var(--dur-slow) var(--ease-standard),
+		flex-grow var(--dur-slow) var(--spring-standard);
+}
+
+.join-aside__tick.is-done {
+	background: color-mix(in srgb, var(--on-primary) 55%, transparent);
+}
+
+.join-aside__tick.is-active {
+	background: var(--on-primary);
+	flex-grow: 1.6;
+}
+
+.join-aside__trust {
+	margin: var(--space-4) 0 0;
+	font-size: 0.78rem;
+	line-height: 1.4;
+	color: color-mix(in srgb, var(--on-primary) 68%, transparent);
+}
+/* #endregion */
+
+/* #region Join — form crumbs + inline OAuth */
+.auth-crumbs {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-bottom: var(--space-4);
+	flex: none;
+}
+
+.auth-crumbs__tick {
+	height: 4px;
+	inline-size: 1.5rem;
+	border-radius: var(--radius-xl);
+	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	transition:
+		background-color var(--dur-medium) var(--ease-standard),
+		inline-size var(--dur-medium) var(--spring-standard);
+}
+
+.auth-crumbs__tick.is-done {
+	background: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.auth-crumbs__tick.is-active {
+	background: var(--primary);
+	inline-size: 2.4rem;
+}
+
+.auth-crumbs__optional {
+	margin-left: auto;
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+/* On desktop the deep-primary sidebar already carries the progress, so the crumbs stay minimal. */
+
+.auth-oauth-inline {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-top: var(--space-4);
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
+	color: var(--text-secondary);
+	font-size: 0.85rem;
+	line-height: 1.35;
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.auth-oauth-inline:hover {
+	background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+	color: var(--on-surface);
+}
+
+.auth-oauth-inline:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.auth-oauth-inline__glyph {
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+	flex: none;
+}
+/* #endregion */
+
+/* #region Join — interactive tag / skill selector */
+.tagselect {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.tagselect__cluster {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.tagselect__pill {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border: 0;
+	border-radius: var(--radius-xl);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+
+.tagselect__pill:hover {
+	background: var(--surface-3);
+	transform: translateY(-1px);
+}
+
+.tagselect__pill:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.tagselect__pill:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.tagselect__pill-dot {
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--on-surface) 22%, transparent);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tagselect__pill.is-on {
+	background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+	color: var(--primary);
+	box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.tagselect__pill.is-on .tagselect__pill-dot {
+	background: var(--primary);
+}
+
+.tagselect__custom {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.tagselect__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+	border-radius: var(--radius-xl);
+	background: var(--primary);
+	color: var(--on-primary);
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+
+.tagselect__chip-x {
+	display: grid;
+	place-items: center;
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+	border: 0;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--on-primary) 20%, transparent);
+	color: var(--on-primary);
+	font-size: 0.9rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.tagselect__chip-x:hover {
+	background: color-mix(in srgb, var(--on-primary) 34%, transparent);
+}
+
+.tagselect__combo {
+	position: relative;
+}
+
+.tagselect__input-wrap {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline-end: var(--space-3);
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.tagselect__input-wrap:focus-within {
+	background: var(--surface);
+	box-shadow: 0 0 0 2px var(--primary), var(--elevation-low);
+}
+
+.tagselect__input-wrap.is-disabled {
+	opacity: 0.6;
+}
+
+.tagselect__input {
+	flex: 1;
+	min-inline-size: 0;
+	padding: var(--space-3) var(--space-4);
+	border: 0;
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.9rem;
+}
+
+.tagselect__input:focus {
+	outline: none;
+}
+
+.tagselect__count {
+	font-size: 0.75rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.tagselect__menu {
+	position: absolute;
+	z-index: var(--z-raised);
+	inset-inline: 0;
+	top: calc(100% + var(--space-1));
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	border-radius: var(--radius-lg);
+	background: var(--surface);
+	box-shadow: var(--elevation-high);
+	max-height: 14rem;
+	overflow-y: auto;
+	animation: authPop var(--dur-fast) var(--spring-standard);
+}
+
+.tagselect__opt {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	font-size: 0.88rem;
+	cursor: pointer;
+}
+
+.tagselect__opt.is-active {
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	color: var(--primary);
+}
+
+.tagselect__opt-add {
+	display: grid;
+	place-items: center;
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	color: var(--primary);
+	font-weight: 700;
+	line-height: 1;
+}
+
+.tagselect__note {
+	margin: 0;
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+}
+/* #endregion */

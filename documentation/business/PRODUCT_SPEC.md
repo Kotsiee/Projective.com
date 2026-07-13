@@ -1202,6 +1202,112 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
 
 ---
 
+## Account Creation, Age Guardrails & Onboarding
+
+_Added 2026-07-13 (see root `CLAUDE.md` §8, decisions 5–7). Governs `/join`, `/login`,
+`/forgot-password`, and `/verify`._
+
+### Authentication surfaces
+
+MVP auth is **Google OAuth + email/password** (per `SYSTEM_ARCHITECTURE.md` §Authentication).
+Canonical routes: **`/join`** (account creation), `/login`, `/forgot-password`, `/verify` (6-digit
+email code — the `CodeField` OTP pattern). Email confirmation still ultimately rides on GoTrue's
+single-use token; the 6-digit entry is the in-app confirmation surface.
+
+`/login` additionally offers an **Enterprise SSO** path (new, 2026-07-13): the user enters a
+corporate email **domain** (e.g. `company.com`) which is resolved to that organization's configured
+**SAML/OIDC** identity provider to begin the handshake (`/api/auth/sso`). SSO IdP wiring is deferred
+(the surface ships now, provider resolution lands with Supabase/enterprise onboarding); this sits
+alongside the roadmap's Microsoft/GitHub/Apple SSO in `SYSTEM_ARCHITECTURE.md` §Authentication.
+
+### Onboarding step sequence (single-screen, non-scrolling wizard)
+
+`/join` is a fixed, viewport-height (no-scroll) two-column experience: a deep-primary **illustrative
+sidebar** — a single large SVG scene that adapts to the active step, expressive imaginative step
+titles (never a literal "Step 1.2"), and a progress track — beside a stepped form. Choice-only steps
+**auto-advance** the instant a card is picked (no "Next" click), and the first step opens **neutral**
+(neither account type pre-selected).
+
+**Account paths diverge on the first choice.** An **Individual** is asked **1.2** Client or
+Freelancer _(required)_. An **Organization is a buyer/client by definition** — it registers to hire,
+**not to provide services** — so it **skips 1.2 entirely** and never sees the Freelancer-only skills
+step.
+
+Step slots: **Step 1** account type (Individual / Organization) · **1.2** Client or Freelancer
+_(Individual only; required)_ · **1.3** Purpose _(Individual: optional interest tags, max 5;
+Organization: scale — employees + industry + **website / corporate domain**)_ · **1.4** Skills &
+interests _(Individual: optional, max 5, **shown only when Freelancer**; Organization: structure —
+address + departments)_ · **1.5** identity _(Individual: first/last/username; Organization:
+legal/brand name, handle, CRN)_ · **1.6** credentials _(Individual: email, DoB, password;
+Organization: corporate email, phone, admin password)_. **Password setup is skipped entirely for
+OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** — authenticating mid-flow
+pre-fills their identity and returns them to the flow rather than bypassing it.
+
+The optional Purpose/Skills tags are chosen from an interactive **pill cluster** with a combobox for
+adding custom tags, capped at **5** per cluster.
+
+### Return-path redirection (`redirectTo`)
+
+Every auth surface carries a **`redirectTo`** query parameter — the in-app path the user was on
+before entering the flow. After a successful join/login **and** verification, the user is returned
+to that exact path. `redirectTo` is untrusted input and is sanitised to a **same-origin absolute
+path** before use (open-redirect guard). The dashboard auth-guard bounce populates it (renamed from
+`redirect` → `redirectTo`, 2026-07-13, for one consistent contract).
+
+### Google OAuth pre-fill
+
+If a Google sign-in succeeds but no Projective profile exists yet, the OAuth callback routes the
+user to **`/join`** with their Google **first name, last name, email, and profile picture**
+pre-filled. Pre-filled avatar URLs are host-allowlisted (provider CDNs + the media fallback
+registry); names/email are length-clamped.
+
+### Age guardrails (Date of Birth)
+
+Individual signup collects **Date of Birth** and enforces, on both client and server:
+
+| Age          | State          | Capability                                                                     |
+| :----------- | :------------- | :----------------------------------------------------------------------------- |
+| **< 13**     | **Blocked**    | Cannot create an account. A friendly minimum-age message is shown.             |
+| **13 – 17**  | **Restricted** | Account is created but flagged: **cannot buy services or sell work until 18.**  |
+| **≥ 18**     | **Full**       | Unrestricted access.                                                           |
+
+The `restricted` flag is **re-derived server-side from DoB** (never trusted from the client) and
+persisted on the individual profile; buy/sell capability unlocks automatically at 18. (Constants:
+`MIN_AGE = 13`, `ADULT_AGE = 18`.) This state is capability-scoped and does not add a column to the
+work/delivery status machine in `PRODUCT_MANAGEMENT.md`.
+
+### Individual onboarding — "quick to onboard, slow to set up"
+
+Deliberately lean (consistent with the low-friction, Draft-First creation philosophy for Teams and
+Businesses). Collected at signup **only**:
+
+- **Intent:** Client ("I want to hire") or Freelancer ("I want to work"). This seeds the initial
+  active session context **only** — personas remain **additive** (§Additive, Unlockable Personas): a
+  Client can unlock a Freelancer profile later via `/become-partner`, and vice-versa.
+- **Credentials:** Email, Password (+ confirm).
+- **Profile basics:** First name, Last name, Username (`@handle`), Date of Birth.
+
+Everything else (photo, headline, story, skills, professional details) is completed later inside the
+app shell — the UI states this explicitly.
+
+### Organization onboarding — comprehensive, multi-step
+
+Business/enterprise signup is the deliberate opposite: a structured wizard. Collected at signup:
+
+- **Company & identity:** Legal company name; Trading / brand name (if different); Company
+  Registration Number (CRN) / Tax ID (EIN, VAT, …).
+- **Administrative & contact:** Primary corporate email (billing/legal notices); Corporate phone;
+  Registered business address (street, city, postcode/ZIP, country).
+- **Scale & structure:** Estimated employees (tiers **1–50 / 51–200 / 201–500 / 500+**); Primary
+  industry / sector.
+- **Initial IAM:** Initial **departments** (expandable top-level list); initial **admin/stakeholder
+  invites** (repeatable Name · Email · base permission tier).
+- **Admin login:** the owning admin's name + password (signs in with the corporate email).
+
+> The organization is still created in a **Draft/Unverified** state; full KYB (registration
+> documents, UBO) remains deferred to verification Level 3 before a Business Wallet opens. This
+> onboarding **gathers** the identity/scale/IAM baselines up front; it does not itself complete KYB.
+
 ## Sitemap and Route Overview
 
 | Category      | Path / Route              | Sub-Path                 | Description                                                                                 |
@@ -1210,7 +1316,7 @@ Projective treats sensitive identity data with "Zero-Trust" principles.
 |               | `/reset`                  |                          | Reset password                                                                              |
 |               | `/verify`                 |                          | Account verification                                                                        |
 |               | `/login`                  |                          | User login                                                                                  |
-|               | `/register`               |                          | User registration                                                                           |
+|               | `/join`                   |                          | User registration (account creation — canonical; renamed from `/register`, 2026-07-13)      |
 |               | `/forgot-password`        |                          | Password recovery                                                                           |
 | **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker) |
 |               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                    |

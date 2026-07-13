@@ -1,0 +1,257 @@
+/*
+ * HeroSearch — the prominent hero search bar. Token-only BEM. Renders inside `.lp`, so it inherits
+ * the `--lp-*` semantic tokens (with base-token fallbacks for safety). Glass/acrylic surface, an
+ * entity segment fused to the input, a typewriter ghost placeholder, and trending tags.
+ */
+.hero-search {
+	position: relative;
+	inline-size: 100%;
+	max-inline-size: 44rem;
+	margin-inline: auto;
+}
+
+/* Trending row sits ABOVE the entity dropdown menu: the bar (which contains the menu) gets a lower
+   stacking level than the trending row, so tags never disappear behind an open menu (z-index fix). */
+.hero-search__bar {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	border-radius: var(--lp-r-lg, 24px);
+	background: color-mix(in srgb, var(--surface) 74%, transparent);
+	backdrop-filter: blur(calc(var(--glass-blur) * 1.2)) saturate(1.3);
+	-webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.2)) saturate(1.3);
+	border: 1px solid var(--lp-hair-strong, rgba(128, 128, 128, 0.4));
+	box-shadow: var(--elevation-high);
+}
+
+/* #region Entity selector */
+.hero-search__entity {
+	position: relative;
+	flex: 0 0 auto;
+}
+
+.hero-search__entity-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 3rem;
+	padding-inline: var(--space-4);
+	border: 0;
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	border-radius: var(--radius-lg);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.hero-search__entity-btn:hover {
+	background: color-mix(in srgb, var(--on-surface) 7%, transparent);
+}
+
+.hero-search__entity-btn:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.hero-search__chevron {
+	inline-size: 8px;
+	block-size: 8px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-2px) rotate(45deg);
+	opacity: 0.7;
+}
+
+.hero-search__menu {
+	position: absolute;
+	inset-block-start: calc(100% + var(--space-2));
+	inset-inline-start: 0;
+	min-inline-size: 12rem;
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	z-index: 5;
+	background: var(--surface-2);
+	border: 1px solid var(--lp-hair, rgba(128, 128, 128, 0.2));
+	border-radius: var(--lp-r-sm, 12px);
+	box-shadow: var(--elevation-high);
+}
+
+.hero-search__option {
+	padding: 0.6rem 0.8rem;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	font-weight: 500;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.hero-search__option:hover,
+.hero-search__option[aria-selected="true"] {
+	background: var(--lp-primary-tint, rgba(0, 105, 114, 0.14));
+	color: var(--primary);
+}
+
+.hero-search__option:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
+}
+/* #endregion */
+
+/* #region Field + typewriter ghost */
+.hero-search__field {
+	position: relative;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	padding-inline-start: var(--space-4);
+	border-inline-start: 1px solid var(--lp-hair, rgba(128, 128, 128, 0.2));
+}
+
+.hero-search__input {
+	inline-size: 100%;
+	block-size: 3rem;
+	border: 0;
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 1.1rem;
+	outline: none;
+}
+
+.hero-search__ghost {
+	position: absolute;
+	inset-inline-start: var(--space-4);
+	inset-block: 0;
+	display: flex;
+	align-items: center;
+	gap: 0.4ch;
+	pointer-events: none;
+	font-size: 1.1rem;
+	color: var(--on-surface-variant);
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.hero-search__ghost-lead {
+	opacity: 0.65;
+}
+
+.hero-search__typed {
+	color: var(--on-surface);
+	font-weight: 500;
+}
+
+.hero-search__caret {
+	inline-size: 2px;
+	block-size: 1.15em;
+	background: var(--primary);
+	animation: hero-search-blink 1.05s steps(1) infinite;
+}
+
+@keyframes hero-search-blink {
+	50% {
+		opacity: 0;
+	}
+}
+/* #endregion */
+
+/* #region Submit */
+.hero-search__submit {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 3rem;
+	padding-inline: var(--space-5);
+	border: 0;
+	border-radius: var(--radius-lg);
+	background: var(--primary);
+	color: var(--on-primary);
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	will-change: transform;
+	box-shadow: var(--elevation-low);
+}
+
+.hero-search__submit svg {
+	inline-size: 18px;
+	block-size: 18px;
+}
+
+.hero-search__submit:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+}
+/* #endregion */
+
+/* #region Trending */
+.hero-search__trending {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+}
+
+.hero-search__trending-label {
+	font-size: 0.78rem;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+	margin-inline-end: var(--space-2);
+}
+
+.hero-search__tag {
+	padding: 0.45rem 0.95rem;
+	border-radius: var(--radius-xl);
+	border: 1px solid var(--lp-hair-strong, rgba(128, 128, 128, 0.4));
+	background: color-mix(in srgb, var(--surface) 55%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.85rem;
+	cursor: pointer;
+	will-change: transform;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.hero-search__tag:hover {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+
+.hero-search__tag:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 560px) {
+	.hero-search__submit-label {
+		display: none;
+	}
+
+	.hero-search__entity-btn {
+		padding-inline: var(--space-3);
+	}
+
+	.hero-search__input,
+	.hero-search__ghost {
+		font-size: 1rem;
+	}
+}
+/* #endregion */

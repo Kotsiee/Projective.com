@@ -5,12 +5,15 @@
  */
 .ui-app-shell {
 	display: grid;
-	grid-template-rows: var(--shell-topbar-h) 1fr;
+	/* `minmax(0, 1fr)` caps the content row so it never grows past the viewport — overflow flows into
+	   the nested scroll region (PageCanvas) instead of the document, keeping the top bar fixed. */
+	grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr);
 	grid-template-columns: auto 1fr;
 	grid-template-areas:
 		"topbar topbar"
 		"sidebar content";
-	min-block-size: 100dvh;
+	/* Bound to the viewport (not just a floor) so the Green PageCanvas owns the main scroll region. */
+	block-size: 100dvh;
 	background: var(--surface-2);
 	color: var(--on-surface);
 }

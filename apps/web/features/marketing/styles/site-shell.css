@@ -1,0 +1,555 @@
+/*
+ * Public marketing shell — native window scroll + a full-width header that morphs on scroll.
+ * Token-only BEM. Scoped to the guest/public surface (the authenticated dashboard keeps the
+ * DESIGN_SYSTEM.md Part D nested-frame shell). Loaded via the SiteHeader island import + an @import in
+ * landing.css so delivery is reliable.
+ */
+:root {
+	--site-bar-h: calc(var(--space-7) + var(--space-2)); /* 3.5rem */
+	--site-header-gap: var(--space-4);
+	--site-header-h: calc(var(--site-bar-h) + var(--site-header-gap) * 2); /* reserved flow height */
+}
+
+/* #region Shell */
+.site {
+	inline-size: 100%;
+	max-inline-size: 100%;
+	min-block-size: 100dvh;
+	background: var(--surface);
+	color: var(--on-surface);
+	/* Guard the guest surface against any single element bleeding past the viewport edge (the mobile
+	   left/right white-space bug). `clip` — not `hidden` — so it never creates a scroll container that
+	   would break the `position: fixed` header or in-page sticky elements. */
+	overflow-x: clip;
+}
+
+/* Fixed header overlays the page; reserve its band so non-hero pages clear it (the hero cancels this
+   with a negative margin so it can fill the viewport behind the transparent header). */
+.site__main {
+	display: block;
+	padding-block-start: var(--site-header-h);
+}
+/* #endregion */
+
+/* #region Header — full width, transparent at top → floating glass pill when scrolled */
+.site-header {
+	position: fixed;
+	inset-block-start: 0;
+	inset-inline: 0;
+	z-index: var(--z-nav, 200);
+	display: flex;
+	justify-content: center;
+	padding: 0 clamp(0.5rem, 2vw, 1.5rem);
+	/* The band passes clicks through; only the bar is interactive. */
+	pointer-events: none;
+	transition: padding var(--dur-medium) var(--spring-standard);
+}
+
+.site-header--scrolled {
+	padding-block-start: var(--space-3);
+	padding-inline: clamp(0.75rem, 3vw, 2rem);
+}
+
+.site-header__bar {
+	pointer-events: auto;
+	inline-size: 100%;
+	max-inline-size: 100%;
+	block-size: var(--site-bar-h);
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	padding-inline: var(--space-4);
+	/* Top-of-page state: completely transparent, no border, no shell. */
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 0;
+	box-shadow: none;
+	backdrop-filter: none;
+	transition:
+		max-inline-size var(--dur-medium) var(--spring-standard),
+		background-color var(--dur-medium) var(--ease-standard),
+		border-color var(--dur-medium) var(--ease-standard),
+		border-radius var(--dur-medium) var(--ease-standard),
+		box-shadow var(--dur-medium) var(--ease-standard),
+		backdrop-filter var(--dur-medium) var(--ease-standard);
+}
+
+/* Scrolled state: condense into a floating, rounded, glass shell with a hairline border. */
+.site-header--scrolled .site-header__bar {
+	max-inline-size: var(--container-xl);
+	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	border-color: color-mix(in srgb, var(--outline) 24%, transparent);
+	border-radius: calc(var(--radius-xl) * 1.5);
+	box-shadow: var(--elevation-medium);
+}
+
+.site-header__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-weight: 700;
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+	color: var(--on-surface);
+	text-decoration: none;
+	flex: 0 0 auto;
+}
+
+.site-header__mark {
+	inline-size: 18px;
+	block-size: 18px;
+	border-radius: var(--radius-sm);
+	background: var(--primary);
+}
+
+.site-header__nav {
+	display: flex;
+	align-items: center;
+	gap: var(--space-5);
+	margin-inline-start: var(--space-2);
+}
+
+.site-header__link {
+	font-size: 0.925rem;
+	font-weight: 500;
+	color: var(--on-surface-variant);
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__link:hover {
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Header search (with entity dropdown) */
+.site-header__search {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	max-inline-size: 26rem;
+	margin-inline: auto;
+	padding-inline-end: var(--space-1);
+	block-size: calc(var(--site-bar-h) - var(--space-4));
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+}
+
+.site-header__entity {
+	position: relative;
+	flex: 0 0 auto;
+	block-size: 100%;
+}
+
+.site-header__entity-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: 100%;
+	padding-inline: var(--space-3);
+	border: 0;
+	border-inline-end: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 600;
+	cursor: pointer;
+	border-start-start-radius: var(--radius-lg);
+	border-end-start-radius: var(--radius-lg);
+}
+
+.site-header__entity-btn:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+
+.site-header__chevron {
+	inline-size: 6px;
+	block-size: 6px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-1px) rotate(45deg);
+	opacity: 0.6;
+}
+
+.site-header__entity-menu {
+	position: absolute;
+	inset-block-start: calc(100% + var(--space-2));
+	inset-inline-start: 0;
+	min-inline-size: 11rem;
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	z-index: 5;
+	background: var(--surface-2);
+	border: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+}
+
+.site-header__entity-option {
+	padding: 0.5rem 0.7rem;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	font-size: 0.9rem;
+	font-weight: 500;
+}
+
+.site-header__entity-option:hover,
+.site-header__entity-option[aria-selected="true"] {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--primary);
+}
+
+.site-header__entity-option:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
+}
+
+.site-header__search-input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 0.9rem;
+	outline: none;
+	padding-inline-start: var(--space-2);
+}
+
+.site-header__search-go {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 28px;
+	block-size: 28px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+}
+
+.site-header__search-go svg {
+	inline-size: 16px;
+	block-size: 16px;
+}
+
+.site-header__search-go:hover {
+	color: var(--primary);
+}
+/* #endregion */
+
+/* #region Header actions */
+.site-header__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex: 0 0 auto;
+}
+
+.site-header__signin {
+	font-size: 0.9rem;
+	font-weight: 550;
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+.site-header__signin:hover {
+	color: var(--primary);
+}
+
+.site-header__cta {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.5rem 1rem;
+	font-size: 0.9rem;
+	font-weight: 550;
+	line-height: 1;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: var(--radius-lg);
+	text-decoration: none;
+	box-shadow: var(--elevation-low);
+	transition:
+		box-shadow var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-slow) var(--ease-standard);
+}
+
+.site-header__cta:hover {
+	box-shadow: var(--elevation-medium);
+}
+
+.site-header__icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 36px;
+	block-size: 36px;
+	border-radius: 50%;
+	color: var(--on-surface);
+	text-decoration: none;
+	background: color-mix(in srgb, var(--surface-2) 50%, transparent);
+	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+}
+
+/* Minimal, icon-only theme toggle (overrides the base .theme-toggle chrome; higher specificity). */
+.theme-toggle.theme-toggle--icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 36px;
+	block-size: 36px;
+	padding: 0;
+	border-radius: 50%;
+	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.theme-toggle.theme-toggle--icon:hover {
+	background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+.theme-toggle.theme-toggle--icon svg {
+	display: block;
+}
+
+.site-header__signin:focus-visible,
+.site-header__cta:focus-visible,
+.site-header__link:focus-visible,
+.site-header__icon-btn:focus-visible,
+.site-header__brand:focus-visible,
+.site-header__entity-btn:focus-visible,
+.site-header__search-go:focus-visible,
+.theme-toggle.theme-toggle--icon:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+	border-radius: var(--radius-sm);
+}
+
+.site-header__burger {
+	display: none;
+	flex: 0 0 auto;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	inline-size: 42px;
+	block-size: 42px;
+	padding: 0 10px;
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+	border: 1px solid color-mix(in srgb, var(--outline) 22%, transparent);
+	cursor: pointer;
+}
+
+.site-header__burger span {
+	display: block;
+	inline-size: 20px;
+	block-size: 2px;
+	background: var(--on-surface);
+	border-radius: 2px;
+	transition:
+		transform var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+/* Veggie-burger → "X": the two bars converge to the centre line and cross. */
+.site-header__burger.is-open span:first-child {
+	transform: translateY(3.5px) rotate(45deg);
+}
+
+.site-header__burger.is-open span:last-child {
+	transform: translateY(-3.5px) rotate(-45deg);
+}
+/* #endregion */
+
+/* #region Mobile drawer + dismiss backdrop */
+/* Dismiss backdrop — clicking anywhere off the drawer closes it. Rendered persistently and toggled
+   with `.is-open` so open AND close both animate; inert (pointer-events:none) while hidden. */
+.site-header__backdrop {
+	pointer-events: none;
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-backdrop, 1000);
+	background: color-mix(in srgb, var(--surface) 20%, rgba(0, 0, 0, 0.45));
+	backdrop-filter: blur(2px);
+	-webkit-backdrop-filter: blur(2px);
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+
+.site-header__backdrop.is-open {
+	pointer-events: auto;
+	opacity: 1;
+}
+
+/* Slide-out drawer — off-canvas to the right, springs in on open. Full viewport height, capped width. */
+.site-header__drawer {
+	pointer-events: auto;
+	position: fixed;
+	inset-block: 0;
+	inset-inline-end: 0;
+	z-index: var(--z-overlay, 1100);
+	inline-size: min(84vw, 20rem);
+	max-inline-size: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: calc(var(--site-bar-h) + var(--space-6)) var(--space-5) var(--space-6);
+	background: color-mix(in srgb, var(--surface) 94%, transparent);
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
+	border-inline-start: 1px solid color-mix(in srgb, var(--outline) 22%, transparent);
+	box-shadow: var(--elevation-high);
+	transform: translateX(100%);
+	transition: transform var(--dur-medium) var(--spring-standard);
+	overflow-y: auto;
+}
+
+.site-header__drawer.is-open {
+	transform: translateX(0);
+}
+
+.site-header__drawer:focus-visible {
+	outline: none;
+}
+
+.site-header__drawer-brand {
+	font-weight: 700;
+	font-size: 1.15rem;
+	letter-spacing: -0.01em;
+	color: var(--on-surface);
+}
+
+.site-header__drawer-nav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.site-header__drawer-link {
+	padding: var(--space-3) var(--space-2);
+	font-size: 1.05rem;
+	font-weight: 550;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-base);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__drawer-link:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+
+.site-header__drawer-link:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+/* Theme toggle lives HERE on mobile (drawer) — never as a fourth header element. */
+.site-header__drawer-theme {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block: var(--space-3);
+	border-block: 1px solid color-mix(in srgb, var(--outline) 16%, transparent);
+}
+
+.site-header__drawer-theme-label {
+	font-size: 0.95rem;
+	font-weight: 500;
+	color: var(--on-surface-variant);
+}
+
+.site-header__drawer-actions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin-block-start: auto;
+}
+
+/* Full-width block variants of the header actions, used inside the drawer. */
+.site-header__cta--block,
+.site-header__signin--block {
+	inline-size: 100%;
+	justify-content: center;
+	text-align: center;
+	padding-block: 0.75rem;
+}
+
+.site-header__signin--block {
+	display: inline-flex;
+	align-items: center;
+	border-radius: var(--radius-lg);
+	border: 1px solid color-mix(in srgb, var(--outline) 26%, transparent);
+}
+/* #endregion */
+
+/* #region Responsive — strict 3-element mobile header (icon mark · compact search · burger) */
+@media (max-width: 900px) {
+	/* Drop everything that isn't one of the three permitted mobile elements. */
+	.site-header__nav,
+	.site-header__actions,
+	.site-header__brand-text {
+		display: none;
+	}
+
+	.site-header__bar {
+		gap: var(--space-3);
+		padding-inline: var(--space-3);
+	}
+
+	/* (1) Icon-only mark — the wordmark is stripped above. */
+	.site-header__brand {
+		gap: 0;
+	}
+
+	/* (2) Compressed search — still carries its entity dropdown, fills the middle, shrinks freely. */
+	.site-header__search {
+		max-inline-size: none;
+		margin-inline: 0;
+		min-inline-size: 0;
+	}
+
+	.site-header__entity-btn {
+		padding-inline: var(--space-2);
+		font-size: 0.8rem;
+	}
+
+	.site-header__search-input {
+		font-size: 0.85rem;
+	}
+
+	/* (3) Veggie-burger drawer trigger. */
+	.site-header__burger {
+		display: flex;
+	}
+
+	/* When the drawer is open, collapse the bar to mark + X only. */
+	.site-header--menu-open .site-header__search {
+		display: none;
+	}
+
+	/* Float the header (and its morphing X) above the backdrop/drawer so it stays tappable. */
+	.site-header--menu-open {
+		z-index: calc(var(--z-overlay, 1100) + 50);
+	}
+}
+
+/* Above the mobile breakpoint the drawer machinery is fully inert — never rendered/interactive. */
+@media (min-width: 901px) {
+	.site-header__backdrop,
+	.site-header__drawer {
+		display: none;
+	}
+}
+/* #endregion */

@@ -10,7 +10,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 
 | Group                     | Purpose                                                                                      | Auth        |
 | :------------------------ | :------------------------------------------------------------------------------------------- | :---------- |
-| `routes/(public)/`        | Marketing + auth (landing, about, explore, help, view, login/register/…)                     | none        |
+| `routes/(public)/`        | Marketing + auth (landing, about, explore, help, view, login/join/…)                         | none        |
 | `routes/(public)/(auth)/` | Auth sub-group (own chrome later)                                                            | none        |
 | `routes/(dashboard)/`     | Authenticated app (home, projects, business, teams, messages, wallet, settings, services, …) | **guarded** |
 | `routes/[handle]/`        | Public profile namespace — users, teams, corporations by `@handle`                           | none        |

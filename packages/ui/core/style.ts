@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { CSSProperties } from "preact";
 
 /**
  * Merge a map of CSS custom-property references with an optional caller-supplied style object.
@@ -10,11 +10,11 @@ import type { JSX } from "preact";
  */
 export function styleVars(
 	vars: Record<string, string | number | undefined>,
-	extra?: JSX.CSSProperties,
-): JSX.CSSProperties {
+	extra?: CSSProperties,
+): CSSProperties {
 	const out: Record<string, string | number> = {};
 	for (const [k, v] of Object.entries(vars)) {
 		if (v !== undefined) out[k] = v;
 	}
-	return { ...out, ...(extra ?? {}) } as JSX.CSSProperties;
+	return { ...out, ...(extra ?? {}) } as CSSProperties;
 }

@@ -92,6 +92,16 @@
 	   runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
 }
 
+/* Universal border-box reset — foundational layout contract (DESIGN_SYSTEM.md Part A). Padding and
+   borders are drawn INSIDE a declared `inline-size`/`width`, so `100%` + padding never exceeds the
+   parent. Without this, content-box is the default and any `width:100%` wrapper carrying gutters
+   overflows the viewport (the source of the mobile horizontal-scroll bleed). */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
 /* Simultaneous, frame-coherent theme crossfade — one clock across the whole tree (§B.5). */
 *,
 *::before,

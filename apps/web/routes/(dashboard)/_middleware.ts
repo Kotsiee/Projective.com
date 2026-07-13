@@ -11,7 +11,7 @@ export default define.middleware((ctx) => {
 	const hasSession = ctx.req.headers.get("cookie")?.includes("sb-access-token");
 	if (!hasSession) {
 		const dest = new URL("/login", ctx.url);
-		dest.searchParams.set("redirect", ctx.url.pathname);
+		dest.searchParams.set("redirectTo", ctx.url.pathname);
 		return new Response(null, { status: 302, headers: { location: dest.href } });
 	}
 	ctx.state.isAuthenticated = true;
