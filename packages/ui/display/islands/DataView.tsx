@@ -177,7 +177,9 @@ export function DataView<T>(props: DataViewProps<T>): JSX.Element {
 		dataKey ? String(getFieldValue(item, dataKey) ?? index) : index;
 
 	const renderItem = (item: T): VNode =>
-		isGrid ? (gridItemTemplate ? gridItemTemplate(item) : itemTemplate(item, "grid")) : itemTemplate(item, "list");
+		isGrid
+			? (gridItemTemplate ? gridItemTemplate(item) : itemTemplate(item, "grid"))
+			: itemTemplate(item, "list");
 
 	// #region Body
 	const body = () => {

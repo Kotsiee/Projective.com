@@ -120,7 +120,7 @@ export function useFloating(opts: UseFloatingOptions): FloatingState | null {
 				t,
 				panelW,
 				panelH,
-				{ width: window.innerWidth, height: window.innerHeight },
+				{ width: globalThis.innerWidth, height: globalThis.innerHeight },
 				placement,
 				offset,
 				padding,
@@ -135,11 +135,11 @@ export function useFloating(opts: UseFloatingOptions): FloatingState | null {
 		}
 		compute();
 		const onScroll = () => compute();
-		window.addEventListener("scroll", onScroll, true);
-		window.addEventListener("resize", onScroll);
+		globalThis.addEventListener("scroll", onScroll, true);
+		globalThis.addEventListener("resize", onScroll);
 		return () => {
-			window.removeEventListener("scroll", onScroll, true);
-			window.removeEventListener("resize", onScroll);
+			globalThis.removeEventListener("scroll", onScroll, true);
+			globalThis.removeEventListener("resize", onScroll);
 		};
 	}, [open, compute]);
 

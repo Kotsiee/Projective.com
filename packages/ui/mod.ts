@@ -19,3 +19,8 @@ export * from "./display/mod.ts";
 export * from "./feedback/mod.ts";
 export * from "./overlay/mod.ts";
 export * from "./utils/mod.ts";
+
+// `TreeSelectionMode` is defined by both fields' TreeSelect and display's Tree. An explicit
+// re-export overrides the star-export ambiguity at the umbrella (display's is canonical here); both
+// remain reachable via their own sub-paths (`@projective/ui/fields`, `@projective/ui/display`).
+export type { TreeSelectionMode } from "./display/islands/Tree.tsx";

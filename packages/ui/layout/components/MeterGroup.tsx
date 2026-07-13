@@ -80,37 +80,33 @@ export function MeterGroup(props: MeterGroupProps): JSX.Element {
 			<div class="ui-metergroup__track" role="img" aria-label={summary}>
 				{value.map((item, i) => {
 					const pct = clampPct(((item.value - min) / span) * 100);
-					return meterTemplate
-						? meterTemplate(item, i, pct)
-						: (
-							<span
-								key={i}
-								class="ui-metergroup__segment"
-								style={styleVars({
-									"--meter-size": `${pct}%`,
-									"--meter-color": resolveColor(item, i),
-								})}
-							/>
-						);
+					return meterTemplate ? meterTemplate(item, i, pct) : (
+						<span
+							key={i}
+							class="ui-metergroup__segment"
+							style={styleVars({
+								"--meter-size": `${pct}%`,
+								"--meter-color": resolveColor(item, i),
+							})}
+						/>
+					);
 				})}
 			</div>
 
 			<ul class="ui-metergroup__legend">
 				{value.map((item, i) =>
-					labelTemplate
-						? labelTemplate(item, i)
-						: (
-							<li key={i} class="ui-metergroup__legend-item">
-								<span
-									class="ui-metergroup__swatch"
-									aria-hidden="true"
-									style={styleVars({ "--meter-color": resolveColor(item, i) })}
-								/>
-								{item.icon && <span class="ui-metergroup__icon">{item.icon}</span>}
-								<span class="ui-metergroup__legend-label">{item.label}</span>
-								<span class="ui-metergroup__legend-value">{item.value}</span>
-							</li>
-						)
+					labelTemplate ? labelTemplate(item, i) : (
+						<li key={i} class="ui-metergroup__legend-item">
+							<span
+								class="ui-metergroup__swatch"
+								aria-hidden="true"
+								style={styleVars({ "--meter-color": resolveColor(item, i) })}
+							/>
+							{item.icon && <span class="ui-metergroup__icon">{item.icon}</span>}
+							<span class="ui-metergroup__legend-label">{item.label}</span>
+							<span class="ui-metergroup__legend-value">{item.value}</span>
+						</li>
+					)
 				)}
 			</ul>
 		</div>

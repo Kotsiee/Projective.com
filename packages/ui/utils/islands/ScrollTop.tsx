@@ -47,9 +47,7 @@ export function ScrollTop(props: ScrollTopProps): JSX.Element {
 		if (typeof window === "undefined") return;
 		const scroller: HTMLElement | Window = target?.current ?? window;
 		const readTop = () =>
-			scroller === window
-				? window.scrollY
-				: (scroller as HTMLElement).scrollTop;
+			scroller === window ? globalThis.scrollY : (scroller as HTMLElement).scrollTop;
 		const onScroll = () => setVisible(readTop() > threshold);
 		onScroll();
 		scroller.addEventListener("scroll", onScroll, { passive: true });
@@ -59,7 +57,7 @@ export function ScrollTop(props: ScrollTopProps): JSX.Element {
 
 	const toTop = () => {
 		if (typeof window === "undefined") return;
-		const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+		const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 		const behavior: ScrollBehavior = reduce ? "auto" : "smooth";
 		const scroller: HTMLElement | Window = target?.current ?? window;
 		scroller.scrollTo({ top: 0, behavior });
@@ -71,7 +69,12 @@ export function ScrollTop(props: ScrollTopProps): JSX.Element {
 		<button
 			ref={btnRef}
 			type="button"
-			class={cx("ui-scroll-top", `ui-scroll-top--${position}`, visible && "ui-scroll-top--visible", className)}
+			class={cx(
+				"ui-scroll-top",
+				`ui-scroll-top--${position}`,
+				visible && "ui-scroll-top--visible",
+				className,
+			)}
 			data-state={visible ? "visible" : "hidden"}
 			aria-label={ariaLabel}
 			aria-hidden={!visible || undefined}

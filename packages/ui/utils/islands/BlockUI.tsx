@@ -35,7 +35,8 @@ export interface BlockUIProps {
  * layers at `--z-overlay` via {@link useOverlayStack}.
  */
 export function BlockUI(props: BlockUIProps): JSX.Element {
-	const { blocked, fullScreen, template, blur, onBlockedChange, children, class: className } = props;
+	const { blocked, fullScreen, template, blur, onBlockedChange, children, class: className } =
+		props;
 
 	const ctrl = useControllable<boolean>(blocked, false, onBlockedChange);
 	const isBlocked = ctrl.signal.value;
@@ -64,7 +65,10 @@ export function BlockUI(props: BlockUIProps): JSX.Element {
 
 	if (fullScreen) {
 		return (
-			<div class={cx("ui-block-ui ui-block-ui--fullscreen", className)} aria-busy={isBlocked || undefined}>
+			<div
+				class={cx("ui-block-ui ui-block-ui--fullscreen", className)}
+				aria-busy={isBlocked || undefined}
+			>
 				{scrim}
 			</div>
 		);

@@ -118,13 +118,13 @@ export function useVirtualScroll(opts: UseVirtualScrollOptions): UseVirtualScrol
 		const read = () => {
 			if (useWindow) {
 				const rect = parent?.getBoundingClientRect();
-				const listTop = (rect?.top ?? 0) + window.scrollY;
-				const listLeft = (rect?.left ?? 0) + window.scrollX;
+				const listTop = (rect?.top ?? 0) + globalThis.scrollY;
+				const listLeft = (rect?.left ?? 0) + globalThis.scrollX;
 				batch(() => {
 					scrollOffset.value = horizontal
-						? Math.max(0, window.scrollX - listLeft)
-						: Math.max(0, window.scrollY - listTop);
-					viewport.value = horizontal ? window.innerWidth : window.innerHeight;
+						? Math.max(0, globalThis.scrollX - listLeft)
+						: Math.max(0, globalThis.scrollY - listTop);
+					viewport.value = horizontal ? globalThis.innerWidth : globalThis.innerHeight;
 				});
 			} else if (parent) {
 				batch(() => {
@@ -139,10 +139,10 @@ export function useVirtualScroll(opts: UseVirtualScrollOptions): UseVirtualScrol
 		if (!source) return;
 		const onScroll = () => read();
 		source.addEventListener("scroll", onScroll, { passive: true });
-		window.addEventListener("resize", onScroll);
+		globalThis.addEventListener("resize", onScroll);
 		return () => {
 			source.removeEventListener("scroll", onScroll);
-			window.removeEventListener("resize", onScroll);
+			globalThis.removeEventListener("resize", onScroll);
 		};
 	}, [parentRef, useWindow, horizontal]);
 	// #endregion
@@ -174,8 +174,8 @@ export function useVirtualScroll(opts: UseVirtualScrollOptions): UseVirtualScrol
 		if (useWindow) {
 			const parent = parentRef?.current;
 			const rect = parent?.getBoundingClientRect();
-			const base = (rect?.top ?? 0) + window.scrollY;
-			window.scrollTo({ top: base + target, behavior: "smooth" });
+			const base = (rect?.top ?? 0) + globalThis.scrollY;
+			globalThis.scrollTo({ top: base + target, behavior: "smooth" });
 		} else if (parentRef?.current) {
 			parentRef.current.scrollTo({ [horizontal ? "left" : "top"]: target, behavior: "smooth" });
 		}

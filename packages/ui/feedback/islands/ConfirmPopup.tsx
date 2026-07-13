@@ -158,7 +158,13 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 							<div id={msgId} class="ui-confirm__message">{message}</div>
 						</div>
 						<div class="ui-confirm-popup__actions">
-							<Button label={rejectLabel} severity="secondary" variant="text" size="sm" onClick={reject} />
+							<Button
+								label={rejectLabel}
+								severity="secondary"
+								variant="text"
+								size="sm"
+								onClick={reject}
+							/>
 							<Button label={acceptLabel} severity={acceptSeverity} size="sm" onClick={accept} />
 						</div>
 					</div>

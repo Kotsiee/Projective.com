@@ -120,7 +120,10 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element | null {
 	// #region Model → filtered groups
 	const baseGroups = useMemo<FlatGroup[]>(() => {
 		if (isGrouped(commands)) {
-			return commands.map((g) => ({ label: g.label ?? null, items: g.items.filter((i) => !i.separator) }));
+			return commands.map((g) => ({
+				label: g.label ?? null,
+				items: g.items.filter((i) => !i.separator),
+			}));
 		}
 		return [{ label: null, items: commands.filter((i) => !i.separator) }];
 	}, [commands]);

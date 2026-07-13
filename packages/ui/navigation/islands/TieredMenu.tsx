@@ -315,7 +315,10 @@ export function TieredMenu(props: TieredMenuProps): JSX.Element {
 					ref={panelRef}
 					class="ui-tieredmenu__panel"
 					style={floating
-						? styleVars({ "--float-top": `${floating.top}px`, "--float-left": `${floating.left}px` })
+						? styleVars({
+							"--float-top": `${floating.top}px`,
+							"--float-left": `${floating.left}px`,
+						})
 						: undefined}
 				>
 					{level}

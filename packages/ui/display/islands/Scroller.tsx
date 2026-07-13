@@ -159,14 +159,12 @@ export function Scroller<T>(props: ScrollerProps<T>): JSX.Element {
 		.filter((it): it is T => it !== undefined);
 
 	const renderSkeletonRow = () =>
-		loaderTemplate
-			? loaderTemplate()
-			: (
-				<div class="ui-scroller__skeleton" aria-hidden="true">
-					<span class="ui-scroller__skeleton-bar ui-scroller__skeleton-bar--full" />
-					<span class="ui-scroller__skeleton-bar ui-scroller__skeleton-bar--short" />
-				</div>
-			);
+		loaderTemplate ? loaderTemplate() : (
+			<div class="ui-scroller__skeleton" aria-hidden="true">
+				<span class="ui-scroller__skeleton-bar ui-scroller__skeleton-bar--full" />
+				<span class="ui-scroller__skeleton-bar ui-scroller__skeleton-bar--short" />
+			</div>
+		);
 
 	return (
 		<div

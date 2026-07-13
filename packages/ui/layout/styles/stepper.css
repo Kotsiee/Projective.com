@@ -70,8 +70,9 @@
 	border-radius: var(--radius-xl);
 	font-size: 0.8125rem;
 	font-weight: 600;
-	transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast)
-		var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
 }
 
 .ui-stepper__step--active .ui-stepper__marker {

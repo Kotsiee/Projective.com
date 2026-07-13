@@ -36,14 +36,15 @@ export interface AccordionTabModel {
 
 function tabsFromChildren(children: ComponentChildren): AccordionTabModel[] {
 	return toChildArray(children)
-		.filter((c): c is VNode<AccordionTabProps> =>
-			typeof c === "object" && c !== null && "props" in c
-		)
-		.map((c) => ({
-			header: c.props.header,
-			disabled: c.props.disabled,
-			content: c.props.children,
-		}));
+		.filter((c) => typeof c === "object" && c !== null && "props" in (c as object))
+		.map((c) => {
+			const props = (c as VNode<AccordionTabProps>).props;
+			return {
+				header: props.header,
+				disabled: props.disabled,
+				content: props.children,
+			};
+		});
 }
 // #endregion
 
@@ -75,7 +76,8 @@ export interface AccordionProps {
  * `inert` while collapsed so its content leaves the tab order without being removed from the DOM.
  */
 export function Accordion(props: AccordionProps): JSX.Element {
-	const { children, tabs, multiple = false, activeIndex, onTabChange, id, class: className } = props;
+	const { children, tabs, multiple = false, activeIndex, onTabChange, id, class: className } =
+		props;
 
 	const rootId = useId(id, "accordion");
 	const model = useMemo(() => tabs ?? tabsFromChildren(children), [tabs, children]);

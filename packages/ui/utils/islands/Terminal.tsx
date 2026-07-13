@@ -79,7 +79,11 @@ export function Terminal(props: TerminalProps): JSX.Element {
 		const [name, ...args] = command.split(/\s+/);
 		const handler = commandHandlers?.[name];
 		try {
-			const result = handler ? await handler(args) : onCommand ? await onCommand(command) : `Unknown command: ${name}`;
+			const result = handler
+				? await handler(args)
+				: onCommand
+				? await onCommand(command)
+				: `Unknown command: ${name}`;
 			if (result != null) push({ kind: "response", content: result });
 		} catch (err) {
 			push({ kind: "response", content: err instanceof Error ? err.message : String(err) });
@@ -113,7 +117,13 @@ export function Terminal(props: TerminalProps): JSX.Element {
 			class={cx("ui-terminal", className)}
 			onClick={() => inputRef.current?.focus()}
 		>
-			<div ref={scrollRef} class="ui-terminal__scroll" role="log" aria-live="polite" aria-label={ariaLabel}>
+			<div
+				ref={scrollRef}
+				class="ui-terminal__scroll"
+				role="log"
+				aria-live="polite"
+				aria-label={ariaLabel}
+			>
 				{welcome && <div class="ui-terminal__welcome">{welcome}</div>}
 				{lines.value.map((line, i) => (
 					<div

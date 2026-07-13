@@ -49,7 +49,11 @@ export function ListItem(props: ListItemProps): JSX.Element {
 		const controlClass = cx("ui-list__control", className);
 		return (
 			<li
-				class={cx("ui-list__item", "ui-list__item--interactive", disabled && "ui-list__item--disabled")}
+				class={cx(
+					"ui-list__item",
+					"ui-list__item--interactive",
+					disabled && "ui-list__item--disabled",
+				)}
 			>
 				{href
 					? (
@@ -77,7 +81,10 @@ export function ListItem(props: ListItemProps): JSX.Element {
 	}
 
 	return (
-		<li class={cx("ui-list__item", disabled && "ui-list__item--disabled", className)} {...rest}>
+		<li
+			class={cx("ui-list__item", disabled && "ui-list__item--disabled", className)}
+			{...(rest as JSX.HTMLAttributes<HTMLLIElement>)}
+		>
 			{body}
 		</li>
 	);

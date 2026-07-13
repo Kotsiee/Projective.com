@@ -49,7 +49,12 @@ export function ProgressSpinner(props: ProgressSpinnerProps): JSX.Element {
 				/* `pathLength={100}` normalises the dash units to a 0-100 scale regardless of the
 				 radius, so the fixed `stroke-dasharray="75 100"` always reads as a 3/4 arc. */
 			}
-			<svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} class="ui-progress-spinner__svg">
+			<svg
+				viewBox={`0 0 ${size} ${size}`}
+				width={size}
+				height={size}
+				class="ui-progress-spinner__svg"
+			>
 				<circle
 					class="ui-progress-spinner__track"
 					cx={size / 2}

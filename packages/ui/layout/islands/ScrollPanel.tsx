@@ -61,7 +61,10 @@ export function ScrollPanel(props: ScrollPanelProps): JSX.Element {
 			: NONE;
 		if (xThumb.value.needed) {
 			const track = vw - xThumb.value.size;
-			xThumb.value = { ...xThumb.value, offset: track > 0 ? (el.scrollLeft / (sw - vw)) * track : 0 };
+			xThumb.value = {
+				...xThumb.value,
+				offset: track > 0 ? (el.scrollLeft / (sw - vw)) * track : 0,
+			};
 		}
 
 		yThumb.value = sh > vh + 1
@@ -73,7 +76,10 @@ export function ScrollPanel(props: ScrollPanelProps): JSX.Element {
 			: NONE;
 		if (yThumb.value.needed) {
 			const track = vh - yThumb.value.size;
-			yThumb.value = { ...yThumb.value, offset: track > 0 ? (el.scrollTop / (sh - vh)) * track : 0 };
+			yThumb.value = {
+				...yThumb.value,
+				offset: track > 0 ? (el.scrollTop / (sh - vh)) * track : 0,
+			};
 		}
 	};
 

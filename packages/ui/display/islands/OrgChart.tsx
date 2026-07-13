@@ -75,7 +75,11 @@ export function OrgChart<T = unknown>(props: OrgChartProps<T>): JSX.Element {
 	// #endregion
 
 	// #region Keyboard
-	const onCardKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLElement>, node: TreeNode<T>, hasKids: boolean) => {
+	const onCardKeyDown = (
+		e: JSX.TargetedKeyboardEvent<HTMLElement>,
+		node: TreeNode<T>,
+		hasKids: boolean,
+	) => {
 		switch (e.key) {
 			case "ArrowRight":
 				if (hasKids && isCollapsed(node.key)) {

@@ -127,7 +127,9 @@ function MenubarSub(props: SubProps): VNode {
 			<>
 				{item.icon && <span class="ui-menubar__icon" aria-hidden="true">{item.icon}</span>}
 				<span class="ui-menubar__label">{item.label}</span>
-				{item.shortcut && <span class="ui-menubar__shortcut" aria-hidden="true">{item.shortcut}</span>}
+				{item.shortcut && (
+					<span class="ui-menubar__shortcut" aria-hidden="true">{item.shortcut}</span>
+				)}
 				{item.badge != null && <span class="ui-menubar__badge">{item.badge}</span>}
 				{hasChildren(item) && <span class="ui-menubar__arrow" aria-hidden="true">▸</span>}
 			</>
@@ -313,8 +315,9 @@ export function Menubar(props: MenubarProps): JSX.Element {
 		);
 
 	// #region Mobile panel
-	const toggleExpand = (key: string) =>
-		(expanded.value = { ...expanded.value, [key]: !expanded.value[key] });
+	const toggleExpand = (
+		key: string,
+	) => (expanded.value = { ...expanded.value, [key]: !expanded.value[key] });
 
 	const mobilePanel = (
 		<div ref={mobileRef} class="ui-menubar__mobile" role="menu" aria-label={ariaLabel}>
@@ -326,7 +329,12 @@ export function Menubar(props: MenubarProps): JSX.Element {
 					<div key={key} class="ui-menubar__mobile-group">
 						{item.url && !sub
 							? (
-								<a class="ui-menubar__mobile-item" role="menuitem" href={item.url} target={item.target}>
+								<a
+									class="ui-menubar__mobile-item"
+									role="menuitem"
+									href={item.url}
+									target={item.target}
+								>
 									{topContent(item)}
 								</a>
 							)
@@ -431,9 +439,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 							return (
 								<div key={itemKey(item, i)} class="ui-menubar__top-wrap">
 									{item.url && !sub && !item.disabled
-										? (
-											<a {...shared} href={item.url} target={item.target}>{topContent(item)}</a>
-										)
+										? <a {...shared} href={item.url} target={item.target}>{topContent(item)}</a>
 										: (
 											<div
 												{...shared}

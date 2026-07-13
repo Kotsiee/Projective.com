@@ -48,8 +48,13 @@ const IDLE_MS = 900;
  * hydration.
  */
 export function ScrollArea(props: ScrollAreaProps): JSX.Element {
-	const { orientation = "vertical", type = "hover", "aria-label": ariaLabel, children, class: className } =
-		props;
+	const {
+		orientation = "vertical",
+		type = "hover",
+		"aria-label": ariaLabel,
+		children,
+		class: className,
+	} = props;
 
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const [m, setM] = useState<Metrics>({

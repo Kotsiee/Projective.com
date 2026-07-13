@@ -105,7 +105,11 @@ function PanelSection(props: SectionProps): VNode {
 							? (
 								<a
 									data-panelmenu-row
-									class={cx("ui-panelmenu__leaf", item.active && "ui-panelmenu__leaf--current", item.class)}
+									class={cx(
+										"ui-panelmenu__leaf",
+										item.active && "ui-panelmenu__leaf--current",
+										item.class,
+									)}
 									style={styleVars({ "--level": level })}
 									href={item.url}
 									target={item.target}

@@ -22,7 +22,8 @@ export interface DismissOptions {
 }
 
 export function useDismiss(opts: DismissOptions): void {
-	const { open, onDismiss, panelRef, triggerRef, closeOnEscape = true, closeOnOutside = true } = opts;
+	const { open, onDismiss, panelRef, triggerRef, closeOnEscape = true, closeOnOutside = true } =
+		opts;
 
 	useEffect(() => {
 		if (!open || typeof document === "undefined") return;

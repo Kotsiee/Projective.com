@@ -64,8 +64,15 @@ export interface SplitterProps {
  * Arrow keys resize by 5 points, Home/End snap to the panel's min/max bound.
  */
 export function Splitter(props: SplitterProps): JSX.Element {
-	const { layout = "horizontal", stateKey, gutterSize = "8px", id, class: className, style, children } =
-		props;
+	const {
+		layout = "horizontal",
+		stateKey,
+		gutterSize = "8px",
+		id,
+		class: className,
+		style,
+		children,
+	} = props;
 
 	const panels = toChildArray(children) as VNode<SplitterPanelProps>[];
 	const count = panels.length;
@@ -94,7 +101,9 @@ export function Splitter(props: SplitterProps): JSX.Element {
 	const sizes = useSignal<number[]>(restore());
 	const isDragging = useSignal(false);
 	const rootRef = useRef<HTMLDivElement>(null);
-	const drag = useRef<{ index: number; axisSize: number; startPos: number; a: number; b: number } | null>(
+	const drag = useRef<
+		{ index: number; axisSize: number; startPos: number; a: number; b: number } | null
+	>(
 		null,
 	);
 

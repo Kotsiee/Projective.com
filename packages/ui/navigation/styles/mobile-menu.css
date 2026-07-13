@@ -24,6 +24,10 @@
 	display: flex;
 }
 
+.ui-mobile-menu[data-open="false"] {
+	display: none;
+}
+
 .ui-mobile-menu__backdrop {
 	position: absolute;
 	inset: 0;

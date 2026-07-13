@@ -150,7 +150,9 @@ export function SlideMenu(props: SlideMenuProps): JSX.Element {
 		return (
 			<ul
 				key={levelIdx}
-				ref={(el) => (levelRefs.current[levelIdx] = el)}
+				ref={(el) => {
+					levelRefs.current[levelIdx] = el;
+				}}
 				role="menu"
 				class="ui-slidemenu__level"
 				aria-label={level.label}

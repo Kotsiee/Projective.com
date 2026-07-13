@@ -102,7 +102,11 @@ export function Messages(props: MessagesProps): JSX.Element {
 	return (
 		<div id={id} class={cx("ui-messages", className)} aria-live="polite" aria-atomic="false">
 			{ctrl.signal.value.map((item) => (
-				<MessagesRow key={item.id} item={item} onDismiss={dismiss} />
+				<MessagesRow
+					key={item.id}
+					item={item}
+					onDismiss={dismiss}
+				/>
 			))}
 		</div>
 	);

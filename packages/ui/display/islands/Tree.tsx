@@ -233,7 +233,7 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
 	// #endregion
 
 	// #region Selection
-	const selectRow = (node: TreeNode<T>, additive: boolean) => {
+	const selectRow = (node: TreeNode<T>, _additive: boolean) => {
 		if (selectionMode === null || node.selectable === false) return;
 		const next = new Set(selectionMode === "single" ? [] : selectedKeys.value);
 		if (next.has(node.key)) next.delete(node.key);
@@ -305,7 +305,11 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
 		const pos = siblings.findIndex((f) => f.node.key === fn.node.key);
 		const target = siblings[pos + dir];
 		if (!target) return;
-		onNodeDrop({ dragNode: fn.node, dropNode: target.node, position: dir === -1 ? "before" : "after" });
+		onNodeDrop({
+			dragNode: fn.node,
+			dropNode: target.node,
+			position: dir === -1 ? "before" : "after",
+		});
 	};
 
 	const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
@@ -454,9 +458,11 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
 						dropTarget.value = { key, position: dropPositionFrom(e, fn.expandable) };
 					}
 					: undefined}
-				onDragLeave={dragdrop ? () => {
-					if (dropTarget.value?.key === key) dropTarget.value = null;
-				} : undefined}
+				onDragLeave={dragdrop
+					? () => {
+						if (dropTarget.value?.key === key) dropTarget.value = null;
+					}
+					: undefined}
 				onDrop={dragdrop ? () => onDrop(fn) : undefined}
 			>
 				<span class="ui-tree__indent" aria-hidden="true" />
@@ -543,13 +549,15 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
 				style={bodyStyle}
 				onKeyDown={onKeyDown}
 			>
-				{isEmpty && (
-					<div class="ui-tree__empty">{emptyTemplate ? emptyTemplate() : "No nodes"}</div>
-				)}
+				{isEmpty && <div class="ui-tree__empty">{emptyTemplate ? emptyTemplate() : "No nodes"}
+				</div>}
 
 				{!isEmpty && virtualScroll
 					? (
-						<div class="ui-tree__sizer" style={styleVars({ "--v-total": `${virtual.totalSize}px` })}>
+						<div
+							class="ui-tree__sizer"
+							style={styleVars({ "--v-total": `${virtual.totalSize}px` })}
+						>
 							{virtual.virtualItems.map((vi) => (
 								<div class="ui-tree__virtual-row" style={styleVars({ "--v-top": `${vi.start}px` })}>
 									{renderRow(flat.value[vi.index], vi.index)}
@@ -558,7 +566,9 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
 						</div>
 					)
 					: !isEmpty
-					? flat.value.map((fn) => renderRow(fn))
+					? flat.value.map((fn) =>
+						renderRow(fn)
+					)
 					: null}
 			</div>
 		</div>

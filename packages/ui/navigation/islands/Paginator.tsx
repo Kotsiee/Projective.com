@@ -119,7 +119,12 @@ export function Paginator(props: PaginatorProps): JSX.Element {
 		const nextPageCount = Math.max(1, Math.ceil(totalRecords / nextRows));
 		const nextPage = Math.min(Math.max(Math.floor(nextFirst / nextRows), 0), nextPageCount - 1);
 		const resolvedFirst = nextPage * nextRows;
-		onPageChange?.({ first: resolvedFirst, rows: nextRows, page: nextPage, pageCount: nextPageCount });
+		onPageChange?.({
+			first: resolvedFirst,
+			rows: nextRows,
+			page: nextPage,
+			pageCount: nextPageCount,
+		});
 		return resolvedFirst;
 	};
 

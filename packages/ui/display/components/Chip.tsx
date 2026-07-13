@@ -27,7 +27,8 @@ export interface ChipProps {
  * carries its own `aria-label`.
  */
 export function Chip(props: ChipProps): JSX.Element {
-	const { label, image, icon, removable, onRemove, class: className, "aria-label": ariaLabel } = props;
+	const { label, image, icon, removable, onRemove, class: className, "aria-label": ariaLabel } =
+		props;
 
 	const onRemoveClick = (e: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
 		e.stopPropagation();

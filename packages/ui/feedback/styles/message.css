@@ -126,7 +126,9 @@
 	border-radius: var(--radius-sm);
 	cursor: pointer;
 	opacity: 0.75;
-	transition: background-color var(--dur-fast) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
 }
 .ui-message__close svg {
 	inline-size: 1rem;

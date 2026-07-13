@@ -71,11 +71,13 @@ export function Timeline<T = unknown>(props: TimelineProps<T>): JSX.Element {
 	const hasOpposite = !!oppositeTemplate || align === "alternate";
 
 	const renderMarker = (event: TimelineEvent<T>, index: number): VNode =>
-		markerTemplate ? markerTemplate(event, index) : (
-			<span class="ui-timeline__marker" aria-hidden="true">
-				{event.icon ?? ""}
-			</span>
-		);
+		markerTemplate
+			? markerTemplate(event, index)
+			: (
+				<span class="ui-timeline__marker" aria-hidden="true">
+					{event.icon ?? ""}
+				</span>
+			);
 
 	const renderContent = (event: TimelineEvent<T>, index: number): VNode =>
 		contentTemplate ? contentTemplate(event, index) : (

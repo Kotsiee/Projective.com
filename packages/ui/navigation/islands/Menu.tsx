@@ -205,7 +205,7 @@ export function Menu(props: MenuProps): JSX.Element {
 		);
 		const shared = {
 			id: `${rootId}-item-${index}`,
-			role: "menuitem",
+			role: "menuitem" as const,
 			class: cls,
 			"aria-disabled": item.disabled || undefined,
 			"aria-current": item.active || undefined,
@@ -291,7 +291,10 @@ export function Menu(props: MenuProps): JSX.Element {
 			{open.value && (
 				<div
 					ref={panelRef}
-					class={cx("ui-menu__panel", floating?.placement.startsWith("top") && "ui-menu__panel--top")}
+					class={cx(
+						"ui-menu__panel",
+						floating?.placement.startsWith("top") && "ui-menu__panel--top",
+					)}
 					style={floating
 						? styleVars({
 							"--float-top": `${floating.top}px`,

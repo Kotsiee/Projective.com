@@ -1,9 +1,18 @@
 /**
  * @projective/ui/overlay — layering primitives.
  *
- * Planned roster (DESIGN_SYSTEM.md §C.1): Backdrop, Overlay, HoverCard, Portal. All overlays render
- * through a Portal and are coordinated by a single OverlayManager (z-index + focus stack).
- *
- * Structural scaffold only.
+ * The shared substrate every transient surface composes: a fixed full-viewport Portal layer, a
+ * dimming Backdrop, a generic controlled Overlay (Portal + Backdrop + focus trap + dismiss +
+ * z-stack), and an anchored HoverCard. No `preact/compat` DOM portals — layers render inline with
+ * `position: fixed` + a z-index token, coordinated by `@projective/ui/hooks/useOverlayStack`.
  */
-export {};
+export { Portal } from "./components/Portal.tsx";
+export type { PortalProps } from "./components/Portal.tsx";
+export { Backdrop } from "./islands/Backdrop.tsx";
+export type { BackdropProps } from "./islands/Backdrop.tsx";
+export { Overlay } from "./islands/Overlay.tsx";
+export type { OverlayProps } from "./islands/Overlay.tsx";
+export { HoverCard } from "./islands/HoverCard.tsx";
+export type { HoverCardProps } from "./islands/HoverCard.tsx";
+export { usePresence } from "./core/usePresence.ts";
+export type { Presence, PresenceState } from "./core/usePresence.ts";

@@ -92,7 +92,14 @@ export function Inplace(props: InplaceProps): JSX.Element {
 	};
 
 	return (
-		<span class={cx("ui-inplace", isActive && "ui-inplace--active", disabled && "ui-inplace--disabled", className)}>
+		<span
+			class={cx(
+				"ui-inplace",
+				isActive && "ui-inplace--active",
+				disabled && "ui-inplace--disabled",
+				className,
+			)}
+		>
 			{!isActive && (
 				<button
 					ref={triggerRef}
@@ -122,7 +129,12 @@ export function Inplace(props: InplaceProps): JSX.Element {
 						{typeof editor === "function" ? editor(close) : editor}
 					</div>
 					{closable && (
-						<button type="button" class="ui-inplace__close" aria-label="Close editor" onClick={close}>
+						<button
+							type="button"
+							class="ui-inplace__close"
+							aria-label="Close editor"
+							onClick={close}
+						>
 							×
 						</button>
 					)}

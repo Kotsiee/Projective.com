@@ -70,9 +70,7 @@ export function ProgressBar(props: ProgressBarProps): JSX.Element {
 			>
 				{indeterminate && <div class="ui-progressbar__indicator" />}
 			</div>
-			{showValue && !indeterminate && (
-				<span class="ui-progressbar__label">{Math.round(pct)}%</span>
-			)}
+			{showValue && !indeterminate && <span class="ui-progressbar__label">{Math.round(pct)}%</span>}
 		</div>
 	);
 }

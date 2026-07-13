@@ -93,7 +93,10 @@ export function Image(props: ImageProps): JSX.Element {
 	};
 	const onStagePointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
 		if (!drag.current) return;
-		setPan({ x: drag.current.ox + (e.clientX - drag.current.px), y: drag.current.oy + (e.clientY - drag.current.py) });
+		setPan({
+			x: drag.current.ox + (e.clientX - drag.current.px),
+			y: drag.current.oy + (e.clientY - drag.current.py),
+		});
 	};
 	const endDrag = () => {
 		drag.current = null;

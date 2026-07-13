@@ -21,3 +21,31 @@ export {
 } from "./components/AspectRatio.tsx";
 export { Divider, type DividerProps, type Orientation } from "./components/Divider.tsx";
 export { Separator } from "./components/Separator.tsx";
+
+// #region Panels & containers (PrimeNG parity)
+export { Panel, type PanelProps } from "./islands/Panel.tsx";
+export { Fieldset, type FieldsetProps } from "./islands/Fieldset.tsx";
+export { Toolbar, type ToolbarOrientation, type ToolbarProps } from "./components/Toolbar.tsx";
+export { ScrollPanel, type ScrollPanelProps } from "./islands/ScrollPanel.tsx";
+export {
+	Splitter,
+	type SplitterLayout,
+	SplitterPanel,
+	type SplitterPanelProps,
+	type SplitterProps,
+} from "./islands/Splitter.tsx";
+export {
+	Stepper,
+	type StepperOrientation,
+	StepperPanel,
+	type StepperPanelProps,
+	type StepperProps,
+	type StepperRenderContext,
+} from "./islands/Stepper.tsx";
+export {
+	MeterGroup,
+	type MeterGroupOrientation,
+	type MeterGroupProps,
+	type MeterItem,
+} from "./components/MeterGroup.tsx";
+// #endregion

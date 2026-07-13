@@ -19,7 +19,7 @@ function lockBodyScroll(): void {
 	if (typeof document === "undefined") return;
 	if (lockCount === 0) {
 		const body = document.body;
-		const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+		const scrollbar = globalThis.innerWidth - document.documentElement.clientWidth;
 		savedOverflow = body.style.overflow;
 		savedPaddingRight = body.style.paddingRight;
 		body.style.overflow = "hidden";

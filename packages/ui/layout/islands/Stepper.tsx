@@ -136,7 +136,9 @@ export function Stepper(props: StepperProps): JSX.Element {
 					return (
 						<li key={i} class="ui-stepper__item">
 							<button
-								ref={(el) => (stepRefs.current[i] = el)}
+								ref={(el) => {
+									stepRefs.current[i] = el;
+								}}
 								type="button"
 								class={cx(
 									"ui-stepper__step",
@@ -172,28 +174,26 @@ export function Stepper(props: StepperProps): JSX.Element {
 			</div>
 
 			<div class="ui-stepper__nav">
-				{controls
-					? controls(ctx)
-					: (
-						<>
-							<button
-								type="button"
-								class="ui-stepper__nav-btn"
-								disabled={ctx.isFirst}
-								onClick={prev}
-							>
-								Back
-							</button>
-							<button
-								type="button"
-								class="ui-stepper__nav-btn ui-stepper__nav-btn--primary"
-								disabled={ctx.isLast}
-								onClick={next}
-							>
-								Next
-							</button>
-						</>
-					)}
+				{controls ? controls(ctx) : (
+					<>
+						<button
+							type="button"
+							class="ui-stepper__nav-btn"
+							disabled={ctx.isFirst}
+							onClick={prev}
+						>
+							Back
+						</button>
+						<button
+							type="button"
+							class="ui-stepper__nav-btn ui-stepper__nav-btn--primary"
+							disabled={ctx.isLast}
+							onClick={next}
+						>
+							Next
+						</button>
+					</>
+				)}
 			</div>
 		</div>
 	);

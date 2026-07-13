@@ -139,6 +139,14 @@ export {
 	type DateValue,
 } from "./islands/DatePicker.tsx";
 export { type ColorFormat, ColorPicker, type ColorPickerProps } from "./islands/ColorPicker.tsx";
+export {
+	FileUpload,
+	type FileUploadContext,
+	type FileUploadProps,
+	type UploadControls,
+	type UploadFile,
+	type UploadStatus,
+} from "./islands/FileUpload.tsx";
 // #endregion
 
 // #region Field wrapper

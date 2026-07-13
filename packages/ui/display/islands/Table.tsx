@@ -413,9 +413,7 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 
 	// #region Cell rendering
 	const renderCell = (col: TableColumn<T>, row: T, index: number): VNode => {
-		const content = col.body
-			? col.body(row, index)
-			: toText(getFieldValue(row, col.field));
+		const content = col.body ? col.body(row, index) : toText(getFieldValue(row, col.field));
 		return (
 			<div
 				role="cell"
@@ -537,11 +535,9 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 	};
 	// #endregion
 
-	const bodyStyle = useWindow
-		? undefined
-		: styleVars({
-			"--ui-table-body-h": scrollHeight === "flex" ? undefined : (scrollHeight ?? undefined),
-		});
+	const bodyStyle = useWindow ? undefined : styleVars({
+		"--ui-table-body-h": scrollHeight === "flex" ? undefined : (scrollHeight ?? undefined),
+	});
 
 	const isEmpty = !loading && displayRows.value.length === 0;
 
@@ -569,7 +565,11 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 						style={styleVars({ "--ui-table-cols": gridTemplate.value })}
 					>
 						{expandedRowTemplate && (
-							<div role="columnheader" class="ui-table__cell ui-table__cell--toggle" aria-label="Expand" />
+							<div
+								role="columnheader"
+								class="ui-table__cell ui-table__cell--toggle"
+								aria-label="Expand"
+							/>
 						)}
 						{selectionColumn && (
 							<div role="columnheader" class="ui-table__cell ui-table__cell--check">
@@ -579,7 +579,9 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 									aria-label="Select all rows on this page"
 									checked={headerCheckState.value === "all"}
 									ref={(el) => {
-										if (el) el.indeterminate = headerCheckState.value === "some";
+										if (el) {
+											el.indeterminate = headerCheckState.value === "some";
+										}
 									}}
 									onChange={toggleAll}
 								/>
@@ -664,7 +666,9 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 							class="ui-table__row ui-table__row--filter"
 							style={styleVars({ "--ui-table-cols": gridTemplate.value })}
 						>
-							{expandedRowTemplate && <div role="cell" class="ui-table__cell ui-table__cell--toggle" />}
+							{expandedRowTemplate && (
+								<div role="cell" class="ui-table__cell ui-table__cell--toggle" />
+							)}
 							{selectionColumn && <div role="cell" class="ui-table__cell ui-table__cell--check" />}
 							{orderedColumns.value.map((col) => (
 								<div role="cell" class="ui-table__cell ui-table__cell--filter">
@@ -704,7 +708,9 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 				>
 					{loading && (
 						<div class="ui-table__overlay" role="status" aria-live="polite">
-							{loadingTemplate ? loadingTemplate() : <span class="ui-table__spinner" aria-hidden="true" />}
+							{loadingTemplate
+								? loadingTemplate()
+								: <span class="ui-table__spinner" aria-hidden="true" />}
 						</div>
 					)}
 
@@ -718,7 +724,10 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 
 					{!isEmpty && virtualScroll
 						? (
-							<div class="ui-table__sizer" style={styleVars({ "--v-total": `${virtual.totalSize}px` })}>
+							<div
+								class="ui-table__sizer"
+								style={styleVars({ "--v-total": `${virtual.totalSize}px` })}
+							>
 								{virtual.virtualItems.map((vi) => (
 									<div
 										class="ui-table__virtual-row"
@@ -742,7 +751,8 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 					<span class="ui-table__paginator-info">
 						{totalCount === 0
 							? "0"
-							: `${first.value + 1}–${Math.min(first.value + pageSize, totalCount)}`} of {totalCount}
+							: `${first.value + 1}–${Math.min(first.value + pageSize, totalCount)}`} of{" "}
+						{totalCount}
 					</span>
 					<div class="ui-table__paginator-controls">
 						<button

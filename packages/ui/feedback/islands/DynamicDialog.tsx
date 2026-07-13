@@ -1,10 +1,11 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
-import { signal, type Signal } from "@preact/signals";
+import { type Signal, signal } from "@preact/signals";
 import { Dialog, type DialogProps } from "./Dialog.tsx";
 
 // #region Types
 /** Configuration for a programmatically-opened dialog. Mirrors {@link DialogProps} minus its binding. */
-export interface DialogConfig extends Omit<DialogProps, "visible" | "children" | "onVisibleChange"> {
+export interface DialogConfig
+	extends Omit<DialogProps, "visible" | "children" | "onVisibleChange"> {
 	/** Dialog body — a node or a factory (evaluated once at open). */
 	content: ComponentChildren | (() => VNode);
 	/** Invoked after the dialog has fully closed and been removed from the host. */
@@ -92,7 +93,9 @@ function DynamicInstance({ rec }: { rec: DialogRecord }): JSX.Element {
 			{...dialogProps}
 			visible={rec.visible}
 			onVisibleChange={(v) => {
-				if (!v) setTimeout(() => (store.value = store.value.filter((r) => r.id !== rec.id)), EXIT_MS);
+				if (!v) {
+					setTimeout(() => (store.value = store.value.filter((r) => r.id !== rec.id)), EXIT_MS);
+				}
 			}}
 		>
 			{typeof content === "function" ? (content as () => VNode)() : content}

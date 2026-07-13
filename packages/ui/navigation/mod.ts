@@ -15,8 +15,9 @@
  * Interactive pieces (`islands/`) are named exports — hydrate them via a `features/<group>/islands/`
  * wrapper in the app.
  *
- * Roster still to build (§C.1): AppBar, NavigationDrawer, Breadcrumbs, Tabs, Pagination,
- * DropdownMenu, ContextMenu, Stepper.
+ * Wayfinding atoms (PrimeNG parity): Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu,
+ * ContextMenu, Breadcrumb, Steps, TabMenu, TabView/TabPanel, Paginator. Every menu-shaped control
+ * consumes the shared `MenuItem` model (`@projective/ui` root types).
  */
 
 // #region Components
@@ -35,10 +36,39 @@ export { MiddleNavSplitter, type MiddleNavSplitterProps } from "./islands/Middle
 export { MobileMenu, type MobileMenuProps } from "./islands/MobileMenu.tsx";
 // #endregion
 
+// #region Menus (popup + inline, cascading submenus over the shared MenuItem model)
+export { Menu, type MenuProps } from "./islands/Menu.tsx";
+export { Menubar, type MenubarProps } from "./islands/Menubar.tsx";
+export { MegaMenu, type MegaMenuProps } from "./islands/MegaMenu.tsx";
+export { TieredMenu, type TieredMenuProps } from "./islands/TieredMenu.tsx";
+export { PanelMenu, type PanelMenuProps } from "./islands/PanelMenu.tsx";
+export { SlideMenu, type SlideMenuProps } from "./islands/SlideMenu.tsx";
+export { ContextMenu, type ContextMenuProps } from "./islands/ContextMenu.tsx";
+// #endregion
+
+// #region Trails, steps & tabs
+export { Breadcrumb, type BreadcrumbProps } from "./components/Breadcrumb.tsx";
+export { Steps, type StepsProps } from "./islands/Steps.tsx";
+export { TabMenu, type TabMenuProps } from "./islands/TabMenu.tsx";
+export { TabPanel, type TabPanelProps, TabView, type TabViewProps } from "./islands/TabView.tsx";
+export {
+	Pagination,
+	Paginator,
+	type PaginatorPageEvent,
+	type PaginatorProps,
+} from "./islands/Paginator.tsx";
+// #endregion
+
 // #region Hooks
 export { useMediaQuery } from "./hooks/useMediaQuery.ts";
 export { useFlushBottom } from "./hooks/useFlushBottom.ts";
-export { type Splitter, useSplitter, type UseSplitterOptions } from "./hooks/useSplitter.ts";
+// `Splitter` (the useSplitter return type) is aliased to avoid colliding with layout's Splitter
+// component in the umbrella `export *`.
+export {
+	type Splitter as SplitterController,
+	useSplitter,
+	type UseSplitterOptions,
+} from "./hooks/useSplitter.ts";
 // #endregion
 
 // #region Types

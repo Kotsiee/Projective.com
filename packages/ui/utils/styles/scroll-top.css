@@ -48,7 +48,9 @@
 }
 .ui-scroll-top:focus-visible {
 	outline: none;
-	box-shadow: var(--elevation-medium), 0 0 0 3px var(--focus-ring);
+	box-shadow:
+		var(--elevation-medium),
+		0 0 0 3px var(--focus-ring);
 }
 
 .ui-scroll-top__icon {

@@ -121,12 +121,12 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
 	// #region Viewport width tracking (drives responsiveOptions)
-	const viewportWidth = useSignal(typeof window !== "undefined" ? window.innerWidth : 0);
+	const viewportWidth = useSignal(typeof window !== "undefined" ? globalThis.innerWidth : 0);
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		const onResize = () => (viewportWidth.value = window.innerWidth);
-		window.addEventListener("resize", onResize);
-		return () => window.removeEventListener("resize", onResize);
+		const onResize = () => (viewportWidth.value = globalThis.innerWidth);
+		globalThis.addEventListener("resize", onResize);
+		return () => globalThis.removeEventListener("resize", onResize);
 	}, []);
 
 	const effective = useMemo(
@@ -143,7 +143,8 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 	const renderItems = circular && total > 0
 		? [...value.slice(total - cloneCount), ...value, ...value.slice(0, cloneCount)]
 		: value;
-	const realIndex = (idx: number): number => circular ? ((idx - baseIndex) % total + total) % total : idx;
+	const realIndex = (idx: number): number =>
+		circular ? ((idx - baseIndex) % total + total) % total : idx;
 	// #endregion
 
 	const totalIndicators = total > 0 ? Math.max(1, Math.ceil(total / numScroll)) : 1;
@@ -223,10 +224,10 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 	const pausedRef = useRef(false);
 	useEffect(() => {
 		if (!autoplayInterval || reducedMotion || total <= numVisible) return;
-		const id = window.setInterval(() => {
+		const id = globalThis.setInterval(() => {
 			if (!pausedRef.current) advance(1);
 		}, autoplayInterval);
-		return () => window.clearInterval(id);
+		return () => globalThis.clearInterval(id);
 	}, [autoplayInterval, reducedMotion, total, numVisible, numScroll, circular, totalIndicators]);
 
 	const pause = () => (pausedRef.current = true);
@@ -287,7 +288,7 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 	};
 	// #endregion
 
-	const shiftPercent = -(translateItems) * (100 / numVisible);
+	const shiftPercent = -translateItems * (100 / numVisible);
 	const visibleStart = translateItems;
 	const visibleEnd = translateItems + numVisible;
 	const currentPage = pageCtrl.signal.value;
@@ -383,7 +384,10 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 							role="tab"
 							aria-selected={i === currentPage}
 							aria-label={`Slide ${i + 1} of ${totalIndicators}`}
-							class={cx("ui-carousel__indicator", i === currentPage && "ui-carousel__indicator--active")}
+							class={cx(
+								"ui-carousel__indicator",
+								i === currentPage && "ui-carousel__indicator--active",
+							)}
 							onClick={() => goToPage(i)}
 						/>
 					))}

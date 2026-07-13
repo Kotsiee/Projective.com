@@ -80,7 +80,11 @@ export function Overlay(props: OverlayProps): JSX.Element | null {
 	return (
 		<Portal zIndex={stack.zIndex}>
 			{modal && (
-				<Backdrop visible={state === "open"} blur={blur} onClick={dismissable ? close : undefined} />
+				<Backdrop
+					visible={state === "open"}
+					blur={blur}
+					onClick={dismissable ? close : undefined}
+				/>
 			)}
 			<div
 				ref={contentRef}

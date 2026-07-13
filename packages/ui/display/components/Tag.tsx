@@ -27,8 +27,15 @@ export interface TagProps {
  * not a boundary around a block of content. Zero client JS.
  */
 export function Tag(props: TagProps): JSX.Element {
-	const { value, severity = "primary", icon, rounded, variant = "filled", class: className, children } =
-		props;
+	const {
+		value,
+		severity = "primary",
+		icon,
+		rounded,
+		variant = "filled",
+		class: className,
+		children,
+	} = props;
 
 	return (
 		<span

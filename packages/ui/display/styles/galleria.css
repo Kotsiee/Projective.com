@@ -104,7 +104,9 @@
 	font-size: 1rem;
 	line-height: 1;
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
 }
 .ui-galleria__nav:hover:not(:disabled),
 .ui-galleria__fullscreen-toggle:hover {
@@ -152,7 +154,9 @@
 	border-radius: 999px;
 	background: color-mix(in srgb, var(--on-surface) 40%, transparent);
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 .ui-galleria__indicator--active {
 	background: var(--primary);
@@ -218,7 +222,9 @@
 	cursor: pointer;
 	overflow: clip;
 	aspect-ratio: 1 / 1;
-	transition: border-color var(--dur-fast) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
 	opacity: 0.7;
 }
 .ui-galleria__thumb--active {

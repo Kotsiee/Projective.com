@@ -4,7 +4,6 @@ import { useSignal } from "@preact/signals";
 import "../styles/megamenu.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
-import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import type { Placement } from "../../types/mod.ts";
@@ -51,7 +50,6 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 		class: className,
 		"aria-label": ariaLabel = "Mega menu",
 	} = props;
-	const rootId = useId(undefined, "mega");
 	const horizontal = orientation === "horizontal";
 	const openTop = useSignal(-1);
 
@@ -66,11 +64,18 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 
 	const floating = useFloating({
 		open: openTop.value >= 0,
-		triggerRef: (topAnchors.current[openTop.value] ?? { current: null }) as { current: HTMLElement },
+		triggerRef: (topAnchors.current[openTop.value] ?? { current: null }) as {
+			current: HTMLElement;
+		},
 		panelRef,
 		placement: (horizontal ? "bottom-start" : "right-start") as Placement,
 	});
-	useDismiss({ open: openTop.value >= 0, onDismiss: () => (openTop.value = -1), panelRef, triggerRef: barRef });
+	useDismiss({
+		open: openTop.value >= 0,
+		onDismiss: () => (openTop.value = -1),
+		panelRef,
+		triggerRef: barRef,
+	});
 
 	// #region Bar keyboard
 	const focusableTop = (i: number) => !isSeparator(tops[i]) && !tops[i].disabled;
@@ -161,17 +166,16 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 	};
 	// #endregion
 
-	const topContent = (item: MenuItem): VNode =>
-		(
-			<>
-				{item.icon && <span class="ui-megamenu__icon" aria-hidden="true">{item.icon}</span>}
-				<span class="ui-megamenu__label">{item.label}</span>
-				{item.badge != null && <span class="ui-megamenu__badge">{item.badge}</span>}
-				{hasChildren(item) && (
-					<span class="ui-megamenu__arrow" aria-hidden="true">{horizontal ? "▾" : "▸"}</span>
-				)}
-			</>
-		);
+	const topContent = (item: MenuItem): VNode => (
+		<>
+			{item.icon && <span class="ui-megamenu__icon" aria-hidden="true">{item.icon}</span>}
+			<span class="ui-megamenu__label">{item.label}</span>
+			{item.badge != null && <span class="ui-megamenu__badge">{item.badge}</span>}
+			{hasChildren(item) && (
+				<span class="ui-megamenu__arrow" aria-hidden="true">{horizontal ? "▾" : "▸"}</span>
+			)}
+		</>
+	);
 
 	// #region Panel columns
 	const renderColumns = (columns: MenuItem[]): VNode => {
@@ -314,7 +318,7 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 										{...shared}
 										onClick={(e: Event) => {
 											if (item.disabled) return;
-											if (sub) (isOpen ? (openTop.value = -1) : openPanel(i));
+											if (sub) isOpen ? (openTop.value = -1) : openPanel(i);
 											else activate(item, e);
 										}}
 									>
@@ -332,7 +336,10 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 					ref={panelRef}
 					class="ui-megamenu__panel"
 					style={floating
-						? styleVars({ "--float-top": `${floating.top}px`, "--float-left": `${floating.left}px` })
+						? styleVars({
+							"--float-top": `${floating.top}px`,
+							"--float-left": `${floating.left}px`,
+						})
 						: undefined}
 				>
 					{renderColumns(tops[openTop.value].items!)}

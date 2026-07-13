@@ -37,23 +37,27 @@ export interface CaptchaProps {
  * forwards to `onVerify`. Announced as a `group` labelled by the frame heading.
  */
 export function Captcha(props: CaptchaProps): JSX.Element {
-	const { siteKey = "XXXX-XXXX", label = "Security challenge", onVerify, render, class: className } = props;
+	const {
+		siteKey = "XXXX-XXXX",
+		label = "Security challenge",
+		onVerify,
+		render,
+		class: className,
+	} = props;
 	const container = useRef<HTMLDivElement>(null);
 	const verify = (token: string) => onVerify?.(token);
 
 	return (
 		<div class={cx("ui-captcha", className)} role="group" aria-label={label}>
 			<div class="ui-captcha__frame">
-				{render
-					? render({ container, verify })
-					: (
-						<div
-							ref={container}
-							class="ui-captcha__mount"
-							data-site-key={siteKey}
-							aria-label="Captcha provider mount point"
-						/>
-					)}
+				{render ? render({ container, verify }) : (
+					<div
+						ref={container}
+						class="ui-captcha__mount"
+						data-site-key={siteKey}
+						aria-label="Captcha provider mount point"
+					/>
+				)}
 			</div>
 			<p class="ui-captcha__note">
 				Provider widget is wired by the application; no challenge is implemented here.

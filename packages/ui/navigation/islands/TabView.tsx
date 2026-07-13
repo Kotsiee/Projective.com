@@ -64,16 +64,17 @@ interface PanelMeta {
 /** Extract `TabPanel` config off the raw children — text/falsy nodes are dropped. */
 function readPanels(children: ComponentChildren): PanelMeta[] {
 	return toChildArray(children)
-		.filter((c): c is VNode<TabPanelProps> =>
-			typeof c === "object" && c !== null && (c as VNode).type === TabPanel
-		)
-		.map((c) => ({
-			header: c.props.header,
-			disabled: !!c.props.disabled,
-			closable: !!c.props.closable,
-			cache: c.props.cache ?? true,
-			content: c.props.children,
-		}));
+		.filter((c) => typeof c === "object" && c !== null && (c as VNode).type === TabPanel)
+		.map((c) => {
+			const props = (c as VNode<TabPanelProps>).props;
+			return {
+				header: props.header,
+				disabled: !!props.disabled,
+				closable: !!props.closable,
+				cache: props.cache ?? true,
+				content: props.children,
+			};
+		});
 }
 // #endregion
 

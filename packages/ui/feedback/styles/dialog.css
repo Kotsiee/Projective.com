@@ -167,18 +167,17 @@
 	block-size: 1rem;
 	cursor: nwse-resize;
 	touch-action: none;
-	background:
-		linear-gradient(
-			135deg,
-			transparent 50%,
-			var(--outline) 50%,
-			var(--outline) 62%,
-			transparent 62%,
-			transparent 74%,
-			var(--outline) 74%,
-			var(--outline) 86%,
-			transparent 86%
-		);
+	background: linear-gradient(
+		135deg,
+		transparent 50%,
+		var(--outline) 50%,
+		var(--outline) 62%,
+		transparent 62%,
+		transparent 74%,
+		var(--outline) 74%,
+		var(--outline) 86%,
+		transparent 86%
+	);
 }
 /* #endregion */
 

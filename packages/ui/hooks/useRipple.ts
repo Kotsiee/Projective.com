@@ -24,7 +24,7 @@ export function useRipple(ref: RefObject<HTMLElement>, opts: RippleOptions = {})
 		if (disabled || typeof window === "undefined") return;
 		const host = ref.current;
 		if (!host) return;
-		if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+		if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
 		const onPointerDown = (e: PointerEvent) => {
 			const rect = host.getBoundingClientRect();

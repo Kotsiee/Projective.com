@@ -161,7 +161,9 @@ export function VirtualScroller<T>(props: VirtualScrollerProps<T>): JSX.Element 
 			</div>
 			{loading && (
 				<div class="ui-vscroll__loader" role="status" aria-live="polite">
-					{loadingTemplate ? loadingTemplate() : <span class="ui-vscroll__spinner" aria-hidden="true" />}
+					{loadingTemplate
+						? loadingTemplate()
+						: <span class="ui-vscroll__spinner" aria-hidden="true" />}
 				</div>
 			)}
 		</div>

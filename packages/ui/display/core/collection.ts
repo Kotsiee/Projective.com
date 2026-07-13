@@ -3,7 +3,7 @@
  * of Preact so both islands can compose the same comparison + match-mode semantics without
  * duplicating logic. All helpers are pure.
  */
-import type { FilterConstraint, FilterMatchMode, SortDir, SortState } from "../../types/mod.ts";
+import type { FilterConstraint, SortDir, SortState } from "../../types/mod.ts";
 
 // #region Value access
 /**
@@ -95,7 +95,9 @@ export function matchesConstraint(value: unknown, constraint: FilterConstraint):
 		case "gte":
 			return compareValues(value, coerceLike(value, needle)) >= 0;
 		case "in":
-			return Array.isArray(needle) ? needle.map((n) => toText(n).toLowerCase()).includes(hay) : false;
+			return Array.isArray(needle)
+				? needle.map((n) => toText(n).toLowerCase()).includes(hay)
+				: false;
 		case "between": {
 			if (!Array.isArray(needle) || needle.length < 2) return true;
 			return compareValues(value, needle[0]) >= 0 && compareValues(value, needle[1]) <= 0;

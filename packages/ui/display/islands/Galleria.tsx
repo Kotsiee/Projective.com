@@ -120,7 +120,9 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 	// #region Navigation
 	const goTo = (index: number) => {
 		if (total === 0) return;
-		const clamped = circular ? ((index % total) + total) % total : Math.max(0, Math.min(index, total - 1));
+		const clamped = circular
+			? ((index % total) + total) % total
+			: Math.max(0, Math.min(index, total - 1));
 		activeCtrl.set(clamped);
 	};
 	const next = () => {
@@ -137,10 +139,10 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 	const pausedRef = useRef(false);
 	useEffect(() => {
 		if (!autoPlay || reducedMotion || total <= 1) return;
-		const id = window.setInterval(() => {
+		const id = globalThis.setInterval(() => {
 			if (!pausedRef.current) goTo((activeCtrl.get() + 1 + total) % total);
 		}, transitionInterval);
-		return () => window.clearInterval(id);
+		return () => globalThis.clearInterval(id);
 	}, [autoPlay, reducedMotion, total, transitionInterval, circular]);
 	const pause = () => (pausedRef.current = true);
 	const resume = () => (pausedRef.current = false);
@@ -169,16 +171,20 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 		});
 	}, [active]);
 
-	const thumbAxis = thumbnailsPosition === "left" || thumbnailsPosition === "right" ? "vertical" : "horizontal";
+	const thumbAxis = thumbnailsPosition === "left" || thumbnailsPosition === "right"
+		? "vertical"
+		: "horizontal";
 	const scrollThumbs = (dir: 1 | -1) => {
 		const el = thumbStripRef.current;
 		if (!el) return;
 		const step = (thumbAxis === "vertical" ? el.clientHeight : el.clientWidth) / numVisible;
 		el.scrollBy(
-			thumbAxis === "vertical" ? { top: dir * step, behavior: reducedMotion ? "auto" : "smooth" } : {
-				left: dir * step,
-				behavior: reducedMotion ? "auto" : "smooth",
-			},
+			thumbAxis === "vertical"
+				? { top: dir * step, behavior: reducedMotion ? "auto" : "smooth" }
+				: {
+					left: dir * step,
+					behavior: reducedMotion ? "auto" : "smooth",
+				},
 		);
 	};
 	// #endregion
@@ -206,7 +212,11 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 
 	if (total === 0 || !item) {
 		return (
-			<div class={cx("ui-galleria", "ui-galleria--empty", className)} role="group" aria-label={ariaLabel}>
+			<div
+				class={cx("ui-galleria", "ui-galleria--empty", className)}
+				role="group"
+				aria-label={ariaLabel}
+			>
 				No media
 			</div>
 		);
@@ -288,14 +298,12 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 
 			{(item.title || item.content || captionTemplate) && (
 				<div class="ui-galleria__caption">
-					{captionTemplate
-						? captionTemplate(item, active)
-						: (
-							<>
-								{item.title && <div class="ui-galleria__caption-title">{item.title}</div>}
-								{item.content && <div class="ui-galleria__caption-content">{item.content}</div>}
-							</>
-						)}
+					{captionTemplate ? captionTemplate(item, active) : (
+						<>
+							{item.title && <div class="ui-galleria__caption-title">{item.title}</div>}
+							{item.content && <div class="ui-galleria__caption-content">{item.content}</div>}
+						</>
+					)}
 				</div>
 			)}
 		</div>
@@ -332,16 +340,14 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 						class={cx("ui-galleria__thumb", i === active && "ui-galleria__thumb--active")}
 						onClick={() => goTo(i)}
 					>
-						{thumbnailTemplate
-							? thumbnailTemplate(it, i)
-							: (
-								<img
-									class="ui-galleria__thumb-image"
-									src={it.thumbnailImageSrc ?? it.itemImageSrc}
-									alt=""
-									loading="lazy"
-								/>
-							)}
+						{thumbnailTemplate ? thumbnailTemplate(it, i) : (
+							<img
+								class="ui-galleria__thumb-image"
+								src={it.thumbnailImageSrc ?? it.itemImageSrc}
+								alt=""
+								loading="lazy"
+							/>
+						)}
 					</button>
 				))}
 			</div>

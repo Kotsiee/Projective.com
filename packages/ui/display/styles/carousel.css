@@ -116,7 +116,9 @@
 	border-radius: 999px;
 	background: var(--outline);
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .ui-carousel__indicator:hover {

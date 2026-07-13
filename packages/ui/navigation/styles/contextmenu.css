@@ -1,0 +1,136 @@
+/*
+ * ContextMenu (ui-contextmenu) — right-click activated menu with cascading submenus. Panels are
+ * fixed-positioned at the pointer (root) or by `useFloating` (submenus), writing `--float-*`. Rows
+ * are interactive (hover/active fills allowed); separators lean on a hairline, not a box (§B.4).
+ * Token-only.
+ */
+
+/* #region Panels */
+.ui-contextmenu__panel {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	inset-inline-start: var(--float-left, -9999px);
+	z-index: var(--z-overlay);
+	min-inline-size: 12rem;
+	background: var(--surface);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	animation: ui-contextmenu-pop var(--dur-fast) var(--ease-standard);
+}
+.ui-contextmenu__panel--sub {
+	min-inline-size: 11rem;
+}
+@keyframes ui-contextmenu-pop {
+	from {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+/* #endregion */
+
+/* #region List + rows */
+.ui-contextmenu__list {
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	outline: none;
+	max-block-size: min(24rem, 70vh);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+.ui-contextmenu__row {
+	display: block;
+}
+.ui-contextmenu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	box-sizing: border-box;
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.9375rem;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-contextmenu__item:hover,
+.ui-contextmenu__item--open {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+.ui-contextmenu__item:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.ui-contextmenu__item--current {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-contextmenu__item--disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Parts */
+.ui-contextmenu__icon {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	color: var(--on-surface-variant);
+}
+.ui-contextmenu__label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.ui-contextmenu__shortcut {
+	flex: 0 0 auto;
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+.ui-contextmenu__badge {
+	flex: 0 0 auto;
+	min-inline-size: 1.25rem;
+	padding-inline: var(--space-1);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	line-height: 1.25rem;
+	text-align: center;
+	color: var(--on-primary);
+	background: var(--primary);
+	border-radius: 999px;
+}
+.ui-contextmenu__arrow {
+	flex: 0 0 auto;
+	color: var(--on-surface-variant);
+	font-size: 0.75rem;
+}
+.ui-contextmenu__separator {
+	block-size: 1px;
+	margin: var(--space-1) var(--space-2);
+	background: var(--border-subtle);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-contextmenu__panel {
+		animation-duration: 0ms;
+	}
+	.ui-contextmenu__item {
+		transition-duration: 0ms;
+	}
+}

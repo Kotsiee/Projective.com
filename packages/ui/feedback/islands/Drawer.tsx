@@ -98,9 +98,7 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 
 	return (
 		<Portal zIndex={stack.zIndex}>
-			{modal && (
-				<Backdrop visible={state === "open"} onClick={dismissable ? close : undefined} />
-			)}
+			{modal && <Backdrop visible={state === "open"} onClick={dismissable ? close : undefined} />}
 			<div
 				ref={panelRef}
 				role="dialog"

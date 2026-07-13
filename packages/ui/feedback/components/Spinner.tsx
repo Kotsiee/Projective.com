@@ -23,8 +23,13 @@ export interface SpinnerProps {
 
 /** Inline spinner — `role="progressbar"`/`aria-busy`, honours reduced-motion (static arc). */
 export function Spinner(props: SpinnerProps): JSX.Element {
-	const { size = 20, severity = "primary", "aria-label": ariaLabel = "Loading", id, class: className } =
-		props;
+	const {
+		size = 20,
+		severity = "primary",
+		"aria-label": ariaLabel = "Loading",
+		id,
+		class: className,
+	} = props;
 	const stroke = Math.max(2, Math.round(size / 8));
 	const radius = (size - stroke) / 2;
 
@@ -82,7 +87,11 @@ export function Loader(props: LoaderProps): JSX.Element {
 
 	return (
 		<div id={id} class={cx("ui-loader", className)} role="status" aria-live="polite">
-			<Spinner size={size} severity={severity} aria-label={typeof label === "string" ? label : "Loading"} />
+			<Spinner
+				size={size}
+				severity={severity}
+				aria-label={typeof label === "string" ? label : "Loading"}
+			/>
 			{label !== undefined && <span class="ui-loader__label">{label}</span>}
 		</div>
 	);

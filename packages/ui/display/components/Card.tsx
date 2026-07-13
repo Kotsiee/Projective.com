@@ -59,7 +59,7 @@ export function Card(props: CardProps): JSX.Element {
 	return (
 		<Tag
 			class={cx("ui-card", `ui-card--${variant}`, raised && "ui-card--raised", className as string)}
-			{...rest}
+			{...(rest as JSX.HTMLAttributes<HTMLDivElement>)}
 		>
 			{media && <div class="ui-card__media">{media}</div>}
 			{hasHeaderRegion && (

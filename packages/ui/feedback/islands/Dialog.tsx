@@ -143,7 +143,10 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 	};
 	const onHeaderPointerMove = (e: JSX.TargetedPointerEvent<HTMLElement>) => {
 		if (!drag.current) return;
-		setOffset({ x: drag.current.ox + (e.clientX - drag.current.px), y: drag.current.oy + (e.clientY - drag.current.py) });
+		setOffset({
+			x: drag.current.ox + (e.clientX - drag.current.px),
+			y: drag.current.oy + (e.clientY - drag.current.py),
+		});
 	};
 	const endDrag = () => (drag.current = null);
 
@@ -200,7 +203,9 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 					ref={panelRef}
 					role="dialog"
 					aria-modal={modal || undefined}
-					aria-labelledby={hasHeader && (header !== undefined || headerTemplate) ? titleId : undefined}
+					aria-labelledby={hasHeader && (header !== undefined || headerTemplate)
+						? titleId
+						: undefined}
 					aria-describedby={bodyId}
 					data-state={state}
 					class={cx("ui-dialog__panel", (offset || size) && "ui-dialog__panel--free", className)}
@@ -209,7 +214,12 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 				>
 					{headerTemplate
 						? (
-							<div class="ui-dialog__header" onPointerDown={onHeaderPointerDown} onPointerMove={onHeaderPointerMove} onPointerUp={endDrag}>
+							<div
+								class="ui-dialog__header"
+								onPointerDown={onHeaderPointerDown}
+								onPointerMove={onHeaderPointerMove}
+								onPointerUp={endDrag}
+							>
 								{headerTemplate(ctx)}
 							</div>
 						)
@@ -220,9 +230,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 								onPointerMove={onHeaderPointerMove}
 								onPointerUp={endDrag}
 							>
-								{header !== undefined && (
-									<h2 id={titleId} class="ui-dialog__title">{header}</h2>
-								)}
+								{header !== undefined && <h2 id={titleId} class="ui-dialog__title">{header}</h2>}
 								<div class="ui-dialog__actions">
 									{maximizable && (
 										<button

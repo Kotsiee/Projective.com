@@ -246,8 +246,14 @@ function CtxFlyout(props: {
  * activate, Escape/outside-pointer close). Reduced-motion safe.
  */
 export function ContextMenu(props: ContextMenuProps): JSX.Element {
-	const { model, global = false, targetRef, itemTemplate, class: className, "aria-label": ariaLabel } =
-		props;
+	const {
+		model,
+		global = false,
+		targetRef,
+		itemTemplate,
+		class: className,
+		"aria-label": ariaLabel,
+	} = props;
 	const rootId = useId(undefined, "ctxmenu");
 	const open = useSignal(false);
 	const pos = useSignal<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -255,9 +261,7 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 
 	// #region Bind contextmenu + clamp
 	useEffect(() => {
-		const el: HTMLElement | Document | null = global
-			? document
-			: (targetRef?.current ?? null);
+		const el: HTMLElement | Document | null = global ? document : (targetRef?.current ?? null);
 		if (!el) return;
 		const onCtx = (ev: Event) => {
 			const e = ev as MouseEvent;
@@ -290,7 +294,10 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 					id={rootId}
 					ref={panelRef}
 					class={cx("ui-contextmenu__panel", className)}
-					style={styleVars({ "--float-top": `${pos.value.y}px`, "--float-left": `${pos.value.x}px` })}
+					style={styleVars({
+						"--float-top": `${pos.value.y}px`,
+						"--float-left": `${pos.value.x}px`,
+					})}
 				>
 					<CtxLevel
 						items={model}

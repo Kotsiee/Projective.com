@@ -89,7 +89,13 @@ export function Popover(props: PopoverProps): JSX.Element {
 	const panelId = useId(undefined, "popover");
 
 	const stack = useOverlayStack({ active: mounted });
-	const floating = useFloating({ open: mounted, triggerRef: anchorRef, panelRef, placement, matchWidth });
+	const floating = useFloating({
+		open: mounted,
+		triggerRef: anchorRef,
+		panelRef,
+		placement,
+		matchWidth,
+	});
 
 	const openFn = () => ctrl.set(true);
 	const closeFn = () => ctrl.set(false);

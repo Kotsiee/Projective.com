@@ -296,13 +296,13 @@ verbatim because every component depends only on the token contract (Part A) —
 
 | Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`@projective/ui/layout`**     | Box, Container, Grid, Row, Column, Stack, AspectRatio, Divider, Separator                                                                                                                                                                                                                                                                                                                                                             |
-| **`@projective/ui/navigation`** | Navbar, AppBar, Sidebar, NavigationDrawer, Breadcrumbs, Tabs, Pagination, DropdownMenu, ContextMenu, Stepper, Link                                                                                                                                                                                                                                                                                                                    |
-| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, DatePicker, ColorPicker, FormControl |
-| **`@projective/ui/display`**    | Table, DataGrid, Card, Avatar, Badge, Chip, Tag, List, ListItem, Accordion, Collapsible, Carousel, Timeline, TreeView, Icon                                                                                                                                                                                                                                                                                                           |
-| **`@projective/ui/feedback`**   | Alert, Banner, Snackbar, Toast, Dialog, Modal, Drawer, Sheet, ProgressBar, ProgressRing, Spinner, Loader, Skeleton, Tooltip, Popover                                                                                                                                                                                                                                                                                                  |
-| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, EmptyState                                                                                                                                                                                                                                                                                                                                                                                           |
+| **`@projective/ui/layout`**     | Box, Container, Grid, Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                       |
+| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, Link, MiddleNavSplitter, MobileMenu, Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                            |
+| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, DatePicker, ColorPicker, FileUpload, FormControl |
+| **`@projective/ui/display`**    | Table, TreeTable, Tree, DataView, VirtualScroller, Scroller, OrgChart, Timeline, GMap, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                               |
+| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                      |
+| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                                                                |
+| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
@@ -318,9 +318,12 @@ parent track remains), persona/device gates (guest/mobile hide the sidebar and s
 a `--glass-blur` glass header), plus ShellTopBar, ShellSidebar, NavItem, Link, the
 `MiddleNavSplitter` and `MobileMenu` islands, and the `useSplitter`/`useFlushBottom`/`useMediaQuery`
 hooks (`packages/ui/navigation/`, wired into the app's group layouts). Shell tokens
-(`--radius-container-lg`, `--glass-blur`, `--shell-*`) added to `styles/index.css`. Remaining nav
-roster (AppBar, NavigationDrawer, Breadcrumbs, Tabs, Pagination, DropdownMenu, ContextMenu, Stepper)
-is still to build.
+(`--radius-container-lg`, `--glass-blur`, `--shell-*`) added to `styles/index.css`. The **wayfinding
+atoms** now ship alongside the shell (`navigation/islands/` + `components/`): Menu, Menubar, MegaMenu,
+TieredMenu, PanelMenu, SlideMenu, ContextMenu (cascading submenus over the shared `MenuItem` model +
+`navigation/core/menu.ts` helpers), Breadcrumb, Steps, TabMenu, TabView (+TabPanel), and Paginator
+(alias Pagination) — full WAI-ARIA menu/tab/menubar keyboard models, `useFloating`/`useDismiss`
+anchoring, and reduced-motion ink-bar transitions.
 
 `fields` is now built to **PrimeNG feature-parity** (`packages/ui/fields/`): 31 controls plus the
 adornment/label/group primitives and the `FormControl` wrapper, on the shared `.ui-field` token
@@ -336,10 +339,38 @@ type-check, lint, and `deno fmt` clean.
 > `Toggle → ToggleButton`, `Autocomplete → AutoComplete`, and `RadioGroup` now ships alongside a
 > single `RadioButton`. PrimeNG-familiar aliases are exported where our canonical name differs
 > (`Dropdown → Select`, `InputSwitch → ToggleSwitch`). `Combobox` is covered by
-> `Select`/`AutoComplete`; `ButtonGroup`, `InputOTP`, `TimePicker` (folded into `DatePicker`'s
-> `showTime`), `FileUpload`, `Dropzone`, and `Form` remain scaffolded for a later pass. The
-> remaining five taxonomies (`navigation`, `display`, `feedback`, `overlay`, `utils`) remain
-> scaffolded.
+> `Select`/`AutoComplete`; `FileUpload` now ships; `ButtonGroup`, `InputOTP`, `TimePicker` (folded
+> into `DatePicker`'s `showTime`), `Dropzone` (covered by `FileUpload`'s drag zone), and `Form`
+> remain scaffolded for a later pass.
+
+The remaining four taxonomies — **`display`, `feedback`, `overlay`, `utils`** — are now built to
+PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
+
+- **`display`** — the performance-first collections (Table with sort/multi-sort, per-column filter,
+  row selection + expansion, column resize/reorder, row grouping, conditional styling, lazy loading
+  and `stateKey` persistence; TreeTable; Tree with checkboxes/drag-drop/filter/context-menu; DataView
+  list⇄grid; VirtualScroller; Scroller) all window rows through the package-level
+  `hooks/useVirtualScroll` (fixed **or** measured sizes; **own-container OR window scroll**; infinite
+  `onReachEnd`). Plus OrgChart, Timeline, GMap (dumb embed wrapper — no keys), Carousel, Galleria,
+  Image (zoom/rotate/fullscreen), and the content atoms (Card, Avatar/AvatarGroup, Badge/OverlayBadge,
+  Chip, Tag, List/ListItem, Accordion).
+- **`feedback`** — Message/Messages/Alert/Banner, Toast (+`useToast`), the Dialog family
+  (Dialog/DynamicDialog + `useDialog`/ConfirmDialog/ConfirmPopup), Drawer (alias Sidebar, bottom-sheet
+  under `--bp-md`), Tooltip, Popover (alias OverlayPanel), and the progress/placeholder set
+  (ProgressBar/Spinner/Ring, Spinner/Loader, Skeleton).
+- **`overlay`** — Portal (fixed-layer, no `preact/compat`), Backdrop, the generic controlled Overlay,
+  HoverCard, and the `usePresence` enter/exit helper.
+- **`utils`** — CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal,
+  Captcha (dumb mount point), and the directives FocusTrap, Defer, AnimateOnScroll, Ripple.
+
+Cross-cutting behaviour lives in a new **package-level `packages/ui/hooks/`** (`useFloating`,
+`useDismiss`, `useFocusTrap`, `useOverlayStack` [z-index stacking + ref-counted scroll lock],
+`useVirtualScroll`, `useIntersectionObserver`, `useMediaQuery`, `useRipple`, + re-exports of the
+value/id/list-nav hooks). Additive tokens added to `styles/index.css`: the `--z-*` overlay-stacking
+scale, `--bp-*` breakpoints, and the over-damped `--spring-*` curves. Shared collection/menu/overlay
+vocabulary (`MenuItem`, `TreeNode`, `TableColumn`, `SortState`, `Placement`, `Edge`, …) lives in the
+package `types/mod.ts`. Overlays render **inline with `position: fixed` + a z token** (the Select
+pattern), coordinated by `useOverlayStack` — no DOM portals.
 
 ### C.2 Engineering guidelines (merge-gated)
 

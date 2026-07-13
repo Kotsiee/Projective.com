@@ -262,7 +262,9 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 	// #region Basic mode
 	if (mode === "basic") {
 		return (
-			<span class={cx("ui-file-upload", "ui-file-upload--basic", `ui-file-upload--${size}`, className)}>
+			<span
+				class={cx("ui-file-upload", "ui-file-upload--basic", `ui-file-upload--${size}`, className)}
+			>
 				<button
 					type="button"
 					class="ui-file-upload__choose"
@@ -282,7 +284,14 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 	const hasPending = files.some((f) => f.status === "pending");
 
 	return (
-		<div class={cx("ui-file-upload", `ui-file-upload--${size}`, disabled && "ui-file-upload--disabled", className)}>
+		<div
+			class={cx(
+				"ui-file-upload",
+				`ui-file-upload--${size}`,
+				disabled && "ui-file-upload--disabled",
+				className,
+			)}
+		>
 			{/* #region Header / actions */}
 			{headerTemplate ? headerTemplate(ctx) : (
 				<div class="ui-file-upload__header">
@@ -329,13 +338,16 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 				onDragEnter={onDragOver}
 				onDragLeave={onDragLeave}
 			>
-				{files.length === 0 && (emptyTemplate ? emptyTemplate() : (
-					<span class="ui-file-upload__zone-hint">
-						<span class="ui-file-upload__zone-icon" aria-hidden="true">⭳</span>
-						Drag and drop files here, or browse
-					</span>
-				))}
-				{files.length > 0 && <span class="ui-file-upload__zone-hint">Drop more files, or browse</span>}
+				{files.length === 0 &&
+					(emptyTemplate ? emptyTemplate() : (
+						<span class="ui-file-upload__zone-hint">
+							<span class="ui-file-upload__zone-icon" aria-hidden="true">⭳</span>
+							Drag and drop files here, or browse
+						</span>
+					))}
+				{files.length > 0 && (
+					<span class="ui-file-upload__zone-hint">Drop more files, or browse</span>
+				)}
 			</button>
 			{/* #endregion */}
 
@@ -352,11 +364,18 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 				<ul class="ui-file-upload__list" aria-live="polite" aria-label="Selected files">
 					{files.map((f) =>
 						itemTemplate ? itemTemplate(f, ctx) : (
-							<li key={f.id} class={cx("ui-file-upload__item", `ui-file-upload__item--${f.status}`)}>
+							<li
+								key={f.id}
+								class={cx("ui-file-upload__item", `ui-file-upload__item--${f.status}`)}
+							>
 								<div class="ui-file-upload__thumb" aria-hidden="true">
 									{f.preview
 										? <img class="ui-file-upload__thumb-img" src={f.preview} alt="" />
-										: <span class="ui-file-upload__thumb-ext">{f.file.name.split(".").pop() ?? "?"}</span>}
+										: (
+											<span class="ui-file-upload__thumb-ext">
+												{f.file.name.split(".").pop() ?? "?"}
+											</span>
+										)}
 								</div>
 								<div class="ui-file-upload__meta">
 									<span class="ui-file-upload__name">{f.file.name}</span>

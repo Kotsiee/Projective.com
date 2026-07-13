@@ -6,7 +6,13 @@ import { useIntersectionObserver } from "../../hooks/useIntersectionObserver.ts"
 
 // #region Props
 /** Built-in enter animations (keyframes live in `animate-on-scroll.css`). */
-export type ScrollAnimation = "fade" | "slide-up" | "slide-down" | "slide-left" | "slide-right" | "zoom";
+export type ScrollAnimation =
+	| "fade"
+	| "slide-up"
+	| "slide-down"
+	| "slide-left"
+	| "slide-right"
+	| "zoom";
 
 /** Props for {@link AnimateOnScroll}. */
 export interface AnimateOnScrollProps {

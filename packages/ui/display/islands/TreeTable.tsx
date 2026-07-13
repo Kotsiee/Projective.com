@@ -83,7 +83,14 @@ function flattenVisible<T>(
 		const hasChildren = !!node.children?.length;
 		const expandable = hasChildren || node.leaf === false;
 		const isExpanded = expanded.has(node.key);
-		out.push({ node, level, posInSet: i + 1, setSize: siblings.length, expandable, expanded: isExpanded });
+		out.push({
+			node,
+			level,
+			posInSet: i + 1,
+			setSize: siblings.length,
+			expandable,
+			expanded: isExpanded,
+		});
 		if (isExpanded && hasChildren) {
 			flattenVisible(node.children!, expanded, sort, level + 1, out);
 		}
@@ -262,7 +269,11 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 		focusIndex.value = Math.max(0, Math.min(n - 1, focusIndex.value + delta));
 	};
 
-	const onRowKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>, fn: FlatNode<T>, i: number) => {
+	const onRowKeyDown = (
+		e: JSX.TargetedKeyboardEvent<HTMLDivElement>,
+		fn: FlatNode<T>,
+		_i: number,
+	) => {
 		switch (e.key) {
 			case "ArrowDown":
 				e.preventDefault();
@@ -346,7 +357,12 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 										<span class="ui-treetable__toggle-icon" aria-hidden="true">▸</span>
 									</button>
 								)
-								: <span class="ui-treetable__toggle ui-treetable__toggle--placeholder" aria-hidden="true" />}
+								: (
+									<span
+										class="ui-treetable__toggle ui-treetable__toggle--placeholder"
+										aria-hidden="true"
+									/>
+								)}
 							<span class="ui-treetable__label">{value}</span>
 						</span>
 					)
@@ -390,10 +406,14 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 							checked={checked}
 							aria-label={`Select ${fn.node.label ?? fn.node.key}`}
 							ref={(el) => {
-								if (el) el.indeterminate = indeterminate;
+								if (el) {
+									el.indeterminate = indeterminate;
+								}
 							}}
-							onClick={(e) => e.stopPropagation()}
-							onChange={() => toggleCheck(fn.node)}
+							onClick={(e) =>
+								e.stopPropagation()}
+							onChange={() =>
+								toggleCheck(fn.node)}
 						/>
 					</div>
 				)}
@@ -427,7 +447,11 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 					style={styleVars({ "--ui-treetable-cols": gridTemplate.value })}
 				>
 					{selectionColumn && (
-						<div role="columnheader" class="ui-treetable__cell ui-treetable__cell--check" aria-label="Select" />
+						<div
+							role="columnheader"
+							class="ui-treetable__cell ui-treetable__cell--check"
+							aria-label="Select"
+						/>
 					)}
 					{columns.map((col) => (
 						<div
@@ -478,7 +502,9 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 			>
 				{loading && (
 					<div class="ui-treetable__overlay" role="status" aria-live="polite">
-						{loadingTemplate ? loadingTemplate() : <span class="ui-treetable__spinner" aria-hidden="true" />}
+						{loadingTemplate
+							? loadingTemplate()
+							: <span class="ui-treetable__spinner" aria-hidden="true" />}
 					</div>
 				)}
 
@@ -497,7 +523,10 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 							style={styleVars({ "--v-total": `${virtual.totalSize}px` })}
 						>
 							{virtual.virtualItems.map((vi) => (
-								<div class="ui-treetable__virtual-row" style={styleVars({ "--v-top": `${vi.start}px` })}>
+								<div
+									class="ui-treetable__virtual-row"
+									style={styleVars({ "--v-top": `${vi.start}px` })}
+								>
 									{renderRow(flat.value[vi.index], vi.index, vi.index)}
 								</div>
 							))}
