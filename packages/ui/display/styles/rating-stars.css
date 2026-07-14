@@ -1,0 +1,63 @@
+/*
+ * RatingStars (ui-ratingstars) — zero-JS read-only star meter. Two tiled star rows: a muted track and
+ * a --ui-rs-fill-clipped filled overlay give fractional fills. Token-only; no hardcoded colour/size.
+ * Non-interactive, so no border treatment (§B.4) — colour + weight carry it.
+ */
+
+.ui-ratingstars {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	line-height: 1;
+}
+
+.ui-ratingstars__meter {
+	position: relative;
+	display: inline-flex;
+	color: color-mix(in srgb, var(--outline) 45%, transparent);
+}
+
+.ui-ratingstars__row {
+	display: inline-flex;
+	gap: 1px;
+}
+
+.ui-ratingstars__row--fill {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--ui-rs-fill, 0%);
+	overflow: hidden;
+	color: var(--primary);
+	white-space: nowrap;
+}
+
+.ui-ratingstars svg {
+	inline-size: var(--ui-rs-star, 0.9rem);
+	block-size: var(--ui-rs-star, 0.9rem);
+	flex: 0 0 auto;
+}
+
+.ui-ratingstars--size-sm {
+	--ui-rs-star: 0.78rem;
+}
+.ui-ratingstars--size-md {
+	--ui-rs-star: 0.95rem;
+}
+.ui-ratingstars--size-lg {
+	--ui-rs-star: 1.2rem;
+}
+
+.ui-ratingstars__value {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.2rem;
+	font-size: 0.85em;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.ui-ratingstars__count {
+	font-weight: 400;
+	color: var(--on-surface-variant);
+}

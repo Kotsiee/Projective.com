@@ -61,6 +61,8 @@ export const OrganizationJoinSchema = z.object({
 	}),
 	employeeTier: z.enum(employeeValues),
 	industry: z.enum(industryValues),
+	/** Free-text sector; only populated (and required by the client) when `industry === "other"`. */
+	industryOther: z.string().trim().max(80).default(""),
 	departments: strList,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
 	password,

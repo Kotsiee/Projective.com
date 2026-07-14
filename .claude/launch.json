@@ -1,11 +1,29 @@
 {
-	"version": "0.0.1",
-	"configurations": [
-		{
-			"name": "web",
-			"runtimeExecutable": "deno",
-			"runtimeArgs": ["task", "dev", "--", "--port", "5173", "--strictPort"],
-			"port": 5173
-		}
-	]
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--", "--port", "3000", "--strictPort"],
+      "port": 3000
+    },
+    {
+      "name": "web-explore",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "5273", "--strictPort"],
+      "port": 5273
+    },
+    {
+      "name": "web-p2",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "5373", "--strictPort"],
+      "port": 5373
+    },
+    {
+      "name": "web-nav",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "5473", "--strictPort"],
+      "port": 5473
+    }
+  ]
 }

@@ -105,22 +105,192 @@
 }
 
 .site-header__nav {
+	/* Positioning context for the megamenu panels — anchored to the nav's left edge (not the narrow
+	   individual trigger) so a wide panel never overflows the right viewport edge. */
+	position: relative;
 	display: flex;
 	align-items: center;
-	gap: var(--space-5);
+	gap: var(--space-4);
 	margin-inline-start: var(--space-2);
 }
+/* #endregion */
 
-.site-header__link {
+/* #region Discovery megamenu (desktop hover panels) */
+/* A pillar wraps its trigger + panel. The panel is a DOM descendant, so moving the pointer from the
+   trigger down into the panel never fires the pillar's mouseleave — that, plus the transparent
+   padding bridge on `.site-header__mega`, is the "safe hover bridge". */
+.site-header__pillar {
+	display: inline-flex;
+	align-items: center;
+}
+
+.site-header__pillar-trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0;
+	border: 0;
+	background: transparent;
+	font: inherit;
 	font-size: 0.925rem;
 	font-weight: 500;
 	color: var(--on-surface-variant);
-	text-decoration: none;
+	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard);
 }
 
-.site-header__link:hover {
+.site-header__pillar-trigger:hover,
+.site-header__pillar.is-open .site-header__pillar-trigger {
 	color: var(--on-surface);
+}
+
+/* Caret — a small chevron that flips when its panel is open. */
+.site-header__pillar-caret {
+	inline-size: 6px;
+	block-size: 6px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-2px) rotate(45deg);
+	opacity: 0.55;
+	transition:
+		transform var(--dur-fast) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__pillar.is-open .site-header__pillar-caret {
+	transform: translateY(1px) rotate(-135deg);
+	opacity: 0.8;
+}
+
+/* The dropdown wrapper — anchored to the nav's left, spanning below the row. Its top padding is the
+   invisible bridge connecting the trigger to the visible glass card. Hidden + inert until open, with
+   a fast ease-out slide (-10px → 0) and fade that reverses on close. */
+.site-header__mega {
+	position: absolute;
+	inset-block-start: 100%;
+	inset-inline-start: 0;
+	inline-size: min(40rem, calc(100vw - 3rem));
+	max-inline-size: calc(100vw - 3rem);
+	padding-block-start: var(--space-3);
+	z-index: 50;
+	opacity: 0;
+	transform: translateY(-10px);
+	visibility: hidden;
+	pointer-events: none;
+	transition:
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard),
+		visibility 0s linear var(--dur-medium);
+}
+
+.site-header__pillar.is-open .site-header__mega {
+	opacity: 1;
+	transform: translateY(0);
+	visibility: visible;
+	pointer-events: auto;
+	transition:
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard);
+}
+
+/* The glass card itself — same premium recipe as the scrolled header shell: theme-aware translucent
+   surface, backdrop blur, hairline outline, generous radius, deep elevation. */
+.site-header__mega-inner {
+	padding: var(--space-5) var(--space-6);
+	background: color-mix(in srgb, var(--surface) 80%, transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	border: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	border-radius: calc(var(--radius-xl) * 1.25);
+	box-shadow: var(--elevation-high);
+}
+
+.site-header__mega-tagline {
+	margin: 0 0 var(--space-4);
+	font-size: 0.85rem;
+	font-weight: 450;
+	color: var(--on-surface-variant);
+}
+
+.site-header__mega-cols {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--space-4) var(--space-6);
+}
+
+/* Separation by type weight + spacing only — no boxes (DESIGN_SYSTEM separation hierarchy). */
+.site-header__mega-heading {
+	margin: 0 0 var(--space-2);
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.site-header__mega-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Thin-weight leaf links that lift in colour + opacity on hover. */
+.site-header__mega-link {
+	display: block;
+	padding: 0.3rem 0;
+	font-size: 0.9rem;
+	font-weight: 400;
+	color: var(--on-surface-variant);
+	text-decoration: none;
+	opacity: 0.85;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.site-header__mega-link:hover {
+	color: var(--on-surface);
+	opacity: 1;
+}
+
+.site-header__mega-link:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* Prominent "browse all" action — a single hairline separates it from the grid (allowed: separator,
+   not a box). */
+.site-header__mega-all {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+	padding-block-start: var(--space-4);
+	border-block-start: 1px solid color-mix(in srgb, var(--outline) 16%, transparent);
+	inline-size: 100%;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.site-header__mega-all-arrow {
+	transition: transform var(--dur-fast) var(--spring-standard);
+}
+
+.site-header__mega-all:hover .site-header__mega-all-arrow {
+	transform: translateX(4px);
+}
+
+.site-header__pillar-trigger:focus-visible,
+.site-header__mega-all:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+	border-radius: var(--radius-sm);
 }
 /* #endregion */
 
@@ -192,17 +362,18 @@
 }
 
 .site-header__entity-option {
-	padding: 0.5rem 0.7rem;
+	padding: 0.65rem 0.9rem;
 	border-radius: var(--radius-base);
 	cursor: pointer;
-	font-size: 0.9rem;
-	font-weight: 500;
+	font-size: 0.875rem;
+	font-weight: 450;
 }
 
+/* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
 .site-header__entity-option:hover,
 .site-header__entity-option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
-	color: var(--primary);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
 }
 
 .site-header__entity-option:focus-visible {
@@ -324,7 +495,6 @@
 
 .site-header__signin:focus-visible,
 .site-header__cta:focus-visible,
-.site-header__link:focus-visible,
 .site-header__icon-btn:focus-visible,
 .site-header__brand:focus-visible,
 .site-header__entity-btn:focus-visible,
@@ -454,6 +624,132 @@
 	outline: 2px solid var(--primary);
 	outline-offset: 2px;
 }
+
+/* #region Mobile drawer accordions — the four discovery pillars, translated for touch */
+.site-header__acc {
+	border-block-end: 1px solid color-mix(in srgb, var(--outline) 12%, transparent);
+}
+
+.site-header__acc-trigger {
+	inline-size: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-2);
+	border: 0;
+	background: transparent;
+	font: inherit;
+	font-size: 1.05rem;
+	font-weight: 550;
+	color: var(--on-surface);
+	cursor: pointer;
+	text-align: start;
+}
+
+.site-header__acc-caret {
+	flex: 0 0 auto;
+	inline-size: 8px;
+	block-size: 8px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-2px) rotate(45deg);
+	opacity: 0.55;
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.site-header__acc.is-open .site-header__acc-caret {
+	transform: translateY(1px) rotate(-135deg);
+}
+
+.site-header__acc-trigger:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* Smoothly expand downward, pushing later items down — the 0fr → 1fr grid-row trick animates the
+   panel's natural height with no magic max-height cap. */
+.site-header__acc-panel {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
+}
+
+.site-header__acc.is-open .site-header__acc-panel {
+	grid-template-rows: 1fr;
+}
+
+.site-header__acc-inner {
+	overflow: hidden;
+	min-block-size: 0;
+	visibility: hidden;
+	transition: visibility 0s linear var(--dur-medium);
+}
+
+.site-header__acc.is-open .site-header__acc-inner {
+	visibility: visible;
+	transition: visibility 0s;
+}
+
+.site-header__acc-group {
+	padding-block: var(--space-2) var(--space-3);
+	padding-inline-start: var(--space-2);
+}
+
+.site-header__acc-heading {
+	margin: 0 0 var(--space-1);
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.site-header__acc-link {
+	display: block;
+	padding: 0.5rem var(--space-2);
+	font-size: 0.95rem;
+	font-weight: 450;
+	color: var(--on-surface-variant);
+	text-decoration: none;
+	border-radius: var(--radius-base);
+}
+
+.site-header__acc-link:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+
+.site-header__acc-link:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.site-header__acc-all {
+	display: inline-block;
+	margin-block: var(--space-1) var(--space-3);
+	padding-inline-start: var(--space-2);
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.site-header__acc-all:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* Retained utility links (How it works · Pricing) below the discovery accordions. */
+.site-header__drawer-secondary {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin-block-start: var(--space-3);
+}
+/* #endregion */
 
 /* Theme toggle lives HERE on mobile (drawer) — never as a fourth header element. */
 .site-header__drawer-theme {

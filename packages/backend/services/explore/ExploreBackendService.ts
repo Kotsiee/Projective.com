@@ -1,0 +1,105 @@
+import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { isExploreBackendLive } from "../../core/supabase.ts";
+import {
+	expandItems,
+	findItem as lookupItem,
+	getResults,
+	groupResults,
+	homeFeed,
+	relatedSearches,
+} from "./query.ts";
+import type {
+	ExploreItem,
+	ExploreParams,
+	HomeFeed,
+	SearchPayload,
+} from "@projective/types/explore";
+
+/**
+ * ExploreBackendService — the FAT server-side discovery service.
+ *
+ * It owns the discovery query: filtering, ranking, merged-section grouping, item lookup, and paged
+ * feed expansion. Thin routes under `apps/web/routes/api/explore/*` do only HTTP parsing + Zod
+ * validation, then delegate here and map the returned {@link ServiceResult} to a `Response`; the
+ * `/explore` route calls these directly for SSR first paint. Islands never reach this — they `fetch`
+ * the routes via the thin `ExploreService`.
+ *
+ * **Stub mode (default).** With `EXPLORE_BACKEND_LIVE` off (see {@link isExploreBackendLive}) the
+ * service answers from the in-memory {@link homeFeed}/{@link getResults} fixtures — the running app is
+ * unchanged. The live path (Supabase discovery tables + search embeddings) slots in behind the same
+ * gate when it lands, a fill-in rather than a re-architecture.
+ */
+
+// #region Constants
+/** The stub "endless" pool size the isolated unified feed pages through. */
+const FEED_POOL = 144;
+/** Default page size when a caller omits `limit`. */
+const FEED_PAGE = 18;
+// #endregion
+
+/** Compute a search page from the fixtures (the stub read path; also the live fallback for now). */
+function buildSearch(params: ExploreParams, offset: number, limit: number): SearchPayload {
+	const results = getResults(params);
+	const isolated = params.category !== "all";
+	const related = relatedSearches(params);
+
+	if (!isolated) {
+		return {
+			count: results.length,
+			isolated: false,
+			items: [],
+			poolTotal: 0,
+			groups: groupResults(results),
+			related,
+			hasMore: false,
+		};
+	}
+
+	const pool = expandItems(results, FEED_POOL);
+	const page = pool.slice(offset, offset + limit);
+	return {
+		count: results.length,
+		isolated: true,
+		items: page,
+		poolTotal: pool.length,
+		groups: [],
+		related,
+		hasMore: offset + limit < pool.length,
+	};
+}
+
+export class ExploreBackendService {
+	/**
+	 * Run a discovery search. Returns the grouped merged sections (cross-category) or a single page of
+	 * the isolated-category feed, plus the real count and related terms.
+	 */
+	static search(
+		input: { params: ExploreParams; offset?: number; limit?: number },
+	): ServiceResult<SearchPayload> {
+		const offset = Math.max(0, input.offset ?? 0);
+		const limit = Math.min(FEED_POOL, Math.max(1, input.limit ?? FEED_PAGE));
+		if (!isExploreBackendLive()) {
+			return ok(buildSearch(input.params, offset, limit));
+		}
+		// LIVE: query the discovery tables + search embeddings (not yet implemented) — fall back to the
+		// fixture-backed query so behaviour is preserved until that path lands.
+		return ok(buildSearch(input.params, offset, limit));
+	}
+
+	/** The composed Home discovery feed (sections + reserved promos) for State A first paint. */
+	static home(): ServiceResult<HomeFeed> {
+		return ok(homeFeed());
+	}
+
+	/** Look up a single item by id — backs `/view/[id]` and the detail drawer. */
+	static item(id: string): ServiceResult<{ item: ExploreItem }> {
+		const item = lookupItem(id);
+		if (!item) return fail(404, { message: `No item found for id "${id}".` });
+		return ok({ item });
+	}
+
+	/** Related search terms for a query/scope — the results-header "Related" row. */
+	static related(params: ExploreParams): ServiceResult<{ related: string[] }> {
+		return ok({ related: relatedSearches(params) });
+	}
+}

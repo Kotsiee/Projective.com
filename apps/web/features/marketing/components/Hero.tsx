@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import HeroParticles from "../islands/HeroParticles.island.tsx";
-import HeroSearch from "../islands/HeroSearch.island.tsx";
+import SearchBar from "../islands/SearchBar.island.tsx";
 import { unsplash } from "../core/landing-data.ts";
 import { vars } from "../core/style.ts";
 
@@ -8,7 +8,7 @@ import { vars } from "../core/style.ts";
  * Hero — the full-window opening act, sized to exactly the viewport minus the floating header. A
  * photographic backdrop under a tonal scrim, the hero-scoped particle field (island), and a centered,
  * search-forward composition: the multi-weight headline still carries the primary AIO terms in real
- * semantic markup, but the primary action is now the prominent {@link HeroSearch}.
+ * semantic markup, but the primary action is now the prominent shared {@link SearchBar} (hero variant).
  */
 const HERO_BG = unsplash("1522071820081-009f0129c71c", 1920, 1280);
 
@@ -47,7 +47,7 @@ export function Hero(): JSX.Element {
 					<a class="lp-btn lp-btn--ghost" href="/explore" data-magnetic>Hire a team</a>
 				</div>
 
-				<HeroSearch />
+				<SearchBar variant="hero" />
 
 				<dl class="lp-hero__stats">
 					<div class="lp-hero__stat">

@@ -4,7 +4,7 @@ import { AuthHeading } from "../components/AuthShell.tsx";
 import { OAuthButtons } from "../components/OAuthButtons.tsx";
 import { CheckIcon, InfoIcon, LockIcon, WarnIcon } from "../components/icons.tsx";
 import { emailError, requiredError } from "../core/validate.ts";
-import { postAuth } from "../core/api.ts";
+import { AuthService } from "../core/AuthService.ts";
 import { safeRedirect, withRedirect } from "../core/redirect.ts";
 
 const DOMAIN_RE = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
@@ -42,7 +42,7 @@ export default function LoginForm(
 		if (next.email || next.password) return;
 
 		submitting.value = true;
-		const result = await postAuth("/api/auth/login", {
+		const result = await AuthService.login({
 			email: email.value.trim(),
 			password: password.value,
 			remember: remember.value,
@@ -70,10 +70,16 @@ export default function LoginForm(
 			return;
 		}
 		ssoBusy.value = true;
-		const result = await postAuth("/api/auth/sso", { domain: d, redirectTo });
+		const result = await AuthService.sso({ domain: d, redirectTo });
 		ssoBusy.value = false;
 		if (!result.ok) {
 			ssoError.value = result.errors?.domain ?? result.message ?? "Couldn't look up that domain.";
+			return;
+		}
+		// A resolved provider hands back an external IdP authorize URL — begin the handshake.
+		if (result.ssoUrl) {
+			ssoMessage.value = "Redirecting to your identity provider…";
+			globalThis.location.href = result.ssoUrl;
 			return;
 		}
 		ssoMessage.value = result.message ?? "Redirecting to your identity provider…";

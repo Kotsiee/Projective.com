@@ -7,12 +7,17 @@
 .ui-backdrop {
 	position: absolute;
 	inset: 0;
-	background: color-mix(in srgb, var(--on-surface) 42%, transparent);
+	/* Theme-aware scrim: `--on-surface` darkens over light themes and lightens over dark ones, so the
+	   tint reads correctly in both. Paired with a soft backdrop blur for a luxurious glass dim. */
+	background: color-mix(in srgb, var(--on-surface) 38%, transparent);
 	opacity: 0;
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
 	transition: opacity var(--dur-medium) var(--ease-standard);
 }
 .ui-backdrop--blur {
 	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .ui-backdrop[data-state="open"] {
 	opacity: 1;

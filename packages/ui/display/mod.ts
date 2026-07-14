@@ -75,6 +75,8 @@ export { Card } from "./components/Card.tsx";
 export type { CardProps, CardVariant } from "./components/Card.tsx";
 export { Badge, OverlayBadge } from "./components/Badge.tsx";
 export type { BadgeProps, OverlayBadgeProps } from "./components/Badge.tsx";
+export { RatingStars } from "./components/RatingStars.tsx";
+export type { RatingStarsProps } from "./components/RatingStars.tsx";
 export { Tag } from "./components/Tag.tsx";
 export type { TagProps, TagVariant } from "./components/Tag.tsx";
 export { Avatar } from "./components/Avatar.tsx";

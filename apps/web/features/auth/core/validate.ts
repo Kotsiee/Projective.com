@@ -10,8 +10,12 @@ import { RESERVED_HANDLES } from "./options.ts";
 
 /** Pragmatic email shape check (authoritative verification happens via the emailed link/code). */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** Handles/usernames: 3–20 chars, alphanumeric + underscore, must start with a letter. */
-export const USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/;
+/**
+ * Handles/usernames: 3–30 chars, must start with a letter, then letters, numbers, or the permitted
+ * separators `.`, `-`, `_`. Kept in lockstep with {@link sanitizeHandle} — anything the sanitiser
+ * produces must pass this test.
+ */
+export const USERNAME_RE = /^[a-z][a-z0-9._-]{2,29}$/i;
 /** Loose international phone shape: optional +, digits, spaces, dashes, parens. */
 export const PHONE_RE = /^[+]?[()\d\s-]{7,20}$/;
 /** A domain or URL — `example.com`, `www.example.com`, or `https://example.com/path`. */
@@ -30,10 +34,33 @@ export function usernameError(value: string): string | null {
 	const v = value.trim();
 	if (v.length === 0) return "Username is required.";
 	if (!USERNAME_RE.test(v)) {
-		return "3–20 characters: letters, numbers or _, starting with a letter.";
+		return "3–30 characters: letters, numbers, . - or _, starting with a letter.";
 	}
 	if (RESERVED_HANDLES.has(v.toLowerCase())) return "That username is reserved — try another.";
 	return null;
+}
+
+/**
+ * Coerce arbitrary text into a legal handle in real time: lowercase, whitespace collapsed to a
+ * single hyphen, and every character outside the permitted set (`a–z`, `0–9`, `.`, `-`, `_`)
+ * stripped. Used to instantly format the username/handle field on input and to derive a suggested
+ * handle from a person's name. The result always satisfies the character rules of {@link USERNAME_RE}
+ * (the leading-letter / length constraints are still surfaced by {@link usernameError}).
+ */
+export function sanitizeHandle(raw: string): string {
+	return raw
+		.toLowerCase()
+		.replace(/\s+/g, "-")
+		.replace(/[^a-z0-9._-]/g, "")
+		.slice(0, 30);
+}
+
+/** Suggest a handle from a first + last name, e.g. `"Ada"`, `"Lovelace"` → `"ada.lovelace"`. */
+export function suggestHandle(firstName: string, lastName: string): string {
+	const first = firstName.trim();
+	const last = lastName.trim();
+	if (!first && !last) return "";
+	return sanitizeHandle(last ? `${first}.${last}` : first);
 }
 
 export function passwordError(value: string): string | null {

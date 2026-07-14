@@ -33,3 +33,31 @@ already existed (the call is then a no-op re-activation). Raises `28000` when un
 
 > Note: `org.freelancer_profiles` no longer carries an `hourly_rate` column — rates are not a
 > platform signalling field (see `org/Tables.md`).
+
+## `org.is_organisation_member(p_org uuid, p_min_role org.organisation_role = 'member') → boolean`
+
+**Migration:** `supabase/migrations/0314_organisations.sql` · **Security:** `SECURITY DEFINER`,
+`STABLE`, `SET search_path = org, public`.
+
+Returns `true` when `auth.uid()` is an **active** member of organisation `p_org` at or above
+`p_min_role` (the enum ranks `owner` ≥ `admin` ≥ `member`). It exists so the RLS policies on
+`org.organisations` / `org.organisation_members` can check membership without the policy on one
+table triggering the policy on the other — the definer context bypasses RLS on
+`org.organisation_members`, breaking the recursion the Policies doc's Security Notes warn about.
+Keyed off `auth.uid()`; safe to call from any policy `USING`/`WITH CHECK` clause.
+
+## `public.create_organisation(p_owner uuid, p_payload jsonb) → uuid`
+
+**Migration:** `supabase/migrations/0315_create_organisation_rpc.sql` · **Security:**
+`SECURITY DEFINER`, `SET search_path = public, org, security` · **Grant:** `service_role` only.
+
+Atomic organisation provisioning, called by `@projective/backend`'s `AuthBackendService`
+(service-role) **after** it admin-creates the owner identity in GoTrue. In one transaction it:
+inserts `org.organisations` (owner = `p_owner`; `NULLIF` collapses the client's empty-string
+defaults to `NULL`, and the 0314 `industry_other` CHECK still applies), seeds the owner's
+`org.organisation_members` row (`role = 'owner'`), and writes an `organisation.created` entry to
+`security.audit_logs` (definer context, because that table isn't granted to `authenticated` — cf.
+`provision_user_profile` in 0304). `p_payload` is the camelCase `@projective/types`
+`CreateOrganisation` shape. Returns the new org id; a duplicate `handle` surfaces as a
+`unique_violation` the service maps to a 422. Owner-only (buyer) by construction — organisations
+carry no service/product surface.

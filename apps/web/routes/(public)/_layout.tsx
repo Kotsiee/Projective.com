@@ -1,7 +1,8 @@
 import { define } from "@web/utils/state.ts";
 import SiteHeader from "@features/marketing/islands/SiteHeader.island.tsx";
+import { PublicFooter } from "@features/marketing/components/PublicFooter.tsx";
 
-/** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header. */
+/** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
 const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
 
 /**
@@ -24,6 +25,7 @@ export default define.page(function PublicLayout(ctx) {
 			<main class="site__main">
 				<ctx.Component />
 			</main>
+			<PublicFooter />
 		</div>
 	);
 });

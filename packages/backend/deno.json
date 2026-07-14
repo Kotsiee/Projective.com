@@ -1,0 +1,14 @@
+{
+	"name": "@projective/backend",
+	"version": "0.1.0",
+	"description": "Projective server-side service layer — the FAT half of the thin-routes/fat-services contract. Owns business logic, encryption, DB transactions, and security policy; consumed app-side via the @server/services/* alias. Never imported by islands. See documentation/architecture/SYSTEM_ARCHITECTURE.md §Backend Services.",
+	"exports": {
+		"./services/ServiceResult.ts": "./services/ServiceResult.ts",
+		"./services/auth/AuthBackendService.ts": "./services/auth/AuthBackendService.ts",
+		"./services/explore/ExploreBackendService.ts": "./services/explore/ExploreBackendService.ts",
+		"./services/newsletter/NewsletterBackendService.ts": "./services/newsletter/NewsletterBackendService.ts",
+		"./core/env.ts": "./core/env.ts",
+		"./core/supabase.ts": "./core/supabase.ts"
+	},
+	"exclude": ["dist", "coverage"]
+}

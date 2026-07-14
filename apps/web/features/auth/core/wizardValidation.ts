@@ -15,6 +15,16 @@ import {
  * fields it renders (so a partial wizard never reports errors for steps the user hasn't reached),
  * and the same six step slots carry either Individual or Organization field sets.
  */
+/**
+ * Date-of-birth validation shared by the two places it can live: the (email) credentials step for a
+ * standard signup, and the identity step for an OAuth signup (where it folds up because there is no
+ * separate credentials step).
+ */
+function dobError(store: JoinStore): string | null {
+	if (!store.dob.value) return "Date of birth is required.";
+	return bracketFromDob(store.dob.value) === "blocked" ? AGE_MESSAGES.blocked : null;
+}
+
 export function validateStep(store: JoinStore, id: StepId): Record<string, string | null> {
 	const org = store.isOrg.value;
 	switch (id) {
@@ -28,6 +38,10 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 				? {
 					employeeTier: store.employeeTier.value ? null : "Select a headcount range.",
 					industry: store.industry.value ? null : "Select an industry.",
+					// "Other" reveals a required free-text specifier; validate it only when chosen.
+					industryOther: store.industry.value === "other"
+						? requiredError(store.industryOther.value, "Industry")
+						: null,
 					website: websiteError(store.website.value),
 				}
 				: {};
@@ -51,6 +65,8 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 					firstName: requiredError(store.firstName.value, "First name"),
 					lastName: requiredError(store.lastName.value, "Last name"),
 					username: usernameError(store.username.value),
+					// OAuth signups have no credentials step — DoB is captured here instead.
+					...(store.isOAuth ? { dob: dobError(store) } : {}),
 				};
 		case "credentials":
 			if (org) {
@@ -63,9 +79,7 @@ export function validateStep(store: JoinStore, id: StepId): Record<string, strin
 			}
 			return {
 				email: emailError(store.email.value),
-				dob: store.dob.value
-					? (bracketFromDob(store.dob.value) === "blocked" ? AGE_MESSAGES.blocked : null)
-					: "Date of birth is required.",
+				dob: dobError(store),
 				password: store.isOAuth ? null : passwordError(store.password.value),
 				confirm: store.isOAuth ? null : confirmError(store.password.value, store.confirm.value),
 			};
@@ -99,6 +113,8 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			},
 			employeeTier: store.employeeTier.value,
 			industry: store.industry.value,
+			// Only meaningful for the "other" catch-all; empty otherwise.
+			industryOther: store.industry.value === "other" ? store.industryOther.value.trim() : "",
 			departments: store.departments.value,
 			purpose: store.purpose.value,
 			password: store.password.value,

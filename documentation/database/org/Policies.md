@@ -12,6 +12,10 @@ layer.
 - **`security.is_admin()`**: Returns true if the `auth.uid()` exists in `ops.admin_users`.
 - **`org.is_active_team_member(_team_id)`**: Returns true if the `auth.uid()` has an 'active' status
   in `org.team_members` for the specified team.
+- **`org.is_organisation_member(p_org, p_min_role)`**: `SECURITY DEFINER`; returns true if the
+  `auth.uid()` is an active member of the organisation at or above `p_min_role`
+  (`member`/`admin`/`owner`). Definer context bypasses RLS so the organisation policies below don't
+  recurse. See `org/Functions.md`.
 
 ---
 
@@ -152,6 +156,40 @@ USING (
     )
 );
 ```
+
+---
+
+## 🏢 Organisation Policies
+
+Added in `0314_organisations.sql`. Both tables have RLS enabled. Membership checks go through the
+`SECURITY DEFINER` helper `org.is_organisation_member()` to avoid the self-referential recursion the
+Security Notes warn about.
+
+### `org.organisations`
+
+```sql
+-- SELECT: owner, any active member, or an admin
+CREATE POLICY "Members can view their organisation"
+ON org.organisations FOR SELECT TO public
+USING (owner_user_id = auth.uid() OR org.is_organisation_member(id) OR security.is_admin());
+
+-- INSERT: any authenticated user creating an org they own
+CREATE POLICY "Users can create organisations they own"
+ON org.organisations FOR INSERT TO public
+WITH CHECK (owner_user_id = auth.uid());
+
+-- UPDATE: owner or admin members (or admin)
+CREATE POLICY "Owners and admins can update the organisation"
+ON org.organisations FOR UPDATE TO public
+USING (owner_user_id = auth.uid() OR org.is_organisation_member(id, 'admin') OR security.is_admin());
+```
+
+### `org.organisation_members`
+
+`SELECT` lets a user see their own row and lets owners/admins see the whole roster;
+`INSERT`/`UPDATE`/ `DELETE` are owner/admin-gated. The `INSERT` policy also allows the org **owner**
+to seed their own owner-membership at creation time (when no members exist yet), via an `EXISTS` on
+`org.organisations.owner_user_id`.
 
 ---
 

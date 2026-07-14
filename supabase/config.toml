@@ -182,7 +182,7 @@ double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 # Disabled for local dev so email sign-ups are usable without the Inbucket step
 # (http://127.0.0.1:54324). Re-enable before any non-local deployment.
-enable_confirmations = false
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -211,6 +211,15 @@ content_path = "./supabase/templates/confirmation.html"
 [auth.email.template.recovery]
 subject = "Reset your Projective password"
 content_path = "./supabase/templates/recovery.html"
+
+# Enterprise SSO (SAML 2.0). The login page's "Enterprise SSO" flow calls signInWithSSO({ domain }),
+# which requires SAML to be enabled here AND a provider registered per corporate domain via the CLI
+# (`supabase sso add --project-ref <ref> --type saml --metadata-url <idp> --domains acme.com`).
+# Enabling requires a private key: generate with
+# `openssl genpkey -algorithm rsa -outform DER | base64 -w0` and expose it as SAML_PRIVATE_KEY.
+# [auth.sso.saml]
+# enabled = true
+# private_key = "env(SAML_PRIVATE_KEY)"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -376,7 +385,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [auth.external.google]
 enabled = true
 client_id = "env(GOOGLE_CLIENT_ID)"
-secret = "env(GOOGLE_SECRET)"
+secret = "env(GOOGLE_CLIENT_SECRET)"
 # The redirect URI should match what you put in Google Console
 redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
 skip_nonce_check = true # Often necessary for local testing

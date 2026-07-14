@@ -131,6 +131,59 @@ CREATE TABLE org.profile_links (
 
 ---
 
+## 🏢 Organisations (client/buyer-only)
+
+Added in `supabase/migrations/0314_organisations.sql`; Zod SSOT in
+`packages/types/org/organisations.ts`. An **Organisation** is a corporate **client/buyer** entity —
+it registers only to hire/buy and **cannot offer services**. It is deliberately **distinct** from
+`org.business_profiles` (the seller-side entity above): different table, different purpose, no
+service/product surface. Multi-tenancy is a membership join table, **not** a `users.organisation_id`
+column, because a user can belong to several organisations.
+
+### `org.organisations`
+
+| Column                | Type                                  | Notes                                                                                 |
+| :-------------------- | :------------------------------------ | :------------------------------------------------------------------------------------ |
+| `id`                  | uuid                                  | PK.                                                                                   |
+| `owner_user_id`       | uuid                                  | FK → `auth.users.id`. The creator/ultimate controller.                                |
+| `legal_name`          | text                                  | Registered legal company name (required).                                             |
+| `trading_name`        | text                                  | Brand / trading name, if different.                                                   |
+| `handle`              | text                                  | UNIQUE `@handle` for the org namespace.                                               |
+| `registration_number` | text                                  | CRN / EIN / VAT / Tax ID.                                                             |
+| `corporate_email`     | text                                  | Primary corporate contact (required).                                                 |
+| `corporate_phone`     | text                                  | Corporate phone.                                                                      |
+| `website`             | text                                  | Corporate website / domain.                                                           |
+| `address_line_1`      | text                                  | Registered address.                                                                   |
+| `address_city`        | text                                  | —                                                                                     |
+| `address_postcode`    | text                                  | —                                                                                     |
+| `address_country`     | text                                  | —                                                                                     |
+| `employee_scale`      | `org.employee_scale`                  | Headcount tier: `1-50` / `51-200` / `201-500` / `500+`.                               |
+| `primary_industry`    | text                                  | Industry slug from the onboarding set.                                                |
+| `industry_other`      | text                                  | Free-text sector; **required by CHECK** when `primary_industry = 'other'`.            |
+| `departments`         | text[]                                | Initial departments (presets + custom-typed).                                         |
+| `purpose`             | text[]                                | Optional stated goals.                                                                |
+| `status`              | `org.organisation_status`             | `draft` (default) / `active` / `suspended` / `archived`. Nothing is hard-deleted.     |
+| `verification_level`  | `org.organisation_verification_level` | `unverified` (default) → `email_verified` → `kyb_pending` → `verified`. KYB deferred. |
+| `logo_file_id`        | uuid                                  | FK → `files.items.id` (ON DELETE SET NULL).                                           |
+| `billing_email`       | text                                  | Invoicing contact.                                                                    |
+| `default_currency`    | text                                  | Default `USD`.                                                                        |
+
+### `org.organisation_members`
+
+Join table mapping users to organisations with a role — the multi-tenant link.
+
+| Column            | Type                    | Notes                                                           |
+| :---------------- | :---------------------- | :-------------------------------------------------------------- |
+| `id`              | uuid                    | PK.                                                             |
+| `organisation_id` | uuid                    | FK → `org.organisations.id` (ON DELETE CASCADE).                |
+| `user_id`         | uuid                    | FK → `auth.users.id` (ON DELETE CASCADE).                       |
+| `role`            | `org.organisation_role` | `owner` / `admin` / `member`.                                   |
+| `status`          | text                    | Default `active`.                                               |
+| `invited_by`      | uuid                    | FK → `auth.users.id` (ON DELETE SET NULL).                      |
+| UNIQUE            | —                       | `(organisation_id, user_id)` — one membership per user per org. |
+
+---
+
 ## 🚩 Refactor Notes & Suggestions
 
 - **DRY Violations**: `headline`, `description`, `languages`, and `timezone` are currently

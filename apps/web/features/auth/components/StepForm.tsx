@@ -1,4 +1,4 @@
-import { type Signal, useSignal } from "@preact/signals";
+import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import type { ComponentChildren, JSX } from "preact";
 import {
 	Button,
@@ -6,7 +6,6 @@ import {
 	type DateValue,
 	FormControl,
 	InputText,
-	MultiSelect,
 	Password,
 	Select,
 } from "@projective/ui/fields";
@@ -17,9 +16,10 @@ import { GoogleGlyph, InfoIcon, WarnIcon } from "./icons.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { buildPayload, hasErrors, validateStep } from "../core/wizardValidation.ts";
 import { AGE_MESSAGES, bracketFromDob } from "../core/age.ts";
+import { sanitizeHandle, suggestHandle } from "../core/validate.ts";
 import { COUNTRIES, EMPLOYEE_TIERS, INDUSTRIES } from "../core/options.ts";
 import { PURPOSES, SKILLS } from "../core/onboarding-data.ts";
-import { postAuth } from "../core/api.ts";
+import { AuthService } from "../core/AuthService.ts";
 import { safeRedirect, withRedirect } from "../core/redirect.ts";
 
 /**
@@ -34,6 +34,8 @@ type Err = Record<string, string | null>;
 
 /** Max interactive tags a person can pick per cluster (purpose / skills). */
 const MAX_TAGS = 5;
+/** Departments allow more entries than the tag clusters — presets plus custom-typed team names. */
+const MAX_DEPARTMENTS = 12;
 /** How long the picked card's active state lingers before the auto-advance slide (feels deliberate). */
 const AUTO_ADVANCE_MS = 240;
 
@@ -172,6 +174,62 @@ function Row({ children }: { children: ComponentChildren }): JSX.Element {
 	return <div class="auth-field-row">{children}</div>;
 }
 
+/**
+ * Date-of-birth control + the live age-bracket note. Shared between the identity step (OAuth signups,
+ * where DoB folds up because there's no credentials step) and the credentials step (standard signup).
+ */
+function DobField(
+	{ store, dobDate }: { store: JoinStore; dobDate: Signal<DateValue> },
+): JSX.Element {
+	const e = store.errors.value as Err;
+	const bracket = bracketFromDob(store.dob.value);
+	return (
+		<>
+			<Row>
+				<FormControl
+					label="Date of birth"
+					error={e.dob ?? undefined}
+					status={e.dob ? "invalid" : "default"}
+					required
+				>
+					{({ id: fid, describedBy }) => (
+						<DatePicker
+							id={fid}
+							aria-describedby={describedBy}
+							value={dobDate}
+							selectionMode="single"
+							maxDate={new Date()}
+							dateFormat="dd M yy"
+							showIcon
+							status={e.dob ? "invalid" : "default"}
+							fluid
+							onValueChange={(v) => {
+								store.dob.value = v instanceof Date ? toISO(v) : "";
+							}}
+						/>
+					)}
+				</FormControl>
+			</Row>
+			{store.dob.value && bracket === "restricted"
+				? (
+					<div class="auth-agenote auth-agenote--restricted" role="status">
+						<span class="auth-agenote__icon">{InfoIcon()}</span>
+						<span>{AGE_MESSAGES.restricted}</span>
+					</div>
+				)
+				: null}
+			{store.dob.value && bracket === "blocked"
+				? (
+					<div class="auth-agenote auth-agenote--blocked" role="alert">
+						<span class="auth-agenote__icon">{WarnIcon()}</span>
+						<span>{AGE_MESSAGES.blocked}</span>
+					</div>
+				)
+				: null}
+		</>
+	);
+}
+
 /** Render the fields for one step slot, branching Individual vs Organization. */
 function StepFields(
 	{ store, dobDate, onChoose }: {
@@ -288,6 +346,20 @@ function StepFields(
 							placeholder="Select an industry…"
 						/>
 					</Row>
+					{/* "Other" reveals a required free-text specifier directly beneath the picker. */}
+					{store.industry.value === "other"
+						? (
+							<Row>
+								<TextRow
+									label="Tell us your industry"
+									value={store.industryOther}
+									error={e.industryOther}
+									placeholder="e.g. Renewable energy"
+									required
+								/>
+							</Row>
+						)
+						: null}
 					<Row>
 						<TextRow
 							label="Website / corporate domain"
@@ -347,17 +419,17 @@ function StepFields(
 						/>
 					</Row>
 					<Row>
-						<FormControl label="Initial departments" hint="Optional — add your top-level teams.">
-							{({ id: fid, describedBy }) => (
-								<MultiSelect
-									id={fid}
-									aria-describedby={describedBy}
+						<FormControl
+							label="Initial departments"
+							hint="Optional — tap a preset or type your own team names."
+						>
+							{() => (
+								<TagSelect
 									value={store.departments}
 									options={DEPARTMENT_SUGGESTIONS}
-									display="chip"
-									filter
-									placeholder="e.g. Engineering, Finance…"
-									fluid
+									max={MAX_DEPARTMENTS}
+									placeholder="Add a department…"
+									inputLabel="Add a department"
 								/>
 							)}
 						</FormControl>
@@ -444,6 +516,8 @@ function StepFields(
 							required
 						/>
 					</Row>
+					{/* OAuth signups fold their date of birth up here — there's no credentials step. */}
+					{store.isOAuth ? <DobField store={store} dobDate={dobDate} /> : null}
 				</>
 			);
 	}
@@ -480,7 +554,6 @@ function StepFields(
 		);
 	}
 
-	const bracket = bracketFromDob(store.dob.value);
 	return (
 		<>
 			<Row>
@@ -494,47 +567,7 @@ function StepFields(
 					readOnly={store.isOAuth}
 				/>
 			</Row>
-			<Row>
-				<FormControl
-					label="Date of birth"
-					error={e.dob ?? undefined}
-					status={e.dob ? "invalid" : "default"}
-					required
-				>
-					{({ id: fid, describedBy }) => (
-						<DatePicker
-							id={fid}
-							aria-describedby={describedBy}
-							value={dobDate}
-							selectionMode="single"
-							maxDate={new Date()}
-							dateFormat="dd M yy"
-							showIcon
-							status={e.dob ? "invalid" : "default"}
-							fluid
-							onValueChange={(v) => {
-								store.dob.value = v instanceof Date ? toISO(v) : "";
-							}}
-						/>
-					)}
-				</FormControl>
-			</Row>
-			{store.dob.value && bracket === "restricted"
-				? (
-					<div class="auth-agenote auth-agenote--restricted" role="status">
-						<span class="auth-agenote__icon">{InfoIcon()}</span>
-						<span>{AGE_MESSAGES.restricted}</span>
-					</div>
-				)
-				: null}
-			{store.dob.value && bracket === "blocked"
-				? (
-					<div class="auth-agenote auth-agenote--blocked" role="alert">
-						<span class="auth-agenote__icon">{WarnIcon()}</span>
-						<span>{AGE_MESSAGES.blocked}</span>
-					</div>
-				)
-				: null}
+			<DobField store={store} dobDate={dobDate} />
 			{store.isOAuth ? null : (
 				<div class="auth-form__grid">
 					<PassRow label="Password" value={store.password} error={e.password} feedback />
@@ -562,6 +595,35 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 	const dobDate = useSignal<DateValue>(null);
 	/** Guards the auto-advance timer so a rapid double-click can't skip a step. */
 	const advancing = useSignal(false);
+	/** The last handle we auto-derived from the name — lets us stop once the user customises it. */
+	const autoHandle = useSignal("");
+
+	// Intelligent handle autofill (individuals): derive the username from First + Last name, and keep
+	// it in sync until the user edits the handle directly. `peek()` reads the current handle WITHOUT
+	// subscribing, so this only re-runs when the name changes — never clobbering a customised handle.
+	useSignalEffect(() => {
+		if (store.isOrg.value) return;
+		const suggestion = suggestHandle(store.firstName.value, store.lastName.value);
+		const current = store.username.peek();
+		if (current === "" || current === autoHandle.value) {
+			if (suggestion !== current) store.username.value = suggestion;
+			autoHandle.value = suggestion;
+		}
+	});
+
+	// Instant sanitisation: whatever lands in the handle fields (typed or autofilled) is coerced to a
+	// legal handle on the spot — lowercase, spaces → hyphens, illegal characters stripped. The write
+	// only fires when the value actually changes, so the effect converges immediately.
+	useSignalEffect(() => {
+		const raw = store.username.value;
+		const clean = sanitizeHandle(raw);
+		if (clean !== raw) store.username.value = clean;
+	});
+	useSignalEffect(() => {
+		const raw = store.handle.value;
+		const clean = sanitizeHandle(raw);
+		if (clean !== raw) store.handle.value = clean;
+	});
 	const step = store.current.value;
 	const last = store.stepIndex.value === store.stepCount.value - 1;
 	const submitting = store.submitting.value;
@@ -604,7 +666,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 			}
 		}
 		store.submitting.value = true;
-		const result = await postAuth("/api/auth/join", buildPayload(store));
+		const result = await AuthService.join(buildPayload(store));
 		store.submitting.value = false;
 		if (!result.ok) {
 			if (result.errors) store.errors.value = { ...store.errors.value, ...result.errors };
@@ -638,8 +700,15 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		? (store.isOrg.value ? "Create organisation" : "Create account")
 		: "Continue";
 
-	// Choice-only steps carry no manual "Continue" — picking a card moves the wizard forward.
+	// Choice steps auto-advance on first pick, but ALSO carry a visible "Continue" so a user who
+	// stepped Back (their selection stays highlighted) can move forward again without re-picking.
 	const choiceStep = step.id === "account" || step.id === "intent";
+	// Whether the choice step has a selection yet — gates its Continue button.
+	const choiceReady = step.id === "account"
+		? store.accountChosen.value
+		: step.id === "intent"
+		? store.intent.value !== ""
+		: true;
 	// Individuals can reach for Google at any step; org sign-up is corporate-credential based.
 	const showInlineOAuth = !store.isOrg.value && !store.isOAuth && step.id !== "account";
 	const oauthHref = withRedirect("/api/auth/oauth/google", store.redirectTo);
@@ -688,7 +757,12 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 				{step.optional
 					? <button type="button" class="auth-skip" onClick={skip}>Skip for now</button>
 					: null}
-				{choiceStep ? null : <Button label={continueLabel} loading={submitting} onClick={goNext} />}
+				<Button
+					label={continueLabel}
+					loading={submitting}
+					disabled={advancing.value || (choiceStep && !choiceReady)}
+					onClick={goNext}
+				/>
 			</div>
 
 			{store.stepIndex.value === 0

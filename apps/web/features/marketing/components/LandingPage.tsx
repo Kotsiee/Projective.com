@@ -6,7 +6,6 @@ import { OpenProjectsGrid } from "./OpenProjectsGrid.tsx";
 import { ProductsMasonry } from "./ProductsMasonry.tsx";
 import { HowItWorks } from "./HowItWorks.tsx";
 import { Testimonials } from "./Testimonials.tsx";
-import { PublicFooter } from "./PublicFooter.tsx";
 import ProfilesCarousel from "../islands/ProfilesCarousel.island.tsx";
 import ServicesCarousel from "../islands/ServicesCarousel.island.tsx";
 import SchemaInjector from "../islands/SchemaInjector.island.tsx";
@@ -109,8 +108,6 @@ export function LandingPage(): JSX.Element {
 			</section>
 
 			<Testimonials />
-
-			<PublicFooter />
 
 			<MagneticField />
 		</div>

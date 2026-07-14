@@ -5,7 +5,7 @@ import { OtpField } from "../components/OtpField.tsx";
 import { CheckIcon, WarnIcon } from "../components/icons.tsx";
 import { useOtpInput } from "../hooks/useOtpInput.ts";
 import { confirmError, emailError, passwordError } from "../core/validate.ts";
-import { postAuth } from "../core/api.ts";
+import { AuthService } from "../core/AuthService.ts";
 import { withRedirect } from "../core/redirect.ts";
 
 /**
@@ -35,7 +35,7 @@ export default function ForgotPasswordForm(
 		if (emailErr) return;
 
 		submitting.value = true;
-		const result = await postAuth("/api/auth/forgot-password", {
+		const result = await AuthService.forgotPassword({
 			email: email.value.trim(),
 			redirectTo,
 		});
@@ -60,7 +60,7 @@ export default function ForgotPasswordForm(
 		if (next.code || next.password || next.confirm) return;
 
 		submitting.value = true;
-		const result = await postAuth("/api/auth/reset", {
+		const result = await AuthService.resetPassword({
 			email: sentTo.value,
 			code: otp.value,
 			password: password.value,

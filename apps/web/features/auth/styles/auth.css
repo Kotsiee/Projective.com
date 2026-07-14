@@ -17,11 +17,18 @@ body:has(.auth) {
 }
 
 /* #region Frame */
+/*
+ * The frame is responsive by AXIS:
+ *  - Mobile (< 880px): a two-ROW stack — the deep-primary aside is a ~32dvh top strip and the body
+ *    sheet fills the rest, lifting over the strip with a rounded top (see the mobile block below).
+ *  - Desktop (>= 880px): a true 50/50 two-COLUMN split — illustrative aside beside the form.
+ */
 .auth {
 	position: fixed;
 	inset: 0;
 	display: grid;
 	grid-template-columns: 1fr;
+	grid-template-rows: 32dvh 1fr;
 	height: 100dvh;
 	overflow: hidden;
 	background: var(--bg);
@@ -30,73 +37,67 @@ body:has(.auth) {
 }
 
 @media (min-width: 880px) {
-	.auth {
-		grid-template-columns: clamp(22rem, 42%, 32rem) minmax(0, 1fr);
-	}
+	.auth,
 	.auth--wide {
-		grid-template-columns: clamp(22rem, 40%, 34rem) minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		grid-template-rows: 1fr;
 	}
 }
 
 .auth__aside {
-	display: none;
+	display: block;
 	position: relative;
 	overflow: hidden;
 	min-height: 0;
-}
-
-@media (min-width: 880px) {
-	.auth__aside {
-		display: block;
-	}
 }
 
 .auth__main {
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
-	height: 100dvh;
+	height: 100%;
 }
 
+/* The brand lives in the aside; the top bar carries only the theme toggle, pinned to the end. */
 .auth__topbar {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: var(--space-4);
 	padding: var(--space-4) var(--space-5);
 	flex: none;
 }
 
-.auth__brand {
+/* Minimal, icon-only theme toggle — identical chrome to the marketing header's (site-shell.css),
+ * scoped here because the auth surface doesn't load the marketing styles. Overrides the base
+ * `.theme-toggle` pill from global.css via the higher-specificity `.auth`-prefixed selector. */
+.auth .theme-toggle.theme-toggle--icon {
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-3);
-	text-decoration: none;
-	color: inherit;
-	font-weight: 650;
+	justify-content: center;
+	inline-size: 36px;
+	block-size: 36px;
+	padding: 0;
+	border-radius: 50%;
+	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.auth .theme-toggle.theme-toggle--icon:hover {
+	background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+.auth .theme-toggle.theme-toggle--icon svg {
+	display: block;
+}
+
+.auth .theme-toggle.theme-toggle--icon:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
 	border-radius: var(--radius-sm);
-}
-
-.auth__brand:focus-visible {
-	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-.auth__mark {
-	inline-size: 1.6rem;
-	block-size: 1.6rem;
-	border-radius: var(--radius-sm);
-	background: radial-gradient(
-		120% 120% at 30% 20%,
-		color-mix(in srgb, var(--primary) 70%, white),
-		var(--primary)
-	);
-	box-shadow: var(--elevation-low);
-}
-
-.auth__brand-text {
-	font-size: 1.05rem;
-	letter-spacing: -0.01em;
 }
 
 /* The centred stage. min-height:0 lets it shrink; overflow guarded so the page never scrolls. */
@@ -493,7 +494,15 @@ body:has(.auth) {
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-width: thin;
-	padding-right: 2px;
+	/*
+	 * Focus / hover breathing room. This is a scroll container (overflow-y:auto forces overflow-x to
+	 * clip too), so focus rings, the active choice card's 2px ring + lift, and hover shadows would be
+	 * cropped at its edges. Generous inner padding gives them room to paint; the matching negative
+	 * inline margin keeps the field column's alignment and width exactly as before. The absorbing
+	 * space stays within `.auth__stage`'s own padding, so nothing spills past the viewport guard.
+	 */
+	padding: var(--space-2) var(--space-3);
+	margin-inline: calc(-1 * var(--space-3));
 	/*
 	 * Deliberate, felt slide-and-fade (~0.5s, ease-out). The keyframe is NOT `forwards`, so the
 	 * element settles back to its base (transform: none) once it finishes — leaving no persistent
@@ -1596,5 +1605,92 @@ body:has(.auth) {
 	margin: 0;
 	font-size: 0.78rem;
 	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Verified transition (verify page auto-login) */
+.auth-verified {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--space-3);
+	padding: var(--space-6) 0;
+	animation: authPop var(--dur-medium) var(--spring-standard);
+}
+
+.auth-verified__badge {
+	display: grid;
+	place-items: center;
+	inline-size: 3.5rem;
+	block-size: 3.5rem;
+	border-radius: 50%;
+	color: var(--on-primary, white);
+	background: var(--success, var(--primary));
+	box-shadow: var(--elevation-medium);
+}
+
+.auth-verified__badge svg {
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
+}
+/* #endregion */
+
+/*
+ * #region Mobile responsive (< 880px) — the top-strip aside + rounded body sheet.
+ * Placed last so these axis-flip overrides win the cascade cleanly over the desktop defaults above.
+ */
+@media (max-width: 879.98px) {
+	/* The body becomes a lifted sheet with a rounded top over the primary strip. */
+	.auth__main {
+		position: relative;
+		z-index: 1;
+		margin-top: calc(-1 * var(--space-3));
+		border-start-start-radius: var(--radius-xl);
+		border-start-end-radius: var(--radius-xl);
+		background: var(--bg);
+		box-shadow: 0 -12px 30px color-mix(in srgb, black 18%, transparent);
+		overflow: hidden;
+	}
+
+	/*
+	 * On the short ~32dvh strip we prioritise the expressive step TITLE (an explicit requirement):
+	 * drop the large illustration + progress foot, push the copy down toward the fold, and keep the
+	 * type comfortably legible. The form column carries its own progress crumbs, so nothing is lost.
+	 */
+	.join-aside {
+		padding: var(--space-4) var(--space-5) var(--space-6);
+		justify-content: space-between;
+	}
+
+	.join-aside__scene,
+	.join-aside__foot,
+	.auth-summary__illustration,
+	.auth-summary__spacer {
+		display: none;
+	}
+
+	.join-aside__copy {
+		margin-top: auto;
+	}
+
+	.join-aside__kicker {
+		margin-bottom: var(--space-2);
+	}
+
+	.join-aside__title {
+		margin-bottom: var(--space-2);
+		font-size: clamp(1.45rem, 6.5vw, 2.1rem);
+	}
+
+	.join-aside__lede {
+		font-size: 0.92rem;
+		line-height: 1.45;
+	}
+
+	/* Comfortable side padding for the form on small screens. */
+	.auth__stage {
+		padding-inline: var(--space-5);
+	}
 }
 /* #endregion */

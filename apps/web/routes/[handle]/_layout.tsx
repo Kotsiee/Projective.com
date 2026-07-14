@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { AppShell, PageCanvas } from "@projective/ui/navigation";
+import { PublicFooter } from "@features/marketing/components/PublicFooter.tsx";
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 
 /**
@@ -18,6 +19,7 @@ export default define.page(function ProfileLayout({ Component }) {
 		>
 			<PageCanvas>
 				<Component />
+				<PublicFooter />
 			</PageCanvas>
 		</AppShell>
 	);

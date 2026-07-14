@@ -1,125 +1,127 @@
 <!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="x-apple-disable-message-reformatting" />
 		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="supported-color-schemes" content="light dark" />
 		<title>Confirm your Projective account</title>
 		<!--[if mso]>
-  <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
-  <![endif]-->
+		<noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+		<![endif]-->
 		<style>
 			@media only screen and (max-width: 620px) {
-				.pjv-container {
-					width: 100% !important;
-				}
-				.pjv-px {
-					padding-left: 24px !important;
-					padding-right: 24px !important;
-				}
-				.pjv-btn a {
-					display: block !important;
-				}
+				.pjv-container { width: 100% !important; }
+				.pjv-px { padding-left: 24px !important; padding-right: 24px !important; }
+				.pjv-btn a { display: block !important; }
+				.pjv-code { font-size: 30px !important; letter-spacing: 8px !important; }
 			}
-			body {
-				margin: 0;
-				padding: 0;
-				background-color: #f4f5f7;
-			}
-			a {
-				color: #278690;
+			body { margin: 0; padding: 0; background-color: #f4f5f7; }
+			a { color: #278690; }
+			/* Dark-mode enhancement for supporting clients; the light version is the reliable baseline. */
+			@media (prefers-color-scheme: dark) {
+				body, .pjv-bg { background-color: #0f1417 !important; }
+				.pjv-card { background-color: #161d21 !important; box-shadow: none !important; }
+				.pjv-title, .pjv-wordmark { color: #f3f5f6 !important; }
+				.pjv-text { color: #aeb7bd !important; }
+				.pjv-muted { color: #7f8a90 !important; }
+				.pjv-code-panel { background-color: #12262a !important; border-color: #1f4147 !important; }
+				.pjv-code { color: #7fd3dc !important; }
+				.pjv-hr { border-top-color: #26313700 !important; border-top-color: #263137 !important; }
 			}
 		</style>
 	</head>
 
-	<body
-		style='margin: 0; padding: 0; background-color: #f4f5f7; -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
-	>
+	<body class="pjv-bg" style='margin: 0; padding: 0; background-color: #f4f5f7; -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'>
 		<!-- Preheader (hidden) -->
-		<div
-			style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent; height: 0; width: 0"
-		>
-			Confirm your email to finish setting up your Projective account.
+		<div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent; height: 0; width: 0">
+			Your Projective verification code is {{ .Token }}. It expires in 1 hour.
 		</div>
 
-		<table
-			role="presentation"
-			width="100%"
-			cellpadding="0"
-			cellspacing="0"
-			style="background-color: #f4f5f7"
-		>
+		<table role="presentation" class="pjv-bg" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f5f7">
 			<tr>
 				<td align="center" style="padding: 32px 16px">
-					<table
-						role="presentation"
-						class="pjv-container"
-						width="600"
-						cellpadding="0"
-						cellspacing="0"
-						style="width: 600px; max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08)"
-					>
-						<!-- Brand bar -->
+					<table role="presentation" class="pjv-container pjv-card" width="600" cellpadding="0" cellspacing="0" style="width: 600px; max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08)">
+						<!-- Deep-primary brand header -->
 						<tr>
-							<td style="background-color: #278690; height: 6px; line-height: 6px; font-size: 6px">
-								&nbsp;
-							</td>
-						</tr>
-
-						<!-- Logo -->
-						<tr>
-							<td class="pjv-px" style="padding: 36px 48px 0 48px">
-								<span
-									style="font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: #111827"
-								>Projective</span>
-							</td>
-						</tr>
-
-						<!-- Body -->
-						<tr>
-							<td class="pjv-px" style="padding: 24px 48px 8px 48px">
-								<h1
-									style="margin: 0 0 12px 0; font-size: 26px; line-height: 1.25; font-weight: 700; color: #111827"
-								>
-									Welcome to Projective 👋
-								</h1>
-								<p style="margin: 0 0 8px 0; font-size: 16px; line-height: 1.6; color: #4b5563">
-									You're one step away from building and delivering together. Confirm your email
-									address to activate your account.
-								</p>
-							</td>
-						</tr>
-
-						<!-- CTA -->
-						<tr>
-							<td class="pjv-px" style="padding: 24px 48px 8px 48px">
-								<table role="presentation" cellpadding="0" cellspacing="0" class="pjv-btn">
+							<td style="background-color: #278690; background-image: linear-gradient(135deg, #2f9aa5 0%, #278690 55%, #17545a 100%); padding: 28px 48px">
+								<table role="presentation" cellpadding="0" cellspacing="0">
 									<tr>
-										<td align="center" bgcolor="#278690" style="border-radius: 10px">
-											<a
-												href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email"
-												style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px"
-											>
-												Confirm my email
-											</a>
+										<td style="vertical-align: middle">
+											<div style="width: 30px; height: 30px; border-radius: 8px; background-color: #ffffff; opacity: 0.92"></div>
+										</td>
+										<td style="vertical-align: middle; padding-left: 14px">
+											<span class="pjv-wordmark" style="font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff">Projective</span>
 										</td>
 									</tr>
 								</table>
 							</td>
 						</tr>
 
+						<!-- Body -->
+						<tr>
+							<td class="pjv-px" style="padding: 36px 48px 4px 48px">
+								<h1 class="pjv-title" style="margin: 0 0 12px 0; font-size: 26px; line-height: 1.25; font-weight: 700; color: #111827">
+									Confirm it&rsquo;s you
+								</h1>
+								<p class="pjv-text" style="margin: 0; font-size: 16px; line-height: 1.6; color: #4b5563">
+									You&rsquo;re one step from building and delivering together. Enter this code on the
+									verification screen &mdash; or confirm instantly with the button below.
+								</p>
+							</td>
+						</tr>
+
+						<!-- OTP code panel -->
+						<tr>
+							<td class="pjv-px" style="padding: 28px 48px 8px 48px">
+								<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="pjv-code-panel" style="background-color: #f0f7f8; border: 1px solid #d7e8ea; border-radius: 12px">
+									<tr>
+										<td align="center" style="padding: 22px 16px">
+											<p class="pjv-muted" style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6b7280">
+												Verification code
+											</p>
+											<div class="pjv-code" style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 36px; font-weight: 700; letter-spacing: 12px; color: #17545a; padding-left: 12px">
+												{{ .Token }}
+											</div>
+										</td>
+									</tr>
+								</table>
+							</td>
+						</tr>
+
+						<!-- CTA (magic link) -->
+						<tr>
+							<td class="pjv-px" align="center" style="padding: 20px 48px 8px 48px">
+								<!--[if mso]>
+								<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="20%" strokecolor="#278690" fillcolor="#278690">
+								<w:anchorlock/>
+								<center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Confirm my email</center>
+								</v:roundrect>
+								<![endif]-->
+								<!--[if !mso]><!-->
+								<table role="presentation" cellpadding="0" cellspacing="0" class="pjv-btn">
+									<tr>
+										<td align="center" bgcolor="#278690" style="border-radius: 10px">
+											<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" style="display: inline-block; padding: 14px 34px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 10px">
+												Confirm my email
+											</a>
+										</td>
+									</tr>
+								</table>
+								<!--<![endif]-->
+							</td>
+						</tr>
+
 						<!-- Fallback link -->
 						<tr>
-							<td class="pjv-px" style="padding: 20px 48px 0 48px">
-								<p style="margin: 0 0 6px 0; font-size: 13px; line-height: 1.6; color: #6b7280">
+							<td class="pjv-px" style="padding: 18px 48px 0 48px">
+								<p class="pjv-muted" style="margin: 0 0 6px 0; font-size: 13px; line-height: 1.6; color: #6b7280">
 									Button not working? Copy and paste this link into your browser:
 								</p>
 								<p style="margin: 0; font-size: 13px; line-height: 1.6; word-break: break-all">
-									<a
-										href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email"
-										style="color: #278690"
-									>{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email</a>
+									<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" style="color: #278690">{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email</a>
 								</p>
 							</td>
 						</tr>
@@ -127,19 +129,20 @@
 						<!-- Meta -->
 						<tr>
 							<td class="pjv-px" style="padding: 28px 48px 0 48px">
-								<hr style="border: none; border-top: 1px solid #eceef1; margin: 0 0 20px 0" />
-								<p style="margin: 0; font-size: 13px; line-height: 1.6; color: #9ca3af">
-									This link expires in 1 hour. If you didn't create a Projective account, you can
-									safely ignore this email.
+								<hr class="pjv-hr" style="border: none; border-top: 1px solid #eceef1; margin: 0 0 20px 0" />
+								<p class="pjv-muted" style="margin: 0; font-size: 13px; line-height: 1.6; color: #9ca3af">
+									This code and link expire in 1 hour. If you didn&rsquo;t create a Projective account,
+									you can safely ignore this email.
 								</p>
 							</td>
 						</tr>
 
 						<!-- Footer -->
 						<tr>
-							<td class="pjv-px" style="padding: 24px 48px 40px 48px">
-								<p style="margin: 0; font-size: 12px; line-height: 1.6; color: #b0b6be">
-									© Projective · Build Together. Deliver Better.
+							<td class="pjv-px" style="padding: 22px 48px 40px 48px">
+								<p class="pjv-muted" style="margin: 0; font-size: 12px; line-height: 1.6; color: #b0b6be">
+									Escrow-backed &middot; funds and work protected at every stage.<br />
+									&copy; Projective &middot; Build Together. Deliver Better.
 								</p>
 							</td>
 						</tr>

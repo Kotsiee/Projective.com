@@ -1,0 +1,668 @@
+/*
+ * Explore — State B (Search Results dashboard). Pure CSS + strict BEM, token-only. Consumes the
+ * `--ex-*` tokens defined on `.ex` in explore.css. The sidebar filters, grouped rows, unified virtual
+ * feed, and the detail drawer body live here. Separation stays spacing/tint/hairline; full borders
+ * remain interactive-only (filter option buttons, the card anchors).
+ */
+
+/* #region Dashboard shell */
+/* Full-bleed results layout — no max-width, minimal side gutters, so the grid uses the whole viewport. */
+.ex-dash {
+	max-inline-size: none;
+	margin-inline: 0;
+	padding: var(--space-6) clamp(1rem, 2.5vw, 2rem) clamp(3rem, 6vw, 5rem);
+}
+/* #endregion */
+
+/* #region Dribbble-style results header */
+/* Centered query title band, set clearly apart from the results below by a hairline + generous space. */
+.ex-results-head {
+	position: relative;
+	text-align: center;
+	padding-block: var(--space-4) clamp(1.75rem, 3.5vw, 2.75rem);
+	margin-block-end: clamp(1.75rem, 3.5vw, 2.75rem);
+}
+
+.ex-results-head::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: 0;
+	block-size: 1px;
+	background-color: color-mix(in srgb, var(--on-surface) 14%, transparent);
+}
+
+.ex-results-head__q {
+	margin: 0;
+	font-size: clamp(2rem, 5vw, 3.5rem);
+	font-weight: 200;
+	line-height: 1.05;
+	letter-spacing: -0.03em;
+	color: var(--on-surface);
+}
+
+.ex-results-head__related {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+}
+
+.ex-results-head__related-label {
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+	margin-inline-end: var(--space-1);
+}
+
+.ex-results-head__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+}
+
+/* Related searches are clean, minimal, clickable plain words — never pills or tags. */
+.ex-results-head__tag {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--on-surface-variant);
+	font: inherit;
+	font-size: 0.95rem;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-results-head__tag:hover {
+	color: var(--primary);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.ex-results-head__tag:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.ex-dash__bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	margin-block-end: var(--space-5);
+}
+
+.ex-dash__count {
+	margin: 0;
+	font-size: 1rem;
+	color: var(--on-surface-variant);
+}
+
+.ex-dash__count strong {
+	color: var(--on-surface);
+	font-weight: 650;
+}
+
+.ex-dash__tools {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.ex-dash__filter-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 2.75rem;
+	padding-inline: var(--space-4);
+	border-radius: var(--radius-xl);
+	border: 1px solid var(--ex-hair-strong);
+	background: var(--surface-1);
+	color: var(--on-surface);
+	font: inherit;
+	font-weight: 550;
+	cursor: pointer;
+}
+
+.ex-dash__filter-btn:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.ex-dash__grid {
+	display: grid;
+	grid-template-columns: 16rem 1fr;
+	gap: clamp(1.5rem, 3vw, 2.5rem);
+	align-items: start;
+}
+
+/* Sidebar hidden via the toggle → the results grid reclaims the full width. */
+.ex-dash__grid--nofilters {
+	grid-template-columns: 1fr;
+}
+
+.ex-dash__sidebar {
+	position: sticky;
+	inset-block-start: calc(var(--site-header-h, 0px) + var(--space-4));
+	max-block-size: calc(100vh - var(--site-header-h, 0px) - var(--space-6));
+	overflow-y: auto;
+	scrollbar-width: thin;
+}
+
+.ex-dash__main {
+	min-inline-size: 0;
+}
+
+.ex-dash__groups {
+	display: flex;
+	flex-direction: column;
+	gap: clamp(2rem, 4vw, 3.5rem);
+}
+/* #endregion */
+
+/* #region Filters */
+.ex-filters {
+	display: flex;
+	flex-direction: column;
+}
+
+.ex-filters__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-block-end: var(--space-3);
+	margin-block-end: var(--space-2);
+	border-block-end: 1px solid var(--ex-hair);
+}
+
+.ex-filters__title {
+	margin: 0;
+	font-size: 1.05rem;
+	font-weight: 650;
+}
+
+.ex-filters__clear {
+	border: 0;
+	background: none;
+	color: var(--primary);
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 550;
+	cursor: pointer;
+}
+
+.ex-filters__clear:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.ex-filters__group {
+	border-block-end: 1px solid var(--ex-hair);
+}
+
+.ex-filters__summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding-block: var(--space-4);
+	font-weight: 600;
+	font-size: 0.92rem;
+	cursor: pointer;
+	list-style: none;
+}
+
+.ex-filters__summary::-webkit-details-marker {
+	display: none;
+}
+
+.ex-filters__summary:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+.ex-filters__chevron {
+	inline-size: 8px;
+	block-size: 8px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg);
+	opacity: 0.6;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ex-filters__group[open] .ex-filters__chevron {
+	transform: rotate(-135deg);
+}
+
+.ex-filters__body {
+	padding-block-end: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ex-filters__chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.ex-filters__checks {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ex-filters__opt {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	border: 1px solid var(--ex-hair-strong);
+	background: var(--surface-1);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.82rem;
+	cursor: pointer;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-filters__opt--chips {
+	padding: 0.35rem 0.75rem;
+	border-radius: var(--radius-xl);
+}
+
+.ex-filters__opt--checkbox {
+	padding: 0.4rem 0.5rem;
+	border-color: transparent;
+	background: none;
+	inline-size: 100%;
+	justify-content: flex-start;
+}
+
+.ex-filters__opt:hover {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+
+.ex-filters__opt[aria-pressed="true"].ex-filters__opt--chips {
+	background: var(--ex-primary-tint);
+	border-color: var(--primary);
+	color: var(--primary);
+	font-weight: 600;
+}
+
+.ex-filters__box {
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	border-radius: var(--radius-xs);
+	border: 1.5px solid var(--ex-hair-strong);
+	flex: 0 0 auto;
+	position: relative;
+}
+
+.ex-filters__opt--checkbox[aria-pressed="true"] .ex-filters__box {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+.ex-filters__opt--checkbox[aria-pressed="true"] .ex-filters__box::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 1px;
+	inset-inline-start: 4px;
+	inline-size: 4px;
+	block-size: 8px;
+	border-inline-end: 2px solid var(--on-primary);
+	border-block-end: 2px solid var(--on-primary);
+	transform: rotate(45deg);
+}
+
+/* The facet selects are now packages/ui `Select` fields — just make them fill the sidebar column. */
+.ex-filters__select {
+	inline-size: 100%;
+}
+
+.ex-filters__range {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ex-filters__slider {
+	inline-size: 100%;
+	accent-color: var(--primary);
+}
+
+.ex-filters__rangeval {
+	font-size: 0.82rem;
+	color: var(--on-surface-variant);
+}
+/* #endregion */
+
+/* #region Sort */
+/* The sort selector is a packages/ui Select rendered alone (no "Sort" label). */
+.ex-sort {
+	min-inline-size: 11rem;
+}
+/* #endregion */
+
+/* #region Grouped feed (merged sections) */
+.ex-group__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin-block-end: var(--space-4);
+}
+
+.ex-group__title {
+	margin: 0;
+	font-size: 1.4rem;
+	font-weight: 600;
+	letter-spacing: -0.015em;
+}
+
+/* Card sections present as an elegant horizontal rail — native scroll-snap, no enclosing boxes. */
+.ex-group__rail {
+	display: flex;
+	gap: var(--space-4);
+	overflow-x: auto;
+	scroll-snap-type: x proximity;
+	/* Nudge the first card in so it isn't flush against the container edge. */
+	padding-inline-start: var(--space-1);
+	padding-block-end: var(--space-2);
+	scroll-padding-inline-start: var(--space-1);
+	scrollbar-width: none;
+}
+
+.ex-group__rail::-webkit-scrollbar {
+	display: none;
+}
+
+.ex-group__rail-cell {
+	flex: 0 0 clamp(15rem, 20vw, 17.5rem);
+	scroll-snap-align: start;
+}
+
+.ex-group__rail-cell > .ex-card {
+	block-size: 100%;
+}
+
+/* Projects present as a clean divider-line list, never a media rail. */
+.ex-group__list {
+	display: flex;
+	flex-direction: column;
+}
+
+.ex-group__list [role="listitem"]:last-child .ex-projrow {
+	border-block-end: 0;
+}
+/* #endregion */
+
+/* #region Unified virtual feed */
+.ex-uni {
+	inline-size: 100%;
+}
+
+.ex-uni__row {
+	display: grid;
+	grid-template-columns: repeat(var(--ex-cols, 3), 1fr);
+	gap: var(--space-5);
+	padding-block-end: var(--space-5);
+	align-items: stretch;
+}
+
+/* Cards fill their virtualized row cell so the fixed row height stays honest. */
+.ex-uni__row > .ex-card {
+	block-size: 100%;
+}
+
+.ui-vscroll__loader {
+	display: flex;
+	justify-content: center;
+	padding-block: var(--space-5);
+}
+/* #endregion */
+
+/* #region Detail panel (drawer + standalone) */
+.ex-detail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.ex-detail__media {
+	border-radius: var(--ex-r-md);
+	overflow: clip;
+	aspect-ratio: 16 / 10;
+	background: var(--surface-1);
+}
+
+.ex-detail__media img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.ex-detail__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.ex-detail__title {
+	margin: var(--space-1) 0 0;
+	font-size: clamp(1.4rem, 3vw, 1.9rem);
+	font-weight: 650;
+	letter-spacing: -0.02em;
+}
+
+.ex-detail__meta {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+	gap: var(--space-4);
+	margin: 0;
+	padding: var(--space-4);
+	background: var(--surface-1);
+	border-radius: var(--ex-r-md);
+}
+
+.ex-detail__fact dt {
+	font-size: 0.78rem;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.ex-detail__fact dd {
+	margin: 0.3rem 0 0;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.ex-detail__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.ex-detail__label {
+	margin: 0;
+	font-size: 0.8rem;
+	font-weight: 650;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.ex-detail__summary {
+	margin: 0;
+	font-size: 1rem;
+	line-height: 1.6;
+	font-weight: 300;
+	color: var(--on-surface);
+}
+
+.ex-detail__phases {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ex-detail__phase {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	font-size: 0.95rem;
+}
+
+.ex-detail__phase-idx {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	font-size: 0.78rem;
+	font-weight: 650;
+	color: var(--primary);
+	background: var(--ex-primary-tint);
+	border-radius: 50%;
+	flex: 0 0 auto;
+}
+
+.ex-detail__open {
+	align-self: flex-start;
+	margin-block-start: var(--space-2);
+}
+/* #endregion */
+
+/* #region Standalone viewer page */
+.ex-view {
+	max-inline-size: 56rem;
+	margin-inline: auto;
+	padding: clamp(2rem, 5vw, 4rem) var(--ex-pad-x);
+}
+
+.ex-view__back {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-end: var(--space-5);
+	font-size: 0.9rem;
+	font-weight: 550;
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.ex-view__back:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region iOS-style bottom sheet (mobile filters) */
+.ui-drawer.ex-sheet {
+	border-start-start-radius: var(--ex-r-lg);
+	border-start-end-radius: var(--ex-r-lg);
+	border-block-start: 0;
+	overscroll-behavior: contain;
+}
+
+.ui-drawer.ex-sheet .ui-drawer__body {
+	padding: 0;
+	display: flex;
+}
+
+.ex-sheet__inner {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-block-size: 0;
+}
+
+/* The grab handle bar — swipe down to dismiss. */
+.ex-sheet__grip {
+	flex: 0 0 auto;
+	padding: var(--space-3) var(--space-5) var(--space-2);
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
+}
+
+.ex-sheet__grip:active {
+	cursor: grabbing;
+}
+
+.ex-sheet__handle {
+	display: block;
+	inline-size: 2.75rem;
+	block-size: 0.3rem;
+	margin-inline: auto;
+	border-radius: var(--radius-xl);
+	background: var(--ex-hair-strong);
+}
+
+.ex-sheet__grip-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-block-start: var(--space-3);
+}
+
+.ex-sheet__title {
+	font-size: 1.1rem;
+	font-weight: 650;
+}
+
+.ex-sheet__done {
+	border: 0;
+	background: none;
+	color: var(--primary);
+	font: inherit;
+	font-weight: 550;
+	cursor: pointer;
+}
+
+.ex-sheet__done:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+.ex-sheet__body {
+	flex: 1 1 auto;
+	padding: 0 var(--space-5) var(--space-6);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 767.98px) {
+	.ex-dash__grid {
+		grid-template-columns: 1fr;
+	}
+
+	/* Rails stay horizontal on mobile; give cells a comfortable peek. The unified feed's column count
+	   is JS-driven (2 for cards, 1 for the projects list), so it is intentionally NOT overridden. */
+	.ex-group__rail-cell {
+		flex-basis: min(72vw, 16rem);
+	}
+}
+/* #endregion */

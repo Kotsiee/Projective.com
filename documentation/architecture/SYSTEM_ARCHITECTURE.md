@@ -647,6 +647,110 @@ and Deno/TypeScript handles the signal-based state management.
 
 ---
 
+## Backend Services (the Thin-Frontend / Fat-Backend contract)
+
+This concretises §2's "Thin Routes, Fat Services." The system splits **transport** from **business
+logic** along a hard line, with a symmetrical service on each side of the network boundary:
+
+- **Thin frontend services** (client) — e.g. `apps/web/features/auth/core/AuthService.ts`. They
+  gather inputs, manage local UI state (signals), and make one structured HTTP request per action to
+  an internal `/api/*` route, returning a typed result. **No business logic, no DB, no `fetch`
+  scattered through islands** — one module owns the endpoint map. Islands stay dumb (§2).
+- **Thin routes** (`apps/web/routes/api/**`) — HTTP parse + Zod validation (schemas that will
+  consolidate into `@projective/types`) + auth guarding + return-path sanitising only. They call a
+  fat service and map its result to a `Response`; they hold **no** business decisions.
+- **Fat backend services** — the **`@projective/backend`** package, imported app-side via the
+  **`@server/services/*`** alias. They own business logic, encryption, DB transactions, session
+  minting, and security policy, and are the **only** layer that touches the Supabase client. They
+  are transport-agnostic: every method returns a **`ServiceResult<T>`** (`ok`, suggested HTTP
+  `status`, `data`, `message`, field `errors`) that the thin route folds into its response — so a
+  route, a cron job, or another service can all reuse the same method.
+
+### `@projective/backend` layout
+
+Follows the standard seven-folder shape; populated as needed:
+
+- `core/env.ts` — the single, lazy, typed reader of the Environment Variable Contract (never throws
+  at import; accepts the documented **and** the `.env.development` key names — see §8 row 11).
+- `core/supabase.ts` — on-demand client provisioning: `getUserClient(jwt)` (RLS-scoped, the default)
+  vs `getServiceClient()` (service-role, RLS-bypassing, narrow/audited use only), gated by
+  `isSupabaseConfigured()` / `isAuthBackendLive()`.
+- `services/ServiceResult.ts` — the uniform result envelope + `ok()` / `fail()` builders.
+- `services/<domain>/<Name>BackendService.ts` — the fat services. Reference implementations:
+  `services/auth/AuthBackendService.ts` (mutating, session-bearing),
+  `services/explore/ExploreBackendService.ts` (read-only discovery), and
+  `services/newsletter/NewsletterBackendService.ts` (a minimal write — the public opt-in capture).
+
+### Live vs stub, and the guard boundary
+
+Fat services ship **stub-first**: each method returns the safe MVP outcome until the real Supabase /
+GoTrue calls are implemented and verified, at which point the environment flips
+**`AUTH_BACKEND_LIVE=true`** (default off) to enable the live paths. This keeps a half-wired query
+from firing against a real project and keeps the app runnable without a backend. Input **guarding**
+that depends on feature-local pure helpers (the DoB age-gate, password-required-unless-OAuth) stays
+in the route per §2; it consolidates into `@projective/types` with the Zod schemas when that package
+lands. Everything downstream of a validated request belongs to the service.
+
+### Discovery (Explore) services
+
+The Explore feature is the second, **read-only** implementation of the contract: `ExploreService`
+(client) → `/api/explore/{search,item,related}` (thin) → `services/explore/ExploreBackendService.ts`
+(fat) → `ServiceResult<T>`. The fat service owns the whole discovery query — filtering, ranking,
+merged-section grouping, item lookup, and paged feed expansion — over curated fixtures
+(`services/explore/fixtures.ts` + `query.ts` + the server-side `skills.ts` resolver), which the app
+**never** imports. The `/explore` route and `/view/[id]` call the service directly for SSR first
+paint; the `SearchDashboard` island refines client-side via `ExploreService` (filter/sort changes,
+infinite-scroll pages, drawer refresh). Cross-boundary shapes — `ExploreItem`, `ExploreParams`,
+`ResultGroup`, `SearchPayload`, `HomeFeed` — are the Zod SSOT at **`@projective/types/explore`**.
+Stub-first behind **`EXPLORE_BACKEND_LIVE`** (default off), gated by `isExploreBackendLive()`; the
+live path (Supabase discovery tables + search embeddings) slots in behind that guard.
+
+### Newsletter services
+
+The public footer's "stay updated" capture is the third implementation of the contract, and the
+smallest write: `NewsletterService` (client) → `POST /api/newsletter/subscribe` (thin) →
+`services/newsletter/NewsletterBackendService.ts` (fat) → `ServiceResult<T>`. The subscribe shape is
+the Zod SSOT at **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`), validated in three
+places without drift: the client service (before the round-trip), the thin route (the request body),
+and the fat service (defence in depth). Stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default off),
+gated by `isNewsletterBackendLive()`; every well-formed address gets a friendly confirmation while the
+live path (an upsert into `newsletter.subscriptions` + email-provider sync) waits behind that guard.
+The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the route and never
+reaches the service.
+
+### Sessions & Google OAuth
+
+- **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue
+  tokens on the `ServiceResult.session` envelope — never in the JSON body. The route mints canonical
+  HttpOnly cookies `sb-access-token` / `sb-refresh-token` (the names the `(dashboard)` middleware
+  checks) via `apps/web/utils/auth-cookies.ts`, folded in by `toAuthResponse`. Islands `fetch` the
+  route, the browser stores the cookies, and the island's `location.href` navigation is
+  authenticated.
+- **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
+  PKCE **code-verifier** in a short-lived cookie (a `CookieStore` storage adapter on the anon
+  client); `/api/auth/callback` exchanges the `code` for a session, mints the `sb-*` cookies, clears
+  the verifier, and routes — a **new** Google identity (no `org.users_public` yet) to `/join`
+  pre-filled to finish onboarding via `complete_onboarding`, an existing user to their return path.
+  All gated by `AUTH_BACKEND_LIVE`; non-live, the start route simulates the pre-filled-`/join`
+  branch.
+- **Enterprise SSO (SAML/OIDC).** `/api/auth/sso` calls `signInWithSSO({ domain })`; a resolved
+  provider returns an IdP authorize URL that the login panel navigates to (carried as the external
+  `AuthResult.ssoUrl`, distinct from the same-origin `redirectTo`). SSO reuses the OAuth PKCE
+  machinery — the verifier cookie is set on the POST response and the IdP → GoTrue → **the same
+  `/api/auth/callback`** completes the exchange. Enabling SAML needs `[auth.sso.saml]` +
+  `SAML_PRIVATE_KEY` and a per-domain provider registered via the CLI (see `supabase/config.toml`);
+  with none configured the panel shows a friendly "no provider" note.
+- **Corporate-domain member signal.** On a standard (email/password) individual signup,
+  `AuthBackendService.provisionAccount` fires a best-effort, non-blocking check: if the new address's
+  domain matches an existing `org.organisations` registered domain (`website`, normalised — scheme /
+  `www.` / path stripped; sub-domains match), it inserts a `comms.notifications` row
+  (`type: "organisation.domain_member_signup"`) for that org's active **owners/admins** so they can
+  invite or approve the colleague. No new schema — it reuses `comms.notifications` + the org
+  membership join. Gated by `AUTH_BACKEND_LIVE` (non-live: no-op); any failure is swallowed so it can
+  never fail account creation. OAuth completions are excluded (only inbound email registrations).
+
+---
+
 ## Database
 
 The Projective database layer is built on PostgreSQL via Supabase, emphasizing Row-Level Security
@@ -790,6 +894,12 @@ PostgreSQL RLS.
   traction builds, the platform will expand to include Microsoft (Azure AD), GitHub, and Apple SSO.
 - **Database Sync:** A Supabase trigger automatically creates a corresponding public `users` profile
   record whenever a new identity is registered in the `auth.users` schema.
+- **Transactional emails:** GoTrue sends branded, dual-path emails from `supabase/templates/` (wired
+  in `config.toml` `[auth.email.template.*]`). The **confirmation** and **recovery** templates each
+  surface the **6-digit OTP** (`{{ .Token }}`, `otp_length = 6`) _and_ a magic link, matching the
+  `/verify` and `/forgot-password` "type the code or click the link" flows. They are premium,
+  responsive, dark-mode-aware, and image-free (inline CSS + table layout, VML buttons for Outlook).
+  Note `enable_confirmations = false` for local dev (mail lands in Inbucket).
 
 ---
 

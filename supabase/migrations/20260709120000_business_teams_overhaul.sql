@@ -206,6 +206,12 @@ $$;
 -- #endregion
 
 -- #region 5. Dashboard getters surface status + tier (roster badges)
+-- These getters gain `status` + `tier` output columns, changing their RETURNS
+-- TABLE row type. Postgres rejects a return-type change via CREATE OR REPLACE
+-- (42P13), so the prior definitions are dropped first (arg signatures unchanged).
+DROP FUNCTION IF EXISTS org.get_dashboard_businesses(text, text, text, int, int);
+DROP FUNCTION IF EXISTS org.get_dashboard_teams(text, text, text, text, int, int);
+
 CREATE OR REPLACE FUNCTION org.get_dashboard_businesses(p_search_query text, p_sort_by text, p_sort_dir text, p_limit int, p_offset int)
 RETURNS TABLE (
   id uuid, owner_user_id uuid, name text, slug text, logo jsonb, country text,

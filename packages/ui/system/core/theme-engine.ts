@@ -53,7 +53,7 @@ export function buildScheme(
 
 	const vars: Record<string, string> = dark
 		? {
-			"--primary": hx(core.a1.tone(40)),
+			"--primary": hx(core.a1.tone(60)),
 			"--on-primary": hx(core.a1.tone(tone(98, hc))),
 			"--secondary": hx(core.a2.tone(80)),
 			"--tertiary": hx(core.a3.tone(80)),
@@ -70,7 +70,7 @@ export function buildScheme(
 			"--focus-ring": rgba(core.a1.tone(80), 0.4),
 		}
 		: {
-			"--primary": hx(core.a1.tone(60)),
+			"--primary": hx(core.a1.tone(45)),
 			"--on-primary": hx(core.a1.tone(tone(98, hc))),
 			"--secondary": hx(core.a2.tone(40)),
 			"--tertiary": hx(core.a3.tone(40)),

@@ -170,12 +170,15 @@
 	text-transform: uppercase;
 	color: var(--text-secondary);
 }
+/* Subtle, low-key options: lighter weight, roomier cells, and highlight/selection expressed with a
+   neutral surface tint (never a heavy primary-blue fill) — selection stays legible via the check. */
 .ui-select__option {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-2) var(--space-3);
-	font-size: var(--field-font, 0.9375rem);
+	padding: var(--space-3) var(--space-4);
+	font-size: 0.875rem;
+	font-weight: 400;
 	color: var(--on-surface);
 	border-radius: var(--radius-sm);
 	cursor: pointer;
@@ -188,15 +191,15 @@
 	box-sizing: border-box;
 }
 .ui-select__option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
 	color: var(--on-surface);
-	font-weight: 600;
+	font-weight: 500;
 }
 .ui-select__option--active {
-	background: color-mix(in srgb, var(--primary) 22%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 9%, transparent);
 }
 .ui-select__option[aria-selected="true"].ui-select__option--active {
-	background: color-mix(in srgb, var(--primary) 28%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
 }
 .ui-select__option--disabled {
 	opacity: 0.45;

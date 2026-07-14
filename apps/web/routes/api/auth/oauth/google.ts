@@ -1,21 +1,36 @@
 import { define } from "@web/utils/state.ts";
-import { safeRedirect } from "@features/auth/core/redirect.ts";
+import { safeRedirect, withRedirect } from "@features/auth/core/redirect.ts";
+import { oauthStoreCookies } from "@web/utils/auth-cookies.ts";
+import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /**
  * `GET /api/auth/oauth/google` — Google OAuth entry point.
  *
- * Production flow (SYSTEM_ARCHITECTURE.md §Authentication): this begins the Supabase Google OAuth
- * handshake; the callback either signs an existing user in (→ `redirectTo`) or, for a Google
- * identity with no Projective profile yet, bounces to `/join` with the Google-provided name / email
- * / avatar pre-filled.
+ * Live (`AUTH_BACKEND_LIVE=true`): begin the Supabase Google PKCE handshake via the fat
+ * {@link AuthBackendService}, persist the code-verifier as a short-lived cookie, and 303 to Google.
+ * Google → GoTrue → `/api/auth/callback` completes the exchange.
  *
- * MVP: no live Google client is wired, so this simulates the "new identity → pre-filled /join"
- * branch directly, which is the branch the join form's pre-fill support exists to serve. The avatar
- * host is on the OAuth allowlist (see core/oauth.ts).
+ * Non-live (default): simulate the "new Google identity → pre-filled `/join`" branch so the join
+ * form's OAuth pre-fill UX is exercisable without a wired Google client. The avatar host is on the
+ * OAuth allowlist (see `core/oauth.ts`).
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const redirectTo = safeRedirect(ctx.url.searchParams.get("redirectTo"));
+		const callbackUrl =
+			new URL(withRedirect("/api/auth/callback", redirectTo), ctx.url.origin).href;
+
+		const { url, store } = await AuthBackendService.startGoogleOAuth({ callbackUrl });
+		if (url) {
+			const res = new Response(null, { status: 303, headers: { location: url } });
+			// The verifier only needs to survive the trip to Google and back.
+			for (const cookie of oauthStoreCookies(store.diff(), 600)) {
+				res.headers.append("set-cookie", cookie);
+			}
+			return res;
+		}
+
+		// Non-live simulation (or a start failure): pre-fill /join with a sample Google identity.
 		const params = new URLSearchParams({
 			oauth: "google",
 			firstName: "Ada",
@@ -25,9 +40,6 @@ export const handler = define.handlers({
 				"https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=128&h=128&fit=crop&crop=faces",
 			redirectTo,
 		});
-		return new Response(null, {
-			status: 303,
-			headers: { location: `/join?${params.toString()}` },
-		});
+		return new Response(null, { status: 303, headers: { location: `/join?${params.toString()}` } });
 	},
 });

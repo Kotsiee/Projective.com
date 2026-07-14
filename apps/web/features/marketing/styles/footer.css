@@ -1,0 +1,516 @@
+/*
+ * PublicFooter (lp-footer) — the premium, minimal public footer attached to EVERY public surface via
+ * the guest shell (Explore, /view, /@handle, the landing page). It carries local `--lp-*` fallbacks so
+ * it renders correctly outside the landing `.lp` token scope. Token-only, strict BEM; theme-adaptive
+ * in light + dark via the shared surface/outline/on-surface tokens (no hardcoded palette). A
+ * five-column masthead over a thin utility bar; the nav stacks are native `<details>` (mobile
+ * accordions, force-open on desktop) and the newsletter is the only island. Non-interactive groups
+ * separate by spacing + weight, never boxed (§B.4). Sits at the natural bottom of the window-scroll
+ * layout — no fixed positioning.
+ */
+
+.lp-footer {
+	/* Local fallbacks so the footer is correct outside the landing `.lp` scope (Explore, /view, /@handle). */
+	--lp-pad-x: clamp(1.25rem, 5vw, 5rem);
+	--lp-hair: color-mix(in srgb, var(--outline) 16%, transparent);
+	--lp-hair-strong: color-mix(in srgb, var(--outline) 32%, transparent);
+	--lp-field: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	--lp-link: var(--on-surface-variant);
+
+	background: var(--surface-2);
+	color: var(--on-surface);
+	padding: clamp(3.5rem, 7vw, 6rem) var(--lp-pad-x) clamp(1.75rem, 3.5vw, 2.75rem);
+	border-block-start: 1px solid var(--lp-hair);
+}
+
+/* #region Masthead grid */
+.lp-footer__inner {
+	display: grid;
+	grid-template-columns: 1.5fr 2.4fr 1.5fr;
+	gap: clamp(2.5rem, 5vw, 5.5rem);
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+}
+/* #endregion */
+
+/* #region Column 1 — brand + social */
+.lp-footer__brand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-3);
+	text-decoration: none;
+	color: var(--on-surface);
+	inline-size: fit-content;
+	border-radius: var(--radius-sm);
+}
+
+.lp-footer__brand-mark {
+	inline-size: 1.85rem;
+	block-size: 1.85rem;
+	color: var(--primary);
+}
+
+.lp-footer__brand-text {
+	font-size: 1.35rem;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+
+.lp-footer__tagline {
+	margin-block: var(--space-4) var(--space-5);
+	max-inline-size: 34ch;
+	font-size: 0.975rem;
+	line-height: 1.6;
+	font-weight: 300;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__social {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	gap: var(--space-2);
+}
+
+.lp-footer__social-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	border-radius: var(--radius-md);
+	color: var(--on-surface-variant);
+	border: 1px solid var(--lp-hair);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard);
+}
+
+.lp-footer__social-link:hover {
+	color: var(--on-surface);
+	border-color: var(--lp-hair-strong);
+	background: var(--lp-field);
+	transform: translateY(-2px);
+}
+
+.lp-footer__social-link:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.lp-footer__social-icon {
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+}
+/* #endregion */
+
+/* #region Columns 2–4 — navigation stacks */
+.lp-footer__nav {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--space-6);
+}
+
+.lp-footer__group {
+	min-inline-size: 0;
+}
+
+.lp-footer__group-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	list-style: none;
+	cursor: default;
+}
+
+.lp-footer__group-head::-webkit-details-marker {
+	display: none;
+}
+
+.lp-footer__group-title {
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__group-chevron {
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+	color: var(--on-surface-variant);
+	transition: transform var(--dur-medium) var(--ease-standard);
+	display: none; /* revealed only in the mobile accordion */
+}
+
+.lp-footer__links {
+	list-style: none;
+	margin: var(--space-4) 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.lp-footer__link {
+	font-size: 0.95rem;
+	color: var(--lp-link);
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.lp-footer__link:hover {
+	color: var(--on-surface);
+}
+
+.lp-footer__link:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Column 5 — newsletter */
+.lp-footer__news-title {
+	display: block;
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__news-lede {
+	margin-block: var(--space-3) var(--space-4);
+	max-inline-size: 32ch;
+	font-size: 0.925rem;
+	line-height: 1.55;
+	font-weight: 300;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__news-field {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.35rem 0.35rem 0.35rem 0.9rem;
+	background: var(--lp-field);
+	border: 1px solid var(--lp-hair-strong);
+	border-radius: var(--radius-xl);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.lp-footer__news-field:focus-within {
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.lp-footer__news-field--invalid {
+	border-color: var(--danger);
+}
+
+.lp-footer__news-input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	border: none;
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.925rem;
+}
+
+.lp-footer__news-input::placeholder {
+	color: var(--on-surface-variant);
+	opacity: 0.7;
+}
+
+.lp-footer__news-input:focus {
+	outline: none;
+}
+
+.lp-footer__news-submit {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.35rem;
+	block-size: 2.35rem;
+	border: none;
+	border-radius: var(--radius-lg);
+	background: var(--primary);
+	color: var(--on-primary);
+	cursor: pointer;
+	transition:
+		transform var(--dur-medium) var(--spring-standard),
+		box-shadow var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.lp-footer__news-submit:hover:not(:disabled) {
+	transform: translateY(-1px);
+	box-shadow: var(--elevation-low);
+}
+
+.lp-footer__news-submit:disabled {
+	opacity: 0.6;
+	cursor: progress;
+}
+
+.lp-footer__news-submit:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.lp-footer__news-arrow {
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+}
+
+.lp-footer__news-error {
+	display: block;
+	margin-block-start: var(--space-2);
+	font-size: 0.8rem;
+	color: var(--danger);
+}
+
+.lp-footer__news-note {
+	margin-block-start: var(--space-3);
+	font-size: 0.78rem;
+	line-height: 1.5;
+	color: var(--on-surface-variant);
+	opacity: 0.85;
+}
+
+.lp-footer__news-done {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	font-size: 0.925rem;
+	color: var(--on-surface);
+}
+
+.lp-footer__news-check {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.4rem;
+	block-size: 1.4rem;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--success) 18%, transparent);
+	color: var(--success);
+	font-size: 0.8rem;
+	font-weight: 700;
+}
+/* #endregion */
+
+/* #region Utility bar */
+.lp-footer__base {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	margin-block-start: clamp(2.5rem, 5vw, 4rem);
+	padding-block-start: var(--space-5);
+	border-block-start: 1px solid var(--lp-hair);
+}
+
+.lp-footer__copy {
+	font-size: 0.85rem;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__utility {
+	display: flex;
+	align-items: center;
+	gap: clamp(1rem, 3vw, 2rem);
+	flex-wrap: wrap;
+}
+
+.lp-footer__legal {
+	display: flex;
+	align-items: center;
+	gap: clamp(0.85rem, 2vw, 1.5rem);
+	flex-wrap: wrap;
+}
+
+.lp-footer__legal-link {
+	font-size: 0.85rem;
+	color: var(--on-surface-variant);
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.lp-footer__legal-link:hover {
+	color: var(--on-surface);
+}
+
+.lp-footer__legal-link:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+	border-radius: var(--radius-xs);
+}
+
+.lp-footer__legal-link--help {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+/* Micro-tooltip on "Contact Help" — CSS-only hover/focus reveal. */
+.lp-footer__tip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+}
+
+.lp-footer__tip-icon {
+	inline-size: 0.95rem;
+	block-size: 0.95rem;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__tip-bubble {
+	position: absolute;
+	inset-block-end: calc(100% + 0.5rem);
+	inset-inline-end: 0;
+	inline-size: max-content;
+	max-inline-size: 15rem;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-md);
+	background: var(--surface-3);
+	color: var(--on-surface);
+	border: 1px solid var(--lp-hair);
+	box-shadow: var(--elevation-low);
+	font-size: 0.78rem;
+	line-height: 1.4;
+	opacity: 0;
+	transform: translateY(4px);
+	pointer-events: none;
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.lp-footer__legal-link--help:hover .lp-footer__tip-bubble,
+.lp-footer__legal-link--help:focus-visible .lp-footer__tip-bubble {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.lp-footer__status {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.85rem;
+	color: var(--on-surface-variant);
+}
+
+.lp-footer__status-dot {
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-radius: 50%;
+	background: var(--success);
+	box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
+	animation: lp-footer-breathe 2.6s var(--ease-standard) infinite;
+}
+
+@keyframes lp-footer-breathe {
+	0% {
+		box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent);
+	}
+	70% {
+		box-shadow: 0 0 0 0.4rem color-mix(in srgb, var(--success) 0%, transparent);
+	}
+	100% {
+		box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 0%, transparent);
+	}
+}
+/* #endregion */
+
+/* #region Responsive — collapse to a single stack with accordions */
+@media (max-width: 900px) {
+	.lp-footer__inner {
+		grid-template-columns: 1fr 1fr;
+		gap: clamp(2rem, 5vw, 3rem);
+	}
+	.lp-footer__brand-col {
+		grid-column: 1 / -1;
+	}
+	.lp-footer__nav {
+		grid-column: 1 / -1;
+	}
+}
+
+@media (max-width: 640px) {
+	.lp-footer__inner {
+		grid-template-columns: 1fr;
+	}
+
+	/* The link stacks become real accordions: chevron shown, summary tappable, a hairline per row. */
+	.lp-footer__nav {
+		grid-template-columns: 1fr;
+		gap: 0;
+	}
+	.lp-footer__group {
+		border-block-start: 1px solid var(--lp-hair);
+	}
+	.lp-footer__group:last-child {
+		border-block-end: 1px solid var(--lp-hair);
+	}
+	.lp-footer__group-head {
+		cursor: pointer;
+		padding-block: var(--space-4);
+	}
+	.lp-footer__group-chevron {
+		display: block;
+	}
+	.lp-footer__group[open] .lp-footer__group-chevron {
+		transform: rotate(180deg);
+	}
+	.lp-footer__links {
+		margin-block: 0 var(--space-4);
+	}
+
+	.lp-footer__base {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-3);
+	}
+	.lp-footer__utility {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+/* Desktop / tablet: force the `<details>` stacks open regardless of toggle state (they are only
+   collapsible at ≤640px). The `!important` deliberately overrides the UA "closed details hides its
+   content" rule so the columns always render expanded above the accordion breakpoint. */
+@media (min-width: 641px) {
+	.lp-footer__group > .lp-footer__links {
+		display: flex !important;
+	}
+}
+
+/* Honour reduced-motion — the status indicator rests instead of breathing (§B.2 jump-to-final). */
+@media (prefers-reduced-motion: reduce) {
+	.lp-footer__status-dot {
+		animation: none;
+	}
+	.lp-footer__social-link,
+	.lp-footer__news-submit,
+	.lp-footer__group-chevron,
+	.lp-footer__tip-bubble {
+		transition: none;
+	}
+}
+/* #endregion */

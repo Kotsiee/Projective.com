@@ -1,6 +1,11 @@
 {
   "$comment": "Root Deno 2.x workspace. Members are added here as each package is scaffolded. Path aliases per documentation/architecture/SYSTEM_ARCHITECTURE.md §2. Do NOT list a member directory that does not yet exist — Deno errors on missing members.",
-  "workspace": ["./packages/ui", "./apps/web"],
+  "workspace": [
+    "./packages/ui",
+    "./packages/backend",
+    "./packages/types",
+    "./apps/web"
+  ],
   "nodeModulesDir": "auto",
   "imports": {
     "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1",
@@ -32,7 +37,7 @@
     "zod": "npm:zod@^4.3.6"
   },
   "tasks": {
-    "dev": "vite",
+    "dev": "vite --port 3000",
     "build": "vite build",
     "preview": "vite preview"
   },

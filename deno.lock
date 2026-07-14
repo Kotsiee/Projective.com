@@ -1393,6 +1393,11 @@
           "npm:preact@^10.29.0"
         ]
       },
+      "packages/types": {
+        "dependencies": [
+          "npm:zod@^4.3.6"
+        ]
+      },
       "packages/ui": {
         "dependencies": [
           "npm:@material/material-color-utilities@0.3",

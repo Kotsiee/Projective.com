@@ -63,6 +63,8 @@ export interface OrganizationJoinPayload {
 	address: BusinessAddress;
 	employeeTier: string;
 	industry: string;
+	/** Free-text sector supplied when `industry` is the `"other"` catch-all (empty otherwise). */
+	industryOther: string;
 	departments: string[];
 	invites: StakeholderInvite[];
 	adminFirstName: string;
@@ -93,4 +95,15 @@ export interface AuthResult {
 	redirectTo?: string;
 	/** Whether the next step is email verification (`/verify`). */
 	requiresVerification?: boolean;
+	/**
+	 * Email-confirmation state, polled by `/verify`. `true` once the account's `email_verified`
+	 * (app-owned `org.user_emails.verified_at`) has flipped — the page then auto-logs the user in.
+	 */
+	verified?: boolean;
+	/**
+	 * An **external** identity-provider authorize URL (Enterprise SSO). Unlike `redirectTo` (a
+	 * sanitised same-origin path), this is a cross-origin GoTrue-generated URL the client navigates to
+	 * directly to begin the SAML/OIDC handshake.
+	 */
+	ssoUrl?: string;
 }
