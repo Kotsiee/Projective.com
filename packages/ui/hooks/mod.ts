@@ -7,8 +7,17 @@
  * taxonomy shares one import path. All are signal-first and SSR-safe (client behaviour attaches in
  * effects).
  */
-export { computePosition, useFloating } from "./useFloating.ts";
-export type { FloatingState, Placement, UseFloatingOptions } from "./useFloating.ts";
+export { computePosition, resolveBoundaries, useFloating } from "./useFloating.ts";
+export type {
+	BoundaryRect,
+	BoundarySource,
+	FloatingState,
+	Placement,
+	Side,
+	UseFloatingOptions,
+} from "./useFloating.ts";
+export { useEdgeDetection, usePopoverPosition } from "./useEdgeDetection.ts";
+export type { EdgeDetection, UseEdgeDetectionOptions } from "./useEdgeDetection.ts";
 export { useDismiss } from "./useDismiss.ts";
 export type { DismissOptions } from "./useDismiss.ts";
 export { getTabbable, useFocusTrap } from "./useFocusTrap.ts";

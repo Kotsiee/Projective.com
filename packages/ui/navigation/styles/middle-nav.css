@@ -1,28 +1,110 @@
 /*
  * MiddleNav (Blue zone) — a ShellFrame containing the nav lane + a nested content region. The
  * content region's gutter reveals the Blue track on the top + left of the Green canvas.
+ *
+ * Three-row grid so an optional frame HEADER band can sit atop the content column and an optional
+ * frame FOOTER band beneath it, while the lane spans the full frame height beside them (DESIGN_SYSTEM.md
+ * §D.4). The lane's OWN sticky header + footer then align into the same top/bottom bands, so each pair
+ * reads as one connected strip on the shared Blue surface.
+ *   row 1 (auto) — the header band (content column only); 0 when no header is set.
+ *   row 2 (1fr)  — the content canvas.
+ *   row 3 (auto) — the footer band (content column only); 0 when no footer is set.
+ * The lane occupies column 1 across all three rows; the content occupies column 2 (row 2), the header
+ * column 2 (row 1), the footer column 2 (row 3).
+ *
+ * SCROLL MODEL (DESIGN_SYSTEM.md Part D — native window scroll; Decision #31 REVERSES Decision #30's
+ * pinned-frame/internal-scroll model). The frame flows in the document's OWN scroll: the whole shell
+ * lengthens the page and the browser WINDOW owns the single main scrollbar — never `body` overflow,
+ * never `.ui-middle-nav__content`. The frame chrome stays put by pinning to the viewport, NOT by
+ * capping the frame height:
+ *   - the header band is `position: sticky` at the top-bar offset;
+ *   - the content flows naturally (`overflow: visible`) — its tall content (the channel message feed)
+ *     lengthens the document so the window scrolls it, and the feed virtualizes against the window;
+ *   - the footer band (e.g. the chat composer) is `position: sticky; inset-block-end: 0`, so it locks
+ *     to the viewport bottom while the feed scrolls beneath it in that same window scroll;
+ *   - the lane is likewise sticky, capped to the remaining viewport height with its OWN internal
+ *     overflow (`.ui-splitter__body`), so a tall rail scrolls inside itself instead of scrolling away.
+ * The nested frames use `overflow: clip` (for the rounded corners) which does NOT establish a scroll
+ * container, so every sticky descendant resolves against the window — one scrollbar, no nested traps.
  */
 .ui-middle-nav {
 	display: grid;
 	grid-template-columns: auto 1fr;
+	grid-template-rows: auto 1fr auto;
 	min-block-size: 0;
 }
 
+/*
+ * The configurable frame HEADER band (MiddleNavProps.header) — the top strip over the content column,
+ * flush against the lane so it reads as one continuous header across the middle-nav frame. It shares
+ * the lane header's `--surface-1` tone + single `--hairline` seam (§B.4). `sticky` at the top-bar
+ * offset holds it at the viewport top under the native window scroll. Only rendered when a route
+ * registers a header, so there is nothing to collapse otherwise (no empty bar).
+ */
+.ui-middle-nav__header {
+	grid-column: 2;
+	grid-row: 1;
+	position: sticky;
+	inset-block-start: var(--shell-topbar-h);
+	z-index: var(--z-sticky);
+	min-block-size: 0;
+}
+
+/*
+ * The nav lane spans the full frame height on the left. Under the native window scroll it is `sticky`
+ * below the top bar, capped to the remaining viewport height, so it stays beside the scrolling body
+ * instead of scrolling away with — or lengthening — the page. `align-self: start` stops the grid from
+ * stretching it; its tall content (the projects feed, the project sidebar) scrolls INTERNALLY via the
+ * nested `.ui-splitter__body` (overflow: auto), and its own sticky header/footer ride into the header
+ * and footer bands.
+ */
 .ui-middle-nav__lane {
+	grid-column: 1;
+	/* Span all three rows so the lane owns the full frame height — its own header rides into the header
+	   band's row and its footer into the footer band's row, with the body flowing between. */
+	grid-row: 1 / -1;
+	position: sticky;
+	inset-block-start: var(--shell-topbar-h);
+	align-self: start;
+	block-size: calc(100dvh - var(--shell-topbar-h));
 	min-inline-size: 0;
-	block-size: 100%;
+	min-block-size: 0;
 	overflow: hidden;
 }
 
+/*
+ * The content region flows in the native window scroll (`overflow: visible`) — it is NEVER a scroll
+ * container. Its content (the PageCanvas body / the channel feed) lengthens the document so the window
+ * scrolls it. `min-block-size: 0` lets it shrink in the flex/grid chain.
+ */
 .ui-middle-nav__content {
+	grid-column: 2;
+	grid-row: 2;
 	display: flex;
 	min-inline-size: 0;
 	min-block-size: 0;
-	padding-block-start: var(--shell-gutter);
-	padding-inline-start: var(--shell-gutter);
+	overflow: visible;
 }
 
-/* Mobile: collapse the lane; the Green canvas takes the full width. */
+/*
+ * The configurable frame FOOTER band (MiddleNavProps.footer) — the bottom strip under the content
+ * column (e.g. the chat composer), flush against the lane's own footer. `sticky; inset-block-end: 0`
+ * locks it to the viewport bottom under the native window scroll while the feed scrolls beneath it.
+ * Only rendered when a route registers a footer (no empty bar otherwise). A positive stacking context
+ * (`--z-sticky`) keeps it above the scrolling feed it overlays.
+ */
+.ui-middle-nav__footer {
+	grid-column: 2;
+	grid-row: 3;
+	position: sticky;
+	inset-block-end: 0;
+	z-index: var(--z-sticky);
+	min-block-size: 0;
+}
+
+/* Mobile viewport isolation (≤ --bp-md): remove the lane (a desktop side-panel layer) AND its content
+   gutter, so the canvas is flush full-width with no nested track (Part D.3). The header + content +
+   footer stack in the single column; the window-scroll model is shared with desktop. */
 @media (max-width: 767px) {
 	.ui-middle-nav {
 		grid-template-columns: 1fr;
@@ -32,7 +114,15 @@
 		display: none;
 	}
 
+	/* One column: the header band + content + footer band stack in it (the lane is dropped on mobile). */
+	.ui-middle-nav__header,
+	.ui-middle-nav__content,
+	.ui-middle-nav__footer {
+		grid-column: 1;
+	}
+
 	.ui-middle-nav__content {
-		padding-inline-start: var(--shell-gutter);
+		padding-block-start: 0;
+		padding-inline-start: 0;
 	}
 }

@@ -6,6 +6,19 @@
 	inline-size: var(--shell-lane-w, 280px);
 	min-inline-size: 0;
 	block-size: 100%;
+	/* Smooth collapse/expand (toggle-driven width change). Suppressed mid-drag so the panel tracks the
+	   pointer 1:1 (data-dragging set by the hook), and honoured jump-to-final under reduced motion. */
+	transition: inline-size var(--dur-medium) var(--spring-standard);
+}
+
+.ui-splitter[data-dragging="true"] {
+	transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-splitter {
+		transition: none;
+	}
 }
 
 .ui-splitter__body {

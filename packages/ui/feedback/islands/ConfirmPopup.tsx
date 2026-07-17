@@ -3,7 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/confirm.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
-import { Portal } from "../../overlay/components/Portal.tsx";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { Button } from "../../fields/components/Button.tsx";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
@@ -65,6 +65,11 @@ export interface ConfirmPopupProps {
  * {@link useFocusTrap}, and dismissed on outside-pointer/Escape ({@link useDismiss}, top-most only).
  * `role="alertdialog"` with the message as its accessible description; accept/reject close it and fire
  * the matching callback. Presence animates the exit; motion collapses under reduced-motion.
+ *
+ * The panel renders through {@link BodyPortal} — a real `document.body` DOM portal — so a ConfirmPopup
+ * anchored inside a transformed/filtered ancestor still resolves its `position: fixed` against the
+ * viewport instead of the ancestor's box (the glass-blur fixed-overlay trap). Its managed-stack
+ * z-index rides on the panel's own `--z-portal` (the portal container is an unstyled passthrough).
  */
 export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 	const {
@@ -139,7 +144,7 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 		<>
 			{trigger?.(api)}
 			{mounted && (
-				<Portal zIndex={stack.zIndex}>
+				<BodyPortal>
 					<div
 						ref={panelRef}
 						id={panelId}
@@ -150,6 +155,7 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 						style={styleVars({
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--z-portal": String(stack.zIndex),
 						})}
 						tabIndex={-1}
 					>
@@ -168,7 +174,7 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 							<Button label={acceptLabel} severity={acceptSeverity} size="sm" onClick={accept} />
 						</div>
 					</div>
-				</Portal>
+				</BodyPortal>
 			)}
 		</>
 	);

@@ -2,61 +2,131 @@
  * AppShell (Red zone) — the permanent outermost layout. Top bar spans the top; the global sidebar
  * sits at the left (user persona, desktop). The content region applies the gutter that reveals the
  * Red track on the top + left of the nested Blue/Green frame.
+ *
+ * SCROLL MODEL (DESIGN_SYSTEM.md Part D — native window scroll; supersedes the locked-viewport model
+ * of Decision #20, which is reversed): the shell flows in the document's OWN scroll on every profile
+ * (desktop + mobile, guest + user). The root grows past the viewport (`min-block-size: 100dvh`, no
+ * `overflow` cap) and the browser window owns the single main scrollbar. The chrome stays put by
+ * pinning to the viewport, NOT by locking the document:
+ *   - the top bar is `position: sticky; top: 0` (top-bar.css);
+ *   - the global sidebar is `position: sticky` just below the top bar, capped to the remaining
+ *     viewport height with its OWN internal overflow (`.ui-shell-sidebar__items`);
+ *   - the middle-nav lane is likewise sticky (middle-nav.css);
+ *   - the Green body (`.ui-page-canvas__body`) flows naturally — its content (feeds, the channel
+ *     stream) lengthens the document so the window scrolls it, while in-view chrome (the channel
+ *     header band, the chat composer footer) sticks to the viewport within that same window scroll.
+ * The nested frames use `overflow: clip` (for the rounded corners) which does NOT establish a scroll
+ * container, so every sticky descendant resolves against the window — one scrollbar, no nested traps.
  */
 .ui-app-shell {
-	display: grid;
-	/* `minmax(0, 1fr)` caps the content row so it never grows past the viewport — overflow flows into
-	   the nested scroll region (PageCanvas) instead of the document, keeping the top bar fixed. */
-	grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr);
-	grid-template-columns: auto 1fr;
-	grid-template-areas:
-		"topbar topbar"
-		"sidebar content";
-	/* Bound to the viewport (not just a floor) so the Green PageCanvas owns the main scroll region. */
-	block-size: 100dvh;
-	background: var(--surface-2);
-	color: var(--on-surface);
+    display: grid;
+    grid-template-rows: var(--shell-topbar-h) 1fr;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+        "topbar topbar"
+        "sidebar content";
+    /* Grow past the viewport and let the document scroll natively, while short pages still fill the
+	   viewport. Every profile shares this — the chrome is pinned via sticky, not by a viewport lock. */
+    min-block-size: 100dvh;
+    background: var(--surface-2);
+    color: var(--on-surface);
 }
 
 .ui-app-shell--no-sidebar {
-	grid-template-columns: 1fr;
-	grid-template-areas:
-		"topbar"
-		"content";
+    grid-template-columns: 1fr;
+    grid-template-areas:
+        "topbar"
+        "content";
 }
 
+/*
+ * The global rail is pinned to the viewport under the native window scroll: `position: sticky` below
+ * the sticky top bar, capped to the remaining viewport height, so it stays beside the scrolling body
+ * instead of scrolling away with it. `align-self: start` stops the content grid row (which grows tall
+ * with the body) from stretching the rail; it owns its OWN internal overflow
+ * (`.ui-shell-sidebar__items`) when the item list is taller than that capped height.
+ *
+ * The positive stacking context also lifts the rail above the (otherwise non-positioned) body panel:
+ * without it the content frame can paint over the collapsed-rail Tooltip's subtree — a
+ * `position: fixed` chip at `--z-tooltip` — clipping it behind the body panel. A positive context
+ * guarantees the rail + every floating chip it owns float cleanly on top; the header (`--z-nav`)
+ * still outranks it, and body-panel overlays use the managed `--z-overlay` stack which the fixed
+ * tooltip intentionally tops for its brief hover.
+ */
 .ui-app-shell__sidebar {
-	grid-area: sidebar;
-	min-block-size: 0;
+    grid-area: sidebar;
+    position: sticky;
+    inset-block-start: var(--shell-topbar-h);
+    align-self: start;
+    block-size: calc(100dvh - var(--shell-topbar-h));
+    min-block-size: 0;
+    z-index: var(--z-sticky);
+}
+
+/*
+ * Desktop USER L-shell visual segregation (DESIGN_SYSTEM.md Part D, "Desktop User"): the header layer
+ * carries a premium backdrop blur while the global sidebar stays explicitly opaque (no blur). Region
+ * seams are NOT straight lines — they are the **flowing `--hairline` contour of the nested frames**
+ * (ShellFrame), which curves along the large corner radii of the body panel and the middle-nav
+ * wrapper (see shell-frame.css). The unified geometry reads as one continuous L.
+ *
+ * The glass (tint + `backdrop-filter`) rides a `::before` underlay, NOT the header element itself:
+ * `backdrop-filter` on an element establishes a containing block for its `position: fixed`
+ * descendants, which would re-base the overlay `Portal` (`fixed; inset: 0`) inside the header's
+ * `UserActions` island to the header box — collapsing the Notifications/Basket/account Drawers to the
+ * header's height. Moving the blur to a sibling pseudo-element keeps the identical visual while
+ * leaving the header transparent to fixed positioning (same class of fix as the transform gotcha in
+ * CLAUDE.md Decisions #8/#9). The header's `position: sticky` + `--z-nav` z-index already form the
+ * stacking context that keeps the `z-index: -1` underlay above the page yet behind the header content.
+ */
+.ui-app-shell--user .ui-shell-topbar {
+    background: transparent;
+}
+
+.ui-app-shell--user .ui-shell-topbar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    pointer-events: none;
 }
 
 .ui-app-shell__content {
-	grid-area: content;
-	display: flex;
-	min-block-size: 0;
-	min-inline-size: 0;
-	padding-block-start: var(--shell-gutter);
-	padding-inline-start: var(--shell-gutter);
+    grid-area: content;
+    display: flex;
+    min-inline-size: 0;
+    min-block-size: 0;
 }
 
 .ui-app-shell__mobile-menu {
-	display: none;
+    display: none;
 }
 
-/* Mobile: drop the desktop sidebar, reveal the mobile menu trigger, span the content full-width. */
+/* Mobile viewport isolation (≤ --bp-md): drop the desktop sidebar entirely and strip the gutter that
+   reveals the Red track, so the content is a single full-width, un-nested column (Part D.3). The
+   window-scroll model is shared with desktop — the body scrolls with the native window scrollbar
+   beneath the sticky glass header; only the pinned rail is dropped here. */
 @media (max-width: 767px) {
-	.ui-app-shell {
-		grid-template-columns: 1fr;
-		grid-template-areas:
-			"topbar"
-			"content";
-	}
+    .ui-app-shell {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "topbar"
+            "content";
+    }
 
-	.ui-app-shell__sidebar {
-		display: none;
-	}
+    .ui-app-shell__sidebar {
+        display: none;
+    }
 
-	.ui-app-shell--user .ui-app-shell__mobile-menu {
-		display: inline-flex;
-	}
+    .ui-app-shell--user .ui-app-shell__mobile-menu {
+        display: inline-flex;
+    }
+
+    .ui-app-shell__content {
+        padding-block-start: 0;
+        padding-inline-start: 0;
+    }
 }

@@ -88,9 +88,9 @@ api_url = "http://127.0.0.1"
 # OpenAI API Key to use for Supabase AI in the Supabase Studio.
 openai_api_key = "env(OPENAI_API_KEY)"
 
-# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
-# are monitored, and you can view the emails that would have been sent from the web interface.
-[inbucket]
+# Email testing server (Mailpit). Emails sent with the local dev setup are not actually sent -
+# rather, they are captured and viewable from the web interface at the port below.
+[local_smtp]
 enabled = true
 # Port to use for the email testing server web interface.
 port = 54324
@@ -125,8 +125,7 @@ site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = [
   "http://127.0.0.1:3000/verify",
   "http://127.0.0.1:3000/reset",
-  "http://127.0.0.1:3000/api/v1/auth/callback",
-  "http://127.0.0.1:3000/api/v1/auth/confirm"
+  "http://127.0.0.1:3000/api/auth/callback"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
@@ -259,9 +258,11 @@ max_frequency = "5s"
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
-# [auth.hook.custom_access_token]
-# enabled = true
-# uri = "pg-functions://<database>/<schema>/<hook_name>"
+# Stamps the active context (User Context Hydration, root CLAUDE.md #16/#17) into every access token:
+# raw top-level claims for security.current_context()/RLS + app_metadata.active_context for the web chrome.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]

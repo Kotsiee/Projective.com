@@ -57,6 +57,12 @@ export interface ServerEnv {
 	 * then flip per environment.
 	 */
 	newsletterBackendLive: boolean;
+	/**
+	 * Master switch for LIVE projects-backend behaviour. Defaults **off**: {@link ProjectBackendService}
+	 * answers the `/projects` feed from in-memory fixtures until the RLS-scoped `projects.*` + `org.*`
+	 * membership reads are implemented and verified, then flip per environment.
+	 */
+	projectsBackendLive: boolean;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -71,5 +77,6 @@ export function serverEnv(): ServerEnv {
 		exploreBackendLive: (firstEnv("EXPLORE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		newsletterBackendLive: (firstEnv("NEWSLETTER_BACKEND_LIVE") ?? "false").toLowerCase() ===
 			"true",
+		projectsBackendLive: (firstEnv("PROJECTS_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 	};
 }

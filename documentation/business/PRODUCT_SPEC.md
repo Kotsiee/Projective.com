@@ -1356,6 +1356,7 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 |               |                           | `team`                   | Project-specific members                                                                    |
 |               |                           | `timeline`               | Roadmap view                                                                                |
 |               |                           | `calendar`               | Project dates                                                                               |
+|               |                           | `[channel id]/index`     | In-project channel/DM conversation (`/projects/[project id]/[channel id]`; §Unified Messaging) |
 |               |                           | `[stage id]/index`       | Specific stage view                                                                         |
 |               |                           | `[stage id]/review`      | Stage approval/review                                                                       |
 |               |                           | `[stage id]/files`       | Stage-specific files                                                                        |

@@ -32,6 +32,16 @@ export default define.page(function App({ Component, state }) {
 							`(()=>{try{const t=localStorage.getItem("theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(_){/* noop */}})();`,
 					}}
 				/>
+				<script
+					// Set data-sidebar before first paint so the global rail renders at the cached width with
+					// no flash-of-wrong-state (the ShellSidebar island re-syncs after hydration). The default
+					// is the slim collapsed rail. Literal key MUST match LocalKeys.SIDEBAR_COLLAPSED in
+					// apps/web/utils/storage-keys.ts ("pj.local.shell.sidebarCollapsed").
+					dangerouslySetInnerHTML={{
+						__html:
+							`(()=>{try{const c=localStorage.getItem("pj.local.shell.sidebarCollapsed");document.documentElement.dataset.sidebar=c==="0"?"expanded":"collapsed";}catch(_){/* noop */}})();`,
+					}}
+				/>
 			</head>
 			<body>
 				<DesignSystemRoot>

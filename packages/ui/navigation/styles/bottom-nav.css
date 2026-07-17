@@ -1,0 +1,95 @@
+/*
+ * BottomNav (Part D.3) — the mobile thumb-nav. Fixed to the base of the viewport as a glass bar over
+ * the native window scroll; hidden on desktop (the sidebar owns wayfinding there). A single top
+ * hairline is the only separator (§B.4). Honours the iOS home-indicator safe area.
+ */
+.ui-bottom-nav {
+	display: none; /* desktop: the global sidebar handles navigation */
+	position: fixed;
+	inset-inline: 0;
+	inset-block-end: 0;
+	z-index: var(--z-nav);
+	block-size: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
+	padding-block-end: env(safe-area-inset-bottom, 0px);
+	background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
+	border-block-start: var(--hairline);
+}
+
+@media (max-width: 767px) {
+	.ui-bottom-nav {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: 1fr;
+	}
+}
+
+.ui-bottom-nav__item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	text-decoration: none;
+	color: var(--text-secondary);
+}
+
+.ui-bottom-nav__item--active {
+	color: var(--primary);
+}
+
+.ui-bottom-nav__item:focus-visible {
+	outline: 3px solid var(--focus-ring);
+	outline-offset: -3px;
+	border-radius: var(--radius-base);
+}
+
+.ui-bottom-nav__icon {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 24px;
+	block-size: 24px;
+}
+
+.ui-bottom-nav__icon svg {
+	inline-size: 24px;
+	block-size: 24px;
+}
+
+.ui-bottom-nav__label {
+	font-size: 0.6875rem;
+	font-weight: 500;
+	line-height: 1;
+}
+
+/* Pulsing update-dot on the icon corner — a visual color state, never a count (Part D). */
+.ui-bottom-nav__dot {
+	position: absolute;
+	inset-block-start: -2px;
+	inset-inline-end: -2px;
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: 999px;
+	background: var(--primary);
+	box-shadow: 0 0 0 2px var(--surface-2);
+	animation: ui-bottom-nav-pulse 2.4s var(--ease-standard) infinite;
+}
+
+@keyframes ui-bottom-nav-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-bottom-nav__dot {
+		animation: none;
+	}
+}

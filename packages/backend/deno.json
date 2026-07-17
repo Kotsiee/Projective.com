@@ -7,6 +7,7 @@
 		"./services/auth/AuthBackendService.ts": "./services/auth/AuthBackendService.ts",
 		"./services/explore/ExploreBackendService.ts": "./services/explore/ExploreBackendService.ts",
 		"./services/newsletter/NewsletterBackendService.ts": "./services/newsletter/NewsletterBackendService.ts",
+		"./services/projects/ProjectBackendService.ts": "./services/projects/ProjectBackendService.ts",
 		"./core/env.ts": "./core/env.ts",
 		"./core/supabase.ts": "./core/supabase.ts"
 	},

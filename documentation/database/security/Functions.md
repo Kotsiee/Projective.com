@@ -1,8 +1,60 @@
 # security: Functions
 
-_Not yet documented._ This file is scaffolded to match the domain/kind structure described in
-[../README.md](../README.md), but no Functions content has been written for the `security` schema
-yet.
+Context resolution + JWT claim stamping for the `security` schema. Other `security` functions
+(penalty aggregation, admin checks) remain `_Not yet documented._` until their sections are written.
 
-See `brain2.md`'s Database section for the general migration-numbering and RLS conventions this
-domain follows once populated.
+## Context switching & the access-token hook
+
+These functions are the origin of **User Context Hydration** (root
+[`CLAUDE.md`](../../../CLAUDE.md) Decisions #16/#17). `security.session_context` holds the acting
+context; the switch RPCs mutate it; the access-token hook copies it into every issued JWT so both
+Row-Level Security and the web chrome read one consistent source.
+
+### `security.switch_session_context(p_type public.profile_type, p_id uuid)`
+
+`SECURITY DEFINER`, granted to `authenticated`. Validates that the caller owns/actively belongs to
+the target freelancer or business profile, then sets it as the active context and **clears the team
+and organisation slots** so the four active slots stay mutually exclusive. Writes a
+`session.switch_context` audit entry. (Migration 0100; extended `20260715120000` to clear
+`active_organisation_id`.)
+
+### `security.switch_organisation_context(p_org_id uuid)`
+
+`SECURITY DEFINER`, granted to `authenticated`. Validates that the caller is the owner or an active
+member of the organisation (the buyer-only entity, Decisions #9/#10), then sets it as the active
+context and clears the profile/team slots. Writes a `session.switch_context` audit entry.
+(Migration `20260715120000`.)
+
+### `security.current_context()`
+
+`STABLE` SQL helper reading the active-context claims back out of `auth.jwt()` —
+`active_profile_type` / `active_profile_id` / `active_team_id` / `active_organisation_id` — for use
+in RLS policies. These claims are only populated once the access-token hook below is enabled.
+(Migration 0099; extended `20260715120000` to expose `active_organisation_id`.)
+
+### `public.custom_access_token_hook(event jsonb) → jsonb`
+
+The GoTrue **custom access token hook** (wired in `supabase/config.toml` under
+`[auth.hook.custom_access_token]`). Runs before each access token is signed, resolves the acting
+context from `security.session_context` (+ membership/handle lookups), and stamps two consumers into
+the token's claims:
+
+1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
+   `active_organisation_id` — the exact keys `security.current_context()` reads for RLS.
+2. **`app_metadata.active_context`** — the resolved presentation object
+   `{ type, id, role, handle, isClient, isFreelancer }` the web app decodes for chrome
+   (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`). `type` is the four-context
+   matrix (`personal` | `team` | `business` | `organisation`); `role` collapses ownership/admin
+   membership to `admin`, else `member`; `isClient`/`isFreelancer` are resolved authoritatively from
+   `org.users_public.is_freelancer` / `is_operator` and the active context.
+
+`SECURITY DEFINER` (reads org/security tables past RLS), `SET search_path = ''` (fully-qualified
+identifiers, hijack-hardened), and wrapped so it **never raises** — any failure returns the event
+unchanged so a chrome-only claim can never break login. `EXECUTE` is granted only to
+`supabase_auth_admin` and revoked from `authenticated`/`anon`/`public`. (Migration `20260715120000`.)
+
+> **Security boundary.** These claims decide chrome + feed RLS inputs; they are not themselves an
+> access grant beyond what the RLS policies enforce. The web app treats the decoded
+> `app_metadata.active_context` as a read-only visual guide (it decodes the JWT **unverified**), so a
+> tampered client only changes what that browser draws — RLS and the `(dashboard)` guard remain the
+> real gates.

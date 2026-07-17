@@ -1,4 +1,5 @@
 import { createDefine } from "fresh";
+import type { UserContext } from "@projective/types/auth";
 
 /**
  * Request-scoped state shared across middleware, handlers, and pages.
@@ -13,6 +14,12 @@ export interface State {
 	description?: string;
 	/** Whether the current request is authenticated (set by the dashboard guard). */
 	isAuthenticated?: boolean;
+	/**
+	 * The hydrated, chrome-only user context — resolved site-wide by `routes/_middleware.ts` from the
+	 * session JWT so SSR can paint the correct shell + skeletons in the first byte (User Context
+	 * Hydration). Read-only visual guide: RLS + the `(dashboard)` guard remain the real gates.
+	 */
+	userContext?: UserContext;
 	/** Active persona/profile handle, when resolved. */
 	handle?: string;
 }

@@ -1,0 +1,1363 @@
+/*
+ * projects-lane — the spacious, tactile `/projects` middle-nav feed. Pure CSS + strict BEM,
+ * token-only (root CLAUDE.md §3). The redesign trades the old dense, pill-heavy sidebar for maximum
+ * breathing room: friendly plain tabs, a calm search + two icon actions header, a glassmorphic Smart
+ * Filter popover (so facets never consume list space), and generous cards whose lifecycle state reads
+ * as a tiny geometric status dot + low-contrast opacity shifts — never a text pill. Cards render as
+ * one continuous, ungrouped stream separated by space alone (no hairline, no four-sided box, §B.4);
+ * each carries a top action strip (star + kebab menu) and an involvement footer (context badges +
+ * the owning team's mark). The progress meter appears only for one-off deliverables.
+ */
+
+/* #region Shell */
+.proj-lane {
+	display: flex;
+	flex-direction: column;
+	/* Fill the lane column exactly so the header pins to the top and the footer to the bottom, with
+	   only the card list scrolling between them (the footer is ALWAYS at the bottom, not just sticky). */
+	block-size: 100%;
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+}
+
+.proj-lane__top {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-4) var(--space-3);
+	background: var(--surface-1);
+	border-block-end: var(--hairline);
+}
+/* #endregion */
+
+/* #region Tabs */
+.proj-tabs {
+	display: flex;
+	gap: var(--space-5);
+}
+
+.proj-tabs__tab {
+	appearance: none;
+	position: relative;
+	padding: 0.1rem 0 0.35rem;
+	font: inherit;
+	font-size: 1rem;
+	font-weight: 450;
+	letter-spacing: -0.01em;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-tabs__tab:hover {
+	color: var(--on-surface);
+}
+
+.proj-tabs__tab[data-selected="true"] {
+	color: var(--on-surface);
+	font-weight: 600;
+}
+
+/* Quiet sliding underline — a thin indicator, no filled pill. */
+.proj-tabs__tab[data-selected="true"]::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px;
+	background: var(--primary);
+}
+
+.proj-tabs__tab:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Header bar (search + icon actions) */
+.proj-lane__bar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.proj-lane__search {
+	position: relative;
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.proj-lane__search-icon {
+	position: absolute;
+	inset-inline-start: 0.7rem;
+	display: inline-flex;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.proj-lane__search-input {
+	inline-size: 100%;
+	padding: 0.5rem 0.7rem 0.5rem 2.1rem;
+	font: inherit;
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-full, 999px);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-lane__search-input::placeholder {
+	color: var(--text-secondary);
+}
+
+.proj-lane__search-input:focus-visible {
+	outline: none;
+	background: var(--surface);
+	border-color: var(--primary);
+	box-shadow: var(--focus-ring);
+}
+
+/* Icon-only actions (Create + / Filter sliders) — soft circular hover, vertically centered. */
+.proj-iconbtn {
+	position: relative;
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.1rem;
+	block-size: 2.1rem;
+	font-size: 1.1rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-iconbtn:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.proj-iconbtn[data-on="true"] {
+	color: var(--primary);
+}
+
+.proj-iconbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-iconbtn__dot {
+	position: absolute;
+	inset-block-start: 0.35rem;
+	inset-inline-end: 0.35rem;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 50%;
+	background: var(--primary);
+	box-shadow: 0 0 0 2px var(--surface-1);
+}
+/* #endregion */
+
+/* #region Service-queue modifier (Services tab only) */
+.proj-modifier {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.78rem;
+}
+
+.proj-modifier__lead {
+	color: var(--text-secondary);
+}
+
+.proj-modifier__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.1rem 0.15rem;
+	font: inherit;
+	font-size: 0.78rem;
+	font-weight: 550;
+	color: var(--on-surface);
+	background: none;
+	border: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-modifier__btn:hover {
+	color: var(--primary);
+}
+
+.proj-modifier__caret {
+	display: inline-flex;
+	font-size: 0.7rem;
+	color: var(--text-secondary);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.proj-modifier__caret[data-open="true"] {
+	transform: rotate(180deg);
+}
+
+.proj-modifier__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+
+.proj-modifier__menu {
+	position: absolute;
+	inset-block-start: calc(100% + 6px);
+	inset-inline-start: 0;
+	z-index: var(--z-raised);
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 13rem;
+	padding: var(--space-1);
+	background: var(--surface);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-medium);
+}
+
+.proj-modifier__item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.4rem 0.55rem;
+	font: inherit;
+	font-size: 0.78rem;
+	color: var(--on-surface);
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+
+.proj-modifier__item:hover {
+	background: var(--surface-2);
+}
+
+.proj-modifier__item-label {
+	flex: 1 1 auto;
+}
+
+.proj-modifier__item-count {
+	font-size: 0.7rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.proj-modifier__item[data-on="true"] {
+	color: var(--primary);
+	font-weight: 550;
+}
+
+.proj-modifier__check {
+	display: inline-flex;
+	font-size: 0.8rem;
+	color: var(--primary);
+}
+
+.proj-modifier__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Utility shortcuts row */
+.proj-shortcuts {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.proj-shortcuts__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+}
+
+.proj-shortcut {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.85rem;
+	block-size: 1.85rem;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-shortcut:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.proj-shortcut[data-on="true"] {
+	color: var(--primary);
+}
+
+.proj-shortcut[data-on="true"] svg {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.proj-shortcut:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-shortcuts__all {
+	appearance: none;
+	padding: 0.2rem 0.1rem;
+	font: inherit;
+	font-size: 0.75rem;
+	font-weight: 450;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-shortcuts__all:hover {
+	color: var(--on-surface);
+}
+
+.proj-shortcuts__all[data-on="true"] {
+	color: var(--primary);
+	font-weight: 600;
+}
+
+.proj-shortcuts__all:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Popovers (create menu + glass filter panel) */
+.ui-popover.proj-menu-pop {
+	border-radius: var(--radius-container-lg);
+}
+
+.ui-popover.proj-menu-pop .ui-popover__content {
+	padding: var(--space-2);
+}
+
+/* Per-card kebab action menu. */
+.ui-popover.proj-cardmenu-pop {
+	border-radius: var(--radius-lg);
+}
+
+.ui-popover.proj-cardmenu-pop .ui-popover__content {
+	padding: var(--space-1);
+}
+
+.proj-cardmenu {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 12rem;
+}
+
+.proj-cardmenu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.45rem 0.55rem;
+	font: inherit;
+	font-size: 0.8rem;
+	color: var(--on-surface);
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-cardmenu__item:hover {
+	background: var(--surface-2);
+}
+
+.proj-cardmenu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-cardmenu__icon {
+	display: inline-flex;
+	flex: none;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+}
+
+.proj-cardmenu__label {
+	flex: 1 1 auto;
+}
+
+.proj-cardmenu__item[data-danger="true"] {
+	color: var(--danger);
+}
+
+.proj-cardmenu__item[data-danger="true"] .proj-cardmenu__icon {
+	color: var(--danger);
+}
+
+.proj-cardmenu__item[data-danger="true"]:hover {
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* Glassmorphic Smart Filter surface. */
+.ui-popover.proj-filter-pop {
+	background: color-mix(in srgb, var(--surface) 78%, transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	border-color: var(--hairline-color);
+	border-radius: var(--radius-container-lg);
+	box-shadow: var(--elevation-high);
+}
+
+.ui-popover.proj-filter-pop .ui-popover__content {
+	padding: var(--space-4) var(--space-4) var(--space-5);
+}
+/* #endregion */
+
+/* #region Create menu */
+.proj-create {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 15rem;
+}
+
+.proj-create__head {
+	padding: var(--space-1) var(--space-2) var(--space-2);
+	font-size: 0.6875rem;
+	font-weight: 650;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.proj-create__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2);
+	font: inherit;
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-create__item:hover {
+	background: var(--surface-2);
+}
+
+.proj-create__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	font-size: 1.05rem;
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border-radius: var(--radius-base);
+}
+
+.proj-create__text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.05rem;
+}
+
+.proj-create__label {
+	font-size: 0.85rem;
+	font-weight: 550;
+	color: var(--on-surface);
+}
+
+.proj-create__hint {
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+
+.proj-create__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Filter panel */
+.proj-filter {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	inline-size: 19rem;
+	max-inline-size: 100%;
+}
+
+.proj-filter__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.proj-filter__title {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.proj-filter__count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.15rem;
+	block-size: 1.15rem;
+	padding: 0 0.3rem;
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+	border-radius: 999px;
+}
+
+.proj-filter__reset {
+	appearance: none;
+	padding: 0;
+	font: inherit;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-filter__reset:hover {
+	color: var(--on-surface);
+}
+
+.proj-filter__reset:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+
+.proj-filter__facet {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.proj-filter__facet-label {
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Text matrix (borderless low-contrast toggles) */
+.proj-textmatrix {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem 0.9rem;
+}
+
+.proj-textmatrix__opt {
+	appearance: none;
+	padding: 0;
+	font: inherit;
+	font-size: 0.8rem;
+	font-weight: 400;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	cursor: pointer;
+	opacity: 0.8;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.proj-textmatrix__opt:hover {
+	color: var(--on-surface);
+	opacity: 1;
+}
+
+.proj-textmatrix__opt[data-on="true"] {
+	color: var(--primary);
+	font-weight: 600;
+	opacity: 1;
+}
+
+.proj-textmatrix__opt:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Icon matrix (format / status) */
+.proj-matrix {
+	display: inline-flex;
+	gap: 0.35rem;
+}
+
+.proj-matrix__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.1rem;
+	block-size: 2.1rem;
+	font-size: 1.05rem;
+	color: var(--text-secondary);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-matrix__btn:hover {
+	color: var(--on-surface);
+}
+
+.proj-matrix__btn[data-on="true"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.proj-matrix__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Workspace combo */
+.proj-combo {
+	position: relative;
+}
+
+.proj-combo__field {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0.35rem 0.45rem;
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-combo__field:focus-within {
+	border-color: var(--primary);
+	background: var(--surface);
+}
+
+.proj-combo__tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.1rem 0.15rem 0.1rem 0.45rem;
+	font-size: 0.75rem;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border-radius: var(--radius-sm);
+}
+
+.proj-combo__tag-x {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1rem;
+	block-size: 1rem;
+	font-size: 0.7rem;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-combo__tag-x:hover {
+	color: var(--danger, var(--on-surface));
+}
+
+.proj-combo__input {
+	flex: 1 1 6rem;
+	min-inline-size: 6rem;
+	padding: 0.15rem;
+	font: inherit;
+	font-size: 0.8rem;
+	color: var(--on-surface);
+	background: none;
+	border: none;
+}
+
+.proj-combo__input:focus {
+	outline: none;
+}
+
+.proj-combo__input::placeholder {
+	color: var(--text-secondary);
+}
+
+.proj-combo__menu {
+	position: absolute;
+	inset-block-start: calc(100% + 4px);
+	inset-inline: 0;
+	z-index: var(--z-raised);
+	display: flex;
+	flex-direction: column;
+	max-block-size: 12rem;
+	margin: 0;
+	padding: var(--space-1);
+	overflow-y: auto;
+	list-style: none;
+	background: var(--surface);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-medium);
+}
+
+.proj-combo__option {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	inline-size: 100%;
+	padding: 0.35rem 0.5rem;
+	font: inherit;
+	font-size: 0.8rem;
+	color: var(--on-surface);
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+
+.proj-combo__option:hover {
+	background: var(--surface-2);
+}
+
+.proj-combo__option-count {
+	font-size: 0.7rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.proj-combo__option:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region List — one continuous, ungrouped stream of cards (the only scrolling region) */
+.proj-lane__list {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-3) var(--space-2) var(--space-5);
+}
+/* #endregion */
+
+/* #region Card */
+.proj-card {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-radius: var(--radius-container-lg);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.proj-card:hover {
+	background: var(--surface-2);
+}
+
+.proj-card[data-active="true"] {
+	background: var(--surface-3);
+}
+
+/* Rested (completed / cancelled) engagements recede via a low-contrast opacity shift — no pill. */
+.proj-card[data-rested="true"] {
+	opacity: 0.62;
+}
+
+.proj-card[data-rested="true"]:hover {
+	opacity: 1;
+}
+
+.proj-card__link {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+}
+
+.proj-card__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+/* Row 1 — header: avatar | (title + status dot / owner) | actions. */
+.proj-card__head {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+/* Lead — the counterparty avatar (non-interactive → clicks fall through to the link). */
+.proj-card__lead {
+	display: inline-flex;
+	flex: none;
+	pointer-events: none;
+}
+
+.proj-card__ident {
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	pointer-events: none;
+}
+
+.proj-card__title-row {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-inline-size: 0;
+}
+
+.proj-card__title {
+	min-inline-size: 0;
+	font-size: 0.9375rem;
+	font-weight: 550;
+	letter-spacing: -0.01em;
+	color: var(--on-surface);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Status dot beside the title — shown only when live/unread; unread takes an accent + gentle pulse. */
+.proj-card__dot {
+	flex: none;
+	inline-size: 7px;
+	block-size: 7px;
+	border-radius: 50%;
+	background: var(--success);
+}
+
+.proj-card__dot[data-tone="unread"] {
+	background: var(--primary);
+	animation: proj-dot-pulse 2.4s var(--ease-standard) infinite;
+}
+
+@keyframes proj-dot-pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
+}
+
+.proj-card__owner {
+	min-inline-size: 0;
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Actions — Star + kebab; revealed ONLY on hover / focus / while the menu is open. */
+.proj-card__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.1rem;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.proj-card:hover .proj-card__actions,
+.proj-card:focus-within .proj-card__actions,
+.proj-card__actions:has([data-open="true"]) {
+	opacity: 1;
+}
+
+.proj-card__star,
+.proj-card__menu {
+	position: relative;
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.7rem;
+	block-size: 1.7rem;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-card__star:hover,
+.proj-card__menu:hover {
+	color: var(--on-surface);
+	background: var(--surface-3);
+}
+
+.proj-card__star:focus-visible,
+.proj-card__menu:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-card__star[data-on="true"] {
+	color: var(--warning, var(--primary));
+}
+
+.proj-card__star[data-on="true"] svg {
+	fill: currentColor;
+}
+
+.proj-card__menu[data-open="true"] {
+	color: var(--on-surface);
+	background: var(--surface-3);
+}
+
+/* Row 2 — conditional metadata, indented to line up under the title (avatar width + head gap). */
+.proj-card__track {
+	position: relative;
+	block-size: 3px;
+	inline-size: 100%;
+	max-inline-size: 9rem;
+	margin-inline-start: calc(40px + var(--space-3));
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	border-radius: 999px;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.proj-card__track-fill {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	background: var(--primary);
+	border-radius: inherit;
+	transition: inline-size var(--dur-medium) var(--ease-standard);
+}
+
+.proj-card[data-status="on_hold"] .proj-card__track-fill {
+	background: var(--warning);
+}
+
+.proj-card[data-status="completed"] .proj-card__track-fill {
+	background: var(--success);
+}
+
+.proj-card__session {
+	display: flex;
+	align-items: baseline;
+	gap: 0.4rem;
+	margin: 0;
+	margin-inline-start: calc(40px + var(--space-3));
+	font-size: 0.78rem;
+	pointer-events: none;
+}
+
+.proj-card__session-label {
+	color: var(--text-secondary);
+}
+
+.proj-card__session-value {
+	font-weight: 550;
+	color: var(--on-surface);
+}
+
+/* Row 3 — footer: team/business mark (left) + the single status icon (right). */
+.proj-card__footer {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin-inline-start: calc(40px + var(--space-3));
+}
+
+.proj-card__team {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	min-inline-size: 0;
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.proj-card__team-avatar {
+	flex: none;
+}
+
+.proj-card__team-name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The single involvement status icon, pinned to the far right (interactive for its tooltip). */
+.proj-card__statuswrap {
+	display: inline-flex;
+	margin-inline-start: auto;
+}
+
+.proj-statusicon {
+	position: relative;
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	border-radius: 999px;
+	cursor: default;
+}
+
+.proj-statusicon:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-statusicon[data-tone="ticket"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.proj-statusicon[data-tone="revision"] {
+	color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.proj-statusicon[data-tone="pending"] {
+	color: var(--info, var(--primary));
+	background: color-mix(in srgb, var(--info, var(--primary)) 12%, transparent);
+}
+
+.proj-statusicon[data-tone="invite"] {
+	color: var(--success);
+	background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.proj-statusicon[data-tone="request"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+/* #endregion */
+
+/* #region Lane footer — always pinned to the bottom: collapse (left) · Incoming + Create (right) */
+.proj-lane__footer {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface-1);
+	border-block-start: var(--hairline);
+}
+
+/* Collapse/expand — reuses the main-nav sidebar toggle glyph AND its morphing-divider animation. */
+.proj-lane__collapse {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-lane__collapse:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.proj-lane__collapse:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-lane__collapse .shell-toggle {
+	inline-size: 22px;
+	block-size: 22px;
+	stroke-width: 1.8;
+}
+
+/* The dotted divider slides right when expanded, left when collapsed — matching the rail. The
+   `.proj-lane` ancestor lifts specificity above the package's global
+   `:root[data-sidebar="expanded"] .shell-toggle__bar` rule so this bar tracks the LANE's state, not
+   the main sidebar's. */
+.proj-lane .proj-lane__collapse .shell-toggle__bar {
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.proj-lane .proj-lane__collapse:not([data-collapsed="true"]) .shell-toggle__bar {
+	transform: translateX(6px);
+}
+
+.proj-lane .proj-lane__collapse[data-collapsed="true"] .shell-toggle__bar {
+	transform: translateX(0);
+}
+
+/* Right-hand action group — Incoming (count-tagged) then the primary Create button. */
+.proj-lane__footer-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+}
+
+/* Incoming requests — one icon toggle carrying a numeric count tag. */
+.proj-incoming {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	font-size: 1.05rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-incoming:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.proj-incoming[data-on="true"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.proj-incoming:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-incoming__icon {
+	display: inline-flex;
+}
+
+/* Count tag — a small numeric badge riding the button's top-right corner. */
+.proj-incoming__tag {
+	position: absolute;
+	inset-block-start: -2px;
+	inset-inline-end: -2px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 15px;
+	block-size: 15px;
+	padding: 0 4px;
+	font-size: 0.62rem;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+	border-radius: 999px;
+	box-shadow: 0 0 0 2px var(--surface-1);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Create — the primary filled action, rightmost (relocated here from the header). */
+.proj-lane__create {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.4rem 0.7rem;
+	font: inherit;
+	font-size: 0.8rem;
+	font-weight: 550;
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.proj-lane__create:hover {
+	background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.proj-lane__create:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-lane__create-icon {
+	display: inline-flex;
+	font-size: 1rem;
+}
+/* #endregion */
+
+/* #region Empty */
+.proj-lane__empty {
+	padding: var(--space-7) var(--space-4);
+	text-align: center;
+}
+
+.proj-lane__empty-title {
+	margin: 0 0 var(--space-1);
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.proj-lane__empty-note {
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Density — collapse chrome when the lane is dragged/toggled to the narrow rail */
+.ui-splitter[data-mode="collapsed"] .proj-card__ident,
+.ui-splitter[data-mode="collapsed"] .proj-card__actions,
+.ui-splitter[data-mode="collapsed"] .proj-card__track,
+.ui-splitter[data-mode="collapsed"] .proj-card__session,
+.ui-splitter[data-mode="collapsed"] .proj-card__footer,
+.ui-splitter[data-mode="collapsed"] .proj-shortcuts,
+.ui-splitter[data-mode="collapsed"] .proj-modifier,
+.ui-splitter[data-mode="collapsed"] .proj-lane__create-label,
+.ui-splitter[data-mode="collapsed"] .proj-lane__search {
+	display: none;
+}
+
+/* Collapsed rail: the card head centres on just the avatar; the footer stacks to icon buttons. */
+.ui-splitter[data-mode="collapsed"] .proj-card__head {
+	justify-content: center;
+}
+
+.ui-splitter[data-mode="collapsed"] .proj-lane__footer {
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-2);
+}
+
+.ui-splitter[data-mode="collapsed"] .proj-lane__footer-actions {
+	flex-direction: column;
+}
+
+.ui-splitter[data-mode="collapsed"] .proj-lane__create {
+	padding: 0.5rem;
+}
+/* #endregion */
+
+/* #region Loading */
+.proj-lane[data-loading="true"] .proj-lane__list {
+	opacity: 0.6;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.proj-card,
+	.proj-tabs__tab,
+	.proj-textmatrix__opt,
+	.proj-matrix__btn,
+	.proj-iconbtn,
+	.proj-shortcut,
+	.proj-modifier__caret,
+	.proj-card__track-fill,
+	.proj-card__star,
+	.proj-card__actions,
+	.proj-incoming,
+	.proj-lane__collapse .shell-toggle__bar,
+	.proj-lane__search-input,
+	.proj-lane[data-loading="true"] .proj-lane__list {
+		transition: none;
+	}
+
+	/* Jump-to-final: no pulsing dots. */
+	.proj-card__dot {
+		animation: none;
+	}
+}
+/* #endregion */

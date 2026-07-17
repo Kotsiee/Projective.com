@@ -76,6 +76,21 @@ export function oauthStoreCookies(
 	);
 }
 
+/**
+ * Whether the request carries a session (presence of the access-token cookie). This is a **skeleton**
+ * signal — it does NOT verify the JWT, so it may only decide chrome (guest vs user shell) and MUST NOT
+ * grant access on its own; the `(dashboard)` guard + RLS remain the real gates. Real verification via
+ * `@server/services` is the TODO (SYSTEM_ARCHITECTURE §Security).
+ *
+ * NOTE (flagged inconsistency): the real session cookie is {@link SB_ACCESS_COOKIE} (`sb-access-token`,
+ * set by {@link sessionSetCookies}). `storage-keys.ts` `CookieKeys.AUTH_SESSION_TOKEN` documents a
+ * different name (`pj_auth_session`) that nothing sets — see root CLAUDE.md §8 #14. This helper keys
+ * off the cookie actually written, so it stays consistent with the dashboard guard.
+ */
+export function hasSessionCookie(req: Request): boolean {
+	return Boolean(readCookies(req)[SB_ACCESS_COOKIE]);
+}
+
 /** Parse a request's `Cookie` header into a plain record. */
 export function readCookies(req: Request): Record<string, string> {
 	const header = req.headers.get("cookie");

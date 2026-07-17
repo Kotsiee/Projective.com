@@ -15,11 +15,19 @@ accounts start with no active profile until they create a Business or Team.
 
 | Column                | Type         | Notes                          |
 | :-------------------- | :----------- | :----------------------------- |
-| `user_id`             | uuid         | PK, FK → `auth.users.id`.      |
-| `active_profile_type` | profile_type | `freelancer` or `business`.    |
-| `active_profile_id`   | uuid         | UUID of the active profile.    |
-| `active_team_id`      | uuid         | Optional active team context.  |
-| `updated_at`          | timestamptz  | Last context switch timestamp. |
+| Column                   | Type         | Notes                                                              |
+| :----------------------- | :----------- | :----------------------------------------------------------------- |
+| `user_id`                | uuid         | PK, FK → `auth.users.id`.                                          |
+| `active_profile_type`    | profile_type | `freelancer` or `business`.                                        |
+| `active_profile_id`      | uuid         | UUID of the active profile.                                        |
+| `active_team_id`         | uuid         | Optional active team context.                                     |
+| `active_organisation_id` | uuid         | Optional active organisation (buyer-only entity) context. FK → `org.organisations.id` (added `20260715120000`). Mutually exclusive with the profile/team slots. |
+| `updated_at`             | timestamptz  | Last context switch timestamp.                                     |
+
+The active slots are kept mutually exclusive by the switch RPCs (`security.switch_session_context`
+selects a profile and clears team/organisation; `security.switch_organisation_context` selects an
+organisation and clears profile/team). All four are read back into the JWT by the custom access-token
+hook — see [Functions.md](Functions.md).
 
 ```sql
 CREATE TABLE security.session_context (
@@ -27,6 +35,7 @@ CREATE TABLE security.session_context (
     active_profile_type public.profile_type,
     active_profile_id uuid,
     active_team_id uuid,
+    active_organisation_id uuid,  -- added 20260715120000; FK → org.organisations(id) ON DELETE SET NULL
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT session_context_pkey PRIMARY KEY (user_id),
     CONSTRAINT session_context_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id)

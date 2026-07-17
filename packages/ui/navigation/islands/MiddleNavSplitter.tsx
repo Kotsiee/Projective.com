@@ -17,14 +17,14 @@ export interface MiddleNavSplitterProps extends UseSplitterOptions {
  */
 export function MiddleNavSplitter(props: MiddleNavSplitterProps): JSX.Element {
 	const { children, ...opts } = props;
-	const { width, mode, onPointerDown, onPointerMove, onPointerUp } = useSplitter({
-		storageKey: "shell.lane.w",
-		...opts,
-	});
+	// Persistence is opt-in: the consuming app passes a `storageKey` (its registered storage-keys
+	// dictionary value) so the package stays portable and never hardcodes an app key literal.
+	const { width, mode, dragging, onPointerDown, onPointerMove, onPointerUp } = useSplitter(opts);
 	return (
 		<div
 			class="ui-splitter"
 			data-mode={mode.value}
+			data-dragging={dragging.value ? "true" : undefined}
 			style={styleVars({ "--shell-lane-w": `${width.value}px` })}
 		>
 			<div class="ui-splitter__body">{children}</div>

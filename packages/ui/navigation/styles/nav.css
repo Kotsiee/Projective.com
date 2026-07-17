@@ -47,6 +47,7 @@
 }
 
 .ui-nav-item__icon {
+	position: relative;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -55,19 +56,64 @@
 	flex: 0 0 auto;
 }
 
+.ui-nav-item__icon svg {
+	inline-size: 22px;
+	block-size: 22px;
+}
+
 .ui-nav-item__label {
 	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	/* Medium-weight labels beside the oversized icons — readable, high-end (Part D.1). The active
+	   destination steps up once more so the current page reads at a glance. */
+	font-weight: 500;
 }
 
-/* Collapsed rail: hide labels, center icons on the shared axis (Part D.1). */
-.ui-shell-sidebar:not(.ui-shell-sidebar--expanded) .ui-nav-item {
-	justify-content: center;
-	margin-inline: var(--space-1);
+.ui-nav-item--active .ui-nav-item__label {
+	font-weight: 600;
+}
+
+/* Update indicator — a small pulsing dot on the icon corner. A visual color state, never a count
+   (Part D). The visually-hidden sibling text carries the meaning for assistive tech (§B.4). */
+.ui-nav-item__dot {
+	position: absolute;
+	inset-block-start: -1px;
+	inset-inline-end: -1px;
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: 999px;
+	background: var(--primary);
+	box-shadow: 0 0 0 2px var(--surface-2); /* ring against the sidebar surface */
+	animation: ui-nav-dot-pulse 2.4s var(--ease-standard) infinite;
+}
+
+@keyframes ui-nav-dot-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
+}
+
+/* Collapsed rail: square blocks (--shell-nav-block) with one large centered icon, labels hidden,
+   icons on the shared vertical axis (Part D.1). Driven by the root attribute (FOUC-safe). */
+:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item {
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	margin-inline: auto;
 	padding-inline: 0;
+	justify-content: center;
 }
 
-.ui-shell-sidebar:not(.ui-shell-sidebar--expanded) .ui-nav-item__label {
+/* Collapsed: hide the visible label (the anchor's `aria-label` carries the accessible name). */
+:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__label {
 	display: none;
+}
+
+:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__icon svg {
+	inline-size: 24px;
+	block-size: 24px;
 }

@@ -11,6 +11,7 @@ import { useControllable } from "../../hooks/useControllable.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Placement } from "../../types/mod.ts";
+import type { BoundarySource, Side } from "../../hooks/useFloating.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
 
 // #region Props
@@ -40,6 +41,18 @@ export interface PopoverProps {
 	targetRef?: RefObject<HTMLElement>;
 	/** Preferred side/alignment; flips on overflow (default `bottom-start`). */
 	placement?: Placement;
+	/**
+	 * Higher-level layout zones the panel must never intersect (the site-nav sidebar, the header). It
+	 * shifts clear of each — e.g. avoiding a left sidebar pushes the panel right, past a
+	 * `bottom-end`/viewport clamp that would otherwise let it slide under the rail. Accepts CSS
+	 * selectors (re-measured live), refs, or rects (see `BoundarySource`).
+	 */
+	avoid?: readonly BoundarySource[];
+	/**
+	 * Viewport edges the panel MAY overflow into a lower-level zone (e.g. a header search dropping into
+	 * the body). Relaxes the viewport clamp on those sides; `avoid` zones still constrain.
+	 */
+	allowOverflow?: readonly Side[];
 	/** Render a small directional arrow toward the anchor. */
 	arrow?: boolean;
 	/** Match the panel width to the anchor. */
@@ -70,6 +83,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 		trigger,
 		targetRef,
 		placement = "bottom-start",
+		avoid,
+		allowOverflow,
 		arrow = false,
 		matchWidth = false,
 		dismissable = true,
@@ -95,6 +110,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 		panelRef,
 		placement,
 		matchWidth,
+		avoid,
+		allowOverflow,
 	});
 
 	const openFn = () => ctrl.set(true);

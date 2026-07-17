@@ -75,7 +75,9 @@ export default function HeroParticles() {
 		const hostEl: HTMLElement = host;
 
 		const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-		const scroller = canvas.closest(".ui-page-canvas__scroll") as HTMLElement | null;
+		// The shell scrolls in the native window (Decision #31 — no dedicated scroll container), so the
+		// parallax observes window scroll; the `scroller` fallbacks below resolve to `globalThis`.
+		const scroller: HTMLElement | null = null;
 
 		let w = 0;
 		let h = 0;

@@ -1,5 +1,5 @@
 import { type Signal, useComputed, useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import type { LaneMode } from "../types/mod.ts";
 
 export interface UseSplitterOptions {
@@ -14,6 +14,14 @@ export interface UseSplitterOptions {
 	/** Width below which the lane is `collapsed`; between here and `compactMax` it is `compact`. */
 	collapseBelow?: number;
 	compactMax?: number;
+	/**
+	 * When set, the hook listens for this window `CustomEvent` and toggles the lane between its
+	 * collapsed rail (`min`) and the last expanded width — the programmatic equivalent of dragging the
+	 * handle shut, so a button elsewhere (e.g. the lane's own footer toggle) can collapse/expand it. A
+	 * `detail.collapsed` boolean forces a direction; omit it to plain-toggle. Opt-in so the package
+	 * stays portable and event-free by default.
+	 */
+	collapseEventName?: string;
 }
 
 export interface Splitter {
@@ -21,6 +29,12 @@ export interface Splitter {
 	width: Signal<number>;
 	/** Density band derived from width (Part D.2): collapsed → compact → full. */
 	mode: Signal<LaneMode>;
+	/**
+	 * Whether the handle is being actively dragged. Lets the view suppress the lane's width transition
+	 * mid-drag (so the panel tracks the pointer 1:1) while keeping it smooth for programmatic
+	 * collapse/expand.
+	 */
+	dragging: Signal<boolean>;
 	onPointerDown: (e: PointerEvent) => void;
 	onPointerMove: (e: PointerEvent) => void;
 	onPointerUp: (e: PointerEvent) => void;
@@ -41,6 +55,7 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 		storageKey,
 		collapseBelow = 96,
 		compactMax = 200,
+		collapseEventName,
 	} = opts;
 
 	const restore = (): number => {
@@ -53,14 +68,27 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 		}
 	};
 
+	const persist = (v: number) => {
+		if (!storageKey || typeof localStorage === "undefined") return;
+		try {
+			localStorage.setItem(storageKey, String(v));
+		} catch {
+			/* storage unavailable — non-fatal */
+		}
+	};
+
 	const width = useSignal(restore());
 	const mode = useComputed<LaneMode>(() =>
 		width.value < collapseBelow ? "collapsed" : width.value < compactMax ? "compact" : "full"
 	);
+	const dragging = useSignal(false);
 	const drag = useRef({ active: false, startX: 0, startW: 0 });
+	// The width to return to when expanding out of the collapsed rail (last non-collapsed width).
+	const lastExpanded = useRef(width.value >= collapseBelow ? width.value : initial);
 
 	const onPointerDown = (e: PointerEvent) => {
 		drag.current = { active: true, startX: e.clientX, startW: width.value };
+		dragging.value = true;
 		(e.currentTarget as Element).setPointerCapture?.(e.pointerId);
 	};
 	const onPointerMove = (e: PointerEvent) => {
@@ -70,14 +98,31 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 	const onPointerUp = () => {
 		if (!drag.current.active) return;
 		drag.current.active = false;
-		if (storageKey && typeof localStorage !== "undefined") {
-			try {
-				localStorage.setItem(storageKey, String(width.value));
-			} catch {
-				/* storage unavailable — non-fatal */
-			}
-		}
+		dragging.value = false;
+		if (width.value >= collapseBelow) lastExpanded.current = width.value;
+		persist(width.value);
 	};
 
-	return { width, mode, onPointerDown, onPointerMove, onPointerUp };
+	// Opt-in: collapse/expand via a window CustomEvent (a footer/toolbar toggle elsewhere).
+	useEffect(() => {
+		if (!collapseEventName || typeof globalThis.addEventListener !== "function") return;
+		const onToggle = (e: Event) => {
+			const detail = (e as CustomEvent).detail as { collapsed?: boolean } | undefined;
+			const isCollapsed = width.value < collapseBelow;
+			const wantCollapsed = detail?.collapsed ?? !isCollapsed;
+			if (wantCollapsed === isCollapsed) return;
+			if (wantCollapsed) {
+				lastExpanded.current = width.value;
+				width.value = min;
+			} else {
+				width.value = clamp(lastExpanded.current, collapseBelow, max);
+			}
+			persist(width.value);
+		};
+		globalThis.addEventListener(collapseEventName, onToggle);
+		return () => globalThis.removeEventListener(collapseEventName, onToggle);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [collapseEventName]);
+
+	return { width, mode, dragging, onPointerDown, onPointerMove, onPointerUp };
 }

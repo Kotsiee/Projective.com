@@ -1,13 +1,27 @@
-/* PageCanvas (Green zone) — the central stage. A ShellFrame that owns the main scroll region. */
+/* PageCanvas (Green zone) — the central stage. Flows in the native window scroll (Part D window-scroll
+   model, Decision #31 — NOT a local scroll region; the window owns the single main scrollbar). The
+   body panel carries the largest curvature in the shell (the luxury --radius-container-xl). */
 .ui-page-canvas {
+	--frame-radius: var(--radius-container-xl);
 	display: flex;
 	flex-direction: column;
-	min-block-size: 0;
 }
 
-.ui-page-canvas__scroll {
+/* Plain content wrapper (renamed from `__scroll` — it no longer scrolls; the window does). Grows with
+   its content so the document lengthens and the window scrollbar takes over. A flex column so a page
+   that opts to fill the content pane (e.g. the channel chat feed, which bottom-anchors its stream) can
+   `flex: 1` down the chain; ordinary page content (a single block child) is unaffected — it sizes to
+   its content exactly as before. */
+.ui-page-canvas__body {
 	flex: 1 1 auto;
 	min-block-size: 0;
-	overflow: auto;
-	overscroll-behavior: contain;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Mobile: reserve space so the fixed BottomNav (Part D.3) never covers the tail of the content. */
+@media (max-width: 767px) {
+	.ui-page-canvas__body {
+		padding-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
+	}
 }

@@ -5,6 +5,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { usePresence } from "../../overlay/core/usePresence.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { useId } from "../../hooks/useId.ts";
 import type { Placement } from "../../types/mod.ts";
 
@@ -33,6 +34,12 @@ export interface TooltipProps {
  * on overflow) and wired with `role="tooltip"` + `aria-describedby` so it is announced. Opens on
  * pointer-enter/focus after `showDelay`, hides on leave/blur/Escape. Escape closes it immediately.
  * Presence keeps it mounted through a short exit fade that collapses under reduced motion.
+ *
+ * The panel renders through {@link BodyPortal} — a real `document.body` DOM portal — so a Tooltip
+ * nested inside a transformed/filtered ancestor (e.g. a glass Popover such as the projects Smart
+ * Filter) still resolves its `position: fixed` against the viewport instead of the ancestor's box.
+ * `useFloating` measures the anchor with `getBoundingClientRect` (viewport coords, matching `fixed`)
+ * and recomputes on scroll/resize while open; the portal tears its container + subtree down on close.
  */
 export function Tooltip(props: TooltipProps): JSX.Element {
 	const {
@@ -88,25 +95,27 @@ export function Tooltip(props: TooltipProps): JSX.Element {
 		>
 			{children}
 			{mounted && (
-				<div
-					ref={panelRef}
-					id={tipId}
-					role="tooltip"
-					data-state={state}
-					class={cx(
-						"ui-tooltip",
-						`ui-tooltip--${floating?.placement ?? placement}`,
-						className,
-					)}
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-						})
-						: undefined}
-				>
-					{content}
-				</div>
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						id={tipId}
+						role="tooltip"
+						data-state={state}
+						class={cx(
+							"ui-tooltip",
+							`ui-tooltip--${floating?.placement ?? placement}`,
+							className,
+						)}
+						style={floating
+							? styleVars({
+								"--float-top": `${floating.top}px`,
+								"--float-left": `${floating.left}px`,
+							})
+							: undefined}
+					>
+						{content}
+					</div>
+				</BodyPortal>
 			)}
 		</span>
 	);

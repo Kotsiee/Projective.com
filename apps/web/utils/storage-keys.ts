@@ -58,6 +58,20 @@ export const LocalKeys = {
 	EXPLORE_LAYOUT: "pj.local.explore.layout",
 	/** Preferred Explore results sort key — remembered across sessions. */
 	EXPLORE_SORT: "pj.local.explore.sort",
+	/**
+	 * Desktop global-sidebar collapsed vs expanded rail preference (`"1"` collapsed | `"0"` expanded).
+	 * Read pre-paint in `_app.tsx` to set `data-sidebar` before first paint (no flash-of-wrong-width).
+	 */
+	SIDEBAR_COLLAPSED: "pj.local.shell.sidebarCollapsed",
+	/** Persisted middle-nav (Blue lane) drag width in px — restored by the MiddleNavSplitter island. */
+	MIDDLE_LANE_WIDTH: "pj.local.shell.laneWidth",
+	/**
+	 * The `/projects` feed's applied filter state, partitioned BY context id. Stored as a single JSON
+	 * map (`Record<contextId, ProjectFeedParams>`) under this one key — the `StorageKey` union is
+	 * closed, so we can't synthesise a per-context key literal; the partition lives inside the value.
+	 * Lets each workspace reload exactly the filters the actor last left it on (the Continuity rule).
+	 */
+	PROJECTS_FILTERS: "pj.local.projects.filters",
 } as const;
 // #endregion
 

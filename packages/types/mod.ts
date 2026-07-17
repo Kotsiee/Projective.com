@@ -6,6 +6,8 @@
  * `documentation/database/*` docs can never drift (root CLAUDE.md §1, database/CLAUDE.md Zod SSOT
  * Rule). Import domains by sub-path (`@projective/types/org`) or everything from the barrel.
  */
+export * from "./auth/mod.ts";
 export * from "./org/mod.ts";
 export * from "./explore/mod.ts";
 export * from "./newsletter/mod.ts";
+export * from "./projects/mod.ts";

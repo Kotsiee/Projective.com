@@ -4,9 +4,11 @@
 	"description": "Projective Zod SSOT — the single source of truth for data shapes shared across the app, the @projective/backend services, and the database docs. A migration lands with its matching schema here (documentation/database/CLAUDE.md, The Zod SSOT Rule).",
 	"exports": {
 		".": "./mod.ts",
+		"./auth": "./auth/mod.ts",
 		"./org": "./org/mod.ts",
 		"./explore": "./explore/mod.ts",
-		"./newsletter": "./newsletter/mod.ts"
+		"./newsletter": "./newsletter/mod.ts",
+		"./projects": "./projects/mod.ts"
 	},
 	"imports": {
 		"zod": "npm:zod@^4.3.6"

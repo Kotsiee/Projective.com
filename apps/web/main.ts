@@ -1,5 +1,14 @@
 import { App, staticFiles, trailingSlashes } from "fresh";
+import { load } from "@std/dotenv";
 import type { State } from "@web/utils/state.ts";
+
+// Populate Deno.env from the workspace `.env` before any route/service resolves the Environment
+// Variable Contract (packages/backend/core/env.ts). Without this the server only sees vars already
+// exported in the launching shell, so the live flags + Supabase config silently degrade to their
+// stub paths. `export: true` never overwrites vars the platform already injected, so production —
+// where real values arrive via the environment, not a file — is unaffected; `examplePath: null`
+// disables std-dotenv's strict `.env.example` presence check.
+await load({ export: true, examplePath: null });
 
 /**
  * Projective server entry (Fresh 2.x + Vite).

@@ -4,17 +4,45 @@
  * flush to the far viewport edges. No layout `display` here — each zone sets its own.
  */
 .ui-shell-frame {
+	/* Per-frame curvature knob — defaults to the fluid nested-frame radius; a specific frame (e.g. the
+	   Green body panel) can raise it to --radius-container-xl by setting --frame-radius locally. */
+	--frame-radius: var(--radius-container-lg);
 	--frame-bl-radius: 0;
 	flex: 1 1 auto;
 	min-block-size: 0;
 	min-inline-size: 0;
 	background: var(--frame-surface, var(--surface));
 	color: var(--on-surface);
-	border-start-start-radius: var(--radius-container-lg);
+	border-start-start-radius: var(--frame-radius);
 	border-end-start-radius: var(--frame-bl-radius);
+	/* Organic flowing seam (Part D): a single razor-thin --hairline on the two EXPOSED edges (top +
+	   inline-start). Sharing the rounded top-left corner, the seam curves cleanly along the frame's
+	   large radius instead of reading as two mechanical straight lines. The far (right/bottom) edges
+	   stay flush to the viewport and carry no line. */
+	border-block-start: var(--hairline);
+	border-inline-start: var(--hairline);
 	overflow: clip;
 }
 
+/* When a parent track remains beneath, the bottom-left also curves — extend the flowing seam there. */
 .ui-shell-frame[data-flush-bottom="false"] {
-	--frame-bl-radius: var(--radius-container-lg);
+	--frame-bl-radius: var(--frame-radius);
+	border-block-end: var(--hairline);
+}
+
+/*
+ * Mobile viewport isolation (≤ --bp-md): the nested-frame chrome is a DESKTOP-only affordance. On
+ * mobile every frame flattens to a plain, full-width, un-nested surface — no corner curves, no
+ * flowing hairline seams, no layered borders — so the body is a single native-scrolling column
+ * beneath the header (DESIGN_SYSTEM.md Part D.3).
+ */
+@media (max-width: 767px) {
+	.ui-shell-frame,
+	.ui-shell-frame[data-flush-bottom="false"] {
+		--frame-radius: 0;
+		--frame-bl-radius: 0;
+		border-block-start: 0;
+		border-inline-start: 0;
+		border-block-end: 0;
+	}
 }

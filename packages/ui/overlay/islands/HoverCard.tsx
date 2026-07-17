@@ -5,6 +5,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { usePresence } from "../core/usePresence.ts";
+import { BodyPortal } from "../components/BodyPortal.tsx";
 import { useId } from "../../hooks/useId.ts";
 import type { Placement } from "../../types/mod.ts";
 
@@ -34,6 +35,11 @@ export interface HoverCardProps {
  * {@link useFloating} (flips on overflow) and kept mounted through an exit transition. Keyboard users
  * get it on focus; it never steals focus. Pointer over the card cancels the close timer so the
  * contents stay reachable.
+ *
+ * The panel renders through {@link BodyPortal} — a real `document.body` DOM portal — so a HoverCard
+ * nested inside a transformed/filtered ancestor still resolves its `position: fixed` against the
+ * viewport instead of the ancestor's box (the glass-blur fixed-overlay trap). The portal tears its
+ * container + subtree down when the card closes.
  */
 export function HoverCard(props: HoverCardProps): JSX.Element {
 	const {
@@ -80,28 +86,30 @@ export function HoverCard(props: HoverCardProps): JSX.Element {
 		>
 			{children}
 			{mounted && (
-				<div
-					ref={panelRef}
-					id={cardId}
-					role="tooltip"
-					aria-hidden="true"
-					data-state={state}
-					class={cx(
-						"ui-hovercard__panel",
-						floating?.placement.startsWith("top") && "ui-hovercard__panel--top",
-						className,
-					)}
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-						})
-						: undefined}
-					onPointerEnter={clearTimer}
-					onPointerLeave={scheduleClose}
-				>
-					{typeof card === "function" ? card() : card}
-				</div>
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						id={cardId}
+						role="tooltip"
+						aria-hidden="true"
+						data-state={state}
+						class={cx(
+							"ui-hovercard__panel",
+							floating?.placement.startsWith("top") && "ui-hovercard__panel--top",
+							className,
+						)}
+						style={floating
+							? styleVars({
+								"--float-top": `${floating.top}px`,
+								"--float-left": `${floating.left}px`,
+							})
+							: undefined}
+						onPointerEnter={clearTimer}
+						onPointerLeave={scheduleClose}
+					>
+						{typeof card === "function" ? card() : card}
+					</div>
+				</BodyPortal>
 			)}
 		</span>
 	);
