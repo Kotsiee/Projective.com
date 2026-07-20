@@ -8,3 +8,5 @@ export * from "./feed.ts";
 export * from "./create.ts";
 export * from "./detail.ts";
 export * from "./messages.ts";
+export * from "./files.ts";
+export * from "./submissions.ts";

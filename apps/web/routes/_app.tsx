@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { buildScheme, schemeToCss } from "@projective/ui/system";
 import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.island.tsx";
+import ScrollIdle from "@web/features/shell/islands/ScrollIdle.island.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
 // first paint is correctly themed for either mode with no flash; the DesignSystemRoot island then
@@ -44,6 +45,9 @@ export default define.page(function App({ Component, state }) {
 				/>
 			</head>
 			<body>
+				{/* Global scroll-activated scrollbar reveal (behaviour-only; renders nothing). Pairs with the
+				    self-hiding custom scrollbar in @projective/ui/styles (DESIGN_SYSTEM.md Part D scroll model). */}
+				<ScrollIdle />
 				<DesignSystemRoot>
 					<Component />
 				</DesignSystemRoot>

@@ -20,6 +20,12 @@ export interface SplitterPanelProps extends Omit<HTMLAttributes<HTMLDivElement>,
 	size?: number;
 	/** Minimum size in percentage points the gutter will not shrink this panel below (default `5`). */
 	minSize?: number;
+	/**
+	 * Maximum size in percentage points the gutter will not grow this panel above (default `100`).
+	 * Pair with `minSize` on both panes to enforce a hard structural ratio — e.g. a modal's large media
+	 * workspace vs its small metadata panel — so a drag can never collapse either past its bound.
+	 */
+	maxSize?: number;
 	children?: ComponentChildren;
 }
 
@@ -29,7 +35,8 @@ export interface SplitterPanelProps extends Omit<HTMLAttributes<HTMLDivElement>,
  * this component itself only renders the pane's content wrapper.
  */
 export function SplitterPanel(props: SplitterPanelProps): JSX.Element {
-	const { children, class: className, size: _size, minSize: _minSize, ...rest } = props;
+	const { children, class: className, size: _size, minSize: _minSize, maxSize: _maxSize, ...rest } =
+		props;
 	return (
 		<div class={cx("ui-splitter__pane-content", className as string)} {...rest}>
 			{children}
@@ -77,6 +84,7 @@ export function Splitter(props: SplitterProps): JSX.Element {
 	const panels = toChildArray(children) as VNode<SplitterPanelProps>[];
 	const count = panels.length;
 	const mins = panels.map((p) => p.props.minSize ?? 5);
+	const maxes = panels.map((p) => p.props.maxSize ?? 100);
 	const storageKey = stateKey ? `ui-splitter.${stateKey}` : undefined;
 
 	const restore = (): number[] => {
@@ -118,11 +126,18 @@ export function Splitter(props: SplitterProps): JSX.Element {
 		}
 	};
 
-	/** Move the boundary between `index` and `index + 1` by `deltaPct`, clamped to both min sizes. */
+	/**
+	 * Move the boundary between `index` and `index + 1` by `deltaPct`, clamped so BOTH neighbouring
+	 * panes stay within their `[minSize, maxSize]` bounds — the hard structural ratio (e.g. modal media
+	 * vs metadata). `da` is bounded below by `max(minA - a, b - maxB)` and above by `min(maxA - a,
+	 * b - minB)`; the exchange conserves the pair's total, so no other pane is disturbed.
+	 */
 	const resizeBoundary = (index: number, a: number, b: number, deltaPct: number) => {
 		const minA = mins[index];
 		const minB = mins[index + 1];
-		const da = clamp(deltaPct, minA - a, b - minB);
+		const maxA = maxes[index];
+		const maxB = maxes[index + 1];
+		const da = clamp(deltaPct, Math.max(minA - a, b - maxB), Math.min(maxA - a, b - minB));
 		const next = sizes.value.slice();
 		next[index] = a + da;
 		next[index + 1] = b - da;
@@ -199,7 +214,7 @@ export function Splitter(props: SplitterProps): JSX.Element {
 					aria-label={`Resize ${layout === "horizontal" ? "column" : "row"} ${i + 1}`}
 					aria-valuenow={Math.round(sizes.value[i])}
 					aria-valuemin={mins[i]}
-					aria-valuemax={Math.round(100 - minAfter)}
+					aria-valuemax={Math.round(Math.min(maxes[i], 100 - minAfter))}
 					tabIndex={0}
 					onPointerDown={onGutterPointerDown(i)}
 					onPointerMove={onGutterPointerMove}

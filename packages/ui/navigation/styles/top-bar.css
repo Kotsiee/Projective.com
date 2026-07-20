@@ -43,17 +43,17 @@
 }
 
 .ui-shell-topbar__border {
-    background: none;
-    height: calc(100% - var(--shell-topbar-h));
-    width: calc(100% - var(--shell-sidebar-cur-w));
+    display: block;
     position: fixed;
-    left: var(--shell-sidebar-cur-w);
-    top: var(--shell-topbar-h);
+    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
     border-block-start: var(--hairline);
     border-inline-start: var(--hairline);
     border-start-start-radius: var(--frame-radius);
     border-end-start-radius: var(--frame-bl-radius);
-    z-index: var(--z-nav, 200);
+    z-index: 0;
     pointer-events: none;
 }
 

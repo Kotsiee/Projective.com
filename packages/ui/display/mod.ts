@@ -40,6 +40,8 @@ export type {
 	ScrollerPosition,
 	ScrollerProps,
 } from "./islands/Scroller.tsx";
+export { VirtualGrid } from "./islands/VirtualGrid.tsx";
+export type { VirtualGridProps } from "./islands/VirtualGrid.tsx";
 // #endregion
 
 // #region Hierarchy & time
@@ -68,6 +70,10 @@ export { Carousel } from "./islands/Carousel.tsx";
 export type { CarouselProps, CarouselResponsiveOption } from "./islands/Carousel.tsx";
 export { GMap } from "./islands/GMap.tsx";
 export type { GMapCenter, GMapMarker, GMapProps, GMapUrlContext } from "./islands/GMap.tsx";
+export { AudioVisualizer } from "./islands/AudioVisualizer.tsx";
+export type { AudioVisualizerProps } from "./islands/AudioVisualizer.tsx";
+export { drawWaveform, formatClock, resamplePeaks } from "./core/audio.ts";
+export type { DrawWaveformOptions } from "./core/audio.ts";
 // #endregion
 
 // #region Content atoms

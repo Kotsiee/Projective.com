@@ -8,6 +8,8 @@ import { resolveProjectsFeed } from "@web/features/projects/core/feed-ssr.ts";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
 import { channelHeaderFor } from "@web/features/projects/core/channel-header-slot.tsx";
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
+import { filesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
+import { submissionsFooterFor } from "@web/features/projects/core/submissions-footer-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 
@@ -50,6 +52,17 @@ function projectSlugOf(pathname: string): string | null {
 }
 
 /**
+ * Resolve the middle-nav footer band: the channel Chat composer on a channel's Chat tab, else the
+ * File Explorer's View Control Rig on a `/files` route, else the Submissions explorer's View Control Rig
+ * + Review trigger on a `/submissions` route, else nothing. Composed so exactly one owns the single
+ * footer slot per URL (Decision #31 / the File Explorer + Submissions features).
+ */
+function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
+	return channelFooterFor(url, context) ?? filesFooterFor(url, context) ??
+		submissionsFooterFor(url, context);
+}
+
+/**
  * Resolve the middle-nav lane for a request: the contextual Project Details sidebar on a specific
  * `/projects/{slug}`, the projects feed on the `/projects` root (+ `/projects/create`), else the
  * default section switcher.
@@ -84,7 +97,7 @@ export default define.page(function DashboardLayout(ctx) {
 			context={context}
 			lane={laneFor(ctx.url, context)}
 			middleNavHeader={channelHeaderFor(ctx.url, context)}
-			middleNavFooter={channelFooterFor(ctx.url, context)}
+			middleNavFooter={middleNavFooterFor(ctx.url, context)}
 		>
 			<ctx.Component />
 		</UserShell>

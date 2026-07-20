@@ -53,6 +53,13 @@ export interface TableProps<T> {
 	dataKey?: string | ((row: T) => string);
 	/** `single` (shift adds columns) or `multiple` (each click toggles a column) sort strategy. */
 	sortMode?: "single" | "multiple";
+	/**
+	 * Allow more than one column to be sorted at once. Default `true`. When `false`, Shift-click is
+	 * ignored and `sortMode` is treated as single-column — the table still cycles asc → desc → none,
+	 * but only ever one active sort. Set `false` for surfaces (e.g. Files/Submissions) that want a
+	 * single sort key while keeping the capability available for other tables.
+	 */
+	multiSort?: boolean;
 	/** Selection strategy; pair with `selectionColumn` for a checkbox column. */
 	selectionMode?: TableSelectionMode;
 	/** Render a leading checkbox column (implies multiple selection affordance). */
@@ -138,6 +145,7 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 		columns,
 		dataKey,
 		sortMode = "single",
+		multiSort = true,
 		selectionMode = null,
 		selectionColumn = false,
 		onSelectionChange,
@@ -269,7 +277,7 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 		const current = sorts.value;
 		const existing = current.find((s) => s.field === field);
 		const dir = nextSortDir(existing?.dir ?? null);
-		if (sortMode === "multiple" || additive) {
+		if (multiSort && (sortMode === "multiple" || additive)) {
 			const rest = current.filter((s) => s.field !== field);
 			sorts.value = dir === null ? rest : [...rest, { field, dir }];
 		} else {

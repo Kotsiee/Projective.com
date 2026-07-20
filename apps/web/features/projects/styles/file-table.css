@@ -1,0 +1,216 @@
+/*
+ * FileTable — a dense, elegant data table. Rows are transparent with an ultra-faint bottom hairline
+ * (never a box, §B.4), highlighting to a muted tone on hover. The header row is sticky (below the
+ * toolbar), its columns click-sortable + drag-resizable. Window-virtualized body (absolute rows over a
+ * full-height sizer). The filename cell's thumbnail is zoom-adaptive. Token-only.
+ */
+.fx-table {
+	position: relative;
+	inline-size: 100%;
+}
+
+/* #region Header */
+.fx-table__head {
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--fx-toolbar-h));
+	z-index: calc(var(--z-sticky) - 1);
+	display: grid;
+	grid-template-columns: var(--fx-cols);
+	align-items: stretch;
+	background: var(--surface);
+	border-block-end: var(--hairline);
+}
+.fx-th {
+	position: relative;
+	display: flex;
+	align-items: center;
+	min-inline-size: 0;
+	padding-inline: var(--space-2);
+}
+.fx-th[data-align="end"] {
+	justify-content: flex-end;
+}
+.fx-th__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding-block: var(--space-2);
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	font-family: var(--font-sans);
+	font-size: 0.6875rem;
+	font-weight: 700;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+.fx-th__btn:hover {
+	color: var(--on-surface);
+}
+.fx-th__btn:focus-visible {
+	outline: none;
+	color: var(--on-surface);
+	box-shadow: 0 0 0 2px var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+.fx-th__sort {
+	font-size: 0.5625rem;
+	/* Inactive columns show a muted ⇅ affordance that only surfaces on header hover/focus. */
+	color: var(--text-secondary);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.fx-th__btn:hover .fx-th__sort,
+.fx-th__btn:focus-visible .fx-th__sort {
+	opacity: 0.6;
+}
+.fx-th__sort[data-active="true"] {
+	color: var(--primary);
+	opacity: 1;
+}
+.fx-th__resize {
+	position: absolute;
+	inset-block: 4px;
+	inset-inline-end: -4px;
+	inline-size: 9px;
+	cursor: col-resize;
+	touch-action: none;
+	z-index: 1;
+}
+.fx-th__resize::after {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 50%;
+	inline-size: 2px;
+	transform: translateX(-50%);
+	border-radius: 999px;
+	background: transparent;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fx-th__resize:hover::after,
+.fx-th__resize:focus-visible::after {
+	background: color-mix(in srgb, var(--primary) 55%, transparent);
+	outline: none;
+}
+/* #endregion */
+
+/* #region Body (window-virtualized) */
+.fx-table__body {
+	position: relative;
+}
+.fx-table__sizer {
+	position: relative;
+	inline-size: 100%;
+}
+.fx-row {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--v-start, 0);
+	block-size: var(--fx-rowh, 48px);
+	display: grid;
+	grid-template-columns: var(--fx-cols);
+	align-items: center;
+	border-block-end: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fx-row:hover,
+.fx-row:focus-visible {
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	outline: none;
+}
+.fx-row:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.fx-cell {
+	min-inline-size: 0;
+	padding-inline: var(--space-2);
+	overflow: hidden;
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.fx-cell--name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.fx-row__thumb {
+	flex: none;
+	inline-size: clamp(20px, calc(var(--fx-rowh) - 18px), 46px);
+	block-size: clamp(20px, calc(var(--fx-rowh) - 18px), 46px);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	color: var(--text-secondary);
+}
+.fx-row__thumb img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+}
+.fx-row__name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+}
+.fx-cell--sender {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.fx-row__sender {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fx-cell--size {
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.fx-table__loader {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding-block: var(--space-4);
+}
+.fx-spinner {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: 999px;
+	border: 2px solid color-mix(in srgb, var(--outline) 40%, transparent);
+	border-block-start-color: var(--primary);
+	animation: fx-spin 0.7s linear infinite;
+}
+@keyframes fx-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.fx-row,
+	.fx-th__btn,
+	.fx-th__resize::after {
+		transition: none;
+	}
+	.fx-spinner {
+		animation: none;
+	}
+}

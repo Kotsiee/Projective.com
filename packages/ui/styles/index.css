@@ -10,104 +10,115 @@
  */
 
 :root {
-	/* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
-	--radius-scale: 1;
-	--shadow-intensity: 1;
+    /* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
+    --radius-scale: 1;
+    --shadow-intensity: 1;
 
-	/* --- Radius ramp (§A.3) --- */
-	--radius-xs: calc(4px * var(--radius-scale));
-	--radius-sm: calc(6px * var(--radius-scale));
-	--radius-base: calc(8px * var(--radius-scale));
-	--radius-lg: calc(12px * var(--radius-scale));
-	--radius-xl: calc(16px * var(--radius-scale));
-	/* Luxury container curvatures — the enlarged end of the ramp for large panel intersections
+    /* --- Radius ramp (§A.3) --- */
+    --radius-xs: calc(4px * var(--radius-scale));
+    --radius-sm: calc(6px * var(--radius-scale));
+    --radius-base: calc(8px * var(--radius-scale));
+    --radius-lg: calc(12px * var(--radius-scale));
+    --radius-xl: calc(16px * var(--radius-scale));
+    /* Luxury container curvatures — the enlarged end of the ramp for large panel intersections
 	   (page body, nested frames, middle-nav columns). Both still ride --radius-scale. */
-	--radius-2xl: calc(24px * var(--radius-scale));
-	--radius-3xl: calc(32px * var(--radius-scale));
+    --radius-2xl: calc(24px * var(--radius-scale));
+    --radius-3xl: calc(32px * var(--radius-scale));
 
-	/* --- Elevation ramp (§A.3) --- */
-	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
-	--elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
-	--elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
+    /* --- Elevation ramp (§A.3) --- */
+    --elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
+    --elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
+    --elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
 
-	/* --- Motion (§B.5) --- */
-	--dur-fast: 150ms;
-	--dur-medium: 250ms;
-	--dur-slow: 350ms;
-	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
-	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
-	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
-	/* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
+    /* --- Motion (§B.5) --- */
+    --dur-fast: 150ms;
+    --dur-medium: 250ms;
+    --dur-slow: 350ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    /* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
 	   reflow and any physics-flavoured motion; expressed as easing curves for CSS transitions. */
-	--spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
-	--spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
+    --spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
+    --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
 
-	/* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
+    /* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
 	   layered surface stacks predictably. The OverlayManager increments from --z-overlay. --- */
-	--z-base: 0;
-	--z-raised: 10;
-	--z-sticky: 100;
-	--z-nav: 200;
-	--z-backdrop: 1000;
-	--z-overlay: 1100; /* dialogs / drawers / popovers — manager stacks upward from here */
-	--z-toast: 1600;
-	--z-tooltip: 1700;
-	--z-max: 2147483000;
+    --z-base: 0;
+    --z-raised: 10;
+    --z-sticky: 100;
+    --z-nav: 200;
+    --z-backdrop: 1000;
+    --z-overlay: 1100;
+    /* dialogs / drawers / popovers — manager stacks upward from here */
+    --z-toast: 1600;
+    --z-tooltip: 1700;
+    --z-max: 2147483000;
 
-	/* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
+    /* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
 	   literal px used in `@media`/container queries and are exposed for JS/container-query logic. --- */
-	--bp-sm: 480px;
-	--bp-md: 768px; /* modal → bottom-sheet swap point (Part D.3) */
-	--bp-lg: 1024px;
-	--bp-xl: 1280px;
+    --bp-sm: 480px;
+    --bp-md: 768px;
+    /* modal → bottom-sheet swap point (Part D.3) */
+    --bp-lg: 1024px;
+    --bp-xl: 1280px;
 
-	/* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
-	--space-0: 0;
-	--space-1: 0.25rem;
-	--space-2: 0.5rem;
-	--space-3: 0.75rem;
-	--space-4: 1rem;
-	--space-5: 1.5rem;
-	--space-6: 2rem;
-	--space-7: 3rem;
-	--space-8: 4rem;
+    /* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
+    --space-0: 0;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
 
-	/* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
-	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
-	--font-reading: var(--font-sans);
+    /* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    --font-reading: var(--font-sans);
 
-	/* --- Container max-widths (§C.3) --- */
-	--container-sm: 40rem;
-	--container-md: 48rem;
-	--container-lg: 64rem;
-	--container-xl: 80rem;
+    /* --- Container max-widths (§C.3) --- */
+    --container-sm: 40rem;
+    --container-md: 48rem;
+    --container-lg: 64rem;
+    --container-xl: 80rem;
 
-	/* --- Navigation shell (Part D) --- */
-	/* Enlarged, fluid nested-frame curvature. Grows with viewport between --radius-lg and the luxury
+    /* --- Navigation shell (Part D) --- */
+    /* Enlarged, fluid nested-frame curvature. Grows with viewport between --radius-lg and the luxury
 	   --radius-2xl/-3xl so the corners where the sidebar, middle nav, and body panel cross read soft
 	   and premium on wide screens without over-rounding compact ones. Both ride --radius-scale. */
-	--radius-container-lg: clamp(var(--radius-lg), 0.6vw + 8px, var(--radius-2xl));
-	--radius-container-xl: clamp(
-		var(--radius-xl),
-		1.2vw + 10px,
-		var(--radius-3xl)
-	); /* main body panel */
-	--glass-blur: 18px; /* backdrop-filter blur for guest/mobile glass header */
-	/* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
+    --radius-container-lg: clamp(var(--radius-lg), 0.6vw + 8px, var(--radius-2xl));
+    --radius-container-xl: clamp(var(--radius-xl),
+            1.2vw + 10px,
+            var(--radius-3xl));
+    /* main body panel */
+    --glass-blur: 18px;
+    /* backdrop-filter blur for guest/mobile glass header */
+    /* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
 	   edge only (header/nav/body region seams) — never as a four-sided box on non-interactive content. */
-	--hairline-color: color-mix(in srgb, var(--outline) 40%, transparent);
-	--hairline: 1px solid var(--hairline-color);
-	--shell-gutter: var(--space-2); /* parent-track thickness revealed between nested frames */
-	--shell-topbar-h: 48px;
-	--shell-midnav-header-h: 3rem; /* configurable middle-nav content-pane header (PageCanvas header slot) */
-	--shell-sidebar-w: 64px; /* collapsed icon rail */
-	--shell-sidebar-w-expanded: 224px;
-	--shell-nav-block: 48px; /* collapsed-rail square hit-target (icon block) */
-	--shell-lane-w: 280px; /* middle-nav (Blue) lane default width */
-	--shell-bottomnav-h: 56px; /* mobile thumb-nav bar height (Part D.3) */
+    --hairline-color: color-mix(in srgb, var(--outline) 20%, transparent);
+    --hairline: 1px solid var(--hairline-color);
+    --shell-gutter: var(--space-2);
+    /* parent-track thickness revealed between nested frames */
+    --shell-topbar-h: 48px;
+    --shell-midnav-header-h: 3rem;
+    /* configurable middle-nav content-pane header (PageCanvas header slot) */
+    --shell-midnav-footer-h: 3rem;
+    /* configurable middle-nav footer band (composer / View Control Rig) — used to stop the frame
+	   surface at the band's top edge; symmetric with the header band height */
+    --shell-sidebar-w: 64px;
+    /* collapsed icon rail */
+    --shell-sidebar-w-expanded: 224px;
+    --shell-nav-block: 48px;
+    /* collapsed-rail square hit-target (icon block) */
+    --shell-lane-w: 280px;
+    /* middle-nav (Blue) lane default width */
+    --shell-bottomnav-h: 56px;
+    /* mobile thumb-nav bar height (Part D.3) */
 
-	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
+    /* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	   runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
 }
 
@@ -118,22 +129,22 @@
 *,
 *::before,
 *::after {
-	box-sizing: border-box;
+    box-sizing: border-box;
 }
 
 /* Visually-hidden utility — removes an element from the visual layout while keeping it in the
    accessibility tree (non-color status channels, dot labels, "Loading…" text). §A.5/§C.6. */
 .ui-visually-hidden {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	margin: -1px;
-	padding: 0;
-	border: 0;
-	overflow: hidden;
-	clip: rect(0 0 0 0);
-	clip-path: inset(50%);
-	white-space: nowrap;
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 /* Anchored-overlay primitive — consumes the `--float-*` custom properties written by `useFloating` /
@@ -141,71 +152,108 @@
    `overflow: hidden`/`clip`/`auto` clip boundary, and the hook's boundary math keeps it clear of the
    higher-level nav. The `-9999px` fallbacks park it off-screen until the first measure (no flash). */
 .ui-anchored {
-	position: fixed;
-	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
-	inline-size: var(--float-width, auto);
-	z-index: var(--z-portal, var(--z-overlay));
+    position: fixed;
+    inset-block-start: var(--float-top, -9999px);
+    inset-inline-start: var(--float-left, -9999px);
+    inline-size: var(--float-width, auto);
+    z-index: var(--z-portal, var(--z-overlay));
 }
 
 /*
- * Custom scrollbar (global) — a transparent track (no blocky lines) and a muted, highly-rounded pill
- * thumb that gains contrast on hover. Token-driven so it recolors with the theme. Firefox uses the
- * standard `scrollbar-*`; Chromium/WebKit use the `::-webkit-scrollbar-*` pseudo-elements. The thumb's
- * transparent border + `background-clip: padding-box` gives the thin pill inset from the edge.
+ * Custom scrollbar (global, self-hiding) — every INNER scroll container (any element that is not the
+ * root document) gets a fully transparent track + a thumb that is invisible at rest and only fades in
+ * while the container is HOVERED (or the thumb itself is grabbed). Scrollbar buttons/arrows are hidden
+ * at all times. Token-driven so it recolors with the theme.
+ *
+ * Scope: the `:not(html):not(body)` guard excludes the root/viewport scrollbar, so the MAIN WINDOW
+ * keeps standard browser behaviour (always-visible native bar). Component viewports that fully hide
+ * their native bar (`.ui-scroll-area__viewport`, `.ui-scrollpanel__viewport`, `.ui-tabmenu__scroll`,
+ * `.ui-tabview__nav--scrollable`) win on class specificity (0,1,0 > this rule's 0,0,2) and are
+ * unaffected.
+ *
+ * Firefox exposes only `scrollbar-*`: no per-state fade or button hiding, so the thumb is revealed on
+ * container hover via `scrollbar-color` (thin, no buttons rendered natively). Chromium/WebKit use the
+ * richer `::-webkit-scrollbar-*` pseudo-elements. The thumb's transparent border +
+ * `background-clip: padding-box` gives the thin pill inset from the edge.
+ *
+ * Reveal is BOTH hover- and scroll-driven. Pure CSS has no "is-scrolling" selector, so the scroll half
+ * comes from the app-side `ScrollIdle` island (mounted globally in `_app.tsx`): it stamps the element
+ * that scrolled with `[data-ui-scrolling]` for a short idle window, which these rules reveal exactly
+ * like `:hover`. The window scrollbar is left native (the island skips document/window scrolls); a
+ * consumer that omits the island degrades gracefully to the hover-only reveal.
  */
-* {
-	scrollbar-width: thin;
-	scrollbar-color: color-mix(in srgb, var(--outline) 32%, transparent) transparent;
+:not(html):not(body) {
+    scrollbar-width: thin;
+    /* thumb track — transparent thumb keeps it invisible at rest */
+    scrollbar-color: transparent transparent;
 }
 
-::-webkit-scrollbar {
-	inline-size: 10px;
-	block-size: 10px;
+:not(html):not(body):hover,
+:not(html):not(body)[data-ui-scrolling] {
+    scrollbar-color: color-mix(in srgb, var(--outline) 40%, transparent) transparent;
 }
 
-::-webkit-scrollbar-track {
-	background: transparent;
+:not(html):not(body)::-webkit-scrollbar {
+    inline-size: 10px;
+    block-size: 10px;
 }
 
-::-webkit-scrollbar-thumb {
-	background: color-mix(in srgb, var(--outline) 28%, transparent);
-	border: 2px solid transparent;
-	border-radius: 999px;
-	background-clip: padding-box;
+:not(html):not(body)::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-::-webkit-scrollbar-thumb:hover {
-	background: color-mix(in srgb, var(--outline) 55%, transparent);
-	background-clip: padding-box;
+:not(html):not(body)::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
-::-webkit-scrollbar-corner {
-	background: transparent;
+/* Reveal on container hover or while scrolling (ScrollIdle island); deepen on grab/hover of the thumb. */
+:not(html):not(body):hover::-webkit-scrollbar-thumb,
+:not(html):not(body)[data-ui-scrolling]::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--outline) 32%, transparent);
+}
+
+:not(html):not(body)::-webkit-scrollbar-thumb:hover,
+:not(html):not(body)::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in srgb, var(--outline) 55%, transparent);
+}
+
+/* Buttons/arrows and the corner are never drawn. */
+:not(html):not(body)::-webkit-scrollbar-button {
+    display: none;
+    inline-size: 0;
+    block-size: 0;
+}
+
+:not(html):not(body)::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 /* Simultaneous, frame-coherent theme crossfade — one clock across the whole tree (§B.5). */
 *,
 *::before,
 *::after {
-	transition:
-		color var(--dur-slow) var(--ease-standard),
-		background-color var(--dur-slow) var(--ease-standard),
-		border-color var(--dur-slow) var(--ease-standard),
-		fill var(--dur-slow) var(--ease-standard);
+    transition:
+        color var(--dur-slow) var(--ease-standard),
+        background-color var(--dur-slow) var(--ease-standard),
+        border-color var(--dur-slow) var(--ease-standard),
+        fill var(--dur-slow) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	:root {
-		--dur-fast: 0ms;
-		--dur-medium: 0ms;
-		--dur-slow: 0ms;
-	}
+    :root {
+        --dur-fast: 0ms;
+        --dur-medium: 0ms;
+        --dur-slow: 0ms;
+    }
 
-	*,
-	*::before,
-	*::after {
-		transition-duration: 0ms !important;
-		animation: none !important;
-	}
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0ms !important;
+        animation: none !important;
+    }
 }

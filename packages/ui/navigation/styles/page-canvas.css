@@ -7,6 +7,32 @@
     flex-direction: column;
 }
 
+.ui-page-canvas::before {
+    content: "";
+    display: block;
+    position: fixed;
+    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+    border-block-start: var(--hairline);
+    border-inline-start: var(--hairline);
+    border-start-start-radius: var(--frame-radius);
+    z-index: 0;
+    pointer-events: none;
+    background: var(--frame-surface, var(--surface));
+}
+
+/* With a middle-nav footer band present (composer / View Control Rig), the frame surface must stop at
+   the band's top edge instead of running behind it to the viewport bottom — so its bottom-inline-start
+   corner rounds symmetrically with the top-inline-start corner. Shorten the fixed `::before` by the
+   footer band's height (on top of the top-start inset) and round the matching corner. */
+.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h) + var(--space-1));
+    border-end-start-radius: var(--frame-radius);
+    border-block-end: var(--hairline);
+}
+
 /* Plain content wrapper (renamed from `__scroll` — it no longer scrolls; the window does). Grows with
    its content so the document lengthens and the window scrollbar takes over. A flex column so a page
    that opts to fill the content pane (e.g. the channel chat feed, which bottom-anchors its stream) can

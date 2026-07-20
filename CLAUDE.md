@@ -587,6 +587,133 @@ components/*,core/{message-model,MessagesService,messages-ssr,channel-footer-slo
 `apps/web/features/shell/components/UserShell.tsx` · `apps/web/routes/(dashboard)/_layout.tsx` ·
 Decisions #26 / #27 / #30 |
 
+| 32 | **File Explorer — `/files` (channel + project scope) (2026-07-20).** The 7th thin-frontend/fat-backend
+read: a virtualized, zoom-driven File Explorer for a project's channel attachments. Channel scope
+`/projects/[projectId]/[channelId]/files` (attachments in one channel; the shell mounts the channel
+header with the active Files tab) and project scope `/projects/[projectId]/files` (all channels, with a
+**Channels-top-level** tree navigator — the `FileChannelTree`; legacy `/attachments` 308-redirects here,
+and per-channel `/attachments` → that channel's `/files`). New **Zod SSOT `@projective/types/projects/files`**
+(`FileItem`/`FileListPage`/`FileListParams`/`FileKind`/`FileSortKey`…); fat `ProjectBackendService.files`
+→ thin `/api/projects/files` → client `FilesService` → SSR `resolveFilePage`, gated by the SAME
+`PROJECTS_BACKEND_LIVE`. Fixtures **derive** a deterministic file corpus from `ProjectDetail`'s channels
+(fixed clock, unsigned hash indices — a signed `>>` went negative → a "….undefined" ext) — **no DB
+migration** (a read projection over the eventual `files.*` tables, like `detail`/`messages`).
+**Zoom-driven view (NO grid/list toggle button):** one continuous `zoom` (0–1) shared cross-island via
+`core/view-state.ts`; below the centre marker = the dense list/table (adaptive inline thumbnail →
+category icon), above it = the rounded-**square** card grid (cards scale with zoom); `Ctrl`+wheel over
+the workspace drives it (default-prevented). Both viewports window-virtualize with infinite scroll. New
+`@projective/ui` primitives (§C.1 roster + Part-C prose updated in the same change): **`display/VirtualGrid`**
+(1D-by-row windowed grid), **`fields/SortControl`** (property dropdown + asc/desc toggle in one borderless
+block), **`fields/ZoomSlider`** (the footer View Control Rig's − · segmented track + centre marker · +),
+the borderless **`.ui-field--bare`** variant, and **`layout/SplitterPanel.maxSize`**. The **universal
+preview modal** (footer-less; a `.ui-splitter` media/metadata split with hard min/max %; a `Carousel`
+swipe + a bottom companion tray for multi-file posts; per-type inline previews incl. syntax-highlighted
+code; inline rename on the viewer's OWN files; Download/Star/kebab) mounts through **`BodyPortal`** to
+beat the glass-blur `position:fixed` re-base trap. **CRITICAL splitter-protection (tested):** the layout
+`Splitter` (the modal) and the nav lane `MiddleNavSplitter` share `.ui-splitter`; the nav's globally-
+loaded `splitter.css` (`inline-size: var(--shell-lane-w)`) would otherwise force the modal splitter to the
+lane width (the "wide-or-collapsed binary"), so the layout splitter's ROOT box rules are scoped to its
+`--horizontal`/`--vertical` modifiers (specificity beats the bare nav rule; the lane never carries them) —
+`useSplitter`/`MiddleNavSplitter`/nav `splitter.css` are **untouched**. The View Control Rig is resolved
+into the middle-nav footer band by `filesFooterFor` (composed after `channelFooterFor`). The footer
+persists `zoom`; table column widths persist too (`LocalKeys.FILES_ZOOM` / `FILES_COLUMNS`). **Also fixed
+(pre-existing, unrelated):** `packages/ui/navigation/styles/index.css` `@import`ed a non-existent
+`./file-tree.css` (orphaned by earlier uncommitted files work) — every dashboard route 500'd; the dead
+import was removed. **Deviation flagged (surface, do not silently resolve):** the brief's `/attachments`
+"under `/channels`" was implemented as a redirect to `/files` (Channels are the tree's top level), not a
+distinct `/channels` route. | `PRODUCT_SPEC.md` §Unified Messaging / attachments · `packages/types/projects/files.ts`
+· `packages/backend/services/projects/files-fixtures.ts` · `apps/web/routes/api/projects/files.ts` ·
+`apps/web/features/projects/{islands/{FileExplorer,ViewControlRig}.island,components/{FileCard,FileTable,
+FileChannelTree,AttachmentPreviewModal,FilePreview,file-glyphs}.tsx,core/{view-state,file-model,FilesService,
+files-ssr,files-footer-slot}}` · `packages/ui/{display/islands/VirtualGrid,fields/islands/{SortControl,ZoomSlider},
+layout/islands/Splitter}.tsx` · `apps/web/routes/(dashboard)/projects/[projectId]/{files,attachments,[channelId]/{files,attachments}}.tsx`
+· Decisions #10 / #31 |
+
+| 33 | **Submissions explorer — `/submissions` (channel + project scope) (2026-07-20).** The 8th
+thin-frontend/fat-backend read, and a near-twin of the File Explorer (Decision #32): the Submissions
+canvas is the Files canvas PLUS a full-height sticky navigation **tree** (left, separated by a single
+`--hairline` vertical divider, §B.4) and an interactive **breadcrumbs** bar atop the workspace. New Zod
+SSOT **`@projective/types/projects/submissions`** (`SubmissionTreeNode` [recursive `z.lazy`],
+`SubmissionUnit`, `SubmissionCrumb`, `SubmissionNote`/`SubmissionReview`, `SubmissionListParams`/`Page`;
+file rows REUSE `FileItemSchema`, sort/filter reuse `FileSortKey`); fat `ProjectBackendService.submissions`
+→ thin `/api/projects/submissions` → client `SubmissionsService` → SSR `resolveSubmissionPage`, gated by
+the SAME `PROJECTS_BACKEND_LIVE`. Fixtures **derive** the deliverable hierarchy from `ProjectDetail`
+(stages + provider-side members → tree; deterministic, unsigned-hash indices, fixed clock) — **no DB
+migration** (a read projection over the eventual `submissions.*`/`files.*` tables, like `files`/`messages`).
+**Tree hierarchy** (Part 3): project scope prepends **Stages** as tree roots, then Submitter (with
+profile **avatar**) → Unit (custom-name / ticket / timestamp) → nested directories; the
+**single-freelancer override** collapses the submitter level (applied per stage in project scope).
+**Routing changed to a WILDCARD** `[...path]` in both scopes (`…/submissions/[...path].tsx`; the old
+single-segment `[channelId]/submissions.tsx` placeholder removed) so any tree node is a deep-linkable URL
+the tree + breadcrumbs address; the project-scope static `submissions` segment precedes `[channelId]`
+(never shadows a channel), and `activeTabOf` keeps the header's Submissions tab active on deep paths.
+Tree + breadcrumb clicks re-scope via the thin service and sync the URL via `history.pushState`
+(back/forward via `popstate`). **Zoom-driven grid⇄list (no toggle), Ctrl+wheel, window-virtualized** —
+all REUSED from the File Explorer (`FileCard`/`FileTable`/`FilePreview`/`AttachmentPreviewModal`/`view-state`
+zoom, shared `FILES_ZOOM` key). Footer band = the **View Control Rig** (left) + a far-**right Review
+Submission** trigger (Part 4; shown when an active unit is in view AND `viewerIsClient`), bridged to the
+explorer via cross-island signals (`core/submissions-review.ts`, like the chat footer↔body pattern) and
+resolved by `submissionsFooterFor` (composed after `channelFooterFor`/`filesFooterFor`). The **review
+workspace modal** is a `layout/Splitter` (small context sidebar: freelancer card · Stage/Ticket/Notes tabs
+w/ badge · full-height tree — large workspace: media preview + metadata/feedback, expand-fullscreen +
+open-in-new-tab), footered with **Request Revision** (blocked until a text annotation OR global guideline
+is provided) / **Accept Submission**; mounted via `BodyPortal` (glass-blur trap). New reusable
+`@projective/ui` **`navigation/TreeNav`** (chevron disclosure, avatar/status slots) + a backward-compatible
+**`Breadcrumb` `command`** extension for client-driven trails (§C.1 roster updated same change). **Splitter
+collision** discipline (Decision #32) is INHERITED unchanged — `splitter.css` + the nav splitter are
+untouched; the modal reuses the modifier-scoped layout `Splitter`. **Deviation flagged (surface, do not
+silently resolve):** the task brief's per-file sender/profile shapes are the canonical `/@handle`
+(`profileHref`, Decision #3), not a `/profiles/[id]` path. | `PRODUCT_SPEC.md` §Stage Management /
+Submissions · `packages/types/projects/submissions.ts` ·
+`packages/backend/services/projects/submissions-fixtures.ts` · `apps/web/routes/api/projects/submissions.ts`
+· `apps/web/features/projects/{islands/{SubmissionExplorer,SubmissionViewControlRig}.island,components/{SubmissionTree,
+SubmissionBreadcrumbs,SubmissionReviewModal,submission-glyphs}.tsx,core/{submission-model,SubmissionsService,
+submissions-ssr,submissions-review,submissions-footer-slot}}` · `packages/ui/navigation/{islands/TreeNav,
+components/Breadcrumb}.tsx` · `apps/web/routes/(dashboard)/projects/[projectId]/{submissions/[...path],[channelId]/submissions/[...path]}.tsx`
+· `DESIGN_SYSTEM.md` §C.1 · `ROUTING.md` · Decisions #10 / #31 / #32 |
+
+| 34 | **Shared AudioVisualizer + Table sort config + attachment-modal & submission-card polish
+(2026-07-20).** Four related enhancements over Decisions #31–#33 (presentation + one reusable
+component; **no DB/lifecycle/business-rule change**). **(A) `@projective/ui/display` AudioVisualizer.**
+The `.msg-audio` canvas waveform player (previously duplicated between the projects
+`MessageAudioPlayer` and the composer `useWaveform`) is promoted to a reusable, token-driven component
+(`packages/ui/display/{islands/AudioVisualizer,core/audio,styles/audio-visualizer.css}`): play/pause ·
+a seekable rounded-bar `<canvas>` waveform (`role="slider"`) · an elapsed/duration clock · an optional
+speed cycle, with a **dual transport** (a real `src` owns a hidden `<audio>`; an absent/`"#"` source
+simulates progress over `durationMs` so stub fixtures still demo) and a **two-tone
+`--wave-played`/`--wave-rest`** waveform that inherits from an ancestor (an "own" chat bubble re-tints
+it) — the component sets **no** local `--wave-*` so the bubble's inherited values win, and falls back
+to `--primary`/`--text-secondary` tokens in JS. `MessageAudioPlayer` is now a thin adapter; the
+`FilePreview` audio branch renders it too, so the **attachment modal and the review workspace** get a
+real player for free. The composer's live-scrolling `useWaveform` (a distinct capture mode) stays.
+**(B) Table sort config.** The shared `Table` gains a per-table **`multiSort`** flag (default `true`;
+`false` ignores Shift-click → single-column, still 3-state) so the capability stays "available for
+future use". Files/Submissions keep the **bespoke `FileTable`** (its zoom-view/window-virtualization/
+`FILES_COLUMNS` resize are unchanged) but gain **3-state single-column sort**: the header cycles
+asc→desc→**none**, where "none" **clears the active sort key** (`sortKey=""` → `sort` omitted → the
+backend's default order) rather than widening `FileSortDir` — chosen so the toolbar `SortControl`'s
+2-state `direction` binding stays type-sound; multi-sort is inherently off. **(C) Attachment modal.**
+The media stage is bounded (`overflow:hidden` + `max-*:100%`) so a large preview never overlaps the
+left thumbnail tray; a **"Go to Message"** aside link routes to the source message
+(`channelMessageHref` → `/projects/{id}/{channel}/chat#m-{messageId}`, canonical channel namespace per
+Decision #22, anchor best-effort into the virtualized feed); and a Submissions-context **client Notes
+area** (`notesMode` prop, left panel) lets the reviewer jot review notes (session-local stub +
+`onSaveNote` for future persistence). **(D) Submissions card drill-down** (executes Decision #33's Part
+3 intent while **keeping** its Stage-first hierarchy — children-as-cards, NOT a reorder): the
+Submissions workspace renders the **current node's direct children as navigable cards/rows** (new
+`FreelancerCard` for `submitter`, `SubmissionCard` for `unit`/`stage`/`dir`, `SubmissionNodeList` for
+list mode) and only falls back to the file grid at a `unit`/`dir` leaf (or when a search/filter is
+active). So channel scope leads with **Freelancer Cards** directly, and project scope drills
+**Stage → Freelancer Cards → Submission Cards → files**; clicking a card reuses the existing
+`navigate()`/pushState plumbing (new pure `nodeAt`/`childNodesAt`/`nodeShowsChildCards` in
+`submission-model.ts`, no backend/Zod change). Part 4's Client Review Workspace was already shipped by
+Decision #33 and is unchanged bar the free audio upgrade. | `DESIGN_SYSTEM.md` §C.1 (display roster +
+Part-C) · `packages/ui/display/{islands/AudioVisualizer,core/audio,styles/audio-visualizer,islands/Table}`
+· `apps/web/features/projects/{components/{MessageAudioPlayer,FilePreview,AttachmentPreviewModal,FileTable,
+FreelancerCard,SubmissionCard,SubmissionNodeList},core/{chat-context,submission-model},islands/{FileExplorer,
+SubmissionExplorer}.island,styles/{attachment-modal,file-table,submission-card,chat-feed}.css}` · Decisions
+#22 / #31 / #32 / #33 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

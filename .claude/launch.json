@@ -48,6 +48,18 @@
       "runtimeExecutable": "deno",
       "runtimeArgs": ["task", "dev", "--port", "5873", "--strictPort"],
       "port": 5873
+    },
+    {
+      "name": "web-files",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "5973", "--strictPort"],
+      "port": 5973
+    },
+    {
+      "name": "web-subm",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "6073", "--strictPort"],
+      "port": 6073
     }
   ]
 }

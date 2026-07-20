@@ -35,6 +35,7 @@ export { Link, type LinkProps } from "./components/Link.tsx";
 // #region Islands (interactive — hydrate via app wrappers)
 export { MiddleNavSplitter, type MiddleNavSplitterProps } from "./islands/MiddleNavSplitter.tsx";
 export { MobileMenu, type MobileMenuProps } from "./islands/MobileMenu.tsx";
+export { TreeNav, type TreeNavNode, type TreeNavProps } from "./islands/TreeNav.tsx";
 // #endregion
 
 // #region Menus (popup + inline, cascading submenus over the shared MenuItem model)

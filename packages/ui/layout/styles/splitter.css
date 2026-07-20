@@ -1,11 +1,35 @@
 /* Splitter — resizable split layout. Panes size via the --split-size custom property (flex-basis);
-   gutters are the one interactive element here and are the only piece with a visible affordance. */
+   gutters are the one interactive element here and are the only piece with a visible affordance.
+
+   COLLISION SAFETY (critical): the navigation lane (`MiddleNavSplitter`) reuses the SAME `.ui-splitter`
+   block name and ships a GLOBALLY-loaded `navigation/styles/splitter.css` whose bare `.ui-splitter`
+   rule sets `inline-size: var(--shell-lane-w)` + `flex: 0 0 auto` + `transition: inline-size`. Those
+   would cascade onto THIS layout splitter (same class) by source order and force it to the lane's
+   width — the "wide-or-collapsed binary" bug. So every ROOT box declaration here is written as the
+   COMPOUND selector `.ui-splitter.ui-splitter--horizontal` (TWO classes on one element → specificity
+   0,2,0), which genuinely OUTRANKS the nav's bare `.ui-splitter` (0,1,0) regardless of stylesheet
+   order — the lane never carries the `--horizontal`/`--vertical` modifier, so these rules never touch
+   it. A bare `.ui-splitter--horizontal` is a SINGLE class (0,1,0), only EQUAL to `.ui-splitter`, so it
+   would tie and be decided by source order — do NOT drop the leading `.ui-splitter` from the compound,
+   and never move these declarations onto the bare `.ui-splitter` selector. */
 .ui-splitter {
 	display: flex;
-	width: 100%;
-	height: 100%;
 	min-width: 0;
 	min-height: 0;
+}
+
+/* Root box — the COMPOUND selector (two classes, 0,2,0) so the global nav
+   `.ui-splitter { inline-size: var(--shell-lane-w) }` (0,1,0) can never win over it regardless of load
+   order (see the note above). `flex` + `transition` are re-asserted for the same reason (the nav sets
+   both on the bare class). The layout splitter animates PANES, not the root. */
+.ui-splitter.ui-splitter--horizontal,
+.ui-splitter.ui-splitter--vertical {
+	inline-size: 100%;
+	block-size: 100%;
+	min-inline-size: 0;
+	min-block-size: 0;
+	flex: 1 1 auto;
+	transition: none;
 }
 
 .ui-splitter--vertical {
@@ -28,6 +52,7 @@
 	height: 100%;
 }
 
+/* #region Gutter — the resize affordance */
 .ui-splitter__gutter {
 	position: relative;
 	flex: none;
@@ -40,46 +65,89 @@
 }
 
 .ui-splitter--horizontal .ui-splitter__gutter {
-	width: var(--split-gutter-size, 8px);
+	width: var(--split-gutter-size, 10px);
 	cursor: col-resize;
 }
 
 .ui-splitter--vertical .ui-splitter__gutter {
-	height: var(--split-gutter-size, 8px);
+	height: var(--split-gutter-size, 10px);
 	cursor: row-resize;
 }
 
+/*
+ * The grip is a full-length thin TRACK that sits precisely on the seam between panes, plus a distinct
+ * centered grab HANDLE (the ::after knob, ~8px along the drag axis). At rest the track is a razor
+ * hairline; on hover/focus it thickens to ~4px and lights to the primary accent, near-instantaneously
+ * (--dur-fast; reduced-motion drops it entirely). Token-only, no hardcoded colour.
+ */
 .ui-splitter__grip {
+	position: relative;
+	background: var(--hairline-color);
+	border-radius: 999px;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		inline-size var(--dur-fast) var(--ease-standard),
+		block-size var(--dur-fast) var(--ease-standard);
+}
+.ui-splitter__grip::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
 	background: var(--outline);
-	border-radius: var(--radius-xs);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	opacity: 0.5;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
 }
 
 .ui-splitter--horizontal .ui-splitter__grip {
-	width: 2px;
-	height: 1.5rem;
+	inline-size: 2px;
+	block-size: 100%;
 }
-
+.ui-splitter--horizontal .ui-splitter__grip::after {
+	inline-size: 8px;
+	block-size: 2.25rem;
+}
 .ui-splitter--vertical .ui-splitter__grip {
-	width: 1.5rem;
-	height: 2px;
+	block-size: 2px;
+	inline-size: 100%;
+}
+.ui-splitter--vertical .ui-splitter__grip::after {
+	block-size: 8px;
+	inline-size: 2.25rem;
 }
 
-.ui-splitter__gutter:hover .ui-splitter__grip {
+.ui-splitter__gutter:hover .ui-splitter__grip,
+.ui-splitter__gutter:focus-visible .ui-splitter__grip {
+	background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+.ui-splitter--horizontal .ui-splitter__gutter:hover .ui-splitter__grip,
+.ui-splitter--horizontal .ui-splitter__gutter:focus-visible .ui-splitter__grip {
+	inline-size: 4px;
+}
+.ui-splitter--vertical .ui-splitter__gutter:hover .ui-splitter__grip,
+.ui-splitter--vertical .ui-splitter__gutter:focus-visible .ui-splitter__grip {
+	block-size: 4px;
+}
+.ui-splitter__gutter:hover .ui-splitter__grip::after,
+.ui-splitter__gutter:focus-visible .ui-splitter__grip::after {
 	background: var(--primary);
+	opacity: 1;
 }
 
 .ui-splitter__gutter:focus-visible {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
 }
-
-.ui-splitter__gutter:focus-visible .ui-splitter__grip {
-	background: var(--primary);
-}
+/* #endregion */
 
 @media (prefers-reduced-motion: reduce) {
-	.ui-splitter__pane {
+	.ui-splitter__pane,
+	.ui-splitter__grip,
+	.ui-splitter__grip::after {
 		transition: none;
 	}
 }

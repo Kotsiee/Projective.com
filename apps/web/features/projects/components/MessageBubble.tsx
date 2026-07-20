@@ -87,7 +87,7 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 				<div class="msg-bubble" data-own={own ? "true" : undefined} data-pos={row.groupPos}>
 					{hasText && <p class="msg-bubble__text">{m.text}</p>}
 					{m.attachments.length > 0 && <MessageMedia attachments={m.attachments} />}
-					{m.audio && <MessageAudioPlayer audio={m.audio} own={own} />}
+					{m.audio && <MessageAudioPlayer audio={m.audio} />}
 					{m.favorited && (
 						<span class="msg-bubble__fav" aria-label="Favourited" title="Favourited">
 							{cloneElement(WonkyStarIcon)}

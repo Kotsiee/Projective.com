@@ -10,14 +10,20 @@ import {
 } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
+import { findFilePage } from "./files-fixtures.ts";
+import { findSubmissionPage } from "./submissions-fixtures.ts";
 import type {
 	CreateProject,
+	FileListPage,
+	FileListParams,
 	MessagePage,
 	MessagePageParams,
 	ProjectDetail,
 	ProjectFeedParams,
 	ProjectFeedPayload,
 	ProjectSummary,
+	SubmissionListPage,
+	SubmissionListParams,
 } from "@projective/types/projects";
 
 /**
@@ -107,6 +113,49 @@ export class ProjectBackendService {
 		// back to the fixture-backed page so behaviour is preserved until that path lands.
 		const page = findMessagePage(params);
 		if (!page) return fail(404, { message: "No such project channel." });
+		return ok({ page });
+	}
+
+	/**
+	 * A page of files for the File Explorer — the attachments shared across a project's channels
+	 * (`/projects/[projectId]/files`) or one channel (`/projects/[projectId]/[channelId]/files`).
+	 * `channelId` unset/null selects the whole project (all channels, plus the channel index the tree
+	 * navigator renders); set narrows to that channel. The page is already sorted + filtered + cursor-
+	 * paged for the virtualized grid/list. SSR calls this directly for first paint; the explorer island
+	 * refines (sort/filter/scroll-load) via the thin `FilesService`.
+	 */
+	static files(params: FileListParams): ServiceResult<{ page: FileListPage }> {
+		if (!isProjectsBackendLive()) {
+			const page = findFilePage(params);
+			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+			return ok({ page });
+		}
+		// LIVE: read the RLS-scoped `files.*` / `messages.*` attachments (not yet implemented) — fall
+		// back to the fixture-backed page so behaviour is preserved until that path lands.
+		const page = findFilePage(params);
+		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		return ok({ page });
+	}
+
+	/**
+	 * A page of the Submissions explorer — the deliverable hierarchy a client reviews, scoped to one
+	 * channel (`/projects/[projectId]/[channelId]/submissions/…`) or the whole project (Stages as tree
+	 * roots, `/projects/[projectId]/submissions/…`). Returns the navigation tree, the files under the
+	 * requested `path` (already sorted + filtered + cursor-paged), the breadcrumb trail, and — when the
+	 * path resolves to a submission unit — the review projection the review workspace modal renders. SSR
+	 * calls this directly for first paint; the explorer island refines / navigates via the thin
+	 * `SubmissionsService`.
+	 */
+	static submissions(params: SubmissionListParams): ServiceResult<{ page: SubmissionListPage }> {
+		if (!isProjectsBackendLive()) {
+			const page = findSubmissionPage(params);
+			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+			return ok({ page });
+		}
+		// LIVE: read the RLS-scoped `submissions.*` / `files.*` graph (not yet implemented) — fall back
+		// to the fixture-backed page so behaviour is preserved until that path lands.
+		const page = findSubmissionPage(params);
+		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
 		return ok({ page });
 	}
 

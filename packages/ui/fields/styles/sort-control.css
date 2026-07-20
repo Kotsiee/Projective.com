@@ -1,0 +1,134 @@
+/*
+ * SortControl — the property dropdown + direction toggle as ONE compound block. Borderless at rest;
+ * hover/focus reveal a faint surface tint + soft ring only (§B.4 — full borders reserved for the
+ * open/active affordance). Compact, tight radii for the enterprise toolbar. Token-only.
+ */
+.ui-sort {
+	--sort-h: 2rem;
+	--sort-radius: var(--radius-sm);
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	block-size: var(--sort-h);
+}
+.ui-sort--size-md {
+	--sort-h: 2.25rem;
+}
+.ui-sort--size-lg {
+	--sort-h: 2.5rem;
+}
+
+/* Shared borderless button treatment for the trigger + the direction toggle. */
+.ui-sort__trigger,
+.ui-sort__dir {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: var(--sort-h);
+	padding-inline: var(--space-2);
+	border: none;
+	border-radius: var(--sort-radius);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.ui-sort__dir {
+	inline-size: var(--sort-h);
+	padding-inline: 0;
+	justify-content: center;
+	color: var(--text-secondary);
+}
+.ui-sort__trigger:hover,
+.ui-sort__dir:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.ui-sort__dir:hover {
+	color: var(--on-surface);
+}
+.ui-sort__trigger:focus-visible,
+.ui-sort__dir:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.ui-sort__trigger[aria-expanded="true"] {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.ui-sort__label {
+	color: var(--text-secondary);
+}
+.ui-sort__value {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-weight: 600;
+}
+.ui-sort__value-icon,
+.ui-sort__option-icon {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+.ui-sort__chevron {
+	display: inline-flex;
+	color: var(--text-secondary);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-sort__chevron[data-open="true"] {
+	transform: rotate(180deg);
+}
+
+/* The floating property listbox — a full outline is allowed (it is an interactive surface, §B.4). */
+.ui-sort__menu {
+	min-inline-size: 11rem;
+	max-block-size: 60vh;
+	overflow-y: auto;
+	padding: var(--space-1);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+}
+.ui-sort__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-sort__option:hover,
+.ui-sort__option:focus-visible {
+	outline: none;
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.ui-sort__option[data-selected="true"] {
+	color: var(--primary);
+	font-weight: 600;
+}
+.ui-sort__option-label {
+	flex: 1 1 auto;
+}
+.ui-sort__option-check {
+	display: inline-flex;
+	color: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-sort__chevron {
+		transition: none;
+	}
+}

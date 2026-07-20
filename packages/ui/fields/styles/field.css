@@ -61,6 +61,29 @@
 	--field-bg: transparent;
 	--field-border: transparent;
 }
+/*
+ * Borderless toolbar treatment: no resting border/background at all; hover reveals only a faint
+ * surface tint, focus only a soft ring — a hairline NEVER paints. Tighter inline padding + a crisp
+ * radius for the high-end, compact enterprise look. Because the base `.ui-field:hover` rule sets a
+ * hairline `--field-border`, the bare variant must re-null it in its own (higher-specificity) hover +
+ * focus rules, otherwise a border reappears — this is why `--transparent` alone is not truly bare.
+ */
+.ui-field--bare {
+	--field-bg: transparent;
+	--field-border: transparent;
+	--field-radius: var(--radius-sm);
+	padding-inline: var(--space-2);
+}
+.ui-field--bare:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
+	--field-border: transparent;
+	--field-bg: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.ui-field--bare.ui-field--focused,
+.ui-field--bare:focus-within {
+	--field-border: transparent;
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
 .ui-field--fluid {
 	display: flex;
 	inline-size: 100%;

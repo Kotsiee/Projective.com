@@ -1,0 +1,681 @@
+/*
+ * AttachmentPreviewModal — a footer-less split preview (large media panel + small metadata panel via
+ * `.ui-splitter`), rendered through BodyPortal. The panel enter/exit is opacity + a SELF-CLEARING
+ * transform that reverts to `none` when open, so its `position: fixed` descendants (the layout
+ * splitter's nothing-fixed here, but future menus) never re-base. Also holds the FilePreview renderers.
+ * Token-only; reduced-motion jumps to the final state.
+ */
+.fx-modal {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: clamp(0px, 3vw, 40px);
+}
+
+.fx-modal__panel {
+	position: relative;
+	inline-size: min(1200px, 100%);
+	block-size: min(860px, 100%);
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border-radius: var(--radius-xl);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	opacity: 0;
+	transform: translateY(10px) scale(0.99);
+	transition:
+		opacity var(--dur-medium) var(--ease-emphasized),
+		transform var(--dur-medium) var(--spring-standard);
+}
+.fx-modal__panel[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.fx-modal__panel {
+		transition: none;
+	}
+}
+
+/* #region Header (no footer anywhere) */
+.fx-modal__head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+}
+.fx-modal__title {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+.fx-modal__name {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	max-inline-size: 100%;
+	padding: var(--space-1) var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.9375rem;
+	font-weight: 600;
+	cursor: default;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fx-modal__name[data-editable="true"] {
+	cursor: text;
+}
+.fx-modal__name[data-editable="true"]:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.fx-modal__nametext {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fx-modal__nameedit {
+	flex: none;
+	display: inline-flex;
+	color: var(--text-secondary);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.fx-modal__name[data-editable="true"]:hover .fx-modal__nameedit {
+	opacity: 1;
+}
+.fx-modal__rename {
+	inline-size: 100%;
+	padding: var(--space-1) var(--space-2);
+	border: 1px solid var(--primary);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.9375rem;
+	font-weight: 600;
+}
+.fx-modal__rename:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.fx-modal__actions {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+.fx-modal__menuwrap {
+	position: relative;
+}
+.fx-modal__act {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.fx-modal__act:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+.fx-modal__act:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.fx-modal__act[data-on="true"] {
+	color: var(--warning);
+}
+.fx-modal__menu {
+	position: absolute;
+	inset-block-start: calc(100% + 4px);
+	inset-inline-end: 0;
+	min-inline-size: 10rem;
+	padding: var(--space-1);
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-high);
+	z-index: 2;
+}
+.fx-modal__menuitem {
+	display: block;
+	inline-size: 100%;
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	text-align: start;
+	cursor: pointer;
+}
+.fx-modal__menuitem:hover,
+.fx-modal__menuitem:focus-visible {
+	outline: none;
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+/* #endregion */
+
+/* #region Split (media | metadata) */
+.fx-modal__split {
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+.fx-modal__media {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	min-block-size: 0;
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+}
+.fx-modal__stage {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+	/* Clip the preview to the stage so a large asset can never overflow into / overlap the tray or
+	   the review Notes area below. */
+	overflow: hidden;
+}
+.fx-modal__stage > * {
+	max-inline-size: 100%;
+	max-block-size: 100%;
+}
+.fx-modal__stage .ui-carousel {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+/* Companion tray — bottom-centre, bounded by prev/next chevrons. */
+.fx-tray {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3) var(--space-3);
+}
+.fx-tray__nav {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fx-tray__nav:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+.fx-tray__nav:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+.fx-tray__strip {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	overflow-x: auto;
+	padding: 2px;
+	max-inline-size: 60%;
+	scrollbar-width: none;
+}
+.fx-tray__strip::-webkit-scrollbar {
+	display: none;
+}
+.fx-tray__thumb {
+	flex: none;
+	inline-size: 3rem;
+	block-size: 3rem;
+	padding: 0;
+	border: 2px solid transparent;
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	color: var(--text-secondary);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: border-color var(--dur-fast) var(--ease-standard);
+}
+.fx-tray__thumb img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+}
+.fx-tray__thumb[data-active="true"] {
+	border-color: var(--primary);
+}
+.fx-tray__thumb:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* Review Notes — client jots notes for the upcoming review (Submissions context only). §B.4: one
+   hairline top edge, no full box. */
+.fx-modal__notes {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4) var(--space-4);
+	border-block-start: var(--hairline);
+}
+.fx-modal__noteslabel {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+.fx-modal__noteslist {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	max-block-size: 8rem;
+	overflow-y: auto;
+}
+.fx-modal__note {
+	padding: var(--space-2) var(--space-3);
+	border-inline-start: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-sm);
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+	line-height: 1.45;
+}
+.fx-modal__noterow {
+	display: flex;
+	align-items: flex-end;
+	gap: var(--space-2);
+}
+.fx-modal__noteinput {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	resize: vertical;
+	padding: var(--space-2) var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	line-height: 1.45;
+}
+.fx-modal__noteinput:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-color: var(--primary);
+}
+.fx-modal__notesave {
+	flex: none;
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: var(--primary);
+	color: var(--on-primary);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.fx-modal__notesave:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+.fx-modal__notesave:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Metadata panel */
+.fx-modal__aside {
+	min-inline-size: 0;
+	overflow-y: auto;
+	background: var(--surface);
+}
+.fx-aside {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-4);
+}
+.fx-aside__sender {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.fx-aside__senderlink {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	text-decoration: none;
+	color: inherit;
+	border-radius: var(--radius-sm);
+}
+a.fx-aside__senderlink:hover .fx-aside__name {
+	color: var(--primary);
+}
+.fx-aside__id {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+.fx-aside__name {
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+.fx-aside__handle {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+.fx-aside__context {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+.fx-aside__chan {
+	color: var(--on-surface);
+	font-weight: 500;
+}
+.fx-aside__msg {
+	margin: 0;
+	padding: var(--space-3);
+	border-inline-start: 2px solid color-mix(in srgb, var(--outline) 45%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-sm);
+	font-size: 0.875rem;
+	color: var(--on-surface);
+	line-height: 1.5;
+}
+.fx-aside__voice {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	color: var(--on-surface);
+	font-size: 0.8125rem;
+}
+.fx-aside__voice-icon {
+	display: inline-flex;
+	color: var(--primary);
+}
+.fx-aside__gotomsg {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: 999px;
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fx-aside__gotomsg:hover {
+	background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.fx-aside__gotomsg:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.fx-aside__facts {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.fx-fact {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+.fx-fact dt {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+.fx-fact dd {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+	text-align: end;
+}
+/* #endregion */
+
+/* #region FilePreview renderers */
+.fx-preview {
+	inline-size: 100%;
+	block-size: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+}
+.fx-preview__img {
+	max-inline-size: 100%;
+	max-block-size: 100%;
+	object-fit: contain;
+	border-radius: var(--radius-base);
+	user-select: none;
+}
+.fx-preview--video {
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.fx-preview__stage {
+	inline-size: min(100%, 720px);
+	aspect-ratio: 16 / 9;
+	border-radius: var(--radius-lg);
+	background-size: cover;
+	background-position: center;
+	background-color: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.fx-preview__play {
+	inline-size: 4rem;
+	block-size: 4rem;
+	border-radius: 999px;
+	border: none;
+	background: color-mix(in srgb, var(--on-surface) 55%, transparent);
+	color: var(--surface);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.fx-preview__note {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+
+.fx-preview--audio {
+	padding: var(--space-6);
+}
+.fx-audio {
+	inline-size: min(100%, 520px);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+/* The audio branch now renders the shared @projective/ui AudioVisualizer — let it fill the card. */
+.fx-audio .ui-audioviz {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+.fx-audio__play {
+	flex: none;
+	inline-size: 3rem;
+	block-size: 3rem;
+	border: none;
+	border-radius: 999px;
+	background: var(--primary);
+	color: var(--on-primary);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.fx-audio__wave {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	block-size: 2.5rem;
+}
+.fx-audio__bar {
+	flex: 1 1 0;
+	min-inline-size: 2px;
+	block-size: var(--h, 40%);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+.fx-audio__time {
+	flex: none;
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.fx-preview--code {
+	align-items: stretch;
+	padding: var(--space-2);
+}
+.fx-code {
+	inline-size: 100%;
+	block-size: 100%;
+	margin: 0;
+	overflow: auto;
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	line-height: 1.6;
+}
+.fx-code__line {
+	display: flex;
+	gap: var(--space-3);
+	white-space: pre;
+}
+.fx-code__ln {
+	flex: none;
+	inline-size: 2rem;
+	text-align: end;
+	color: var(--text-disabled, var(--text-secondary));
+	user-select: none;
+}
+.fx-code__src {
+	color: var(--on-surface);
+}
+.fx-code--kw {
+	color: var(--primary);
+}
+.fx-code--str {
+	color: var(--success);
+}
+.fx-code--num {
+	color: var(--warning);
+}
+.fx-code--cmt {
+	color: var(--text-secondary);
+	font-style: italic;
+}
+
+.fx-preview--doc {
+	padding: var(--space-6);
+}
+.fx-doc {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-6);
+	border-radius: var(--radius-lg);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+	text-align: center;
+}
+.fx-doc__glyph {
+	color: var(--text-secondary);
+}
+.fx-doc__name {
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	max-inline-size: 22rem;
+	overflow-wrap: anywhere;
+}
+.fx-doc__meta {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+.fx-doc__download {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border-radius: var(--radius-base);
+	background: var(--primary);
+	color: var(--on-primary);
+	text-decoration: none;
+	font-size: 0.875rem;
+	font-weight: 600;
+}
+.fx-doc__download:hover {
+	background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
+}
+/* #endregion */
+
+/* Mobile: stack the split vertically as a full-height sheet. */
+@media (max-width: 768px) {
+	.fx-modal {
+		padding: 0;
+	}
+	.fx-modal__panel {
+		inline-size: 100%;
+		block-size: 100%;
+		border-radius: 0;
+	}
+}

@@ -1,0 +1,195 @@
+/*
+ * Submission drill-down cards (Part 3) — Freelancer Cards and Submission/stage/dir node cards. Same
+ * geometry as FileCard (a forced rounded-square 1:1 frame + a fixed-height meta block) so both fit the
+ * shared VirtualGrid row height. Transparent at rest; hover paints a subtle surface tint (interactive
+ * → highlight/border allowed, §B.4). Token-only.
+ */
+.subm-card {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	block-size: 100%;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-lg);
+	background: transparent;
+	color: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.subm-card:hover,
+.subm-card:focus-visible {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	outline: none;
+}
+.subm-card:focus-visible {
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.subm-card__thumb {
+	position: relative;
+	flex: 0 0 auto;
+	inline-size: 100%;
+	aspect-ratio: 1 / 1;
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+/* A freelancer's avatar sits centered in the square frame (a fixed size, like FileCard's glyph). */
+.subm-card__thumb--avatar {
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.subm-card__glyph {
+	color: var(--text-secondary);
+}
+.subm-card__status {
+	position: absolute;
+	inset-block-start: 6px;
+	inset-inline-end: 6px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 3px;
+	border-radius: 999px;
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+.subm-card__status[data-tone="warning"] {
+	color: var(--warning);
+}
+.subm-card__status[data-tone="danger"] {
+	color: var(--danger);
+}
+.subm-card__status[data-tone="success"] {
+	color: var(--success);
+}
+.subm-card__status[data-tone="muted"] {
+	color: var(--text-secondary);
+}
+
+.subm-card__meta {
+	flex: 0 0 auto;
+	block-size: 62px;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px 4px 0;
+}
+.subm-card__name {
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.subm-card__sub {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.subm-card__count {
+	font-size: 0.6875rem;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* #region List-mode rows (SubmissionNodeList) */
+.subm-nodelist {
+	display: flex;
+	flex-direction: column;
+}
+.subm-noderow {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-block-end: var(--hairline);
+	background: transparent;
+	color: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.subm-noderow:hover,
+.subm-noderow:focus-visible {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	outline: none;
+}
+.subm-noderow:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+.subm-noderow__lead {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+}
+.subm-noderow__glyph {
+	color: var(--text-secondary);
+}
+.subm-noderow__id {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.subm-noderow__name {
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.subm-noderow__sub {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.subm-noderow__status {
+	flex: none;
+	display: inline-flex;
+}
+.subm-noderow__status[data-tone="warning"] {
+	color: var(--warning);
+}
+.subm-noderow__status[data-tone="danger"] {
+	color: var(--danger);
+}
+.subm-noderow__status[data-tone="success"] {
+	color: var(--success);
+}
+.subm-noderow__status[data-tone="muted"] {
+	color: var(--text-secondary);
+}
+.subm-noderow__count {
+	flex: none;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.subm-card,
+	.subm-noderow {
+		transition: none;
+	}
+}

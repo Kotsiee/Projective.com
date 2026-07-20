@@ -1,0 +1,67 @@
+/*
+ * VirtualGrid — a windowed grid. The viewport hosts a full-extent sizer; only in-window rows mount,
+ * each an absolutely-positioned CSS grid slice. No border on the viewport (§B.4) — the gap is the only
+ * separation. The global custom scrollbar applies automatically in own-container mode.
+ */
+.ui-vgrid {
+	position: relative;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+.ui-vgrid--own {
+	block-size: var(--vgrid-scroll-h, 100%);
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+.ui-vgrid--window {
+	overflow: visible;
+}
+
+.ui-vgrid__sizer {
+	position: relative;
+	inline-size: 100%;
+	block-size: var(--vgrid-total, 0);
+}
+
+.ui-vgrid__row {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--v-start, 0);
+	block-size: var(--v-size, auto);
+	box-sizing: border-box;
+	padding-block-end: var(--vgrid-gap, 16px);
+	display: grid;
+	grid-template-columns: repeat(var(--vgrid-cols, 1), minmax(0, 1fr));
+	gap: var(--vgrid-gap, 16px);
+}
+
+.ui-vgrid__cell {
+	min-inline-size: 0;
+	block-size: 100%;
+}
+
+/* Tail loading affordance — a centered muted spinner. */
+.ui-vgrid__loader {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding-block: var(--space-4);
+}
+.ui-vgrid__spinner {
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: 999px;
+	border: 2px solid color-mix(in srgb, var(--outline) 40%, transparent);
+	border-block-start-color: var(--primary);
+	animation: ui-vgrid-spin 0.7s linear infinite;
+}
+@keyframes ui-vgrid-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-vgrid__spinner {
+		animation: none;
+	}
+}

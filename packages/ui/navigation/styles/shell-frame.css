@@ -11,7 +11,7 @@
     flex: 1 1 auto;
     min-block-size: 0;
     min-inline-size: 0;
-    background: var(--frame-surface, var(--surface));
+    /* background: var(--frame-surface, var(--surface)); */
     color: var(--on-surface);
     /* border-start-start-radius: var(--frame-radius);
     border-end-start-radius: var(--frame-bl-radius); */
@@ -22,6 +22,21 @@
     /* border-block-start: var(--hairline);
     border-inline-start: var(--hairline); */
     overflow: clip;
+}
+
+.ui-app-shell__content::before {
+    content: "";
+    display: block;
+    position: fixed;
+    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+    border-start-start-radius: var(--frame-radius);
+    border-end-start-radius: var(--frame-bl-radius);
+    z-index: 0;
+    pointer-events: none;
+    background: var(--surface-1);
 }
 
 /*
@@ -37,21 +52,6 @@
  * middle-nav.css). This sidesteps the fact that the live lane width lives on `.ui-splitter` (a
  * descendant), which no frame could otherwise read.
  */
-.ui-shell-frame::after {
-    content: "";
-    display: block;
-    position: fixed;
-    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
-    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
-    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
-    border-block-start: var(--hairline);
-    border-inline-start: var(--hairline);
-    border-start-start-radius: var(--frame-radius);
-    border-end-start-radius: var(--frame-bl-radius);
-    z-index: var(--z-nav, 200);
-    pointer-events: none;
-}
 
 /* When a parent track remains beneath, the bottom-left also curves — extend the flowing seam there. */
 .ui-shell-frame[data-flush-bottom="false"] {

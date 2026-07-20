@@ -128,6 +128,13 @@ export {
 // #region Range & value controls
 export { Slider, type SliderProps, type SliderValue } from "./islands/Slider.tsx";
 export { Knob, type KnobProps } from "./islands/Knob.tsx";
+export {
+	SortControl,
+	type SortControlProps,
+	type SortDirection,
+	type SortOption,
+} from "./islands/SortControl.tsx";
+export { ZoomSlider, type ZoomSliderProps } from "./islands/ZoomSlider.tsx";
 // #endregion
 
 // #region Pickers

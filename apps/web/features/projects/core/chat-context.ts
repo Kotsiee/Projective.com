@@ -18,4 +18,14 @@
 export function channelHref(projectId: string, channelId: string): string {
 	return `/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(channelId)}`;
 }
+
+/**
+ * Build a deep link to a specific message inside its channel chat:
+ * `/projects/{projectId}/{channelId}/chat#m-{messageId}`. Routing to the channel's Chat tab is the
+ * guaranteed behaviour; the `#m-` anchor lets the feed scroll to the message when it is mounted (a
+ * best-effort target inside the window-virtualized stream).
+ */
+export function channelMessageHref(projectId: string, channelId: string, messageId: string): string {
+	return `${channelHref(projectId, channelId)}/chat#m-${encodeURIComponent(messageId)}`;
+}
 // #endregion

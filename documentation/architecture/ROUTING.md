@@ -29,6 +29,11 @@ Parenthesized folders group routes **without** adding a URL segment:
 | :---------------- | :----------------------------------------- | :------------------------------ |
 | `[id]`            | `projects/[projectId]/index.tsx`           | `/projects/:projectId`          |
 | nested `[id]`     | `projects/[projectId]/[channelId]/index.tsx` | `/projects/:projectId/:channelId` |
+| files (project)   | `projects/[projectId]/files.tsx`           | `/projects/:projectId/files` (File Explorer, all channels) |
+| files (channel)   | `projects/[projectId]/[channelId]/files.tsx` | `/projects/:projectId/:channelId/files` (File Explorer, one channel) |
+| attachments → files | `projects/[projectId]/attachments.tsx` (+ nested) | `/…/attachments` **308→** `/…/files` (legacy) |
+| submissions (project) | `projects/[projectId]/submissions/[...path].tsx` | `/projects/:projectId/submissions/*` (Submissions ledger; Stages as tree roots; wildcard tree path) |
+| submissions (channel) | `projects/[projectId]/[channelId]/submissions/[...path].tsx` | `/projects/:projectId/:channelId/submissions/*` (channel submissions; wildcard tree path) |
 | `[...path]`       | `(public)/help/[...path].tsx`              | `/help/*` (catch-all)           |
 | top-level dynamic | `[handle]/index.tsx`                       | `/:handle`                      |
 
@@ -65,6 +70,18 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   segment (`activeTabOf` in `core/channel-view.ts`), so deep-links and refreshes land on the right view. The former `/messages/[chatId]?project=…&scope=…` in-project addressing **and its
   "This project ⁄ Full history" scope switch are retired** (Decision #22) — the entry-point URL alone
   carries the project context now.
+
+- **Submissions are a wildcard tree route** (root `CLAUDE.md` §8 **Decision #33**). Unlike the other
+  single-segment tabs, `submissions` is a catch-all `[...path]` route in BOTH scopes — channel
+  (`projects/[projectId]/[channelId]/submissions/[...path].tsx`) and project
+  (`projects/[projectId]/submissions/[...path].tsx`, a static segment that precedes `[channelId]`, so it
+  never shadows a real channel). The trailing `path` is the deliverable-tree node (stage → submitter →
+  unit → directory) the interactive breadcrumbs + navigation tree address, so any node is a deep-linkable
+  URL and the bare `…/submissions` matches with zero trailing segments (the `help/[...path].tsx`
+  precedent). `activeTabOf` reads only the first segment after the channel base, so the header's
+  Submissions tab stays active on deep paths. The footer View Control Rig + far-right **Review
+  Submission** trigger is resolved by `submissionsFooterFor` (composed after `channelFooterFor` /
+  `filesFooterFor` in the `(dashboard)` layout's single footer slot).
 
 ## Reserved-handle precedence
 

@@ -1,0 +1,127 @@
+/*
+ * FileCard — a grid cell: a forced rounded-square thumbnail (1:1), the filename, a small sender
+ * avatar + name, and the date revealed only on hover (its row is always reserved so it never clips or
+ * overlaps a neighbour). Transparent at rest; hover paints a subtle surface tint (the card is
+ * interactive, so a highlight/border is allowed — §B.4). Token-only.
+ */
+.fx-card {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	block-size: 100%;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-lg);
+	background: transparent;
+	color: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fx-card:hover,
+.fx-card:focus-visible {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	outline: none;
+}
+.fx-card:focus-visible {
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.fx-card__thumb {
+	position: relative;
+	flex: 0 0 auto;
+	inline-size: 100%;
+	aspect-ratio: 1 / 1;
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.fx-card__img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+}
+.fx-card__glyph {
+	color: var(--text-secondary);
+}
+.fx-card__play {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	transform: translate(-50%, -50%);
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) 52%, transparent);
+	color: var(--surface);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.fx-card__badge {
+	position: absolute;
+	inset-block-end: 6px;
+	inset-inline-end: 6px;
+	padding: 1px 6px;
+	border-radius: var(--radius-xs);
+	background: color-mix(in srgb, var(--on-surface) 60%, transparent);
+	color: var(--surface);
+	font-size: 0.625rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+.fx-card__meta {
+	flex: 0 0 auto;
+	block-size: 62px;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 6px 4px 0;
+}
+.fx-card__name {
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fx-card__by {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	min-inline-size: 0;
+}
+.fx-card__sender {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fx-card__date {
+	font-size: 0.6875rem;
+	color: var(--text-secondary);
+	opacity: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.fx-card:hover .fx-card__date,
+.fx-card:focus-visible .fx-card__date {
+	opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fx-card,
+	.fx-card__date {
+		transition: none;
+	}
+}

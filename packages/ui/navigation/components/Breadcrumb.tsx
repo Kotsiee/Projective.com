@@ -53,6 +53,12 @@ function alwaysVisible(index: number, lastIndex: number): boolean {
  * a "you are here, but also linkable" crumb). Middle crumbs collapse behind a single CSS-only `…`
  * marker under narrow widths — no JS measurement, just a breakpoint swap between the full list and
  * the first/ellipsis/last-two skeleton, so the component stays a pure server component.
+ *
+ * A crumb may carry a {@link MenuItem.command} for **client-driven** trails (e.g. an in-place tree
+ * navigator that updates a signal instead of doing a full navigation): the crumb still renders an
+ * anchor (so the `url` remains deep-linkable + middle-click-openable), but a plain left-click is
+ * intercepted — `preventDefault` then `command` — so the host handles it without a page load. Crumbs
+ * with no `command` keep the pure-anchor behaviour, so existing usages are byte-identical.
  */
 export function Breadcrumb(props: BreadcrumbProps): JSX.Element {
 	const {
@@ -108,6 +114,14 @@ export function Breadcrumb(props: BreadcrumbProps): JSX.Element {
 							href={item.url ?? "#"}
 							target={item.target}
 							aria-current={isLast ? "page" : undefined}
+							onClick={item.command
+								? (e: JSX.TargetedMouseEvent<HTMLAnchorElement>) => {
+									// Let modified clicks (new tab / download) fall through to the anchor.
+									if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+									e.preventDefault();
+									item.command!({ item, originalEvent: e });
+								}
+								: undefined}
 						>
 							{content}
 						</a>

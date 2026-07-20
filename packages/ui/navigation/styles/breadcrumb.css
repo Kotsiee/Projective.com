@@ -5,96 +5,96 @@
  */
 
 .ui-breadcrumb {
-	font-family: var(--font-sans);
-	font-size: 0.875rem;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
 }
 
 .ui-breadcrumb__list {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	gap: var(--space-1);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    gap: var(--space-1);
 }
 
 .ui-breadcrumb__item {
-	display: flex;
-	align-items: center;
-	min-inline-size: 0;
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
 }
 
 .ui-breadcrumb__sep {
-	display: flex;
-	align-items: center;
-	color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    color: var(--text-secondary);
 }
 
 .ui-breadcrumb__crumb {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding-inline: var(--space-1);
-	color: var(--on-surface-variant, var(--text-secondary));
-	text-decoration: none;
-	border-radius: var(--radius-sm);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-inline: var(--space-1);
+    color: var(--on-surface-variant, var(--text-secondary));
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
-.ui-breadcrumb__crumb:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-	text-decoration: underline;
+a.ui-breadcrumb__crumb:hover {
+    color: var(--primary);
 }
 
 .ui-breadcrumb__crumb:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: 2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
 }
 
 .ui-breadcrumb__crumb--current {
-	color: var(--on-surface);
-	font-weight: 600;
-	cursor: default;
+    color: var(--on-surface);
+    font-weight: 600;
+    cursor: default;
 }
 
 .ui-breadcrumb__crumb--current:hover {
-	background: none;
-	text-decoration: none;
+    background: none;
+    text-decoration: none;
 }
 
 .ui-breadcrumb__crumb--ellipsis {
-	color: var(--text-secondary);
-	cursor: default;
+    color: var(--text-secondary);
+    cursor: default;
 }
 
 .ui-breadcrumb__label {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	max-inline-size: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-inline-size: 16rem;
 }
 
 .ui-breadcrumb__icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1rem;
-	block-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1rem;
+    block-size: 1rem;
 }
 
 /* Ellipsis stand-in — hidden until the narrow breakpoint swaps it in for the collapsible run. */
 .ui-breadcrumb__item--ellipsis {
-	display: none;
+    display: none;
 }
 
 @media (max-width: 480px) {
-	.ui-breadcrumb__item--collapsible,
-	.ui-breadcrumb__sep--collapsible {
-		display: none;
-	}
 
-	.ui-breadcrumb__item--ellipsis {
-		display: flex;
-	}
+    .ui-breadcrumb__item--collapsible,
+    .ui-breadcrumb__sep--collapsible {
+        display: none;
+    }
+
+    .ui-breadcrumb__item--ellipsis {
+        display: flex;
+    }
 }

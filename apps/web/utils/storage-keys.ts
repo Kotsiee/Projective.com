@@ -72,6 +72,14 @@ export const LocalKeys = {
 	 * Lets each workspace reload exactly the filters the actor last left it on (the Continuity rule).
 	 */
 	PROJECTS_FILTERS: "pj.local.projects.filters",
+	/**
+	 * The File Explorer's zoom-driven view density (a `0`–`1` float). Below the centre threshold the
+	 * workspace is the list/table view; above it, the grid — and within each half the value scales the
+	 * card/thumbnail size. Shared cross-island (the footer View Control Rig ↔ the explorer body).
+	 */
+	FILES_ZOOM: "pj.local.files.zoom",
+	/** Persisted File Explorer table column widths — a single JSON `Record<columnKey, px>` map. */
+	FILES_COLUMNS: "pj.local.files.columns",
 } as const;
 // #endregion
 

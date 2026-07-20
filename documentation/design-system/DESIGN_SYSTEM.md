@@ -339,9 +339,9 @@ verbatim because every component depends only on the token contract (Part A) —
 | Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **`@projective/ui/layout`**     | Box, Container, Grid, Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                  |
-| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                            |
-| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, DatePicker, ColorPicker, FileUpload, FormControl |
-| **`@projective/ui/display`**    | Table, TreeTable, Tree, DataView, VirtualScroller, Scroller, OrgChart, Timeline, GMap, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                             |
+| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                            |
+| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl |
+| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                            |
 | **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                 |
 | **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                                                                            |
 | **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                            |
@@ -404,16 +404,25 @@ type-check, lint, and `deno fmt` clean.
 The remaining four taxonomies — **`display`, `feedback`, `overlay`, `utils`** — are now built to
 PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
 
-- **`display`** — the performance-first collections (Table with sort/multi-sort, per-column filter,
+- **`display`** — the performance-first collections (Table with 3-state sort (asc→desc→none) +
+  Shift-click multi-sort gated by a per-table `multiSort` on/off flag, per-column filter,
   row selection + expansion, column resize/reorder, row grouping, conditional styling, lazy loading
   and `stateKey` persistence; TreeTable; Tree with checkboxes/drag-drop/filter/context-menu;
-  DataView list⇄grid; VirtualScroller; Scroller) all window rows through the package-level
+  DataView list⇄grid; VirtualScroller; Scroller; **VirtualGrid** — a windowed, infinite-scroll GRID
+  of stretch-to-fill cells built as a "1D-by-row window" over `useVirtualScroll` (measures its own
+  inline width → derives columns → virtualizes ROWS; `rowHeight` may be a function of the computed
+  cell width for a square/aspect grid; the File Explorer's card grid) all window rows through the
+  package-level
   `hooks/useVirtualScroll` (fixed **or** measured sizes; **own-container OR window scroll**; infinite
   `onReachEnd`; and — additively, for bottom-up feeds like the channel chat — `startAtEnd`/`scrollToEnd`
   to open at the bottom, `onReachStart` to load older at the head, and stable `getItemKey` measurement
   keys so a head-prepend never corrupts the offset table). Plus OrgChart, Timeline, GMap (dumb embed
   wrapper — no keys), Carousel,
-  Galleria, Image (zoom/rotate/fullscreen), and the content atoms (Card, Avatar/AvatarGroup,
+  Galleria, Image (zoom/rotate/fullscreen), **AudioVisualizer** — a token-driven voice/audio player
+  (play/pause · seekable rounded-bar waveform · elapsed clock · optional speed cycle) with a dual
+  real-`<audio>`/simulated transport and a two-tone `--wave-played`/`--wave-rest` waveform a consumer
+  can re-tint (the projects chat memo + attachment/review previews consume it), and the content atoms
+  (Card, Avatar/AvatarGroup,
   Badge/OverlayBadge, RatingStars — a zero-JS read-only star meter, the display counterpart to the
   interactive `fields` Rating — Chip, Tag, List/ListItem, Accordion).
 - **`feedback`** — Message/Messages/Alert/Banner, Toast (+`useToast`), the Dialog family
@@ -427,6 +436,32 @@ PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
   `usePresence` enter/exit helper.
 - **`utils`** — CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal,
   Captcha (dumb mount point), and the directives FocusTrap, Defer, AnimateOnScroll, Ripple.
+
+File-Explorer additions (root CLAUDE.md §8 Decision #32): **`fields/SortControl`** (a sort-property
+dropdown + an asc/desc toggle inside ONE borderless compound block, signal-first so it can share the
+sort signals with a table's clickable headers), **`fields/ZoomSlider`** (− · a segmented track with a
+distinct centre transition marker · +, for a zoom-density rig), the borderless **`.ui-field--bare`**
+variant (no resting border/background; hover reveals a faint tint, focus a soft ring — for dense
+enterprise toolbars), and **`layout/Splitter` `SplitterPanel.maxSize`** (a hard per-pane maximum so a
+modal split enforces a fixed structural ratio). **Splitter collision note:** the layout `Splitter` and
+the nav lane `MiddleNavSplitter` share the `.ui-splitter` block name and the nav's globally-loaded
+`splitter.css` sets `.ui-splitter { inline-size: var(--shell-lane-w) }`; the layout splitter's root
+box rules are therefore scoped to its `--horizontal`/`--vertical` modifiers (higher specificity; the
+lane never carries them) so the two never corrupt each other — do NOT move those declarations back
+onto the bare `.ui-splitter` selector.
+
+Submissions additions (root CLAUDE.md §8 Decision #33): **`navigation/TreeNav`** — a wayfinding tree
+explorer (a lighter sibling of `display/Tree`): borderless disclosure rows with **chevron** open/close
+affordances (never triangles), an optional leading icon OR circular avatar per node, an icon-only
+trailing status slot + a muted count, controllable selection + a controllable/internal expanded-key
+set, `role="tree"`/`treeitem` with arrow/Home/End keys. Selecting a row scopes the host workspace; a
+single-hairline vertical divider between the tree and the workspace is the host's concern (§B.4). Also
+a backward-compatible **`Breadcrumb` extension**: a crumb may carry a `MenuItem.command` for
+**client-driven** trails (an in-place tree navigator) — the crumb stays an anchor (its `url` remains
+deep-linkable / new-tab-openable) but a plain left-click is intercepted (`preventDefault` → `command`);
+crumbs without a `command` are byte-identical to before. Both consume the review-modal's reuse of the
+existing `layout/Splitter` (hard min/max %), and inherit the same **Splitter collision** discipline
+above unchanged (the feature does not touch `splitter.css` or the nav splitter).
 
 Cross-cutting behaviour lives in a new **package-level `packages/ui/hooks/`** (`useFloating`,
 `useEdgeDetection` [alias `usePopoverPosition`], `useDismiss`, `useFocusTrap`, `useOverlayStack`
@@ -539,9 +574,18 @@ lengthening — or scrolling away with — the page. The Green body (`.ui-page-c
 while in-view chrome (the channel header **band** + the chat composer **footer band**) sticks to the
 viewport within that same window scroll. The nested frames use `overflow: clip` (for the rounded
 corners), which does **not** establish a scroll container, so every sticky descendant resolves against
-the window — one scrollbar, no nested traps. A global **custom scrollbar** (`styles/index.css`) gives a
-transparent track and a muted, highly-rounded pill thumb (token-driven `color-mix(--outline …)`) that
-gains contrast on hover — `scrollbar-*` for Firefox, `::-webkit-scrollbar-*` for Chromium.
+the window — one scrollbar, no nested traps. The **main window scrollbar keeps standard browser
+behaviour** (always visible). Every **inner** scroll container instead gets a global **self-hiding
+custom scrollbar** (`styles/index.css`, scoped `:not(html):not(body)`): a permanently transparent
+track, hidden buttons/arrows, and a muted, highly-rounded pill thumb that is **invisible at rest** and
+**fades in while the container is hovered _or_ actively scrolling** (and deepens when the thumb is
+grabbed), token-driven `color-mix(--outline …)` — `scrollbar-color` for Firefox, `::-webkit-scrollbar-*`
+for Chromium. Pure CSS has no "is-scrolling" selector, so the scroll-driven half comes from the global
+**`ScrollIdle`** island (mounted once in `_app.tsx`): a capture-phase `scroll` listener stamps the
+scrolled element with `[data-ui-scrolling]` for a short idle window, which the CSS reveals exactly like
+`:hover`. The window scroll is skipped (a document/window scroll targets `document`, not an element), so
+the main window keeps its native bar; a `@projective/ui` consumer that omits the island degrades to the
+hover-only reveal.
 
 > _History: this **reverses Decision #20's** locked-viewport model and returns to the
 > native-window-scroll intent of Decision #15/#27. Decision #30 briefly re-pinned the middle-nav frame

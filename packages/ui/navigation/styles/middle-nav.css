@@ -28,12 +28,12 @@
  * container, so every sticky descendant resolves against the window — one scrollbar, no nested traps.
  */
 .ui-middle-nav {
-	display: grid;
-	grid-template-columns: auto 1fr;
-	grid-template-rows: auto 1fr auto;
-	min-block-size: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto 1fr auto;
+    min-block-size: 0;
 
-	/*
+    /*
 	 * Augment the nested-frame seam accumulator (app-shell.css / shell-frame.css) for the Green canvas
 	 * this frame wraps: it sits further inline-start-inward by the Blue lane's width, and further down
 	 * when a header band is present. `--shell-lane-w` is the lane's live width — published up to this
@@ -41,26 +41,26 @@
 	 * (see the width-hoist note); it degrades to the `:root` 280px default if not hoisted. `:has()`
 	 * handles the discrete lane states the width var alone can't when un-hoisted (collapsed / absent).
 	 */
-	--shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
+    --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
 }
 
 /* The Blue frame's OWN exposed edge is already traced by `.ui-shell-topbar__border` (the outer L), so
    it must not draw a second, lane-shifted seam over the canvas — only its descendant Green frame does. */
 .ui-middle-nav::after {
-	content: none;
+    content: none;
 }
 
 /* When the frame carries a header band, the canvas starts below it — push the seam's block offset down
    by the band height (matches `.ui-shell-frame::after`'s inset-block). Without a header the base holds. */
 .ui-middle-nav--has-header {
-	--shell-frame-inset-block: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+    --shell-frame-inset-block: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 }
 
 /* Splitter shut to its icon rail (Part D.2 `collapsed` band): the canvas hugs the narrow rail. Keyed
    via `:has()` on the lane's `data-mode` (same technique as project-sidebar.css), this stays exact even
    when the live `--shell-lane-w` is not hoisted. 56px is the splitter's `min` rail width. */
 .ui-middle-nav:has(.ui-splitter[data-mode="collapsed"]) {
-	--shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + 56px);
+    --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + 56px);
 }
 
 /*
@@ -71,12 +71,12 @@
  * registers a header, so there is nothing to collapse otherwise (no empty bar).
  */
 .ui-middle-nav__header {
-	grid-column: 2;
-	grid-row: 1;
-	position: sticky;
-	inset-block-start: var(--shell-topbar-h);
-	z-index: var(--z-sticky);
-	min-block-size: 0;
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    inset-block-start: var(--shell-topbar-h);
+    z-index: var(--z-sticky);
+    min-block-size: 0;
 }
 
 /*
@@ -88,17 +88,17 @@
  * and footer bands.
  */
 .ui-middle-nav__lane {
-	grid-column: 1;
-	/* Span all three rows so the lane owns the full frame height — its own header rides into the header
+    grid-column: 1;
+    /* Span all three rows so the lane owns the full frame height — its own header rides into the header
 	   band's row and its footer into the footer band's row, with the body flowing between. */
-	grid-row: 1 / -1;
-	position: sticky;
-	inset-block-start: var(--shell-topbar-h);
-	align-self: start;
-	block-size: calc(100dvh - var(--shell-topbar-h));
-	min-inline-size: 0;
-	min-block-size: 0;
-	overflow: hidden;
+    grid-row: 1 / -1;
+    position: sticky;
+    inset-block-start: var(--shell-topbar-h);
+    align-self: start;
+    block-size: calc(100dvh - var(--shell-topbar-h));
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
 }
 
 /*
@@ -107,12 +107,12 @@
  * scrolls it. `min-block-size: 0` lets it shrink in the flex/grid chain.
  */
 .ui-middle-nav__content {
-	grid-column: 2;
-	grid-row: 2;
-	display: flex;
-	min-inline-size: 0;
-	min-block-size: 0;
-	overflow: visible;
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: visible;
 }
 
 /*
@@ -123,35 +123,36 @@
  * (`--z-sticky`) keeps it above the scrolling feed it overlays.
  */
 .ui-middle-nav__footer {
-	grid-column: 2;
-	grid-row: 3;
-	position: sticky;
-	inset-block-end: 0;
-	z-index: var(--z-sticky);
-	min-block-size: 0;
+    grid-column: 2;
+    grid-row: 3;
+    position: sticky;
+    inset-block-end: 0;
+    z-index: var(--z-sticky);
+    min-block-size: 0;
+    background: var(--surface-1, var(--surface));
 }
 
 /* Mobile viewport isolation (≤ --bp-md): remove the lane (a desktop side-panel layer) AND its content
    gutter, so the canvas is flush full-width with no nested track (Part D.3). The header + content +
    footer stack in the single column; the window-scroll model is shared with desktop. */
 @media (max-width: 767px) {
-	.ui-middle-nav {
-		grid-template-columns: 1fr;
-	}
+    .ui-middle-nav {
+        grid-template-columns: 1fr;
+    }
 
-	.ui-middle-nav__lane {
-		display: none;
-	}
+    .ui-middle-nav__lane {
+        display: none;
+    }
 
-	/* One column: the header band + content + footer band stack in it (the lane is dropped on mobile). */
-	.ui-middle-nav__header,
-	.ui-middle-nav__content,
-	.ui-middle-nav__footer {
-		grid-column: 1;
-	}
+    /* One column: the header band + content + footer band stack in it (the lane is dropped on mobile). */
+    .ui-middle-nav__header,
+    .ui-middle-nav__content,
+    .ui-middle-nav__footer {
+        grid-column: 1;
+    }
 
-	.ui-middle-nav__content {
-		padding-block-start: 0;
-		padding-inline-start: 0;
-	}
+    .ui-middle-nav__content {
+        padding-block-start: 0;
+        padding-inline-start: 0;
+    }
 }

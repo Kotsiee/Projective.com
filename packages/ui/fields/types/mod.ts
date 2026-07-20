@@ -42,8 +42,11 @@ export type FieldStatus = "default" | "invalid" | "success" | "warning";
  *  - `outlined` — hairline outline on `--surface` (default).
  *  - `filled`   — tonal `--surface-2` fill, borderless until focus.
  *  - `transparent` — no surface/border; inherits parent (for inline / in-group use).
+ *  - `bare` — a true borderless toolbar treatment: NO resting border/background in the inactive,
+ *    unhovered, unfocused state; hover reveals a faint surface tint and focus a soft ring only (no
+ *    hairline ever appears). For dense, high-end enterprise toolbars (search / sort / filter).
  */
-export type FieldVariant = "outlined" | "filled" | "transparent";
+export type FieldVariant = "outlined" | "filled" | "transparent" | "bare";
 // #endregion
 
 // #region Shared control props
