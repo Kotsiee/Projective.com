@@ -4,30 +4,59 @@
  * flush to the far viewport edges. No layout `display` here — each zone sets its own.
  */
 .ui-shell-frame {
-	/* Per-frame curvature knob — defaults to the fluid nested-frame radius; a specific frame (e.g. the
+    /* Per-frame curvature knob — defaults to the fluid nested-frame radius; a specific frame (e.g. the
 	   Green body panel) can raise it to --radius-container-xl by setting --frame-radius locally. */
-	--frame-radius: var(--radius-container-lg);
-	--frame-bl-radius: 0;
-	flex: 1 1 auto;
-	min-block-size: 0;
-	min-inline-size: 0;
-	background: var(--frame-surface, var(--surface));
-	color: var(--on-surface);
-	border-start-start-radius: var(--frame-radius);
-	border-end-start-radius: var(--frame-bl-radius);
-	/* Organic flowing seam (Part D): a single razor-thin --hairline on the two EXPOSED edges (top +
+    --frame-radius: var(--radius-container-lg);
+    --frame-bl-radius: 0;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    min-inline-size: 0;
+    background: var(--frame-surface, var(--surface));
+    color: var(--on-surface);
+    /* border-start-start-radius: var(--frame-radius);
+    border-end-start-radius: var(--frame-bl-radius); */
+    /* Organic flowing seam (Part D): a single razor-thin --hairline on the two EXPOSED edges (top +
 	   inline-start). Sharing the rounded top-left corner, the seam curves cleanly along the frame's
 	   large radius instead of reading as two mechanical straight lines. The far (right/bottom) edges
 	   stay flush to the viewport and carry no line. */
-	border-block-start: var(--hairline);
-	border-inline-start: var(--hairline);
-	overflow: clip;
+    /* border-block-start: var(--hairline);
+    border-inline-start: var(--hairline); */
+    overflow: clip;
+}
+
+/*
+ * Flowing corner seam — the fixed hairline L that traces this frame's exposed (top + inline-start)
+ * edges, mirroring `.ui-shell-topbar__border`. It is `position: fixed` (pinned to the viewport, like
+ * the top-bar border) so the rounded corner stays put while the frame's body scrolls beneath it.
+ *
+ * `left`/`top` are driven by two INHERITED accumulator vars rather than by reaching into the nav
+ * layout: `--shell-frame-inset-inline` (how far this frame's inline-start edge sits from the viewport
+ * edge) and `--shell-frame-inset-block` (its offset below the top bar). Each nesting level augments
+ * them for its descendants — the base (`.ui-app-shell`) contributes the global rail; `.ui-middle-nav`
+ * adds the Blue lane + its header band for the Green canvas within it (see app-shell.css /
+ * middle-nav.css). This sidesteps the fact that the live lane width lives on `.ui-splitter` (a
+ * descendant), which no frame could otherwise read.
+ */
+.ui-shell-frame::after {
+    content: "";
+    display: block;
+    position: fixed;
+    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+    border-block-start: var(--hairline);
+    border-inline-start: var(--hairline);
+    border-start-start-radius: var(--frame-radius);
+    border-end-start-radius: var(--frame-bl-radius);
+    z-index: var(--z-nav, 200);
+    pointer-events: none;
 }
 
 /* When a parent track remains beneath, the bottom-left also curves — extend the flowing seam there. */
 .ui-shell-frame[data-flush-bottom="false"] {
-	--frame-bl-radius: var(--frame-radius);
-	border-block-end: var(--hairline);
+    --frame-bl-radius: var(--frame-radius);
+    border-block-end: var(--hairline);
 }
 
 /*
@@ -37,12 +66,19 @@
  * beneath the header (DESIGN_SYSTEM.md Part D.3).
  */
 @media (max-width: 767px) {
-	.ui-shell-frame,
-	.ui-shell-frame[data-flush-bottom="false"] {
-		--frame-radius: 0;
-		--frame-bl-radius: 0;
-		border-block-start: 0;
-		border-inline-start: 0;
-		border-block-end: 0;
-	}
+
+    .ui-shell-frame,
+    .ui-shell-frame[data-flush-bottom="false"] {
+        --frame-radius: 0;
+        --frame-bl-radius: 0;
+        border-block-start: 0;
+        border-inline-start: 0;
+        border-block-end: 0;
+    }
+
+    /* The fixed corner seam is a desktop-only affordance — a full-width mobile column has no nested
+	   inline-start edge to trace, so the L would draw a stray hairline down the viewport. */
+    .ui-shell-frame::after {
+        display: none;
+    }
 }

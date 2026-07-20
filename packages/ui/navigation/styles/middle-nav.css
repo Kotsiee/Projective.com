@@ -32,6 +32,35 @@
 	grid-template-columns: auto 1fr;
 	grid-template-rows: auto 1fr auto;
 	min-block-size: 0;
+
+	/*
+	 * Augment the nested-frame seam accumulator (app-shell.css / shell-frame.css) for the Green canvas
+	 * this frame wraps: it sits further inline-start-inward by the Blue lane's width, and further down
+	 * when a header band is present. `--shell-lane-w` is the lane's live width — published up to this
+	 * frame (the only common ancestor of the lane and the canvas) so the fixed seam tracks drag/collapse
+	 * (see the width-hoist note); it degrades to the `:root` 280px default if not hoisted. `:has()`
+	 * handles the discrete lane states the width var alone can't when un-hoisted (collapsed / absent).
+	 */
+	--shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
+}
+
+/* The Blue frame's OWN exposed edge is already traced by `.ui-shell-topbar__border` (the outer L), so
+   it must not draw a second, lane-shifted seam over the canvas — only its descendant Green frame does. */
+.ui-middle-nav::after {
+	content: none;
+}
+
+/* When the frame carries a header band, the canvas starts below it — push the seam's block offset down
+   by the band height (matches `.ui-shell-frame::after`'s inset-block). Without a header the base holds. */
+.ui-middle-nav--has-header {
+	--shell-frame-inset-block: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+}
+
+/* Splitter shut to its icon rail (Part D.2 `collapsed` band): the canvas hugs the narrow rail. Keyed
+   via `:has()` on the lane's `data-mode` (same technique as project-sidebar.css), this stays exact even
+   when the live `--shell-lane-w` is not hoisted. 56px is the splitter's `min` rail width. */
+.ui-middle-nav:has(.ui-splitter[data-mode="collapsed"]) {
+	--shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + 56px);
 }
 
 /*

@@ -22,6 +22,7 @@ export function ShellTopBar(
 			<div class="ui-shell-topbar__lead">{brand}</div>
 			{center ? <div class="ui-shell-topbar__center">{center}</div> : null}
 			<div class="ui-shell-topbar__actions">{children}</div>
+			<div class="ui-shell-topbar__border"></div>
 		</header>
 	);
 }

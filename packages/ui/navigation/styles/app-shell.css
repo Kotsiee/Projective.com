@@ -19,6 +19,11 @@
  * container, so every sticky descendant resolves against the window — one scrollbar, no nested traps.
  */
 .ui-app-shell {
+    /* Base of the nested-frame seam accumulator (see shell-frame.css `::after`): a frame nested
+	   directly in the shell sits below the top bar and to the inline-start-side of the global rail.
+	   `.ui-middle-nav` augments these for the Green canvas it wraps (middle-nav.css). */
+    --shell-frame-inset-inline: var(--shell-sidebar-cur-w);
+    --shell-frame-inset-block: var(--shell-topbar-h);
     display: grid;
     grid-template-rows: var(--shell-topbar-h) 1fr;
     grid-template-columns: auto 1fr;
@@ -33,6 +38,8 @@
 }
 
 .ui-app-shell--no-sidebar {
+    /* No global rail (guest / sidebar-less) — the nested frame reaches the viewport inline-start edge. */
+    --shell-frame-inset-inline: 0px;
     grid-template-columns: 1fr;
     grid-template-areas:
         "topbar"
