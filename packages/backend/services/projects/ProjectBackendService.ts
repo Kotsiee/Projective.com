@@ -12,7 +12,10 @@ import { findProjectDetail } from "./detail-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
+import { findBoardPage } from "./board-fixtures.ts";
 import type {
+	BoardListParams,
+	BoardPage,
 	CreateProject,
 	FileListPage,
 	FileListParams,
@@ -155,6 +158,28 @@ export class ProjectBackendService {
 		// LIVE: read the RLS-scoped `submissions.*` / `files.*` graph (not yet implemented) — fall back
 		// to the fixture-backed page so behaviour is preserved until that path lands.
 		const page = findSubmissionPage(params);
+		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		return ok({ page });
+	}
+
+	/**
+	 * The Kanban board — the project-level pipeline (`/projects/[projectId]/board`, columns = New + the
+	 * Stages + Completed) or a stage-level Tasks board (`/projects/[projectId]/[channelId]/tasks`, columns
+	 * = the ticket-status lanes). Returns the columns, the ticket cards (already filtered), the stage list
+	 * (for the ticket modal + Stages/Status toggle), and the viewer capability flags that gate client-only
+	 * moves + creation. SSR calls this directly for first paint; the board island refines (search/filter/
+	 * view) via the thin `BoardService`.
+	 */
+	static board(params: BoardListParams): ServiceResult<{ page: BoardPage }> {
+		if (!isProjectsBackendLive()) {
+			const page = findBoardPage(params);
+			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+			return ok({ page });
+		}
+		// LIVE: read the RLS-scoped `projects.tickets` / `project_stages` graph and drive moves through the
+		// `projects.move_ticket` / `reorder_stages` RPCs (not yet implemented) — fall back to the fixture-
+		// backed page so behaviour is preserved until that path lands.
+		const page = findBoardPage(params);
 		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
 		return ok({ page });
 	}

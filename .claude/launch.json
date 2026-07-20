@@ -60,6 +60,12 @@
       "runtimeExecutable": "deno",
       "runtimeArgs": ["task", "dev", "--port", "6073", "--strictPort"],
       "port": 6073
+    },
+    {
+      "name": "web-board",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "6173", "--strictPort"],
+      "port": 6173
     }
   ]
 }

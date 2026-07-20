@@ -714,6 +714,50 @@ FreelancerCard,SubmissionCard,SubmissionNodeList},core/{chat-context,submission-
 SubmissionExplorer}.island,styles/{attachment-modal,file-table,submission-card,chat-feed}.css}` · Decisions
 #22 / #31 / #32 / #33 |
 
+| 35 | **Kanban Board system + reusable DnD/Kanban primitives (2026-07-20).** Two NEW `@projective/ui`
+sub-paths land the reusable layer the board needs. **`@projective/ui/dnd`** is a dependency-free
+**Pointer-Events** drag-and-drop kit — NO native HTML5 `draggable`, NO external library (root
+CLAUDE.md §3 · PRODUCT_SPEC §Libraries · SYSTEM_ARCHITECTURE §KanbanBoard): a `DndContext` island
+(pointer sensor w/ movement threshold + capture-phase click-suppression; keyboard sensor Space/Arrows/
+Enter/Escape) over a signal-first store, `Draggable`/`Droppable`/`SortableContext`(=`SortableContainer`)/
+`DragOverlay` (ghost via `BodyPortal`), the `useDraggable`/`useDroppable`/`useSortable`/`useDndMonitor`
+hooks, pure collision detectors, an `aria-live` announcer + reduced-motion collapse. **`@projective/ui/
+kanban`** is a generic **controlled** `KanbanBoard` (+`KanbanColumn`/`KanbanCard`) — it emits
+`KanbanItemMove`/`KanbanColumnMove` and NEVER mutates the model, so a consumer commits immediately or
+intercepts behind a modal. The feature (10th thin/fat read) is `BoardService`→`/api/projects/board`
+(thin)→`ProjectBackendService.board` (fat, fixtures derived from `ProjectDetail`, gated by the SAME
+`PROJECTS_BACKEND_LIVE`), Zod SSOT **`@projective/types/projects/board`** (`TicketStatus`, `BoardCard`,
+`BoardColumn`, `BoardView`, `BoardPage`, `CreateTicket`, the shared `cardColumnId`/`buildBoardColumns`).
+**Two boards, one contract:** the project pipeline `/projects/[id]/board` (columns = New + each Stage +
+Completed; stage columns reorder → confirm modal; New/Completed frozen; a Stages⁄Status view toggle)
+and the stage Tasks board `/projects/[id]/[channel]/tasks` (columns = ticket-status lanes, fixed;
+create in New only). Moves are OPTIMISTIC (persistence deferred); three pre-move warnings gate the
+irreversible side-effects — stage reorder (workflow sequence), claimed-ticket move (full charge/escrow
+payout), and revision (moving into a completed stage → active revision ticket). The 2-panel ticket
+modal enforces the **purchasing gate** (Title creates a draft; a Description is required before
+purchase/claim) with a checkbox + drag-reorder stage selector (reuses `dnd`) and per-stage overrides;
+the footer rig (`boardFooterFor`) hosts Kanban⁄List · Stages⁄Status · Create Ticket · Create Stage · Add
+to Basket/Checkout, bridged to the body via `board-state.ts` signals. `CreateStageModal` extended
+additively (Title + rich Description, `BodyPortal`-wrapped; `onCreate` broadened to `{name,description}`
+— the one ProjectSidebar caller updated). Toolbar mirrors `/files` (search · Priority · Assignee ·
+Sort). No DB migration (a read projection over the live `projects.tickets`/`project_stages` +
+`move_ticket`/`reorder_stages` RPCs). **Flagged (surface, do not silently resolve):** the task brief's
+stage-board column names **New / Ready / In Progress / Review / Completed** are a THIRD vocabulary that
+matches neither canonical source cleanly — reconciled here as the canonical `ticket_status` enum as the
+DATA model (New=`backlog`, Ready=`todo`, In Progress=`in_progress`[+`claimed` folded], Review=
+`in_review`, Completed=`completed`; `cancelled`/`reported_hidden` are card OVERLAYS, not columns) with
+brief DISPLAY labels; `New` is canonically the backlog column (PRODUCT_SPEC §Ticket Ordering), `Ready`↔
+`todo` is the ambiguous relabel — confirm with a human. Also flagged: PRODUCT_MANAGEMENT §6 lists the
+BUILD-TRACKER's Kanban columns (Backlog·Ready·Claimed·In Progress·Review·Complete), which are NOT the
+product `ticket_status` board columns — a §6 clarifying note was added in the same change. | root
+CLAUDE.md §5 · `PRODUCT_MANAGEMENT.md` §6 · `DESIGN_SYSTEM.md` §C.1 · `packages/ui/{dnd,kanban}/` ·
+`packages/types/projects/board.ts` · `packages/backend/services/projects/board-fixtures.ts` ·
+`apps/web/routes/api/projects/board.ts` · `apps/web/features/projects/{islands/{ProjectBoard,
+BoardViewControlRig}.island,components/{TicketCard,BoardColumnHeader,TicketModal,BoardWarnings,
+TicketListView,CreateStageModal,board-glyphs},core/{board-model,BoardService,board-ssr,board-state,
+board-footer-slot}}` · `apps/web/routes/(dashboard)/projects/[projectId]/{board,[channelId]/tasks}.tsx` ·
+Decisions #10 / #21 / #32 / #33 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

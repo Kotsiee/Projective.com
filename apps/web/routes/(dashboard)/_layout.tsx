@@ -10,6 +10,7 @@ import { channelHeaderFor } from "@web/features/projects/core/channel-header-slo
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
 import { filesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
 import { submissionsFooterFor } from "@web/features/projects/core/submissions-footer-slot.tsx";
+import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 
@@ -59,7 +60,7 @@ function projectSlugOf(pathname: string): string | null {
  */
 function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
 	return channelFooterFor(url, context) ?? filesFooterFor(url, context) ??
-		submissionsFooterFor(url, context);
+		submissionsFooterFor(url, context) ?? boardFooterFor(url, context);
 }
 
 /**

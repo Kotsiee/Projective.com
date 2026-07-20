@@ -4,20 +4,20 @@
  * band reads as a slim footer bar via a single top hairline + the frame surface (§B.4). Token-only.
  */
 .fx-rig {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
 }
 
 .fx-rig__mode {
-    display: inline-flex;
-    align-items: center;
-    color: var(--text-secondary);
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
 }
 
 .fx-rig .ui-zoom {
-    inline-size: 100%;
-    max-inline-size: 18rem;
+	inline-size: 100%;
+	max-inline-size: 18rem;
 }

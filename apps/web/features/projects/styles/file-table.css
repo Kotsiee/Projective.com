@@ -60,7 +60,8 @@
 	/* Inactive columns show a muted ⇅ affordance that only surfaces on header hover/focus. */
 	color: var(--text-secondary);
 	opacity: 0;
-	transition: opacity var(--dur-fast) var(--ease-standard),
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
 }
 .fx-th__btn:hover .fx-th__sort,

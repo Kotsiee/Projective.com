@@ -45,8 +45,9 @@ export interface AttachmentPreviewModalProps {
 	/** The engagement route slug — powers the "Go to Message" deep link. */
 	projectId: string;
 	/**
-	 * Submissions context — renders a client Notes area in the left panel so the reviewer can jot
-	 * notes for the upcoming review. Omitted/false for the plain File Explorer.
+	 * Submissions context — renders a client Notes area in the right metadata panel (alongside the
+	 * sender/facts) so the reviewer can jot notes for the upcoming review. Omitted/false for the plain
+	 * File Explorer.
 	 */
 	notesMode?: boolean;
 	onClose: () => void;
@@ -304,46 +305,6 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 										</div>
 									)
 									: null}
-								{notesMode
-									? (
-										<div class="fx-modal__notes">
-											<label class="fx-modal__noteslabel" for="fx-review-note">
-												Notes for review
-											</label>
-											{fileNotes.length
-												? (
-													<ul class="fx-modal__noteslist">
-														{fileNotes.map((n, i) => (
-															<li key={i} class="fx-modal__note">{n}</li>
-														))}
-													</ul>
-												)
-												: null}
-											<div class="fx-modal__noterow">
-												<textarea
-													id="fx-review-note"
-													class="fx-modal__noteinput"
-													rows={2}
-													placeholder="Leave a note for the upcoming review…"
-													value={noteDraft.value}
-													onInput={(e) =>
-														(noteDraft.value = (e.target as HTMLTextAreaElement).value)}
-													onKeyDown={(e) => {
-														if ((e.metaKey || e.ctrlKey) && e.key === "Enter") saveNote();
-													}}
-												/>
-												<button
-													type="button"
-													class="fx-modal__notesave"
-													disabled={!noteDraft.value.trim()}
-													onClick={saveNote}
-												>
-													Save note
-												</button>
-											</div>
-										</div>
-									)
-									: null}
 							</SplitterPanel>
 
 							<SplitterPanel size={32} minSize={18} maxSize={50} class="fx-modal__aside">
@@ -435,6 +396,46 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 											<dd>{file.dateLabel}</dd>
 										</div>
 									</dl>
+
+									{notesMode
+										? (
+											<div class="fx-modal__notes">
+												<label class="fx-modal__noteslabel" for="fx-review-note">
+													Notes for review
+												</label>
+												{fileNotes.length
+													? (
+														<ul class="fx-modal__noteslist">
+															{fileNotes.map((n, i) => <li key={i} class="fx-modal__note">{n}</li>)}
+														</ul>
+													)
+													: null}
+												<div class="fx-modal__noterow">
+													<textarea
+														id="fx-review-note"
+														class="fx-modal__noteinput"
+														rows={2}
+														placeholder="Leave a note for the upcoming review…"
+														value={noteDraft.value}
+														onInput={(
+															e,
+														) => (noteDraft.value = (e.target as HTMLTextAreaElement).value)}
+														onKeyDown={(e) => {
+															if ((e.metaKey || e.ctrlKey) && e.key === "Enter") saveNote();
+														}}
+													/>
+													<button
+														type="button"
+														class="fx-modal__notesave"
+														disabled={!noteDraft.value.trim()}
+														onClick={saveNote}
+													>
+														Save note
+													</button>
+												</div>
+											</div>
+										)
+										: null}
 								</div>
 							</SplitterPanel>
 						</Splitter>

@@ -74,7 +74,7 @@ export function Splitter(props: SplitterProps): JSX.Element {
 	const {
 		layout = "horizontal",
 		stateKey,
-		gutterSize = "8px",
+		gutterSize = "4px",
 		id,
 		class: className,
 		style,

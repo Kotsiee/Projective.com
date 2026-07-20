@@ -142,7 +142,9 @@ export default function ChatFeed({ projectId, channelId, initial }: ChatFeedProp
 			if (existing.mine) {
 				const reactions = existing.count <= 1
 					? m.reactions.filter((r) => r.emoji !== emoji)
-					: m.reactions.map((r) => (r.emoji === emoji ? { ...r, count: r.count - 1, mine: false } : r));
+					: m.reactions.map((
+						r,
+					) => (r.emoji === emoji ? { ...r, count: r.count - 1, mine: false } : r));
 				return { ...m, reactions };
 			}
 			return {

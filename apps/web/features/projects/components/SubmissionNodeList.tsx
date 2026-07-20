@@ -46,7 +46,11 @@ export function SubmissionNodeList({ nodes, onOpen }: SubmissionNodeListProps): 
 						<span class="subm-noderow__lead" aria-hidden="true">
 							{node.kind === "submitter"
 								? <Avatar image={node.avatar ?? undefined} label={node.label} size={28} alt="" />
-								: <span class="subm-noderow__glyph"><RowGlyph node={node} /></span>}
+								: (
+									<span class="subm-noderow__glyph">
+										<RowGlyph node={node} />
+									</span>
+								)}
 						</span>
 						<span class="subm-noderow__id">
 							<span class="subm-noderow__name" title={node.label}>{node.label}</span>

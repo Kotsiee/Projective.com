@@ -2,7 +2,7 @@ import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import type { ChatMessage } from "../types/projects-types.ts";
-import { KebabIcon, StarIcon, FlagIcon } from "./glyphs.tsx";
+import { FlagIcon, KebabIcon, StarIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { CopyIcon, ReactIcon, ReplyIcon } from "./chat-glyphs.tsx";
 
@@ -139,7 +139,9 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 							}}
 						>
 							<span class="msg-menu__icon" aria-hidden="true">{PinIcon}</span>
-							<span class="msg-menu__label">{message.pinned ? "Unpin message" : "Pin message"}</span>
+							<span class="msg-menu__label">
+								{message.pinned ? "Unpin message" : "Pin message"}
+							</span>
 						</button>
 					)}
 					<button

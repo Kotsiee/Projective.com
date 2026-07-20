@@ -3,7 +3,7 @@ import type { JSX } from "preact";
 import "../styles/project-sidebar.css";
 import { SidebarHeader, type SidebarMenuAction } from "../components/SidebarHeader.tsx";
 import { ProjectContextCard } from "../components/ProjectContextCard.tsx";
-import { ChannelQuickFilters, type ChannelFilterKey } from "../components/ChannelQuickFilters.tsx";
+import { type ChannelFilterKey, ChannelQuickFilters } from "../components/ChannelQuickFilters.tsx";
 import { ChannelTree } from "../components/ChannelTree.tsx";
 import { ProjectViewNav } from "../components/ProjectViewNav.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
@@ -107,7 +107,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		// the menu is fully navigable (open + share resolve client-side inside the header).
 	}
 
-	function onCreateStage(_name: string): void {
+	function onCreateStage(_stage: { name: string; description: string }): void {
 		// STUB: persistence is deferred to the live `projects.create_stage` RPC. Close on submit.
 		createStageOpen.value = false;
 	}

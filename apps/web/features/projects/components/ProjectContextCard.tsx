@@ -69,8 +69,10 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 				</Tooltip>
 			</div>
 
-			{/* The whole description is the interactive reveal into the main page (§B.6 icon-first: the
-			    words live here, the action is the hover/click). */}
+			{
+				/* The whole description is the interactive reveal into the main page (§B.6 icon-first: the
+			    words live here, the action is the hover/click). */
+			}
 			<a class="proj-ctx__desc" href={detailsHref} aria-label="Open project details">
 				<span class="proj-ctx__desc-text">{detail.description}</span>
 				<span class="proj-ctx__show">Show details</span>

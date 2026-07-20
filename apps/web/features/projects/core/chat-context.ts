@@ -25,7 +25,11 @@ export function channelHref(projectId: string, channelId: string): string {
  * guaranteed behaviour; the `#m-` anchor lets the feed scroll to the message when it is mounted (a
  * best-effort target inside the window-virtualized stream).
  */
-export function channelMessageHref(projectId: string, channelId: string, messageId: string): string {
+export function channelMessageHref(
+	projectId: string,
+	channelId: string,
+	messageId: string,
+): string {
 	return `${channelHref(projectId, channelId)}/chat#m-${encodeURIComponent(messageId)}`;
 }
 // #endregion

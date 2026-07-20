@@ -1,7 +1,13 @@
 import { cloneElement, type JSX } from "preact";
 import "../styles/channel-header.css";
 import { CHANNEL_TABS, type ChannelMeta } from "../core/channel-view.ts";
-import { CalendarIcon, DmIcon, HashIcon, MembersIcon, SubmissionsIcon } from "../components/detail-glyphs.tsx";
+import {
+	CalendarIcon,
+	DmIcon,
+	HashIcon,
+	MembersIcon,
+	SubmissionsIcon,
+} from "../components/detail-glyphs.tsx";
 import { ChatIcon, FilesIcon, PanelIcon } from "../components/channel-glyphs.tsx";
 import { KebabIcon, StarIcon, TicketIcon } from "../components/glyphs.tsx";
 
@@ -85,7 +91,9 @@ export default function ChannelHeader(
 							data-active={active ? "true" : undefined}
 							aria-current={active ? "page" : undefined}
 						>
-							<span class="chan-tab__icon" aria-hidden="true">{cloneElement(TAB_ICONS[tab.key])}</span>
+							<span class="chan-tab__icon" aria-hidden="true">
+								{cloneElement(TAB_ICONS[tab.key])}
+							</span>
 							<span class="chan-tab__label">{tab.label}</span>
 						</a>
 					);

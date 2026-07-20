@@ -1,0 +1,108 @@
+/*
+ * BoardViewControlRig — the Kanban board's action rig in the middle-nav footer band. Icon-first (§B.6):
+ * segmented view/grouping switches + the primary client actions. Token-only.
+ */
+.brd-rig {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+}
+
+.brd-rig__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+}
+
+.brd-rig__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.9rem;
+	block-size: 1.9rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.brd-rig__icon:hover {
+	color: var(--on-surface);
+}
+
+.brd-rig__icon[aria-pressed="true"] {
+	background: var(--surface);
+	color: var(--primary);
+	box-shadow: var(--elevation-low);
+}
+
+.brd-rig__icon:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+
+.brd-rig__spacer {
+	flex: 1 1 auto;
+}
+
+.brd-rig__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.brd-rig__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0.35rem 0.75rem;
+	border: none;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.78rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.brd-rig__action:hover {
+	background: color-mix(in srgb, var(--on-surface) 11%, transparent);
+}
+
+.brd-rig__action:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.brd-rig__action--primary {
+	background: var(--primary);
+	color: var(--on-primary, #fff);
+}
+
+.brd-rig__action--primary:hover {
+	filter: brightness(0.94);
+}
+
+.brd-rig__basket {
+	display: inline-flex;
+	align-items: center;
+	padding-inline: var(--space-2);
+	color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+	.brd-rig__action span {
+		display: none;
+	}
+}

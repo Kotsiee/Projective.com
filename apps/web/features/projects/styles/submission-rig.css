@@ -4,74 +4,74 @@
  * surface (§B.4). Token-only.
  */
 .subm-rig {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
 }
 
 .subm-rig__zoom {
-    flex: 0 1 auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-inline-size: 0;
+	flex: 0 1 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
 .subm-rig__mode {
-    display: inline-flex;
-    align-items: center;
-    color: var(--text-secondary);
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
 }
 
 .subm-rig__zoom .ui-zoom {
-    inline-size: 100%;
-    max-inline-size: 18rem;
+	inline-size: 100%;
+	max-inline-size: 18rem;
 }
 
 .subm-rig__spacer {
-    flex: 1 1 auto;
+	flex: 1 1 auto;
 }
 
 /* The far-right primary action. */
 .subm-rig__review {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border: none;
-    border-radius: var(--radius-base);
-    background: var(--primary);
-    color: var(--on-primary);
-    font-family: var(--font-sans);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border: none;
+	border-radius: var(--radius-base);
+	background: var(--primary);
+	color: var(--on-primary);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .subm-rig__review:hover {
-    background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
+	background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
 }
 
 .subm-rig__review:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--focus-ring);
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .subm-rig__reviewicon {
-    display: inline-flex;
+	display: inline-flex;
 }
 
 @media (max-width: 768px) {
-    .subm-rig__reviewlabel {
-        display: none;
-    }
+	.subm-rig__reviewlabel {
+		display: none;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .subm-rig__review {
-        transition: none;
-    }
+	.subm-rig__review {
+		transition: none;
+	}
 }

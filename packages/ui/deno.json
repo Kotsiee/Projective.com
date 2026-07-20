@@ -10,6 +10,8 @@
 		"./display": "./display/mod.ts",
 		"./feedback": "./feedback/mod.ts",
 		"./overlay": "./overlay/mod.ts",
+		"./dnd": "./dnd/mod.ts",
+		"./kanban": "./kanban/mod.ts",
 		"./utils": "./utils/mod.ts",
 		"./hooks": "./hooks/mod.ts",
 		"./system": "./system/mod.ts",

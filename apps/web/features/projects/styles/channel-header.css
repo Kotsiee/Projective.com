@@ -22,449 +22,446 @@
    A flex column that fills the content row so its child (the chat feed / a tab scaffold) can own the
    full height and bottom-anchor; a tall feed simply lengthens the document and the window scrolls it. */
 .chan-view {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-block-size: 0;
 }
 
 /* #endregion */
 
 /* #region Header frame */
 .chan-header {
-    display: flex;
-    /* Stretch so the centre tab strip fills the full header height and its active underline lands
-	   exactly on the bottom hairline (the seam to the body). Identity + actions re-centre themselves. */
-    align-items: stretch;
-    gap: var(--space-3);
-    block-size: var(--shell-midnav-header-h);
-    padding-inline: var(--space-4);
-    /* Blue frame tone — matches the lane's own header so the band reads as one connected strip (§D.4). */
-    background: transparent;
+	display: flex;
+	/* Stretch so the centre tab strip fills the full header height and its active underline lands
+	exactly on the bottom hairline (the seam to the body). Identity + actions re-centre themselves. */
+	align-items: stretch;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+	/* Blue frame tone — matches the lane's own header so the band reads as one connected strip (§D.4). */
+	background: transparent;
 }
 
 .chan-header::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface-1) 62%, transparent);
-    backdrop-filter: blur(var(--glass-blur, 18px));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-    pointer-events: none;
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface-1) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur, 18px));
+	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	pointer-events: none;
 }
 
 /* Left identity block grows; the right actions block grows equally — together they keep the centre
    tab strip visually centred (the classic flex-1 / flex-1 balance). */
 .chan-header__meta {
-    flex: 1 1 0;
-    min-inline-size: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
+	flex: 1 1 0;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
 }
 
 .chan-header__mark {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    color: var(--text-secondary);
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.2rem;
+	color: var(--text-secondary);
 }
 
 .chan-header__idblock {
-    display: flex;
-    flex-direction: column;
-    gap: 0.05rem;
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.05rem;
+	min-inline-size: 0;
 }
 
 .chan-header__title {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 650;
-    line-height: 1.25;
-    letter-spacing: -0.01em;
-    color: var(--on-surface);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 650;
+	line-height: 1.25;
+	letter-spacing: -0.01em;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .chan-header__sub {
-    margin: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.72rem;
-    line-height: 1.3;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	margin: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.72rem;
+	line-height: 1.3;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .chan-header__sub[data-live="true"] {
-    color: var(--success, var(--primary));
+	color: var(--success, var(--primary));
 }
 
 /* Online presence dot (DM). */
 .chan-header__presence {
-    flex: none;
-    inline-size: 7px;
-    block-size: 7px;
-    border-radius: 50%;
-    background: var(--success, var(--primary));
+	flex: none;
+	inline-size: 7px;
+	block-size: 7px;
+	border-radius: 50%;
+	background: var(--success, var(--primary));
 }
 
 .chan-header__typing {
-    color: var(--primary);
-    font-weight: 550;
+	color: var(--primary);
+	font-weight: 550;
 }
 
 .chan-header__typing-dots {
-    display: inline-block;
-    animation: chan-typing 1.4s var(--ease-standard) infinite;
+	display: inline-block;
+	animation: chan-typing 1.4s var(--ease-standard) infinite;
 }
 
 @keyframes chan-typing {
+	0%,
+	100% {
+		opacity: 0.4;
+	}
 
-    0%,
-    100% {
-        opacity: 0.4;
-    }
-
-    50% {
-        opacity: 1;
-    }
+	50% {
+		opacity: 1;
+	}
 }
 
 /* #endregion */
 
 /* #region Centre — contextual view tabs (underlined text, no pills) */
 .chan-header__tabs {
-    flex: 0 1 auto;
-    min-inline-size: 0;
-    align-self: stretch;
-    display: flex;
-    align-items: stretch;
-    gap: var(--space-4);
-    overflow-x: auto;
-    scrollbar-width: none;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	align-self: stretch;
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-4);
+	overflow-x: auto;
+	scrollbar-width: none;
 }
 
 .chan-header__tabs::-webkit-scrollbar {
-    display: none;
+	display: none;
 }
 
 /* A simple full-height text item. Its ::after is the active/hover underline, pinned to the header's
    bottom edge (nudged -1px) so it sits precisely on top of the divider hairline — a seamless tab line. */
 .chan-tab {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex: none;
-    padding-inline: 0.15rem;
-    font-size: 0.82rem;
-    font-weight: 550;
-    color: var(--text-secondary);
-    text-decoration: none;
-    background: transparent;
-    transition: color var(--dur-fast) var(--ease-standard);
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex: none;
+	padding-inline: 0.15rem;
+	font-size: 0.82rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+	text-decoration: none;
+	background: transparent;
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .chan-tab::after {
-    content: "";
-    position: absolute;
-    inset-inline: 0;
-    inset-block-end: -1px;
-    block-size: 2px;
-    border-radius: 2px 2px 0 0;
-    background: var(--primary);
-    transform: scaleX(0);
-    transform-origin: center;
-    transition: transform var(--dur-fast) var(--ease-standard);
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px 2px 0 0;
+	background: var(--primary);
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
 .chan-tab:hover {
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .chan-tab:hover::after {
-    background: color-mix(in srgb, var(--on-surface) 32%, transparent);
-    transform: scaleX(1);
+	background: color-mix(in srgb, var(--on-surface) 32%, transparent);
+	transform: scaleX(1);
 }
 
 .chan-tab[data-active="true"] {
-    color: var(--primary);
-    font-weight: 650;
+	color: var(--primary);
+	font-weight: 650;
 }
 
 .chan-tab[data-active="true"]::after {
-    background: var(--primary);
-    transform: scaleX(1);
+	background: var(--primary);
+	transform: scaleX(1);
 }
 
 .chan-tab:focus-visible {
-    outline: none;
-    border-radius: var(--radius-sm);
-    box-shadow: var(--focus-ring);
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring);
 }
 
 /* Desktop reads as clean text items; the leading glyph is reserved for the compact mobile row. */
 .chan-tab__icon {
-    display: none;
-    font-size: 1.05rem;
+	display: none;
+	font-size: 1.05rem;
 }
 
 /* #endregion */
 
 /* #region Right — icon-only actions */
 .chan-header__actions {
-    flex: 1 1 0;
-    min-inline-size: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-1);
+	flex: 1 1 0;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-1);
 }
 
 .chan-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    inline-size: 2rem;
-    block-size: 2rem;
-    font-size: 1.05rem;
-    color: var(--text-secondary);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-full, 999px);
-    cursor: pointer;
-    transition:
-        color var(--dur-fast) var(--ease-standard),
-        background-color var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 2rem;
+	block-size: 2rem;
+	font-size: 1.05rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .chan-action:hover,
 .chan-action[data-on="true"] {
-    color: var(--on-surface);
-    background: var(--surface-2);
+	color: var(--on-surface);
+	background: var(--surface-2);
 }
 
 .chan-action:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring);
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 
 /* The dynamic primary create action — a filled accent pill so it reads as the room's main affordance. */
 .chan-action--primary {
-    color: var(--on-primary, #fff);
-    background: var(--primary);
+	color: var(--on-primary, #fff);
+	background: var(--primary);
 }
 
 .chan-action--primary:hover {
-    color: var(--on-primary, #fff);
-    background: color-mix(in srgb, var(--primary) 88%, black);
+	color: var(--on-primary, #fff);
+	background: color-mix(in srgb, var(--primary) 88%, black);
 }
 
 .chan-action--star[data-on="true"] {
-    color: var(--primary);
-    background: transparent;
+	color: var(--primary);
+	background: transparent;
 }
 
 .chan-action--star[data-on="true"] :is(svg, path) {
-    fill: var(--primary);
+	fill: var(--primary);
 }
 
 /* #endregion */
 
 /* #region Kebab menu */
 .ui-popover.chan-menu-pop {
-    border-radius: var(--radius-lg);
+	border-radius: var(--radius-lg);
 }
 
 .ui-popover.chan-menu-pop .ui-popover__content {
-    padding: var(--space-1);
+	padding: var(--space-1);
 }
 
 .chan-menu {
-    display: flex;
-    flex-direction: column;
-    min-inline-size: 12rem;
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 12rem;
 }
 
 .chan-menu__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 0.45rem 0.55rem;
-    font: inherit;
-    font-size: 0.8rem;
-    color: var(--on-surface);
-    text-align: start;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.45rem 0.55rem;
+	font: inherit;
+	font-size: 0.8rem;
+	color: var(--on-surface);
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
 }
 
 .chan-menu__item:hover {
-    background: var(--surface-2);
+	background: var(--surface-2);
 }
 
 .chan-menu__item:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring);
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 
 .chan-menu__icon {
-    display: inline-flex;
-    flex: none;
-    font-size: 0.95rem;
-    color: var(--text-secondary);
+	display: inline-flex;
+	flex: none;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
 }
 
 .chan-menu__label {
-    flex: 1 1 auto;
+	flex: 1 1 auto;
 }
 
 .chan-menu__item[data-danger="true"],
 .chan-menu__item[data-danger="true"] .chan-menu__icon {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .chan-menu__item[data-danger="true"]:hover {
-    background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
 /* #endregion */
 
 /* #region Details drawer body */
 .chan-details {
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 }
 
 .chan-details__row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding-block: var(--space-1);
-    border-block-end: var(--hairline);
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-block: var(--space-1);
+	border-block-end: var(--hairline);
 }
 
 .chan-details__term {
-    flex: none;
-    font-size: 0.74rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+	flex: none;
+	font-size: 0.74rem;
+	font-weight: 600;
+	color: var(--text-secondary);
 }
 
 .chan-details__def {
-    margin: 0;
-    font-size: 0.82rem;
-    color: var(--on-surface);
-    text-align: end;
+	margin: 0;
+	font-size: 0.82rem;
+	color: var(--on-surface);
+	text-align: end;
 }
 
 .chan-details__note {
-    margin: var(--space-3) 0 0;
-    font-size: 0.76rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
+	margin: var(--space-3) 0 0;
+	font-size: 0.76rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
 }
 
 /* #endregion */
 
 /* #region Tab body placeholder (per-tab route scaffold) */
 .chan-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-5, var(--space-4)) var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-5, var(--space-4)) var(--space-4);
 }
 
 .chan-body__title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 650;
-    color: var(--on-surface);
+	margin: 0;
+	font-size: 1.1rem;
+	font-weight: 650;
+	color: var(--on-surface);
 }
 
 .chan-body__note {
-    margin: 0;
-    font-size: 0.85rem;
-    line-height: 1.6;
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: 0.85rem;
+	line-height: 1.6;
+	color: var(--text-secondary);
 }
 
 /* Skeleton rows so the pinned header can be seen holding position as the body scrolls. */
 .chan-body__skeleton {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
 .chan-body__line {
-    block-size: 3.5rem;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	block-size: 3.5rem;
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
 }
 
 /* #endregion */
 
 /* #region Responsive */
 @media (max-width: 767px) {
+	/* Reclaim width — the sub-line + tab labels drop; the tabs fall back to their leading glyph so the
+	three regions stay on one row (the underline indicator still lands on the divider). */
+	.chan-header__sub {
+		display: none;
+	}
 
-    /* Reclaim width — the sub-line + tab labels drop; the tabs fall back to their leading glyph so the
-	   three regions stay on one row (the underline indicator still lands on the divider). */
-    .chan-header__sub {
-        display: none;
-    }
+	.chan-tab__icon {
+		display: inline-flex;
+	}
 
-    .chan-tab__icon {
-        display: inline-flex;
-    }
+	.chan-tab__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
+	}
 
-    .chan-tab__label {
-        position: absolute;
-        inline-size: 1px;
-        block-size: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0 0 0 0);
-        white-space: nowrap;
-        border: 0;
-    }
-
-    .chan-tab {
-        padding-inline: 0.35rem;
-    }
+	.chan-tab {
+		padding-inline: 0.35rem;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.chan-tab,
+	.chan-tab::after,
+	.chan-action,
+	.chan-menu__item {
+		transition-duration: 0ms;
+	}
 
-    .chan-tab,
-    .chan-tab::after,
-    .chan-action,
-    .chan-menu__item {
-        transition-duration: 0ms;
-    }
-
-    .chan-header__typing-dots {
-        animation: none;
-    }
+	.chan-header__typing-dots {
+		animation: none;
+	}
 }
 
 /* #endregion */

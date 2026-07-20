@@ -10,3 +10,4 @@ export * from "./detail.ts";
 export * from "./messages.ts";
 export * from "./files.ts";
 export * from "./submissions.ts";
+export * from "./board.ts";

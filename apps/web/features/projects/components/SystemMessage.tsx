@@ -51,7 +51,9 @@ export function SystemMessage({ message }: SystemMessageProps): JSX.Element | nu
 
 	const inner = (
 		<>
-			<span class="msg-system__icon" aria-hidden="true">{cloneElement(activityGlyph(sys.type))}</span>
+			<span class="msg-system__icon" aria-hidden="true">
+				{cloneElement(activityGlyph(sys.type))}
+			</span>
 			<span class="msg-system__text">{sys.text}</span>
 			<span class="msg-system__time">{message.timeLabel}</span>
 		</>

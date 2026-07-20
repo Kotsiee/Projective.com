@@ -80,6 +80,13 @@ export const LocalKeys = {
 	FILES_ZOOM: "pj.local.files.zoom",
 	/** Persisted File Explorer table column widths — a single JSON `Record<columnKey, px>` map. */
 	FILES_COLUMNS: "pj.local.files.columns",
+	/**
+	 * The Kanban board's view mode (`kanban` | `list`) — shared cross-island (the footer View Control
+	 * Rig ↔ the board body), so the board reopens in the last-used surface.
+	 */
+	BOARD_VIEW: "pj.local.board.view",
+	/** The project board's column grouping (`stages` | `statuses`), remembered across sessions. */
+	BOARD_GROUPING: "pj.local.board.grouping",
 } as const;
 // #endregion
 

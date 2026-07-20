@@ -133,7 +133,10 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 
 	const requestRevision = () => {
 		if (!canRequestRevision) return;
-		onRequestRevision({ guidelines: guidelines.value.trim(), annotations: annotations.value.length });
+		onRequestRevision({
+			guidelines: guidelines.value.trim(),
+			annotations: annotations.value.length,
+		});
 	};
 
 	// #region Tabs
@@ -226,8 +229,10 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 										</p>
 									</div>
 
-									{/* A group of toggle buttons, NOT an ARIA tablist: the default "file" mode has no tab,
-									    so no tab is ever "selected" — `aria-pressed` models the toggle state correctly. */}
+									{
+										/* A group of toggle buttons, NOT an ARIA tablist: the default "file" mode has no tab,
+									    so no tab is ever "selected" — `aria-pressed` models the toggle state correctly. */
+									}
 									<div class="subm-ctx__tabs" role="group" aria-label="Submission context">
 										{tabs.map((tab) => (
 											<button
@@ -240,9 +245,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 											>
 												<span class="subm-ctx__tabicon" aria-hidden="true">{tab.icon}</span>
 												<span class="subm-ctx__tablabel">{tab.label}</span>
-												{tab.badge
-													? <span class="subm-ctx__tabbadge">{tab.badge}</span>
-													: null}
+												{tab.badge ? <span class="subm-ctx__tabbadge">{tab.badge}</span> : null}
 											</button>
 										))}
 									</div>
@@ -316,7 +319,14 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																	onClick={() => (selectedFileId.value = f.id)}
 																>
 																	{f.thumbnailUrl && (f.kind === "image" || f.kind === "video")
-																		? <img src={f.thumbnailUrl} alt="" loading="lazy" draggable={false} />
+																		? (
+																			<img
+																				src={f.thumbnailUrl}
+																				alt=""
+																				loading="lazy"
+																				draggable={false}
+																			/>
+																		)
 																		: (
 																			<span class="subm-work__railglyph" aria-hidden="true">
 																				<FileKindIcon kind={f.kind} size={16} />
@@ -369,8 +379,9 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																	rows={2}
 																	placeholder="Add a note or annotation for the freelancer…"
 																	value={draftNote.value}
-																	onInput={(e) =>
-																		(draftNote.value = (e.target as HTMLTextAreaElement).value)}
+																	onInput={(
+																		e,
+																	) => (draftNote.value = (e.target as HTMLTextAreaElement).value)}
 																/>
 																<div class="subm-work__noteactions">
 																	<button
@@ -382,7 +393,8 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																		Add annotation
 																	</button>
 																</div>
-																{annotations.value.filter((a) => a.fileId === selected.id).length > 0
+																{annotations.value.filter((a) => a.fileId === selected.id).length >
+																		0
 																	? (
 																		<ul class="subm-work__annos">
 																			{annotations.value
@@ -438,8 +450,9 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																	rows={3}
 																	placeholder="Global guidance for this revision (required unless you annotate files)…"
 																	value={guidelines.value}
-																	onInput={(e) =>
-																		(guidelines.value = (e.target as HTMLTextAreaElement).value)}
+																	onInput={(
+																		e,
+																	) => (guidelines.value = (e.target as HTMLTextAreaElement).value)}
 																/>
 															</div>
 															<ul class="subm-notes__list">
@@ -462,7 +475,9 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 																{annotations.value.map((a) => (
 																	<li key={a.id} class="subm-note subm-note--draft">
 																		<div class="subm-note__body">
-																			<span class="subm-note__meta">You · draft · {a.fileName}</span>
+																			<span class="subm-note__meta">
+																				You · draft · {a.fileName}
+																			</span>
 																			<span class="subm-note__text">{a.text}</span>
 																		</div>
 																	</li>

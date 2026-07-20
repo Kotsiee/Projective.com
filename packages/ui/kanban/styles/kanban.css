@@ -1,0 +1,235 @@
+/*
+ * @projective/ui/kanban — token-only, strict BEM. §B.4 separation hierarchy: a COLUMN is a
+ * non-interactive container (tonal surface tint + a single hairline under its header, never a
+ * four-sided box); a CARD is interactive/draggable (surface + radius + resting elevation, lifting to
+ * --elevation-high as the drag ghost). Inner scrollers get the sleek self-hiding scrollbar for free.
+ * Reduced-motion collapses every transition (§A.5). The board owns no fixed height — the consumer
+ * bounds it so columns scroll internally.
+ */
+
+.ui-kanban {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	block-size: 100%;
+}
+
+.ui-kanban__board {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-3);
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: var(--space-2) var(--space-1) var(--space-4);
+	scroll-snap-type: x proximity;
+}
+
+/* #region Column */
+.ui-kanban__column {
+	flex: 0 0 var(--kanban-col-w, 17rem);
+	inline-size: var(--kanban-col-w, 17rem);
+	min-block-size: 0;
+	max-block-size: 100%;
+	display: flex;
+	flex-direction: column;
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+	scroll-snap-align: start;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-kanban__column[data-over="true"] {
+	background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
+}
+
+.ui-kanban__column[data-dragging="true"] {
+	opacity: 0.4;
+}
+
+.ui-kanban__col-header {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2.5rem;
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.ui-kanban__col-header--handle {
+	cursor: grab;
+	touch-action: none;
+}
+
+.ui-kanban__col-header--handle:active {
+	cursor: grabbing;
+}
+
+.ui-kanban__col-header--handle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
+}
+
+.ui-kanban__col-title {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.ui-kanban__col-count {
+	flex: none;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.ui-kanban__column[data-overlimit="true"] .ui-kanban__col-count {
+	color: var(--danger);
+	font-weight: 600;
+}
+
+.ui-kanban__col-body {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-2);
+}
+
+.ui-kanban__col-empty {
+	min-block-size: 3rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+}
+
+.ui-kanban__col-footer {
+	flex: none;
+	padding: var(--space-2) var(--space-3);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Card */
+.ui-kanban__card {
+	display: flex;
+	align-items: stretch;
+	background: var(--surface);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-low);
+	cursor: grab;
+	touch-action: none;
+	transition:
+		box-shadow var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-kanban__card:hover {
+	box-shadow: var(--elevation-medium);
+}
+
+.ui-kanban__card:active {
+	cursor: grabbing;
+}
+
+.ui-kanban__card-grip {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.1rem;
+	padding: 0;
+	border: none;
+	border-start-start-radius: var(--radius-base);
+	border-end-start-radius: var(--radius-base);
+	background: transparent;
+	color: var(--text-secondary);
+	opacity: 0;
+	cursor: grab;
+	touch-action: none;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-kanban__card:hover .ui-kanban__card-grip,
+.ui-kanban__card-grip:focus-visible {
+	opacity: 0.7;
+}
+
+.ui-kanban__card-grip:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+	opacity: 1;
+}
+
+.ui-kanban__card-body {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.ui-kanban__card--dragging {
+	opacity: 0.4;
+}
+
+.ui-kanban__card--overlay {
+	box-shadow: var(--elevation-high);
+	cursor: grabbing;
+}
+/* #endregion */
+
+/* #region Drop indicators */
+.ui-kanban__drop-indicator {
+	block-size: 3px;
+	border-radius: 999px;
+	background: var(--primary);
+}
+
+.ui-kanban__col-indicator {
+	flex: 0 0 3px;
+	align-self: stretch;
+	border-radius: 999px;
+	background: var(--primary);
+}
+/* #endregion */
+
+/* #region Column drag ghost */
+.ui-kanban__col-ghost {
+	min-inline-size: 12rem;
+	padding: var(--space-2) var(--space-3);
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+}
+/* #endregion */
+
+/* Visually-hidden live region for keyboard drag announcements. */
+.ui-kanban__live {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-kanban__card,
+	.ui-kanban__column {
+		transition: none;
+	}
+}

@@ -270,6 +270,17 @@ blocker, not a backlog item.
 
 Column definitions are **frozen to §3.1** — see §5.2.
 
+> **Product board vs this tracker (Decision #35, 2026-07-20).** The columns above are the states of
+> **this dogfooding tracker**. The _product's_ Kanban — the client-facing board at
+> `/projects/[id]/board` and the stage Tasks board — renders the canonical Postgres **`ticket_status`**
+> enum, which is a distinct (shorter) vocabulary and MUST NOT be conflated with the tracker's states.
+> The product board's five column ↔ `ticket_status` mapping is fixed (per `0121_kanban_sync.sql`), and
+> the product relabels two of them for display: **New = `backlog`** · **Ready = `todo`** · **In Progress
+> = `in_progress`** (with `claimed` folded in — there is no separate Claimed _column_ on the product
+> board) · **Review = `in_review`** · **Completed = `completed`**. `cancelled` and `reported_hidden`
+> are card **overlays**, never columns. Both vocabularies still obey §5.2 (columns map 1:1 to a
+> frozen state machine — no bespoke columns); they are simply two machines at two altitudes.
+
 ---
 
 ## 7. Appendix — Worked example

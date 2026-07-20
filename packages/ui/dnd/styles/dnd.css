@@ -1,0 +1,49 @@
+/*
+ * @projective/ui/dnd — pointer-driven drag primitives. Token-only, no hardcoded values. The drag
+ * mechanic is Pointer Events (no native HTML5 draggable); the ghost is an elevated overlay that follows
+ * the pointer. Reduced-motion collapses the ghost's tilt/scale to a plain lift (§A.5 / merge gate).
+ */
+
+.ui-draggable {
+	touch-action: none;
+}
+
+.ui-draggable:not([aria-disabled="true"]) {
+	cursor: grab;
+}
+
+.ui-draggable[data-dragging="true"] {
+	cursor: grabbing;
+}
+
+.ui-draggable:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* While ANY drag is in flight, the whole region shows the grabbing cursor and suppresses selection so a
+   drag never paints a text selection or fires a stray hover. */
+:root[data-dnd-dragging] {
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+:root[data-dnd-dragging] * {
+	cursor: grabbing !important;
+}
+
+/* The floating ghost — lifted, non-interactive, tracks the pointer 1:1 (positioned via .ui-anchored). */
+.ui-drag-overlay {
+	pointer-events: none;
+	z-index: var(--z-overlay);
+	filter: drop-shadow(var(--elevation-high));
+	transform: rotate(1.5deg) scale(1.02);
+	opacity: 0.97;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-drag-overlay {
+		transform: none;
+	}
+}

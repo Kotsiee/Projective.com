@@ -1,0 +1,394 @@
+/*
+ * TicketModal — the 2-panel ticket create/edit surface. BodyPortal-mounted; the panel enter/exit is
+ * opacity + a self-clearing transform that reverts to `none` when open, so descendant fixed overlays
+ * don't re-base. A `.ui-splitter` divides the LEFT (title + stage selector) from the RIGHT (details /
+ * stage overrides). Token-only; §B.4 (a single hairline divides the panes, no boxes); reduced-motion
+ * jumps to final.
+ */
+.tkm {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: clamp(0px, 2vw, 28px);
+}
+
+.tkm__panel {
+	position: relative;
+	inline-size: min(1080px, 96vw);
+	block-size: min(760px, 92vh);
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border-radius: var(--radius-xl);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	opacity: 0;
+	transform: translateY(10px) scale(0.99);
+	transition:
+		opacity var(--dur-medium) var(--ease-emphasized),
+		transform var(--dur-medium) var(--spring-standard);
+}
+
+.tkm__panel[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tkm__panel {
+		transition: none;
+	}
+}
+
+.tkm__top {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.tkm__heading {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.tkm__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkm__close:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+
+.tkm__close:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+
+.tkm__split {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+}
+
+.tkm__left,
+.tkm__right {
+	block-size: 100%;
+	overflow-y: auto;
+	padding: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.tkm__left {
+	border-inline-end: var(--hairline);
+}
+
+.tkm__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.tkm__section--grow {
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+
+.tkm__label {
+	font-size: 0.74rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.tkm__sublabel,
+.tkm__hint {
+	margin: 0;
+	font-size: 0.72rem;
+	line-height: 1.4;
+	color: var(--text-secondary);
+}
+
+.tkm__row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-3);
+}
+
+.tkm__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* #region Stage selector */
+.tkm-stages {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tkm-stages__empty {
+	padding: var(--space-2);
+	color: var(--text-secondary);
+	font-size: 0.8rem;
+}
+
+.tkm-stage {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-1);
+	border-radius: var(--radius-sm);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkm-stage[data-over="true"] {
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.tkm-stage[data-active="true"] {
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.tkm-stage[data-dragging="true"] {
+	opacity: 0.5;
+}
+
+.tkm-stage__grip {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.1rem;
+	block-size: 1.6rem;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: grab;
+	touch-action: none;
+	font-size: 1rem;
+	line-height: 1;
+}
+
+.tkm-stage__grip:active {
+	cursor: grabbing;
+}
+
+.tkm-stage__grip:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
+}
+
+.tkm-stage__check {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	cursor: pointer;
+}
+
+.tkm-stage__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.82rem;
+	color: var(--on-surface);
+}
+
+.tkm-stage__open {
+	flex: none;
+	padding: 2px 0.5rem;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--primary);
+	font: inherit;
+	font-size: 0.72rem;
+	cursor: pointer;
+}
+
+.tkm-stage__open:disabled {
+	color: var(--text-secondary);
+	opacity: 0.5;
+	cursor: default;
+}
+
+.tkm-stage__open:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+/* #endregion */
+
+/* #region Tags */
+.tkm__tags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-1);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+
+.tkm__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 1px 0.2rem 1px 0.5rem;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	font-size: 0.72rem;
+	color: var(--on-surface);
+}
+
+.tkm__chipx {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.tkm__chipx:hover {
+	color: var(--on-surface);
+}
+
+.tkm__taginput {
+	flex: 1 1 6rem;
+	min-inline-size: 4rem;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: 0.82rem;
+	color: var(--on-surface);
+}
+
+.tkm__taginput:focus-visible {
+	outline: none;
+}
+/* #endregion */
+
+/* #region Stage override head */
+.tkm__stagehead {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.tkm__back {
+	align-self: flex-start;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--primary);
+	font: inherit;
+	font-size: 0.78rem;
+	cursor: pointer;
+}
+
+.tkm__stagetitle {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 620;
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Footer */
+.tkm__foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.tkm__gate {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+}
+
+.tkm__actions {
+	flex: none;
+	display: inline-flex;
+	gap: var(--space-2);
+}
+
+.tkm__btn {
+	padding: 0.5rem 1rem;
+	border: none;
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.82rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkm__btn:hover {
+	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+
+.tkm__btn--primary {
+	background: var(--primary);
+	color: var(--on-primary, #fff);
+}
+
+.tkm__btn--primary:hover:not(:disabled) {
+	filter: brightness(0.94);
+}
+
+.tkm__btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.tkm__btn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+@media (max-width: 768px) {
+	.tkm__row {
+		grid-template-columns: 1fr;
+	}
+}

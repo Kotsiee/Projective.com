@@ -76,7 +76,9 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 						{href
 							? <a class="msg-meta__name" href={href}>{sender?.name}</a>
 							: <span class="msg-meta__name">{sender?.name}</span>}
-						{m.pinned && <span class="msg-meta__pin" aria-hidden="true">{cloneElement(PinIcon)}</span>}
+						{m.pinned && (
+							<span class="msg-meta__pin" aria-hidden="true">{cloneElement(PinIcon)}</span>
+						)}
 						<span class="msg-meta__time">{m.timeLabel}</span>
 					</div>
 				)}

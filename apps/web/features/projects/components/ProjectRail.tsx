@@ -76,14 +76,24 @@ export function ProjectRail(
 								href={profileHref(lead.handle)}
 								aria-label={`View ${lead.name}'s profile`}
 							>
-								<Avatar image={lead.avatar ?? undefined} label={lead.name} size={40} shape="circle" />
+								<Avatar
+									image={lead.avatar ?? undefined}
+									label={lead.name}
+									size={40}
+									shape="circle"
+								/>
 							</a>
 						</Tooltip>
 					)
 					: (
 						<Tooltip content={lead.name} placement="right">
 							<span class="proj-railbtn proj-railbtn--avatar" aria-label={lead.name}>
-								<Avatar image={lead.avatar ?? undefined} label={lead.name} size={40} shape="circle" />
+								<Avatar
+									image={lead.avatar ?? undefined}
+									label={lead.name}
+									size={40}
+									shape="circle"
+								/>
 							</span>
 						</Tooltip>
 					)}

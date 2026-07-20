@@ -6,93 +6,93 @@
  * Native WINDOW scroll model (Decision #31) — the tree + header pin via `position: sticky`. Token-only.
  */
 .subm-explorer {
-    position: relative;
-    /* The viewport offset the sticky tree/header pin below (project scope = top bar; channel scope also
-	   clears the channel-header band). */
-    --fx-chrome: var(--shell-topbar-h);
-    --subm-crumb-h: 2.5rem;
-    /* The combined header height (breadcrumbs + toolbar) — the offset the FileTable header sticks below. */
-    --fx-toolbar-h: calc(var(--subm-crumb-h) + 3rem);
-    min-block-size: 100%;
-    padding-inline: var(--space-4);
-    padding-block: var(--space-3) var(--space-6);
+	position: relative;
+	/* The viewport offset the sticky tree/header pin below (project scope = top bar; channel scope also
+	clears the channel-header band). */
+	--fx-chrome: var(--shell-topbar-h);
+	--subm-crumb-h: 2.5rem;
+	/* The combined header height (breadcrumbs + toolbar) — the offset the FileTable header sticks below. */
+	--fx-toolbar-h: calc(var(--subm-crumb-h) + 3rem);
+	min-block-size: 100%;
+	padding-inline: var(--space-4);
+	padding-block: var(--space-3) var(--space-6);
 }
 
 .subm-explorer[data-scope="channel"] {
-    --fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 }
 
 /* #region Layout — tree + main */
 .subm-layout {
-    display: grid;
-    grid-template-columns: 15rem minmax(0, 1fr);
-    gap: var(--space-5);
-    align-items: start;
+	display: grid;
+	grid-template-columns: 15rem minmax(0, 1fr);
+	gap: var(--space-5);
+	align-items: start;
 }
 
 .subm-main {
-    min-inline-size: 0;
-    display: flex;
-    flex-direction: column;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 /* #endregion */
 
 /* #region Tree panel (sticky, full viewport height, single vertical divider) */
 .subm-aside-tree {
-    position: sticky;
-    inset-block-start: var(--fx-chrome);
-    align-self: start;
-    block-size: calc(100dvh - var(--fx-chrome));
-    overflow-y: auto;
-    padding-block: var(--space-2);
-    padding-inline-end: var(--space-3);
-    /* The single hairline that separates the tree from the workspace (§B.4 — not a four-sided box). */
-    border-inline-end: var(--hairline);
+	position: sticky;
+	inset-block-start: var(--fx-chrome);
+	align-self: start;
+	block-size: calc(100dvh - var(--fx-chrome));
+	overflow-y: auto;
+	padding-block: var(--space-2);
+	padding-inline-end: var(--space-3);
+	/* The single hairline that separates the tree from the workspace (§B.4 — not a four-sided box). */
+	border-inline-end: var(--hairline);
 }
 
 /* #endregion */
 
 /* #region Breadcrumbs bar (sticky) */
 .subm-crumbbar {
-    display: flex;
-    align-items: center;
-    min-block-size: var(--subm-crumb-h);
-    padding: 0 var(--space-2);
+	display: flex;
+	align-items: center;
+	min-block-size: var(--subm-crumb-h);
+	padding: 0 var(--space-2);
 }
 
 .subm-breadcrumbs {
-    min-inline-size: 0;
-    overflow: hidden;
+	min-inline-size: 0;
+	overflow: hidden;
 }
 
 .subm-bar {
-    position: sticky;
-    inset-block-start: calc(var(--fx-chrome) + var(--space-2));
-    z-index: calc(var(--z-sticky) + 1);
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
+	z-index: calc(var(--z-sticky) + 1);
 }
 
 .subm-bar::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface) 62%, transparent);
-    backdrop-filter: blur(var(--glass-blur, 18px));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-    pointer-events: none;
-    border-radius: 15px;
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur, 18px));
+	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	pointer-events: none;
+	border-radius: 15px;
 }
 
 .fx-toolbar::before {
-    content: "";
-    position: relative;
-    z-index: 0;
-    background: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    pointer-events: none;
-    border-radius: none;
+	content: "";
+	position: relative;
+	z-index: 0;
+	background: none;
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	pointer-events: none;
+	border-radius: none;
 }
 
 /* #endregion */
@@ -100,49 +100,49 @@
 /* #region Toolbar (sticky below the breadcrumbs; height fixed so it never inflates to the FileTable
    offset var it also drives) */
 .subm-main .fx-toolbar {
-    position: sticky;
-    inset-block-start: calc(var(--fx-chrome) + var(--subm-crumb-h));
-    min-block-size: 3rem;
-    z-index: var(--z-sticky);
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--subm-crumb-h));
+	min-block-size: 3rem;
+	z-index: var(--z-sticky);
 }
 
 /* #endregion */
 
 /* #region Tree node status marks (icon-only, tone-coloured) */
 .subm-status {
-    display: inline-flex;
-    align-items: center;
+	display: inline-flex;
+	align-items: center;
 }
 
 .subm-status[data-tone="warning"] {
-    color: var(--warning);
+	color: var(--warning);
 }
 
 .subm-status[data-tone="danger"] {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .subm-status[data-tone="success"] {
-    color: var(--success);
+	color: var(--success);
 }
 
 .subm-status[data-tone="muted"] {
-    color: var(--text-secondary);
+	color: var(--text-secondary);
 }
 
 /* #endregion */
 
 @media (max-width: 768px) {
-    .subm-layout {
-        grid-template-columns: 1fr;
-    }
+	.subm-layout {
+		grid-template-columns: 1fr;
+	}
 
-    .subm-aside-tree {
-        position: static;
-        block-size: auto;
-        max-block-size: 18rem;
-        border-inline-end: none;
-        border-block-end: var(--hairline);
-        padding-inline-end: 0;
-    }
+	.subm-aside-tree {
+		position: static;
+		block-size: auto;
+		max-block-size: 18rem;
+		border-inline-end: none;
+		border-block-end: var(--hairline);
+		padding-inline-end: 0;
+	}
 }

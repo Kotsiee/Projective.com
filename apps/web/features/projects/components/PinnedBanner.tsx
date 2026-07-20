@@ -55,7 +55,12 @@ export function PinnedBanner({ pinned, onJump }: PinnedBannerProps): JSX.Element
 		<div class="chat-pinned" data-expanded={expanded.value ? "true" : undefined}>
 			<span class="chat-pinned__icon" aria-hidden="true">{cloneElement(PinIcon)}</span>
 
-			<button type="button" class="chat-pinned__body" onClick={jump} aria-label="Jump to pinned message">
+			<button
+				type="button"
+				class="chat-pinned__body"
+				onClick={jump}
+				aria-label="Jump to pinned message"
+			>
 				<span class="chat-pinned__label">
 					Pinned{count > 1 ? ` ${i + 1}/${count}` : ""}
 				</span>

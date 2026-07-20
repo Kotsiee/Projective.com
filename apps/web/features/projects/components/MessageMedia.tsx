@@ -41,9 +41,7 @@ function RowCell({ att }: { att: MessageAttachment }): JSX.Element {
 			aria-label={att.name}
 		>
 			<img class="msg-media__img" src={att.url} alt={att.name} loading="lazy" />
-			{att.kind === "video" && (
-				<span class="msg-media__play" aria-hidden="true">{PlayIcon}</span>
-			)}
+			{att.kind === "video" && <span class="msg-media__play" aria-hidden="true">{PlayIcon}</span>}
 		</button>
 	);
 }
@@ -89,7 +87,12 @@ export function MessageMedia({ attachments }: MessageMediaProps): JSX.Element | 
 		const ratio = a.width && a.height ? a.width / a.height : 1;
 		return (
 			<div class="msg-media msg-media--single">
-				<button type="button" class="msg-media__cell" style={`--cell-ratio:${ratio.toFixed(4)}`} aria-label={a.name}>
+				<button
+					type="button"
+					class="msg-media__cell"
+					style={`--cell-ratio:${ratio.toFixed(4)}`}
+					aria-label={a.name}
+				>
 					<img class="msg-media__img" src={a.url} alt={a.name} loading="lazy" />
 					{a.kind === "video" && <span class="msg-media__play" aria-hidden="true">{PlayIcon}</span>}
 				</button>
@@ -112,9 +115,16 @@ export function MessageMedia({ attachments }: MessageMediaProps): JSX.Element | 
 	const shown = overflow ? attachments.slice(0, GRID_MAX - 1) : attachments.slice(0, GRID_MAX);
 	const overlayAtt = overflow ? attachments[GRID_MAX - 1] : null;
 	return (
-		<div class="msg-media msg-media--grid" data-count={shown.length + (overlayAtt ? 1 : 0)} role="group" aria-label="Attachments">
+		<div
+			class="msg-media msg-media--grid"
+			data-count={shown.length + (overlayAtt ? 1 : 0)}
+			role="group"
+			aria-label="Attachments"
+		>
 			{shown.map((att) => <GridSquare key={att.id} att={att} />)}
-			{overlayAtt ? <GridSquare key={overlayAtt.id} att={overlayAtt} overlay={total - (GRID_MAX - 1)} /> : null}
+			{overlayAtt
+				? <GridSquare key={overlayAtt.id} att={overlayAtt} overlay={total - (GRID_MAX - 1)} />
+				: null}
 		</div>
 	);
 }

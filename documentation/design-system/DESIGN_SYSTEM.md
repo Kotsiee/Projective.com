@@ -345,6 +345,8 @@ verbatim because every component depends only on the token contract (Part A) —
 | **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                 |
 | **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                                                                            |
 | **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                            |
+| **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                          |
+| **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
@@ -462,6 +464,26 @@ deep-linkable / new-tab-openable) but a plain left-click is intercepted (`preven
 crumbs without a `command` are byte-identical to before. Both consume the review-modal's reuse of the
 existing `layout/Splitter` (hard min/max %), and inherit the same **Splitter collision** discipline
 above unchanged (the feature does not touch `splitter.css` or the nav splitter).
+
+Kanban additions (root CLAUDE.md §8 Decision #35): two NEW sub-paths. **`@projective/ui/dnd`** — a
+dependency-free, **Pointer-Events** drag-and-drop kit (NO native HTML5 `draggable`, NO external library
+— root CLAUDE.md §3 · PRODUCT_SPEC §Libraries · SYSTEM_ARCHITECTURE §KanbanBoard). One `DndContext`
+island owns the sensor engine (a pointer sensor with a movement-threshold so a click is never a drag +
+capture-phase click-suppression, and a keyboard sensor: Space/Enter pick up · Arrows move · Enter drops
+· Escape cancels) over a signal-first store; `Draggable`/`Droppable`/`SortableContext` (alias
+`SortableContainer`) + the `useDraggable`/`useDroppable`/`useSortable` hooks mark nodes; `DragOverlay`
+renders the elevated ghost through `BodyPortal` (escapes the glass-blur `position: fixed` trap);
+`useDndMonitor` lets a consumer react to the drag lifecycle. Collision detectors (`pointerWithin` →
+`closestCenter` fallback, and `nextInDirection` for the keyboard sensor) are pure. Signal-first, `--z-`/
+`--elevation-high`/`--spring-*` token-only, reduced-motion collapses the ghost tilt, and it ships an
+`aria-live` keyboard-DnD announcer. **`@projective/ui/kanban`** — a generic, **controlled**
+`KanbanBoard` (+ `KanbanColumn`/`KanbanCard`) built on `dnd`: columns hold items; a card drags across
+columns (and reorders within a `sortable` column), `reorderable` columns re-sequence, with live drop
+indicators, WIP counts, sleek inner scrollbars, elevation-on-drag, and a grip handle for keyboard drag.
+It NEVER mutates the model — it emits `KanbanItemMove`/`KanbanColumnMove` on drop, so a consumer can
+commit immediately OR intercept a move behind a confirmation modal (the projects board's stage-reorder /
+claimed-ticket / revision warnings). §B.4: columns are non-interactive containers (tonal tint + a single
+hairline, no box); cards are interactive (surface + radius + resting elevation).
 
 Cross-cutting behaviour lives in a new **package-level `packages/ui/hooks/`** (`useFloating`,
 `useEdgeDetection` [alias `usePopoverPosition`], `useDismiss`, `useFocusTrap`, `useOverlayStack`
