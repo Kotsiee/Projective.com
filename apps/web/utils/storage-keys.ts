@@ -66,6 +66,13 @@ export const LocalKeys = {
 	/** Persisted middle-nav (Blue lane) drag width in px — restored by the MiddleNavSplitter island. */
 	MIDDLE_LANE_WIDTH: "pj.local.shell.laneWidth",
 	/**
+	 * Guest floating side-nav collapsed vs expanded preference (`"1"` collapsed | `"0"` expanded).
+	 * The guest equivalent of {@link SIDEBAR_COLLAPSED}: read pre-paint in `_app.tsx` to set
+	 * `:root[data-guest-nav]` before first paint (no flash-of-wrong-width), re-synced by the
+	 * `GuestAside` island after hydration.
+	 */
+	GUEST_NAV_COLLAPSED: "pj.local.shell.guestNavCollapsed",
+	/**
 	 * The `/projects` feed's applied filter state, partitioned BY context id. Stored as a single JSON
 	 * map (`Record<contextId, ProjectFeedParams>`) under this one key — the `StorageKey` union is
 	 * closed, so we can't synthesise a per-context key literal; the partition lives inside the value.

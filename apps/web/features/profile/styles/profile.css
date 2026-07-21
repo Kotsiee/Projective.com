@@ -1,0 +1,1729 @@
+/*
+ * The profile REUSES the explore collections + entity cards + skill pills, whose styles live in the
+ * explore feature. In this Vite setup CSS reaches the client only through modules that execute
+ * client-side (islands) — profile.css does (every profile island imports it), so pulling the explore
+ * sheets in here (inlined at build) is what delivers them to the reused sections. The `.ex` token
+ * context they need is established by the layout's `<div class="ex">` wrapper. `@import` must precede
+ * every style rule (CSS spec), so it leads the file.
+ */
+@import "../../explore/styles/explore.css";
+@import "../../explore/styles/explore-results.css";
+
+/*
+ * profile — the `/[handle]` public profile shell. Pure CSS + strict BEM, token-only (root CLAUDE.md
+ * §3). Separation hierarchy (§B.4): non-interactive regions (meta panel, sections, timeline, reviews)
+ * are set off by spacing, a tonal surface tint, type weight, and single hairlines — never four-sided
+ * boxes. Full borders + hover/active tints belong to interactive elements only (buttons, links, tabs).
+ */
+
+/* #region Page container — 60–80% of page width on desktop, full-bleed below */
+.pf {
+	inline-size: clamp(320px, 80%, 76rem);
+	margin-inline: auto;
+	padding-block: var(--space-4) var(--space-8);
+	color: var(--on-surface);
+}
+
+/* Tab region below the permanent Overview: the tab bar + the routed tab body. `scroll-margin` lands
+   the Reviews click-through (`#profile-sections`) below the sticky top bar + header band, not under them. */
+.pf-sections {
+	margin-block-start: var(--space-6);
+	scroll-margin-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) +
+		var(--space-3));
+}
+
+.pf-tabpanel {
+	margin-block-start: var(--space-5);
+}
+
+@media (max-width: 1024px) {
+	.pf {
+		inline-size: 92%;
+	}
+}
+
+@media (max-width: 767px) {
+	.pf {
+		inline-size: 100%;
+		padding-inline: var(--space-3);
+	}
+}
+
+.pf-hairline {
+	block-size: 0;
+	margin: 0;
+	border: none;
+	border-block-start: var(--hairline);
+}
+
+/* #endregion */
+
+/* #region Header — banner (7:2) + overlapping avatar (§C.4) */
+.pf-header {
+	display: flex;
+	flex-direction: column;
+}
+
+.pf-header__banner {
+	aspect-ratio: 7 / 2;
+	inline-size: 100%;
+	background-size: cover;
+	background-position: center;
+	background-color: var(--surface-2);
+	border-radius: var(--radius-container-lg, var(--radius-xl));
+}
+
+.pf-header__bar {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-4);
+	padding-inline: var(--space-3);
+}
+
+/* The avatar overlaps the banner's bottom edge with a thick page-background border. */
+.pf-header__avatar {
+	flex: none;
+	margin-block-start: -56px;
+	border: 4px solid var(--surface);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+
+.pf-header__id {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	padding-block-start: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.pf-header__name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: 1.5rem;
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: -0.01em;
+}
+
+/* Verification tier badge beside the name (relocated from the Overview, Part 1.3). Reuses `.pf-tier`. */
+.pf-header__tier {
+	flex: none;
+	align-self: center;
+}
+
+.pf-header__handle {
+	font-size: 0.9rem;
+	color: var(--text-secondary);
+}
+
+.pf-header__headline {
+	margin: 0.35rem 0 0;
+	font-size: 0.95rem;
+	color: var(--on-surface-variant, var(--text-secondary));
+}
+
+.pf-header__actions {
+	flex: none;
+	padding-block-start: var(--space-3);
+}
+
+/* #endregion */
+
+/* #region Action buttons (Follow · Hire/Message · Edit) */
+.pf-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.pf-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0.5rem 0.95rem;
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-btn:hover {
+	background: var(--surface-3, var(--surface-2));
+}
+
+.pf-btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-btn__icon {
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	flex: none;
+}
+
+.pf-btn--primary {
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+}
+
+.pf-btn--primary:hover {
+	background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-btn--follow[data-on="true"] {
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+}
+
+/* #endregion */
+
+/* #region Sticky migrated header (in ui-middle-nav__header band) */
+/*
+ * Keep the header band OUT of the layout until the body header actually scrolls away. The profile
+ * always mounts a sticky-header slot, so `MiddleNav` stamps `--has-header` on the frame, which bumps
+ * the Green canvas's seam inset (`--shell-frame-inset-block`) down by the band height — reserving a
+ * visible empty header strip above the content BEFORE any scroll. Until the migrated header reveals
+ * (`.pf-stickyhead[data-condensed="true"]`), reset the inset to the top-bar line so the rounded canvas
+ * corner sits flush at the top with no empty strip; once revealed, the package `--has-header` inset
+ * applies again and the canvas drops below the now-visible band. Higher specificity than the package
+ * rule (0,3,0 vs 0,1,0), so it wins regardless of stylesheet order.
+ */
+.ui-middle-nav--has-header:not(:has(.pf-stickyhead[data-condensed="true"])) {
+	--shell-frame-inset-block: var(--shell-topbar-h);
+}
+
+.pf-stickyhead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	inline-size: 100%;
+	/*
+	* The band collapses to 0 until the body header scrolls away, then reveals to the header-band
+	* height. `max-block-size` (not `block-size`) drives the reveal: the sticky sits in the middle-nav
+	* frame's grid/flex context, which overrides an explicit `block-size` (verified) — only the
+	* min/max logical-size constraints are honoured there. Clamping both min + max to the same value
+	* pins the exact height; the `auto` header-band grid row then follows the content. Animating
+	* `max-block-size` gives the smooth slide (jump-to-final under reduced-motion, below).
+	*/
+	min-block-size: 0;
+	max-block-size: 0;
+	padding-inline: var(--space-4);
+	overflow: hidden;
+	opacity: 0;
+	/* `visibility: hidden` removes every descendant (Follow/Hire/Edit) from the tab order AND the
+	accessibility tree while collapsed — so keyboard users never land on the invisible controls. It
+	is delayed by the transition so it flips only after the collapse animation completes. */
+	visibility: hidden;
+	transition:
+		max-block-size var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard),
+		visibility 0s linear var(--dur-medium);
+}
+
+.pf-stickyhead[data-condensed="true"] {
+	min-block-size: var(--shell-midnav-header-h);
+	max-block-size: var(--shell-midnav-header-h);
+	opacity: 1;
+	visibility: visible;
+	transition:
+		max-block-size var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard),
+		visibility 0s;
+}
+
+.pf-stickyhead__id {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	text-decoration: none;
+	color: var(--on-surface);
+}
+
+.pf-stickyhead__name {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.9rem;
+	font-weight: 650;
+	white-space: nowrap;
+}
+
+.pf-stickyhead__verified {
+	inline-size: 0.95rem;
+	block-size: 0.95rem;
+	color: var(--primary);
+}
+
+.pf-stickyhead__handle {
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pf-stickyhead__actions .pf-btn {
+	padding: 0.3rem 0.7rem;
+	font-size: 0.78rem;
+}
+
+/* #endregion */
+
+/* #region Tab bar — underlined text tabs (§B.4/§D.4) */
+.pf-tabs {
+	position: relative;
+	margin-block-start: 0;
+	border-block-end: var(--hairline);
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.pf-tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.pf-tabs__list {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-inline-size: max-content;
+}
+
+.pf-tab {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.6rem 0.75rem;
+	font-size: 0.85rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+	text-decoration: none;
+	white-space: nowrap;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-tab::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0.5rem;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px 2px 0 0;
+	background: var(--primary);
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.pf-tab:hover {
+	color: var(--on-surface);
+}
+
+.pf-tab[data-active="true"] {
+	color: var(--on-surface);
+	font-weight: 650;
+}
+
+.pf-tab[data-active="true"]::after {
+	transform: scaleX(1);
+}
+
+.pf-tab:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+	border-radius: var(--radius-sm);
+}
+
+.pf-tab__icon {
+	display: inline-flex;
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+	flex: none;
+}
+
+@media (max-width: 767px) {
+	.pf-tab__label {
+		display: none;
+	}
+
+	.pf-tab[data-active="true"] .pf-tab__label {
+		display: inline;
+	}
+}
+
+/* #endregion */
+
+/* #region Split view — main + sticky meta rail */
+.pf-split {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 18rem;
+	gap: var(--space-6);
+	margin-block-start: var(--space-5);
+	align-items: start;
+}
+
+.pf-split__main {
+	min-inline-size: 0;
+}
+
+.pf-meta {
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-3));
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+@media (max-width: 1024px) {
+	.pf-split {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.pf-meta {
+		position: static;
+		order: -1;
+	}
+}
+
+/* #endregion */
+
+/* #region Meta rail content */
+.pf-meta__panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+}
+
+.pf-meta__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.9rem;
+	color: var(--on-surface);
+}
+
+.pf-meta__icon {
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+	flex: none;
+	color: var(--text-secondary);
+}
+
+/* Location + response share ONE text size + weight so the two rows read consistently (Part 3). */
+.pf-meta__rowtext {
+	min-inline-size: 0;
+	font-size: 0.9rem;
+	font-weight: 550;
+	color: var(--on-surface);
+}
+
+/* Meta panel header — online status (left) · local clock + availability (right), per the reference. */
+.pf-meta__head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.pf-meta__clockblock {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0.1rem;
+	text-align: end;
+}
+
+.pf-meta__avail {
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+
+.pf-clock {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: flex-end;
+	line-height: 1.1;
+}
+
+.pf-clock__zone {
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: var(--text-secondary);
+}
+
+.pf-clock__time {
+	font-size: 1.05rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+/* Reviews panel (Part 3) — a SEPARATE panel below the meta panel; the whole panel is the click-through
+   into the Reviews tab (Part 1.2 / 3.2). Inherits the `.pf-meta__panel` box + adds the link affordance. */
+.pf-revpanel {
+	text-decoration: none;
+	color: inherit;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-revpanel:hover {
+	background: var(--surface-2);
+}
+
+.pf-revpanel:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-revpanel__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.pf-revpanel__head .pf-meta__heading {
+	margin: 0;
+}
+
+.pf-revpanel__chevron {
+	inline-size: 1rem;
+	block-size: 1rem;
+	flex: none;
+	color: var(--text-secondary);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-revpanel:hover .pf-revpanel__chevron {
+	transform: translateX(2px);
+	color: var(--on-surface);
+}
+
+.pf-meta__heading {
+	margin: 0 0 var(--space-1);
+	font-size: 0.72rem;
+	font-weight: 650;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+.pf-rep {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.pf-rep__track {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.pf-rep__role {
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: var(--text-secondary);
+}
+
+.pf-rep__empty,
+.pf-empty {
+	margin: 0;
+	padding: var(--space-4) 0;
+	font-size: 0.85rem;
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Online status + tier badges */
+.pf-online {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.pf-online__dot {
+	inline-size: 0.6rem;
+	block-size: 0.6rem;
+	border-radius: 50%;
+	background: var(--text-secondary);
+	flex: none;
+}
+
+.pf-online[data-online="true"] .pf-online__dot {
+	background: var(--success, var(--primary));
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, var(--primary)) 22%, transparent);
+}
+
+.pf-online[data-online="true"] .pf-online__label {
+	color: var(--success, var(--primary));
+}
+
+.pf-tiers {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.pf-tier {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0.25rem 0.55rem;
+	font-size: 0.74rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border-radius: var(--radius-full, 999px);
+	cursor: default;
+}
+
+.pf-tier__mark {
+	inline-size: 0.95rem;
+	block-size: 0.95rem;
+	color: var(--primary);
+	flex: none;
+}
+
+.pf-tier[data-tier="architect"] {
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+}
+
+.pf-tier[data-tier="architect"] .pf-tier__mark {
+	color: var(--on-primary, #fff);
+}
+
+.pf-tiers[data-size="sm"] .pf-tier {
+	padding: 0.15rem 0.45rem;
+	font-size: 0.68rem;
+}
+
+/* #endregion */
+
+/* #region About column */
+.pf-about {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.pf-about__heading {
+	margin: 0 0 var(--space-2);
+	font-size: 0.78rem;
+	font-weight: 650;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+.pf-story__text {
+	margin: 0;
+	font-size: 0.95rem;
+	line-height: 1.6;
+	color: var(--on-surface);
+	white-space: pre-wrap;
+}
+
+/* Owner inline-edit: the clickable read state. */
+.pf-story__editable {
+	position: relative;
+	display: block;
+	inline-size: 100%;
+	text-align: start;
+	padding: var(--space-2);
+	margin: calc(var(--space-2) * -1);
+	font: inherit;
+	color: inherit;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: text;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-story__editable:hover {
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+}
+
+.pf-story__editable:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-story__hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	margin-block-start: var(--space-2);
+	font-size: 0.74rem;
+	font-weight: 500;
+	color: var(--text-secondary);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.pf-story__hint-icon {
+	inline-size: 0.9rem;
+	block-size: 0.9rem;
+}
+
+.pf-story__editable:hover .pf-story__hint,
+.pf-story__editable:focus-visible .pf-story__hint {
+	opacity: 1;
+}
+
+.pf-story__actions {
+	display: flex;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+}
+
+/* Skills — styled tag chips (Part 2.1), each an Explore-filter anchor wrapping a `ui-tag`. */
+.pf-skills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.pf-skill {
+	display: inline-flex;
+	text-decoration: none;
+	border-radius: var(--radius-full, 999px);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.pf-skill:hover {
+	opacity: 0.85;
+}
+
+.pf-skill:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+/* The `ui-tag` icon slot has no intrinsic size and the category glyph carries no width/height, so give
+   it an explicit box — otherwise the skill icons collapse to 0 (retain the icons, keep the tags). */
+.pf-skill .ui-tag__icon {
+	inline-size: 0.9rem;
+	block-size: 0.9rem;
+}
+
+.pf-skill .ui-tag__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+/* Languages — split `Language | Proficiency` pills (Part 2.2). The `|` is the level segment's leading
+   hairline; the two halves carry distinct fills so the split reads at a glance. */
+.pf-langs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pf-langpill {
+	display: inline-flex;
+	align-items: stretch;
+	font-size: 0.8rem;
+	border-radius: var(--radius-full, 999px);
+	overflow: hidden;
+	background: var(--surface-2);
+}
+
+.pf-langpill__lang {
+	padding: 0.3rem 0.65rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.pf-langpill__level {
+	padding: 0.3rem 0.65rem;
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	border-inline-start: var(--hairline);
+}
+
+/* Clients / Worked with — mini-cards with a prominent logo (Part 2.3). Interactive, so a full border
+   is allowed (§B.4). */
+.pf-clients {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pf-clientcard {
+	display: flex;
+}
+
+.pf-clientcard__link {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	min-inline-size: 11rem;
+	text-decoration: none;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-clientcard__link:not(.pf-clientcard__link--static):hover {
+	background: var(--surface-2);
+	border-color: color-mix(in srgb, var(--outline) 40%, transparent);
+}
+
+.pf-clientcard__link--static {
+	cursor: default;
+}
+
+.pf-clientcard__logo {
+	flex: none;
+	border-radius: var(--radius-base);
+	background: var(--surface);
+}
+
+.pf-clientcard__name {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	font-size: 0.9rem;
+	font-weight: 600;
+}
+
+.pf-clientcard__check {
+	inline-size: 0.9rem;
+	block-size: 0.9rem;
+	color: var(--primary);
+	flex: none;
+}
+
+/* #endregion */
+
+/* #region Tab panels */
+.pf-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.pf-panel__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.pf-panel__title {
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+.pf-create {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.4rem 0.75rem;
+	font: inherit;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-create:hover {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.pf-create:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-create__icon {
+	inline-size: 1rem;
+	block-size: 1rem;
+}
+
+.pf-modal__body {
+	margin: 0;
+	font-size: 0.9rem;
+	line-height: 1.6;
+	color: var(--on-surface);
+}
+
+.pf-modal__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.pf-projects {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
+
+.pf-projects__sub {
+	margin: 0 0 var(--space-3);
+	font-size: 0.8rem;
+	font-weight: 650;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Structured lists (education / experience / members / reviews) */
+.pf-timeline {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pf-tl {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+}
+
+.pf-tl__logo {
+	flex: none;
+}
+
+.pf-tl__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	min-inline-size: 0;
+}
+
+.pf-tl__title {
+	font-size: 0.95rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.pf-tl__org {
+	font-size: 0.85rem;
+	color: var(--on-surface);
+}
+
+.pf-tl__dates {
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+}
+
+.pf-tl__summary {
+	margin: 0.35rem 0 0;
+	font-size: 0.85rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+.pf-members {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+	gap: var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pf-member__link {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.3rem;
+	padding: var(--space-3);
+	text-align: center;
+	text-decoration: none;
+	color: var(--on-surface);
+	border-radius: var(--radius-lg);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-member__link:hover {
+	background: var(--surface-1);
+}
+
+.pf-member__name {
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+.pf-member__role {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
+.pf-reviews {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.pf-reviews__summary {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-6);
+	padding: var(--space-4);
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+}
+
+.pf-review-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pf-review {
+	display: flex;
+	gap: var(--space-3);
+	padding-block-end: var(--space-4);
+	border-block-end: var(--hairline);
+}
+
+.pf-review:last-child {
+	border-block-end: none;
+	padding-block-end: 0;
+}
+
+.pf-review__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	min-inline-size: 0;
+}
+
+.pf-review__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.pf-review__author {
+	font-size: 0.9rem;
+	font-weight: 650;
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+.pf-review__author:hover {
+	color: var(--primary);
+	text-decoration: underline;
+}
+
+.pf-review__role {
+	font-size: 0.7rem;
+	font-weight: 600;
+	padding: 0.1rem 0.45rem;
+	border-radius: var(--radius-full, 999px);
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.pf-review__role[data-role="client"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.pf-review__meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.pf-review__date {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
+.pf-review__text {
+	margin: 0.15rem 0 0;
+	font-size: 0.9rem;
+	line-height: 1.55;
+	color: var(--on-surface);
+}
+
+.pf-review__context {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Action lane — mirrors ui-app-shell__sidebar; expanded stack + collapsed rail */
+.pf-lane {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 100%;
+	font-size: 0.85rem;
+	color: var(--on-surface);
+}
+
+.pf-lane__full {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	block-size: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Lane header — mirrors `.proj-detail__header` (Part 4.2): a fixed-height strip with Back / title on
+   the left and the Share (+ owner Settings) icon buttons on the right, over a single hairline. */
+.pf-lane__header {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.pf-lane__back {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0.3rem 0.5rem 0.3rem 0.35rem;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--text-secondary);
+	text-decoration: none;
+	background: transparent;
+	border-radius: var(--radius-full, 999px);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__back:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.pf-lane__back-icon {
+	inline-size: 1rem;
+	block-size: 1rem;
+}
+
+/* Share · Star · Kebab, grouped on the right (`margin-auto` keeps them right-aligned even with no Back). */
+.pf-lane__header-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-inline-start: auto;
+}
+
+.pf-lane__headbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	text-decoration: none;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__headbtn:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.pf-lane__headbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-lane__headbtn svg {
+	inline-size: 1.15rem;
+	block-size: 1.15rem;
+}
+
+/* Favourited star + open kebab — tinted; the star fills to signal the active state. */
+.pf-lane__headbtn[data-on="true"],
+.pf-lane__headbtn[data-open="true"] {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.pf-lane__headbtn[data-on="true"] {
+	color: var(--primary);
+}
+
+.pf-lane__headbtn[data-on="true"] svg {
+	fill: currentColor;
+}
+
+/* Kebab dropdown menu (portal Popover content). */
+.pf-lane__menu {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 11rem;
+	padding: var(--space-1);
+	background: var(--surface);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-medium, var(--elevation-low));
+}
+
+.pf-lane__menu-item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.5rem var(--space-2);
+	font: inherit;
+	font-size: 0.85rem;
+	color: var(--on-surface);
+	text-align: start;
+	text-decoration: none;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__menu-item:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.pf-lane__menu-item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-lane__menu-item[data-danger="true"] {
+	color: var(--danger, #d9534f);
+}
+
+.pf-lane__menu-item svg {
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	flex: none;
+}
+
+/* Action stack (visitor / owner default) — availability toggle · Follow|Message row · full-width CTA. */
+.pf-lane__actions {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
+}
+
+.pf-lane__row {
+	display: flex;
+	gap: var(--space-2);
+}
+
+/* Follow / Message row buttons — equal-width, secondary by default. */
+.pf-lanebtn {
+	flex: 1 1 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	min-block-size: 40px;
+	padding: 0 var(--space-2);
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lanebtn:hover {
+	background: color-mix(in srgb, var(--on-surface) 12%, var(--surface-2));
+}
+
+.pf-lanebtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-lanebtn--follow[data-on="true"],
+.pf-lanebtn--primary {
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+}
+
+.pf-lanebtn--primary:hover {
+	background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-lanebtn__icon {
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+	flex: none;
+}
+
+/* Main CTA — full-width primary action (Hire, or owner Edit profile). */
+.pf-lanecta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-block-size: 44px;
+	font: inherit;
+	font-size: 0.9rem;
+	font-weight: 650;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lanecta--primary {
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+}
+
+.pf-lanecta--primary:hover {
+	background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-lanecta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+/* Profile ⁄ Availability segmented toggle (Part 4.3) — shown only when availability is configured. */
+.pf-availtoggle {
+	display: flex;
+	padding: 3px;
+	background: var(--surface-2);
+	border-radius: var(--radius-full, 999px);
+}
+
+.pf-availtoggle__opt {
+	flex: 1 1 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-block-size: 30px;
+	padding: 0 var(--space-2);
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	text-decoration: none;
+	border-radius: var(--radius-full, 999px);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-availtoggle__opt[data-active="true"] {
+	color: var(--on-surface);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+
+.pf-availtoggle__opt:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-lane__scroll {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-2);
+}
+
+.pf-lane__nav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.pf-lane__sep {
+	margin-block: var(--space-1);
+}
+
+/* Lane item — self-styled mirror of `.ui-nav-item` (so it looks right even on the guest shell where
+   nav.css isn't loaded). Icon on a shared axis; label reveals beside it. */
+.pf-laneitem {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-block-size: 40px;
+	padding: 0 var(--space-2);
+	font: inherit;
+	font-size: 0.85rem;
+	font-weight: 500;
+	color: var(--on-surface);
+	text-align: start;
+	text-decoration: none;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-laneitem:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.pf-laneitem:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-laneitem.ui-nav-item--active,
+.pf-laneitem[data-on="true"] {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.pf-laneitem--primary {
+	color: var(--on-primary, #fff);
+	background: var(--primary);
+}
+
+.pf-laneitem--primary:hover {
+	background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-laneitem .ui-nav-item__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 24px;
+	block-size: 24px;
+	flex: none;
+}
+
+.pf-laneitem .ui-nav-item__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Footer collapse toggle. */
+.pf-lane__footer {
+	flex: none;
+	position: sticky;
+	inset-block-end: 0;
+	display: flex;
+	padding: var(--space-2);
+	background: var(--surface-1);
+	border-block-start: var(--hairline);
+}
+
+.pf-lane__collapse {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__collapse:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.pf-lane__collapse:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-lane__collapse .shell-toggle {
+	inline-size: 22px;
+	block-size: 22px;
+	stroke-width: 1.8;
+}
+
+/* The collapse toggle's dotted bar rests at the expanded (right) edge; scoped so it tracks THIS lane. */
+.pf-lane .pf-lane__collapse .shell-toggle__bar {
+	transition: transform var(--dur-medium) var(--spring-standard);
+	transform: translateX(6px);
+}
+
+/* #endregion */
+
+/* #region Collapsed icon rail (density switch on .ui-splitter[data-mode="collapsed"]) */
+.pf-lane__rail {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .pf-lane__full {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .pf-lane__rail {
+	display: flex;
+}
+
+/* Widen the collapsed lane so its icon rail matches the global sidebar's collapsed rail. */
+.ui-splitter[data-mode="collapsed"]:has(.pf-lane) {
+	inline-size: calc(var(--shell-sidebar-w) + 6px);
+}
+
+.pf-lane__rail {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: var(--space-2);
+	overflow-y: auto;
+}
+
+.pf-lane__rail-group {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.pf-lane__rail-group--bottom {
+	margin-block-start: auto;
+}
+
+.pf-railbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	color: var(--on-surface-variant, var(--text-secondary));
+	background: transparent;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-railbtn:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+
+.pf-railbtn--active,
+.pf-railbtn[data-active="true"],
+.pf-railbtn[data-on="true"] {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--on-surface);
+}
+
+.pf-railbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+}
+
+.pf-railbtn svg {
+	inline-size: 24px;
+	block-size: 24px;
+}
+
+.pf-railbtn--toggle .shell-toggle {
+	inline-size: 22px;
+	block-size: 22px;
+	stroke-width: 1.8;
+}
+
+.pf-lane .pf-railbtn--toggle .shell-toggle__bar {
+	transition: transform var(--dur-medium) var(--spring-standard);
+	transform: translateX(0);
+}
+
+/* #endregion */
+
+/* #region Reused explore content (cards · grids · skill pills) */
+/*
+ * The profile REUSES the explore collections + cards (Services grid · Products/Portfolio masonry ·
+ * Projects list · Articles list · Teams/Businesses entity cards) and the skill pills. Those styles read
+ * `--ex-*` tokens scoped to the explore screen root `.ex`, so the layout wraps the reused content in a
+ * bare `<div class="ex">` to inherit that token context (mirrors `EntityView`). Here we neutralise the
+ * screen-level page box `.ex` also carries — it is a full-height `100vh` surface meant to BE the page —
+ * so it nests cleanly inside the profile split/tab column instead of adding a viewport of blank height.
+ */
+.pf .ex {
+	min-block-size: 0;
+	background: transparent;
+}
+
+/* DataView (teams/businesses grid⇄list) — spacing only; card look comes from the explore CSS above. */
+.pf-entitygrid {
+	margin-block-start: 0;
+}
+
+/* #endregion */
+
+/* #region Availability + not-found */
+.pf-avail-status {
+	margin: 0 0 var(--space-2);
+	font-size: 1rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.pf-notfound {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding-block: var(--space-8);
+}
+
+.pf-notfound__title {
+	margin: 0;
+	font-size: 1.5rem;
+	font-weight: 700;
+}
+
+.pf-notfound__note {
+	margin: 0;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.pf-stickyhead,
+	.pf-tab::after,
+	.pf-lane__collapse .shell-toggle__bar,
+	.pf-railbtn--toggle .shell-toggle__bar,
+	.pf-story__editable,
+	.pf-story__hint {
+		transition-duration: 0ms;
+	}
+}
+
+/* #endregion */
+
+/*
+ * #region Guest floating shell overrides
+ *
+ * When the profile chrome renders inside the guest floating `GuestShell` (`.guest-shell`) rather than
+ * the authenticated middle-nav frame, its layout ceiling changes: there is no `ui-shell-topbar` + no
+ * reserved header band — the pill `SiteHeader` is the top chrome and the sub-header floats OVER the
+ * content (scroll-revealed, no reserved band). So the two sticky offsets that assume
+ * `--shell-topbar-h + --shell-midnav-header-h` collapse to the site header height `--site-header-h`.
+ * (The `.ui-middle-nav--has-header` inset rule is frame-scoped and simply never matches here.)
+ */
+.guest-shell .pf-sections {
+	scroll-margin-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
+}
+
+.guest-shell .pf-meta {
+	inset-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
+}
+
+/*
+ * The floating side nav (`.ui-guest-aside`) hosts the SAME `.pf-lane` content as the authed lane, but
+ * it is NOT a `.ui-splitter`, so the density reveal keys off the PRE-PAINTED `:root[data-guest-nav]`
+ * instead of `.ui-splitter[data-mode]` — the collapsed rail paints correctly on the first byte (no
+ * flash-of-wrong-width). Mirrors the `.ui-splitter[data-mode="collapsed"]` rules above.
+ */
+:root[data-guest-nav="collapsed"] .ui-guest-aside .pf-lane__full {
+	display: none;
+}
+
+:root[data-guest-nav="collapsed"] .ui-guest-aside .pf-lane__rail {
+	display: flex;
+}
+
+/* #endregion */

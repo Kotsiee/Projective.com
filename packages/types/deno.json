@@ -8,7 +8,9 @@
 		"./org": "./org/mod.ts",
 		"./explore": "./explore/mod.ts",
 		"./newsletter": "./newsletter/mod.ts",
-		"./projects": "./projects/mod.ts"
+		"./projects": "./projects/mod.ts",
+		"./profile": "./profile/mod.ts",
+		"./scheduling": "./scheduling/mod.ts"
 	},
 	"imports": {
 		"zod": "npm:zod@^4.3.6"

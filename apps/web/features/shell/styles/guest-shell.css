@@ -1,0 +1,151 @@
+/*
+ * guest-shell — the unified FLOATING guest navigation shell (DESIGN_SYSTEM.md Part D). It composes the
+ * marketing `.site` base (site-shell.css: the fixed → pill-on-scroll `SiteHeader`, the reserved header
+ * band, and the `overflow-x: clip` guard) with floating, glassmorphic panels layered over a full-bleed
+ * body:
+ *   - the route lane becomes a floating `.ui-guest-aside` (NO drag-resize splitter handle; a collapse
+ *     toggle lives in the lane's OWN footer and drives it via `MIDDLE_LANE_TOGGLE_EVENT`), and
+ *   - the route sticky header becomes a floating `.guest-shell__subheader` beneath the site header.
+ * Guests never render the full-bleed `ui-shell-topbar` or the full-height `ui-app-shell__sidebar` — that
+ * nested L-shell is the authenticated `UserShell`. Token-only, strict BEM.
+ *
+ * Delivery: imported by the `GuestAside` island so the CSS ships in the client bundle (a server
+ * component's CSS import never enters an island's graph — the same pattern user-shell.css uses via the
+ * ShellSidebar island). Lane-less guest routes (`/`, `/explore`, …) need none of this: they render the
+ * plain `.site` base, and `.guest-shell` / `.guest-shell__body` are then inert class names.
+ *
+ * The collapsed/expanded width is driven by the PRE-PAINTED `:root[data-guest-nav]` attribute
+ * (`_app.tsx`, keyed off `LocalKeys.GUEST_NAV_COLLAPSED`) so the panel paints at the cached width with
+ * no flash-of-wrong-width — exactly like the authenticated rail's `:root[data-sidebar]`.
+ */
+
+.guest-shell {
+	/* Gap between the floating panels and the viewport edges / each other. */
+	--guest-inset: var(--space-3);
+	/* Aside widths — expanded stack vs the collapsed icon rail (matched to the authed collapsed rail). */
+	--guest-aside-w-expanded: 17.5rem;
+	--guest-aside-w-collapsed: calc(var(--shell-sidebar-w) + 6px);
+	--guest-aside-cur-w: var(--guest-aside-w-expanded);
+	/* Clearance from the viewport inline-start edge to the body content (aside + both gaps). */
+	--guest-body-inset-inline: calc(var(--guest-inset) + var(--guest-aside-cur-w) + var(--guest-inset));
+}
+
+/* Collapsed rail width — from the pre-painted root attribute (no flash). */
+:root[data-guest-nav="collapsed"] .guest-shell {
+	--guest-aside-cur-w: var(--guest-aside-w-collapsed);
+}
+
+/* #region Floating side nav (the route lane) — no splitter handle; glass on a ::before underlay */
+.ui-guest-aside {
+	position: fixed;
+	inset-block-start: var(--site-header-h, 5.5rem);
+	inset-inline-start: var(--guest-inset);
+	inline-size: var(--guest-aside-cur-w);
+	block-size: calc(100dvh - var(--site-header-h, 5.5rem) - var(--guest-inset));
+	z-index: var(--z-sticky);
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	/* The lane content owns its OWN internal scroll (`.pf-lane__scroll`); the panel just clips + rounds. */
+	overflow: hidden;
+	border: var(--hairline);
+	border-radius: var(--radius-container-lg);
+	box-shadow: var(--elevation-medium);
+	transition: inline-size var(--dur-medium) var(--spring-standard);
+}
+
+/*
+ * Glass rides a ::before underlay, NOT the `.ui-guest-aside` element itself. A `backdrop-filter` on the
+ * element would establish a containing block for its `position: fixed` descendants — re-basing the
+ * overlay Popover the lane renders (the profile kebab menu) to the panel box and collapsing it. Moving
+ * the blur to a sibling pseudo-element keeps the identical visual while leaving the panel transparent to
+ * fixed positioning. Same class of fix as .ui-shell-topbar--glass::before (CLAUDE.md Decisions #8/#9 /
+ * the glass-blur fixed-overlay trap).
+ */
+.ui-guest-aside::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--surface) 72%, transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Floating middle sub-header (the route sticky header) — glass on a ::before underlay */
+.guest-shell__subheader {
+	position: fixed;
+	inset-block-start: var(--site-header-h, 5.5rem);
+	inset-inline-start: var(--guest-body-inset-inline);
+	inset-inline-end: var(--guest-inset);
+	z-index: var(--z-sticky);
+	min-block-size: 0;
+	border-radius: var(--radius-container-lg);
+	/* Empty (collapsed to 0) until the migrated header condenses on scroll — let clicks fall through. */
+	pointer-events: none;
+	transition: inset-inline-start var(--dur-medium) var(--spring-standard);
+}
+
+.guest-shell__subheader > * {
+	pointer-events: auto;
+}
+
+.guest-shell__subheader::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--surface-1) 68%, transparent);
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
+	pointer-events: none;
+	/* Reveal the glass slab only while the header is condensed (no empty band at rest). */
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+
+.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])::before {
+	opacity: 1;
+	box-shadow: var(--elevation-medium);
+	border: var(--hairline);
+}
+/* #endregion */
+
+/* #region Full-bleed body — padded to clear the floating panels */
+/*
+ * The `.site__main` base already reserves the header band (`padding-block-start: --site-header-h`). Add
+ * an inline gutter so the body content (and the footer) clears the floating aside when the route
+ * supplies a lane. The sub-header floats OVER the content (scroll-revealed), so it needs no block
+ * reservation — it overlays like the site header does.
+ */
+.guest-shell[data-has-aside="true"] .guest-shell__body {
+	padding-inline-start: var(--guest-body-inset-inline);
+	transition: padding-inline-start var(--dur-medium) var(--spring-standard);
+}
+/* #endregion */
+
+/* #region Mobile isolation (≤ --bp-md) — drop the floating desktop panels; header + full-bleed body */
+@media (max-width: 767px) {
+	.ui-guest-aside,
+	.guest-shell__subheader {
+		display: none;
+	}
+
+	.guest-shell[data-has-aside="true"] .guest-shell__body {
+		padding-inline-start: 0;
+	}
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-guest-aside,
+	.guest-shell__subheader,
+	.guest-shell__subheader::before,
+	.guest-shell[data-has-aside="true"] .guest-shell__body {
+		transition: none;
+	}
+}

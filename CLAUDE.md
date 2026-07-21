@@ -758,6 +758,131 @@ TicketListView,CreateStageModal,board-glyphs},core/{board-model,BoardService,boa
 board-footer-slot}}` · `apps/web/routes/(dashboard)/projects/[projectId]/{board,[channelId]/tasks}.tsx` ·
 Decisions #10 / #21 / #32 / #33 |
 
+| 36 | **Public Profile Page — `/[handle]` (2026-07-21).** The 11th thin-frontend/fat-backend READ:
+the comprehensive profile shell for every entity (individual/client · freelancer · team · business)
+resolved by `@handle`. Zod SSOT **`@projective/types/profile`** (`ProfileView` — banner/avatar/story/
+skills/languages/notable-clients + DUAL-track reputation + verification tiers + per-tab metrics; the
+entity-driven `ProfileTab` matrix + `ProfileTabPayload`; the shared **reserved-handle denylist**). Fat
+`ProfileBackendService.{overview,tab}` → thin `/api/profile/[handle]` → client `ProfileService` → SSR
+`resolveProfile`/`resolveProfileTab`, gated by the SAME-shaped **`PROFILE_BACKEND_LIVE`** (default off,
+`isProfileBackendLive()`). Fixtures **derive** every profile + tab deterministically (handle hash, no
+RNG) from the existing discovery corpus (`@projective/backend/services/explore`), re-owned to the
+profile — so a profile always agrees with the explore card that linked to it; **no DB migration** (a
+read projection over the eventual `org.users_public` + profile tables, like `detail`/`messages`/
+`files`) → no `documentation/database/*` change. **Shell upgrade:** `routes/[handle]/_layout.tsx` moved
+from a bare guest `AppShell` to the **middle-nav frame** — authed → the unified `UserShell`; guest →
+`AppShell(persona=guest)` + `MiddleNav` — both hosting the contextual **`ProfileActionLane`** (mirrors
+`ui-app-shell__sidebar`: Back-from-explore · Share · Follow · Hire/Message · Availability + collapse
+toggle; two presentations switched by `.ui-splitter[data-mode="collapsed"]` + the shared
+`MIDDLE_LANE_TOGGLE_EVENT`, exactly like `ProjectSidebar`) and a **scroll-migrated sticky header** in
+the `ui-middle-nav__header` band (the body `ProfileHeader`'s window-scroll probe flips a shared
+`headerCondensed` signal; the band reveals via **`max-block-size`** — `block-size` is overridden by the
+frame's grid/flex layout context, so min/max-block-size are the only honoured height constraints;
+jump-to-final under reduced-motion). **Layout:** Overview (`/[handle]`, index) is the split view —
+inline-editable story + skills + languages + notable clients (left) · sticky meta rail (live local
+time/tz, online status, location, dual reviews, response time, verification badges) (right); every
+other tab renders **full-width** (the meta rail is Overview-only). **Tabs** are a SINGLE dynamic
+`[handle]/[tab].tsx` route (a static `availability.tsx` shell + `view/[item].tsx` win over it), each
+validated against the profile's kind matrix (a client can't open a freelancer-only tab); item grids
+**reuse the explore cards/collections** (Services grid · Products/Portfolio masonry · Projects list w/
+Open+Past sub-views · Articles list) + the toggleable `DataView` for Teams/Businesses; the legacy
+placeholder `reviews.tsx`/`portfolio.tsx` were **removed**. **Owner experience** (gated on the hydrated
+`UserContext` handle/userId matching the profile): the lane shows Edit-profile + always-visible
+Settings; Edit-profile toggles a shared `editMode` that swaps the lane to the management tabs +
+Profile/Availability/Settings quick-links; **inline editing needs no edit mode** — the story is a
+single-click auto-resizing `Textarea` and each creatable tab header carries an owner "+ New …" trigger
+opening a stub `Dialog`. No new `@projective/ui` primitive (reuses `DataView`/`Textarea`/`Dialog`/
+`Avatar`/`RatingStars`/`Tooltip`) → no `DESIGN_SYSTEM.md` §C.1 change; no lifecycle change → no
+`PRODUCT_MANAGEMENT.md` change. **Deviation flagged (surface, do not silently resolve):** the profile's
+own entity kind comes from the fixtures; the **reserved-handle denylist** is a defensive safeguard on
+top of Fresh's static-route precedence (ROUTING.md §Reserved-handle precedence) — a future "claim a
+handle" flow must validate against `isReservedHandle` server-side. | `ROUTING.md` §Reserved-handle
+precedence / §Global routing rules · `PRODUCT_SPEC.md` §Sitemap (`/[handle]`) · `packages/types/profile/`
+· `packages/backend/services/profile/` · `packages/backend/core/{env,supabase}.ts` ·
+`apps/web/features/profile/` · `apps/web/routes/[handle]/{_middleware,_layout,index,[tab],availability}.tsx`
+· `apps/web/routes/api/profile/[handle].ts` · Decisions #3 / #10 / #16 / #32 |
+
+| 37 | **Calendar & Schedule system + reusable `@projective/ui/calendar` engine (2026-07-21).** A NEW,
+high-performance, interactive Calendar & Schedule engine (Google-Calendar / Monday.com inspired), and
+its wiring to four routes. **The reuse point is the UI engine** (as the task mandates): a NEW 13th
+`@projective/ui` sub-path **`@projective/ui/calendar`** — generic, **controlled**, **zod-free**,
+token-only, portable. The `Calendar` island is a two-panel shell: a left panel (`MiniMonth` mini-map,
+hover-tints a whole week ~15% + click-jumps · `AvailabilityPanel` working hours/timezone-clock/blackouts)
++ a main viewport (`CalendarHeader` view-switch/nav/search/privacy-safe integration chips over a
+`TimeGrid` [Day/Week] or `MonthGrid`). `useCalendarViewport` owns the engine — **virtualized** hour
+cells, initial scroll centred on the time-scale (now if today is in view, else noon; ±3h overscroll pad
+for seamless cross-midnight scroll), **Ctrl+wheel** zoom that scales px-per-hour in place AND transitions
+Day↔Week↔Month across thresholds, middle-mouse / Ctrl-drag 2D **pan** (`preventDefault` → no native
+autoscroll/page-zoom), a return-to-present pill; `packDayEvents` resolves overlaps into fractional
+side-by-side columns; the `calendarTime` matrix utils are **timezone-explicit** (`Intl`, SSR==island).
+Privacy masking (§Part 1.4): external-integration + general-availability blocks render ONLY
+Available/Busy/Tentative; public group sessions show an attendee counter. **The DATA is a NEW leaf Zod
+domain `@projective/types/scheduling`** (`CalendarEvent`/`AvailabilityRule`/`BlackoutDate` +
+`CalendarPage`/`SchedulePage` envelopes + params) — imports nothing from projects/profile/explore, so no
+cycle. **No new env gate:** each read rides its OWN domain's existing switch via the new fat
+`ScheduleBackendService` (`@server/services/scheduling/`): the project/channel calendar behind
+`PROJECTS_BACKEND_LIVE` (derived from `ProjectDetail` — stage syncs/review milestones/deadlines +
+session-format sessions), `@handle` availability behind `PROFILE_BACKEND_LIVE` (weekly working
+hours/blackouts/masked slots — only freelancers bookable, buyer-only orgs get hours-only per Decisions
+#9/#10), an entity schedule behind `EXPLORE_BACKEND_LIVE` (recurring session slots + attendee counts).
+Fixtures DERIVE deterministically (shared fixed clock `NOW=2026-07-17T16:20Z`, unsigned `>>>` hash,
+timezone-aware `Intl` slot placement) so a calendar agrees with the sidebar/card that opened it — NO DB
+migration (a read projection over the eventual `scheduling.*` tables, like `detail`/`messages`). A new
+cross-cutting feature **`apps/web/features/calendar/`** (thin `ScheduleService` → `/api/scheduling/*`
+routes → SSR resolvers) hosts the surface islands (`ProjectCalendar`, `ScheduleView`) + the **stub-first**
+booking/creation `EventDialog` (a created event / booked slot is session-local; real session checkout is
+deferred). **Routes wired:** filled the channel `calendar.tsx` (was a `ChannelTabBody` stub) + created
+project `calendar.tsx`; filled `[handle]/availability.tsx` (was a placeholder); **refactored**
+`(public)/view/[entity].tsx` → `[entity]/index.tsx` + added `[entity]/schedule.tsx` (`/view/[entity]/schedule`);
+`middleNavFooterFor` unchanged (the calendar owns its controls in its own header, no footer band). **New
+domain flagged (surface, do not silently resolve):** `@projective/types/scheduling` +
+`ScheduleBackendService` are the first read that spans three existing domains' data; the RLS-scoped
+`scheduling.*` tables + external-calendar (Google/Outlook/Apple/Samsung/Notion) sync are the live-path
+TODO — reconcile the table design with a human when it lands. Verified end-to-end (all four routes;
+events/masking/attendee-counts/working-hours/centered-scroll/view-switch/search/booking/click-create/mini-map-jump).
+**Refined (2026-07-21):** (a) the **Day** view is now a genuinely INFINITE, virtualized continuous
+multi-day timeline (`packages/ui/calendar/components/DayTimeline.tsx`) — scrolling flows seamlessly past
+midnight into adjacent days endlessly (a ~4-year elapsed-time axis, only viewport-days rendered → fixed
+DOM cost, DST-correct via zoned day arithmetic; inline date markers; the centred day tracks back to the
+header + mini-map). The Week view stays the bounded time-of-day grid. `useCalendarViewport` gained a
+`sync` (exposed `scrollTop`/`viewportH`) so a PROGRAMMATIC scroll re-syncs the virtualization signal
+immediately (a hidden/background tab defers the `scroll` event, which had left the timeline virtualizing
+the wrong day-window). (b) `/[handle]/availability` is now a FULL-PAGE calendar with its OWN layout — the
+`[handle]/_layout.tsx` special-cases the `availability` segment (like the `view` item-viewer) to bypass
+the profile chrome entirely (no ProfileHeader/tabs/meta-rail/action-lane) and fill the content region
+under the top bar (`ScheduleView fullPage` → `.cal-surface--full`).
+| root CLAUDE.md §2/§3/§10 · `DESIGN_SYSTEM.md` §C.1 / Part C · `PRODUCT_SPEC.md` §Sessions ·
+`packages/ui/calendar/` · `packages/types/scheduling/` · `packages/backend/services/scheduling/` ·
+`apps/web/features/calendar/` · `apps/web/routes/api/scheduling/*` ·
+`apps/web/routes/(dashboard)/projects/[projectId]/{calendar,[channelId]/calendar}.tsx` ·
+`apps/web/routes/[handle]/availability.tsx` · `apps/web/routes/(public)/view/[entity]/{index,schedule}.tsx`
+· Decisions #3 / #9 / #10 / #32 / #36 |
+
+| 38 | **Unified floating-glass GuestShell (2026-07-21).** Guests previously saw **two** divergent
+chromes — the marketing megamenu `SiteHeader` inside `.site` (on the `(public)` routes) and
+`AppShell persona="guest"` (a full-bleed glass `ui-shell-topbar`, no sidebar) + a framed `MiddleNav`
+lane (on `/[handle]`). Both are unified into ONE floating shell, `GuestShell`
+(`apps/web/features/shell/`), the guest counterpart of `UserShell`, used verbatim by the `(public)`
+layout and the guest branch of the `/[handle]` layout: the **unchanged** `SiteHeader` (full-width →
+glass pill on scroll, megamenus intact — product-owner directive) over a **full-bleed body**, plus a
+route-driven **floating glass side nav** (`GuestAside` wrapping the route lane — `position: fixed`,
+glass, **no drag splitter handle**; collapse is the lane's own footer toggle via the shared
+`MIDDLE_LANE_TOGGLE_EVENT`, cached under `LocalKeys.GUEST_NAV_COLLAPSED`, pre-painted to
+`:root[data-guest-nav]` like the authed `:root[data-sidebar]`) and a route-driven **floating glass
+sub-header** (the profile `ProfileStickyHeader`). **Authenticated navigation (`UserShell`) is
+untouched.** Side nav is route-driven (today only `/[handle]`); `/` and `/explore` stay
+header-+-body only, structurally identical to before (the shell reuses the marketing
+`.site`/`.site__main` base). Both floating panels put their `backdrop-filter` on a `::before`
+underlay so the lane's `position: fixed` kebab Popover is not re-based (the fixed-overlay trap,
+Decisions #8/#9). The profile chrome's sticky offsets (written for the authed frame's
+`--shell-topbar-h + --shell-midnav-header-h`) are re-based to `--site-header-h` under `.guest-shell`.
+`/projects` + `/files` stay behind the `(dashboard)` guard (guests are bounced to `/login`) — that
+guard is unchanged. No DB/lifecycle change. | `DESIGN_SYSTEM.md` Part D (matrix #1/#3 + new §D.5) ·
+`apps/web/features/shell/{components/GuestShell,islands/GuestAside.island,styles/guest-shell.css}` ·
+`apps/web/routes/(public)/_layout.tsx` · `apps/web/routes/[handle]/_layout.tsx` ·
+`apps/web/routes/_app.tsx` · `apps/web/utils/storage-keys.ts` ·
+`apps/web/features/profile/styles/profile.css` · Decisions #8 / #9 / #14 / #15 / #27 / #31 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

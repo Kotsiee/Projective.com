@@ -43,10 +43,22 @@ export default define.page(function App({ Component, state }) {
 							`(()=>{try{const c=localStorage.getItem("pj.local.shell.sidebarCollapsed");document.documentElement.dataset.sidebar=c==="0"?"expanded":"collapsed";}catch(_){/* noop */}})();`,
 					}}
 				/>
+				<script
+					dangerouslySetInnerHTML={{
+						// Set data-guest-nav before first paint so the GUEST floating side-nav renders at the
+						// cached width with no flash-of-wrong-width (GuestAside re-syncs after hydration). The
+						// default is expanded. Literal key MUST match LocalKeys.GUEST_NAV_COLLAPSED in
+						// apps/web/utils/storage-keys.ts ("pj.local.shell.guestNavCollapsed").
+						__html:
+							`(()=>{try{const c=localStorage.getItem("pj.local.shell.guestNavCollapsed");document.documentElement.dataset.guestNav=c==="1"?"collapsed":"expanded";}catch(_){/* noop */}})();`,
+					}}
+				/>
 			</head>
 			<body>
-				{/* Global scroll-activated scrollbar reveal (behaviour-only; renders nothing). Pairs with the
-				    self-hiding custom scrollbar in @projective/ui/styles (DESIGN_SYSTEM.md Part D scroll model). */}
+				{
+					/* Global scroll-activated scrollbar reveal (behaviour-only; renders nothing). Pairs with the
+				    self-hiding custom scrollbar in @projective/ui/styles (DESIGN_SYSTEM.md Part D scroll model). */
+				}
 				<ScrollIdle />
 				<DesignSystemRoot>
 					<Component />

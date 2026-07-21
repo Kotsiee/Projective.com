@@ -1,0 +1,157 @@
+/*
+ * calendar feature — the surface wrapper that BOUNDS the reusable @projective/ui/calendar engine's
+ * height (the shell scrolls the window natively, so the calendar needs a definite height to own its
+ * internal time-grid scroll), plus the create/booking dialog form. Token-only + BEM.
+ */
+
+/* #region Surface height */
+.cal-surface {
+	display: flex;
+	min-block-size: 24rem;
+	/* Dashboard project calendar: fill the viewport below the top bar (app-like, internal scroll). */
+	block-size: calc(100dvh - var(--shell-topbar-h) - var(--space-4));
+	overflow: hidden;
+}
+/* Channel calendar sits below the sticky channel header band too. */
+.cal-surface--channel {
+	block-size: calc(100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--space-4));
+}
+/* Schedule surfaces embed in a scrolling page (public view) — bound + let the page scroll. */
+.cal-surface--schedule {
+	block-size: min(calc(100dvh - 9rem), 46rem);
+	min-block-size: 30rem;
+}
+/* The `/[handle]/availability` full-page surface — fill the whole content region under the top bar. */
+.cal-surface--full {
+	block-size: calc(100dvh - var(--shell-topbar-h) - var(--space-4));
+	min-block-size: 0;
+}
+.cal-surface--empty {
+	align-items: center;
+	justify-content: center;
+}
+.cal-surface__empty {
+	color: var(--text-secondary);
+	font-size: 0.9rem;
+}
+@media (max-width: 768px) {
+	.cal-surface {
+		block-size: calc(100dvh - var(--shell-topbar-h) - var(--shell-bottomnav-h));
+	}
+	.cal-surface--schedule {
+		block-size: min(calc(100dvh - 8rem), 40rem);
+	}
+}
+/* #endregion */
+
+/* #region Event / booking dialog */
+.cal-dlg__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+}
+.cal-dlg__fact {
+	display: grid;
+	grid-template-columns: 5.5rem 1fr;
+	gap: var(--space-2);
+	align-items: start;
+}
+.cal-dlg__fact dt {
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+	font-weight: 600;
+}
+.cal-dlg__fact dd {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: 0.86rem;
+}
+.cal-dlg__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.cal-dlg__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.cal-dlg__label {
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+	font-weight: 600;
+}
+.cal-dlg__select {
+	appearance: none;
+	font-family: var(--font-sans);
+	font-size: 0.9rem;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-3);
+	cursor: pointer;
+}
+.cal-dlg__select:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.cal-dlg__when {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.cal-dlg__whenval {
+	font-size: 0.86rem;
+	color: var(--on-surface);
+}
+.cal-dlg__footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region /view/[entity]/schedule wrapper */
+.view-schedule {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	inline-size: 100%;
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding: var(--space-5);
+}
+.view-schedule__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.view-schedule__back {
+	align-self: flex-start;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+	text-decoration: none;
+}
+.view-schedule__back:hover {
+	color: var(--on-surface);
+}
+.view-schedule__title {
+	margin: 0;
+	font-size: 1.35rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+.view-schedule__sub {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: 0.9rem;
+}
+/* #endregion */

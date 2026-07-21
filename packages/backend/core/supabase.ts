@@ -41,6 +41,11 @@ export function isProjectsBackendLive(): boolean {
 	return serverEnv().projectsBackendLive && isSupabaseConfigured();
 }
 
+/** True when LIVE profile-backend behaviour is enabled AND Supabase is configured. */
+export function isProfileBackendLive(): boolean {
+	return serverEnv().profileBackendLive && isSupabaseConfigured();
+}
+
 /**
  * An RLS-scoped client bound to the caller's access token. Every query runs as that user, so their
  * policies decide what they can see/do. Pass the JWT lifted from the session cookie.

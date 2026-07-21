@@ -39,19 +39,6 @@
 	gap: var(--space-3);
 	block-size: var(--shell-midnav-header-h);
 	padding-inline: var(--space-4);
-	/* Blue frame tone — matches the lane's own header so the band reads as one connected strip (§D.4). */
-	background: transparent;
-}
-
-.chan-header::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	background: color-mix(in srgb, var(--surface-1) 62%, transparent);
-	backdrop-filter: blur(var(--glass-blur, 18px));
-	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-	pointer-events: none;
 }
 
 /* Left identity block grows; the right actions block grows equally — together they keep the centre

@@ -1,7 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
-import SiteHeader from "@features/marketing/islands/SiteHeader.island.tsx";
-import { PublicFooter } from "@features/marketing/components/PublicFooter.tsx";
+import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 
 /** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
@@ -9,10 +8,10 @@ const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
 
 /**
  * Public surface shell — resolves to one of two navigation profiles by auth state (DESIGN_SYSTEM.md
- * Part D). Guests get the marketing glass {@link SiteHeader} (megamenus) over **native window
- * scrolling**; signed-in users get the unified {@link UserShell} L-shell so Home & Explore match the
- * authenticated app exactly (site-wide auth is resolved in the global middleware). The elastic
- * magnetism engine mounts inside the guest page body so it hydrates reliably.
+ * Part D). Guests get the unified floating {@link GuestShell} (the pill {@link SiteHeader} with
+ * megamenus over native window scrolling, shared with every other guest surface); signed-in users get
+ * the unified {@link UserShell} L-shell so Home & Explore match the authenticated app exactly
+ * (site-wide auth is resolved in the global middleware).
  *
  * The `(auth)` group (join/login/forgot-password/verify) is exempted: those pages own a full-window
  * split-screen shell, so both shells are suppressed for them.
@@ -29,12 +28,8 @@ export default define.page(function PublicLayout(ctx) {
 		);
 	}
 	return (
-		<div class="site">
-			<SiteHeader authenticated={false} />
-			<main class="site__main">
-				<ctx.Component />
-			</main>
-			<PublicFooter />
-		</div>
+		<GuestShell>
+			<ctx.Component />
+		</GuestShell>
 	);
 });

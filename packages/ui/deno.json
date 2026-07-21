@@ -12,6 +12,7 @@
 		"./overlay": "./overlay/mod.ts",
 		"./dnd": "./dnd/mod.ts",
 		"./kanban": "./kanban/mod.ts",
+		"./calendar": "./calendar/mod.ts",
 		"./utils": "./utils/mod.ts",
 		"./hooks": "./hooks/mod.ts",
 		"./system": "./system/mod.ts",

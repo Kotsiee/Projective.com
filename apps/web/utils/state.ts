@@ -1,5 +1,6 @@
 import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
+import type { ProfileView } from "@projective/types/profile";
 
 /**
  * Request-scoped state shared across middleware, handlers, and pages.
@@ -22,6 +23,12 @@ export interface State {
 	userContext?: UserContext;
 	/** Active persona/profile handle, when resolved. */
 	handle?: string;
+	/**
+	 * The resolved public profile for a `/[handle]` request — set by `routes/[handle]/_middleware.ts`
+	 * from the fat `ProfileBackendService` so the shared layout (shell · action lane · sticky header ·
+	 * meta rail) and every tab sub-route read one projection. `null` for a reserved/unresolved handle.
+	 */
+	profile?: ProfileView | null;
 }
 
 /** The typed `define` helper (`define.page` · `define.handlers` · `define.middleware`). */

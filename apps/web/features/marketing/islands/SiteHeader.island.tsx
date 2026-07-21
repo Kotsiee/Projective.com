@@ -38,7 +38,7 @@ export default function SiteHeader({ authenticated = false }: { authenticated?: 
 	const entityRef = useRef<HTMLDivElement>(null);
 	const drawerRef = useRef<HTMLElement>(null);
 	const burgerRef = useRef<HTMLButtonElement>(null);
-	const closeTimer = useRef<number | null>(null); // hover-intent grace timer for the megamenu
+	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // hover-intent grace timer for the megamenu
 
 	// #region Megamenu hover intent — a short grace on leave tolerates the trigger→panel gap so the
 	// panel doesn't flicker shut while the pointer crosses the hover-bridge.

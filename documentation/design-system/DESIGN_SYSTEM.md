@@ -347,6 +347,7 @@ verbatim because every component depends only on the token contract (Part A) —
 | **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                            |
 | **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                          |
 | **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                        |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
@@ -485,6 +486,33 @@ commit immediately OR intercept a move behind a confirmation modal (the projects
 claimed-ticket / revision warnings). §B.4: columns are non-interactive containers (tonal tint + a single
 hairline, no box); cards are interactive (surface + radius + resting elevation).
 
+Calendar additions (root CLAUDE.md §8 Decision #37): one NEW sub-path **`@projective/ui/calendar`** — a
+high-performance, generic, **controlled** Calendar & Schedule engine (Google-Calendar / Monday.com
+inspired), portable + **zod-free** (a consumer maps its own domain data into the presentational
+`CalendarEvent`/`CalendarAvailability` shapes and reacts to the selection/open callbacks, so the ONE
+engine serves the project/channel calendar, `@handle` availability, and session schedules). The
+`Calendar` island lays out a two-panel shell: a narrow left panel (`MiniMonth` mini-map — hovering a day
+tints its whole week ~15%, clicking jumps the main view — over an `AvailabilityPanel` of working hours ·
+timezone live clock · blackout dates) and a main viewport (`CalendarHeader` view-switch + nav + search +
+privacy-safe integration chips, over the `MonthGrid`, the Week `TimeGrid`, or the infinite Day
+`DayTimeline`). `useCalendarViewport` owns
+the time-grid engine: **virtualized** hour cells, an initial scroll centred on the time-scale (now when
+today is in view, else noon — symmetric room across both midnights via a ±3h overscroll pad), **Ctrl+wheel
+zoom** that scales `--cal`-px-per-hour in place AND transitions Day↔Week↔Month across thresholds,
+middle-mouse / Ctrl-drag 2D **panning** (handlers `preventDefault` so no native autoscroll/page-zoom), and
+a return-to-present pill, plus an immediate scroll-signal `sync` after any programmatic scroll (so a
+hidden/deferred `scroll` event never leaves a day-timeline virtualizing the wrong window). The **Week**
+`TimeGrid` is the standard bounded time-of-day grid; the **Day** `DayTimeline` is a genuinely INFINITE,
+virtualized continuous multi-day timeline — scroll flows seamlessly past midnight into adjacent days
+endlessly (a ~4-year elapsed-time axis, only the viewport's days rendered, DST-correct via zoned day
+arithmetic; inline date markers label each midnight and the centred day is tracked back to the header +
+mini-map). `packDayEvents` resolves overlap into fractional side-by-side columns; the
+`calendarTime` matrix utils are **timezone-explicit** (`Intl`) so SSR == the hydrated island (no drift).
+§Part 1.4 privacy masking: external-integration + general-availability blocks render ONLY Available /
+Busy / Tentative (never a real title); public group sessions may show an attendee counter. §B.4: grid
+lines/cells/panels separate by spacing + tonal surface + single hairlines; the interactive event blocks +
+day cells + controls carry the surface/accent/border + focus ring.
+
 Cross-cutting behaviour lives in a new **package-level `packages/ui/hooks/`** (`useFloating`,
 `useEdgeDetection` [alias `usePopoverPosition`], `useDismiss`, `useFocusTrap`, `useOverlayStack`
 [z-index stacking + ref-counted scroll lock], `useVirtualScroll`, `useIntersectionObserver`,
@@ -568,20 +596,28 @@ Preserve the functional shell architecture; modernize its execution.
 selected by viewport and auth state (auth is resolved **site-wide** in the global middleware so
 Home/Explore render the user shell when signed in):
 
-1. **Desktop Guest** (public Home/Explore) — the full-width, scroll-adaptive glass `SiteHeader` with
-   the four discovery megamenus (Helpers · Services · Projects · Products).
+1. **Desktop Guest** (every guest-reachable route) — the unified floating `GuestShell`: the same
+   full-width, scroll-adaptive glass `SiteHeader` (the four discovery megamenus — Helpers · Services ·
+   Projects · Products) over a **full-bleed body**, plus, on routes that supply one, a **floating glass
+   side nav** (the route lane — no splitter handle, a footer collapse toggle) and a **floating glass
+   sub-header**. Guests never render the full-bleed `ui-shell-topbar` or the full-height
+   `ui-app-shell__sidebar`.
 2. **Desktop User** (site-wide incl. Explore) — the unified **L-shell** below: the header layers
    join the left sidebar; header (main + middle) carry a `--glass-blur` backdrop blur while the
    sidebar is **explicitly opaque** (no blur); regions are separated by single-edge `--hairline`
    seams.
 3. **Mobile Guest** (`< --bp-md`) — compact glass header (icon mark · centered search ·
-   veggie-burger → blurred side drawer of megamenu accordions). _[Phase 2/3]_
+   veggie-burger → blurred side drawer of megamenu accordions); the `GuestShell`'s floating side nav
+   and sub-header **drop** (header + full-bleed body only). _[Phase 2/3]_
 4. **Mobile User** (`< --bp-md`) — glass header (centered search · Messages · Notifications · avatar
    → account sheet) + a persistent bottom utility nav. _[Phase 2]_
 
 The authenticated shells (2, 4) are one composition — `UserShell` (`apps/web/features/shell/`) —
 shared verbatim by the `(dashboard)` layout and the authed branch of the `(public)` layout, so there
-is zero layout duplication.
+is zero layout duplication. The guest shells (1, 3) are **likewise one composition** — `GuestShell`
+(`apps/web/features/shell/`) — shared verbatim by the `(public)` layout and the guest branch of the
+`/[handle]` profile layout, replacing the prior split between the marketing header and
+`AppShell persona="guest"` (see D.5).
 
 **Scroll model — native window scroll (every profile).** The shell flows in the document's **own**
 scroll on every form-factor × auth profile. The root grows past the viewport (`min-block-size:
@@ -813,6 +849,38 @@ inside the content pane. The routed tab body + `ChatComposer` flow in the canvas
 - **Channel-tree icons (§B.6).** Stage channels render as ordinary **`#` hash channels** (matching
   General/Team rows), not a coloured lifecycle dot; their state surfaces through the trailing
   icon-only status signal + unread dot. DM/team rows keep their **circular avatar** thumbnail.
+
+### D.5 Guest floating shell
+
+For **guests** the shell is not the nested L-frame — it is one floating composition, `GuestShell`
+(`apps/web/features/shell/`), used verbatim on every guest-reachable route (the `(public)` surfaces
+and `/[handle]`). It layers floating, glassmorphic panels over a **full-bleed body**, reusing the
+marketing `.site` / `.site__main` base (the fixed → pill-on-scroll `SiteHeader`, the reserved header
+band, and `overflow-x: clip`), so lane-less routes (`/`, `/explore`) are structurally unchanged:
+
+- **Floating pill header.** The unchanged `SiteHeader` (full-width, morphing to a glass pill on
+  scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
+  prior marketing-only header and the guest `AppShell` `ui-shell-topbar`.
+- **Floating side nav (route-driven).** When a route supplies a lane (today: the profile action
+  lane), it mounts in a floating `.ui-guest-aside` (`position: fixed`, rounded, glass) — the guest
+  counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. Collapse/expand is
+  the lane's own footer toggle, driving the same `MIDDLE_LANE_TOGGLE_EVENT`; the state is cached
+  (`LocalKeys.GUEST_NAV_COLLAPSED`) and expressed on the **pre-painted** `:root[data-guest-nav]`
+  (mirroring the authed rail's `:root[data-sidebar]`), so the width + the lane's rail/full
+  presentation paint correctly on the first byte (no flash-of-wrong-width).
+- **Floating sub-header (route-driven).** A route sticky header (the profile `ProfileStickyHeader`)
+  mounts in a floating `.guest-shell__subheader` beneath the site header, adjacent to the side nav,
+  revealed on scroll. It overlays the body (no reserved band).
+- **Glass on a `::before` underlay.** Both floating panels carry their `backdrop-filter` on a
+  `::before` (not the element), so neither becomes a containing block for the `position: fixed`
+  overlays the lane renders (the profile kebab Popover) — the same fixed-overlay-trap fix as
+  `.ui-shell-topbar--glass::before` (root CLAUDE.md §8 #8/#9).
+- **Mobile (`< --bp-md`).** The floating side nav + sub-header `display: none`; the body gutters
+  collapse — header + full-bleed native-scrolling body only (Part D.3).
+
+Content chrome written for the authed frame (the profile tab/meta-rail sticky offsets, which assume
+`--shell-topbar-h + --shell-midnav-header-h`) is re-based under `.guest-shell` to the site-header
+height `--site-header-h`.
 
 ---
 

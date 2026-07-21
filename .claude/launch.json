@@ -66,6 +66,12 @@
       "runtimeExecutable": "deno",
       "runtimeArgs": ["task", "dev", "--port", "6173", "--strictPort"],
       "port": 6173
+    },
+    {
+      "name": "web-profile",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "6273", "--strictPort"],
+      "port": 6273
     }
   ]
 }

@@ -34,8 +34,15 @@ Parenthesized folders group routes **without** adding a URL segment:
 | attachments → files | `projects/[projectId]/attachments.tsx` (+ nested) | `/…/attachments` **308→** `/…/files` (legacy) |
 | submissions (project) | `projects/[projectId]/submissions/[...path].tsx` | `/projects/:projectId/submissions/*` (Submissions ledger; Stages as tree roots; wildcard tree path) |
 | submissions (channel) | `projects/[projectId]/[channelId]/submissions/[...path].tsx` | `/projects/:projectId/:channelId/submissions/*` (channel submissions; wildcard tree path) |
+| calendar (project) | `projects/[projectId]/calendar.tsx`        | `/projects/:projectId/calendar` (Calendar & Schedule — whole engagement) |
+| calendar (channel) | `projects/[projectId]/[channelId]/calendar.tsx` | `/projects/:projectId/:channelId/calendar` (channel/stage schedule; a stage channel scopes to that stage) |
 | `[...path]`       | `(public)/help/[...path].tsx`              | `/help/*` (catch-all)           |
-| top-level dynamic | `[handle]/index.tsx`                       | `/:handle`                      |
+| top-level dynamic | `[handle]/index.tsx`                       | `/:handle` (profile Overview)   |
+| profile tabs      | `[handle]/[tab].tsx`                        | `/:handle/:tab` (one dynamic route serves every entity-conditional tab — services · products · projects · portfolio · education · experience · teams · businesses · articles · reviews · members) |
+| profile static    | `[handle]/availability.tsx`                | `/:handle/availability` (FULL-PAGE Availability calendar — its OWN layout, NOT the profile chrome; `_layout` special-cases the `availability` segment to bypass the header/tabs/meta-rail; a static sibling wins over `[tab]`) |
+| profile item view | `[handle]/view/[item].tsx`                 | `/:handle/view/:id` (profile-scoped Explore item viewer) |
+| entity view (public) | `(public)/view/[entity]/index.tsx`      | `/view/:id` (public Explore item viewer; was the flat `view/[entity].tsx`, now a dir to host the schedule leaf) |
+| entity schedule   | `(public)/view/[entity]/schedule.tsx`      | `/view/:id/schedule` (session-based service schedule — recurring slots + attendee counts) |
 
 ## Global routing rules (canonical link shapes)
 
@@ -86,9 +93,17 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
 ## Reserved-handle precedence
 
 Static routes win over `[handle]`. `/about`, `/explore`, `/login`, `/help/*`, `/view/*` resolve to
-their `(public)` routes; anything else falls through to `/:handle`. Maintain a reserved-word
-denylist in the profile resolver so a user cannot claim a handle that collides with a top-level
-route.
+their `(public)` routes; anything else falls through to `/:handle`.
+
+The reserved-word denylist is **implemented** as the SSOT const + guard
+**`RESERVED_HANDLES`/`isReservedHandle`** in [`@projective/types/profile`](../../packages/types/profile/reserved.ts)
+(root `CLAUDE.md` §8 Decision #36). It is the second line of defence beyond Fresh's static-route
+precedence: it stops a **bare** word with no static route (`/availability`, `/files`) from being
+fabricated into a profile, and it is the rule a future "claim your handle" flow must validate
+against. Both the fat `ProfileBackendService` (which fabricates the stub profile → returns 404 for a
+reserved word) and the `routes/[handle]/_middleware.ts` (which resolves the profile onto
+`ctx.state.profile`, `null` for a reserved/unresolved handle → the shared layout paints a calm
+not-found, no profile chrome) read this one list, so the two never drift.
 
 ## Thin controllers / fat services
 

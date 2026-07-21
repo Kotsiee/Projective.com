@@ -79,6 +79,17 @@
     min-block-size: 0;
 }
 
+.ui-middle-nav__header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in srgb, var(--surface-1) 62%, transparent);
+    backdrop-filter: blur(var(--glass-blur, 18px));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+    pointer-events: none;
+}
+
 /*
  * The nav lane spans the full frame height on the left. Under the native window scroll it is `sticky`
  * below the top bar, capped to the remaining viewport height, so it stays beside the scrolling body

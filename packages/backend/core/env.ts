@@ -63,6 +63,12 @@ export interface ServerEnv {
 	 * membership reads are implemented and verified, then flip per environment.
 	 */
 	projectsBackendLive: boolean;
+	/**
+	 * Master switch for LIVE profile-backend behaviour. Defaults **off**: {@link ProfileBackendService}
+	 * answers the `/[handle]` profile from deterministic fixtures until the RLS-scoped `org.users_public`
+	 * + profile tables are implemented and verified, then flip per environment.
+	 */
+	profileBackendLive: boolean;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -78,5 +84,6 @@ export function serverEnv(): ServerEnv {
 		newsletterBackendLive: (firstEnv("NEWSLETTER_BACKEND_LIVE") ?? "false").toLowerCase() ===
 			"true",
 		projectsBackendLive: (firstEnv("PROJECTS_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		profileBackendLive: (firstEnv("PROFILE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 	};
 }

@@ -8,6 +8,9 @@ import { ExploreBackendService } from "@server/services/explore/ExploreBackendSe
  * target for non-profile entities, and the Search Results drawer's "Open full page" destination).
  * Thin route: resolve the item via the fat {@link ExploreBackendService} + set SEO, then hand off to
  * {@link EntityView}. `[entity]` is the item id (the segment name is historical; the value is the id).
+ *
+ * (Moved from the flat `[entity].tsx` to `[entity]/index.tsx` so the dir can host the sibling
+ * `/view/[entity]/schedule` session-schedule leaf; the `entity` param is unchanged.)
  */
 export const handler = define.handlers({
 	GET(ctx) {
