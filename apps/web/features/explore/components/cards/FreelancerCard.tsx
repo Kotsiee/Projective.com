@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Avatar, RatingStars } from "@projective/ui/display";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
+import { PromotedBadge } from "../PromotedBadge.tsx";
 import { VerifiedBadge } from "../VerifiedBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
@@ -51,7 +52,13 @@ export function FreelancerCard(
 				class="ex-banner__cover"
 				style={vars({ "--ex-cover": `url("${item.cover}")` })}
 				aria-hidden="true"
-			/>
+			>
+				{item.sponsored && (
+					<span class="ex-flags">
+						<PromotedBadge />
+					</span>
+				)}
+			</div>
 
 			<div class="ex-banner__body">
 				<div class="ex-banner__id">
@@ -79,6 +86,7 @@ export function FreelancerCard(
 							value={helper.value}
 							count={helper.count}
 							size="sm"
+							compact
 							label={`Rated ${
 								helper.value.toFixed(1)
 							} out of 5 as a helper, ${helper.count} ratings`}

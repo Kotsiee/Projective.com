@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { RatingStars } from "@projective/ui/display";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
+import { PromotedBadge } from "../PromotedBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { itemHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
@@ -32,13 +33,20 @@ export function ProductCard(
 			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
 			<div class="ex-media">
 				<img src={item.media} alt="" loading="lazy" decoding="async" />
-				<span class="ex-media__price">{item.price}</span>
+				<span class="ex-flags">
+						{item.sponsored && <PromotedBadge />}
+						<span class="ex-media__price">{item.price}</span>
+					</span>
 			</div>
 			<div class="ex-card__body">
 				<span class="ex-eyebrow">{item.category}</span>
 				<h3 class="ex-card__title ex-card__title--sm">{item.title}</h3>
-				<OwnerBadge owner={item.owner} variant="mini" />
-				{review && <RatingStars value={review.value} count={review.count} size="sm" />}
+				<div class="ex-card__byline">
+					<OwnerBadge owner={item.owner} variant="mini" />
+					{review && (
+						<RatingStars value={review.value} count={review.count} size="sm" compact />
+					)}
+				</div>
 			</div>
 		</article>
 	);

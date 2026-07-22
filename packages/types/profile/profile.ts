@@ -20,12 +20,20 @@ import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
 
 // #region Taxonomy
 /**
- * The four profile entity types that drive the tab matrix + capability chrome (root CLAUDE.md
+ * The profile entity types that drive the tab matrix + capability chrome (root CLAUDE.md
  * Decisions #9/#10 — organisations/businesses are client/buyer-only). Maps 1:1 from the discovery
  * `ProfileEntity` (`users`→`client`, `freelancers`→`freelancer`, `teams`→`team`,
- * `businesses`→`business`).
+ * `businesses`→`business`); **`organisation`** is the department-structured buyer entity (root
+ * CLAUDE.md Decision #16 — the `organisation` context) surfaced as a profile: it adds the Departments
+ * tab and a department-grouped Members view. Like a client/business it never sells (buyer-only).
  */
-export const ProfileKind = z.enum(["client", "freelancer", "team", "business"]);
+export const ProfileKind = z.enum([
+	"client",
+	"freelancer",
+	"team",
+	"business",
+	"organisation",
+]);
 export type ProfileKind = z.infer<typeof ProfileKind>;
 
 /**
@@ -96,6 +104,8 @@ export const ProfileMetricsSchema = z.object({
 	articles: z.number().optional(),
 	reviews: z.number().optional(),
 	members: z.number().optional(),
+	/** Organisation only — number of departments (drives the Departments tab count chip). */
+	departments: z.number().optional(),
 });
 export type ProfileMetrics = z.infer<typeof ProfileMetricsSchema>;
 // #endregion

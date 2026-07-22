@@ -883,6 +883,180 @@ guard is unchanged. No DB/lifecycle change. | `DESIGN_SYSTEM.md` Part D (matrix 
 `apps/web/routes/_app.tsx` · `apps/web/utils/storage-keys.ts` ·
 `apps/web/features/profile/styles/profile.css` · Decisions #8 / #9 / #14 / #15 / #27 / #31 |
 
+| 39 | **Explore & Search visual overhaul — lean cards + bounded fill-grid layout engine (2026-07-21).**
+Reworks `/explore` State A (Home) + State B (Search Results) presentation after a design audit found
+starved carousels (2–3 curated items stranded a half-empty row), an over-tall 9-band Service card, and
+a cramped 5-up isolated results feed. **(A) Card architecture.** `ServiceCard` drops from **9 bands to
+4** — a wide **16:10** media carrying ONE glass engagement-type chip (`.ex-media__type`, replacing the
+in-body type eyebrow AND the redundant category tag); the title; a single owner+rating **byline**
+(`.ex-card__byline`); the price/turnaround foot. The description snippet + skill-tag row move to the
+detail view. `ProductCard` folds owner+rating into the same byline; `ProfileBannerCard` drops its
+skill-pill band. All media cards gained **image-zoom-on-hover** (scale within the `overflow:clip`
+frame) atop the existing lift, and every `.ex-card` now **explicitly fills its cell** (`inline-size:
+100%`) — lean cards no longer rely on wide text to stretch a flex cell (the regression that squeezed a
+byline to 537px tall). **(B) Layout engine.** The four Home **profile carousels** (`EntityCarousel`,
+DELETED — fixtures supply only 2–3 items each, so a carousel could never fill) become a bounded fill
+grid **`ProfileGrid`** (library `Grid` auto-fit + new `maxCols` cap) that stretches N≤cols curated
+cards to fill the row evenly (wide banner cards go 1-per-row ≤900px); `ServicesGrid` widened to
+`minChildWidth 18rem`/`maxCols 4`. The State B isolated feed's hard **5 columns → responsive 2/3/4**
+(`feedCols`: 3 with the sidebar, 4 when hidden or ≥1600px), capped so cards stay comfortably wide;
+grouped rails, products masonry, and the projects list are unchanged (they already fill/peek). Home
+section vertical rhythm tightened ~20%. **(C) packages/ui.** `Grid` gained a column-capped auto-fit
+(`maxCols`, pure-CSS RAM formula in `grid.css`; DESIGN_SYSTEM §C.1 roster updated same change). **CSS
+gotcha (surface, do not silently resolve):** shared `@projective/ui` component CSS reaches a page ONLY
+through a CLIENT/island bundle (the umbrella is a resolved dependency, so its transitive `import
+"./x.css"` side-effects are collected from the island graph, NOT the SSR render — app-local
+`explore.css` is fine; `tag.css`/`grid.css` ride the nav-shell islands). The deleted carousel island
+was Home's sole carrier for `avatar.css`+`rating-stars.css`; a zero-UI **`CardStyleAnchor`** island now
+anchors them once per Explore page (State B already gets them via `SearchDashboard`→`EntityCard`). A
+route-level CSS-manifest fix in the Fresh/Vite plugin is the real TODO. No DB/lifecycle/business-rule
+change (pure presentation). | `DESIGN_SYSTEM.md` §C.1 · `packages/ui/layout/{components/Grid.tsx,
+styles/grid.css}` · `apps/web/features/explore/{components/{cards/{ServiceCard,ProductCard,
+ProfileBannerCard},collections/{ProfileGrid,ServicesGrid},ExploreHome,ExploreScreen},islands/
+{SearchDashboard,CardStyleAnchor},styles/explore.css}` · Decisions #12 |
+
+| 40 | **Search filters relocated to the nav sidebar + guest full-width footer (2026-07-22). AMENDS #38.**
+Two coupled changes. **(A) Filters → navigation sidebar.** The `/explore` Search Results (State B) facet
+`FilterPanel` moved OUT of the results body into the navigation rail: the **guest floating
+`ui-guest-aside`** for signed-out visitors, the **authed middle-nav lane** (`ui-splitter__body`) for
+signed-in ones. `(public)/_layout.tsx` resolves the lane per-URL via `exploreFilterLaneFor(url)`
+(mirrors `laneFor`/`channelHeaderFor` — State B on `/explore` only) and threads it into GuestShell/
+UserShell's existing `lane` prop. The relocated `ExploreFilterLane` island is a separate hydration root
+from `SearchDashboard` (which still owns query state + fetching), so they sync through a cross-island
+signal **bridge** (`core/filter-bridge.ts`: `bridgeParams` published by the dashboard + `bridgeCommit`
+its fetch entry-point) — the lane SSR-paints from its own `initialParams` (no flash) then tracks live
+params, and a facet change there commits through the SAME path (real-time, shareable URL). The
+dashboard's in-body desktop sidebar + show/hide toggle were removed; the **mobile bottom-sheet filters
+stay** (no aside on mobile). `feedCols` dropped its `roomy`/`filtersHidden` input (steady 3/4 desktop,
+2 tablet/mobile). Shared `withFilter`/`activeFilterCount` hoisted to `explore-state.ts`. **(B) Guest
+full-width footer + in-flow aside.** On lane routes GuestShell switches to a **flex column**: the aside +
+body sit in a growing `.guest-shell__region` above a **full-width `PublicFooter`** (a sibling of the
+region, so it spans the whole window instead of inheriting the aside gutter, pinned to the bottom by
+`flex: 1 0 auto` + `.site` `min-block-size: 100dvh`). `.ui-guest-aside` changed from `position: fixed` →
+**`position: sticky`** (in-flow flex item), so it pins below the header while scrolling and **terminates
+cleanly above the footer** (bounded by the region) instead of overlapping it — verified aside-bottom ==
+footer-top at max scroll on both guest search + profile. Lane-**less** routes (`/`, Explore Home) keep
+the original block flow + in-body footer, byte-identical. The filter lane forces the aside expanded
+(`:root .guest-shell:has(.ex-filters-lane)`, no collapse toggle); mobile hides the desktop panels
+(unchanged). No DB/lifecycle/business-rule change (pure FE relocation + layout). | `DESIGN_SYSTEM.md`
+Part D / §D.5 · `apps/web/routes/(public)/_layout.tsx` · `apps/web/features/explore/{islands/
+{SearchDashboard,ExploreFilterLane}.island,core/{filter-bridge,explore-lane-slot,explore-state},
+styles/explore-results.css}` · `apps/web/features/shell/{components/GuestShell,styles/guest-shell.css}`
+· Decisions #14 / #31 / #38 |
+
+| 40 | **Profile — Organisation entity kind + tab-bar overflow + color-coded languages (2026-07-22).**
+Four refinements to the `/[handle]` profile (no DB migration — the profile stays a read projection over
+fixtures, like Decision #36). **(A) New `organisation` profile kind.** Extends the SSOT `ProfileKind`
+enum (`@projective/types/profile`) with a fifth, **buyer-only, department-structured** entity
+(consistent with the buyer-only Organisation rule of Decisions #9/#10/#16 — the `organisation`
+context, now surfaced AS a profile). Its tab matrix is Projects · **Departments** · **Members** ·
+Articles · Businesses · Reviews (no seller Services/Products/Portfolio). A new `departments` tab
+(`ProfileTab` enum) + `DepartmentEntry` schema + `MemberEntry.departments[]` (multi-department
+assignment) + `ProfileMetrics.departments` land in the SSOT; fixtures **derive** organisations
+deterministically from the handle (a NAMED set — `@northwind`/`@meridian`/`@atlasgroup` — plus an open
+`org-*` convention), building departments and members **together** so a department's `memberCount` and
+its members always agree. **(B) Department-grouped Members view** — organisation Members render grouped
+by department; a member in multiple departments appears under EACH with multi-department chips on the
+card (root CLAUDE.md — Part 2.2). **(C) Tab-bar overflow (Part 3).** `ProfileTabs` became an **island**:
+**Reviews is always pinned last** on the right with its own glyph (a latent bug — the `reviews`/
+`members` tabs had NO glyph, `tabGlyph` returned the raw tab name with no matching path — is fixed by
+real `reviews`/`departments` glyphs); a non-passive `wheel` listener translates vertical wheel delta
+into `scrollLeft` (hidden scrollbar, `overflow-x:auto`) so tabs never clip; and when a kind has **>6**
+tabs the secondary ones collapse into a portal **`More ▾`** `Popover` while the key tabs (Services ·
+Projects · Portfolio) + Reviews stay visible (`arrangeTabs` in `profile-model.ts`). **(D) Entity-type
+badge (Part 1)** — an explicit icon+label chip per kind (Freelancer · Client · Team · Business ·
+Organisation, `ENTITY_META`/`EntityBadge`) beside the `@handle`. **(E) Color-coded language proficiency
+(Part 4)** — the split `Language ⁄ Proficiency` pill tints by level, token-only (`data-level`): Native
+→ `--success` (green), Fluent → `--secondary` (cyan), Professional → neutral slate, Conversational/
+Basic → `--warning` (amber); the language generator now ramps levels by position so the ladder is
+legible. No `@projective/ui` primitive added (reuses `Popover`/`Tooltip`/`Avatar`) → no
+`DESIGN_SYSTEM.md` §C.1 change. **Deviation flagged (surface, do not silently resolve):** the task named
+the entity types as Freelancer/Team/Business/**Organisation** (omitting the existing individual
+`client` kind) — resolved by KEEPING `client` (individual buyer, badge "Client") AND adding
+`organisation`, so both get a badge; reconcile with a human if `client` was meant to be folded into
+`organisation`. | `PRODUCT_SPEC.md` §Sitemap (`/[handle]`) · `packages/types/profile/{profile,tabs,
+reserved}.ts` · `packages/backend/services/profile/profile-fixtures.ts` ·
+`apps/web/features/profile/{core/profile-model,components/{profile-glyphs,ProfileBadges,ProfileTabContent,
+ProfileAbout},islands/{ProfileHeader,ProfileTabs}.island,styles/profile.css}` · Decisions #9 / #10 /
+#16 / #36 |
+
+| 41 | **Explore/Search layout, pricing & density pass (2026-07-22).** Fixes the `/explore` +
+`/explore?category=…` layout bugs and refines card economics after the Decision #39 visual overhaul.
+**(A) Isolated feed rewrite.** The State-B single-category feed (`UnifiedFeed` in
+`SearchDashboard.island`) dropped the fixed-row-height `VirtualScroller` uniform grid — whose
+per-entity `ROW_HEIGHT` estimates were stale after the lean-card redesign, so cards TALLER than the
+estimate overlapped (services, products) and cards SHORTER stranded whitespace (teams/users/
+businesses) — for a NATIVE, entity-appropriate layout: a responsive fill grid (library `Grid` auto-fit
++ `maxCols` 4, per-entity `minChildWidth`) for card entities, a CSS multi-column **masonry** for
+products (variable-height cards interlock, no absolute-position overlap), and a hairline-divided list
+for projects (tightened `.ex-projrow` block padding `space-5`→`space-4`). Every card computes its own
+height, so rows never overlap or gap. Infinite paging moved from the virtual `onReachEnd` to an
+**IntersectionObserver** tail sentinel (`rootMargin 800px`) → the same `loadMore`; the `feedCols`/
+`ROW_HEIGHT` breakpoint tables + `isTablet`/`isWide` signals were removed. (Verified: uniform widths/
+heights, 0 overlaps across services/talent/products/projects; the paging data path returns page 2 —
+the IO callback only mis-fires in the hidden preview tab, not a real browser.) **(B) Home section
+merge.** The separate "Freelancers" + "Teams" Home sections became one **"Freelancers & Teams ready to
+help"** section (`ProfileGrid kind="freelancers"` over `[...freelancers, ...teams]`, `limit` 8 — the
+`FreelancerCard` already renders both). **(C) Engagement-model pricing.** New optional
+`ticketPrice`/`sessionPrice` on the Zod SSOT `ServiceItemSchema` (a read projection over fixtures — NO
+DB migration, like Decision #12); `servicePricing()` shows **Pipeline** as a per-ticket RANGE
+(`0.5×`–`2.0×` the standard ticket price, e.g. `$120 – $480 / ticket`), **Session** as `$X / session`,
+and **One-Off** as the fixed `price`. Consumed by `ServiceCard` + `DetailPanel`; `query.ts priceValue`
+sorts pipelines by their low-intensity floor. **(D) Promoted badges.** A subtle glass `PromotedBadge`
+(`.ex-promoted` dot+label) in a new top-left overlay flag stack (`.ex-flags`, which now also hosts the
+service type / product price chip — de-absolutised so they stack) on Service/Product/Profile/
+Freelancer cards gated on the existing `sponsored` flag (a service, product, and freelancer fixture
+marked sponsored for demonstration; projects keep their inline "Promoted" text). **(E) Single-star
+ratings.** `@projective/ui` `RatingStars` gained a `compact` prop (one primary star + score, for dense
+bylines; §C.1 roster updated same change); the explore card bylines + the feature `RatingTracks` star
+now render one glyph instead of five. Pure presentation + additive Zod/UI — no lifecycle/business-rule
+change. | `DESIGN_SYSTEM.md` §C.1 · `packages/types/explore/items.ts` ·
+`packages/backend/services/explore/{fixtures,query}.ts` ·
+`packages/ui/display/{components/RatingStars,styles/rating-stars.css}` ·
+`packages/ui/layout/Grid` · `apps/web/features/explore/{islands/SearchDashboard.island,
+components/{cards/{ServiceCard,ProductCard,FreelancerCard,ProfileBannerCard},ExploreHome,PromotedBadge,
+RatingStars,DetailPanel},core/pricing,styles/{explore,explore-results}.css}` · Decisions #12 / #39 |
+
+| 41 | **Entity View pages — `/view/[id]` Amazon-style item viewer (2026-07-22).** The 12th
+thin-frontend/fat-backend READ, and a full rebuild of the public standalone item page (the Explore
+click-matrix + Search-drawer "Open full page" destination). The prior centred `EntityView`/`DetailPanel`
+reading frame is replaced by a NEW cross-cutting feature `apps/web/features/view/` with three regions:
+**(Part 1) Amazon-style hero** — a `MediaGallery` island (vertical thumbnail strip that HOVER-swaps the
+large showcase image, a trailing "+N" overflow button, and a click-to-zoom **lightbox** modelled on
+`fx-modal__panel`: `BodyPortal`-mounted [glass-blur trap], high-res click-to-zoom, carousel nav, tray,
+and `Esc`/`←`/`→` shortcuts) beside an entity-overview column (`ViewDetails`: eyebrow · title · badge
+tags · creator profile-header card → `/[handle]` · a rating summary that jumps to the reviews section ·
+description + key specs). **(Part 2) Sidebar action lane** — `ViewActionLane` island REUSES the profile
+lane's `pf-lane` skeleton VERBATIM (the same `pf-lane__header` + collapse toggle + the
+`.ui-splitter[data-mode]`/`:root[data-guest-nav]` density reveals) so it drops into `ui-guest-aside`
+(guests) and `ui-middle-nav__lane` (users) identically; on it: the resolved pricing block, the stacked
+Buy · Add-to-basket · Message CTAs (basket state synced + `localStorage`-persisted cross-island via
+`core/basket-state.ts`, `LocalKeys.BASKET`), and the operational trust chips. Resolved by a new URL-keyed
+slot resolver `viewLaneFor(url, authed)` (mirrors `exploreFilterLaneFor`/`laneFor`) composed into BOTH
+the `(public)` and `[handle]` layouts. **(Part 3) Lower body** — `RelatedRail`×2 (More-by-creator +
+Similar, reusing the explore `EntityCard`s in a scroll-snap rail) + a `ReviewsPanel` island (aggregate
+average · dual-track meters · a clickable 5★→1★ distribution filter · recent/highest/lowest sort ·
+reciprocal + verified-engagement badges). New Zod SSOT **`@projective/types/explore/view.ts`**
+(`EntityView`, `EntityMedia`, `EntityPricing`, `TrustFact`, `ReviewSummary`, `EntityReview`,
+`ReviewDistribution`); fat `ExploreBackendService.viewPage(id)` DERIVES the gallery (item media/cover/
+highlights + a deterministic pool), pricing (matching `pricing.servicePricing` EXACTLY — per-ticket
+`0.5×–2.0×` Pipeline range · per-session · fixed — so the page agrees with the card that linked to it),
+trust, cross-sell rails (same-owner / same-type+category), and reviews **deterministically** (unsigned
+`>>>` hash + fixed clock, no RNG) from the existing discovery corpus — **no DB migration** (a read
+projection over the eventual discovery + reviews tables, like `detail`/`messages`/`files`); rides the
+SAME `EXPLORE_BACKEND_LIVE` gate. Both `/view/[id]` and `/[handle]/view/[id]` repointed to the new
+`EntityViewScreen` (ctx-scoped back links + card deep-links); the now-dead explore `EntityView.tsx`
+removed (`DetailPanel` stays — still the Search-drawer body). No new `@projective/ui` primitive (reuses
+Avatar/RatingStars/Tag/Backdrop/BodyPortal/Popover/Tooltip) → no §C.1 change; no lifecycle change → no
+`PRODUCT_MANAGEMENT.md` change. **Deviation flagged (surface, do not silently resolve):** the "Message"
+CTA deep-links `/messages/dm-{handle}` (canonical DM namespace) and is auth-gated (guests → `/login?
+redirectTo`); **Buy now + checkout are STUBS** (add-to-basket + a status note) until the `/api/basket` +
+checkout routes land. | `PRODUCT_SPEC.md` §Sitemap (`/view`) · `packages/types/explore/view.ts` ·
+`packages/backend/services/explore/{view-fixtures,ExploreBackendService}.ts` ·
+`apps/web/features/view/` · `apps/web/routes/(public)/view/[entity]/index.tsx` ·
+`apps/web/routes/[handle]/view/[item].tsx` · `apps/web/routes/{(public),[handle]}/_layout.tsx` ·
+`apps/web/utils/storage-keys.ts` · Decisions #10 / #12 / #36 / #39 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

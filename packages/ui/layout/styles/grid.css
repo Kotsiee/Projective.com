@@ -11,3 +11,24 @@
 .ui-grid--auto {
 	grid-template-columns: repeat(auto-fit, minmax(min(var(--grid-min, 16rem), 100%), 1fr));
 }
+
+/*
+ * Column-capped auto-fit (RAM formula): the track floor becomes the LARGER of `--grid-min` and the
+ * width that yields exactly `--grid-maxcols` columns, so below the cap the grid stays responsive and
+ * above it tracks widen instead of multiplying. Keeps cards from collapsing into an over-narrow
+ * many-column row on wide viewports. Still zero JS.
+ */
+.ui-grid--capped {
+	grid-template-columns: repeat(
+		auto-fit,
+		minmax(
+			max(
+				min(var(--grid-min, 16rem), 100%),
+				calc(
+					(100% - (var(--grid-maxcols, 4) - 1) * var(--grid-gap, 0px)) / var(--grid-maxcols, 4)
+				)
+			),
+			1fr
+		)
+	);
+}

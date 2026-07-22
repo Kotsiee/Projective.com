@@ -63,7 +63,7 @@ export function ProfileAbout(
 					<h2 class="pf-about__heading">Languages</h2>
 					<ul class="pf-langs" role="list">
 						{profile.languages.map((lang) => (
-							<li class="pf-langpill" key={lang.code}>
+							<li class="pf-langpill" key={lang.code} data-level={lang.level}>
 								<span class="pf-langpill__lang">{lang.label}</span>
 								<span class="pf-langpill__level">{LEVEL_LABEL[lang.level]}</span>
 							</li>

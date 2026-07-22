@@ -8,7 +8,9 @@ import {
 	homeFeed,
 	relatedSearches,
 } from "./query.ts";
+import { buildViewPage } from "./view-fixtures.ts";
 import type {
+	EntityView,
 	ExploreItem,
 	ExploreParams,
 	HomeFeed,
@@ -91,11 +93,23 @@ export class ExploreBackendService {
 		return ok(homeFeed());
 	}
 
-	/** Look up a single item by id — backs `/view/[id]` and the detail drawer. */
+	/** Look up a single item by id — backs the detail drawer + SEO/title resolution. */
 	static item(id: string): ServiceResult<{ item: ExploreItem }> {
 		const item = lookupItem(id);
 		if (!item) return fail(404, { message: `No item found for id "${id}".` });
 		return ok({ item });
+	}
+
+	/**
+	 * The composed Entity View page (`/view/[id]`): the item plus its derived media gallery, resolved
+	 * pricing/trust facts, deliverable specs, cross-sell rails, and aggregated reviews. Built
+	 * deterministically from the fixtures today; the discovery + reviews tables slot in behind the same
+	 * gate later. Backs the standalone item page + its sidebar action lane.
+	 */
+	static viewPage(id: string): ServiceResult<EntityView> {
+		const item = lookupItem(id);
+		if (!item) return fail(404, { message: `No item found for id "${id}".` });
+		return ok(buildViewPage(item));
 	}
 
 	/** Related search terms for a query/scope — the results-header "Related" row. */

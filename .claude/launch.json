@@ -72,6 +72,12 @@
       "runtimeExecutable": "deno",
       "runtimeArgs": ["task", "dev", "--port", "6273", "--strictPort"],
       "port": 6273
+    },
+    {
+      "name": "web-view",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": ["task", "dev", "--port", "6373", "--strictPort"],
+      "port": 6373
     }
   ]
 }

@@ -11,6 +11,12 @@ export interface RatingStarsProps {
 	value: number;
 	/** Number of stars in the meter (default `5`). */
 	max?: number;
+	/**
+	 * Space-saving single-glyph mode: renders ONE primary star followed by the numeric score (and
+	 * `(count)`), instead of the full five-star meter. Ideal for dense card bylines where the exact
+	 * fractional fill is noise. The `value`/`count` still carry the full accessible label.
+	 */
+	compact?: boolean;
 	/** Size ramp (default `md`). */
 	size?: FieldSize;
 	/** Optional sample size shown as a muted `(N)` after the score. */
@@ -36,12 +42,40 @@ const STAR = "M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.9 6.1 21l1.2-6.5L2.5 9.9
  * fractional fills; a single `role="img"` label carries the score for assistive tech. Token-only.
  */
 export function RatingStars(props: RatingStarsProps): JSX.Element {
-	const { value, max = 5, size = "md", count, class: className } = props;
-	const showValue = props.showValue ?? count !== undefined;
+	const { value, max = 5, size = "md", count, compact = false, class: className } = props;
+	const showValue = props.showValue ?? (compact || count !== undefined);
 	const clamped = Math.max(0, Math.min(max, value));
 	const pct = `${(clamped / max) * 100}%`;
 	const label = props.label ??
 		`Rated ${clamped.toFixed(1)} out of ${max}${count !== undefined ? `, ${count} ratings` : ""}`;
+
+	// Compact mode: a single filled star + the score — one glyph instead of five, for dense bylines.
+	if (compact) {
+		return (
+			<span
+				class={cx(
+					"ui-ratingstars",
+					"ui-ratingstars--compact",
+					`ui-ratingstars--size-${size}`,
+					className,
+				)}
+				role="img"
+				aria-label={label}
+			>
+				<span class="ui-ratingstars__meter" aria-hidden="true">
+					<span class="ui-ratingstars__row ui-ratingstars__row--fill ui-ratingstars__row--single">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d={STAR} fill="currentColor" />
+						</svg>
+					</span>
+				</span>
+				<span class="ui-ratingstars__value" aria-hidden="true">
+					{clamped.toFixed(1)}
+					{count !== undefined && <span class="ui-ratingstars__count">({count})</span>}
+				</span>
+			</span>
+		);
+	}
 
 	return (
 		<span

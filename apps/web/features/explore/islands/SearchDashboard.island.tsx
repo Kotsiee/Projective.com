@@ -1,8 +1,7 @@
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren, VNode } from "preact";
-import { VirtualScroller } from "@projective/ui/display";
-import { Button } from "@projective/ui/fields";
+import { Grid } from "@projective/ui/layout";
 import { Drawer } from "@projective/ui/feedback";
 import { EmptyState } from "@projective/ui/utils";
 import { useMediaQuery } from "@projective/ui/hooks";
@@ -14,10 +13,13 @@ import { EntityCard } from "../components/cards/EntityCard.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
 import { FILTER_CONFIG } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
+import { bridgeCommit, bridgeParams } from "../core/filter-bridge.ts";
 import {
+	activeFilterCount,
 	type ExploreParams,
 	parseExploreParams,
 	serializeExploreParams,
+	withFilter,
 } from "../core/explore-state.ts";
 import type { HrefContext } from "../core/routing.ts";
 import type {
@@ -40,24 +42,6 @@ const CATEGORY_TITLE: Record<ExploreCategory, string> = {
 	articles: "Articles",
 };
 
-/** A minimal sliders glyph for the filter show/hide toggle. */
-function FiltersIcon(): VNode {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			aria-hidden="true"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-		>
-			<path d="M4 7h16M4 12h16M4 17h16" />
-			<circle cx="9" cy="7" r="2.2" fill="currentColor" stroke="none" />
-			<circle cx="15" cy="12" r="2.2" fill="currentColor" stroke="none" />
-			<circle cx="7" cy="17" r="2.2" fill="currentColor" stroke="none" />
-		</svg>
-	);
-}
 
 /**
  * SearchDashboard — the State B orchestrator (the one heavy island). Owns the results dashboard: a
@@ -73,17 +57,23 @@ function FiltersIcon(): VNode {
 /** Items requested per page in the isolated infinite feed. */
 const FEED_PAGE = 18;
 
-/** Estimated card+gap row height (px) per entity, driving VirtualScroller windowing. */
-const ROW_HEIGHT: Record<ExploreEntity, number> = {
-	users: 470,
-	freelancers: 430,
-	teams: 430,
-	businesses: 470,
-	services: 470,
-	products: 420,
-	articles: 360,
-	projects: 300,
+/**
+ * Minimum card track width per entity for the isolated feed's fill grid (library {@link Grid} auto-fit,
+ * capped by {@link FEED_MAX_COLS}). The wide banner/talent entities want a roomier floor than the media
+ * cards so they never squeeze; below each floor the grid stays fully responsive. Products render as a
+ * masonry and projects as a list, so they are absent here.
+ */
+const FEED_MIN_WIDTH: Partial<Record<ExploreEntity, string>> = {
+	users: "20rem",
+	freelancers: "20rem",
+	teams: "20rem",
+	businesses: "20rem",
+	services: "18rem",
+	articles: "18rem",
 };
+
+/** Upper bound on the isolated feed's grid columns — keeps cards comfortably wide on large viewports. */
+const FEED_MAX_COLS = 4;
 
 /** A safe empty payload when SSR data is unexpectedly absent (keeps the island renderable). */
 const EMPTY_PAYLOAD: SearchPayload = {
@@ -112,13 +102,10 @@ export default function SearchDashboard(
 	const selected = useSignal<ExploreItem | null>(null);
 	const drawerOpen = useSignal(false);
 	const mobileFilters = useSignal(false);
-	/** Desktop-only: whether the filter sidebar is collapsed away (toggled by the icon button). */
-	const filtersHidden = useSignal(false);
 	/** True only while a feed page is actively being appended — gates the infinite-scroll spinner. */
 	const loadingMore = useSignal(false);
 
 	const isMobile = useMediaQuery("(max-width: 767.98px)");
-	const isTablet = useMediaQuery("(max-width: 1100px)");
 
 	// #region URL sync + fetching
 	/** Fetch a fresh result set for `next` params, optionally pushing a shareable URL. */
@@ -144,6 +131,21 @@ export default function SearchDashboard(
 		const onPop = () => runSearch(parseExploreParams(globalThis.location.search), false);
 		globalThis.addEventListener("popstate", onPop);
 		return () => globalThis.removeEventListener("popstate", onPop);
+	}, []);
+	// #endregion
+
+	// #region Filter bridge
+	// The facet filters render in the navigation sidebar (guest aside / middle-nav lane) as a separate
+	// island. Publish the live params (so the lane reflects state in real time) and this island's commit
+	// (so a facet change there fetches through the SAME path) across the shared filter-bridge signals.
+	useSignalEffect(() => {
+		bridgeParams.value = params.value;
+	});
+	useEffect(() => {
+		bridgeCommit.value = commit;
+		return () => {
+			bridgeCommit.value = null;
+		};
 	}, []);
 	// #endregion
 
@@ -202,12 +204,12 @@ export default function SearchDashboard(
 	const p = params.value;
 	const pl = payload.value;
 	const filterGroups = FILTER_CONFIG[p.category];
-	const activeCount = Object.values(p.filters).reduce((n, arr) => n + arr.length, 0);
+	const activeCount = activeFilterCount(p);
 	const headTitle = p.q || CATEGORY_TITLE[p.category];
-	const showFilters = !isMobile && !filtersHidden.value;
 
-	// A fresh element per call — never share one VNode instance across the sidebar + mobile drawer,
-	// or Preact skips the second render (the drawer body would come up empty).
+	// A fresh element per call — never share one VNode instance across render locations, or Preact skips
+	// the second render (the mobile drawer body would come up empty). Used by the mobile filter sheet;
+	// the desktop filters render in the navigation sidebar via the separate ExploreFilterLane island.
 	const renderFilters = () => (
 		<FilterPanel
 			category={p.category}
@@ -235,37 +237,22 @@ export default function SearchDashboard(
 					{p.q && <span class="ex-muted">for "{p.q}"</span>}
 				</p>
 				<div class="ex-dash__tools">
-					{isMobile
-						? (
-							<button
-								type="button"
-								class="ex-dash__filter-btn"
-								onClick={() => (mobileFilters.value = true)}
-								aria-haspopup="dialog"
-							>
-								Filters{activeCount > 0 ? ` (${activeCount})` : ""}
-							</button>
-						)
-						: (
-							<Button
-								variant="text"
-								size="sm"
-								iconOnly
-								icon={<FiltersIcon />}
-								badge={activeCount > 0 ? activeCount : undefined}
-								aria-label={filtersHidden.value ? "Show filters" : "Hide filters"}
-								aria-pressed={!filtersHidden.value}
-								class="ex-dash__filter-toggle"
-								onClick={() => (filtersHidden.value = !filtersHidden.value)}
-							/>
-						)}
+					{/* Filters live in the navigation sidebar on desktop; mobile (no aside) opens a bottom sheet. */}
+					{isMobile && (
+						<button
+							type="button"
+							class="ex-dash__filter-btn"
+							onClick={() => (mobileFilters.value = true)}
+							aria-haspopup="dialog"
+						>
+							Filters{activeCount > 0 ? ` (${activeCount})` : ""}
+						</button>
+					)}
 					<SortControl value={p.sort} onChange={setSort} />
 				</div>
 			</div>
 
-			<div class={`ex-dash__grid${showFilters ? "" : " ex-dash__grid--nofilters"}`}>
-				{showFilters && <aside class="ex-dash__sidebar">{renderFilters()}</aside>}
-
+			<div class="ex-dash__grid">
 				<main class="ex-dash__main">
 					{pl.count === 0
 						? (
@@ -279,7 +266,6 @@ export default function SearchDashboard(
 							<UnifiedFeed
 								items={items.value}
 								type={p.category as ExploreEntity}
-								cols={p.category === "projects" ? 1 : isMobile ? 2 : isTablet ? 3 : 5}
 								loading={loadingMore.value}
 								onReachEnd={loadMore}
 								onSelect={onSelect}
@@ -335,17 +321,19 @@ export default function SearchDashboard(
 	);
 }
 
-// #region Unified virtual feed
+// #region Unified feed
 /**
- * The isolated single-category feed: window-scrolled + virtualized via the library VirtualScroller.
- * The accumulated `items` (SSR first page + fetched pages) are row-chunked (`cols` per breakpoint)
- * into a uniform grid; only visible rows render. `onReachEnd` requests the next page.
+ * The isolated single-category feed. Renders the accumulated `items` (SSR first page + fetched pages)
+ * with a NATIVE, entity-appropriate layout — a responsive fill grid for card entities, a CSS masonry
+ * for products (variable-height cards interlock with no overlap), and a hairline-divided list for
+ * projects. Native layout means every card computes its own height, so rows never overlap or strand
+ * whitespace (the failure mode of a fixed-row virtual grid). Infinite loading is driven by an
+ * IntersectionObserver on a tail sentinel that calls `onReachEnd` (the parent guards + pages).
  */
 function UnifiedFeed(
-	{ items, type, cols, loading, onReachEnd, onSelect, ctx, authed }: {
+	{ items, type, loading, onReachEnd, onSelect, ctx, authed }: {
 		items: ExploreItem[];
 		type: ExploreEntity;
-		cols: number;
 		/** Whether a page is actively loading — drives the spinner. */
 		loading: boolean;
 		onReachEnd: () => void;
@@ -354,28 +342,73 @@ function UnifiedFeed(
 		authed: boolean;
 	},
 ): VNode {
-	const rows: ExploreItem[][] = [];
-	for (let i = 0; i < items.length; i += cols) rows.push(items.slice(i, i + cols));
-	const rowSize = ROW_HEIGHT[type] ?? 392;
+	const sentinelRef = useRef<HTMLDivElement>(null);
+
+	// Fire `onReachEnd` when the tail sentinel nears the viewport. Re-observes when the handler
+	// identity changes; the parent's `loadMore` is idempotent (guards on loading/hasMore).
+	useEffect(() => {
+		const el = sentinelRef.current;
+		if (!el || typeof IntersectionObserver === "undefined") return;
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((e) => e.isIntersecting)) onReachEnd();
+			},
+			{ rootMargin: "800px 0px" },
+		);
+		io.observe(el);
+		return () => io.disconnect();
+	}, [onReachEnd]);
+
+	let body: VNode;
+	if (type === "products") {
+		body = (
+			<div class="ex-masonry ex-masonry--feed" role="list" aria-label="Search results">
+				{items.map((it) => (
+					<div class="ex-masonry__item" role="listitem" key={it.id}>
+						<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
+					</div>
+				))}
+			</div>
+		);
+	} else if (type === "projects") {
+		body = (
+			<ul class="ex-list" role="list" aria-label="Search results">
+				{items.map((it) => (
+					<li class="ex-list__item" key={it.id}>
+						<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
+					</li>
+				))}
+			</ul>
+		);
+	} else {
+		body = (
+			<Grid
+				class="ex-feed-grid"
+				minChildWidth={FEED_MIN_WIDTH[type] ?? "18rem"}
+				maxCols={FEED_MAX_COLS}
+				gap={5}
+				role="list"
+				aria-label="Search results"
+			>
+				{items.map((it) => (
+					<div role="listitem" key={it.id}>
+						<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
+					</div>
+				))}
+			</Grid>
+		);
+	}
 
 	return (
-		<VirtualScroller
-			items={rows}
-			itemSize={rowSize}
-			useWindow
-			overscan={3}
-			loading={loading}
-			onReachEnd={onReachEnd}
-			aria-label="Search results"
-			class="ex-uni"
-			itemTemplate={(row: ExploreItem[]) => (
-				<div class="ex-uni__row" style={`--ex-cols:${cols}`}>
-					{row.map((it) => (
-						<EntityCard key={it.id} item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
-					))}
+		<div class="ex-uni">
+			{body}
+			<div ref={sentinelRef} class="ex-uni__sentinel" aria-hidden="true" />
+			{loading && (
+				<div class="ex-uni__loader" role="status" aria-live="polite">
+					<span class="ex-uni__spinner" aria-hidden="true" />
 				</div>
 			)}
-		/>
+		</div>
 	);
 }
 // #endregion
@@ -436,15 +469,5 @@ function FilterSheet(
 			<div class="ex-sheet__body">{children}</div>
 		</div>
 	);
-}
-// #endregion
-
-// #region Helpers
-/** Immutably set (or delete when empty) one facet's values on an ExploreParams. */
-function withFilter(p: ExploreParams, id: string, values: string[]): ExploreParams {
-	const filters = { ...p.filters };
-	if (values.length) filters[id] = values;
-	else delete filters[id];
-	return { ...p, filters };
 }
 // #endregion

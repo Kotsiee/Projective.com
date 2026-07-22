@@ -1,5 +1,5 @@
 import type { JSX, VNode } from "preact";
-import type { ProfileTab, VerificationTier } from "../types/profile-types.ts";
+import type { ProfileKind, ProfileTab, VerificationTier } from "../types/profile-types.ts";
 
 /**
  * profile-glyphs — the profile shell's inline SVG glyph set + the tab/tier icon resolvers. Mirrors the
@@ -36,11 +36,19 @@ export type ProfileGlyph =
 	| "businesses"
 	| "articles"
 	| "members"
+	| "departments"
+	| "reviews"
 	| "external"
 	| "chevron"
 	| "kebab"
 	| "link"
-	| "flag";
+	| "flag"
+	// Entity-type badge glyphs (Part 1).
+	| "entity-freelancer"
+	| "entity-client"
+	| "entity-team"
+	| "entity-business"
+	| "entity-organisation";
 // #endregion
 
 const PATHS: Record<ProfileGlyph, VNode> = {
@@ -165,7 +173,24 @@ const PATHS: Record<ProfileGlyph, VNode> = {
 			<path d="M3.5 19a4.5 4.5 0 0 1 9 0M11.5 19a4.5 4.5 0 0 1 9 0" />
 		</>
 	),
-	external: <path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />,
+	// Departments / org-chart — a top node branching down to child nodes (sitemap).
+	departments: (
+		<>
+			<rect x="9" y="3.5" width="6" height="4.5" rx="1" />
+			<rect x="3.5" y="15.5" width="5" height="4.5" rx="1" />
+			<rect x="15.5" y="15.5" width="5" height="4.5" rx="1" />
+			<path d="M12 8v3.5M6 15.5V12h12v3.5" />
+		</>
+	),
+	// Reviews — a speech bubble carrying a star (distinct from the tier verified mark).
+	reviews: (
+		<>
+			<path d="M4 5h16v11H9l-4 3v-3H4z" />
+			<path d="M12 7.4l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z" />
+		</>
+	),
+	external:
+	<path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />,
 	chevron: <path d="m9 6 6 6-6 6" />,
 	kebab: (
 		<>
@@ -174,8 +199,45 @@ const PATHS: Record<ProfileGlyph, VNode> = {
 			<circle cx="12" cy="19" r="1.5" />
 		</>
 	),
-	link: <path d="M9 15l6-6M10.5 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5l-2.3 2.3M13.5 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5l2.3-2.3" />,
+	link: (
+		<path d="M9 15l6-6M10.5 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5l-2.3 2.3M13.5 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5l2.3-2.3" />
+	),
 	flag: <path d="M5 21V4M5 4h11l-2 3.5L16 11H5" />,
+	// Entity-type glyphs (Part 1) — one distinct mark per profile kind.
+	"entity-freelancer": (
+		<>
+			<circle cx="12" cy="8" r="3.5" />
+			<path d="M5 20a7 7 0 0 1 14 0" />
+		</>
+	),
+	"entity-client": (
+		<>
+			<circle cx="12" cy="12" r="9" />
+			<circle cx="12" cy="10" r="2.6" />
+			<path d="M7 17.5a5 5 0 0 1 10 0" />
+		</>
+	),
+	"entity-team": (
+		<>
+			<circle cx="9" cy="8" r="3" />
+			<path d="M3 20a6 6 0 0 1 12 0M16 6a3 3 0 0 1 0 6m1 8a6 6 0 0 0-3-5" />
+		</>
+	),
+	"entity-business": (
+		<>
+			<path d="M4 21V5l8-2v18" />
+			<path d="M12 9h8v12H4" />
+			<path d="M8 8v0M8 12v0M8 16v0M15 13v0M15 17v0" />
+		</>
+	),
+	"entity-organisation": (
+		<>
+			<rect x="9" y="3.5" width="6" height="4.5" rx="1" />
+			<rect x="3.5" y="15.5" width="5" height="4.5" rx="1" />
+			<rect x="15.5" y="15.5" width="5" height="4.5" rx="1" />
+			<path d="M12 8v3.5M6 15.5V12h12v3.5" />
+		</>
+	),
 };
 
 /**
@@ -201,15 +263,31 @@ export function ProfileIcon(
 	);
 }
 
-/** The glyph name for a profile tab. */
+/** The glyph name for a profile tab. Most tab names map 1:1 to a glyph; a few are aliased. */
 export function tabGlyph(tab: ProfileTab): ProfileGlyph {
-	return tab as ProfileGlyph;
+	switch (tab) {
+		case "about":
+			return "overview";
+		default:
+			return tab as ProfileGlyph;
+	}
 }
 
 /** The tab icon VNode. */
 export function tabIcon(tab: ProfileTab): VNode {
 	return <ProfileIcon name={tabGlyph(tab)} />;
 }
+
+// #region Entity-type badge (Part 1)
+/** Presentation metadata for a profile's entity type — a distinct label + glyph per {@link ProfileKind}. */
+export const ENTITY_META: Record<ProfileKind, { label: string; glyph: ProfileGlyph }> = {
+	freelancer: { label: "Freelancer", glyph: "entity-freelancer" },
+	client: { label: "Client", glyph: "entity-client" },
+	team: { label: "Team", glyph: "entity-team" },
+	business: { label: "Business", glyph: "entity-business" },
+	organisation: { label: "Organisation", glyph: "entity-organisation" },
+};
+// #endregion
 
 // #region Verification tiers
 /** Presentation metadata for a verification tier (badge label + full title). */

@@ -9,8 +9,10 @@ import { profileHref } from "@features/explore/core/routing.ts";
 import ProfileEntityGrid from "../islands/ProfileEntityGrid.island.tsx";
 import TabCreateButton from "../islands/TabCreateButton.island.tsx";
 import { TAB_LABEL } from "../core/profile-model.ts";
+import { ProfileIcon } from "./profile-glyphs.tsx";
 import type {
 	ArticleItem,
+	DepartmentEntry,
 	EducationEntry,
 	ExperienceEntry,
 	MemberEntry,
@@ -97,7 +99,9 @@ function ExperienceList({ entries }: { entries: ExperienceEntry[] }): JSX.Elemen
 					<div class="pf-tl__body">
 						<span class="pf-tl__title">{e.role}</span>
 						<span class="pf-tl__org">{e.org}</span>
-						<span class="pf-tl__dates">{e.start} – {e.current ? "Present" : e.end ?? "Present"}</span>
+						<span class="pf-tl__dates">
+							{e.start} – {e.current ? "Present" : e.end ?? "Present"}
+						</span>
 						<p class="pf-tl__summary">{e.summary}</p>
 					</div>
 				</li>
@@ -106,17 +110,103 @@ function ExperienceList({ entries }: { entries: ExperienceEntry[] }): JSX.Elemen
 	);
 }
 
+/** One member card — an avatar/name/role tile, plus multi-department chips when the member spans >1. */
+function MemberCard(
+	{ member, deptNames }: { member: MemberEntry; deptNames?: Record<string, string> },
+): JSX.Element {
+	const multi = deptNames && member.departments.length > 1;
+	return (
+		<li class="pf-member" key={member.handle}>
+			<a class="pf-member__link" href={profileHref(member.handle)}>
+				<Avatar image={member.avatar} label={member.name} size="xl" shape="circle" />
+				<span class="pf-member__name">{member.name}</span>
+				<span class="pf-member__role">{member.role}</span>
+				{multi
+					? (
+						<span class="pf-member__depts" aria-label="Departments">
+							{member.departments.map((id) => (
+								<span class="pf-member__deptchip" key={id}>{deptNames?.[id] ?? id}</span>
+							))}
+						</span>
+					)
+					: null}
+			</a>
+		</li>
+	);
+}
+
+/** Flat member roster (team / business). */
 function MembersGrid({ members }: { members: MemberEntry[] }): JSX.Element {
 	if (!members.length) return <p class="pf-empty">No members listed yet.</p>;
 	return (
 		<ul class="pf-members" role="list">
-			{members.map((m) => (
-				<li class="pf-member" key={m.handle}>
-					<a class="pf-member__link" href={profileHref(m.handle)}>
-						<Avatar image={m.avatar} label={m.name} size="xl" shape="circle" />
-						<span class="pf-member__name">{m.name}</span>
-						<span class="pf-member__role">{m.role}</span>
-					</a>
+			{members.map((m) => <MemberCard member={m} key={m.handle} />)}
+		</ul>
+	);
+}
+
+/**
+ * Department-grouped member roster (Organisation, root CLAUDE.md — Part 2.2). One section per
+ * department; a member assigned to multiple departments appears under EACH (and their card carries
+ * multi-department chips). Falls back to the flat grid if the org has no department structure.
+ */
+function MembersByDepartment(
+	{ members, departments }: { members: MemberEntry[]; departments: DepartmentEntry[] },
+): JSX.Element {
+	if (!members.length) return <p class="pf-empty">No members listed yet.</p>;
+	if (!departments.length) return <MembersGrid members={members} />;
+	const deptNames: Record<string, string> = {};
+	for (const d of departments) deptNames[d.id] = d.name;
+	return (
+		<div class="pf-deptgroups">
+			{departments.map((dept) => {
+				const inDept = members.filter((m) => m.departments.includes(dept.id));
+				return (
+					<section class="pf-deptgroup" key={dept.id} aria-label={`${dept.name} department`}>
+						<header class="pf-deptgroup__head">
+							<ProfileIcon name="departments" class="pf-deptgroup__icon" />
+							<h3 class="pf-deptgroup__name">{dept.name}</h3>
+							<span class="pf-deptgroup__count">{inDept.length}</span>
+						</header>
+						{inDept.length
+							? (
+								<ul class="pf-members" role="list">
+									{inDept.map((m) => (
+										<MemberCard member={m} deptNames={deptNames} key={`${dept.id}-${m.handle}`} />
+									))}
+								</ul>
+							)
+							: <p class="pf-empty">No members in this department yet.</p>}
+					</section>
+				);
+			})}
+		</div>
+	);
+}
+
+/** Departments overview (Organisation) — a tonal card per department with its remit + lead + size. */
+function DepartmentsList({ departments }: { departments: DepartmentEntry[] }): JSX.Element {
+	if (!departments.length) return <p class="pf-empty">No departments yet.</p>;
+	return (
+		<ul class="pf-depts" role="list">
+			{departments.map((d) => (
+				<li class="pf-deptcard" key={d.id}>
+					<div class="pf-deptcard__head">
+						<ProfileIcon name="departments" class="pf-deptcard__icon" />
+						<span class="pf-deptcard__name">{d.name}</span>
+						<span class="pf-deptcard__count">
+							{d.memberCount} {d.memberCount === 1 ? "member" : "members"}
+						</span>
+					</div>
+					{d.summary ? <p class="pf-deptcard__summary">{d.summary}</p> : null}
+					{d.leadHandle
+						? (
+							<a class="pf-deptcard__lead" href={profileHref(d.leadHandle)}>
+								<span class="pf-deptcard__leadlabel">Lead</span>
+								<span class="pf-deptcard__leadhandle">{d.leadHandle}</span>
+							</a>
+						)
+						: null}
 				</li>
 			))}
 		</ul>
@@ -233,12 +323,19 @@ function tabBody(
 		}
 		case "teams": {
 			const rows = items.filter((i): i is ProfileItem => i.type === "teams");
-			return <ProfileEntityGrid items={rows} handle={profile.handle} label="Teams" authed={authed} />;
+			return (
+				<ProfileEntityGrid items={rows} handle={profile.handle} label="Teams" authed={authed} />
+			);
 		}
 		case "businesses": {
 			const rows = items.filter((i): i is ProfileItem => i.type === "businesses");
 			return (
-				<ProfileEntityGrid items={rows} handle={profile.handle} label="Businesses" authed={authed} />
+				<ProfileEntityGrid
+					items={rows}
+					handle={profile.handle}
+					label="Businesses"
+					authed={authed}
+				/>
 			);
 		}
 		case "education":
@@ -246,7 +343,12 @@ function tabBody(
 		case "experience":
 			return <ExperienceList entries={payload.experience} />;
 		case "members":
-			return <MembersGrid members={payload.members} />;
+			// Organisations arrive with a department set → group by department; others render flat.
+			return profile.kind === "organisation"
+				? <MembersByDepartment members={payload.members} departments={payload.departments} />
+				: <MembersGrid members={payload.members} />;
+		case "departments":
+			return <DepartmentsList departments={payload.departments} />;
 		case "reviews":
 			return <ReviewsList reviews={payload.reviews} summary={payload.reviewSummary} />;
 		case "about":

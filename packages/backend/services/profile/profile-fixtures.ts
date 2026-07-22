@@ -1,4 +1,5 @@
 import type {
+	DepartmentEntry,
 	EducationEntry,
 	ExperienceEntry,
 	MemberEntry,
@@ -134,13 +135,166 @@ function kindOf(type: ProfileItem["type"]): ProfileKind {
 }
 // #endregion
 
+// #region Organisations (department-structured buyer entities)
+/**
+ * Organisations are a distinct buyer-only profile kind (root CLAUDE.md Decision #16 — the
+ * `organisation` context) with a DEPARTMENT structure. There is no organisation corpus in the
+ * discovery fixtures, so this module owns a small deterministic set: a handful of NAMED organisations
+ * plus an open `org-*` handle convention, so any `/@org-<name>` also resolves to a coherent org page.
+ * Everything derives from the handle (no RNG) so the Departments tab and the department-grouped Members
+ * view always agree.
+ */
+interface OrgIdentity {
+	name: string;
+	headline: string;
+	summary: string;
+}
+
+/** Named organisations — clean demo handles that resolve to a department-structured org profile. */
+const NAMED_ORGS: Record<string, OrgIdentity> = {
+	northwind: {
+		name: "Northwind Collective",
+		headline: "A product & brand studio, org-wide",
+		summary:
+			"Northwind commissions independent talent across design, engineering and operations — running every engagement in clear, escrow-backed stages.",
+	},
+	meridian: {
+		name: "Meridian Labs",
+		headline: "Research-led product organisation",
+		summary:
+			"Meridian brings together specialist teams to ship measured, accountable work for its partners worldwide.",
+	},
+	atlasgroup: {
+		name: "Atlas Group",
+		headline: "Multi-department delivery organisation",
+		summary:
+			"Atlas Group coordinates design, engineering, product and operations to deliver end-to-end for its clients.",
+	},
+};
+
+/** The department catalogue an organisation draws from (stable order → deterministic slices). */
+const DEPARTMENTS_POOL: ReadonlyArray<{ id: string; name: string; summary: string }> = [
+	{ id: "design", name: "Design", summary: "Brand, product & experience design." },
+	{ id: "engineering", name: "Engineering", summary: "Platform, web & infrastructure." },
+	{ id: "operations", name: "Operations", summary: "Delivery, finance & people operations." },
+	{ id: "product", name: "Product", summary: "Strategy, research & roadmap." },
+	{ id: "marketing", name: "Marketing", summary: "Growth, content & communications." },
+];
+
+const MEMBER_NAMES = [
+	"Ivy Chen",
+	"Marcus Lee",
+	"Aria Novak",
+	"Ravi Menon",
+	"Sofia Marín",
+	"Kenji Ito",
+	"Noah Bianchi",
+	"Lena Fischer",
+	"Diego Alvarez",
+	"Priya Nair",
+	"Tomas Berg",
+	"Hana Suzuki",
+];
+
+/** Title-case an `org-north-wind` slug into "North Wind" for a synthesised organisation name. */
+function titleize(bare: string): string {
+	return bare
+		.replace(/^org-/, "")
+		.split(/[-_]+/)
+		.filter(Boolean)
+		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+		.join(" ") || "Organisation";
+}
+
+/** Resolve a handle to its organisation identity, or `null` if it isn't an organisation. */
+function resolveOrg(bare: string): OrgIdentity | null {
+	if (NAMED_ORGS[bare]) return NAMED_ORGS[bare];
+	if (bare.startsWith("org-")) {
+		const name = titleize(bare);
+		return {
+			name,
+			headline: "A multi-department organisation on Projective",
+			summary:
+				`${name} commissions independent talent across its departments, running every engagement in clear, escrow-backed stages.`,
+		};
+	}
+	return null;
+}
+
+/**
+ * The organisation's roster — its departments AND its members, built together so the two always agree
+ * (a department's `memberCount` is exactly the members assigned to it, and every member's
+ * `departments` reference a real department). Members may sit in MORE than one department (root
+ * CLAUDE.md — Part 2.2, multi-department assignment): ~1 in 4 gets a second department, and the grouped
+ * Members view renders such a member under each. Derived only from the bare handle → stable across the
+ * Departments and Members tabs.
+ */
+function orgRoster(bare: string): { departments: DepartmentEntry[]; members: MemberEntry[] } {
+	const dSeed = hash(bare + ":depts");
+	const mSeed = hash(bare + ":members");
+	const deptCount = 3 + (dSeed % 3); // 3–5 departments
+	const base = DEPARTMENTS_POOL.slice(0, deptCount);
+	const perDept = 2 + (dSeed % 2); // 2–3 primary members per department
+
+	const members: MemberEntry[] = [];
+	let idx = 0;
+	for (let d = 0; d < base.length; d++) {
+		const dept = base[d];
+		for (let k = 0; k < perDept; k++) {
+			const name = MEMBER_NAMES[idx % MEMBER_NAMES.length];
+			// ~1 in 4 members also belong to the next department (multi-department assignment).
+			const multi = base.length > 1 && (mSeed + idx) % 4 === 0;
+			const departments = multi ? [dept.id, base[(d + 1) % base.length].id] : [dept.id];
+			const role = k === 0
+				? `${dept.name} lead`
+				: `${dept.name} ${["Specialist", "Associate", "Manager"][k % 3]}`;
+			members.push({
+				handle: `@${bare}-${idx}`,
+				name,
+				avatar: face(FACES[(mSeed + idx) % FACES.length]),
+				role,
+				kind: idx % 3 === 0 ? "user" : "freelancer",
+				departments,
+			});
+			idx++;
+		}
+	}
+
+	const departments: DepartmentEntry[] = base.map((d) => {
+		const inDept = members.filter((m) => m.departments.includes(d.id));
+		// The department's OWN designated lead (role `<Dept> lead`), not a multi-department member whose
+		// lead role belongs to another department.
+		const lead = inDept.find((m) => m.role === `${d.name} lead`) ?? inDept[0];
+		return {
+			id: d.id,
+			name: d.name,
+			summary: d.summary,
+			leadHandle: lead?.handle,
+			memberCount: inDept.length,
+		};
+	});
+	return { departments, members };
+}
+// #endregion
+
 // #region Derivation
+/** Proficiency ramp — the first language is native, then descending, so the color-coded chips (Part 4)
+ * read as a legible ladder rather than a random pair. */
+const LEVEL_RAMP: ProfileLanguage["level"][] = [
+	"native",
+	"fluent",
+	"professional",
+	"conversational",
+	"basic",
+];
+
 function languagesOf(codes: readonly string[] | undefined, seed: number): ProfileLanguage[] {
 	const src = codes && codes.length ? codes : ["EN"];
 	return src.map((code, i) => ({
 		code,
 		label: LANGUAGE_LABELS[code] ?? code,
-		level: i === 0 ? "native" : (seed + i) % 2 === 0 ? "fluent" : "professional",
+		// Ramp by position, nudged by the seed so a two-language profile isn't always native+fluent.
+		level: i === 0 ? "native" : LEVEL_RAMP[Math.min(1 + ((seed + i) % 4), LEVEL_RAMP.length - 1)],
 	}));
 }
 
@@ -152,7 +306,7 @@ function tiersUpTo(top: VerificationTier): VerificationTier[] {
 }
 
 function tierFor(kind: ProfileKind, verified: boolean, seed: number): VerificationTier {
-	if (kind === "business") return "L3";
+	if (kind === "business" || kind === "organisation") return "L3";
 	if (verified && seed % 5 === 0) return "architect";
 	if (verified) return "L2";
 	return "L1";
@@ -162,6 +316,8 @@ function tierFor(kind: ProfileKind, verified: boolean, seed: number): Verificati
 function storyOf(name: string, headline: string, summary: string, kind: ProfileKind): string {
 	const intro = kind === "team"
 		? `${name} is a collaborative studio focused on ${headline.toLowerCase()}.`
+		: kind === "organisation"
+		? `${name} is a multi-department organisation commissioning work across its teams.`
 		: kind === "business"
 		? `${name} works with independent talent and teams across ${headline.toLowerCase()}.`
 		: `I'm ${name}, ${headline.toLowerCase()}.`;
@@ -182,23 +338,39 @@ export function findProfile(handle: string): ProfileView | null {
 	if (!bare) return null;
 	const seed = hash(bare);
 	const row = KNOWN[bare];
+	// A known discovery row wins; otherwise the handle may resolve as an organisation; else it
+	// synthesises a freelancer-shaped profile so every handle in the stub resolves to a coherent page.
+	const org = row ? null : resolveOrg(bare);
 
-	const owner: ExploreOwner = row?.owner ?? {
-		handle: `@${bare}`,
-		name: bare.charAt(0).toUpperCase() + bare.slice(1),
-		avatar: face(FACES[seed % FACES.length]),
-		kind: "freelancer",
-		verified: seed % 3 === 0,
-	};
-	const kind = row ? kindOf(row.type) : "freelancer";
-	const name = row?.title ?? owner.name;
-	const headline = row?.craft ?? "Independent maker on Projective";
-	const summary = row?.summary ?? `${name} builds considered, high-craft work with clients worldwide.`;
+	const owner: ExploreOwner = row?.owner ?? (org
+		? {
+			handle: `@${bare}`,
+			name: org.name,
+			// Organisations use a square brand-mark banner crop as their avatar (a logo, not a face).
+			avatar: unsplash(BANNERS[seed % BANNERS.length], 96, 96),
+			kind: "business",
+			verified: true,
+		}
+		: {
+			handle: `@${bare}`,
+			name: bare.charAt(0).toUpperCase() + bare.slice(1),
+			avatar: face(FACES[seed % FACES.length]),
+			kind: "freelancer",
+			verified: seed % 3 === 0,
+		});
+	const kind: ProfileKind = org ? "organisation" : row ? kindOf(row.type) : "freelancer";
+	const name = org?.name ?? row?.title ?? owner.name;
+	const headline = org?.headline ?? row?.craft ?? "Independent maker on Projective";
+	const summary = org?.summary ?? row?.summary ??
+		`${name} builds considered, high-craft work with clients worldwide.`;
 	const verified = owner.verified ?? false;
 	const tier = tierFor(kind, verified, seed);
 	const location = LOCATIONS[seed % LOCATIONS.length];
 	const rating = row?.rating ??
-		{ asHelper: { value: 4.8, count: 40 + (seed % 30) }, asClient: { value: 4.7, count: 10 + (seed % 12) } };
+		{
+			asHelper: { value: 4.8, count: 40 + (seed % 30) },
+			asClient: { value: 4.7, count: 10 + (seed % 12) },
+		};
 
 	// Notable clients — a stable slice of the business/team rows (never the profile itself).
 	const clientPool = [...BUSINESSES, ...TEAMS].filter((r) => bareHandle(r.owner.handle) !== bare);
@@ -214,7 +386,11 @@ export function findProfile(handle: string): ProfileView | null {
 		name,
 		kind,
 		avatar: owner.avatar,
-		banner: unsplash(row?.cover ? bannerIdFrom(row.cover) : BANNERS[seed % BANNERS.length], 1600, 460),
+		banner: unsplash(
+			row?.cover ? bannerIdFrom(row.cover) : BANNERS[seed % BANNERS.length],
+			1600,
+			460,
+		),
 		headline,
 		story: storyOf(name, headline, summary, kind),
 		skills: row?.skills ?? resolveSkills(["Design", "Product", "Strategy"]),
@@ -223,7 +399,13 @@ export function findProfile(handle: string): ProfileView | null {
 		location,
 		online: seed % 2 === 0,
 		availabilityLabel: row?.workload?.status ??
-			(kind === "business" ? "Actively hiring" : seed % 2 === 0 ? "Available for work" : "Booked — waitlist open"),
+			(kind === "organisation"
+				? "Actively commissioning"
+				: kind === "business"
+				? "Actively hiring"
+				: seed % 2 === 0
+				? "Available for work"
+				: "Booked — waitlist open"),
 		// Sellers (freelancer/team) publish a bookable availability calendar; buyer entities don't.
 		hasAvailability: kind === "freelancer" || kind === "team",
 		responseTime: RESPONSE_TIMES[seed % RESPONSE_TIMES.length],
@@ -255,6 +437,9 @@ function metricsFor(kind: ProfileKind, seed: number, bare: string): ProfileView[
 	const seller = kind === "freelancer" || kind === "team";
 	const teamsCount = TEAMS.filter((t) => bareHandle(t.owner.handle) !== bare).length;
 	const businessesCount = BUSINESSES.filter((b) => bareHandle(b.owner.handle) !== bare).length;
+	// Organisations carry a real department + member roster (derived from the handle), so their
+	// Departments/Members chips read the SAME roster the tabs render (never divergent).
+	const roster = kind === "organisation" ? orgRoster(bare) : null;
 	return {
 		services: seller ? SERVICES.length : undefined,
 		products: seller ? PRODUCTS.length : undefined,
@@ -266,7 +451,12 @@ function metricsFor(kind: ProfileKind, seed: number, bare: string): ProfileView[
 		businesses: businessesCount,
 		articles: ARTICLES.length,
 		reviews: 12 + (seed % 40),
-		members: kind === "team" || kind === "business" ? 4 + (seed % 5) : undefined,
+		members: roster
+			? roster.members.length
+			: kind === "team" || kind === "business"
+			? 4 + (seed % 5)
+			: undefined,
+		departments: roster ? roster.departments.length : undefined,
 	};
 }
 // #endregion
@@ -313,7 +503,8 @@ function experienceFor(name: string, seed: number): ExperienceEntry[] {
 		start: `${2016 + i * 2}`,
 		end: i === 0 ? undefined : `${2018 + i * 2}`,
 		current: i === 0,
-		summary: `Drove design across ${r.craft.toLowerCase()} — shipping work end-to-end with cross-functional teams.`,
+		summary:
+			`Drove design across ${r.craft.toLowerCase()} — shipping work end-to-end with cross-functional teams.`,
 		logo: r.owner.avatar,
 	}));
 }
@@ -326,6 +517,8 @@ function membersFor(seed: number, count: number): MemberEntry[] {
 		avatar: face(FACES[(seed + i) % FACES.length]),
 		role: roles[i % roles.length],
 		kind: i % 3 === 0 ? "user" : "freelancer",
+		// Team/business rosters are flat (no departments) — only organisations group by department.
+		departments: [],
 	}));
 }
 
@@ -364,7 +557,15 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 		handle: profile.handle,
 		name: profile.name,
 		avatar: profile.avatar,
-		kind: profile.kind === "client" ? "user" : profile.kind === "freelancer" ? "freelancer" : profile.kind,
+		// Map the profile kind onto the narrower discovery-owner kind (organisation reads as a business
+		// buyer for attribution; client reads as a plain user).
+		kind: profile.kind === "client"
+			? "user"
+			: profile.kind === "freelancer"
+			? "freelancer"
+			: profile.kind === "team"
+			? "team"
+			: "business",
 		verified: profile.verified,
 	};
 
@@ -377,6 +578,7 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 		education: [],
 		experience: [],
 		members: [],
+		departments: [],
 		reviews: [],
 	};
 
@@ -411,8 +613,19 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 			return { ...base, education: educationFor(profile.name, seed) };
 		case "experience":
 			return { ...base, experience: experienceFor(profile.name, seed) };
-		case "members":
+		case "members": {
+			// Organisations group their roster by department (multi-department members included); every
+			// other entity has a flat roster.
+			if (profile.kind === "organisation") {
+				const { members, departments } = orgRoster(bare);
+				return { ...base, members, departments };
+			}
 			return { ...base, members: membersFor(seed, profile.metrics.members ?? 5) };
+		}
+		case "departments": {
+			const { departments } = orgRoster(bare);
+			return { ...base, departments };
+		}
 		case "reviews":
 			return {
 				...base,

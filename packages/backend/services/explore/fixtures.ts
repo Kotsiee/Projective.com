@@ -108,6 +108,8 @@ export const FREELANCERS: ProfileItem[] = [
 		summary: "Senior product designer shaping design systems and end-to-end product work.",
 		skills: resolveSkills(["UX", "Design systems", "Figma"]),
 		rating: dual([5.0, 61], [4.9, 22]),
+		// A promoted talent placement — surfaced as a subtle "Promoted" card badge.
+		sponsored: true,
 		// Includes a $5 loss-leader that the IQR fence trims, so the floor reads $120, not $5.
 		servicePrices: [5, 120, 130, 140, 150, 160],
 		products: 9,
@@ -374,6 +376,18 @@ const SERVICE_SEED: Array<
 	],
 ];
 
+/**
+ * Per-service unit prices keyed by seed id. Pipeline services carry a standard `ticketPrice` (the card
+ * shows a 0.5×–2.0× workload range around it); Session services carry a `sessionPrice`. One-Off
+ * services keep only their fixed `price` string.
+ */
+const SERVICE_UNIT_PRICE: Record<string, { ticketPrice?: number; sessionPrice?: number }> = {
+	"brand-identity-sprint": { ticketPrice: 240 },
+	"design-system-foundation": { ticketPrice: 180 },
+	"realtime-mvp-build": { ticketPrice: 320 },
+	"portfolio-review-session": { sessionPrice: 180 },
+};
+
 export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 	([id, title, owner, price, delivery, category, serviceType, blurb, photo], i) => ({
 		id: `sv-${id}`,
@@ -384,10 +398,13 @@ export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 		delivery,
 		category,
 		serviceType,
+		...SERVICE_UNIT_PRICE[id],
 		summary: blurb,
 		skills: resolveSkills([category, "design"]),
 		rating: OWNERS[owner].kind === "team" ? helperOnly(4.8, 40 + i) : dual([4.9, 30 + i], [4.7, 8]),
 		media: unsplash(photo, 800, 600),
+		// The first service is a promoted placement — surfaced as a subtle "Promoted" card badge.
+		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
 	}),
 );
@@ -546,6 +563,8 @@ export const PRODUCTS: ProductItem[] = PRODUCT_SEED.map(
 		skills: resolveSkills([category === "3d" ? "3D" : "design"]),
 		rating: helperOnly(4.8, 25 + i),
 		media: unsplash(photo, 800, span === 1 ? 600 : span === 2 ? 800 : 1000),
+		// The first product is a promoted placement — surfaced as a subtle "Promoted" card badge.
+		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
 	}),
 );

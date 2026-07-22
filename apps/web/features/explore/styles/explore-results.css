@@ -134,24 +134,11 @@
 	outline-offset: 2px;
 }
 
+/* The facet sidebar moved to the navigation rail (guest aside / middle-nav lane), so the results grid is
+   now a single full-width column — the main reclaims the whole content pane. */
 .ex-dash__grid {
 	display: grid;
-	grid-template-columns: 16rem 1fr;
-	gap: clamp(1.5rem, 3vw, 2.5rem);
-	align-items: start;
-}
-
-/* Sidebar hidden via the toggle → the results grid reclaims the full width. */
-.ex-dash__grid--nofilters {
-	grid-template-columns: 1fr;
-}
-
-.ex-dash__sidebar {
-	position: sticky;
-	inset-block-start: calc(var(--site-header-h, 0px) + var(--space-4));
-	max-block-size: calc(100vh - var(--site-header-h, 0px) - var(--space-6));
-	overflow-y: auto;
-	scrollbar-width: thin;
+	grid-template-columns: minmax(0, 1fr);
 }
 
 .ex-dash__main {
@@ -350,6 +337,27 @@
 }
 /* #endregion */
 
+/* #region Relocated filter lane (nav sidebar host) */
+/*
+ * The FilterPanel, RELOCATED out of the results body into the navigation sidebar — the guest floating
+ * `.ui-guest-aside` for signed-out visitors, the authed middle-nav lane (`.ui-splitter__body`) for
+ * signed-in ones. It's the same controlled `.ex-filters` panel; this wrapper just gives it padding and,
+ * in the guest aside, fills the fixed-height glass panel with its own internal scroll.
+ */
+.ex-filters-lane {
+	padding: var(--space-4);
+}
+
+/* Guest floating aside: a fixed-height flex column that clips — the lane fills it and owns its scroll. */
+.ui-guest-aside .ex-filters-lane {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	block-size: 100%;
+	overflow-y: auto;
+	scrollbar-width: thin;
+}
+/* #endregion */
+
 /* #region Sort */
 /* The sort selector is a packages/ui Select rendered alone (no "Sort" label). */
 .ex-sort {
@@ -410,28 +418,67 @@
 }
 /* #endregion */
 
-/* #region Unified virtual feed */
+/* #region Unified feed (isolated single category) */
 .ex-uni {
 	inline-size: 100%;
 }
 
-.ex-uni__row {
-	display: grid;
-	grid-template-columns: repeat(var(--ex-cols, 3), 1fr);
-	gap: var(--space-5);
-	padding-block-end: var(--space-5);
-	align-items: stretch;
+/* Card entities: a native responsive fill grid (library Grid auto-fit, column-capped). Every cell
+   stretches so equal-height cards fill the row uniformly — no fixed row height, so nothing overlaps. */
+.ex-feed-grid > [role="listitem"] {
+	display: flex;
 }
 
-/* Cards fill their virtualized row cell so the fixed row height stays honest. */
-.ex-uni__row > .ex-card {
-	block-size: 100%;
+/* Products: a CSS multi-column masonry so variable-height cards interlock with zero overlap. Widths
+   are uniform per column; heights flow naturally. */
+.ex-masonry--feed {
+	columns: 4 18rem;
+	column-gap: var(--space-5);
 }
 
-.ui-vscroll__loader {
+/* The infinite-scroll trip wire — an invisible tail element the IntersectionObserver watches. */
+.ex-uni__sentinel {
+	block-size: 1px;
+}
+
+.ex-uni__loader {
 	display: flex;
 	justify-content: center;
-	padding-block: var(--space-5);
+	padding-block: var(--space-6) var(--space-4);
+}
+
+.ex-uni__spinner {
+	inline-size: 1.3rem;
+	block-size: 1.3rem;
+	border: 2px solid var(--ex-hair-strong);
+	border-inline-end-color: transparent;
+	border-radius: 50%;
+	animation: ex-uni-spin 0.6s linear infinite;
+}
+
+@keyframes ex-uni-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-uni__spinner {
+		animation-duration: 0ms;
+	}
+}
+
+@media (max-width: 1100px) {
+	.ex-masonry--feed {
+		columns: 3 16rem;
+	}
+}
+
+@media (max-width: 767.98px) {
+	.ex-masonry--feed {
+		columns: 2 8rem;
+		column-gap: var(--space-3);
+	}
 }
 /* #endregion */
 

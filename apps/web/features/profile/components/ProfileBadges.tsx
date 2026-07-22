@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
-import { ProfileIcon, TIER_META } from "./profile-glyphs.tsx";
-import type { VerificationTier } from "../types/profile-types.ts";
+import { ENTITY_META, ProfileIcon, TIER_META } from "./profile-glyphs.tsx";
+import type { ProfileKind, VerificationTier } from "../types/profile-types.ts";
 
 /**
  * ProfileBadges — the verification-tier marks + online-status pill shared by the meta rail and the
@@ -31,6 +31,29 @@ export function TierBadges(
 				</Tooltip>
 			))}
 		</div>
+	);
+}
+
+/**
+ * EntityBadge — the explicit profile-entity-type mark (root CLAUDE.md — Part 1): a distinct
+ * icon + label per {@link ProfileKind} (Freelancer · Client · Team · Business · Organisation) so a
+ * visitor can immediately tell the profile type. Sits beside the `@handle` / verification badge in the
+ * header. Non-interactive, so it is a tonal chip (not a bordered box, §B.4); the `data-kind` hook lets
+ * CSS give each type its own subtle accent tint.
+ */
+export function EntityBadge(
+	{ kind, class: className }: { kind: ProfileKind; class?: string },
+): JSX.Element {
+	const meta = ENTITY_META[kind];
+	return (
+		<span
+			class={`pf-entity${className ? ` ${className}` : ""}`}
+			data-kind={kind}
+			aria-label={`Entity type: ${meta.label}`}
+		>
+			<ProfileIcon name={meta.glyph} class="pf-entity__icon" />
+			<span class="pf-entity__label">{meta.label}</span>
+		</span>
 	);
 }
 

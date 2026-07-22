@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
-import EntityCarousel from "../islands/EntityCarousel.island.tsx";
 import { ExploreHomeHeader } from "./ExploreHomeHeader.tsx";
+import { ProfileGrid } from "./collections/ProfileGrid.tsx";
 import { ServicesGrid } from "./collections/ServicesGrid.tsx";
 import { ProjectsList } from "./collections/ProjectsList.tsx";
 import { ProductsMasonry } from "./collections/ProductsMasonry.tsx";
@@ -13,10 +13,10 @@ import type { HomeFeed } from "../types/explore-types.ts";
 
 /**
  * ExploreHome — the State A discovery feed (no active query). A varied presentation scheme tailored to
- * each entity format: profile carousels (freelancers, teams, businesses, people), a services grid, a
- * projects list, a products masonry, and an articles grid/list combo — interleaved with deliberately
- * reserved sponsored frames, help articles, and CTA banners. All static; the only islands are the
- * horizontal carousels (drag/touch scroll).
+ * each entity format: bounded profile fill grids (freelancers, teams, businesses, people), a services
+ * grid, a projects list, a products masonry, and an articles grid/list combo — interleaved with
+ * deliberately reserved sponsored frames, help articles, and CTA banners. Fully static (zero client JS):
+ * every section fills its row, so nothing strands the half-empty carousel rows this replaced.
  */
 export function ExploreHome(
 	{ feed, authed = false }: { feed: HomeFeed; authed?: boolean },
@@ -26,31 +26,21 @@ export function ExploreHome(
 			<ExploreHomeHeader />
 			<div class="ex-home">
 				<Section
-					id="freelancers"
+					id="talent"
 					eyebrow="Meet your helpers"
-					title="Freelancers"
+					title="Freelancers & Teams"
 					emphasis="ready to help"
 					href={filterHref({ category: "freelancers" })}
 				>
-					<EntityCarousel
+					<ProfileGrid
 						kind="freelancers"
-						items={feed.freelancers}
-						label="Freelancers"
+						items={[...feed.freelancers, ...feed.teams]}
+						limit={8}
 						authed={authed}
 					/>
 				</Section>
 
 				<SponsoredFrame slot={feed.sponsored[0]} />
-
-				<Section
-					id="teams"
-					eyebrow="Ready-made crews"
-					title="Teams"
-					emphasis="you can hire"
-					href={filterHref({ category: "teams" })}
-				>
-					<EntityCarousel kind="profiles" items={feed.teams} label="Teams" authed={authed} />
-				</Section>
 
 				<Section
 					id="services"
@@ -81,12 +71,7 @@ export function ExploreHome(
 					emphasis="on Projective"
 					href={filterHref({ category: "businesses" })}
 				>
-					<EntityCarousel
-						kind="profiles"
-						items={feed.businesses}
-						label="Businesses"
-						authed={authed}
-					/>
+					<ProfileGrid kind="profiles" items={feed.businesses} authed={authed} />
 				</Section>
 
 				<Section
@@ -108,7 +93,7 @@ export function ExploreHome(
 					emphasis="worth a follow"
 					href={filterHref({ category: "users" })}
 				>
-					<EntityCarousel kind="profiles" items={feed.users} label="Individuals" authed={authed} />
+					<ProfileGrid kind="profiles" items={feed.users} authed={authed} />
 				</Section>
 
 				<Section

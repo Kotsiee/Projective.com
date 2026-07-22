@@ -338,7 +338,7 @@ verbatim because every component depends only on the token contract (Part A) —
 
 | Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`@projective/ui/layout`**     | Box, Container, Grid, Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                  |
+| **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                  |
 | **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                            |
 | **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl |
 | **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                            |
@@ -426,8 +426,9 @@ PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
   real-`<audio>`/simulated transport and a two-tone `--wave-played`/`--wave-rest` waveform a consumer
   can re-tint (the projects chat memo + attachment/review previews consume it), and the content atoms
   (Card, Avatar/AvatarGroup,
-  Badge/OverlayBadge, RatingStars — a zero-JS read-only star meter, the display counterpart to the
-  interactive `fields` Rating — Chip, Tag, List/ListItem, Accordion).
+  Badge/OverlayBadge, RatingStars — a zero-JS read-only star meter (a `compact` prop renders a single
+  primary star + score for dense card bylines, in place of the full five-star meter), the display
+  counterpart to the interactive `fields` Rating — Chip, Tag, List/ListItem, Accordion).
 - **`feedback`** — Message/Messages/Alert/Banner, Toast (+`useToast`), the Dialog family
   (Dialog/DynamicDialog + `useDialog`/ConfirmDialog/ConfirmPopup), Drawer (alias Sidebar,
   bottom-sheet under `--bp-md`), Tooltip, Popover (alias OverlayPanel), and the progress/placeholder
@@ -856,18 +857,27 @@ For **guests** the shell is not the nested L-frame — it is one floating compos
 (`apps/web/features/shell/`), used verbatim on every guest-reachable route (the `(public)` surfaces
 and `/[handle]`). It layers floating, glassmorphic panels over a **full-bleed body**, reusing the
 marketing `.site` / `.site__main` base (the fixed → pill-on-scroll `SiteHeader`, the reserved header
-band, and `overflow-x: clip`), so lane-less routes (`/`, `/explore`) are structurally unchanged:
+band, and `overflow-x: clip`), so lane-less routes (`/`, the Explore Home feed) are structurally
+unchanged (the Explore **Search Results** now supply a filter lane — Decision #40):
 
 - **Floating pill header.** The unchanged `SiteHeader` (full-width, morphing to a glass pill on
   scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
   prior marketing-only header and the guest `AppShell` `ui-shell-topbar`.
-- **Floating side nav (route-driven).** When a route supplies a lane (today: the profile action
-  lane), it mounts in a floating `.ui-guest-aside` (`position: fixed`, rounded, glass) — the guest
-  counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. Collapse/expand is
+- **Side nav (route-driven).** When a route supplies a lane (today: the profile action lane; the
+  Explore Search filters — Decision #40) it mounts in a glass `.ui-guest-aside` (rounded, glass) — the
+  guest counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. It is an
+  **in-flow `position: sticky`** flex item of `.guest-shell__region` (Decision #40 changed it from
+  `position: fixed`): it pins below the header while the page scrolls, but is bounded by the region so
+  it **terminates cleanly above the full-width footer** instead of overlapping it. Collapse/expand is
   the lane's own footer toggle, driving the same `MIDDLE_LANE_TOGGLE_EVENT`; the state is cached
   (`LocalKeys.GUEST_NAV_COLLAPSED`) and expressed on the **pre-painted** `:root[data-guest-nav]`
-  (mirroring the authed rail's `:root[data-sidebar]`), so the width + the lane's rail/full
-  presentation paint correctly on the first byte (no flash-of-wrong-width).
+  (mirroring the authed rail's `:root[data-sidebar]`), so the width paints correctly on the first byte
+  (no flash-of-wrong-width). The filter lane has no toggle, so it forces the aside expanded.
+- **Full-width footer + flex-column region (Decision #40).** On lane routes GuestShell is a flex
+  column: the aside + body share a growing `.guest-shell__region` (`flex: 1 0 auto`) above a
+  **full-width `PublicFooter`** that is a sibling of the region — so the footer spans the whole window
+  (never inheriting the aside's inline gutter) and pins to the viewport bottom on short pages. Lane-less
+  routes keep the plain `.site` block flow with the footer at the body's end (already full-width).
 - **Floating sub-header (route-driven).** A route sticky header (the profile `ProfileStickyHeader`)
   mounts in a floating `.guest-shell__subheader` beneath the site header, adjacent to the side nav,
   revealed on scroll. It overlays the body (no reserved band).

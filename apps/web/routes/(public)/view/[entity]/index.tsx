@@ -1,27 +1,25 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
-import { EntityView } from "@features/explore/components/EntityView.tsx";
-import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
+import { EntityViewScreen } from "@features/view/components/EntityViewScreen.tsx";
+import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 
 /**
- * `/view/[item_id]?type=[entity_type]` — the public standalone item viewer (the Explore click matrix
- * target for non-profile entities, and the Search Results drawer's "Open full page" destination).
- * Thin route: resolve the item via the fat {@link ExploreBackendService} + set SEO, then hand off to
- * {@link EntityView}. `[entity]` is the item id (the segment name is historical; the value is the id).
- *
- * (Moved from the flat `[entity].tsx` to `[entity]/index.tsx` so the dir can host the sibling
- * `/view/[entity]/schedule` session-schedule leaf; the `entity` param is unchanged.)
+ * `/view/[item_id]?type=[entity_type]` — the public standalone Entity View page (the Explore click
+ * matrix target for non-profile entities, and the Search Results drawer's "Open full page"
+ * destination). Thin route: resolve the composed page via the fat {@link ExploreBackendService.viewPage}
+ * (no HTTP hop) + set SEO, then hand off to the Amazon-style {@link EntityViewScreen}. `[entity]` is the
+ * item id (the segment name is historical; the value is the id). The sidebar action lane is resolved
+ * separately by `viewLaneFor` in the `(public)` layout.
  */
 export const handler = define.handlers({
 	GET(ctx) {
-		const result = ExploreBackendService.item(ctx.params.entity);
-		const item = result.ok ? result.data?.item : undefined;
-		ctx.state.title = item ? `${item.title} · Projective` : "Not found · Projective";
-		if (item) ctx.state.description = item.summary;
-		return page({ item });
+		const { view } = resolveViewPage(ctx.params.entity);
+		ctx.state.title = view ? `${view.item.title} · Projective` : "Not found · Projective";
+		if (view) ctx.state.description = view.item.summary;
+		return page({ view, authed: !!ctx.state.isAuthenticated });
 	},
 });
 
 export default define.page<typeof handler>(function EntityViewPage({ data }) {
-	return <EntityView item={data.item} ctx={{ scope: "explore" }} />;
+	return <EntityViewScreen view={data.view} ctx={{ scope: "explore" }} authed={data.authed} />;
 });

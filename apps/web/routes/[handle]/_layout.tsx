@@ -6,9 +6,10 @@ import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import ProfileActionLane from "@features/profile/islands/ProfileActionLane.island.tsx";
 import ProfileStickyHeader from "@features/profile/islands/ProfileStickyHeader.island.tsx";
 import ProfileHeader from "@features/profile/islands/ProfileHeader.island.tsx";
-import { ProfileTabs } from "@features/profile/components/ProfileTabs.tsx";
+import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
 import { ProfileAbout } from "@features/profile/components/ProfileAbout.tsx";
 import { ProfileMetaSidebar } from "@features/profile/components/ProfileMetaSidebar.tsx";
+import { viewLaneFor } from "@features/view/core/view-lane-slot.tsx";
 import {
 	activeTabOf,
 	defaultTabFor,
@@ -91,10 +92,12 @@ export default define.page(function ProfileLayout(ctx) {
 	const stickyHeader = <ProfileStickyHeader profile={profile} canEdit={canEdit} />;
 	const segments = path.split("/").filter(Boolean);
 
-	// The profile-scoped item viewer renders its own EntityView layout — keep the action lane for
-	// context, but not the profile header/tabs/split (no sticky-header migration either).
+	// The profile-scoped Entity View page renders its own Amazon-style layout: mount the item's own
+	// action lane (pricing/CTAs/trust) — resolved from the URL like the public `/view/[id]` — instead of
+	// the profile action lane, and drop the profile header/tabs/split (no sticky-header migration).
 	if (segments[1] === "view") {
-		return shell(lane, undefined, <ctx.Component />);
+		const viewLane = viewLaneFor(ctx.url, authed) ?? lane;
+		return shell(viewLane, undefined, <ctx.Component />);
 	}
 
 	// The Availability calendar is a full-page, app-like surface — it does NOT use the profile chrome

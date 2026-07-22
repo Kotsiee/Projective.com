@@ -4,7 +4,7 @@ import { OwnerBadge } from "./OwnerBadge.tsx";
 import { RatingTracks } from "./RatingTracks.tsx";
 import { SkillPills } from "./SkillPill.tsx";
 import { type HrefContext, itemHref } from "../core/routing.ts";
-import { freelancerFloor } from "../core/pricing.ts";
+import { freelancerFloor, servicePricing } from "../core/pricing.ts";
 import type { ExploreItem } from "../types/explore-types.ts";
 
 /**
@@ -102,15 +102,23 @@ function MetaBlock({ item }: { item: ExploreItem }): JSX.Element | null {
 					{item.members ? <Fact label="Team size" value={`${item.members} people`} /> : null}
 				</dl>
 			);
-		case "services":
+		case "services": {
+			const pricing = servicePricing(item);
+			const priceLabel = item.serviceType === "Pipeline"
+				? "Price per ticket"
+				: item.serviceType === "Session"
+				? "Price per session"
+				: "Price";
+			const priceValue = pricing.unit ? `${pricing.amount} / ${pricing.unit}` : pricing.amount;
 			return (
 				<dl class="ex-detail__meta">
 					<Fact label="Type" value={item.serviceType} />
-					<Fact label="Price" value={item.price} />
+					<Fact label={priceLabel} value={priceValue} />
 					<Fact label="Delivery" value={item.delivery} />
 					<Fact label="Category" value={item.category} />
 				</dl>
 			);
+		}
 		case "projects":
 			return (
 				<>

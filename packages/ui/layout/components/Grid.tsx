@@ -13,6 +13,12 @@ export interface GridProps extends Omit<HTMLAttributes<HTMLElement>, "style" | "
 	cols?: number;
 	/** Responsive auto-fit: minimum track width (e.g. `"16rem"`). Overrides `cols`. */
 	minChildWidth?: string;
+	/**
+	 * Upper bound on the auto-fit column count (only meaningful with `minChildWidth`). Below the cap the
+	 * grid stays fully responsive; at wide widths tracks grow rather than multiplying past `maxCols`, so
+	 * cards never over-narrow into a cramped many-column row. Pure CSS (RAM formula) — no measurement.
+	 */
+	maxCols?: number;
 	/** Gap between cells. */
 	gap?: Space;
 	align?: GridPlacement;
@@ -27,6 +33,7 @@ export function Grid(props: GridProps): JSX.Element {
 		as = "div",
 		cols,
 		minChildWidth,
+		maxCols,
 		gap,
 		align,
 		justify,
@@ -36,6 +43,7 @@ export function Grid(props: GridProps): JSX.Element {
 		...rest
 	} = props;
 	const auto = minChildWidth !== undefined;
+	const capped = auto && maxCols !== undefined;
 	const vars: Record<string, string | number | undefined> = {
 		"--grid-gap": space(gap),
 		"--grid-align": align,
@@ -43,10 +51,16 @@ export function Grid(props: GridProps): JSX.Element {
 	};
 	if (auto) vars["--grid-min"] = minChildWidth;
 	else if (cols !== undefined) vars["--grid-cols"] = cols;
+	if (capped) vars["--grid-maxcols"] = maxCols;
 	const Tag = as as "div";
 	return (
 		<Tag
-			class={cx("ui-grid", auto && "ui-grid--auto", className as string)}
+			class={cx(
+				"ui-grid",
+				auto && "ui-grid--auto",
+				capped && "ui-grid--capped",
+				className as string,
+			)}
 			style={styleVars(vars, style)}
 			{...rest}
 		>

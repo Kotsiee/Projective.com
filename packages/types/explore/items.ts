@@ -146,10 +146,20 @@ export type ServiceType = z.infer<typeof ServiceType>;
 export const ServiceItemSchema = z.object({
 	...itemBase,
 	type: z.literal("services"),
+	/** Headline display price. For One-Off this is the fixed engagement fee; Pipeline/Session derive
+	 * their card price from `ticketPrice`/`sessionPrice` instead (see the pricing helper). */
 	price: z.string(),
 	delivery: z.string(),
 	category: z.string(),
 	serviceType: ServiceType,
+	/**
+	 * Pipeline services only — the standard per-ticket price. The card shows a workload-intensity RANGE
+	 * around it (0.5× low → 2.0× high), never a single fixed figure, since a pipeline is billed per
+	 * ticket at variable intensity.
+	 */
+	ticketPrice: z.number().optional(),
+	/** Session services only — the per-session price shown as `$X / session`. */
+	sessionPrice: z.number().optional(),
 });
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 

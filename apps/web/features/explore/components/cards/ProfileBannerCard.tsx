@@ -3,8 +3,8 @@ import { Avatar, Tag } from "@projective/ui/display";
 import { vars } from "@features/marketing/core/style.ts";
 import { cardAccent } from "../../core/accent.ts";
 import { CardLink } from "../CardLink.tsx";
+import { PromotedBadge } from "../PromotedBadge.tsx";
 import { RatingTracks } from "../RatingTracks.tsx";
-import { SkillPills } from "../SkillPill.tsx";
 import { VerifiedBadge } from "../VerifiedBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { itemHref } from "../../core/routing.ts";
@@ -48,7 +48,10 @@ export function ProfileBannerCard(
 				style={vars({ "--ex-cover": `url("${item.cover}")` })}
 				aria-hidden="true"
 			>
-				<Tag value={tag.label} severity={tag.severity} variant="subtle" rounded />
+				<span class="ex-flags ex-flags--row">
+						{item.sponsored && <PromotedBadge />}
+						<Tag value={tag.label} severity={tag.severity} variant="subtle" rounded />
+					</span>
 			</div>
 			<div class="ex-banner__body">
 				<div class="ex-banner__id">
@@ -76,7 +79,6 @@ export function ProfileBannerCard(
 						</span>
 					)
 					: null}
-				<SkillPills skills={item.skills} max={3} />
 				<div class="ex-card__foot">
 					{item.delivered > 0 && <span class="ex-muted">{item.delivered} delivered</span>}
 					{item.members ? <span class="ex-muted">{item.members} people</span> : null}

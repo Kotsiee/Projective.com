@@ -88,7 +88,14 @@ function topScore(item: ExploreItem): number {
 
 /** Parse a leading price out of a formatted string / derived floor for the "price" sort. */
 function priceValue(item: ExploreItem): number {
-	if (item.type === "services" || item.type === "products") {
+	if (item.type === "services") {
+		// Sort a pipeline by its low-intensity ticket floor (0.5×) and a session by its per-session
+		// price, so the range/unit pricing shown on the card orders consistently.
+		if (item.serviceType === "Pipeline" && item.ticketPrice) return item.ticketPrice * 0.5;
+		if (item.serviceType === "Session" && item.sessionPrice) return item.sessionPrice;
+		return Number(item.price.replace(/[^0-9.]/g, "")) || 0;
+	}
+	if (item.type === "products") {
 		return Number(item.price.replace(/[^0-9.]/g, "")) || 0;
 	}
 	if (item.type === "freelancers" && item.servicePrices?.length) {

@@ -4,6 +4,7 @@ import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import "../styles/profile.css";
 import { ProfileActions } from "../components/ProfileActions.tsx";
+import { EntityBadge } from "../components/ProfileBadges.tsx";
 import { ProfileIcon, TIER_META } from "../components/profile-glyphs.tsx";
 import { headerCondensed } from "../core/profile-state.ts";
 import type { ProfileView } from "../types/profile-types.ts";
@@ -67,8 +68,10 @@ export default function ProfileHeader({ profile, canEdit }: ProfileHeaderProps):
 				<div class="pf-header__id">
 					<h1 class="pf-header__name">
 						<span class="pf-header__nametext">{profile.name}</span>
-						{/* Verification badge beside the name (root CLAUDE.md — Part 1.3, relocated from the
-						    Overview). Icon-led with the tier label; the full title lives in the tooltip. */}
+						{
+							/* Verification badge beside the name (root CLAUDE.md — Part 1.3, relocated from the
+						    Overview). Icon-led with the tier label; the full title lives in the tooltip. */
+						}
 						<Tooltip content={TIER_META[profile.tier].title} placement="top">
 							<span
 								class="pf-header__tier pf-tier"
@@ -80,7 +83,11 @@ export default function ProfileHeader({ profile, canEdit }: ProfileHeaderProps):
 							</span>
 						</Tooltip>
 					</h1>
-					<span class="pf-header__handle">{profile.handle}</span>
+					<div class="pf-header__idline">
+						<span class="pf-header__handle">{profile.handle}</span>
+						{/* Explicit entity-type badge adjacent to the @handle (Part 1). */}
+						<EntityBadge kind={profile.kind} />
+					</div>
 					<p class="pf-header__headline">{profile.headline}</p>
 				</div>
 				<div class="pf-header__actions">

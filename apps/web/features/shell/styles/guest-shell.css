@@ -35,13 +35,39 @@
 	--guest-aside-cur-w: var(--guest-aside-w-collapsed);
 }
 
+/*
+ * Lane routes switch to a flex column so the aside + body share a growing `.guest-shell__region` ABOVE
+ * a full-width footer. The footer is a sibling of that region (GuestShell.tsx), so it spans the whole
+ * window instead of inheriting the aside's inline gutter, and `min-block-size: 100dvh` (from `.site`) +
+ * the region's `flex: 1 0 auto` pin it to the bottom on short pages. Lane-less routes keep the plain
+ * `.site` block flow (footer in-body, already full-width) — unchanged.
+ */
+.guest-shell[data-has-aside="true"] {
+	display: flex;
+	flex-direction: column;
+}
+
+/* The Search filter lane carries no collapse toggle, so force the aside expanded regardless of the
+   cached guest-nav preference (a collapsed rail would crush the facet controls). The extra `:root`
+   raises specificity above the collapsed-width rule. */
+:root .guest-shell:has(.ex-filters-lane) {
+	--guest-aside-cur-w: var(--guest-aside-w-expanded);
+}
+
 /* #region Floating side nav (the route lane) — no splitter handle; glass on a ::before underlay */
+/*
+ * The aside is an in-flow flex item of `.guest-shell__region` (its left gutter comes from the region's
+ * padding + gap, not `inset-inline-start`). `position: sticky` keeps it pinned below the header while the
+ * page scrolls, but — unlike the old `fixed` panel — it is bounded by the region, so it terminates
+ * cleanly above the full-width footer that follows the region instead of overlapping it.
+ */
 .ui-guest-aside {
-	position: fixed;
-	inset-block-start: var(--site-header-h, 5.5rem);
-	inset-inline-start: var(--guest-inset);
+	position: sticky;
+	inset-block-start: calc(var(--site-header-h, 5.5rem) + var(--guest-inset));
+	align-self: flex-start;
+	flex: 0 0 var(--guest-aside-cur-w);
 	inline-size: var(--guest-aside-cur-w);
-	block-size: calc(100dvh - var(--site-header-h, 5.5rem) - var(--guest-inset));
+	block-size: calc(100dvh - var(--site-header-h, 5.5rem) - var(--guest-inset) * 2);
 	z-index: var(--z-sticky);
 	display: flex;
 	flex-direction: column;
@@ -115,28 +141,48 @@
 }
 /* #endregion */
 
-/* #region Full-bleed body — padded to clear the floating panels */
+/* #region Region (aside + body) + full-width footer */
 /*
- * The `.site__main` base already reserves the header band (`padding-block-start: --site-header-h`). Add
- * an inline gutter so the body content (and the footer) clears the floating aside when the route
- * supplies a lane. The sub-header floats OVER the content (scroll-revealed), so it needs no block
- * reservation — it overlays like the site header does.
+ * The region is the growing middle of the flex column: it fills the space between the header and the
+ * footer (`flex: 1 0 auto`), pinning a full-width footer to the viewport bottom on short pages. On
+ * desktop it lays the aside + body out as a row and OWNS the header clearance + the side gutters, so the
+ * body drops its own base header padding and the old fixed-aside inline reservation.
  */
-.guest-shell[data-has-aside="true"] .guest-shell__body {
-	padding-inline-start: var(--guest-body-inset-inline);
-	transition: padding-inline-start var(--dur-medium) var(--spring-standard);
+.guest-shell__region {
+	flex: 1 0 auto;
+	min-inline-size: 0;
+}
+
+@media (min-width: 768px) {
+	.guest-shell[data-has-aside="true"] .guest-shell__region {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--guest-inset);
+		padding-inline: var(--guest-inset);
+		padding-block-start: calc(var(--site-header-h, 5.5rem) + var(--guest-inset));
+	}
+
+	.guest-shell[data-has-aside="true"] .guest-shell__body {
+		flex: 1 1 auto;
+		min-inline-size: 0;
+		padding-block-start: 0;
+	}
+}
+
+/* The footer is a sibling of the region (outside the aside gutter), so it spans the whole window. */
+.guest-shell[data-has-aside="true"] > .lp-footer {
+	inline-size: 100%;
+	flex: 0 0 auto;
 }
 /* #endregion */
 
 /* #region Mobile isolation (≤ --bp-md) — drop the floating desktop panels; header + full-bleed body */
 @media (max-width: 767px) {
+	/* The desktop region row rules don't apply here, so `.guest-shell__body` keeps its base `.site__main`
+	   header padding; just hide the desktop panels (the mobile filter sheet lives in the dashboard). */
 	.ui-guest-aside,
 	.guest-shell__subheader {
 		display: none;
-	}
-
-	.guest-shell[data-has-aside="true"] .guest-shell__body {
-		padding-inline-start: 0;
 	}
 }
 /* #endregion */

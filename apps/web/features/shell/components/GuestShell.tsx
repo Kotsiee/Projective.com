@@ -5,9 +5,14 @@ import GuestAside from "@web/features/shell/islands/GuestAside.island.tsx";
 
 export interface GuestShellProps {
 	/**
-	 * Optional route lane (Green side nav). When present it mounts in a floating, glassmorphic
-	 * {@link GuestAside} on the left — NO drag-resize handle, collapse driven by the lane's own footer
-	 * toggle. Absent on lane-less routes (`/`, `/explore`, …), which then render just the header + body.
+	 * Optional route lane (Green side nav). When present it mounts in a glassmorphic {@link GuestAside}
+	 * on the left — NO drag-resize handle, collapse driven by the lane's own footer toggle. Used by the
+	 * `/[handle]` profile lane and the `/explore` Search Results filters (relocated out of the body).
+	 * Absent on lane-less routes (`/`, the Explore Home feed, …), which render just the header + body.
+	 *
+	 * When a lane is present the shell switches to a flex-column layout: the aside + body sit in a
+	 * `.guest-shell__region` above a **full-width** `PublicFooter`, and the aside terminates cleanly above
+	 * that footer (see guest-shell.css). Lane-less routes keep the original header + body + in-body footer.
 	 */
 	lane?: ComponentChildren;
 	/**
@@ -40,19 +45,34 @@ export interface GuestShellProps {
 export function GuestShell(
 	{ lane, header, footer = true, children }: GuestShellProps,
 ): JSX.Element {
+	const hasAside = !!lane;
 	return (
 		<div
 			class="site guest-shell"
-			data-has-aside={lane ? "true" : "false"}
+			data-has-aside={hasAside ? "true" : "false"}
 			data-has-subheader={header ? "true" : "false"}
 		>
 			<SiteHeader authenticated={false} />
-			{lane ? <GuestAside>{lane}</GuestAside> : null}
 			{header ? <div class="guest-shell__subheader">{header}</div> : null}
-			<main class="site__main guest-shell__body">
-				{children}
-				{footer ? <PublicFooter /> : null}
-			</main>
+			{hasAside
+				? (
+					// Lane routes: aside + body share a flex region ABOVE a full-width footer, so the footer
+					// spans the window and the aside terminates cleanly above it (guest-shell.css).
+					<>
+						<div class="guest-shell__region">
+							<GuestAside>{lane}</GuestAside>
+							<main class="site__main guest-shell__body">{children}</main>
+						</div>
+						{footer ? <PublicFooter /> : null}
+					</>
+				)
+				: (
+					// Lane-less routes: unchanged — the footer stays at the body's end (already full-width).
+					<main class="site__main guest-shell__body">
+						{children}
+						{footer ? <PublicFooter /> : null}
+					</main>
+				)}
 		</div>
 	);
 }

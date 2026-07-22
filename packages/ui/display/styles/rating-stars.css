@@ -32,6 +32,17 @@
 	white-space: nowrap;
 }
 
+/* Compact single-glyph meter: one always-filled star (no track/clip needed) beside the score. */
+.ui-ratingstars--compact .ui-ratingstars__meter {
+	color: var(--primary);
+}
+
+.ui-ratingstars__row--single {
+	position: static;
+	inline-size: auto;
+	overflow: visible;
+}
+
 .ui-ratingstars svg {
 	inline-size: var(--ui-rs-star, 0.9rem);
 	block-size: var(--ui-rs-star, 0.9rem);

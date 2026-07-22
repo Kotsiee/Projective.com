@@ -1,5 +1,10 @@
 import type { UserContext } from "@projective/types/auth";
-import { normalizeHandle, type ProfileKind, ProfileTab, type ProfileView } from "@projective/types/profile";
+import {
+	normalizeHandle,
+	type ProfileKind,
+	ProfileTab,
+	type ProfileView,
+} from "@projective/types/profile";
 
 /**
  * profile-model — the pure, JSX-free brains of the `/[handle]` profile shell: the entity-driven tab
@@ -22,6 +27,7 @@ export const TAB_LABEL: Record<ProfileTab, string> = {
 	articles: "Articles",
 	reviews: "Reviews",
 	members: "Members",
+	departments: "Departments",
 };
 
 /** Route segment per tab. `about` is the index (`/[handle]`); the rest are `/[handle]/<segment>`. */
@@ -39,6 +45,9 @@ export function tabSegment(tab: ProfileTab): string {
  *  - Freelancer: the full craft set.
  *  - Business: Projects · Articles · Businesses · Reviews · Members.
  *  - Team: Business ∪ Freelancer, minus Education + Experience.
+ *  - Organisation (buyer-only, department-structured): Projects · Departments · Members · Articles ·
+ *    Businesses · Reviews — no seller tabs (Services/Products/Portfolio), but a Departments tab and a
+ *    department-grouped Members view (root CLAUDE.md — Part 2).
  */
 export function tabsFor(kind: ProfileKind): ProfileTab[] {
 	switch (kind) {
@@ -71,6 +80,8 @@ export function tabsFor(kind: ProfileKind): ProfileTab[] {
 				"reviews",
 				"members",
 			];
+		case "organisation":
+			return ["projects", "departments", "members", "articles", "businesses", "reviews"];
 	}
 }
 
@@ -93,6 +104,7 @@ const MANAGEMENT_ORDER: ProfileTab[] = [
 	"products",
 	"projects",
 	"portfolio",
+	"departments",
 	"education",
 	"experience",
 	"teams",
@@ -103,6 +115,50 @@ const MANAGEMENT_ORDER: ProfileTab[] = [
 export function managementTabsFor(kind: ProfileKind): ProfileTab[] {
 	const allowed = new Set(tabsFor(kind));
 	return MANAGEMENT_ORDER.filter((t) => allowed.has(t));
+}
+// #endregion
+
+// #region Tab-bar arrangement (Reviews-last + overflow)
+/**
+ * The key tabs kept directly visible when the tab bar overflows (root CLAUDE.md — Part 3.3). Reviews is
+ * ALWAYS pinned to the far right by {@link arrangeTabs} (not listed here — it is the `trailing` slot).
+ */
+export const PRIORITY_TABS: ReadonlyArray<ProfileTab> = ["services", "projects", "portfolio"];
+
+/** How many tabs may sit inline before the secondary ones collapse into the `More ▾` menu. */
+export const TAB_OVERFLOW_THRESHOLD = 6;
+
+/**
+ * The tab bar's layout for a profile kind (root CLAUDE.md — Part 3):
+ *  - `trailing` — **Reviews**, always the very last item on the right (when the kind has it), no matter
+ *    the entity type or how many other tabs are enabled.
+ *  - When the kind has **≤ {@link TAB_OVERFLOW_THRESHOLD}** tabs, everything else is `primary` (inline)
+ *    and `overflow` is empty.
+ *  - When it has more, only the {@link PRIORITY_TABS} that the kind actually has stay `primary`; the
+ *    rest move into `overflow` (the `More ▾` dropdown). Reviews is never in the dropdown.
+ *
+ * The tab strip stays horizontally scrollable regardless (the island's wheel handler), so no tab is
+ * ever clipped even when the dropdown is not shown.
+ */
+export interface TabArrangement {
+	primary: ProfileTab[];
+	overflow: ProfileTab[];
+	trailing: ProfileTab[];
+}
+
+export function arrangeTabs(kind: ProfileKind): TabArrangement {
+	const all = tabsFor(kind);
+	const hasReviews = all.includes("reviews");
+	const rest = all.filter((t) => t !== "reviews");
+	const trailing: ProfileTab[] = hasReviews ? ["reviews"] : [];
+
+	if (all.length <= TAB_OVERFLOW_THRESHOLD) {
+		return { primary: rest, overflow: [], trailing };
+	}
+	const priority = new Set(PRIORITY_TABS);
+	const primary = rest.filter((t) => priority.has(t));
+	const overflow = rest.filter((t) => !priority.has(t));
+	return { primary, overflow, trailing };
 }
 // #endregion
 
@@ -151,10 +207,15 @@ export function availabilityHref(handle: string): string {
  * always-visible Settings). Matches on the hydrated `userId` OR the acting `@handle` (skeleton tokens
  * may carry only one). Guests never match.
  */
-export function isOwnProfile(profile: ProfileView, context: UserContext | undefined | null): boolean {
+export function isOwnProfile(
+	profile: ProfileView,
+	context: UserContext | undefined | null,
+): boolean {
 	if (!context || context.role === "guest") return false;
 	if (context.userId && context.userId === profile.userId) return true;
-	if (context.handle && normalizeHandle(context.handle) === normalizeHandle(profile.handle)) return true;
+	if (context.handle && normalizeHandle(context.handle) === normalizeHandle(profile.handle)) {
+		return true;
+	}
 	return false;
 }
 
@@ -168,6 +229,8 @@ export interface ProfileCta {
 
 export function ctaFor(kind: ProfileKind): ProfileCta {
 	const seller = kind === "freelancer" || kind === "team";
-	return seller ? { primary: "Hire", showMessage: true } : { primary: "Message", showMessage: false };
+	return seller
+		? { primary: "Hire", showMessage: true }
+		: { primary: "Message", showMessage: false };
 }
 // #endregion

@@ -74,6 +74,22 @@ export function serializeExploreParams(p: ExploreParams): string {
 }
 
 /**
+ * Immutably set (or delete when empty) one facet's values on an {@link ExploreParams}. Shared by the
+ * `SearchDashboard` island and the relocated filter lane so both mutate query state identically.
+ */
+export function withFilter(p: ExploreParams, id: string, values: string[]): ExploreParams {
+	const filters = { ...p.filters };
+	if (values.length) filters[id] = values;
+	else delete filters[id];
+	return { ...p, filters };
+}
+
+/** Total number of active facet selections across all groups — the sidebar's "active count" badge. */
+export function activeFilterCount(p: ExploreParams): number {
+	return Object.values(p.filters).reduce((n, arr) => n + arr.length, 0);
+}
+
+/**
  * State selector. Results mode (State B) is active when there is a free-text query OR an isolated
  * top-level category; otherwise the Home layout (State A) renders. A bare `?category=all` is Home.
  */

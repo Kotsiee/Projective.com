@@ -1,4 +1,4 @@
-import type { ProfileItem } from "../types/explore-types.ts";
+import type { ProfileItem, ServiceItem } from "../types/explore-types.ts";
 
 /**
  * Explore — client-side price DISPLAY helpers.
@@ -41,4 +41,30 @@ export function freelancerFloor(item: ProfileItem): string | null {
 	if (!item.servicePrices?.length) return null;
 	const low = lowestActivePrice(item.servicePrices);
 	return low === null ? null : `from ${money(low)}`;
+}
+
+/** Workload-intensity multipliers bracketing a Pipeline service's standard ticket price. */
+const PIPELINE_LOW = 0.5;
+const PIPELINE_HIGH = 2.0;
+
+/**
+ * The price a service card / detail panel displays, resolved by engagement model:
+ *
+ * - **Pipeline** — a per-ticket RANGE, not a single figure: the standard `ticketPrice` scaled by the
+ *   low (`0.5×`) and high (`2.0×`) workload intensity, e.g. `$120 – $480` with the `ticket` unit.
+ * - **Session** — a per-session price, e.g. `$180` with the `session` unit.
+ * - **One-Off** (or missing unit data) — the fixed `price` string as-is, no unit.
+ *
+ * `unit`, when present, is rendered as a muted `/ ticket` · `/ session` suffix by the caller.
+ */
+export function servicePricing(item: ServiceItem): { amount: string; unit?: string } {
+	if (item.serviceType === "Pipeline" && item.ticketPrice) {
+		const lo = money(Math.round(item.ticketPrice * PIPELINE_LOW));
+		const hi = money(Math.round(item.ticketPrice * PIPELINE_HIGH));
+		return { amount: `${lo} – ${hi}`, unit: "ticket" };
+	}
+	if (item.serviceType === "Session" && item.sessionPrice) {
+		return { amount: money(item.sessionPrice), unit: "session" };
+	}
+	return { amount: item.price };
 }

@@ -85,6 +85,15 @@
 	letter-spacing: -0.02em;
 }
 
+/* The billing unit after a service price (`/ ticket`, `/ session`) — muted, small, thin. */
+.ex-price__unit {
+	margin-inline-start: 0.3rem;
+	font-size: 0.8rem;
+	font-weight: 400;
+	color: var(--on-surface-variant);
+	letter-spacing: 0;
+}
+
 .ex-cta {
 	font-size: 0.9rem;
 	font-weight: 550;
@@ -382,6 +391,18 @@
 	color: var(--primary);
 	white-space: nowrap;
 }
+
+/* Single-glyph indicator: one always-filled primary star (the numeric score sits beside it in the
+   RatingTracks row), saving the horizontal space a five-star meter would cost on a dense card. */
+.ex-stars--single {
+	color: var(--primary);
+}
+
+.ex-stars--single .ex-stars__fill {
+	position: static;
+	inline-size: auto;
+	overflow: visible;
+}
 /* #endregion */
 
 /* #region Skills (low-contrast text, not enclosed pills) */
@@ -470,6 +491,10 @@
 	position: relative;
 	display: flex;
 	flex-direction: column;
+	/* Fill the grid/rail/masonry cell on BOTH axes. Height equalises rows; width no longer relies on the
+	   card's text content being wide enough to stretch a flex cell (lean cards would otherwise shrink to
+	   their min-content and strand the cell). */
+	inline-size: 100%;
 	block-size: 100%;
 	color: inherit;
 	background: var(--surface-2);
@@ -538,6 +563,25 @@
 	font-size: 1rem;
 }
 
+/* Byline row — owner attribution LEFT, review rating RIGHT, on one baseline. Collapses the former
+   separate owner band + rating band into a single scannable line (title king, everything else recedes). */
+.ex-card__byline {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.ex-card__byline .ex-owner {
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.ex-card__byline .ui-ratingstars {
+	flex: 0 0 auto;
+}
+
 .ex-card__foot {
 	display: flex;
 	align-items: baseline;
@@ -560,11 +604,35 @@
 	aspect-ratio: 4 / 3;
 }
 
+/* Wider, shorter service/article thumbnail — keeps the card from becoming half-image, half-metadata. */
+.ex-media--16x10 {
+	aspect-ratio: 16 / 10;
+}
+
 .ex-media img {
 	inline-size: 100%;
 	block-size: 100%;
 	object-fit: cover;
 	display: block;
+	transition: transform var(--dur-slow) var(--ease-emphasized);
+}
+
+/* On card hover the thumbnail grows gently WITHIN its clipped frame (the frame is fixed) — the classic
+   premium media-zoom. Paired with the card lift; both revert cleanly on leave. */
+.ex-card:hover .ex-media img,
+.ex-card:focus-within .ex-media img {
+	transform: scale(1.045);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-media img {
+		transition: none;
+	}
+
+	.ex-card:hover .ex-media img,
+	.ex-card:focus-within .ex-media img {
+		transform: none;
+	}
 }
 
 .ex-media__tag {
@@ -574,13 +642,81 @@
 	z-index: 2;
 }
 
-/* Product price chip — moved to the LEFT so it never collides with the top-right kebab; thin weight
-   to match the uniform service pricing. */
-.ex-media__price {
+/* Top-left overlay flag stack — holds the media/cover corner chips (a Promoted badge, the engagement
+   type / price chip, the profile kind tag) so they stack cleanly without overlapping. A vertical
+   column by default; `--row` lays them out inline (used on the wider profile cover). */
+.ex-flags {
 	position: absolute;
 	inset-block-start: var(--space-3);
 	inset-inline-start: var(--space-3);
 	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	max-inline-size: calc(100% - 2 * var(--space-3));
+}
+
+.ex-flags--row {
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+/* Promoted / sponsored marker — a subtle glass chip with a soft dot. Reads as a gentle disclosure,
+   not a loud ad: muted label, a single hairline, a quiet primary dot. Sits in the flag stack. */
+.ex-promoted {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.22rem 0.55rem;
+	font-size: 0.66rem;
+	font-weight: 650;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--on-surface);
+	background: var(--ex-glass);
+	border: 1px solid var(--ex-hair-strong);
+	border-radius: var(--radius-xl);
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
+	white-space: nowrap;
+}
+
+.ex-promoted__dot {
+	inline-size: 0.4rem;
+	block-size: 0.4rem;
+	border-radius: 50%;
+	background: var(--primary);
+	flex: 0 0 auto;
+}
+
+/* A single glass "engagement type" chip overlaid on the thumbnail (Pipeline / One-Off / Session). It
+   replaces the old full-width type eyebrow band AND the redundant category tag — one clear signal on
+   the image, so the body reads title → who → price with no noise between. */
+.ex-media__type {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.24rem 0.6rem;
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--on-surface);
+	background: var(--ex-glass);
+	border: 1px solid var(--ex-hair-strong);
+	border-radius: var(--radius-xl);
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.ex-media__type[data-type="Session"] {
+	color: var(--primary);
+}
+
+/* Product price chip — lives in the top-left flag stack so it never collides with the top-right kebab;
+   thin weight to match the uniform service pricing. */
+.ex-media__price {
 	padding: 0.28rem 0.7rem;
 	font-size: 0.95rem;
 	font-weight: 350;
@@ -700,31 +836,10 @@
 /* #endregion */
 
 /* #region Service card */
-.ex-service__type {
-	align-self: flex-start;
-	padding: 0.2rem 0.55rem;
-	border-radius: var(--radius-xl);
-	background: var(--ex-primary-tint);
-	color: var(--primary);
-	letter-spacing: 0.08em;
-}
-
-.ex-service__type[data-type="Session"] {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-	color: var(--on-surface-variant);
-}
-
-.ex-service__desc {
-	margin: 0;
-	font-size: 0.88rem;
-	line-height: 1.5;
-	color: var(--on-surface-variant);
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
+/* Service cards lead with the media thumbnail (its glass `.ex-media__type` chip) then a lean body —
+   title, a single owner+rating byline, and the price/turnaround foot. The former in-body type eyebrow,
+   description snippet, and skill-tag row were removed to cut the card height and visual noise (the
+   description + skills live on the detail view / drawer). */
 /* #endregion */
 
 /* #region Card actions (kebab + helper quick-action) */
@@ -973,8 +1088,8 @@
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-3);
-	padding: var(--space-5) var(--space-3);
+	gap: var(--space-2);
+	padding: var(--space-4) var(--space-3);
 	border-block-end: 1px solid var(--ex-hair);
 	border-radius: 0;
 	transition: background-color var(--dur-medium) var(--ease-standard);
@@ -1117,112 +1232,6 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
-}
-/* #endregion */
-
-/* #region Carousel */
-.ex-carousel {
-	position: relative;
-}
-
-.ex-carousel__track {
-	display: flex;
-	gap: var(--space-5);
-	overflow-x: auto;
-	scroll-snap-type: x proximity;
-	/* Nudge the first card in from the fading edge so it never sits under the start shadow. */
-	padding-inline-start: calc(var(--ex-pad-x) + var(--space-4));
-	padding-inline-end: var(--ex-pad-x);
-	padding-block: var(--space-3);
-	scroll-padding-inline-start: calc(var(--ex-pad-x) + var(--space-4));
-	scrollbar-width: none;
-	cursor: grab;
-	scroll-behavior: smooth;
-}
-
-.ex-carousel__track::-webkit-scrollbar {
-	display: none;
-}
-
-.ex-carousel__track.is-dragging {
-	cursor: grabbing;
-	scroll-behavior: auto;
-	scroll-snap-type: none;
-	user-select: none;
-}
-
-.ex-carousel__cell {
-	flex: 0 0 auto;
-	scroll-snap-align: start;
-}
-
-.ex-carousel__track--freelancers .ex-carousel__cell {
-	inline-size: clamp(18rem, 26vw, 21rem);
-}
-
-.ex-carousel__track--profiles .ex-carousel__cell {
-	inline-size: clamp(20rem, 30vw, 24rem);
-}
-
-.ex-carousel__edge {
-	position: absolute;
-	inset-block: 0;
-	inline-size: var(--ex-pad-x);
-	pointer-events: none;
-	z-index: 2;
-}
-
-.ex-carousel__edge--start {
-	inset-inline-start: 0;
-	background: linear-gradient(to right, var(--surface), transparent);
-}
-
-.ex-carousel__edge--end {
-	inset-inline-end: 0;
-	background: linear-gradient(to left, var(--surface), transparent);
-}
-
-.ex-carousel__nav {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--space-3);
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding-inline: var(--ex-pad-x);
-	margin-block-start: var(--space-4);
-}
-
-.ex-carousel__btn {
-	inline-size: 44px;
-	block-size: 44px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 1.1rem;
-	border-radius: 50%;
-	cursor: pointer;
-	color: var(--on-surface);
-	background: var(--surface-1);
-	border: 1px solid var(--ex-hair-strong);
-	transition:
-		transform var(--dur-fast) var(--spring-standard),
-		border-color var(--dur-slow) var(--ease-standard),
-		opacity var(--dur-medium) var(--ease-standard);
-}
-
-.ex-carousel__btn:hover:not(:disabled) {
-	transform: translateY(-2px);
-	border-color: var(--primary);
-}
-
-.ex-carousel__btn:disabled {
-	opacity: 0.35;
-	cursor: default;
-}
-
-.ex-carousel__btn:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
 }
 /* #endregion */
 
@@ -1541,8 +1550,8 @@
 .ex-home {
 	display: flex;
 	flex-direction: column;
-	gap: clamp(3rem, 6vw, 5.5rem);
-	padding-block: clamp(2.5rem, 5vw, 4.5rem);
+	gap: clamp(2.25rem, 4vw, 3.75rem);
+	padding-block: clamp(2rem, 4vw, 3.5rem);
 }
 
 .ex-home__container {
@@ -1565,6 +1574,14 @@
 /* Cards fill their grid cell so every card in a row shares the row's height. */
 .ex-home__section > .ui-grid > [role="listitem"] {
 	display: flex;
+}
+
+/* Profile teaser grids hold wide banner cards; below the tablet cusp a banner reads best one-per-row,
+   so they drop to a single column (its 0,3,0 specificity overrides the generic two-up mobile grid). */
+@media (max-width: 900px) {
+	.ex-home .ex-profilegrid.ui-grid {
+		grid-template-columns: 1fr !important;
+	}
 }
 /* #endregion */
 
@@ -1617,14 +1634,6 @@
 	.ex-masonry {
 		columns: 2 8rem;
 		column-gap: var(--space-3);
-	}
-
-	.ex-carousel__track--freelancers .ex-carousel__cell {
-		inline-size: min(80vw, 18rem);
-	}
-
-	.ex-carousel__track--profiles .ex-carousel__cell {
-		inline-size: min(85vw, 20rem);
 	}
 }
 /* #endregion */

@@ -94,6 +94,12 @@ export const LocalKeys = {
 	BOARD_VIEW: "pj.local.board.view",
 	/** The project board's column grouping (`stages` | `statuses`), remembered across sessions. */
 	BOARD_GROUPING: "pj.local.board.grouping",
+	/**
+	 * The shopping basket — a JSON array of the item ids the visitor has added from an Entity View page
+	 * (`/view/[id]`). A client-side stub until the `/api/basket` endpoint lands; shared cross-island so
+	 * the sidebar CTA reflects the current basket membership.
+	 */
+	BASKET: "pj.local.basket",
 } as const;
 // #endregion
 

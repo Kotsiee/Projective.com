@@ -38,6 +38,7 @@ export const ProfileTab = z.enum([
 	"articles",
 	"reviews",
 	"members",
+	"departments",
 ]);
 export type ProfileTab = z.infer<typeof ProfileTab>;
 // #endregion
@@ -69,7 +70,7 @@ export const ExperienceEntrySchema = z.object({
 });
 export type ExperienceEntry = z.infer<typeof ExperienceEntrySchema>;
 
-/** A member of a team / business (Members tab), links to their own `/@handle`. */
+/** A member of a team / business / organisation (Members tab), links to their own `/@handle`. */
 export const MemberEntrySchema = z.object({
 	handle: z.string(),
 	name: z.string(),
@@ -78,8 +79,34 @@ export const MemberEntrySchema = z.object({
 	role: z.string(),
 	/** Entity kind of the member (drives which reputation applies). */
 	kind: z.enum(["user", "freelancer"]),
+	/**
+	 * Department ids this member belongs to (Organisation only). A member may sit in MORE than one
+	 * department — the grouped Members view renders their card under every listed department, and the
+	 * card carries a multi-department badge (root CLAUDE.md — Part 2.2, multi-department assignment).
+	 * Empty for team/business members (a flat roster). Ids reference {@link DepartmentEntry.id}.
+	 */
+	departments: z.array(z.string()).default([]),
 });
 export type MemberEntry = z.infer<typeof MemberEntrySchema>;
+
+/**
+ * A department within an Organisation (Departments tab + the grouping key for the Members view). A
+ * profile-level read projection (like the rest of the tab payloads) — no DB table yet; the eventual
+ * `org.departments` table validates against the same shape.
+ */
+export const DepartmentEntrySchema = z.object({
+	/** Stable id — the grouping key {@link MemberEntry.departments} references. */
+	id: z.string(),
+	/** Display name (e.g. "Design", "Engineering", "Operations"). */
+	name: z.string(),
+	/** One-line remit of the department. */
+	summary: z.string().optional(),
+	/** Handle of the department lead (links to their `/@handle`), when set. */
+	leadHandle: z.string().optional(),
+	/** Number of members assigned to the department (a member in N departments counts in each). */
+	memberCount: z.number(),
+});
+export type DepartmentEntry = z.infer<typeof DepartmentEntrySchema>;
 
 /** The reviewer's stance — a review left as the counterparty's CLIENT or as their FREELANCER. */
 export const ReviewRole = z.enum(["client", "freelancer"]);
@@ -124,8 +151,10 @@ export const ProfileTabPayloadSchema = z.object({
 	education: z.array(EducationEntrySchema).default([]),
 	/** Experience tab. */
 	experience: z.array(ExperienceEntrySchema).default([]),
-	/** Members tab (team/business). */
+	/** Members tab (team/business/organisation). */
 	members: z.array(MemberEntrySchema).default([]),
+	/** Departments tab (organisation) — also the grouping key set for the Members view. */
+	departments: z.array(DepartmentEntrySchema).default([]),
 	/** Reviews tab entries. */
 	reviews: z.array(ReviewEntrySchema).default([]),
 	/** Reviews tab — the dual-track summary (freelancer + client). */

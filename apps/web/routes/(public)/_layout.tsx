@@ -2,6 +2,8 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
+import { exploreFilterLaneFor } from "@features/explore/core/explore-lane-slot.tsx";
+import { viewLaneFor } from "@features/view/core/view-lane-slot.tsx";
 
 /** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
 const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
@@ -20,15 +22,25 @@ export default define.page(function PublicLayout(ctx) {
 	if (AUTH_PATHS.has(ctx.url.pathname)) {
 		return <ctx.Component />;
 	}
+	// The Search Results filters are relocated out of the page body into the navigation sidebar: the
+	// authed middle-nav lane, or the guest floating aside. Resolved per URL (State B on `/explore` only).
+	// The Entity View action panel (`/view/[id]`) mounts in the SAME sidebar slot — the two are mutually
+	// exclusive by route, so the first non-null resolver wins.
+	const filterLane = exploreFilterLaneFor(ctx.url) ??
+		viewLaneFor(ctx.url, !!ctx.state.isAuthenticated);
 	if (ctx.state.isAuthenticated) {
 		return (
-			<UserShell path={ctx.url.pathname} context={asAuthenticatedContext(ctx.state.userContext)}>
+			<UserShell
+				path={ctx.url.pathname}
+				context={asAuthenticatedContext(ctx.state.userContext)}
+				lane={filterLane}
+			>
 				<ctx.Component />
 			</UserShell>
 		);
 	}
 	return (
-		<GuestShell>
+		<GuestShell lane={filterLane}>
 			<ctx.Component />
 		</GuestShell>
 	);
