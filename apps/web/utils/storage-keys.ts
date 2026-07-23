@@ -35,6 +35,21 @@ export const SessionKeys = {
 	OAUTH_STATE: "pj.session.oauthState",
 	/** The last Explore search scope selected in-tab (restores the entity dropdown after a reload). */
 	EXPLORE_LAST_SCOPE: "pj.session.explore.scope",
+	/**
+	 * DEV-ONLY. The Developer-Tools Context Switcher's active persona/ownership/role overrides, as a
+	 * JSON blob. Session-scoped (transient) on purpose: a reload should not leave a developer stuck
+	 * simulating a fake persona. Read/written only by `apps/web/features/devtools/*`, which is excluded
+	 * from production builds — the key is inert in production.
+	 */
+	DEV_CONTEXT_OVERRIDES: "pj.session.dev.contextOverrides",
+	/**
+	 * The active floating "Pop Out Chat" popover state (task §1) — a JSON blob
+	 * `{ scope, projectId, channelId, title, href, x?, y? }`. Session-scoped so a popped-out
+	 * conversation survives full-page navigations (the popover re-mounts from this and shows a "Return
+	 * to Channel" button when the viewer has navigated away), but does NOT outlive the tab. Closing the
+	 * popover clears it.
+	 */
+	CHAT_POPOUT: "pj.session.chatPopout",
 } as const;
 // #endregion
 
@@ -80,6 +95,21 @@ export const LocalKeys = {
 	 */
 	PROJECTS_FILTERS: "pj.local.projects.filters",
 	/**
+	 * The Project Details sidebar's channel-tree accordion open/closed state — a JSON
+	 * `Record<groupKey, boolean>` (`general|stages|teams|dms`). Persists the user's collapse
+	 * preference across reloads; read after hydration (never during SSR) so it can't cause a
+	 * hydration mismatch against the server-rendered defaults.
+	 */
+	PROJECT_CHANNEL_GROUPS: "pj.local.projects.channelGroups",
+	/**
+	 * Per-channel preference map for the channel-header actions (§1) — a JSON
+	 * `Record<channelId, { starred?: boolean; muted?: boolean; pinned?: boolean }>`. The channel Star
+	 * toggle, plus the kebab menu's Mute / Pin toggles, persist here optimistically until the live
+	 * backend (`projects.channel_prefs`, behind `PROJECTS_BACKEND_LIVE`) owns them. Read after hydration
+	 * only, so it never diverges from the SSR-painted baseline.
+	 */
+	PROJECT_CHANNEL_PREFS: "pj.local.projects.channelPrefs",
+	/**
 	 * The File Explorer's zoom-driven view density (a `0`–`1` float). Below the centre threshold the
 	 * workspace is the list/table view; above it, the grid — and within each half the value scales the
 	 * card/thumbnail size. Shared cross-island (the footer View Control Rig ↔ the explorer body).
@@ -100,6 +130,52 @@ export const LocalKeys = {
 	 * the sidebar CTA reflects the current basket membership.
 	 */
 	BASKET: "pj.local.basket",
+	/**
+	 * The `/messages` inbox sidebar's applied search + partition + advanced-filter state — a single JSON
+	 * blob (`ConversationListParams`, sans cursor). Restores the last-left inbox filters across reloads
+	 * (the Continuity rule). Read after hydration only, so it never diverges from the SSR baseline.
+	 */
+	MESSAGES_FILTERS: "pj.local.messages.filters",
+	/**
+	 * Per-conversation preference map for the sidebar conversation-state actions (task §2A) — a JSON
+	 * `Record<conversationId, { starred?: boolean; archived?: boolean; muted?: boolean; deleted?: boolean }>`.
+	 * The Star / Archive / Mute / soft-Delete actions persist here optimistically until the live backend
+	 * (`messages.conversation_prefs`, behind `MESSAGING_BACKEND_LIVE`) owns them.
+	 */
+	CONVERSATION_PREFS: "pj.local.messages.conversationPrefs",
+	/**
+	 * The Message Settings (auto-responses + notification preferences) — a JSON `MessagingSettings` blob.
+	 * A client-side stub until `MESSAGING_BACKEND_LIVE` owns the write path; read after hydration to
+	 * hydrate the settings modal with the viewer's last-saved local edits over the SSR baseline.
+	 */
+	MESSAGING_SETTINGS: "pj.local.messages.settings",
+	/**
+	 * DEV-ONLY. Persisted screen position of the Dev Tools Context-Switcher window (`{x,y}` JSON), so it
+	 * reopens where the developer left it. Inert in production (the Dev Tools are build-excluded).
+	 */
+	DEV_CONTEXT_WINDOW_POS: "pj.local.dev.contextWindowPos",
+	/** DEV-ONLY. Persisted screen position of the Dev Tools Log & API Inspector window (`{x,y}` JSON). */
+	DEV_INSPECTOR_WINDOW_POS: "pj.local.dev.inspectorWindowPos",
+	/**
+	 * DEV-ONLY. Whether the Context-Switcher window is currently OPEN (`"1"`|`"0"`), so an open window
+	 * reappears (in its saved position) after a navigation or hard refresh. Inert in production.
+	 */
+	DEV_CONTEXT_WINDOW_OPEN: "pj.local.dev.contextWindowOpen",
+	/** DEV-ONLY. Whether the Log & API Inspector window is currently OPEN (`"1"`|`"0"`). */
+	DEV_INSPECTOR_WINDOW_OPEN: "pj.local.dev.inspectorWindowOpen",
+	/**
+	 * DEV-ONLY. The persisted dev log ring buffer (a JSON `LogEntry[]`), so captured logs survive page
+	 * navigations and hard refreshes (F5). Written through by the logger while "keep logs on refresh" is
+	 * on, and flushed on page unload when it is off. Inert in production (the logger keeps no history
+	 * there, so nothing is ever written).
+	 */
+	DEV_LOG_CACHE: "pj.local.dev.logCache",
+	/**
+	 * DEV-ONLY. The "Keep logs on refresh" preference (`"1"`|`"0"`, default on) — the Log Inspector's
+	 * persistence switch. Governs whether {@link DEV_LOG_CACHE} carries over a reload or is flushed on
+	 * unload. Inert in production.
+	 */
+	DEV_LOG_PERSIST: "pj.local.dev.logPersist",
 } as const;
 // #endregion
 

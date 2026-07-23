@@ -8,8 +8,10 @@
 		"./services/explore/ExploreBackendService.ts": "./services/explore/ExploreBackendService.ts",
 		"./services/newsletter/NewsletterBackendService.ts": "./services/newsletter/NewsletterBackendService.ts",
 		"./services/projects/ProjectBackendService.ts": "./services/projects/ProjectBackendService.ts",
+		"./services/messaging/MessagingBackendService.ts": "./services/messaging/MessagingBackendService.ts",
 		"./services/profile/ProfileBackendService.ts": "./services/profile/ProfileBackendService.ts",
 		"./services/scheduling/ScheduleBackendService.ts": "./services/scheduling/ScheduleBackendService.ts",
+		"./services/user/UserBackendService.ts": "./services/user/UserBackendService.ts",
 		"./core/env.ts": "./core/env.ts",
 		"./core/supabase.ts": "./core/supabase.ts"
 	},

@@ -92,7 +92,10 @@ function priceValue(item: ExploreItem): number {
 		// Sort a pipeline by its low-intensity ticket floor (0.5×) and a session by its per-session
 		// price, so the range/unit pricing shown on the card orders consistently.
 		if (item.serviceType === "Pipeline" && item.ticketPrice) return item.ticketPrice * 0.5;
-		if (item.serviceType === "Session" && item.sessionPrice) return item.sessionPrice;
+		// Session (per-session) and Group Session (per-seat) both order by their per-slot price.
+		if (
+			(item.serviceType === "Session" || item.serviceType === "Group Session") && item.sessionPrice
+		) return item.sessionPrice;
 		return Number(item.price.replace(/[^0-9.]/g, "")) || 0;
 	}
 	if (item.type === "products") {

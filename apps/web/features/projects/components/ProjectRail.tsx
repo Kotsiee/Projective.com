@@ -3,6 +3,7 @@ import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { BackIcon, projectViewLinks } from "./detail-glyphs.tsx";
+import { PlusIcon } from "./glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
@@ -14,9 +15,10 @@ import type { ProjectDetail } from "../types/projects-types.ts";
  * {@link Tooltip} carries the name — never a native `title`).
  *
  * Top section (aligned to the top): Back · owner/client avatar (links to `/@handle`) · Details ·
- * Board (dynamic Pipeline/Timeline/Calendar) · Members · Attachments · Submissions · Finances.
- * Bottom section (pinned via `margin-block-start: auto`): Settings · the Expand toggle (reusing the
- * global rail's {@link SidebarToggleIcon} glyph + morphing-divider slide).
+ * Board (dynamic Pipeline/Timeline/Calendar) · Members · Submissions · Attachments · Finances.
+ * Bottom section (pinned via `margin-block-start: auto`): a client-only Add-stage ＋ · the Expand
+ * toggle (reusing the global rail's {@link SidebarToggleIcon} glyph + morphing-divider slide).
+ * Settings is intentionally absent — project settings live in the `/edit` page.
  *
  * Rendered alongside the expanded view; CSS (`.ui-splitter[data-mode="collapsed"]`) reveals exactly
  * one at a time. Its icons are {@link cloneElement}-copied off the shared `projectViewLinks` set so the
@@ -27,17 +29,20 @@ export interface ProjectRailProps {
 	detail: ProjectDetail;
 	/** Live pathname — drives the active icon. */
 	currentPath: string;
+	/** The effective service archetype — sessions drop Submissions + label the Board "Calendar". */
+	sessionKind?: "none" | "normal" | "group";
 	/** Expand the lane back out (dispatched to the splitter). */
 	onExpand: () => void;
+	/** Client-only: open the Create New Stage modal. */
+	onCreateStage: () => void;
 }
 
 export function ProjectRail(
-	{ detail, currentPath, onExpand }: ProjectRailProps,
+	{ detail, currentPath, sessionKind = "none", onExpand, onCreateStage }: ProjectRailProps,
 ): JSX.Element {
 	const base = `/projects/${detail.slug}`;
-	const links = projectViewLinks(detail);
-	const topLinks = links.filter((l) => l.key !== "settings");
-	const settings = links.find((l) => l.key === "settings")!;
+	const isSession = sessionKind === "normal" || sessionKind === "group";
+	const topLinks = projectViewLinks(detail, sessionKind);
 	// A project leads with its owner, a service with its client; fall back to the owner.
 	const lead = (detail.kind === "service" ? detail.client : detail.owner) ?? detail.owner;
 
@@ -102,7 +107,18 @@ export function ProjectRail(
 			</div>
 
 			<div class="proj-detail__rail-group proj-detail__rail-group--bottom">
-				{link(settings.key, settings.label, settings.icon, settings.seg)}
+				{detail.viewerIsClient && !isSession && (
+					<Tooltip content="Add stage" placement="right">
+						<button
+							type="button"
+							class="proj-railbtn proj-railbtn--add"
+							aria-label="Add stage"
+							onClick={onCreateStage}
+						>
+							{cloneElement(PlusIcon)}
+						</button>
+					</Tooltip>
+				)}
 
 				<Tooltip content="Expand lane" placement="right">
 					<button

@@ -123,6 +123,22 @@
 	--field-border: var(--warning);
 	--field-accent: var(--warning);
 }
+/*
+ * Two-tier creation gate (root CLAUDE.md). `required` = RED initial-creation gate (needed to create
+ * the base record); `gate` = AMBER publishing gate (needed to publish/hire, optional to draft). Both
+ * carry a faint tonal fill so an unfilled gate reads at a glance in a dense form, not just on the
+ * hairline — still §B.4-clean (the field is interactive, so a full outline is allowed).
+ */
+.ui-field--required {
+	--field-border: var(--danger);
+	--field-accent: var(--danger);
+	--field-bg: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+.ui-field--gate {
+	--field-border: var(--warning);
+	--field-accent: var(--warning);
+	--field-bg: color-mix(in srgb, var(--warning) 6%, var(--surface));
+}
 /* #endregion */
 
 /* #region The raw editable element inside a control */

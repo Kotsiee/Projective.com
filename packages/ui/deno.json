@@ -7,6 +7,7 @@
 		"./layout": "./layout/mod.ts",
 		"./navigation": "./navigation/mod.ts",
 		"./fields": "./fields/mod.ts",
+		"./editor": "./editor/mod.ts",
 		"./display": "./display/mod.ts",
 		"./feedback": "./feedback/mod.ts",
 		"./overlay": "./overlay/mod.ts",

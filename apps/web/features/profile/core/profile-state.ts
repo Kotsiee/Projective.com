@@ -30,3 +30,11 @@ export const editMode = signal(false);
  * SSR'd initial state is re-seeded by the header island on mount.
  */
 export const following = signal(false);
+
+/**
+ * Whether the profile's floating quick-message popover is open (task §3). The Message buttons — in the
+ * action lane (rail + stack) and in the body/sticky `ProfileActions` header — set it; the single
+ * `ProfileMessagePopover` mounted in the action lane reads it. A shared signal because the triggers live
+ * in different islands from the popover. Resets on navigation (new page = fresh module scope).
+ */
+export const quickMessageOpen = signal(false);

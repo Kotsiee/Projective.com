@@ -1,36 +1,35 @@
 import type { JSX } from "preact";
-import { Avatar, RatingStars } from "@projective/ui/display";
 import "../styles/profile.css";
-import { ServicesGrid } from "@features/explore/components/collections/ServicesGrid.tsx";
-import { ProductsMasonry } from "@features/explore/components/collections/ProductsMasonry.tsx";
-import { ProjectsList } from "@features/explore/components/collections/ProjectsList.tsx";
-import { ArticlesGridList } from "@features/explore/components/collections/ArticlesGridList.tsx";
-import { profileHref } from "@features/explore/core/routing.ts";
-import ProfileEntityGrid from "../islands/ProfileEntityGrid.island.tsx";
 import TabCreateButton from "../islands/TabCreateButton.island.tsx";
 import { TAB_LABEL } from "../core/profile-model.ts";
-import { ProfileIcon } from "./profile-glyphs.tsx";
+import {
+	ArticlesTab,
+	DepartmentsTab,
+	EducationTab,
+	Empty,
+	EntitiesTab,
+	ExperienceTab,
+	MembersTab,
+	ProductsTab,
+	ProjectsTab,
+	ReviewsTab,
+	ServicesTab,
+} from "./tabs/mod.ts";
 import type {
 	ArticleItem,
-	DepartmentEntry,
-	EducationEntry,
-	ExperienceEntry,
-	MemberEntry,
 	ProductItem,
 	ProfileItem,
 	ProfileTab,
 	ProfileTabPayload,
 	ProfileView,
-	ReviewEntry,
 	ServiceItem,
 } from "../types/profile-types.ts";
 
 /**
- * ProfileTabContent — renders one profile tab's body inside the left column of the split view (root
- * CLAUDE.md Part 2). Item grids REUSE the explore collections (Services grid · Products/Portfolio
- * masonry · Projects list w/ Open+Past sub-views · Articles list) and the toggleable Teams/Businesses
- * {@link ProfileEntityGrid}; Education/Experience/Members/Reviews render as structured lists. The panel
- * header carries the owner's direct "+ New …" trigger where the tab is creatable (Part 3.3).
+ * ProfileTabContent — the thin dispatcher for one profile tab (root CLAUDE.md Part 2). It paints the
+ * shared panel header (title + the owner's "+ New …" trigger where the tab is creatable) and delegates
+ * the body to the matching partial view in {@link ./tabs/mod.ts}. The tab bodies themselves live as
+ * focused partial components so this file stays a routing table, not a render dump.
  */
 
 // #region Owner create triggers
@@ -57,227 +56,6 @@ function createFor(tab: ProfileTab): { label: string; noun: string } | null {
 }
 // #endregion
 
-// #region Structured lists
-function formatDate(iso: string): string {
-	try {
-		return new Intl.DateTimeFormat("en-GB", {
-			timeZone: "UTC",
-			year: "numeric",
-			month: "short",
-			day: "numeric",
-		}).format(new Date(iso));
-	} catch {
-		return iso;
-	}
-}
-
-function EducationList({ entries }: { entries: EducationEntry[] }): JSX.Element {
-	if (!entries.length) return <p class="pf-empty">No education listed yet.</p>;
-	return (
-		<ul class="pf-timeline" role="list">
-			{entries.map((e) => (
-				<li class="pf-tl" key={e.id}>
-					<Avatar image={e.logo} label={e.school} size="md" shape="square" class="pf-tl__logo" />
-					<div class="pf-tl__body">
-						<span class="pf-tl__title">{e.credential} · {e.field}</span>
-						<span class="pf-tl__org">{e.school}</span>
-						<span class="pf-tl__dates">{e.start} – {e.end ?? "Present"}</span>
-					</div>
-				</li>
-			))}
-		</ul>
-	);
-}
-
-function ExperienceList({ entries }: { entries: ExperienceEntry[] }): JSX.Element {
-	if (!entries.length) return <p class="pf-empty">No experience listed yet.</p>;
-	return (
-		<ul class="pf-timeline" role="list">
-			{entries.map((e) => (
-				<li class="pf-tl" key={e.id}>
-					<Avatar image={e.logo} label={e.org} size="md" shape="square" class="pf-tl__logo" />
-					<div class="pf-tl__body">
-						<span class="pf-tl__title">{e.role}</span>
-						<span class="pf-tl__org">{e.org}</span>
-						<span class="pf-tl__dates">
-							{e.start} – {e.current ? "Present" : e.end ?? "Present"}
-						</span>
-						<p class="pf-tl__summary">{e.summary}</p>
-					</div>
-				</li>
-			))}
-		</ul>
-	);
-}
-
-/** One member card — an avatar/name/role tile, plus multi-department chips when the member spans >1. */
-function MemberCard(
-	{ member, deptNames }: { member: MemberEntry; deptNames?: Record<string, string> },
-): JSX.Element {
-	const multi = deptNames && member.departments.length > 1;
-	return (
-		<li class="pf-member" key={member.handle}>
-			<a class="pf-member__link" href={profileHref(member.handle)}>
-				<Avatar image={member.avatar} label={member.name} size="xl" shape="circle" />
-				<span class="pf-member__name">{member.name}</span>
-				<span class="pf-member__role">{member.role}</span>
-				{multi
-					? (
-						<span class="pf-member__depts" aria-label="Departments">
-							{member.departments.map((id) => (
-								<span class="pf-member__deptchip" key={id}>{deptNames?.[id] ?? id}</span>
-							))}
-						</span>
-					)
-					: null}
-			</a>
-		</li>
-	);
-}
-
-/** Flat member roster (team / business). */
-function MembersGrid({ members }: { members: MemberEntry[] }): JSX.Element {
-	if (!members.length) return <p class="pf-empty">No members listed yet.</p>;
-	return (
-		<ul class="pf-members" role="list">
-			{members.map((m) => <MemberCard member={m} key={m.handle} />)}
-		</ul>
-	);
-}
-
-/**
- * Department-grouped member roster (Organisation, root CLAUDE.md — Part 2.2). One section per
- * department; a member assigned to multiple departments appears under EACH (and their card carries
- * multi-department chips). Falls back to the flat grid if the org has no department structure.
- */
-function MembersByDepartment(
-	{ members, departments }: { members: MemberEntry[]; departments: DepartmentEntry[] },
-): JSX.Element {
-	if (!members.length) return <p class="pf-empty">No members listed yet.</p>;
-	if (!departments.length) return <MembersGrid members={members} />;
-	const deptNames: Record<string, string> = {};
-	for (const d of departments) deptNames[d.id] = d.name;
-	return (
-		<div class="pf-deptgroups">
-			{departments.map((dept) => {
-				const inDept = members.filter((m) => m.departments.includes(dept.id));
-				return (
-					<section class="pf-deptgroup" key={dept.id} aria-label={`${dept.name} department`}>
-						<header class="pf-deptgroup__head">
-							<ProfileIcon name="departments" class="pf-deptgroup__icon" />
-							<h3 class="pf-deptgroup__name">{dept.name}</h3>
-							<span class="pf-deptgroup__count">{inDept.length}</span>
-						</header>
-						{inDept.length
-							? (
-								<ul class="pf-members" role="list">
-									{inDept.map((m) => (
-										<MemberCard member={m} deptNames={deptNames} key={`${dept.id}-${m.handle}`} />
-									))}
-								</ul>
-							)
-							: <p class="pf-empty">No members in this department yet.</p>}
-					</section>
-				);
-			})}
-		</div>
-	);
-}
-
-/** Departments overview (Organisation) — a tonal card per department with its remit + lead + size. */
-function DepartmentsList({ departments }: { departments: DepartmentEntry[] }): JSX.Element {
-	if (!departments.length) return <p class="pf-empty">No departments yet.</p>;
-	return (
-		<ul class="pf-depts" role="list">
-			{departments.map((d) => (
-				<li class="pf-deptcard" key={d.id}>
-					<div class="pf-deptcard__head">
-						<ProfileIcon name="departments" class="pf-deptcard__icon" />
-						<span class="pf-deptcard__name">{d.name}</span>
-						<span class="pf-deptcard__count">
-							{d.memberCount} {d.memberCount === 1 ? "member" : "members"}
-						</span>
-					</div>
-					{d.summary ? <p class="pf-deptcard__summary">{d.summary}</p> : null}
-					{d.leadHandle
-						? (
-							<a class="pf-deptcard__lead" href={profileHref(d.leadHandle)}>
-								<span class="pf-deptcard__leadlabel">Lead</span>
-								<span class="pf-deptcard__leadhandle">{d.leadHandle}</span>
-							</a>
-						)
-						: null}
-				</li>
-			))}
-		</ul>
-	);
-}
-
-function ReviewsList(
-	{ reviews, summary }: { reviews: ReviewEntry[]; summary?: ProfileTabPayload["reviewSummary"] },
-): JSX.Element {
-	return (
-		<div class="pf-reviews">
-			{summary && (summary.asHelper || summary.asClient)
-				? (
-					<div class="pf-reviews__summary">
-						{summary.asHelper && (
-							<div class="pf-rep__track">
-								<span class="pf-rep__role">As a freelancer</span>
-								<RatingStars
-									value={summary.asHelper.value}
-									count={summary.asHelper.count}
-									size="md"
-								/>
-							</div>
-						)}
-						{summary.asClient && (
-							<div class="pf-rep__track">
-								<span class="pf-rep__role">As a client</span>
-								<RatingStars
-									value={summary.asClient.value}
-									count={summary.asClient.count}
-									size="md"
-								/>
-							</div>
-						)}
-					</div>
-				)
-				: null}
-			{reviews.length
-				? (
-					<ul class="pf-review-list" role="list">
-						{reviews.map((r) => (
-							<li class="pf-review" key={r.id}>
-								<Avatar image={r.authorAvatar} label={r.authorName} size="md" shape="circle" />
-								<div class="pf-review__body">
-									<div class="pf-review__head">
-										<a class="pf-review__author" href={profileHref(r.authorHandle)}>
-											{r.authorName}
-										</a>
-										<span class="pf-review__role" data-role={r.role}>
-											{r.role === "client" ? "As a client" : "As a freelancer"}
-										</span>
-									</div>
-									<div class="pf-review__meta">
-										<RatingStars value={r.rating} size="sm" label={`Rated ${r.rating} out of 5`} />
-										<time class="pf-review__date">{formatDate(r.date)}</time>
-									</div>
-									<p class="pf-review__text">{r.body}</p>
-									{r.contextTitle
-										? <span class="pf-review__context">on {r.contextTitle}</span>
-										: null}
-								</div>
-							</li>
-						))}
-					</ul>
-				)
-				: <p class="pf-empty">No reviews yet.</p>}
-		</div>
-	);
-}
-// #endregion
-
 // #region Tab body dispatch
 function tabBody(
 	tab: ProfileTab,
@@ -287,78 +65,64 @@ function tabBody(
 ): JSX.Element {
 	const items = payload.items;
 	switch (tab) {
-		case "services": {
-			const rows = items.filter((i): i is ServiceItem => i.type === "services");
-			return rows.length ? <ServicesGrid items={rows} authed={authed} /> : <Empty />;
-		}
-		case "products": {
-			const rows = items.filter((i): i is ProductItem => i.type === "products");
-			return rows.length ? <ProductsMasonry items={rows} authed={authed} /> : <Empty />;
-		}
-		case "portfolio": {
-			const rows = items.filter((i): i is ProductItem => i.type === "products");
-			return rows.length ? <ProductsMasonry items={rows} authed={authed} /> : <Empty />;
-		}
-		case "articles": {
-			const rows = items.filter((i): i is ArticleItem => i.type === "articles");
-			return rows.length ? <ArticlesGridList items={rows} authed={authed} /> : <Empty />;
-		}
-		case "projects": {
+		case "services":
 			return (
-				<div class="pf-projects">
-					<section class="pf-projects__group" aria-label="Open projects">
-						<h3 class="pf-projects__sub">Open &amp; available</h3>
-						{payload.openProjects.length
-							? <ProjectsList items={payload.openProjects} authed={authed} />
-							: <Empty note="No open projects." />}
-					</section>
-					<section class="pf-projects__group" aria-label="Past projects">
-						<h3 class="pf-projects__sub">Past &amp; completed</h3>
-						{payload.pastProjects.length
-							? <ProjectsList items={payload.pastProjects} authed={authed} />
-							: <Empty note="No completed projects yet." />}
-					</section>
-				</div>
+				<ServicesTab
+					items={items.filter((i): i is ServiceItem => i.type === "services")}
+					authed={authed}
+				/>
 			);
-		}
-		case "teams": {
-			const rows = items.filter((i): i is ProfileItem => i.type === "teams");
+		case "products":
+		case "portfolio":
 			return (
-				<ProfileEntityGrid items={rows} handle={profile.handle} label="Teams" authed={authed} />
+				<ProductsTab
+					items={items.filter((i): i is ProductItem => i.type === "products")}
+					authed={authed}
+				/>
 			);
-		}
-		case "businesses": {
-			const rows = items.filter((i): i is ProfileItem => i.type === "businesses");
+		case "articles":
 			return (
-				<ProfileEntityGrid
-					items={rows}
+				<ArticlesTab
+					items={items.filter((i): i is ArticleItem => i.type === "articles")}
+					authed={authed}
+				/>
+			);
+		case "projects":
+			return <ProjectsTab payload={payload} authed={authed} />;
+		case "teams":
+			return (
+				<EntitiesTab
+					items={items.filter((i): i is ProfileItem => i.type === "teams")}
+					handle={profile.handle}
+					label="Teams"
+					authed={authed}
+				/>
+			);
+		case "businesses":
+			return (
+				<EntitiesTab
+					items={items.filter((i): i is ProfileItem => i.type === "businesses")}
 					handle={profile.handle}
 					label="Businesses"
 					authed={authed}
 				/>
 			);
-		}
 		case "education":
-			return <EducationList entries={payload.education} />;
+			return <EducationTab entries={payload.education} />;
 		case "experience":
-			return <ExperienceList entries={payload.experience} />;
+			return <ExperienceTab entries={payload.experience} />;
 		case "members":
-			// Organisations arrive with a department set → group by department; others render flat.
-			return profile.kind === "organisation"
-				? <MembersByDepartment members={payload.members} departments={payload.departments} />
-				: <MembersGrid members={payload.members} />;
+			return (
+				<MembersTab profile={profile} members={payload.members} departments={payload.departments} />
+			);
 		case "departments":
-			return <DepartmentsList departments={payload.departments} />;
+			return <DepartmentsTab departments={payload.departments} />;
 		case "reviews":
-			return <ReviewsList reviews={payload.reviews} summary={payload.reviewSummary} />;
+			return <ReviewsTab reviews={payload.reviews} summary={payload.reviewSummary} />;
 		case "about":
 		default:
 			return <Empty />;
 	}
-}
-
-function Empty({ note }: { note?: string }): JSX.Element {
-	return <p class="pf-empty">{note ?? "Nothing here yet."}</p>;
 }
 // #endregion
 

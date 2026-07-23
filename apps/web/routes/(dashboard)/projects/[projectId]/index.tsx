@@ -1,25 +1,27 @@
 import { page } from "fresh";
+import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
+import { ProjectShowcaseScreen } from "@features/projects/components/ProjectShowcaseScreen.tsx";
+import { resolveProjectShowcase } from "@features/projects/core/showcase-ssr.ts";
 
 /**
- * Thin-controller pattern (SYSTEM_ARCHITECTURE §2 / §State Hydration): the handler parses params,
- * guards, and delegates to a Service, then hands resolved data to the page via `page(data)`. The
- * page stays presentational; islands receive `initialData` as props (never fetch directly).
+ * `/projects/[projectId]` — the Project **Preview** (root brief §Part 1.1). Thin controller: resolve the
+ * showcase projection straight from the fat service (no HTTP hop), set SEO, then hand off to the
+ * {@link ProjectShowcaseScreen} — which renders the SAME layout as `/view/[id]?type=projects` and adds
+ * the role-appropriate CTA (Apply for a freelancer, Edit for the owner). The middle-nav Preview/Edit
+ * header + the untouched Project Details sidebar are resolved separately by the `(dashboard)` layout.
  */
 export const handler = define.handlers({
 	GET(ctx) {
-		// TODO: const project = await ProjectService.getById(ctx.params.projectId, ctx.state);
-		return page({ projectId: ctx.params.projectId });
+		const { showcase, detail } = resolveProjectShowcase(
+			ctx.params.projectId,
+			asAuthenticatedContext(ctx.state.userContext),
+		);
+		ctx.state.title = detail ? `${detail.title} · Projective` : "Project · Projective";
+		return page({ showcase, slug: ctx.params.projectId });
 	},
 });
 
 export default define.page<typeof handler>(function ProjectDetailPage({ data }) {
-	return (
-		<PagePlaceholder
-			title="Project"
-			path={`/projects/${data.projectId}`}
-			note="Master-detail overview. Stages, tickets, escrow status (PRODUCT_SPEC §Stage Management)."
-		/>
-	);
+	return <ProjectShowcaseScreen showcase={data.showcase} slug={data.slug} />;
 });

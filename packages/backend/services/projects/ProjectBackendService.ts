@@ -7,18 +7,22 @@ import {
 	incomingCount,
 	scopeOptions,
 	serviceOptions,
+	withResolvableScope,
 } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
+import { findMemberRoster } from "./members-fixtures.ts";
 import type {
 	BoardListParams,
 	BoardPage,
 	CreateProject,
 	FileListPage,
 	FileListParams,
+	MemberRosterPage,
+	MemberRosterParams,
 	MessagePage,
 	MessagePageParams,
 	ProjectDetail,
@@ -66,7 +70,11 @@ export class ProjectBackendService {
 	 */
 	static list(params: ProjectFeedParams): ServiceResult<ProjectFeedPayload> {
 		if (!isProjectsBackendLive()) {
-			return ok(buildFeed(params));
+			// Stub mode: drop a phantom scope pin (a real auth contextId matches no fixture workspace)
+			// so the lane shows the acting account's feed instead of stranding empty. See
+			// {@link withResolvableScope}. This covers BOTH the SSR first paint and the thin
+			// `/api/projects/list` refetch (a stale cached scopeId), the single chokepoint they share.
+			return ok(buildFeed(withResolvableScope(params)));
 		}
 		// LIVE: query the RLS-scoped projects.* + org.* membership tables (not yet implemented) — fall
 		// back to the fixture-backed query so behaviour is preserved until that path lands.
@@ -180,6 +188,28 @@ export class ProjectBackendService {
 		// `projects.move_ticket` / `reorder_stages` RPCs (not yet implemented) — fall back to the fixture-
 		// backed page so behaviour is preserved until that path lands.
 		const page = findBoardPage(params);
+		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		return ok({ page });
+	}
+
+	/**
+	 * The Members roster — the participants with access to the whole project
+	 * (`/projects/[projectId]/members`) or one channel/stage (`/projects/[projectId]/[channelId]/members`),
+	 * with their role, stage assignment (contributor/observer), presence, workload, contact + join date,
+	 * the pending-invitation queue, and the viewer capability flags that gate the client/admin/manager
+	 * management actions. Also honours the DEV-ONLY simulation hints (`simViewer`/`simProjectType`/
+	 * `simPendingInvites`) so the surface can be exercised across every role/type/invite state. SSR calls
+	 * this directly for first paint; the roster island refines / re-simulates via the thin `MembersService`.
+	 */
+	static members(params: MemberRosterParams): ServiceResult<{ page: MemberRosterPage }> {
+		if (!isProjectsBackendLive()) {
+			const page = findMemberRoster(params);
+			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+			return ok({ page });
+		}
+		// LIVE: read the RLS-scoped `projects.project_participants` + `org.*_members` + `projects.invitations`
+		// graph (not yet implemented) — fall back to the fixture-backed roster so behaviour is preserved.
+		const page = findMemberRoster(params);
 		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
 		return ok({ page });
 	}

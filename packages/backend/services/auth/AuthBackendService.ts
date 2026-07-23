@@ -356,6 +356,67 @@ export class AuthBackendService {
 			return fail(500, { message: e instanceof Error ? e.message : "Sign-in failed." });
 		}
 	}
+
+	/**
+	 * Renew a session from its refresh token — the previously-missing half of the session lifecycle.
+	 *
+	 * The access token is short-lived (~1h; GoTrue's `expires_in`) while the refresh token lives 30
+	 * days, so an active session must be **silently renewed** rather than dropped the moment the access
+	 * token expires. This is the single renewal primitive behind both the dashboard guard's
+	 * refresh-before-redirect and the `/api/auth/refresh` endpoint the client 401-interceptor calls; on
+	 * success the caller mints fresh `sb-*` cookies from the returned {@link SessionTokens}.
+	 *
+	 * Live (`AUTH_BACKEND_LIVE=true`): GoTrue `refreshSession({ refresh_token })` → rotated tokens; a
+	 * spent/revoked refresh token yields a 401 so the caller clears the session and bounces to sign-in.
+	 * Stub (default): re-mints the (opaque) session so the silent-refresh path is exercisable without a
+	 * wired GoTrue. It grants **no access** — RLS + the `(dashboard)` guard remain the real gates — and
+	 * is only ever reached when a `sb-refresh-token` cookie is actually presented (the stub sign-in
+	 * sets none), so a normal dev session never triggers it.
+	 */
+	static async refreshSession(refreshToken: string): Promise<ServiceResult<AuthPayload>> {
+		if (!refreshToken) {
+			return fail(401, { message: "Your session has expired. Please sign in again." });
+		}
+		if (!isAuthBackendLive()) {
+			return ok({}, {
+				session: { accessToken: refreshToken, refreshToken, expiresIn: 3600 },
+			});
+		}
+		try {
+			const anon = getAnonClient();
+			const { data, error } = await anon.auth.refreshSession({ refresh_token: refreshToken });
+			const session = toSession(data?.session);
+			if (error || !session) {
+				return fail(401, { message: "Your session has expired. Please sign in again." });
+			}
+			return ok({}, { session });
+		} catch (e) {
+			return fail(500, { message: e instanceof Error ? e.message : "Session refresh failed." });
+		}
+	}
+
+	/**
+	 * Sign out — revoke the session server-side. The authoritative sign-out is the thin route clearing
+	 * the HttpOnly `sb-*` cookies (the browser can no longer present a session); this call is
+	 * best-effort defence-in-depth on top: when live, it revokes the refresh token at GoTrue so a
+	 * copied token can't be silently refreshed later.
+	 *
+	 * Live (`AUTH_BACKEND_LIVE=true`): admin `signOut(accessToken, "global")` revokes every session for
+	 * the identity. Stub (default) / no token: a no-op success — cookie clearing alone ends the session.
+	 * Always succeeds: a failed revocation must never block the user from signing out (the cookies are
+	 * cleared regardless), so any error is swallowed.
+	 */
+	static async signOut(input: { accessToken?: string }): Promise<ServiceResult<AuthPayload>> {
+		if (!isAuthBackendLive() || !input.accessToken) {
+			return ok({});
+		}
+		try {
+			await getServiceClient().auth.admin.signOut(input.accessToken, "global");
+		} catch {
+			// Non-blocking: cookie clearing (in the route) is the real sign-out; revocation is a bonus.
+		}
+		return ok({});
+	}
 	// #endregion
 
 	// #region Email verification
@@ -533,8 +594,12 @@ export class AuthBackendService {
 			avatar: str(meta.avatar_url) ?? str(meta.picture),
 		};
 
-		// New user = no org.users_public profile yet → route to /join for onboarding.
-		let isNewUser = true;
+		// New user = no org.users_public profile yet → route to /join for onboarding. Default to
+		// EXISTING: /join is only for a CONFIRMED brand-new identity, so a transient lookup failure must
+		// never bounce a returning user back through onboarding (root CLAUDE.md — never re-onboard an
+		// existing user; task requirement 2B). A genuine new user is still caught by the successful
+		// `!profile` read below.
+		let isNewUser = false;
 		try {
 			const { data: profile } = await getServiceClient()
 				.schema("org")
@@ -544,7 +609,7 @@ export class AuthBackendService {
 				.maybeSingle();
 			isNewUser = !profile;
 		} catch {
-			// Default to new-user (send to /join) if the lookup fails.
+			// Keep the safe default (existing): we could not CONFIRM new-ness, so we do not force /join.
 		}
 
 		return { session: toSession(data.session), identity, isNewUser, store };

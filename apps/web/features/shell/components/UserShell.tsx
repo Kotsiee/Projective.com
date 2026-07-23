@@ -22,6 +22,13 @@ export interface UserShellProps {
 	context?: UserContext;
 	/** Show the centered structural search (default true). Omit where the middle-nav config disallows. */
 	showSearch?: boolean;
+	/**
+	 * Whether this shell renders a PROTECTED route (a `(dashboard)` surface). Threaded to
+	 * {@link UserActions} to drive the smart-logout redirect (leave the private area for `/` on a
+	 * protected route; reload in place as a guest on a public route). Defaults to public — only the
+	 * `(dashboard)` layout sets it true.
+	 */
+	protectedRoute?: boolean;
 	/** Optional page-level middle-nav lane content (drag-resizable). When absent the canvas fills. */
 	lane?: ComponentChildren;
 	/**
@@ -68,6 +75,7 @@ export function UserShell(
 		path,
 		context = PERSONAL_MEMBER_CONTEXT,
 		showSearch = true,
+		protectedRoute = false,
 		lane,
 		middleNavHeader,
 		middleNavFooter,
@@ -85,7 +93,7 @@ export function UserShell(
 						{showSearch ? <NavSearchBar /> : null}
 					</div>
 				}
-				utilityBar={<UserActions context={context} />}
+				utilityBar={<UserActions context={context} protectedRoute={protectedRoute} />}
 				sidebar={<ShellSidebar items={globalNav(path, context)} />}
 			>
 				{lane

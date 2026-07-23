@@ -4,6 +4,7 @@ import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { profileHref } from "@features/explore/core/routing.ts";
 import type { EntityView } from "@projective/types/explore";
 import { badgeTagsFor, ENTITY_LABEL } from "../core/view-model.ts";
+import { ViewIcon } from "./view-glyphs.tsx";
 
 /**
  * ViewDetails — the hero's right details column (Part 1.2). The entity overview: eyebrow + title, the
@@ -14,11 +15,13 @@ import { badgeTagsFor, ENTITY_LABEL } from "../core/view-model.ts";
  * informational.
  */
 export function ViewDetails({ view }: { view: EntityView }): JSX.Element {
-	const { item, reviews, deliverables } = view;
+	const { item, reviews, deliverables, service } = view;
 	const owner = item.owner;
 	const href = profileHref(owner.handle);
 	const badges = badgeTagsFor(item);
 	const summary = reviews.summary;
+	// Direct Deliverable services list their defined project-team roles here (Part 3).
+	const teamRoles = service?.model === "direct" ? service.roles : [];
 
 	return (
 		<div class="vw-details">
@@ -72,8 +75,11 @@ export function ViewDetails({ view }: { view: EntityView }): JSX.Element {
 				<p class="vw-details__summary">{item.summary}</p>
 			</div>
 
-			{/* Key specifications / deliverables. */}
-			{deliverables.length > 0
+			{
+				/* Key specifications / deliverables. Suppressed for services — a Pipeline / One-Off surfaces
+			    per-stage deliverables in the stage showcase, and the block is redundant for the rest. */
+			}
+			{deliverables.length > 0 && !service
 				? (
 					<div class="vw-section">
 						<h2 class="vw-section__label">What’s included</h2>
@@ -82,6 +88,40 @@ export function ViewDetails({ view }: { view: EntityView }): JSX.Element {
 								<li key={d} class="vw-specs__item">
 									<CheckMark />
 									<span>{d}</span>
+								</li>
+							))}
+						</ul>
+					</div>
+				)
+				: null}
+
+			{/* Direct Deliverable — the defined project-team roles (Part 3). */}
+			{teamRoles.length > 0
+				? (
+					<div class="vw-section">
+						<h2 class="vw-section__label">Project team roles</h2>
+						<ul class="vw-teamroles" role="list">
+							{teamRoles.map((r) => (
+								<li key={r.name} class="vw-teamrole">
+									<span class="vw-teamrole__icon" aria-hidden="true">
+										<ViewIcon name="roles" size={16} />
+									</span>
+									<span class="vw-teamrole__body">
+										<span class="vw-teamrole__name">{r.name}</span>
+										<span class="vw-teamrole__summary">{r.summary}</span>
+										{r.skills.length > 0
+											? (
+												<span class="vw-teamrole__skills">
+													{r.skills.map((s) => (
+														<span key={s.label} class="vw-teamrole__skill" data-cat={s.category}>
+															<ViewIcon name="skill" size={12} />
+															<span>{s.label}</span>
+														</span>
+													))}
+												</span>
+											)
+											: null}
+									</span>
 								</li>
 							))}
 						</ul>

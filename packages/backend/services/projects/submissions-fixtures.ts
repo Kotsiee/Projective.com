@@ -160,7 +160,12 @@ const VIEWER: MessageSender = {
 	handle: "you",
 };
 
-function senderOf(id: string, name: string, avatar: string | null, handle: string | null): MessageSender {
+function senderOf(
+	id: string,
+	name: string,
+	avatar: string | null,
+	handle: string | null,
+): MessageSender {
 	return { id, name, avatar, handle };
 }
 
@@ -392,7 +397,13 @@ function buildUnit(
 		const dirName = DIR_POOL[(seed + d) % DIR_POOL.length];
 		const dseed = hash(`${keyBase}:unit:${index}:dir:${dirName}`);
 		const fileGroups = 1 + (dseed % 2);
-		const dirFiles = makeFiles(`${unitKey}/${dirName}`, fileGroups, submitter, prov, createdAt + d * HOUR);
+		const dirFiles = makeFiles(
+			`${unitKey}/${dirName}`,
+			fileGroups,
+			submitter,
+			prov,
+			createdAt + d * HOUR,
+		);
 		const dirChildren: Node[] = [];
 		// The first directory of the first unit gets a nested sub-directory to exercise deep paths.
 		if (d === 0) {
@@ -511,8 +522,14 @@ function submitterNode(
 function buildRoots(
 	detail: ProjectDetail,
 	channelId: string | null,
-): { roots: Node[]; singleFreelancer: boolean } {
-	const submitters = submittersOf(detail);
+	isolateFreelancer: boolean,
+): { roots: Node[]; singleFreelancer: boolean; self: MessageSender } {
+	const allSubmitters = submittersOf(detail);
+	// Freelancer View & Submission Isolation: a freelancer sees ONLY their own submissions. The acting
+	// freelancer is modelled as the first submitter; isolating prunes the tree to that one person so no
+	// other submitter's units are ever built or reachable.
+	const self = allSubmitters[0];
+	const submitters = isolateFreelancer ? [self] : allSubmitters;
 
 	if (channelId) {
 		// Channel scope — one channel's submissions.
@@ -527,11 +544,13 @@ function buildRoots(
 			return {
 				roots: buildSubmitterUnits(submitters[0], null, prov, `${detail.slug}:${channelId}`),
 				singleFreelancer: true,
+				self,
 			};
 		}
 		return {
 			roots: submitters.map((s) => submitterNode(s, null, prov, `${detail.slug}:${channelId}`)),
 			singleFreelancer: false,
+			self,
 		};
 	}
 
@@ -562,7 +581,8 @@ function buildRoots(
 			unit: null,
 		};
 	});
-	return { roots, singleFreelancer: false };
+	// When isolating a freelancer every stage carries only their own units (submitters === [self]).
+	return { roots, singleFreelancer: isolateFreelancer, self };
 }
 
 function resolveChannel(
@@ -693,7 +713,10 @@ export function findSubmissionPage(params: SubmissionListParams): SubmissionList
 	if (!detail) return null;
 
 	const channelId = params.channelId ?? null;
-	const { roots, singleFreelancer } = buildRoots(detail, channelId);
+	// Isolation: an explicit `asFreelancer` wins; otherwise a non-client viewer auto-isolates to their
+	// own submissions (Freelancer View & Submission Isolation).
+	const isolateFreelancer = params.asFreelancer ?? !detail.viewerIsClient;
+	const { roots, singleFreelancer, self } = buildRoots(detail, channelId, isolateFreelancer);
 	const path = params.path ?? [];
 
 	const chain = resolveChain(roots, path);
@@ -748,6 +771,8 @@ export function findSubmissionPage(params: SubmissionListParams): SubmissionList
 	return {
 		scope: channelId ? "channel" : "project",
 		projectId: params.projectId,
+		projectTitle: detail.title,
+		format: detail.format,
 		channelId,
 		tree: roots.map(toWire),
 		path: resolvedPath,
@@ -758,8 +783,9 @@ export function findSubmissionPage(params: SubmissionListParams): SubmissionList
 		hasMore,
 		nextCursor: hasMore && pageItems.length > 0 ? pageItems[pageItems.length - 1].id : null,
 		total,
-		viewerId: VIEWER.id,
-		viewerIsClient: detail.viewerIsClient,
+		// When isolated, the acting viewer IS the self submitter (rename own files); else the reviewing client.
+		viewerId: isolateFreelancer ? self.id : VIEWER.id,
+		viewerIsClient: isolateFreelancer ? false : detail.viewerIsClient,
 		singleFreelancer,
 	};
 }

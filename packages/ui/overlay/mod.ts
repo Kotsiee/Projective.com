@@ -8,6 +8,10 @@
  * one exception is {@link BodyPortal} — a real `document.body` DOM portal (still no `preact/compat`,
  * built on Preact core `render`) for anchored micro-popups that must escape a transformed ancestor's
  * re-based `position: fixed` (the glass-blur fixed-overlay trap).
+ *
+ * {@link DraggablePopover} builds on the same portal: a non-modal, draggable, resizable floating
+ * window (a consumer supplies the content). The corner-anchored action FAB is the pre-existing
+ * {@link SpeedDial} in `@projective/ui/fields` — not duplicated here.
  */
 export { Portal } from "./components/Portal.tsx";
 export type { PortalProps } from "./components/Portal.tsx";
@@ -19,5 +23,7 @@ export { Overlay } from "./islands/Overlay.tsx";
 export type { OverlayProps } from "./islands/Overlay.tsx";
 export { HoverCard } from "./islands/HoverCard.tsx";
 export type { HoverCardProps } from "./islands/HoverCard.tsx";
+export { DraggablePopover } from "./islands/DraggablePopover.tsx";
+export type { DraggablePopoverProps, PopoverPosition } from "./islands/DraggablePopover.tsx";
 export { usePresence } from "./core/usePresence.ts";
 export type { Presence, PresenceState } from "./core/usePresence.ts";

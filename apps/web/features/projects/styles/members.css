@@ -1,0 +1,697 @@
+/*
+ * members — the Members tab roster (`/projects/[projectId]/members` + the channel-scoped variant).
+ * Pure CSS + strict BEM, token-only (root CLAUDE.md §3). Separation hierarchy (§B.4): the roster table
+ * uses single hairline row rules + surface tints (never boxed cells); member cards rest on a tonal
+ * surface with elevation, not a four-sided border. Full borders / hover tints belong only to the
+ * interactive controls (the icon buttons, the actions menu, the modal fields).
+ */
+
+/* #region Root + header */
+.mem-root {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-5) var(--space-5) var(--space-6);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.mem-root[data-loading="true"] {
+	opacity: 0.6;
+}
+
+.mem-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+}
+.mem-head__id {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+.mem-head__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.35rem;
+	color: var(--primary);
+}
+.mem-head__text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+.mem-head__title {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 680;
+	color: var(--on-surface);
+}
+.mem-head__count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.5rem;
+	padding: 0 var(--space-2);
+	block-size: 1.35rem;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--primary);
+	font-size: 0.75rem;
+	font-weight: 640;
+}
+.mem-head__sub {
+	margin: 0;
+	font-size: 0.85rem;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Toolbar */
+.mem-toolbar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+}
+.mem-toolbar__search {
+	flex: 1 1 15rem;
+	min-inline-size: 12rem;
+}
+.mem-toolbar__searchicon {
+	display: inline-flex;
+	color: var(--text-secondary);
+	font-size: 1rem;
+}
+.mem-toolbar__spacer {
+	flex: 1 1 auto;
+}
+
+.mem-viewtoggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+
+/* Shared icon button (toolbar toggles · row kebab · invite queue actions). Interactive → soft circular
+   hover highlight (Decision #18 idiom). */
+.mem-iconbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 1.05rem;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.mem-iconbtn:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+.mem-iconbtn[data-on="true"] {
+	background: var(--surface);
+	color: var(--primary);
+	box-shadow: var(--elevation-low);
+}
+.mem-iconbtn--danger:hover {
+	background: color-mix(in srgb, var(--danger) 14%, transparent);
+	color: var(--danger);
+}
+.mem-iconbtn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+/* #region Identity (shared by table + card) */
+.mem-identity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+.mem-identity__avatar,
+.mem-card__avatar {
+	position: relative;
+	display: inline-flex;
+	flex: none;
+}
+.mem-identity__text {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-inline-size: 0;
+}
+.mem-identity__name,
+.mem-card__name {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-weight: 580;
+	color: var(--on-surface);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.mem-identity__you {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px var(--space-2);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	color: var(--primary);
+	font-size: 0.6rem;
+	font-weight: 680;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.mem-identity__handle,
+.mem-card__handle {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
+/* Presence dot — pinned to the avatar's lower-right; tonal by state (icon-only, label in Tooltip). */
+.mem-presence {
+	position: absolute;
+	inset-block-end: -1px;
+	inset-inline-end: -1px;
+	inline-size: 0.7rem;
+	block-size: 0.7rem;
+	border-radius: 999px;
+	border: 2px solid var(--surface);
+	background: var(--text-secondary);
+}
+.mem-presence[data-presence="online"] {
+	background: var(--success);
+}
+.mem-presence[data-presence="away"] {
+	background: var(--warning);
+}
+.mem-presence[data-presence="offline"] {
+	background: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+}
+/* #endregion */
+
+/* #region Badges + cells */
+.mem-rolebadge {
+	font-size: 0.72rem;
+	font-weight: 620;
+}
+.mem-assigntag {
+	font-size: 0.72rem;
+}
+.mem-stages {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+.mem-stagechip {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px var(--space-2);
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	font-size: 0.72rem;
+	font-weight: 520;
+	white-space: nowrap;
+}
+.mem-dash {
+	color: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+	font-size: 0.85rem;
+}
+.mem-email {
+	color: var(--text-secondary);
+	font-size: 0.8rem;
+	text-decoration: none;
+}
+.mem-email:hover {
+	color: var(--primary);
+	text-decoration: underline;
+}
+.mem-tickets {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+}
+.mem-tickets[data-has="true"] {
+	color: var(--on-surface);
+	font-weight: 560;
+}
+.mem-joined {
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Table view */
+.mem-table-wrap {
+	inline-size: 100%;
+	overflow-x: auto;
+}
+.mem-table {
+	inline-size: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+}
+.mem-table thead th {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 1;
+	padding: var(--space-2) var(--space-3);
+	text-align: start;
+	font-size: 0.7rem;
+	font-weight: 640;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+	background: var(--surface);
+	border-block-end: var(--hairline);
+	white-space: nowrap;
+}
+.mem-th {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-transform: inherit;
+	letter-spacing: inherit;
+	cursor: pointer;
+}
+.mem-th:hover {
+	color: var(--on-surface);
+}
+.mem-th[data-active="true"] {
+	color: var(--primary);
+}
+.mem-th__caret {
+	display: inline-flex;
+	font-size: 0.85rem;
+	opacity: 0;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.mem-th[data-active="true"] .mem-th__caret {
+	opacity: 1;
+}
+.mem-th__caret[data-dir="asc"] {
+	transform: rotate(180deg);
+}
+
+.mem-table tbody td {
+	padding: var(--space-3);
+	border-block-end: var(--hairline);
+	vertical-align: middle;
+}
+.mem-row {
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.mem-row:hover td {
+	background: color-mix(in srgb, var(--on-surface) 3.5%, transparent);
+}
+.mem-row[data-viewer="true"] td {
+	background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.mem-col--actions {
+	inline-size: 3rem;
+	text-align: end;
+}
+.mem-col--email {
+	max-inline-size: 15rem;
+}
+
+@media (max-width: 900px) {
+	.mem-col--email {
+		display: none;
+	}
+}
+/* #endregion */
+
+/* #region Card grid */
+.mem-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+	gap: var(--space-3);
+}
+.mem-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+	box-shadow: var(--elevation-low);
+	transition:
+		transform var(--dur-fast) var(--spring-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+.mem-card:hover {
+	transform: translateY(-2px);
+	box-shadow: var(--elevation-medium, var(--elevation-low));
+}
+.mem-card[data-viewer="true"] {
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), var(--elevation-low);
+}
+.mem-card__head {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: start;
+	gap: var(--space-3);
+}
+.mem-card__id {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-inline-size: 0;
+}
+.mem-card__role {
+	margin-block-start: 2px;
+}
+.mem-card__actions {
+	margin-inline-start: auto;
+}
+.mem-card__assign {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	min-block-size: 1.5rem;
+}
+.mem-card__foot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+.mem-card__contact {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--text-secondary);
+	font-size: 0.78rem;
+	text-decoration: none;
+	min-inline-size: 0;
+}
+.mem-card__contact:hover {
+	color: var(--primary);
+}
+.mem-card__contact-email {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mem-card__foot-icon {
+	display: inline-flex;
+	font-size: 0.95rem;
+	flex: none;
+}
+.mem-card__meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.mem-card__joined {
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Actions menu (Popover content) */
+.mem-menu-pop .ui-popover__content,
+.mem-menu-pop {
+	padding: var(--space-1);
+}
+.mem-menu {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 12rem;
+}
+.mem-menu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.85rem;
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.mem-menu__item:hover {
+	background: color-mix(in srgb, var(--on-surface) 7%, transparent);
+}
+.mem-menu__item[data-danger="true"] {
+	color: var(--danger);
+}
+.mem-menu__item[data-danger="true"]:hover {
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.mem-menu__icon {
+	display: inline-flex;
+	font-size: 1.05rem;
+	color: currentColor;
+}
+.mem-menu__item:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+/* #endregion */
+
+/* #region Dialogs (edit + invite) */
+.mem-dialog__foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+.mem-editform {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+.mem-editform__who {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+.mem-editform__whotext {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-inline-size: 0;
+}
+.mem-editform__name {
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.mem-editform__email {
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+}
+
+.mem-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.mem-field__label {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.mem-field__hint {
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+
+.mem-tabs {
+	display: flex;
+	gap: var(--space-4);
+	margin-block-end: var(--space-4);
+	border-block-end: var(--hairline);
+}
+.mem-tab {
+	position: relative;
+	padding: var(--space-2) 0;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.88rem;
+	font-weight: 560;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+.mem-tab::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 999px 999px 0 0;
+	background: var(--primary);
+	transform: scaleX(0);
+	transition: transform var(--dur-fast) var(--spring-standard);
+}
+.mem-tab:hover {
+	color: var(--on-surface);
+}
+.mem-tab[data-active="true"] {
+	color: var(--primary);
+}
+.mem-tab[data-active="true"]::after {
+	transform: scaleX(1);
+}
+.mem-tab:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.mem-invite__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+.mem-invite__row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-3);
+}
+@media (max-width: 520px) {
+	.mem-invite__row {
+		grid-template-columns: 1fr;
+	}
+}
+
+.mem-pending__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.mem-pending__item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+.mem-pending__main {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.mem-pending__email {
+	font-weight: 560;
+	color: var(--on-surface);
+	font-size: 0.85rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.mem-pending__meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+.mem-pending__age {
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+.mem-pending__actions {
+	display: inline-flex;
+	gap: 2px;
+	flex: none;
+}
+/* #endregion */
+
+/* #region Empty state */
+.mem-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+}
+.mem-empty__title {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 620;
+	color: var(--on-surface);
+}
+.mem-empty__note {
+	margin: 0;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	max-inline-size: 26rem;
+}
+/* #endregion */
+
+/* #region Utility */
+.ui-visually-hidden {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.mem-card,
+	.mem-tab::after,
+	.mem-th__caret {
+		transition: none;
+	}
+	.mem-card:hover {
+		transform: none;
+	}
+}
+/* #endregion */

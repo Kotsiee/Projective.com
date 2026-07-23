@@ -8,6 +8,7 @@ import { resolveViewPage } from "@features/view/core/view-ssr.ts";
  * Explore click-matrix target for items opened FROM a profile page (vs the public `/view/[id]`). Same
  * Amazon-style {@link EntityViewScreen}, rendered inside the `[handle]` profile shell with the sidebar
  * action lane (resolved by `viewLaneFor` in the `[handle]` layout) and back links honouring the handle.
+ * Its session-schedule leaf lives alongside as `[item]/schedule.tsx`.
  */
 export const handler = define.handlers({
 	GET(ctx) {

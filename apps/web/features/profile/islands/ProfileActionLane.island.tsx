@@ -13,7 +13,8 @@ import {
 	TAB_LABEL,
 	tabHref,
 } from "../core/profile-model.ts";
-import { editMode, following } from "../core/profile-state.ts";
+import { editMode, following, quickMessageOpen } from "../core/profile-state.ts";
+import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
 import type { ProfileView } from "../types/profile-types.ts";
 
 /**
@@ -178,7 +179,12 @@ export default function ProfileActionLane(
 				onClick: () => (following.value = !isFollowing),
 				on: isFollowing,
 			},
-			{ key: "message", label: "Message", icon: <ProfileIcon name="message" />, href: "/messages" },
+			{
+				key: "message",
+				label: "Message",
+				icon: <ProfileIcon name="message" />,
+				onClick: () => (quickMessageOpen.value = true),
+			},
 			...(seller
 				? [{ key: "hire", label: "Hire", icon: <ProfileIcon name="hire" />, href: hireHref }]
 				: []),
@@ -253,7 +259,11 @@ export default function ProfileActionLane(
 					{mgmt.map((tab) => (
 						<a
 							key={tab}
-							class={cls("ui-nav-item", "pf-laneitem", p === tabHref(profile.handle, tab) && "ui-nav-item--active")}
+							class={cls(
+								"ui-nav-item",
+								"pf-laneitem",
+								p === tabHref(profile.handle, tab) && "ui-nav-item--active",
+							)}
 							href={tabHref(profile.handle, tab)}
 							aria-current={p === tabHref(profile.handle, tab) ? "page" : undefined}
 						>
@@ -268,18 +278,24 @@ export default function ProfileActionLane(
 						class={cls("ui-nav-item", "pf-laneitem", p === profileRoot && "ui-nav-item--active")}
 						href={profileRoot}
 					>
-						<span class="ui-nav-item__icon" aria-hidden="true"><ProfileIcon name="overview" /></span>
+						<span class="ui-nav-item__icon" aria-hidden="true">
+							<ProfileIcon name="overview" />
+						</span>
 						<span class="ui-nav-item__label">Profile</span>
 					</a>
 					<a
 						class={cls("ui-nav-item", "pf-laneitem", onAvailability && "ui-nav-item--active")}
 						href={availHref}
 					>
-						<span class="ui-nav-item__icon" aria-hidden="true"><ProfileIcon name="availability" /></span>
+						<span class="ui-nav-item__icon" aria-hidden="true">
+							<ProfileIcon name="availability" />
+						</span>
 						<span class="ui-nav-item__label">Availability</span>
 					</a>
 					<a class="ui-nav-item pf-laneitem" href="/settings">
-						<span class="ui-nav-item__icon" aria-hidden="true"><ProfileIcon name="settings" /></span>
+						<span class="ui-nav-item__icon" aria-hidden="true">
+							<ProfileIcon name="settings" />
+						</span>
 						<span class="ui-nav-item__label">Settings</span>
 					</a>
 					<button
@@ -287,7 +303,9 @@ export default function ProfileActionLane(
 						class="ui-nav-item pf-laneitem pf-laneitem--primary"
 						onClick={() => (editMode.value = false)}
 					>
-						<span class="ui-nav-item__icon" aria-hidden="true"><ProfileIcon name="edit" /></span>
+						<span class="ui-nav-item__icon" aria-hidden="true">
+							<ProfileIcon name="edit" />
+						</span>
 						<span class="ui-nav-item__label">Done editing</span>
 					</button>
 				</nav>
@@ -326,13 +344,14 @@ export default function ProfileActionLane(
 						<ProfileIcon name={isFollowing ? "following" : "follow"} class="pf-lanebtn__icon" />
 						<span>{isFollowing ? "Following" : "Follow"}</span>
 					</button>
-					<a
+					<button
+						type="button"
 						class={cls("pf-lanebtn", !seller && "pf-lanebtn--primary")}
-						href="/messages"
+						onClick={() => (quickMessageOpen.value = true)}
 					>
 						<ProfileIcon name="message" class="pf-lanebtn__icon" />
 						<span>Message</span>
-					</a>
+					</button>
 				</div>
 				{seller
 					? (
@@ -348,86 +367,92 @@ export default function ProfileActionLane(
 	// #endregion
 
 	return (
-		<div class="pf-lane">
-			{/* Collapsed icon rail — CSS reveals it only at the narrow rail density. */}
-			<nav class="pf-lane__rail" aria-label="Profile actions">
-				<div class="pf-lane__rail-group">
-					{railActions.map(railBtn)}
-				</div>
-				<div class="pf-lane__rail-group pf-lane__rail-group--bottom">
-					<Tooltip content="Expand lane" placement="right">
-						<button
-							type="button"
-							class="pf-railbtn pf-railbtn--toggle"
-							data-collapsed="true"
-							aria-label="Expand lane"
-							aria-pressed={true}
-							onClick={() => setLaneCollapsed(false)}
-						>
-							<SidebarToggleIcon />
-						</button>
-					</Tooltip>
-				</div>
-			</nav>
+		<>
+			<div class="pf-lane">
+				{/* Collapsed icon rail — CSS reveals it only at the narrow rail density. */}
+				<nav class="pf-lane__rail" aria-label="Profile actions">
+					<div class="pf-lane__rail-group">
+						{railActions.map(railBtn)}
+					</div>
+					<div class="pf-lane__rail-group pf-lane__rail-group--bottom">
+						<Tooltip content="Expand lane" placement="right">
+							<button
+								type="button"
+								class="pf-railbtn pf-railbtn--toggle"
+								data-collapsed="true"
+								aria-label="Expand lane"
+								aria-pressed="true"
+								onClick={() => setLaneCollapsed(false)}
+							>
+								<SidebarToggleIcon />
+							</button>
+						</Tooltip>
+					</div>
+				</nav>
 
-			{/* Expanded stack. */}
-			<div class="pf-lane__full">
-				<div class="pf-lane__header">
-					{/* Left: a Back link (proj-detail__back style) only when arriving from Explore; otherwise
-					    nothing — no "Profile" title. The header actions right-align regardless. */}
-					{fromExplore.value
-						? (
-							<a class="pf-lane__back" href="/explore" aria-label="Back to explore">
-								<ProfileIcon name="back" class="pf-lane__back-icon" />
-								<span>Back</span>
-							</a>
-						)
-						: null}
-					<div class="pf-lane__header-actions">
-						<Tooltip content="Share profile" placement="bottom">
-							<button
-								type="button"
-								class="pf-lane__headbtn"
-								aria-label="Share profile"
-								onClick={share}
-							>
-								<ProfileIcon name="share" />
-							</button>
-						</Tooltip>
-						<Tooltip content={favorited.value ? "Remove favourite" : "Favourite"} placement="bottom">
-							<button
-								type="button"
-								class="pf-lane__headbtn"
-								data-on={favorited.value ? "true" : undefined}
-								aria-pressed={favorited.value}
-								aria-label={favorited.value ? "Remove from favourites" : "Add to favourites"}
-								onClick={() => (favorited.value = !favorited.value)}
-							>
-								<ProfileIcon name="star" />
-							</button>
-						</Tooltip>
-						<Popover
-							open={menuOpen}
-							placement="bottom-end"
-							avoid={SHELL_AVOID}
-							allowOverflow={["bottom"]}
-							trigger={(api) => (
+				{/* Expanded stack. */}
+				<div class="pf-lane__full">
+					<div class="pf-lane__header">
+						{
+							/* Left: a Back link (proj-detail__back style) only when arriving from Explore; otherwise
+					    nothing — no "Profile" title. The header actions right-align regardless. */
+						}
+						{fromExplore.value
+							? (
+								<a class="pf-lane__back" href="/explore" aria-label="Back to explore">
+									<ProfileIcon name="back" class="pf-lane__back-icon" />
+									<span>Back</span>
+								</a>
+							)
+							: null}
+						<div class="pf-lane__header-actions">
+							<Tooltip content="Share profile" placement="bottom">
 								<button
 									type="button"
-									ref={api.ref as RefObject<HTMLButtonElement>}
 									class="pf-lane__headbtn"
-									data-open={api.expanded ? "true" : undefined}
-									aria-label="More actions"
-									aria-haspopup="menu"
-									aria-expanded={api.expanded}
-									aria-controls={api.panelId}
-									onClick={api.toggle}
+									aria-label="Share profile"
+									onClick={share}
 								>
-									<ProfileIcon name="kebab" />
+									<ProfileIcon name="share" />
 								</button>
-							)}
-						>
-							<div class="pf-lane__menu" role="menu" aria-label={`Actions for ${profile.name}`}>
+							</Tooltip>
+							<Tooltip
+								content={favorited.value ? "Remove favourite" : "Favourite"}
+								placement="bottom"
+							>
+								<button
+									type="button"
+									class="pf-lane__headbtn"
+									data-on={favorited.value ? "true" : undefined}
+									aria-pressed={favorited.value}
+									aria-label={favorited.value ? "Remove from favourites" : "Add to favourites"}
+									onClick={() => (favorited.value = !favorited.value)}
+								>
+									<ProfileIcon name="star" />
+								</button>
+							</Tooltip>
+							<Popover
+								open={menuOpen}
+								placement="bottom-end"
+								class="pf-menu"
+								avoid={SHELL_AVOID}
+								allowOverflow={["bottom"]}
+								trigger={(api) => (
+									<button
+										type="button"
+										ref={api.ref as RefObject<HTMLButtonElement>}
+										class="pf-lane__headbtn"
+										data-open={api.expanded ? "true" : undefined}
+										aria-label="More actions"
+										aria-haspopup="menu"
+										aria-expanded={api.expanded}
+										aria-controls={api.panelId}
+										onClick={api.toggle}
+									>
+										<ProfileIcon name="kebab" />
+									</button>
+								)}
+							>
 								<button
 									type="button"
 									role="menuitem"
@@ -464,29 +489,32 @@ export default function ProfileActionLane(
 											<span>Report profile</span>
 										</button>
 									)}
-							</div>
-						</Popover>
+							</Popover>
+						</div>
+					</div>
+
+					<div class="pf-lane__scroll">
+						{inEdit ? managementNav() : actionStack()}
+					</div>
+
+					<div class="pf-lane__footer">
+						<Tooltip content="Collapse lane" placement="top">
+							<button
+								type="button"
+								class="pf-lane__collapse"
+								aria-label="Collapse lane"
+								aria-pressed={false}
+								onClick={() => setLaneCollapsed(true)}
+							>
+								<SidebarToggleIcon />
+							</button>
+						</Tooltip>
 					</div>
 				</div>
-
-				<div class="pf-lane__scroll">
-					{inEdit ? managementNav() : actionStack()}
-				</div>
-
-				<div class="pf-lane__footer">
-					<Tooltip content="Collapse lane" placement="top">
-						<button
-							type="button"
-							class="pf-lane__collapse"
-							aria-label="Collapse lane"
-							aria-pressed={false}
-							onClick={() => setLaneCollapsed(true)}
-						>
-							<SidebarToggleIcon />
-						</button>
-					</Tooltip>
-				</div>
 			</div>
-		</div>
+
+			{/* The floating quick-message composer (task §3) — opened by the Message triggers. */}
+			<ProfileMessagePopover profile={profile} />
+		</>
 	);
 }

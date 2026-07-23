@@ -1,5 +1,7 @@
 import type { ComponentChildren } from "preact";
 import ViewActionLane from "../islands/ViewActionLane.island.tsx";
+import ProjectViewLane from "../islands/ProjectViewLane.island.tsx";
+import ArticleTocLane from "../islands/ArticleTocLane.island.tsx";
 import { resolveViewPage } from "./view-ssr.ts";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
@@ -13,6 +15,11 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * Matches BOTH the public `/view/[id]` and the profile-scoped `/[handle]/view/[id]` (never the
  * `/view/[id]/schedule` calendar leaf, which fills the region itself). Returns `null` — the shell
  * renders no aside/lane — on every other route, or when the item id resolves to nothing.
+ *
+ * The lane is DISPATCHED by the resolved item's type: a project gets the {@link ProjectViewLane}
+ * (finance/metric summary + stage quick-jumps), an article the {@link ArticleTocLane} (interactive Table
+ * of Contents), and everything else the transactional {@link ViewActionLane}. All three reuse the same
+ * `pf-lane` skeleton, so they drop into the guest aside / authed lane identically.
  */
 export function viewLaneFor(url: URL, authed: boolean): ComponentChildren | null {
 	const segments = url.pathname.split("/").filter(Boolean);
@@ -33,6 +40,18 @@ export function viewLaneFor(url: URL, authed: boolean): ComponentChildren | null
 	const { view } = resolveViewPage(id);
 	if (!view) return null;
 
+	if (view.project) {
+		return <ProjectViewLane item={view.item} project={view.project} authed={authed} ctx={ctx} />;
+	}
+	if (view.article) {
+		return (
+			<ArticleTocLane
+				toc={view.article.toc}
+				readLabel={`${view.article.readMinutes} min read`}
+			/>
+		);
+	}
+
 	return (
 		<ViewActionLane
 			item={view.item}
@@ -40,6 +59,8 @@ export function viewLaneFor(url: URL, authed: boolean): ComponentChildren | null
 			trust={view.trust}
 			authed={authed}
 			ctx={ctx}
+			// A stage-showcase service (Pipeline / One-Off) gets the Projects-style stage-jump nav.
+			stages={view.service?.showcaseStages ? view.service.stages : undefined}
 		/>
 	);
 }

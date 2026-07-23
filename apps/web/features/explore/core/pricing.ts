@@ -53,7 +53,8 @@ const PIPELINE_HIGH = 2.0;
  * - **Pipeline** — a per-ticket RANGE, not a single figure: the standard `ticketPrice` scaled by the
  *   low (`0.5×`) and high (`2.0×`) workload intensity, e.g. `$120 – $480` with the `ticket` unit.
  * - **Session** — a per-session price, e.g. `$180` with the `session` unit.
- * - **One-Off** (or missing unit data) — the fixed `price` string as-is, no unit.
+ * - **Group Session** — a per-attendee price, e.g. `$90` with the `seat` unit.
+ * - **One-Off / Direct Deliverable** (or missing unit data) — the fixed `price` string as-is, no unit.
  *
  * `unit`, when present, is rendered as a muted `/ ticket` · `/ session` suffix by the caller.
  */
@@ -65,6 +66,9 @@ export function servicePricing(item: ServiceItem): { amount: string; unit?: stri
 	}
 	if (item.serviceType === "Session" && item.sessionPrice) {
 		return { amount: money(item.sessionPrice), unit: "session" };
+	}
+	if (item.serviceType === "Group Session" && item.sessionPrice) {
+		return { amount: money(item.sessionPrice), unit: "seat" };
 	}
 	return { amount: item.price };
 }

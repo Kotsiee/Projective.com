@@ -32,8 +32,29 @@ export type FieldSize = "sm" | "md" | "lg";
  */
 export type Severity = "primary" | "secondary" | "success" | "info" | "warning" | "help" | "danger";
 
-/** Validation-oriented subset used by inputs for the invalid outline + `aria-invalid`. */
-export type FieldStatus = "default" | "invalid" | "success" | "warning";
+/**
+ * Validation-oriented subset used by inputs for the coloured outline + `aria-invalid`.
+ *
+ * Two of these encode the platform's two-tier **creation gate** (root CLAUDE.md — the "quick to
+ * onboard, slow to set up" rule): a field is highlighted by *when* it is needed, not only by whether
+ * it is malformed.
+ *  - `required` — **RED (initial-creation gate).** The field is needed *right now* to create the base
+ *    record (e.g. a Project Name). Drives the danger ramp + `aria-invalid`.
+ *  - `gate` — **AMBER (publishing gate).** The field is optional to save a draft but needed before the
+ *    record can be *published* (posted to Explore / opened for hiring) — e.g. Description, Budget,
+ *    Stage details. Drives the warning ramp; it is a soft, informative state, so it is NOT
+ *    `aria-invalid`.
+ *
+ * `invalid`/`success`/`warning` remain the generic validity states. Never conveys meaning by hue
+ * alone: consumers pair each with an icon/shape channel for the CVD overlay (§A.5).
+ */
+export type FieldStatus =
+	| "default"
+	| "invalid"
+	| "success"
+	| "warning"
+	| "required"
+	| "gate";
 // #endregion
 
 // #region Surface variant

@@ -122,6 +122,17 @@
 	color: var(--on-surface);
 }
 
+/* Collapsed-rail Add-stage — a subtle primary-tinted action, distinct from the ghost nav icons. */
+.proj-railbtn--add {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.proj-railbtn--add:hover {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
 .proj-railbtn:focus-visible {
 	outline: 3px solid var(--focus-ring);
 	outline-offset: -2px;
@@ -587,12 +598,35 @@
 	align-items: center;
 }
 
+/*
+ * Smooth collapse — animate the panel height via `grid-template-rows: 0fr → 1fr`. The single grid
+ * child (`__body-inner`) must clip its own overflow + carry `min-block-size: 0` so it can shrink to
+ * zero. The `inert` attribute (set in ChannelTree when closed) removes the hidden links from the tab
+ * order + a11y tree; reduced-motion jumps straight to the final state (see §Motion).
+ */
 .proj-chan-group__body {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
+}
+
+.proj-chan-group[data-open="true"] .proj-chan-group__body {
+	grid-template-rows: 1fr;
+}
+
+.proj-chan-group__body-inner {
+	overflow: hidden;
+	min-block-size: 0;
 	display: flex;
 	flex-direction: column;
 	gap: 1px;
 	padding-block: 0.15rem;
 	padding-inline-start: 0.6rem;
+}
+
+/* Trim the vertical padding while collapsed so a closed group has no residual gap. */
+.proj-chan-group:not([data-open="true"]) .proj-chan-group__body-inner {
+	padding-block: 0;
 }
 
 .proj-chan-empty {
@@ -743,6 +777,601 @@
 
 /* #endregion */
 
+/* #region Session-based service sidebars (task §3 — 1-1 + group session layouts) */
+.proj-sess {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding-block-start: var(--space-2);
+}
+
+/* Mini interactive calendar (1-1 session) */
+.sess-cal {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.sess-cal__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.sess-cal__title {
+	font-size: 0.82rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.sess-cal__nav {
+	display: inline-flex;
+	gap: 2px;
+}
+
+.sess-cal__navbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
+	font-size: 0.9rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.sess-cal__navbtn:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.sess-cal__navbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.sess-cal__weekdays,
+.sess-cal__grid {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+}
+
+.sess-cal__wd {
+	text-align: center;
+	font-size: 0.6rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.sess-cal__grid {
+	gap: 2px;
+	margin-block-start: 2px;
+}
+
+.sess-cal__day {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	aspect-ratio: 1 / 1;
+	font: inherit;
+	font-size: 0.7rem;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.sess-cal__day:hover {
+	background: var(--surface-2);
+}
+
+.sess-cal__day:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.sess-cal__day[data-outside="true"] {
+	color: var(--text-tertiary, var(--text-secondary));
+	opacity: 0.5;
+}
+
+.sess-cal__day[data-weekhover="true"] {
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.sess-cal__day[data-today="true"] {
+	font-weight: 700;
+	color: var(--primary);
+}
+
+.sess-cal__day[data-today="true"]::after {
+	content: "";
+	position: absolute;
+	inset-block-end: 3px;
+	inline-size: 3px;
+	block-size: 3px;
+	border-radius: 50%;
+	background: var(--primary);
+}
+
+/* The booked session day — a primary ring so it reads distinctly from the today dot. */
+.sess-cal__day[data-session="true"] {
+	font-weight: 700;
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+
+.sess-cal__day[data-session="true"]::after {
+	display: none;
+}
+
+/* Upcoming-session card */
+.sess-next {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-base, var(--radius-sm));
+}
+
+.sess-next__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.sess-next__icon {
+	display: inline-flex;
+	font-size: 1rem;
+	color: var(--primary);
+}
+
+.sess-next__eyebrow {
+	flex: 1 1 auto;
+	font-size: 0.66rem;
+	font-weight: 650;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.sess-badge {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	padding: 0.1rem 0.45rem;
+	font-size: 0.62rem;
+	font-weight: 650;
+	border-radius: var(--radius-full, 999px);
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.sess-badge[data-tone="confirmed"] {
+	color: var(--success, var(--primary));
+	background: color-mix(in srgb, var(--success, var(--primary)) 14%, transparent);
+}
+
+.sess-badge[data-tone="pending"] {
+	color: var(--warning, var(--primary));
+	background: color-mix(in srgb, var(--warning, var(--primary)) 16%, transparent);
+}
+
+.sess-badge[data-tone="rescheduled"] {
+	color: var(--secondary, var(--primary));
+	background: color-mix(in srgb, var(--secondary, var(--primary)) 14%, transparent);
+}
+
+.sess-next__when {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.sess-next__time {
+	font-size: 0.92rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.sess-next__rel {
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+
+.sess-next__note {
+	margin: 0;
+	font-size: 0.7rem;
+	line-height: 1.35;
+	color: var(--text-secondary);
+}
+
+.sess-next__cta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	margin-block-start: var(--space-1);
+	padding: 0.4rem 0.6rem;
+	font-size: 0.76rem;
+	font-weight: 600;
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+	border-radius: var(--radius-sm);
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.sess-next__cta:hover {
+	background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.sess-next__cta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.sess-next__cta-icon {
+	display: inline-flex;
+	font-size: 0.95rem;
+}
+
+/* Session counter */
+.sess-counter {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.4rem 0.6rem;
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-sm);
+}
+
+.sess-counter__label {
+	font-size: 0.62rem;
+	font-weight: 650;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.sess-counter__value {
+	font-size: 0.76rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.sess-counter__value[data-open="true"] {
+	color: var(--primary);
+}
+
+/* Shared resources / files links */
+.sess-links,
+.sess-channels {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.sess-links__label,
+.sess-channels__label {
+	padding-inline: 0.1rem;
+	font-size: 0.62rem;
+	font-weight: 650;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.sess-link {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.4rem 0.5rem;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.sess-link:hover {
+	background: var(--surface-2);
+}
+
+.sess-link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.sess-link__icon {
+	flex: none;
+	display: inline-flex;
+	font-size: 1rem;
+	color: var(--text-secondary);
+}
+
+.sess-link__body {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.sess-link__name {
+	font-size: 0.78rem;
+}
+
+.sess-link__sub {
+	font-size: 0.64rem;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sess-channels__list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+/* Level / proficiency tag pill (sub-groups) */
+.sess-tag {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	padding: 0.05rem 0.4rem;
+	font-size: 0.6rem;
+	font-weight: 650;
+	letter-spacing: 0.02em;
+	border-radius: var(--radius-full, 999px);
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.sess-tag[data-level="beginner"] {
+	color: var(--success, var(--primary));
+	background: color-mix(in srgb, var(--success, var(--primary)) 14%, transparent);
+}
+
+.sess-tag[data-level="intermediate"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.sess-tag[data-level="advanced"] {
+	color: var(--warning, var(--primary));
+	background: color-mix(in srgb, var(--warning, var(--primary)) 14%, transparent);
+}
+
+.sess-tag[data-level="breakout"] {
+	color: var(--secondary, var(--primary));
+	background: color-mix(in srgb, var(--secondary, var(--primary)) 14%, transparent);
+}
+
+/* Group: active sub-group tags */
+.sess-tags {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.sess-tags__label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: 0.62rem;
+	font-weight: 650;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.sess-tags__icon {
+	display: inline-flex;
+	font-size: 0.85rem;
+}
+
+.sess-tags__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.sess-tags__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.sess-tags__name {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	font-size: 0.76rem;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sess-tags__overlap,
+.proj-chan__overlap {
+	flex: none;
+	display: inline-flex;
+	font-size: 0.9rem;
+	color: var(--warning, var(--primary));
+}
+
+/* Sub-group channel rows (extends .proj-chan) */
+.proj-chan--subgroup[data-joined="false"] {
+	opacity: 0.6;
+}
+
+.proj-chan--subgroup[data-joined="false"] .proj-chan__name {
+	color: var(--text-secondary);
+}
+
+.sess-tree {
+	margin-block-start: var(--space-1);
+}
+
+/* Group: reschedule vote alert */
+.sess-vote {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-3);
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-base, var(--radius-sm));
+}
+
+.sess-vote__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.sess-vote__icon {
+	display: inline-flex;
+	font-size: 0.95rem;
+	color: var(--primary);
+}
+
+.sess-vote__title {
+	flex: 1 1 auto;
+	font-size: 0.78rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.sess-vote__tally {
+	flex: none;
+	font-size: 0.74rem;
+	font-weight: 650;
+	color: var(--primary);
+}
+
+.sess-vote__prompt {
+	margin: 0;
+	font-size: 0.7rem;
+	line-height: 1.35;
+	color: var(--text-secondary);
+}
+
+.sess-vote__track {
+	block-size: 5px;
+	margin-block-start: 2px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	overflow: hidden;
+}
+
+.sess-vote__fill {
+	display: block;
+	block-size: 100%;
+	background: var(--primary);
+	border-radius: inherit;
+	transition: inline-size var(--dur-medium) var(--spring-standard);
+}
+
+.sess-vote__result {
+	font-size: 0.64rem;
+	color: var(--text-secondary);
+}
+
+/* Group: 1-1 continuation CTA */
+.sess-continue {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-base, var(--radius-sm));
+}
+
+.sess-continue[data-ready="true"] {
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.sess-continue__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.sess-continue__icon {
+	display: inline-flex;
+	font-size: 1rem;
+	color: var(--primary);
+}
+
+.sess-continue__title {
+	font-size: 0.8rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+
+.sess-continue__note {
+	margin: 0;
+	font-size: 0.7rem;
+	line-height: 1.35;
+	color: var(--text-secondary);
+}
+
+.sess-continue__cta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.45rem 0.6rem;
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: var(--on-primary);
+	background: var(--primary);
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.sess-continue__cta:hover:not(:disabled) {
+	opacity: 0.9;
+}
+
+.sess-continue__cta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.sess-continue__cta:disabled {
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	cursor: not-allowed;
+}
+
+/* Reduced motion — the vote fill jumps to its final width (§Motion parity). */
+@media (prefers-reduced-motion: reduce) {
+	.sess-vote__fill {
+		transition: none;
+	}
+}
+/* #endregion */
+
 /* #region Sticky footer — horizontal icon view-nav + lane collapse toggle */
 .proj-detail__footer {
 	flex: none;
@@ -754,11 +1383,10 @@
 	border-block-start: var(--hairline);
 }
 
-/* Toggle pinned LEFT, the view links group flush RIGHT. */
+/* Three clusters: collapse toggle (left) · view links + More (pushed right) · Add stage (far right). */
 .proj-viewnav {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: var(--space-2);
 }
 
@@ -768,7 +1396,9 @@
 	justify-content: flex-end;
 	gap: 2px;
 	min-inline-size: 0;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
+	/* Push the view links + Add-stage cluster to the right, leaving the toggle alone on the left. */
+	margin-inline-start: auto;
 }
 
 .proj-viewnav__btn,
@@ -803,6 +1433,41 @@
 .proj-viewnav__btn[data-active="true"] {
 	color: var(--primary);
 	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* "More" overflow trigger — reads active when a folded-away view (Attachments/Finances) is open. */
+.proj-viewnav__more[data-open="true"] {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+/* Add-stage — a clear, filled primary action, set apart from the ghost view icons. */
+.proj-viewnav__add {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 2rem;
+	block-size: 2rem;
+	margin-inline-start: var(--space-1);
+	font-size: 1.05rem;
+	color: var(--on-primary);
+	background: var(--primary);
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.proj-viewnav__add:hover {
+	background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.proj-viewnav__add:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 
 .proj-viewnav__btn:focus-visible,
@@ -1014,13 +1679,16 @@
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
 	.proj-chan-group__chevron,
+	.proj-chan-group__body,
 	.proj-detail__back,
 	.proj-chan,
 	.proj-ctx__desc,
 	.proj-ctx__owner-name,
 	.proj-qfilter,
 	.proj-railbtn,
+	.proj-railbtn--add,
 	.proj-viewnav__btn,
+	.proj-viewnav__add,
 	.proj-viewnav__collapse,
 	.proj-viewnav__collapse .shell-toggle__bar,
 	.proj-railbtn--toggle .shell-toggle__bar {

@@ -1,6 +1,6 @@
 import { defineConfig } from "npm:vite@7.2.2";
 import { fresh } from "@fresh/plugin-vite";
-import { walkSync } from "jsr:@std/fs/walk";
+import { walkSync } from "jsr:@std/fs@^1/walk";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import process from "node:process";
@@ -44,45 +44,61 @@ function discoverFeatureIslands(): string[] {
 
 	return islands;
 }
+
+/**
+ * True for a developer-tools island path. In a PRODUCTION build these are stripped from the island
+ * manifest so the DEV-ONLY Developer Tools (SpeedDial, draggable inspector windows, dev-context
+ * switcher, and the logger's dev branches) never enter the shipped client bundle — the core Dev-Tools
+ * production guardrail. Matches either path separator; discovered islands are `file://` URLs.
+ */
+function isDevToolsIsland(url: string): boolean {
+	return /[/\\]devtools[/\\]/.test(url);
+}
 // #endregion
 
 // #region Vite Configuration
-export default defineConfig({
-	root: "apps/web",
+export default defineConfig(({ mode }) => {
+	const isProduction = mode === "production";
+	// Drop the developer-tools islands from production builds entirely (see isDevToolsIsland).
+	const islandSpecifiers = discoverFeatureIslands().filter(
+		(url) => !isProduction || !isDevToolsIsland(url),
+	);
 
-	plugins: [
-		fresh({
-			islandSpecifiers: [
-				...discoverFeatureIslands(),
-			],
-		}),
-	],
+	return {
+		root: "apps/web",
 
-	server: {
-		fs: {
-			allow: [ROOT],
-		},
-		watch: {
-			ignored: [
-				"**/coverage/**",
-				"**/dist/**",
-				"**/.git/**",
-			],
-		},
-	},
+		plugins: [
+			fresh({
+				islandSpecifiers,
+			}),
+		],
 
-	ssr: {
-		noExternal: true,
-	},
+		server: {
+			fs: {
+				allow: [ROOT],
+			},
+			watch: {
+				ignored: [
+					"**/coverage/**",
+					"**/dist/**",
+					"**/.git/**",
+				],
+			},
+		},
 
-	build: {
-		sourcemap: false,
-		commonjsOptions: {
-			include: [/packages\//, /node_modules/],
+		ssr: {
+			noExternal: true,
 		},
-		rollupOptions: {
-			external: [/node:/, "node:process"],
+
+		build: {
+			sourcemap: false,
+			commonjsOptions: {
+				include: [/packages\//, /node_modules/],
+			},
+			rollupOptions: {
+				external: [/node:/, "node:process"],
+			},
 		},
-	},
+	};
 });
 // #endregion

@@ -1,6 +1,7 @@
 import {
 	EngagementKind,
 	ProjectFormat,
+	ProjectInvolvement,
 	ProjectQuickFilter,
 	ProjectRequestFilter,
 	ProjectScope,
@@ -32,6 +33,7 @@ export const DEFAULT_SORT: ProjectFeedParams["sort"] = "recent";
 export const DEFAULT_PROJECT_PARAMS: ProjectFeedParams = {
 	q: "",
 	view: "projects",
+	involvement: "all",
 	sort: DEFAULT_SORT,
 	scope: "context",
 	scopeType: null,
@@ -89,6 +91,7 @@ export function parseProjectParams(search: string | URLSearchParams): ProjectFee
 	return {
 		q: (sp.get("q") ?? "").trim(),
 		view: one(sp.get("view"), ProjectView.options, "projects"),
+		involvement: one(sp.get("involvement"), ProjectInvolvement.options, "all"),
 		sort: one(sp.get("sort"), ProjectSort.options, DEFAULT_SORT),
 		scope: one(sp.get("scope"), ProjectScope.options, "context"),
 		scopeType: scopeTypeRaw && (ContextType.options as readonly string[]).includes(scopeTypeRaw)
@@ -113,6 +116,7 @@ export function toSearchParams(p: ProjectFeedParams): URLSearchParams {
 	const sp = new URLSearchParams();
 	if (p.q) sp.set("q", p.q);
 	if (p.view !== "projects") sp.set("view", p.view);
+	if (p.involvement !== "all") sp.set("involvement", p.involvement);
 	if (p.sort !== DEFAULT_SORT) sp.set("sort", p.sort);
 	if (p.scope !== "context") sp.set("scope", p.scope);
 	if (p.scopeType) sp.set("scopeType", p.scopeType);

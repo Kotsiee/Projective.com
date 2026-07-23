@@ -1,4 +1,5 @@
 import type { ChannelKind, ProjectDetail } from "../types/projects-types.ts";
+import { isSession, type SessionKind } from "./session-model.ts";
 
 /**
  * channel-view — the pure, DOM-free model behind a project channel/chat view
@@ -39,6 +40,55 @@ export function activeTabOf(pathname: string, base: string): string {
 	const rest = pathname.slice(base.length).replace(/^\/+/, "").split("/")[0] ?? "";
 	const match = CHANNEL_TABS.find((t) => t.seg === rest);
 	return match ? match.key : "chat";
+}
+// #endregion
+
+// #region Tab visibility (Stage Access & Channel Header Tab Visibility)
+/**
+ * The task/deliverable tabs that exist ONLY for a **standard** stage engagement. On a general/team/DM
+ * channel they are hidden entirely; on a stage channel they are gated by viewer role + assignment; and
+ * on ANY session-based service they are hidden completely (a session has no stage submissions/tasks —
+ * task §2). `calendar` is handled separately (session-ONLY), so it is not in this set.
+ */
+export const STAGE_GATED_TAB_KEYS = ["submissions", "tasks"] as const;
+
+/** The viewer capabilities that decide stage-tab visibility (resolved by the caller). */
+export interface ChannelTabAccess {
+	/** The channel's tree group — the gated tabs only ever apply on a `stage` channel. */
+	channelKind: ChannelKind;
+	/**
+	 * The effective service archetype (task §2). A session (`normal`/`group`) shows the Calendar tab and
+	 * hides Tasks/Submissions everywhere; a standard project (`none`) is the reverse.
+	 */
+	sessionKind: SessionKind;
+	/** Client / project owner / admin / manager — always sees the stage surfaces. */
+	isReviewer: boolean;
+	/** Provider-side submitter. */
+	isFreelancer: boolean;
+	/** For a freelancer, whether they are assigned to THIS stage (an unassigned one loses the tabs). */
+	stageAssigned: boolean;
+}
+
+/**
+ * The visible channel tab keys for a viewer (the Channel Header Tab Visibility Matrix — task §2).
+ *
+ * - `Chat` / `Files` / `Members` — always shown.
+ * - `Calendar` — shown ONLY for a session-based service (any channel); hidden for standard projects.
+ * - `Tasks` / `Submissions` — hidden completely for any session; on a standard project they appear only
+ *   on a **stage** channel AND only for a reviewer (client/admin/manager) or a freelancer assigned to
+ *   that stage — a freelancer not part of the stage loses them.
+ */
+export function visibleChannelTabKeys(access: ChannelTabAccess): string[] {
+	const session = isSession(access.sessionKind);
+	const stageGated = new Set<string>(STAGE_GATED_TAB_KEYS);
+	const showStageTabs = !session && access.channelKind === "stage" &&
+		(access.isReviewer || (access.isFreelancer && access.stageAssigned));
+
+	return CHANNEL_TABS.filter((t) => {
+		if (t.key === "calendar") return session;
+		if (stageGated.has(t.key)) return showStageTabs;
+		return true;
+	}).map((t) => t.key);
 }
 // #endregion
 

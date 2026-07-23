@@ -18,6 +18,7 @@ export const SubmissionsService = {
 		if (params.dir) qs.set("dir", params.dir);
 		if (params.kinds && params.kinds.length > 0) qs.set("kinds", params.kinds.join(","));
 		if (params.query) qs.set("query", params.query);
+		if (params.asFreelancer !== undefined) qs.set("asFreelancer", params.asFreelancer ? "1" : "0");
 		if (params.cursor) qs.set("cursor", params.cursor);
 		if (params.limit) qs.set("limit", String(params.limit));
 		return getProjects<{ page: SubmissionListPage }>(`/api/projects/submissions?${qs.toString()}`);

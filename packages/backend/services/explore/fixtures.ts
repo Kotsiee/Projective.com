@@ -374,6 +374,28 @@ const SERVICE_SEED: Array<
 		"A booked 1:1 call — a working editor walks your portfolio and leaves a written action plan.",
 		"1499750310107-5fef28a66643",
 	],
+	[
+		"packaging-art-direction",
+		"Packaging art direction",
+		"ren",
+		"$1,900",
+		"7-day delivery",
+		"branding",
+		"Direct Deliverable",
+		"A single, self-contained packaging scope: art direction, dielines, and print-ready files from a defined team.",
+		"1553456558-aff63285bdd1",
+	],
+	[
+		"design-systems-workshop",
+		"Design systems workshop",
+		"maris",
+		"$90",
+		"2-hour class",
+		"product",
+		"Group Session",
+		"A live, multi-seat workshop: build a token-driven design system alongside a small cohort, seats sold per attendee.",
+		"1515169067868-5387ec356754",
+	],
 ];
 
 /**
@@ -386,6 +408,7 @@ const SERVICE_UNIT_PRICE: Record<string, { ticketPrice?: number; sessionPrice?: 
 	"design-system-foundation": { ticketPrice: 180 },
 	"realtime-mvp-build": { ticketPrice: 320 },
 	"portfolio-review-session": { sessionPrice: 180 },
+	"design-systems-workshop": { sessionPrice: 90 },
 };
 
 export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
@@ -410,7 +433,18 @@ export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 );
 
 const PROJECT_SEED: Array<
-	[string, string, keyof typeof OWNERS, string, string, string[], string[], string, string]
+	[
+		string,
+		string,
+		keyof typeof OWNERS,
+		string,
+		string,
+		string[],
+		string[],
+		string,
+		string,
+		"pipeline" | "one-off",
+	]
 > = [
 	[
 		"helia-wallet-redesign",
@@ -422,6 +456,7 @@ const PROJECT_SEED: Array<
 		["Discovery", "Flows & IA", "Hi-fi design", "Build", "QA & handoff"],
 		"hiring",
 		"Reimagine the Helia consumer wallet end-to-end — a research-backed redesign of onboarding, transfers, and card management, delivered as production-ready screens and a coded front end.",
+		"pipeline",
 	],
 	[
 		"atlas-analytics-platform",
@@ -433,6 +468,7 @@ const PROJECT_SEED: Array<
 		["Data model", "API layer", "Dashboards", "Realtime", "Hardening"],
 		"in-progress",
 		"Build the Atlas analytics platform: a multi-tenant dashboard suite over a streaming data model, with drill-downs, alerting, and a visualisation kit that scales to millions of rows.",
+		"pipeline",
 	],
 	[
 		"verdant-brand-refresh",
@@ -444,6 +480,7 @@ const PROJECT_SEED: Array<
 		["Audit", "Territory", "Identity", "Guidelines"],
 		"hiring",
 		"A full brand refresh for Verdant — audit the current identity, explore territories, and land a flexible logo system, palette, illustration language, and guidelines the team can run with.",
+		"one-off",
 	],
 	[
 		"loop-mobile-app",
@@ -455,6 +492,7 @@ const PROJECT_SEED: Array<
 		["Scoping", "Design", "iOS build", "Android build", "Launch"],
 		"planning",
 		"Ship the Loop mobile app on iOS and Android from a validated prototype — native builds, offline-first sync, and an App Store / Play launch with staged rollouts.",
+		"pipeline",
 	],
 	[
 		"meridian-design-system",
@@ -466,11 +504,15 @@ const PROJECT_SEED: Array<
 		["Foundations", "Components", "Docs site", "Adoption"],
 		"in-progress",
 		"Stand up the Meridian design system — tokens and foundations, a governed component library, a searchable docs site, and a migration path that gets product teams onto it.",
+		"pipeline",
 	],
 ];
 
 export const PROJECTS: ProjectItem[] = PROJECT_SEED.map(
-	([id, title, owner, stage, budget, roles, phases, _stageKey, description], i) => ({
+	(
+		[id, title, owner, stage, budget, roles, phases, _stageKey, description, classification],
+		i,
+	) => ({
 		id: `pj-${id}`,
 		type: "projects",
 		title,
@@ -478,6 +520,7 @@ export const PROJECTS: ProjectItem[] = PROJECT_SEED.map(
 		org: OWNERS[owner].name,
 		stage,
 		budget,
+		classification,
 		roles,
 		phases,
 		summary: description,

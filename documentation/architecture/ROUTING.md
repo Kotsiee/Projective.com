@@ -40,9 +40,10 @@ Parenthesized folders group routes **without** adding a URL segment:
 | top-level dynamic | `[handle]/index.tsx`                       | `/:handle` (profile Overview)   |
 | profile tabs      | `[handle]/[tab].tsx`                        | `/:handle/:tab` (one dynamic route serves every entity-conditional tab — services · products · projects · portfolio · education · experience · teams · businesses · articles · reviews · members) |
 | profile static    | `[handle]/availability.tsx`                | `/:handle/availability` (FULL-PAGE Availability calendar — its OWN layout, NOT the profile chrome; `_layout` special-cases the `availability` segment to bypass the header/tabs/meta-rail; a static sibling wins over `[tab]`) |
-| profile item view | `[handle]/view/[item].tsx`                 | `/:handle/view/:id` (profile-scoped Explore item viewer) |
+| profile item view | `[handle]/view/[item]/index.tsx`           | `/:handle/view/:id` (profile-scoped Explore item viewer; was the flat `view/[item].tsx`, now a dir to host the schedule leaf) |
+| profile entity schedule | `[handle]/view/[item]/schedule.tsx`  | `/:handle/view/:id/schedule` (profile-scoped session schedule; `_layout` special-cases the `view` → `schedule` segment to a full-page calendar, bypassing the profile chrome, mirroring `availability`) |
 | entity view (public) | `(public)/view/[entity]/index.tsx`      | `/view/:id` (public Explore item viewer; was the flat `view/[entity].tsx`, now a dir to host the schedule leaf) |
-| entity schedule   | `(public)/view/[entity]/schedule.tsx`      | `/view/:id/schedule` (session-based service schedule — recurring slots + attendee counts) |
+| entity schedule   | `(public)/view/[entity]/schedule.tsx`      | `/view/:id/schedule` (session-based service schedule — recurring slots + attendee counts; reached from the Entity View "Book a session" CTA for Session-format services) |
 
 ## Global routing rules (canonical link shapes)
 

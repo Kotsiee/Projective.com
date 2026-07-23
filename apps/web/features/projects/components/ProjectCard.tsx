@@ -1,17 +1,20 @@
 import type { JSX, RefObject, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { Avatar } from "@projective/ui/display";
-import { Popover } from "@projective/ui/feedback";
+import { Popover, Tooltip } from "@projective/ui/feedback";
 import { StatusIcon } from "./StatusIcon.tsx";
 import {
 	ExternalLinkIcon,
 	FlagIcon,
 	KebabIcon,
 	LeaveIcon,
+	OwnerRoleIcon,
 	ShareIcon,
 	StarIcon,
 	TrashIcon,
+	WorkerRoleIcon,
 } from "./glyphs.tsx";
+import { isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectStatus, ProjectSummary } from "../types/projects-types.ts";
 
 /**
@@ -97,6 +100,12 @@ export function ProjectCard(
 	const showDot = item.unread || item.status === "active";
 	const dotTone = item.unread ? "unread" : "active";
 
+	// A very subtle Owner-vs-Worker marker: an authority role (owner/client/admin) owns the engagement;
+	// everyone else contributes work to it. A muted icon on the secondary line, labelled on hover — it
+	// informs without competing with the title (§B.6 icon-first, keep the header uncluttered).
+	const isOwner = isOwnerRole(item.viewerRole);
+	const roleLabel = isOwner ? "You own this project" : "You contribute to this project";
+
 	// Row 2 metadata is format-driven: one-off → a finite progress bar; session → the next session.
 	const isOneOff = item.format === "one_off";
 	const isSession = item.format === "session";
@@ -159,7 +168,18 @@ export function ProjectCard(
 							/>
 						)}
 					</div>
-					<span class="proj-card__owner">{face.name}</span>
+					<span class="proj-card__owner">
+						<Tooltip content={roleLabel} placement="bottom">
+							<span
+								class="proj-card__role"
+								data-role={isOwner ? "owner" : "worker"}
+								aria-label={roleLabel}
+							>
+								{isOwner ? OwnerRoleIcon : WorkerRoleIcon}
+							</span>
+						</Tooltip>
+						<span class="proj-card__owner-name">{face.name}</span>
+					</span>
 				</div>
 
 				<div class="proj-card__actions">

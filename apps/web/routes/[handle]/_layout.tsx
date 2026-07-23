@@ -10,6 +10,7 @@ import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
 import { ProfileAbout } from "@features/profile/components/ProfileAbout.tsx";
 import { ProfileMetaSidebar } from "@features/profile/components/ProfileMetaSidebar.tsx";
 import { viewLaneFor } from "@features/view/core/view-lane-slot.tsx";
+import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import {
 	activeTabOf,
 	defaultTabFor,
@@ -96,8 +97,16 @@ export default define.page(function ProfileLayout(ctx) {
 	// action lane (pricing/CTAs/trust) — resolved from the URL like the public `/view/[id]` — instead of
 	// the profile action lane, and drop the profile header/tabs/split (no sticky-header migration).
 	if (segments[1] === "view") {
+		// The session-schedule leaf (/[handle]/view/[id]/schedule) is a full-page calendar surface —
+		// no lane/footer (like the availability calendar); the schedule island fills the region itself.
+		if (segments[3] === "schedule") {
+			return shell(undefined, undefined, <ctx.Component />, false);
+		}
 		const viewLane = viewLaneFor(ctx.url, authed) ?? lane;
-		return shell(viewLane, undefined, <ctx.Component />);
+		// The Projects view mirrors the profile's scroll-migrated sticky header in the middle-nav band
+		// (null for articles / the generic view — no band).
+		const viewHeader = viewHeaderFor(ctx.url, authed);
+		return shell(viewLane, viewHeader, <ctx.Component />);
 	}
 
 	// The Availability calendar is a full-page, app-like surface — it does NOT use the profile chrome

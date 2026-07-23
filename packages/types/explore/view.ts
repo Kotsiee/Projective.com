@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ExploreItemSchema, ExploreOwnerSchema, RatingTrackSchema } from "./items.ts";
+import {
+	ExploreItemSchema,
+	ExploreOwnerSchema,
+	ProjectClassification,
+	RatingTrackSchema,
+	SkillRefSchema,
+} from "./items.ts";
 
 /**
  * explore.view — the Zod SSOT for the public Entity View page (`/view/[id]`).
@@ -91,6 +97,289 @@ export const EntityReviewSchema = z.object({
 export type EntityReview = z.infer<typeof EntityReviewSchema>;
 // #endregion
 
+// #region Project view — stage flow + finance
+/**
+ * explore.view (projects) — the extra composed data the custom **Projects** view template renders on
+ * top of the base {@link EntityViewSchema}. A project view mirrors the profile page's banner/avatar
+ * chrome (`banner` is the uploader's profile banner, resolved server-side so the two agree) and adds
+ * the interactive Stage Flow (per-stage description, flexible seat/role openings, required skills) plus
+ * a resolved finance summary + key-metric chips for the side nav. Present only when `item.type` is
+ * `projects`; derived deterministically from the project's `classification`/`phases`/`roles`/`budget`.
+ */
+
+/** A stage's lifecycle position in the pipeline — drives the Stage Flow visualizer treatment. */
+export const ProjectStageStatus = z.enum(["completed", "active", "upcoming"]);
+export type ProjectStageStatus = z.infer<typeof ProjectStageStatus>;
+
+/**
+ * A per-ticket price — a single **fixed** amount when `min === max`, otherwise a **min/max range**.
+ * Every seat pool / role prices its tickets this way, so the UI renders one shape for both (`label`
+ * is pre-formatted: `$180 / ticket` for a fixed price, `$120 – $480 / ticket` for a range).
+ */
+export const TicketPriceSchema = z.object({
+	min: z.number(),
+	max: z.number(),
+	/** Pre-formatted display label (`$180 / ticket` or `$120 – $480 / ticket`). */
+	label: z.string(),
+});
+export type TicketPrice = z.infer<typeof TicketPriceSchema>;
+
+/**
+ * How a stage structures its openings: a flat pool of **open seats** (a general description + a shared
+ * ticket price) or named **open roles** (each role carries its own open-seat count + ticket price).
+ */
+export const StageSeatKind = z.enum(["seats", "roles"]);
+export type StageSeatKind = z.infer<typeof StageSeatKind>;
+
+/** One named open role in a stage's Open Roles structure — its title, open-seat count, and ticket price. */
+export const StageRoleSchema = z.object({
+	name: z.string(),
+	/** How many seats this role is recruiting. */
+	openSeats: z.number(),
+	/** The per-ticket price for this role (fixed or a range). */
+	price: TicketPriceSchema,
+});
+export type StageRole = z.infer<typeof StageRoleSchema>;
+
+/** One stage in the project — the unit the Stage Flow visualizer expands. */
+export const ProjectStageSchema = z.object({
+	/** Slug id — the stable in-page anchor the side-nav quick-jumps target. */
+	id: z.string(),
+	/** 1-based order in the pipeline. */
+	index: z.number(),
+	name: z.string(),
+	description: z.string(),
+	status: ProjectStageStatus,
+	/** Which opening structure this stage uses — a general seat pool or named roles. */
+	seatKind: StageSeatKind,
+	/** Open Seats variant only — a general description of who the open seats are for. */
+	seatSummary: z.string().optional(),
+	/** Total open seats — the general pool count (`seats`) or the sum across `roles` (`roles`). */
+	openSeats: z.number(),
+	/** Total seats on this stage (open + filled) — drives the seat-fill meter. */
+	seatsTotal: z.number(),
+	seatsFilled: z.number(),
+	/** Open Roles variant only — the named roles, each with its own open-seat count + ticket price. */
+	roles: z.array(StageRoleSchema),
+	/** The stage-level ticket price — the seat-pool price (`seats`) or the spanning range (`roles`). */
+	price: TicketPriceSchema,
+	/** Required stage skills, rendered as tags. */
+	skills: z.array(SkillRefSchema),
+	/**
+	 * Concrete deliverables produced by this stage — the "what you get" bullets in the expanded card.
+	 * Populated by the service stage showcase (Pipeline / One-Off services); optional so a project
+	 * pipeline that omits them simply doesn't render the block.
+	 */
+	deliverables: z.array(z.string()).optional(),
+	/** Estimated turnaround for this stage (`~1 week`), shown as a stage fact. */
+	turnaround: z.string().optional(),
+	/** A human dependency note (`After Discovery`) — the preceding stage this one follows. */
+	dependency: z.string().optional(),
+});
+export type ProjectStage = z.infer<typeof ProjectStageSchema>;
+
+/** One key-metric chip in the project side nav (iconographic key → glyph). */
+export const ProjectMetricSchema = z.object({
+	icon: z.enum(["stages", "seats", "type", "ticket", "roles"]),
+	label: z.string(),
+	value: z.string(),
+});
+export type ProjectMetric = z.infer<typeof ProjectMetricSchema>;
+
+/** The resolved finance summary shown in the project side nav + main details block. */
+export const ProjectFinanceSchema = z.object({
+	/** The per-ticket price across the project — fixed (One-Off) or a spanning range (Pipeline). */
+	ticketPrice: TicketPriceSchema,
+	/** Aggregate open vs total seats across every stage. */
+	openSeats: z.number(),
+	totalSeats: z.number(),
+});
+export type ProjectFinance = z.infer<typeof ProjectFinanceSchema>;
+
+/** The projects-only extension bundle attached to {@link EntityViewSchema}. */
+export const ProjectViewSchema = z.object({
+	/** The uploader's profile banner (7:2), resolved from the profile projection for chrome parity. */
+	banner: z.string(),
+	/** The uploader's headline/role line, shown under the project title. */
+	ownerHeadline: z.string(),
+	ownerVerified: z.boolean(),
+	/** Pipeline vs One-Off — the prominently displayed project classification. */
+	classification: ProjectClassification,
+	/** The human classification label (`Pipeline` / `One-Off`). */
+	classificationLabel: z.string(),
+	/** Current stage label — Pipeline only (One-Off projects have no stage progression). */
+	stage: z.string().optional(),
+	stages: z.array(ProjectStageSchema),
+	finance: ProjectFinanceSchema,
+	metrics: z.array(ProjectMetricSchema),
+});
+export type ProjectViewExtra = z.infer<typeof ProjectViewSchema>;
+// #endregion
+
+// #region Article view — rich body + TOC + assets + comments
+/**
+ * explore.view (articles) — the extra composed data the custom **Articles** view template renders. The
+ * article body is a stream of structured {@link ArticleBlock}s (headings, prose, inline images,
+ * embedded YouTube, audio players) — NOT raw HTML — so the Table of Contents is derived server-side
+ * from the heading blocks into `toc` (stable slug anchors), SSR-painted, then made interactive
+ * (smooth-scroll + scrollspy) client-side. `assets` collects every media asset for the bottom gallery
+ * carousel; `comments` backs the discussion section. Present only when `item.type` is `articles`.
+ */
+
+/** The block kinds the rich article body renders. */
+export const ArticleBlockKind = z.enum([
+	"heading",
+	"subheading",
+	"paragraph",
+	"quote",
+	"list",
+	"image",
+	"youtube",
+	"audio",
+]);
+export type ArticleBlockKind = z.infer<typeof ArticleBlockKind>;
+
+/** One block in the article body stream. Optional fields are populated per `type`. */
+export const ArticleBlockSchema = z.object({
+	type: ArticleBlockKind,
+	/** heading/subheading: the stable slug anchor (matches a `toc` entry id). */
+	id: z.string().optional(),
+	/** heading/subheading/paragraph/quote: the text content. */
+	text: z.string().optional(),
+	/** list: the bullet items. */
+	items: z.array(z.string()).optional(),
+	/** image/audio: media source. */
+	src: z.string().optional(),
+	/** image thumbnail / video poster. */
+	thumb: z.string().optional(),
+	alt: z.string().optional(),
+	caption: z.string().optional(),
+	/** youtube: the video id (privacy facade — no third-party JS until the user plays). */
+	videoId: z.string().optional(),
+	/** audio: clip length + waveform envelope + fallback clock. */
+	durationMs: z.number().optional(),
+	durationLabel: z.string().optional(),
+	peaks: z.array(z.number()).optional(),
+	/** audio/embed: display title. */
+	title: z.string().optional(),
+});
+export type ArticleBlock = z.infer<typeof ArticleBlockSchema>;
+
+/** One entry in the derived Table of Contents (level 2 = heading, 3 = subheading). */
+export const ArticleTocEntrySchema = z.object({
+	id: z.string(),
+	text: z.string(),
+	level: z.number(),
+});
+export type ArticleTocEntry = z.infer<typeof ArticleTocEntrySchema>;
+
+/** One media asset in the bottom "media used in this article" gallery carousel. */
+export const ArticleAssetSchema = z.object({
+	kind: z.enum(["image", "video", "audio"]),
+	src: z.string(),
+	thumb: z.string(),
+	label: z.string(),
+	durationLabel: z.string().optional(),
+});
+export type ArticleAsset = z.infer<typeof ArticleAssetSchema>;
+
+/** A reply under a top-level article comment (one level of nesting). */
+export const ArticleReplySchema = z.object({
+	id: z.string(),
+	author: ExploreOwnerSchema,
+	body: z.string(),
+	dateLabel: z.string(),
+	likes: z.number(),
+});
+export type ArticleReply = z.infer<typeof ArticleReplySchema>;
+
+/** A top-level article comment. */
+export const ArticleCommentSchema = z.object({
+	id: z.string(),
+	author: ExploreOwnerSchema,
+	body: z.string(),
+	createdAt: z.string(),
+	dateLabel: z.string(),
+	likes: z.number(),
+	replies: z.array(ArticleReplySchema),
+});
+export type ArticleComment = z.infer<typeof ArticleCommentSchema>;
+
+/** The articles-only extension bundle attached to {@link EntityViewSchema}. */
+export const ArticleViewSchema = z.object({
+	/** The article thumbnail/cover. */
+	thumbnail: z.string(),
+	publishedAt: z.string(),
+	publishedLabel: z.string(),
+	readMinutes: z.number(),
+	topic: z.string(),
+	blocks: z.array(ArticleBlockSchema),
+	toc: z.array(ArticleTocEntrySchema),
+	assets: z.array(ArticleAssetSchema),
+	comments: z.array(ArticleCommentSchema),
+});
+export type ArticleViewExtra = z.infer<typeof ArticleViewSchema>;
+// #endregion
+
+// #region Service view — delivery model, stage showcase, team roles, booking
+/**
+ * explore.view (services) — the extra composed data the **Services** view template renders on top of the
+ * base {@link EntityViewSchema}, resolved from the service's {@link ServiceType} delivery model. Present
+ * only when `item.type` is `services`.
+ *
+ * - **Pipeline / One-Off** → the {@link ServiceViewSchema.stages} showcase (mirrors the Projects view's
+ *   Stage Flow: sequence, per-stage deliverables, turnaround, and dependencies).
+ * - **Direct Deliverable** → no stages; instead {@link ServiceViewSchema.roles} defines the optional
+ *   project-team roles (the right-column "Project Team Roles" block).
+ * - **Session / Group Session** → `bookable` is true, so the side-nav offers the availability-calendar
+ *   toggle; `group` distinguishes a multi-attendee workshop from a 1:1 slot.
+ */
+
+/** The normalised delivery-model key the Services template dispatches on (slug of the {@link ServiceType}). */
+export const ServiceModel = z.enum(["pipeline", "one-off", "direct", "session", "group-session"]);
+export type ServiceModel = z.infer<typeof ServiceModel>;
+
+/**
+ * One defined role in a **Direct Deliverable** service's team breakdown (e.g. Lead Designer, Copywriter):
+ * its title, the skills it covers, and how many of that role the engagement staffs.
+ */
+export const ServiceRoleSchema = z.object({
+	name: z.string(),
+	/** A one-line description of the role's remit. */
+	summary: z.string(),
+	/** The skills / specialisms required for this role, rendered as tags. */
+	skills: z.array(SkillRefSchema),
+	/** How many people fill this role on the engagement (1 unless a role is doubled up). */
+	count: z.number(),
+});
+export type ServiceRole = z.infer<typeof ServiceRoleSchema>;
+
+/** The services-only extension bundle attached to {@link EntityViewSchema}. */
+export const ServiceViewSchema = z.object({
+	/** The normalised delivery model the template dispatches on. */
+	model: ServiceModel,
+	/** The human delivery-model label (`Pipeline` / `Direct Deliverable` / `Group Session` …). */
+	modelLabel: z.string(),
+	/**
+	 * The stage showcase — Pipeline / One-Off only (mirrors the Projects view's Stage Flow). Empty for
+	 * Direct Deliverable / Session / Group Session. `showcaseStages` is the convenience gate.
+	 */
+	showcaseStages: z.boolean(),
+	stages: z.array(ProjectStageSchema),
+	/** Defined project-team roles — Direct Deliverable only (the right-column block). Empty otherwise. */
+	roles: z.array(ServiceRoleSchema),
+	/** Whether the service is booked from a schedule (Session / Group Session) — gates the calendar toggle. */
+	bookable: z.boolean(),
+	/** Whether this is a multi-attendee **Group Session** (vs a 1:1 Session). */
+	group: z.boolean(),
+	/** Group Session only — the attendee cap per session, shown in the booking summary. */
+	seatsPerSession: z.number().optional(),
+	/** Session / Group Session — a one-line summary of the booking format (duration · cadence). */
+	bookingSummary: z.string().optional(),
+});
+export type ServiceViewExtra = z.infer<typeof ServiceViewSchema>;
+// #endregion
+
 // #region Composed page payload
 /**
  * The full composed Entity View page — the payload {@link ExploreBackendService.viewPage} returns and
@@ -112,6 +401,23 @@ export const EntityViewSchema = z.object({
 		summary: ReviewSummarySchema,
 		list: z.array(EntityReviewSchema),
 	}),
+	/**
+	 * Projects-only extension — the Stage Flow, finance summary, key-metric chips, and the uploader's
+	 * banner for the profile-mirroring chrome. Present iff `item.type === "projects"`. The custom
+	 * Projects template reads this; the generic hero/rails/reviews are suppressed for projects.
+	 */
+	project: ProjectViewSchema.optional(),
+	/**
+	 * Articles-only extension — the rich body blocks, derived Table of Contents, media-asset gallery,
+	 * and comments. Present iff `item.type === "articles"`. The custom Articles template reads this.
+	 */
+	article: ArticleViewSchema.optional(),
+	/**
+	 * Services-only extension — the resolved delivery model plus its stage showcase (Pipeline / One-Off),
+	 * defined team roles (Direct Deliverable), or booking flags (Session / Group Session). Present iff
+	 * `item.type === "services"`. The custom Services template reads this.
+	 */
+	service: ServiceViewSchema.optional(),
 });
 export type EntityView = z.infer<typeof EntityViewSchema>;
 // #endregion

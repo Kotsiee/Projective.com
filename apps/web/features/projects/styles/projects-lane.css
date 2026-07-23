@@ -284,26 +284,86 @@
 }
 /* #endregion */
 
-/* #region Utility shortcuts row */
-.proj-shortcuts {
+/* #region Involvement row — the ownership toggle + the quick-filter shortcuts */
+.proj-lane__involvement {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	/* Wrap (never scroll) if the lane is dragged narrow; the row-gap spaces the wrapped shortcuts. */
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+/* Ownership (involvement) segmented control — All · Owner · Working. One calm sliding-highlight
+   segment group, not three separate boxed buttons (§B.4: no boxes on non-interactive chrome). */
+.proj-roletoggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	background: var(--surface-2);
+	border-radius: var(--radius-full, 999px);
+}
+
+/* Icon-only segments (§B.6) — a compact square hit-target so the row stays within the narrow lane. */
+.proj-roletoggle__seg {
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.7rem;
+	block-size: 1.7rem;
+	padding: 0;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-roletoggle__icon {
+	display: inline-flex;
+	font-size: 1rem;
+}
+
+.proj-roletoggle__seg:hover {
+	color: var(--on-surface);
+}
+
+.proj-roletoggle__seg[data-on="true"] {
+	color: var(--on-surface);
+	background: var(--surface);
+	box-shadow: var(--elevation-low, 0 1px 2px rgb(0 0 0 / 0.08));
+}
+
+.proj-roletoggle__seg:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.proj-shortcuts {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
 	gap: var(--space-2);
 }
 
 .proj-shortcuts__group {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.15rem;
+	gap: 0.1rem;
 }
 
 .proj-shortcut {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 1.85rem;
-	block-size: 1.85rem;
+	inline-size: 1.7rem;
+	block-size: 1.7rem;
 	font-size: 0.95rem;
 	color: var(--text-secondary);
 	background: transparent;
@@ -331,34 +391,6 @@
 .proj-shortcut:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
-}
-
-.proj-shortcuts__all {
-	appearance: none;
-	padding: 0.2rem 0.1rem;
-	font: inherit;
-	font-size: 0.75rem;
-	font-weight: 450;
-	color: var(--text-secondary);
-	background: none;
-	border: none;
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-shortcuts__all:hover {
-	color: var(--on-surface);
-}
-
-.proj-shortcuts__all[data-on="true"] {
-	color: var(--primary);
-	font-weight: 600;
-}
-
-.proj-shortcuts__all:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-	border-radius: var(--radius-xs);
 }
 /* #endregion */
 
@@ -908,7 +940,8 @@
 }
 
 @keyframes proj-dot-pulse {
-	0%, 100% {
+	0%,
+	100% {
 		opacity: 1;
 	}
 	50% {
@@ -917,12 +950,44 @@
 }
 
 .proj-card__owner {
+	display: flex;
+	align-items: center;
+	gap: 0.3rem;
 	min-inline-size: 0;
 	font-size: 0.78rem;
 	color: var(--text-secondary);
+}
+
+.proj-card__owner-name {
+	min-inline-size: 0;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* Subtle Owner-vs-Worker marker on the secondary line — a small muted glyph, interactive only for
+   its hover tooltip (pointer-events restored above the stretched link, like the star/kebab). Owner
+   picks up the primary accent, a worker stays neutral; both stay quiet so the header reads calm. */
+.proj-card__role {
+	position: relative;
+	z-index: 1;
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	opacity: 0.7;
+	pointer-events: auto;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.proj-card:hover .proj-card__role {
+	opacity: 1;
+}
+
+.proj-card__role[data-role="owner"] {
+	color: var(--primary);
 }
 
 /* Actions — Star + kebab; revealed ONLY on hover / focus / while the menu is open. */
@@ -1304,7 +1369,7 @@
 .ui-splitter[data-mode="collapsed"] .proj-card__track,
 .ui-splitter[data-mode="collapsed"] .proj-card__session,
 .ui-splitter[data-mode="collapsed"] .proj-card__footer,
-.ui-splitter[data-mode="collapsed"] .proj-shortcuts,
+.ui-splitter[data-mode="collapsed"] .proj-lane__involvement,
 .ui-splitter[data-mode="collapsed"] .proj-modifier,
 .ui-splitter[data-mode="collapsed"] .proj-lane__create-label,
 .ui-splitter[data-mode="collapsed"] .proj-lane__search {
@@ -1344,6 +1409,8 @@
 	.proj-matrix__btn,
 	.proj-iconbtn,
 	.proj-shortcut,
+	.proj-roletoggle__seg,
+	.proj-card__role,
 	.proj-modifier__caret,
 	.proj-card__track-fill,
 	.proj-card__star,

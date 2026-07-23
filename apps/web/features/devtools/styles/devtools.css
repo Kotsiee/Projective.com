@@ -1,0 +1,19 @@
+/*
+ * Developer Tools overlay stacking (dev-*) — DEV-ONLY. Pins the reused `@projective/ui/fields`
+ * SpeedDial to the bottom-right corner and lifts it + its floating windows above all application
+ * chrome (including modals) so they can be used while debugging any surface. The compound selectors
+ * (0,2,0) reliably beat the base component rules (0,1,0) regardless of stylesheet import order;
+ * `--dd-z` still lets the most-recently-touched window rise above its peer. Token-only (uses the
+ * `--z-max` scale ceiling).
+ */
+
+.ui-speed-dial.dev-fab {
+	position: fixed;
+	inset-block-end: var(--space-5);
+	inset-inline-end: var(--space-5);
+	z-index: calc(var(--z-max) - 200);
+}
+
+.ui-draggable-popover.dev-window {
+	z-index: calc(var(--z-max) - 100 + var(--dd-z, 0));
+}

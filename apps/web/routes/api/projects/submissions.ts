@@ -14,7 +14,16 @@ import type { FileKind, FileSortDir, FileSortKey } from "@projective/types/proje
  */
 
 const SORT_KEYS: readonly FileSortKey[] = ["name", "date", "size", "sender", "type"];
-const KINDS: readonly FileKind[] = ["image", "video", "audio", "pdf", "doc", "code", "archive", "file"];
+const KINDS: readonly FileKind[] = [
+	"image",
+	"video",
+	"audio",
+	"pdf",
+	"doc",
+	"code",
+	"archive",
+	"file",
+];
 
 export const handler = define.handlers({
 	GET(ctx) {
@@ -34,6 +43,8 @@ export const handler = define.handlers({
 		const sortRaw = sp.get("sort");
 		const dirRaw = sp.get("dir");
 		const query = sp.get("query") ?? undefined;
+		const asFreelancerRaw = sp.get("asFreelancer");
+		const asFreelancer = asFreelancerRaw === null ? undefined : asFreelancerRaw === "1";
 		const cursor = sp.get("cursor");
 		const limitRaw = sp.get("limit");
 		const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
@@ -56,6 +67,7 @@ export const handler = define.handlers({
 				dir,
 				kinds: kinds.length > 0 ? kinds : undefined,
 				query: query || undefined,
+				asFreelancer,
 				cursor: cursor || null,
 				limit: Number.isFinite(limit) ? limit : undefined,
 			}),

@@ -9,6 +9,7 @@
     "jsr:@fresh/core@^2.2.2": "2.3.3",
     "jsr:@fresh/core@^2.3.3": "2.3.3",
     "jsr:@fresh/plugin-vite@1": "1.1.2",
+    "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/async@^1.4.0": "1.5.0",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
@@ -23,6 +24,7 @@
     "jsr:@std/fmt@^1.0.7": "1.0.10",
     "jsr:@std/fmt@^1.0.8": "1.0.10",
     "jsr:@std/fs@*": "1.0.24",
+    "jsr:@std/fs@1": "1.0.24",
     "jsr:@std/fs@^1.0.19": "1.0.24",
     "jsr:@std/fs@^1.0.24": "1.0.24",
     "jsr:@std/html@^1.0.5": "1.0.7",
@@ -233,7 +235,7 @@
     "@std/testing@1.0.19": {
       "integrity": "f4236172365b216728dc3cc8b5e80a9f4c33083d1e4ede7613d5b25b4014898e",
       "dependencies": [
-        "jsr:@std/assert",
+        "jsr:@std/assert@^1.0.19",
         "jsr:@std/async",
         "jsr:@std/data-structures",
         "jsr:@std/fs@^1.0.24",

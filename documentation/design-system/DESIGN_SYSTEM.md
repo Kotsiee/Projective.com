@@ -343,15 +343,24 @@ verbatim because every component depends only on the token contract (Part A) —
 | **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl |
 | **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                            |
 | **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                 |
-| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                                                                            |
+| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window) (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                    |
 | **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                            |
 | **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                          |
 | **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                            |
 | **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                        |
+| **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                          |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
 > package docs describe existing implementations now re-homed under these sub-paths.
+
+> **Field validation statuses — two-tier creation gate.** Beyond the generic `invalid`/`success`/
+> `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow to
+> set up" gate as two explicit severities: **`required` (RED)** — needed *now* to create the base
+> record (e.g. a Project Name; drives the danger ramp + `aria-invalid`), and **`gate` (AMBER)** —
+> optional to draft but needed to *publish* to Explore / open for hiring (e.g. Description, Budget,
+> Stage details; drives the warning ramp, soft-informative so NOT `aria-invalid`). Both carry a faint
+> tonal fill so an unmet gate reads at a glance in a dense form.
 
 **Implementation status:** `layout` is built and consumed by the app — Box, Container, Grid, Row,
 Column, Stack, AspectRatio, Divider, Separator (`packages/ui/layout/`, zero-JS server components;
@@ -436,8 +445,10 @@ PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
 - **`overlay`** — Portal (in-tree fixed-layer, no `preact/compat`), BodyPortal (a real
   `document.body` DOM portal — still no `preact/compat`, built on Preact core `render` — for anchored
   micro-popups that must escape a transformed ancestor's re-based `position: fixed`; used by Tooltip,
-  HoverCard, and ConfirmPopup), Backdrop, the generic controlled Overlay, HoverCard, and the
-  `usePresence` enter/exit helper.
+  HoverCard, and ConfirmPopup), Backdrop, the generic controlled Overlay, HoverCard, **DraggablePopover**
+  (a non-modal draggable + resizable floating window — Pointer-Events drag with viewport clamping,
+  keyboard move, native resize, `aria-modal="false"`, no backdrop so the page stays interactive; renders
+  through BodyPortal), and the `usePresence` enter/exit helper.
 - **`utils`** — CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal,
   Captcha (dumb mount point), and the directives FocusTrap, Defer, AnimateOnScroll, Ripple.
 

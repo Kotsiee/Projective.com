@@ -41,12 +41,21 @@ export interface ChatFeedProps {
 	channelId: string;
 	/** SSR-resolved latest page, or null when the channel resolved to nothing. */
 	initial: MessagePage | null;
+	/**
+	 * Optional custom older-page loader. When set, load-on-scroll-up calls this instead of the default
+	 * project-channel pager (`MessagesService.page`) — so the SAME feed drives both a project channel
+	 * (`/projects/…/chat`) and a global inbox conversation (`/messages/[id]/chat`, unified by `chatId`).
+	 * Returns the strictly-older page for the cursor, or `null` on failure/exhaustion.
+	 */
+	loadOlder?: (cursor: string) => Promise<MessagePage | null>;
 }
 
 /** Sticky chrome to clear when jumping to a message (top bar + header band + pinned banner). */
 const JUMP_CLEARANCE = 150;
 
-export default function ChatFeed({ projectId, channelId, initial }: ChatFeedProps): JSX.Element {
+export default function ChatFeed(
+	{ projectId, channelId, initial, loadOlder: customLoadOlder }: ChatFeedProps,
+): JSX.Element {
 	// #region State
 	const messages = useSignal<ChatMessage[]>(initial?.messages ?? []);
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
@@ -88,11 +97,15 @@ export default function ChatFeed({ projectId, channelId, initial }: ChatFeedProp
 		const doc = document.scrollingElement ?? document.documentElement;
 		anchorRef.current = doc.scrollHeight;
 		try {
-			const res = await MessagesService.page(projectId, channelId, cursor.value);
-			if (res.ok && res.data) {
-				messages.value = [...res.data.page.messages, ...messages.value];
-				hasMore.value = res.data.page.hasMore;
-				cursor.value = res.data.page.nextCursor;
+			const page = customLoadOlder
+				? await customLoadOlder(cursor.value)
+				: await MessagesService.page(projectId, channelId, cursor.value).then((res) =>
+					res.ok && res.data ? res.data.page : null
+				);
+			if (page) {
+				messages.value = [...page.messages, ...messages.value];
+				hasMore.value = page.hasMore;
+				cursor.value = page.nextCursor;
 			} else {
 				anchorRef.current = null;
 			}

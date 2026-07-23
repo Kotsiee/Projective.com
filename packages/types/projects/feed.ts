@@ -62,6 +62,38 @@ export const ProjectView = z.enum(["projects", "engagements"]);
 export type ProjectView = z.infer<typeof ProjectView>;
 
 /**
+ * The involvement (ownership) axis — a prominent primary control (not a popover facet), orthogonal to
+ * the {@link ProjectView} tab. It separates the two sides of the acting user's engagements:
+ *  - `owner`  — engagements the actor **owns / commissions / administers** (viewer role owner · admin ·
+ *    client). Projects can be owned by an individual or a business.
+ *  - `worker` — engagements the actor **performs work on** as a freelancer / contributor (viewer role
+ *    freelancer · member).
+ *  - `all`    — no ownership narrowing (the resting default).
+ *
+ * Designed so a freelancer who both owns projects (as a client) and works on other clients' projects
+ * can cleanly split the two. Like {@link ProjectView} it is resting view state, not a "dirty" filter.
+ */
+export const ProjectInvolvement = z.enum(["all", "owner", "worker"]);
+export type ProjectInvolvement = z.infer<typeof ProjectInvolvement>;
+
+/** The viewer roles that read as the OWNER side of an engagement (owner · admin · client). */
+const OWNER_VIEWER_ROLES: readonly ProjectViewerRole[] = ["owner", "admin", "client"];
+
+/** Whether a viewer role is an ownership/authority role (owner · admin · client) vs. a worker role. */
+export function isOwnerRole(role: ProjectViewerRole): boolean {
+	return OWNER_VIEWER_ROLES.includes(role);
+}
+
+/** Whether a viewer role satisfies the chosen {@link ProjectInvolvement} axis (`all` always passes). */
+export function matchesInvolvement(
+	role: ProjectViewerRole,
+	involvement: ProjectInvolvement,
+): boolean {
+	if (involvement === "all") return true;
+	return involvement === "owner" ? isOwnerRole(role) : !isOwnerRole(role);
+}
+
+/**
  * The normalised query behind the `/projects` feed. This whole object is what gets cached per
  * context id (client-side, partitioned) so filters reload exactly as the actor left them.
  */
@@ -70,6 +102,8 @@ export const ProjectFeedParamsSchema = z.object({
 	q: z.string(),
 	/** Top-level view tab — Projects vs Client Engagements. */
 	view: ProjectView,
+	/** Ownership axis — owner/client/admin engagements vs. worker/contributor engagements. */
+	involvement: ProjectInvolvement,
 	sort: ProjectSort,
 	scope: ProjectScope,
 	/**

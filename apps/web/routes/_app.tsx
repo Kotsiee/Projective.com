@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { buildScheme, schemeToCss } from "@projective/ui/system";
 import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.island.tsx";
 import ScrollIdle from "@web/features/shell/islands/ScrollIdle.island.tsx";
+import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
 // first paint is correctly themed for either mode with no flash; the DesignSystemRoot island then
@@ -63,6 +64,11 @@ export default define.page(function App({ Component, state }) {
 				<DesignSystemRoot>
 					<Component />
 				</DesignSystemRoot>
+				{
+					/* DEV-ONLY developer tools (speed dial + context switcher + log inspector). Renders null
+				    in production and is excluded from the production island manifest — see DevMount. */
+				}
+				<DevMount context={state.userContext} />
 			</body>
 		</html>
 	);

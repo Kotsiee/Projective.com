@@ -46,6 +46,16 @@ export function isProfileBackendLive(): boolean {
 	return serverEnv().profileBackendLive && isSupabaseConfigured();
 }
 
+/** True when LIVE messaging-backend behaviour is enabled AND Supabase is configured. */
+export function isMessagingBackendLive(): boolean {
+	return serverEnv().messagingBackendLive && isSupabaseConfigured();
+}
+
+/** True when LIVE logging-backend behaviour is enabled AND Supabase is configured. */
+export function isLoggingBackendLive(): boolean {
+	return serverEnv().loggingBackendLive && isSupabaseConfigured();
+}
+
 /**
  * An RLS-scoped client bound to the caller's access token. Every query runs as that user, so their
  * policies decide what they can see/do. Pass the JWT lifted from the session cookie.

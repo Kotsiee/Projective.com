@@ -1,0 +1,533 @@
+/*
+ * Project Preview / Edit chrome (`/projects/[projectId]` + `/edit`). Pure CSS + BEM, token-only. The
+ * showcase BODY reuses the view feature's `project-view.css` verbatim (imported alongside this by the
+ * `ShowcaseStyleAnchor` island); this file adds only the projects-specific chrome: the client's
+ * Preview↔Edit header band, the not-found body state, and the full-page project editor. Separation via
+ * spacing + tonal tints + single hairlines (§B.4) — full borders only on interactive controls.
+ * Responsive + reduced-motion (jump-to-final).
+ */
+
+/* #region Preview / Edit header band (client, in `ui-middle-nav__header`) */
+.proj-pvhead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-header-h, 3rem);
+	padding-inline: var(--space-4);
+	background: var(--surface-1);
+	border-block-end: var(--hairline);
+}
+.proj-pvhead__id {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	min-inline-size: 0;
+	line-height: 1.15;
+}
+.proj-pvhead__eyebrow {
+	font-size: 0.62rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-secondary);
+}
+.proj-pvhead__title {
+	font-size: 0.9rem;
+	font-weight: 650;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Underlined view-mode tabs (§B.4 — no pills; the 2px underline lands on the band's bottom hairline). */
+.proj-pvhead__tabs {
+	display: inline-flex;
+	align-items: stretch;
+	block-size: 100%;
+	flex: none;
+}
+.proj-pvtab {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding-inline: var(--space-3);
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+.proj-pvtab:hover {
+	color: var(--on-surface);
+}
+.proj-pvtab:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
+}
+.proj-pvtab[data-active="true"] {
+	color: var(--on-surface);
+}
+.proj-pvtab::after {
+	content: "";
+	position: absolute;
+	inset-inline: var(--space-2);
+	inset-block-end: -1px;
+	block-size: 2px;
+	background: var(--primary);
+	border-radius: 2px 2px 0 0;
+	transform: scaleX(0);
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+.proj-pvtab[data-active="true"]::after {
+	transform: scaleX(1);
+}
+.proj-pvtab__icon {
+	display: inline-flex;
+}
+.proj-pvtab__icon svg {
+	inline-size: 1rem;
+	block-size: 1rem;
+}
+
+@media (max-width: 560px) {
+	.proj-pvhead__eyebrow {
+		display: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.proj-pvtab::after {
+		transition: none;
+	}
+}
+/* #endregion */
+
+/* #region Preview not-found body */
+.vw-project__missing {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding-block: var(--space-6);
+}
+.vw-project__missing-title {
+	margin: 0;
+	font-size: 1.4rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+.vw-project__missing-note {
+	margin: 0;
+	color: var(--text-secondary);
+}
+.vw-project__missing-cta {
+	align-self: flex-start;
+	inline-size: auto;
+	padding-inline: var(--space-5);
+}
+/* #endregion */
+
+/*
+ * #region Project editor (`/projects/[id]/edit`)
+ * The full-page sibling of the ProjectCreateModal — same token language + two-tier creation-gate
+ * treatment (RED `required` name / AMBER `gate` publishing fields), but a single scrolling column with
+ * inline-expandable stage cards and a sticky save bar. Field controls carry their own status ring; this
+ * sheet styles the labels, the stage/role manager, and the footer.
+ */
+.proj-editor {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding-block-end: 0;
+}
+.proj-editor__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.proj-editor__title {
+	margin: 0;
+	font-size: 1.5rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+.proj-editor__lede {
+	margin: 0;
+	max-inline-size: 60ch;
+	font-size: 0.9rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+.proj-editor__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.proj-editor__label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.proj-editor__managerhead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.proj-editor__hint {
+	margin: 0;
+	font-size: 0.78rem;
+	line-height: 1.4;
+	color: var(--text-secondary);
+}
+.proj-editor__row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-3);
+}
+.proj-editor__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* Gate pills — RED "Required" (must save) / AMBER "Publishing"|"Optional" (gate to Explore). */
+.proj-editor__req,
+.proj-editor__gate {
+	font-size: 0.62rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 1px 0.4rem;
+	border-radius: var(--radius-full, 999px);
+	line-height: 1.5;
+}
+.proj-editor__req {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.proj-editor__gate {
+	color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+/* Stage / role manager list. */
+.proj-elist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0 0 var(--space-2);
+	padding: 0;
+	list-style: none;
+}
+.proj-elist__empty {
+	padding: var(--space-3);
+	color: var(--text-secondary);
+	font-size: 0.82rem;
+	line-height: 1.4;
+	background: var(--surface-1);
+	border-radius: var(--radius-base);
+}
+
+/* Inline-expandable stage card. */
+.proj-estage {
+	border-radius: var(--radius-md);
+	background: var(--surface-1);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.proj-estage[data-open="true"] {
+	background: var(--surface-2);
+}
+.proj-estage[data-over="true"] {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.proj-estage[data-dragging="true"] {
+	opacity: 0.5;
+}
+.proj-estage__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-2) var(--space-1) 0;
+}
+.proj-estage__grip {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.6rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: grab;
+	touch-action: none;
+	font-size: 1rem;
+	line-height: 1;
+}
+.proj-estage__grip:active {
+	cursor: grabbing;
+}
+.proj-estage__grip:focus-visible {
+	outline: 2px solid var(--focus-ring, var(--primary));
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
+}
+.proj-estage__main {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	border-radius: var(--radius-sm);
+}
+.proj-estage__index {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.35rem;
+	block-size: 1.35rem;
+	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--primary);
+	font-size: 0.72rem;
+	font-weight: 700;
+}
+.proj-estage__name {
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.proj-estage__gate {
+	flex: none;
+	font-size: 0.6rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	padding: 1px 0.35rem;
+	border-radius: var(--radius-full, 999px);
+	color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+.proj-estage__chev {
+	flex: none;
+	display: inline-flex;
+	color: var(--text-secondary);
+	font-size: 1.1rem;
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+.proj-estage[data-open="true"] .proj-estage__chev {
+	transform: rotate(180deg);
+}
+.proj-estage__remove {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.9rem;
+	block-size: 1.9rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 1rem;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.proj-estage__remove:hover {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.proj-estage__remove:focus-visible {
+	outline: 2px solid var(--focus-ring, var(--primary));
+	outline-offset: -2px;
+}
+.proj-estage__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin-block-start: 2px;
+	padding: var(--space-3) var(--space-3) var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+/* Role card (Direct Deliverable). */
+.proj-erole {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-radius: var(--radius-md);
+	background: var(--surface-1);
+}
+.proj-erole__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/* Skill tags. */
+.proj-etags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+.proj-etags__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 0.25rem 2px 0.55rem;
+	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	font-size: 0.74rem;
+	color: var(--on-surface);
+}
+.proj-etags__x {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1px;
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.proj-etags__x svg {
+	inline-size: 0.8rem;
+	block-size: 0.8rem;
+}
+.proj-etags__x:hover {
+	color: var(--on-surface);
+}
+.proj-etags__input {
+	flex: 1 1 6rem;
+	min-inline-size: 4rem;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: 0.82rem;
+	color: var(--on-surface);
+}
+.proj-etags__input:focus-visible {
+	outline: none;
+}
+
+.proj-editor__add {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: 1px dashed var(--outline, color-mix(in srgb, var(--on-surface) 22%, transparent));
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.82rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.proj-editor__add:hover {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.proj-editor__add:focus-visible {
+	outline: 2px solid var(--focus-ring, var(--primary));
+	outline-offset: 2px;
+}
+.proj-editor__add-icon {
+	display: inline-flex;
+	font-size: 1rem;
+}
+
+/* Sticky save bar. */
+.proj-editor__foot {
+	position: sticky;
+	inset-block-end: 0;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-block-start: var(--space-2);
+	padding: var(--space-3) 0;
+	background: color-mix(in srgb, var(--surface) 92%, transparent);
+	backdrop-filter: blur(8px);
+	border-block-start: var(--hairline);
+}
+.proj-editor__status {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+}
+.proj-editor__status[data-tone="required"] {
+	color: var(--danger);
+}
+.proj-editor__actions {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.proj-editor__cancel {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.5rem 0.9rem;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	text-decoration: none;
+	border-radius: var(--radius-full, 999px);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.proj-editor__cancel:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+@media (max-width: 620px) {
+	.proj-editor__row {
+		grid-template-columns: 1fr;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.proj-estage__chev {
+		transition: none;
+	}
+}
+/* #endregion */

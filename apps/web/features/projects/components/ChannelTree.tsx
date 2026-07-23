@@ -30,7 +30,12 @@ import type {
  */
 
 // #region Accordion group shell
-interface GroupProps {
+/**
+ * Shared accordion-group props. Exported alongside {@link AccordionGroup} so the session sidebars
+ * (the group-session channel tree) reuse the same collapsible group shell + its `project-sidebar.css`
+ * styling rather than re-deriving it.
+ */
+export interface GroupProps {
 	id: string;
 	icon: JSX.Element;
 	label: string;
@@ -43,7 +48,7 @@ interface GroupProps {
 	children: ComponentChildren;
 }
 
-function AccordionGroup(
+export function AccordionGroup(
 	{ id, icon, label, open, onToggle, action, hasUnread, children }: GroupProps,
 ): JSX.Element {
 	const panelId = `changroup-${id}`;
@@ -66,8 +71,22 @@ function AccordionGroup(
 				</button>
 				{action && <span class="proj-chan-group__action">{action}</span>}
 			</div>
-			<div id={panelId} class="proj-chan-group__body" hidden={!open}>
-				{children}
+			{
+				/*
+				 * Smoothly reveal/hide via a `grid-template-rows: 0fr → 1fr` transition (see
+				 * project-sidebar.css) instead of the instant `hidden` attribute. The panel stays in the DOM
+				 * so the height can animate; `inert` when collapsed keeps its links out of the tab order + the
+				 * a11y tree, and reduced-motion jumps straight to the final state.
+				 */
+			}
+			<div
+				id={panelId}
+				class="proj-chan-group__body"
+				role="region"
+				aria-label={label}
+				{...(open ? {} : { inert: true })}
+			>
+				<div class="proj-chan-group__body-inner">{children}</div>
 			</div>
 		</div>
 	);
@@ -76,7 +95,7 @@ function AccordionGroup(
 
 // #region Channel rows
 /** A generic channel row (General / Team channels) — a hash-marked link into the project channel. */
-function ChannelRow(
+export function ChannelRow(
 	{ channel, slug }: { channel: ProjectChannel; slug: string },
 ): JSX.Element {
 	return (
@@ -117,7 +136,7 @@ function StageRow(
 }
 
 /** A DM row — a project member the viewer has messaged; opens the DM inside the project. */
-function DmRow(
+export function DmRow(
 	{ dm, slug }: { dm: DmChannel; slug: string },
 ): JSX.Element {
 	return (

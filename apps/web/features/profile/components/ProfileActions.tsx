@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { ctaFor } from "../core/profile-model.ts";
-import { editMode, following } from "../core/profile-state.ts";
+import { editMode, following, quickMessageOpen } from "../core/profile-state.ts";
 import { ProfileIcon } from "./profile-glyphs.tsx";
 import type { ProfileView } from "../types/profile-types.ts";
 
@@ -54,10 +54,14 @@ export function ProfileActions(
 				<span class="pf-btn__label">{isFollowing ? "Following" : "Follow"}</span>
 			</button>
 			{(!compact || !seller) && (
-				<a class={`pf-btn${seller ? "" : " pf-btn--primary"}`} href="/messages">
+				<button
+					type="button"
+					class={`pf-btn${seller ? "" : " pf-btn--primary"}`}
+					onClick={() => (quickMessageOpen.value = true)}
+				>
 					<ProfileIcon name="message" class="pf-btn__icon" />
 					<span class="pf-btn__label">Message</span>
-				</a>
+				</button>
 			)}
 			{seller && (
 				<a class="pf-btn pf-btn--primary" href={hireHref}>

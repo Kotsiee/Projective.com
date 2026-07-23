@@ -34,6 +34,25 @@ already existed (the call is then a no-op re-activation). Raises `28000` when un
 > Note: `org.freelancer_profiles` no longer carries an `hourly_rate` column — rates are not a
 > platform signalling field (see `org/Tables.md`).
 
+## `org.seed_user_preferences() → trigger`
+
+**Migration:** `supabase/migrations/20260722120000_seed_user_preferences.sql` · **Security:**
+`SECURITY DEFINER`, `SET search_path = ''` · **Trigger:** `on_users_public_created`
+(`AFTER INSERT ON org.users_public FOR EACH ROW`).
+
+Seeds a default `org.user_preferences` row whenever a public profile is created, so a fresh account
+has preference defaults from the first byte instead of only once it first writes one. It fills just
+the key — the table's own column defaults supply the values (`theme = 'system'`,
+`notification_email = true`, `notification_push = false`, `locale = 'en-GB'`, `ui_settings = '{}'`).
+
+Attaching to `org.users_public` (rather than re-declaring `provision_user_profile`/`complete_onboarding`)
+covers **both** signup paths in one place: the email/password path (`0304`'s
+`provision_user_profile`, which never created a preferences row) and the OAuth completion path
+(`complete_onboarding`). Idempotent — `ON CONFLICT (user_id) DO NOTHING` never clobbers a row already
+created lazily via the INSERT-own-preferences RLS policy (`0213`). The migration also runs a one-time
+`ON CONFLICT DO NOTHING` backfill for pre-existing profiles. Purely additive (root CLAUDE.md Decision
+#47); reads/writes for own preferences remain owner-scoped per `org/Policies.md`.
+
 ## `org.is_organisation_member(p_org uuid, p_min_role org.organisation_role = 'member') → boolean`
 
 **Migration:** `supabase/migrations/0314_organisations.sql` · **Security:** `SECURITY DEFINER`,

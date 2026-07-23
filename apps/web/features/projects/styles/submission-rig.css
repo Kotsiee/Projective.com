@@ -1,6 +1,6 @@
 /*
  * SubmissionViewControlRig — the submissions footer band: the File Explorer's zoom rig on the LEFT and
- * the far-right Review Submission trigger (Part 4). One slim bar via a single top hairline + the frame
+ * the far-right Tasks-panel toggle (root task §6). One slim bar via a single top hairline + the frame
  * surface (§B.4). Token-only.
  */
 .subm-rig {
@@ -33,45 +33,55 @@
 	flex: 1 1 auto;
 }
 
-/* The far-right primary action. */
-.subm-rig__review {
+/* The far-right Tasks-panel toggle (icon + label; a quiet tonal control that fills when active). */
+.subm-rig__tasks {
 	flex: none;
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-2) var(--space-4);
-	border: none;
+	padding: var(--space-2) var(--space-3);
+	border: var(--hairline);
 	border-radius: var(--radius-base);
-	background: var(--primary);
-	color: var(--on-primary);
+	background: transparent;
+	color: var(--text-secondary);
 	font-family: var(--font-sans);
 	font-size: 0.8125rem;
 	font-weight: 600;
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
-.subm-rig__review:hover {
-	background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
+.subm-rig__tasks:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
 }
 
-.subm-rig__review:focus-visible {
+.subm-rig__tasks[data-on="true"] {
+	color: var(--primary);
+	border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.subm-rig__tasks:focus-visible {
 	outline: none;
 	box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-.subm-rig__reviewicon {
+.subm-rig__tasksicon {
 	display: inline-flex;
 }
 
 @media (max-width: 768px) {
-	.subm-rig__reviewlabel {
+	.subm-rig__taskslabel {
 		display: none;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.subm-rig__review {
+	.subm-rig__tasks {
 		transition: none;
 	}
 }

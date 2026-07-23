@@ -138,16 +138,29 @@ export const ProfileItemSchema = z.object({
 });
 export type ProfileItem = z.infer<typeof ProfileItemSchema>;
 
-/** The engagement shape of a service. */
-export const ServiceType = z.enum(["Pipeline", "One-Off", "Session"]);
+/**
+ * The five service delivery models. A **Pipeline** is a multi-stage workflow billed per ticket; a
+ * **One-Off** is a milestone-based single/multi-stage project delivery; a **Direct Deliverable** is a
+ * single standalone scope (optionally with defined team roles — no stages); a **Session** is a booked
+ * 1:1 time slot; a **Group Session** is a multi-attendee scheduled workshop/class. Pipeline/One-Off
+ * render the stage showcase; Session/Group Session offer the availability-calendar toggle.
+ */
+export const ServiceType = z.enum([
+	"Pipeline",
+	"One-Off",
+	"Direct Deliverable",
+	"Session",
+	"Group Session",
+]);
 export type ServiceType = z.infer<typeof ServiceType>;
 
 /** A fixed-price, buy-now service offering (grid, with media). */
 export const ServiceItemSchema = z.object({
 	...itemBase,
 	type: z.literal("services"),
-	/** Headline display price. For One-Off this is the fixed engagement fee; Pipeline/Session derive
-	 * their card price from `ticketPrice`/`sessionPrice` instead (see the pricing helper). */
+	/** Headline display price. For One-Off / Direct Deliverable this is the fixed engagement fee;
+	 * Pipeline/Session/Group Session derive their card price from `ticketPrice`/`sessionPrice` instead
+	 * (see the pricing helper). */
 	price: z.string(),
 	delivery: z.string(),
 	category: z.string(),
@@ -158,10 +171,21 @@ export const ServiceItemSchema = z.object({
 	 * ticket at variable intensity.
 	 */
 	ticketPrice: z.number().optional(),
-	/** Session services only — the per-session price shown as `$X / session`. */
+	/**
+	 * Session / Group Session services only — the per-slot price. A **Session** shows it as `$X /
+	 * session`; a **Group Session** shows it as `$X / seat` (billed per attendee seat).
+	 */
 	sessionPrice: z.number().optional(),
 });
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
+
+/**
+ * A project's engagement classification — a staged **Pipeline** (multiple sequential stages, each
+ * recruiting seats/roles at per-ticket prices) or a single **One-Off** deliverable (one stage, one
+ * fixed ticket price). Drives the whole `/view/[id]?type=projects` template's tailored presentation.
+ */
+export const ProjectClassification = z.enum(["pipeline", "one-off"]);
+export type ProjectClassification = z.infer<typeof ProjectClassification>;
 
 /** An open project accepting applications (text-forward — projects never carry item media). */
 export const ProjectItemSchema = z.object({
@@ -170,6 +194,8 @@ export const ProjectItemSchema = z.object({
 	org: z.string(),
 	stage: z.string(),
 	budget: z.string(),
+	/** Pipeline (staged) vs One-Off (single deliverable) — the prominent project classification. */
+	classification: ProjectClassification,
 	roles: z.array(z.string()),
 	phases: z.array(z.string()),
 });

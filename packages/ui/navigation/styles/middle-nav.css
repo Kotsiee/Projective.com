@@ -140,7 +140,7 @@
     inset-block-end: 0;
     z-index: var(--z-sticky);
     min-block-size: 0;
-    background: var(--surface-1, var(--surface));
+    /* background: var(--surface-1, var(--surface)); */
 }
 
 /* Mobile viewport isolation (≤ --bp-md): remove the lane (a desktop side-panel layer) AND its content

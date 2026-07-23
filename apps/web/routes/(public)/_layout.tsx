@@ -4,6 +4,7 @@ import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import { exploreFilterLaneFor } from "@features/explore/core/explore-lane-slot.tsx";
 import { viewLaneFor } from "@features/view/core/view-lane-slot.tsx";
+import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 
 /** Auth surfaces render their own full-window chrome (AuthShell) — no marketing header/footer. */
 const AUTH_PATHS = new Set(["/join", "/login", "/forgot-password", "/verify"]);
@@ -28,19 +29,23 @@ export default define.page(function PublicLayout(ctx) {
 	// exclusive by route, so the first non-null resolver wins.
 	const filterLane = exploreFilterLaneFor(ctx.url) ??
 		viewLaneFor(ctx.url, !!ctx.state.isAuthenticated);
+	// The Projects view mirrors the profile page's scroll-migrated header in the middle-nav header band;
+	// every other view/route resolves to `null` (no band). Shares the same lane the view already mounts.
+	const viewHeader = viewHeaderFor(ctx.url, !!ctx.state.isAuthenticated);
 	if (ctx.state.isAuthenticated) {
 		return (
 			<UserShell
 				path={ctx.url.pathname}
 				context={asAuthenticatedContext(ctx.state.userContext)}
 				lane={filterLane}
+				middleNavHeader={viewHeader}
 			>
 				<ctx.Component />
 			</UserShell>
 		);
 	}
 	return (
-		<GuestShell lane={filterLane}>
+		<GuestShell lane={filterLane} header={viewHeader}>
 			<ctx.Component />
 		</GuestShell>
 	);

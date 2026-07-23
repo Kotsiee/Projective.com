@@ -73,6 +73,22 @@ export const SearchIcon = (
 	</Svg>
 );
 
+/** An eye — the "Preview" (how freelancers see it) tab. */
+export const EyeIcon = (
+	<Svg>
+		<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" />
+		<circle cx="12" cy="12" r="2.6" />
+	</Svg>
+);
+
+/** A pencil — the "Edit" tab / inline project editor. */
+export const EditIcon = (
+	<Svg>
+		<path d="M12 20h9" />
+		<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+	</Svg>
+);
+
 /** A star outline (filled via CSS when starred). */
 export const StarIcon = (
 	<Svg>
@@ -217,6 +233,34 @@ export const ServiceRequestIcon = (
 		<path d="M4 13v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
 		<path d="M4 13h4l1.5 2.5h5L18 13h2" />
 		<path d="M12 3v6M9.5 6.5 12 9l2.5-2.5" />
+	</Svg>
+);
+// #endregion
+
+// #region Ownership glyphs (the subtle per-card Owner vs. Worker marker)
+/** All involvements — a 2×2 grid standing for "every engagement". */
+export const AllRolesIcon = (
+	<Svg>
+		<rect x="4" y="4" width="7" height="7" rx="1.6" />
+		<rect x="13" y="4" width="7" height="7" rx="1.6" />
+		<rect x="4" y="13" width="7" height="7" rx="1.6" />
+		<rect x="13" y="13" width="7" height="7" rx="1.6" />
+	</Svg>
+);
+
+/** Owner / client / admin — a small key (holds the engagement). */
+export const OwnerRoleIcon = (
+	<Svg>
+		<circle cx="8" cy="8" r="3.5" />
+		<path d="M10.5 10.5 19 19" />
+		<path d="M16 16l2-2M18.5 18.5l1.5-1.5" />
+	</Svg>
+);
+
+/** Worker / contributor — a small wrench (does the work). */
+export const WorkerRoleIcon = (
+	<Svg>
+		<path d="M15.5 4.5a4 4 0 0 0-5 5L4 16v4h4l6.5-6.5a4 4 0 0 0 5-5l-2.6 2.6-2.5-.4-.4-2.5z" />
 	</Svg>
 );
 // #endregion

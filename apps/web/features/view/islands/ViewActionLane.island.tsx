@@ -1,20 +1,29 @@
-import { type JSX, type RefObject, type VNode } from "preact";
+import { type JSX, type VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { Popover, Tooltip } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
 // The action lane reuses the profile lane's `pf-lane*` skeleton (header + collapse machinery + the
 // `.ui-splitter[data-mode]` / `:root[data-guest-nav]` density reveals), so profile.css must ride this
 // island's client bundle. `view.css` layers the pricing/CTA/trust content styling on top.
 import "@features/profile/styles/profile.css";
 import "../styles/view.css";
+// A stage-showcase service (Pipeline / One-Off) reuses the project lane's stage-jump navigation +
+// collapsed numbered rail, so `project-view.css` (`.vw-jumps*` / `.vw-railnum*`) must ride this bundle.
+import "../styles/project-view.css";
 import { ProfileIcon } from "@features/profile/components/profile-glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
+import { ViewLaneHeader } from "../components/ViewLaneHeader.tsx";
 import { type ViewGlyph, ViewIcon } from "../components/view-glyphs.tsx";
-import { messageHrefFor, signInHref } from "../core/view-model.ts";
+import { messageHrefFor, scheduleHrefFor, signInHref } from "../core/view-model.ts";
+import { availabilityMode, jumpToStage, setAvailabilityMode } from "../core/view-state.ts";
 import { basketIds, hydrateBasket, inBasket, toggleBasket } from "../core/basket-state.ts";
-import type { EntityPricing, ExploreItem, TrustFact } from "@projective/types/explore";
+import type {
+	EntityPricing,
+	ExploreItem,
+	ProjectStage,
+	TrustFact,
+} from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
 /**
@@ -42,9 +51,6 @@ interface RailAction {
 function cls(...parts: Array<string | false | undefined>): string {
 	return parts.filter(Boolean).join(" ");
 }
-
-/** The global site sidebar the header's `bottom-end` kebab menu must never slide under. */
-const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 // #endregion
 
 export interface ViewActionLaneProps {
@@ -55,13 +61,19 @@ export interface ViewActionLaneProps {
 	authed: boolean;
 	/** The render context (public Explore vs a profile namespace) — drives the sign-in return path. */
 	ctx: HrefContext;
+	/**
+	 * A stage-showcase service's stages (Pipeline / One-Off). When present the lane adds the same
+	 * stage-jump navigation the Projects view uses — quick-jump list (expanded) + numbered squares
+	 * (collapsed rail) that drive the shared `selectedStageId`, expanding + scrolling the `StageFlow`.
+	 */
+	stages?: ProjectStage[];
 }
 
 export default function ViewActionLane(
-	{ item, pricing, trust, authed, ctx }: ViewActionLaneProps,
+	{ item, pricing, trust, authed, ctx, stages }: ViewActionLaneProps,
 ): JSX.Element {
+	const hasStages = !!stages && stages.length > 0;
 	const favorited = useSignal(false);
-	const menuOpen = useSignal(false);
 	const status = useSignal("");
 	// Track basket membership reactively (the signal is shared cross-island + persisted).
 	const added = basketIds.value.includes(item.id);
@@ -96,17 +108,19 @@ export default function ViewActionLane(
 		} catch { /* non-fatal */ }
 	}
 
-	function copyLink(): void {
-		try {
-			globalThis.navigator?.clipboard?.writeText(globalThis.location?.href ?? "").catch(() => {});
-			announce("Link copied");
-		} catch { /* clipboard unavailable — non-fatal */ }
-	}
-
 	// #region Derived
-	const purchasable = item.type === "services" || item.type === "products";
+	// A Session service is booked from its schedule, not bought outright (root CLAUDE.md Decision #37):
+	// its primary CTA opens the availability calendar instead of Buy/Add-to-basket.
+	const bookable = item.type === "services" &&
+		(item.serviceType === "Session" || item.serviceType === "Group Session");
+	const group = item.type === "services" && item.serviceType === "Group Session";
+	const purchasable = (item.type === "services" && !bookable) || item.type === "products";
+	const scheduleHref = bookable ? scheduleHrefFor(item, ctx) : null;
+	const bookLabel = group ? "Book a seat" : "Book a session";
 	const msgHref = authed ? messageHrefFor(item) : signInHref(item, ctx);
-	const msgLabel = item.owner.kind === "team" || item.owner.kind === "business"
+	const msgLabel = item.type === "articles"
+		? "Message author"
+		: item.owner.kind === "team" || item.owner.kind === "business"
 		? "Message team"
 		: "Message";
 
@@ -140,6 +154,18 @@ export default function ViewActionLane(
 			onClick: () => (favorited.value = !favorited.value),
 			on: favorited.value,
 		},
+		...(bookable
+			? [
+				{
+					key: "book",
+					label: group ? "View session times" : "View availability",
+					icon: <ViewIcon name="calendar" />,
+					onClick: () => setAvailabilityMode(true),
+					on: availabilityMode.value,
+					primary: true,
+				},
+			]
+			: []),
 		...(purchasable
 			? [
 				{
@@ -163,7 +189,7 @@ export default function ViewActionLane(
 			label: msgLabel,
 			icon: <ViewIcon name="message" />,
 			href: msgHref,
-			primary: !purchasable,
+			primary: !purchasable && !bookable,
 		},
 	];
 	// #endregion
@@ -206,6 +232,22 @@ export default function ViewActionLane(
 			<nav class="pf-lane__rail" aria-label={`Actions for ${item.title}`}>
 				<div class="pf-lane__rail-group">
 					{railActions.map(railBtn)}
+					{/* Stage-showcase service — numbered stage-jump squares (mirrors the Projects rail). */}
+					{hasStages
+						? stages!.map((s) => (
+							<Tooltip key={s.id} content={s.name} placement="right">
+								<button
+									type="button"
+									class="pf-railbtn vw-railnum"
+									data-status={s.status}
+									aria-label={`Jump to stage ${s.index}: ${s.name}`}
+									onClick={() => jumpToStage(s.id)}
+								>
+									<span class="vw-railnum__n">{s.index}</span>
+								</button>
+							</Tooltip>
+						))
+						: null}
 				</div>
 				<div class="pf-lane__rail-group pf-lane__rail-group--bottom">
 					<Tooltip content="Expand lane" placement="right">
@@ -225,89 +267,13 @@ export default function ViewActionLane(
 
 			{/* Expanded stack. */}
 			<div class="pf-lane__full">
-				<div class="pf-lane__header vw-lane__header">
-					<a
-						class="vw-lane__creator"
-						href={`/${item.owner.handle}`}
-						aria-label={`${item.owner.name} — view profile`}
-					>
-						<Avatar
-							image={item.owner.avatar}
-							alt=""
-							size="sm"
-							shape={item.owner.kind === "business" ? "square" : "circle"}
-						/>
-						<span class="vw-lane__creator-name">{item.owner.name}</span>
-					</a>
-					<div class="pf-lane__header-actions">
-						<Tooltip content="Share" placement="bottom">
-							<button type="button" class="pf-lane__headbtn" aria-label="Share" onClick={share}>
-								<ProfileIcon name="share" />
-							</button>
-						</Tooltip>
-						<Tooltip
-							content={favorited.value ? "Remove favourite" : "Favourite"}
-							placement="bottom"
-						>
-							<button
-								type="button"
-								class="pf-lane__headbtn"
-								data-on={favorited.value ? "true" : undefined}
-								aria-pressed={favorited.value}
-								aria-label={favorited.value ? "Remove from favourites" : "Add to favourites"}
-								onClick={() => (favorited.value = !favorited.value)}
-							>
-								<ProfileIcon name="star" />
-							</button>
-						</Tooltip>
-						<Popover
-							open={menuOpen}
-							placement="bottom-end"
-							avoid={SHELL_AVOID}
-							allowOverflow={["bottom"]}
-							trigger={(api) => (
-								<button
-									type="button"
-									ref={api.ref as RefObject<HTMLButtonElement>}
-									class="pf-lane__headbtn"
-									data-open={api.expanded ? "true" : undefined}
-									aria-label="More actions"
-									aria-haspopup="menu"
-									aria-expanded={api.expanded}
-									aria-controls={api.panelId}
-									onClick={api.toggle}
-								>
-									<ProfileIcon name="kebab" />
-								</button>
-							)}
-						>
-							<div class="pf-lane__menu" role="menu" aria-label={`Actions for ${item.title}`}>
-								<button
-									type="button"
-									role="menuitem"
-									class="pf-lane__menu-item"
-									onClick={() => {
-										menuOpen.value = false;
-										copyLink();
-									}}
-								>
-									<ProfileIcon name="link" />
-									<span>Copy link</span>
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="pf-lane__menu-item"
-									data-danger="true"
-									onClick={() => (menuOpen.value = false)}
-								>
-									<ProfileIcon name="flag" />
-									<span>Report listing</span>
-								</button>
-							</div>
-						</Popover>
-					</div>
-				</div>
+				<ViewLaneHeader
+					item={item}
+					ctx={ctx}
+					saved={favorited}
+					onToggleSaved={() => (favorited.value = !favorited.value)}
+					onStatus={announce}
+				/>
 
 				<div class="pf-lane__scroll vw-lane__scroll">
 					{/* Pricing block. */}
@@ -316,9 +282,66 @@ export default function ViewActionLane(
 						{pricing.caption ? <span class="vw-price__caption">{pricing.caption}</span> : null}
 					</div>
 
+					{
+						/* Availability toggle (Session / Group Session) — swaps the main showcase for the
+					    calendar via the shared `availabilityMode` signal (Part 2). */
+					}
+					{bookable
+						? (
+							<div class="pf-availtoggle" role="tablist" aria-label="Showcase or availability">
+								<button
+									type="button"
+									class="pf-availtoggle__opt"
+									role="tab"
+									aria-selected={!availabilityMode.value}
+									data-active={!availabilityMode.value ? "true" : undefined}
+									onClick={() => setAvailabilityMode(false)}
+								>
+									<ViewIcon name="image" size={16} />
+									<span>Showcase</span>
+								</button>
+								<button
+									type="button"
+									class="pf-availtoggle__opt"
+									role="tab"
+									aria-selected={availabilityMode.value}
+									data-active={availabilityMode.value ? "true" : undefined}
+									onClick={() => setAvailabilityMode(true)}
+								>
+									<ViewIcon name="calendar" size={16} />
+									<span>{group ? "Session times" : "Availability"}</span>
+								</button>
+							</div>
+						)
+						: null}
+
 					{/* Primary action CTAs, stacked. */}
 					<div class="vw-ctas">
-						{purchasable
+						{bookable
+							? (
+								<>
+									<button
+										type="button"
+										class="vw-cta vw-cta--primary"
+										onClick={() => setAvailabilityMode(true)}
+									>
+										<ViewIcon name="calendar" size={18} />
+										<span>{bookLabel}</span>
+									</button>
+									<a class="vw-cta vw-cta--ghost" href={msgHref}>
+										<ViewIcon name="message" size={18} />
+										<span>{msgLabel}</span>
+									</a>
+									{scheduleHref
+										? (
+											<a class="vw-lane__fulllink" href={scheduleHref}>
+												Open full calendar
+											</a>
+										)
+										: null}
+								</>
+							)
+							: purchasable
 							? (
 								<>
 									<button type="button" class="vw-cta vw-cta--primary" onClick={onBuy}>
@@ -362,6 +385,37 @@ export default function ViewActionLane(
 					</div>
 
 					<p class="vw-ctas__status" role="status" aria-live="polite">{status.value}</p>
+
+					{/* Stage quick-jumps — Pipeline / One-Off services (same nav as the Projects view). */}
+					{hasStages
+						? (
+							<section class="vw-jumps" aria-label="Jump to a stage">
+								<span class="vw-jumps__head">Stages</span>
+								<ul class="vw-jumps__list" role="list">
+									{stages!.map((s) => (
+										<li key={s.id}>
+											<button
+												type="button"
+												class="vw-jump"
+												data-status={s.status}
+												onClick={() => jumpToStage(s.id)}
+											>
+												<span class="vw-jump__idx" aria-hidden="true">{s.index}</span>
+												<span class="vw-jump__text">
+													<span class="vw-jump__name">{s.name}</span>
+													<span class="vw-jump__sub">
+														{s.turnaround ? `${s.turnaround} · ` : ""}
+														{s.price.label}
+													</span>
+												</span>
+												<ViewIcon name="chevron-right" size={16} class="vw-jump__chev" />
+											</button>
+										</li>
+									))}
+								</ul>
+							</section>
+						)
+						: null}
 
 					{/* Trust & operational meta. */}
 					<ul class="vw-trust" aria-label="Trust & delivery">

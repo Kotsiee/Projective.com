@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import "../styles/submission-rig.css";
 import { ZoomSlider } from "@projective/ui/fields";
+import { Tooltip } from "@projective/ui/feedback";
 import {
 	restoreZoom,
 	setZoom,
@@ -13,18 +14,19 @@ import {
 	ZOOM_SEGMENTS,
 	ZOOM_STEP,
 } from "../core/view-state.ts";
-import { canReview, requestReview, reviewLabel } from "../core/submissions-review.ts";
+import { tasksAvailable, tasksPanelOpen, toggleTasksPanel } from "../core/submission-workspace.ts";
 import { GridIcon, ListIcon } from "../components/file-glyphs.tsx";
-import { ReviewGlyph } from "../components/submission-glyphs.tsx";
+import { TasksPanelIcon } from "../components/submission-glyphs.tsx";
 
 /**
  * SubmissionViewControlRig — the Submissions explorer's footer band, mounted in the middle-nav FOOTER
- * slot via {@link submissionsFooterFor}. It is the File Explorer's View Control Rig on the LEFT (the
- * mode glyph · a segmented zoom track with a centred transition marker · ± buttons — the reusable
- * {@link ZoomSlider}, writing the shared {@link zoom}) AND — pinned to the far RIGHT (Part 4) — the
- * **Review Submission** trigger, shown only when the explorer publishes a reviewable unit in view
- * ({@link canReview}). Clicking it opens the review workspace modal (owned by the explorer island) via
- * the shared review signals. Dumb island: no data access.
+ * slot via {@link submissionsFooterFor}. It is the File Explorer's View Control Rig on the LEFT (the mode
+ * glyph · a segmented zoom track with a centred transition marker · ± buttons — the reusable
+ * {@link ZoomSlider}, writing the shared {@link zoom}) AND — pinned to the far RIGHT (root task §6) — the
+ * **Tasks panel toggle**, shown only when the client has defined stage/ticket tasks for the current view
+ * ({@link tasksAvailable}, published by the explorer body). Toggling it flips the shared
+ * {@link tasksPanelOpen} the body watches to mount/unmount the Tasks drawer. Dumb island: no data access;
+ * the primary workflow actions (Create / Review / Submit …) live in the crumb bar beside the body state.
  */
 export default function SubmissionViewControlRig(): JSX.Element {
 	useEffect(() => restoreZoom(), []);
@@ -50,21 +52,23 @@ export default function SubmissionViewControlRig(): JSX.Element {
 
 			<span class="subm-rig__spacer" />
 
-			{canReview.value
+			{tasksAvailable.value
 				? (
-					<button
-						type="button"
-						class="subm-rig__review"
-						onClick={requestReview}
-						aria-label={reviewLabel.value
-							? `Review submission: ${reviewLabel.value}`
-							: "Review submission"}
-					>
-						<span class="subm-rig__reviewicon" aria-hidden="true">
-							<ReviewGlyph size={17} />
-						</span>
-						<span class="subm-rig__reviewlabel">Review Submission</span>
-					</button>
+					<Tooltip content={tasksPanelOpen.value ? "Hide tasks" : "Show tasks"} placement="top">
+						<button
+							type="button"
+							class="subm-rig__tasks"
+							data-on={tasksPanelOpen.value ? "true" : undefined}
+							aria-pressed={tasksPanelOpen.value}
+							aria-label={tasksPanelOpen.value ? "Hide tasks panel" : "Show tasks panel"}
+							onClick={toggleTasksPanel}
+						>
+							<span class="subm-rig__tasksicon" aria-hidden="true">
+								<TasksPanelIcon size={17} />
+							</span>
+							<span class="subm-rig__taskslabel">Tasks</span>
+						</button>
+					</Tooltip>
 				)
 				: null}
 		</div>

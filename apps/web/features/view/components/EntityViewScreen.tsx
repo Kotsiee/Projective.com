@@ -9,15 +9,21 @@ import MediaGallery from "../islands/MediaGallery.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import { ViewDetails } from "./ViewDetails.tsx";
-import { RelatedRail } from "./RelatedRail.tsx";
-import { backHrefFor, backLabelFor, ENTITY_LABEL } from "../core/view-model.ts";
+import { RelatedSection } from "./RelatedRail.tsx";
+import { ProjectViewScreen } from "./ProjectViewScreen.tsx";
+import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
+import { ServiceViewScreen } from "./ServiceViewScreen.tsx";
+import { backHrefFor, backLabelFor } from "../core/view-model.ts";
 
 /**
- * EntityViewScreen — the public Entity View page body (`/view/[id]`). It lays out the Amazon-style
- * hero (a media showcase gallery beside the entity overview column) and the lower body sections (more
- * by the creator · similar & recommended · the full reviews section). The transactional sidebar action
- * panel lives in the navigation lane, resolved separately by `viewLaneFor` — this is just the content
- * region. Renders a calm empty state when the id resolves to nothing.
+ * EntityViewScreen — the Entity View page body (`/view/[id]`). It DISPATCHES by the resolved item's
+ * type: a **project** renders the custom {@link ProjectViewScreen} (profile-mirroring banner/avatar
+ * chrome + interactive Stage Flow; no rails/reviews) and an **article** the custom
+ * {@link ArticleViewScreen} (editorial body + media carousel + comments; the TOC lives in the side nav).
+ * Everything else (services · products · profile entities) keeps the generic Amazon-style hero (media
+ * showcase + overview) with the lower recommendation/reviews sections. The transactional/navigation
+ * sidebar lane is resolved separately by `viewLaneFor`. Renders a calm empty state when the id resolves
+ * to nothing.
  */
 export function EntityViewScreen(
 	{ view, ctx = { scope: "explore" }, authed = false }: {
@@ -41,6 +47,18 @@ export function EntityViewScreen(
 		);
 	}
 
+	// Custom per-type templates. Projects and articles bypass the generic hero/rails/reviews entirely;
+	// services keep the commercial rails/reviews but add the delivery-model-aware showcase + stage flow.
+	if (view.project) {
+		return <ProjectViewScreen view={view} project={view.project} ctx={ctx} authed={authed} />;
+	}
+	if (view.article) {
+		return <ArticleViewScreen view={view} article={view.article} ctx={ctx} authed={authed} />;
+	}
+	if (view.service) {
+		return <ServiceViewScreen view={view} service={view.service} ctx={ctx} authed={authed} />;
+	}
+
 	const { item, gallery, moreByOwner, similar, reviews } = view;
 	const ownerFirst = item.owner.name.split(/\s+/)[0] ?? item.owner.name;
 
@@ -48,7 +66,8 @@ export function EntityViewScreen(
 		<div class="vw">
 			<ViewStyleAnchor />
 
-			<div class="vw__back-row">
+			{/* Mobile-only: on desktop the side-nav lane header carries Back (hidden via `--laned`). */}
+			<div class="vw__back-row vw__back-row--laned">
 				<a class="vw__back" href={backHrefFor(ctx)}>← {backLabelFor(ctx)}</a>
 			</div>
 
@@ -60,16 +79,16 @@ export function EntityViewScreen(
 
 			{/* Lower body sections. */}
 			<div class="vw-body">
-				<RelatedRail
+				<RelatedSection
 					title={`More by ${item.owner.name}`}
-					subtitle={`Other ${ENTITY_LABEL[item.type].toLowerCase()}s and work from ${ownerFirst}`}
+					subtitle={`More work from ${ownerFirst}, grouped by type`}
 					items={moreByOwner}
 					ctx={ctx}
 					authed={authed}
 					seeAllHref={`/${item.owner.handle}`}
 				/>
 
-				<RelatedRail
+				<RelatedSection
 					title="Similar & recommended"
 					subtitle="Comparable options other clients considered"
 					items={similar}

@@ -53,4 +53,14 @@ export const AuthService = {
 	sso(payload: { domain: string; redirectTo: string }): Promise<AuthResult> {
 		return postAuth("/api/auth/sso", payload);
 	},
+
+	/**
+	 * End the session. Delegates to `POST /api/auth/logout`, which revokes the session server-side
+	 * (best-effort) and clears the HttpOnly `sb-*` cookies. Resolves even on a network hiccup (a soft
+	 * `ok: false`), so the caller can proceed with its route-aware redirect regardless — the cookies are
+	 * cleared server-side, so the local session is gone either way.
+	 */
+	logout(): Promise<AuthResult> {
+		return postAuth("/api/auth/logout", {});
+	},
 };

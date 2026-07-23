@@ -186,3 +186,56 @@ export function TicketGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
 	);
 }
 // #endregion
+
+// #region Workflow-action glyphs (crumb-bar actions + footer Tasks toggle)
+/** Plus — Create New Submission. */
+export function PlusGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(size, c, <path d="M12 5v14M5 12h14" />);
+}
+/** Upload — the up-arrow-into-tray (Upload Files). */
+export function UploadGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(
+		size,
+		c,
+		<>
+			<path d="M12 16V4M8 8l4-4 4 4" />
+			<path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
+		</>,
+	);
+}
+/** Trash — Delete Submission. */
+export function TrashGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(
+		size,
+		c,
+		<>
+			<path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+			<path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+			<path d="M10 11v6M14 11v6" />
+		</>,
+	);
+}
+/** Send — a paper plane (Submit for Review / Confirm & Submit). */
+export function SendGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(
+		size,
+		c,
+		<>
+			<path d="M21 4L3 11l6 2.5L21 4z" />
+			<path d="M21 4l-9 16-2.5-6.5" />
+		</>,
+	);
+}
+/** Tasks panel — a checklist (the footer Tasks toggle). */
+export function TasksPanelIcon({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(
+		size,
+		c,
+		<>
+			<path d="M4 6.5l1.5 1.5L8 5" />
+			<path d="M4 13.5L5.5 15 8 12" />
+			<path d="M11 7h9M11 13h9M11 19h6" />
+		</>,
+	);
+}
+// #endregion

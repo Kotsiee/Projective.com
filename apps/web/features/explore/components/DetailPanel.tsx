@@ -108,6 +108,8 @@ function MetaBlock({ item }: { item: ExploreItem }): JSX.Element | null {
 				? "Price per ticket"
 				: item.serviceType === "Session"
 				? "Price per session"
+				: item.serviceType === "Group Session"
+				? "Price per seat"
 				: "Price";
 			const priceValue = pricing.unit ? `${pricing.amount} / ${pricing.unit}` : pricing.amount;
 			return (

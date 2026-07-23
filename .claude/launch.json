@@ -1,83 +1,119 @@
 {
-  "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "web",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--", "--port", "3000", "--strictPort"],
-      "port": 3000
-    },
-    {
-      "name": "web-explore",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5273", "--strictPort"],
-      "port": 5273
-    },
-    {
-      "name": "web-p2",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5373", "--strictPort"],
-      "port": 5373
-    },
-    {
-      "name": "web-nav",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5473", "--strictPort"],
-      "port": 5473
-    },
-    {
-      "name": "web-ctx",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5573", "--strictPort"],
-      "port": 5573
-    },
-    {
-      "name": "web-header",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5673", "--strictPort"],
-      "port": 5673
-    },
-    {
-      "name": "web-detail",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5773", "--strictPort"],
-      "port": 5773
-    },
-    {
-      "name": "web-chat",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5873", "--strictPort"],
-      "port": 5873
-    },
-    {
-      "name": "web-files",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "5973", "--strictPort"],
-      "port": 5973
-    },
-    {
-      "name": "web-subm",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "6073", "--strictPort"],
-      "port": 6073
-    },
-    {
-      "name": "web-board",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "6173", "--strictPort"],
-      "port": 6173
-    },
-    {
-      "name": "web-profile",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "6273", "--strictPort"],
-      "port": 6273
-    },
-    {
-      "name": "web-view",
-      "runtimeExecutable": "deno",
-      "runtimeArgs": ["task", "dev", "--port", "6373", "--strictPort"],
-      "port": 6373
-    }
-  ]
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "web",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--", "--port", "3000", "--strictPort"],
+			"port": 3000
+		},
+		{
+			"name": "web-explore",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5273", "--strictPort"],
+			"port": 5273
+		},
+		{
+			"name": "web-p2",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5373", "--strictPort"],
+			"port": 5373
+		},
+		{
+			"name": "web-nav",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5473", "--strictPort"],
+			"port": 5473
+		},
+		{
+			"name": "web-ctx",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5573", "--strictPort"],
+			"port": 5573
+		},
+		{
+			"name": "web-header",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5673", "--strictPort"],
+			"port": 5673
+		},
+		{
+			"name": "web-detail",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5773", "--strictPort"],
+			"port": 5773
+		},
+		{
+			"name": "web-chat",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5873", "--strictPort"],
+			"port": 5873
+		},
+		{
+			"name": "web-files",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "5973", "--strictPort"],
+			"port": 5973
+		},
+		{
+			"name": "web-subm",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6073", "--strictPort"],
+			"port": 6073
+		},
+		{
+			"name": "web-board",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6173", "--strictPort"],
+			"port": 6173
+		},
+		{
+			"name": "web-profile",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6273", "--strictPort"],
+			"port": 6273
+		},
+		{
+			"name": "web-view",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6373", "--strictPort"],
+			"port": 6373
+		},
+		{
+			"name": "web-create",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6473", "--strictPort"],
+			"port": 6473
+		},
+		{
+			"name": "web-preview",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6573", "--strictPort"],
+			"port": 6573
+		},
+		{
+			"name": "web-devtools",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6673", "--strictPort"],
+			"port": 6673
+		},
+		{
+			"name": "web-members",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6773", "--strictPort"],
+			"port": 6773
+		},
+		{
+			"name": "web-session",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6873", "--strictPort"],
+			"port": 6873
+		},
+		{
+			"name": "web-messages",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "6973", "--strictPort"],
+			"port": 6973
+		}
+	]
 }

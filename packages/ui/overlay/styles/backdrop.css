@@ -5,33 +5,33 @@
  */
 
 .ui-backdrop {
-    position: absolute;
-    inset: 0;
-    /* Theme-aware scrim: `--on-surface` darkens over light themes and lightens over dark ones, so the
-	   tint reads correctly in both. Paired with a soft backdrop blur for a luxurious glass dim. */
-    background: color-mix(in srgb, var(--surface) 38%, transparent);
-    opacity: 0;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    transition: opacity var(--dur-medium) var(--ease-standard);
+	position: absolute;
+	inset: 0;
+	/* Theme-aware scrim: `--on-surface` darkens over light themes and lightens over dark ones, so the
+	tint reads correctly in both. Paired with a soft backdrop blur for a luxurious glass dim. */
+	background: color-mix(in srgb, var(--surface) 38%, transparent);
+	opacity: 0;
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	transition: opacity var(--dur-medium) var(--ease-standard);
 }
 
 .ui-backdrop--blur {
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .ui-backdrop[data-state="open"] {
-    opacity: 1;
+	opacity: 1;
 }
 
 .ui-backdrop[data-state="closed"] {
-    opacity: 0;
-    pointer-events: none;
+	opacity: 0;
+	pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .ui-backdrop {
-        transition-duration: 0ms;
-    }
+	.ui-backdrop {
+		transition-duration: 0ms;
+	}
 }

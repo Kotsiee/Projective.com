@@ -42,11 +42,20 @@ function decodeAccessClaims(token: string | undefined): AccessTokenClaims | null
 }
 
 /**
+ * Resolve the {@link UserContext} for a raw access token (unverified decode). Total: returns
+ * {@link GUEST_CONTEXT} when the token is absent or not a claims-bearing JWT. Used both for the
+ * request's cookie and — after the guard silently renews a session — for the freshly-minted token,
+ * so the re-painted chrome reflects the new claims rather than the dropped cookie's absence.
+ */
+export function resolveTokenContext(token: string | undefined): UserContext {
+	const claims = decodeAccessClaims(token);
+	return claims ? resolveUserContext(claims) : GUEST_CONTEXT;
+}
+
+/**
  * Resolve the {@link UserContext} for a request from its session cookie. Total: returns
  * {@link GUEST_CONTEXT} whenever no valid session token is present.
  */
 export function resolveRequestContext(req: Request): UserContext {
-	const token = readCookies(req)[SB_ACCESS_COOKIE];
-	const claims = decodeAccessClaims(token);
-	return claims ? resolveUserContext(claims) : GUEST_CONTEXT;
+	return resolveTokenContext(readCookies(req)[SB_ACCESS_COOKIE]);
 }

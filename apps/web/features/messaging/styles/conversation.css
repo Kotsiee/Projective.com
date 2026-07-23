@@ -1,0 +1,205 @@
+/*
+ * conversation.css — the `/messages/[conversationId]` view body (Files + Members tabs) + the conversation
+ * header's avatar slot. The header chrome itself (`.chan-header*`, `.chan-tab*`, `.chan-action*`,
+ * `.chan-menu*`, `.chan-view`) is reused VERBATIM from the projects `channel-header.css` (bundled by the
+ * ConversationHeader island), so the conversation view is a byte-identical mirror of a project channel
+ * (task §2C). This file only adds the messaging-specific pieces. Token-only, strict BEM.
+ */
+
+/* #region Header avatar (the conversation identity mark) */
+.chan-header__avatar {
+	display: inline-flex;
+	flex: none;
+}
+/* #endregion */
+
+/* #region Files tab */
+.conv-files {
+	padding: var(--space-4);
+}
+.conv-files--empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-6);
+	text-align: center;
+	color: var(--text-secondary);
+}
+.conv-files__empty-glyph svg {
+	inline-size: 28px;
+	block-size: 28px;
+}
+.conv-files__empty-text {
+	margin: 0;
+	font-size: 0.875rem;
+}
+.conv-files__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.conv-file {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.conv-file__thumb {
+	display: block;
+	position: relative;
+	aspect-ratio: 1 / 1;
+	overflow: clip;
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
+}
+.conv-file__img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+.conv-file__thumb--generic {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	color: var(--text-secondary);
+}
+.conv-file__thumb--generic svg {
+	inline-size: 32px;
+	block-size: 32px;
+}
+.conv-file__ext {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.conv-file__meta {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+.conv-file__name {
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.conv-file__sub {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Members tab */
+.conv-members {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	max-inline-size: 40rem;
+}
+.conv-members__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.conv-members__count {
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+.conv-members__add {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.conv-members__add:hover {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.conv-members__add svg {
+	inline-size: 18px;
+	block-size: 18px;
+}
+.conv-members__hint {
+	margin: 0;
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+.conv-members__list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.conv-member__link {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2);
+	text-decoration: none;
+	color: inherit;
+	border-radius: var(--radius-lg);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+a.conv-member__link:hover {
+	background: var(--surface-2);
+}
+.conv-member__avatar {
+	position: relative;
+	flex: none;
+}
+.conv-member__online {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-end: 0;
+	inline-size: 10px;
+	block-size: 10px;
+	border-radius: 999px;
+	background: var(--success, #22c55e);
+	border: 2px solid var(--surface-1);
+}
+.conv-member__text {
+	display: flex;
+	flex-direction: column;
+}
+.conv-member__name {
+	font-size: 0.9rem;
+	font-weight: 500;
+	color: var(--on-surface);
+}
+.conv-member__role {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.conv-members__add,
+	.conv-member__link {
+		transition: none;
+	}
+}

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/file-explorer.css";
 import "../styles/submission-explorer.css";
 import "../styles/submission-review.css";
+import "../styles/submission-actions.css";
 import "../styles/file-card.css";
 import "../styles/file-table.css";
 import "../styles/submission-card.css";
@@ -18,6 +19,7 @@ import type {
 	SubmissionCrumb,
 	SubmissionListPage,
 	SubmissionReview,
+	SubmissionStatus,
 	SubmissionTreeNode,
 	SubmissionUnit,
 } from "../types/projects-types.ts";
@@ -35,8 +37,29 @@ import {
 	nodeShowsChildCards,
 	submissionHref,
 	submissionsBase,
+	submissionTickets,
 } from "../core/submission-model.ts";
-import { closeReview, reviewOpen, setReviewable } from "../core/submissions-review.ts";
+import {
+	type DevSeamState,
+	effectiveFormat,
+	effectiveHasTasks,
+	effectiveUnitStatus,
+	fulfilsTickets,
+	readDevSeam,
+	resolveViewer,
+	resolveWorkflowActions,
+	watchDevSeam,
+} from "../core/submission-access.ts";
+import {
+	closeTasksPanel,
+	setTasksAvailable,
+	tasksPanelOpen,
+} from "../core/submission-workspace.ts";
+import {
+	buildTaskChecklist,
+	type TaskChecklist,
+	toggleChecklistItem,
+} from "../core/submission-tasks.ts";
 import {
 	gridColWidth,
 	nudgeZoom,
@@ -52,23 +75,30 @@ import { SubmissionCard } from "../components/SubmissionCard.tsx";
 import { SubmissionNodeList } from "../components/SubmissionNodeList.tsx";
 import { ROOT_KEY, SubmissionTree } from "../components/SubmissionTree.tsx";
 import { SubmissionBreadcrumbs } from "../components/SubmissionBreadcrumbs.tsx";
+import { SubmissionActionBar } from "../components/SubmissionActionBar.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
+import { CreateSubmissionModal } from "../components/CreateSubmissionModal.tsx";
+import { UploadFilesModal } from "../components/UploadFilesModal.tsx";
+import { DeleteSubmissionDialog } from "../components/DeleteSubmissionDialog.tsx";
+import { PreSubmitModal } from "../components/PreSubmitModal.tsx";
+import { TasksPanel } from "../components/TasksPanel.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
 
 /**
  * SubmissionExplorer — the Submissions workspace: the single island the `/submissions` routes mount. It
- * is the File Explorer canvas plus two additions (Part 2): a full-height navigation TREE on the left
- * (separated by a single vertical hairline) and an interactive BREADCRUMBS bar atop the workspace. The
- * grid⇄list presentation is selected by the shared {@link viewMode} (no toggle button); `Ctrl`+wheel
- * over the workspace drives {@link zoom}; both viewports are window-virtualized. Tree + breadcrumb
- * navigation re-scopes the workspace (a thin {@link SubmissionsService} refetch) and syncs the URL via
- * `history.pushState`, so a deep-linked node is shareable and back/forward works.
+ * is the File Explorer canvas plus a full-height navigation TREE (left, single vertical hairline) and an
+ * interactive BREADCRUMBS bar; the grid⇄list presentation is selected by the shared {@link viewMode} (no
+ * toggle button) and both viewports are window-virtualized.
  *
- * When the current node resolves to a submission unit AND the viewer is the client, the footer's Review
- * Submission button (a separate island) is enabled via the shared review signals; opening it mounts the
- * {@link SubmissionReviewModal}. THIN: first paint is the SSR-resolved page; all refinement flows through
- * the thin service. Rename/star/accept/revision are optimistic — persistence lands with the backend.
+ * On top of the read surface it owns the full role-sensitive submission workflow (root task §2–§6): the
+ * effective viewer + submission state are resolved from the real SSR data layered with the (dev-only)
+ * Context Switcher overrides ({@link resolveViewer}), so every control live-updates when the developer
+ * flips a persona/state (§7). A freelancer's tree/files are isolated to their OWN submissions server-side
+ * (an `asFreelancer` refetch on a persona flip). The crumb-bar hosts the action state machine
+ * ({@link SubmissionActionBar}) — Review · Create · Upload/Delete/Submit · status badge — and the modals
+ * those fire; the footer's Tasks toggle reveals the {@link TasksPanel}, whose checklist is shared with the
+ * freelancer's Pre-Submit modal. All transitions are optimistic — persistence lands with the backend.
  */
 export interface SubmissionExplorerProps {
 	scope: "channel" | "project";
@@ -189,10 +219,9 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	// #region State
 	const items = useSignal<FileItem[]>(initial?.items ?? []);
-	// The navigation tree + root labelling are scope-constant (filter-independent counts) — set once.
+	// The navigation tree + root labelling are scope-constant (filter-independent counts) — set on reload.
 	const tree = useSignal<SubmissionTreeNode[]>(initial?.tree ?? []);
 	const rootLabel = initial?.scope === "channel" ? "Submissions" : "All stages";
-	const rootCount = (initial?.tree ?? []).reduce((s, n) => s + n.fileCount, 0);
 
 	const path = useSignal<string[]>(initial?.path ?? []);
 	const breadcrumbs = useSignal<SubmissionCrumb[]>(initial?.breadcrumbs ?? []);
@@ -201,8 +230,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const total = useSignal<number>(initial?.total ?? 0);
-	const viewerId = initial?.viewerId ?? "viewer";
-	const viewerIsClient = initial?.viewerIsClient ?? false;
+	// Viewer identity + role — updated on every reload (an `asFreelancer` refetch flips them).
+	const viewerId = useSignal<string>(initial?.viewerId ?? "viewer");
+	const viewerIsClient = useSignal<boolean>(initial?.viewerIsClient ?? false);
+	const projectTitle = initial?.projectTitle ?? "this project";
+	const baseFormat = initial?.format ?? "pipeline";
 
 	const expanded = useSignal<Set<string>>(
 		new Set([ROOT_KEY, ...ancestorKeys(initial?.path ?? [])]),
@@ -217,12 +249,52 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const loadingMore = useSignal(false);
 	const openId = useSignal<string | null>(null);
 
+	// The DEV Context Switcher override (null = the real session); tracked so capabilities live-update.
+	const seam = useSignal<DevSeamState | null>(null);
+	// The freelancer's in-progress, self-created draft submission (before it exists in the tree).
+	const localDraft = useSignal<{ name: string; status: SubmissionStatus } | null>(null);
+	// The shared stage/ticket task checklist (bound by both the Tasks panel and the Pre-Submit modal).
+	const checklist = useSignal<TaskChecklist>(buildTaskChecklist(base, { hasTickets: true }));
+
+	// Workflow modal / dialog visibility.
+	const reviewOpen = useSignal(false);
+	const createOpen = useSignal(false);
+	const uploadOpen = useSignal(false);
+	const deleteOpen = useSignal(false);
+	const preSubmitOpen = useSignal(false);
+
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	// #endregion
 
+	// #region Effective workflow (SSR baseline ⊕ dev override)
+	const viewer = resolveViewer(viewerIsClient.value, seam.value);
+	const format = effectiveFormat(baseFormat, seam.value);
+	const hasTasks = effectiveHasTasks(true, seam.value);
+	// The active submission: a real tree unit (dev status override applies) OR a self-created draft.
+	const hasActiveUnit = activeUnit.value !== null || localDraft.value !== null;
+	const effStatus: SubmissionStatus | null = activeUnit.value
+		? effectiveUnitStatus(activeUnit.value.status, viewer, seam.value)
+		: (localDraft.value ? localDraft.value.status : null);
+	const workflow = resolveWorkflowActions({ viewer, hasActiveUnit, effectiveStatus: effStatus });
+
+	const rootCount = (tree.value ?? []).reduce((s, n) => s + n.fileCount, 0);
+	// The active stage's name — a real stage crumb (the synthetic root crumb also carries kind "stage"
+	// but a zero-length path, so it must be excluded).
+	const currentStageName =
+		breadcrumbs.value.find((c) => c.kind === "stage" && c.path.length > 0)?.label ?? null;
+	const seedKey = `${projectId}:${channelId ?? ""}:${path.value.join("/")}`;
+	const tickets = submissionTickets(seedKey, { hasTickets: fulfilsTickets(format) });
+	const draftName = localDraft.value?.name ?? activeUnit.value?.name ?? "Submission";
+	// #endregion
+
 	// #region Data loading
+	/** The isolation flag to send: under a dev override, follow the simulated freelancer/reviewer role. */
+	function asFreelancerParam(): boolean | undefined {
+		return seam.value ? resolveViewer(viewerIsClient.value, seam.value).isFreelancer : undefined;
+	}
+
 	function baseParams(nextPath: string[], nextCursor: string | null) {
 		return {
 			projectId,
@@ -233,6 +305,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			dir: sortDir.value,
 			kinds: filterKinds.value.length ? (filterKinds.value as FileKind[]) : undefined,
 			query: query.value || undefined,
+			asFreelancer: asFreelancerParam(),
 			cursor: nextCursor,
 		};
 	}
@@ -246,12 +319,15 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		if (res.ok && res.data) {
 			const page = res.data.page;
 			items.value = page.items;
+			tree.value = page.tree;
 			breadcrumbs.value = page.breadcrumbs;
 			activeUnit.value = page.activeUnit;
 			review.value = page.review;
 			cursor.value = page.nextCursor;
 			hasMore.value = page.hasMore;
 			total.value = page.total;
+			viewerId.value = page.viewerId;
+			viewerIsClient.value = page.viewerIsClient;
 			// Trust the server's resolved path (a bad segment degrades to the deepest valid node).
 			path.value = page.path;
 		}
@@ -328,7 +404,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const startIndex = openFile ? groupIndexOf(group, openFile) : 0;
 	// #endregion
 
-	// #region Review flow (optimistic)
+	// #region Review flow (reviewer — optimistic)
 	function updateActiveStatus(status: SubmissionUnit["status"]): void {
 		if (activeUnit.value) activeUnit.value = { ...activeUnit.value, status };
 		if (review.value) {
@@ -337,11 +413,38 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	}
 	function onRequestRevision(): void {
 		updateActiveStatus("revision_requested");
-		closeReview();
+		reviewOpen.value = false;
 	}
 	function onAccept(): void {
 		updateActiveStatus("accepted");
-		closeReview();
+		reviewOpen.value = false;
+	}
+	// #endregion
+
+	// #region Freelancer workflow actions (create · upload · delete · submit — optimistic stubs)
+	function onCreateSubmission(payload: { name: string }): void {
+		localDraft.value = { name: payload.name, status: "draft" };
+		createOpen.value = false;
+	}
+	function onDeleteSubmission(): void {
+		deleteOpen.value = false;
+		if (localDraft.value) {
+			localDraft.value = null;
+		} else if (path.value.length > 0) {
+			// A real (self-owned) unit — navigate back to its parent (removal persists with the backend).
+			navigate(path.value.slice(0, -1));
+		}
+	}
+	function onConfirmSubmit(): void {
+		preSubmitOpen.value = false;
+		if (localDraft.value) {
+			localDraft.value = { ...localDraft.value, status: "pending_review" };
+		} else {
+			updateActiveStatus("pending_review");
+		}
+	}
+	function toggleTask(id: string): void {
+		checklist.value = toggleChecklistItem(checklist.value, id);
 	}
 	// #endregion
 
@@ -367,11 +470,41 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		return () => globalThis.removeEventListener("popstate", onPop);
 	}, []);
 
-	// Publish the reviewable state to the footer's Review Submission button; reset on unmount.
+	// Track the DEV Context Switcher: recompute capabilities live, and re-fetch with the new isolation
+	// when the effective freelancer/reviewer perspective changes (root task §2 + §7).
 	useEffect(() => {
-		setReviewable(viewerIsClient && activeUnit.value !== null, activeUnit.value?.name ?? "");
-	}, [activeUnit.value, viewerIsClient]);
-	useEffect(() => () => setReviewable(false, ""), []);
+		const sync = () => {
+			const prev = seam.value;
+			const next = readDevSeam();
+			const prevFree = prev
+				? resolveViewer(viewerIsClient.value, prev).isFreelancer
+				: !viewerIsClient.value;
+			const nextFree = next
+				? resolveViewer(viewerIsClient.value, next).isFreelancer
+				: !viewerIsClient.value;
+			seam.value = next;
+			if (prevFree !== nextFree) {
+				localDraft.value = null; // a role flip discards any in-progress simulated draft
+				void reload(path.value);
+			}
+		};
+		sync();
+		return watchDevSeam(sync);
+	}, []);
+
+	// Rebuild the task checklist when the node / format changes (resets the freelancer's ticks).
+	useEffect(() => {
+		checklist.value = buildTaskChecklist(seedKey, { hasTickets: fulfilsTickets(format) });
+	}, [seedKey, format]);
+
+	// Publish Tasks-panel availability to the footer toggle; reset on unmount.
+	useEffect(() => {
+		setTasksAvailable(hasTasks);
+	}, [hasTasks]);
+	useEffect(() => () => {
+		setTasksAvailable(false);
+		closeTasksPanel();
+	}, []);
 	// #endregion
 
 	const isEmpty = items.value.length === 0 && !loading.value;
@@ -446,7 +579,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	return (
 		<div class="subm-explorer" data-scope={scope}>
-			<div class="subm-layout">
+			<div class="subm-layout" data-tasks={tasksPanelOpen.value ? "open" : undefined}>
 				<aside class="subm-aside-tree" aria-label="Submission navigator">
 					<SubmissionTree
 						tree={tree.value}
@@ -460,23 +593,42 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				<div class="subm-main">
 					<div class="subm-bar">
 						<div class="subm-crumbbar">
-							<SubmissionBreadcrumbs
-								crumbs={breadcrumbs.value}
-								base={base}
-								onNavigate={(p) => navigate(p)}
+							<div class="subm-crumbbar__trail">
+								<SubmissionBreadcrumbs
+									crumbs={breadcrumbs.value}
+									base={base}
+									onNavigate={(p) => navigate(p)}
+								/>
+							</div>
+							<SubmissionActionBar
+								actions={workflow}
+								onReview={() => (reviewOpen.value = true)}
+								onCreate={() => (createOpen.value = true)}
+								onUpload={() => (uploadOpen.value = true)}
+								onDelete={() => (deleteOpen.value = true)}
+								onSubmit={() => (preSubmitOpen.value = true)}
 							/>
 						</div>
 						{toolbar()}
 					</div>
 					<div class="fx-workspace" ref={workspaceRef}>{workspaceView}</div>
 				</div>
+				{tasksPanelOpen.value
+					? (
+						<TasksPanel
+							checklist={checklist.value}
+							onToggle={toggleTask}
+							onClose={closeTasksPanel}
+						/>
+					)
+					: null}
 			</div>
 
 			<AttachmentPreviewModal
 				open={!!openFile}
 				files={group}
 				startIndex={startIndex}
-				viewerId={viewerId}
+				viewerId={viewerId.value}
 				projectId={projectId}
 				notesMode
 				onClose={() => (openId.value = null)}
@@ -493,11 +645,43 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				rootCount={rootCount}
 				currentPath={path.value}
 				expanded={expanded}
-				viewerId={viewerId}
-				onClose={closeReview}
+				viewerId={viewerId.value}
+				onClose={() => (reviewOpen.value = false)}
 				onNavigate={(p) => navigate(p)}
 				onRequestRevision={onRequestRevision}
 				onAccept={onAccept}
+			/>
+
+			<CreateSubmissionModal
+				open={createOpen.value}
+				projectTitle={projectTitle}
+				stageName={currentStageName}
+				tickets={tickets}
+				onClose={() => (createOpen.value = false)}
+				onCreate={onCreateSubmission}
+			/>
+
+			<UploadFilesModal
+				open={uploadOpen.value}
+				submissionName={draftName}
+				onClose={() => (uploadOpen.value = false)}
+			/>
+
+			<DeleteSubmissionDialog
+				open={deleteOpen.value}
+				name={draftName}
+				onClose={() => (deleteOpen.value = false)}
+				onConfirm={onDeleteSubmission}
+			/>
+
+			<PreSubmitModal
+				open={preSubmitOpen.value}
+				submissionName={draftName}
+				files={items.value}
+				checklist={checklist.value}
+				onToggle={toggleTask}
+				onClose={() => (preSubmitOpen.value = false)}
+				onConfirm={onConfirmSubmit}
 			/>
 		</div>
 	);

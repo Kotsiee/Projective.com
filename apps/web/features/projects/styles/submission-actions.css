@@ -1,0 +1,435 @@
+/*
+ * Submission workflow controls — the crumb-bar action state machine (Create · Review · Upload/Delete/
+ * Submit · status badge), the create/upload/delete/pre-submit modals, the right-side Tasks panel, and the
+ * shared task checklist (root task §3–§6). Interactive controls carry full borders (permitted, §B.4);
+ * non-interactive surfaces use tonal tints + single hairlines, never four-sided boxes. Token-only, BEM.
+ */
+
+/* #region Crumb-bar action cluster + buttons */
+.subm-actions {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.subm-actions__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	line-height: 1;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+.subm-actions__btn:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.subm-actions__btn--primary {
+	border-color: transparent;
+	background: var(--primary);
+	color: var(--on-primary);
+}
+.subm-actions__btn--primary:hover {
+	background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
+}
+
+.subm-actions__btn--soft {
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	border-color: transparent;
+	color: var(--on-surface);
+}
+.subm-actions__btn--soft:hover {
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+
+.subm-actions__btn--danger {
+	border-color: transparent;
+	background: transparent;
+	color: var(--danger);
+}
+.subm-actions__btn--danger:hover {
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.subm-actions__btn--danger-solid {
+	border-color: transparent;
+	background: var(--danger);
+	color: var(--on-primary, #fff);
+}
+.subm-actions__btn--danger-solid:hover {
+	background: color-mix(in srgb, var(--danger) 88%, black);
+}
+
+.subm-actions__icon {
+	display: inline-flex;
+	flex: none;
+}
+
+/* Freelancer read-only status badge (In Review / Approved / Revision Requested). */
+.subm-actions__badge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: 999px;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.subm-actions__badge[data-tone="warning"] {
+	color: var(--warning);
+}
+.subm-actions__badge[data-tone="danger"] {
+	color: var(--danger);
+}
+.subm-actions__badge[data-tone="success"] {
+	color: var(--success);
+}
+.subm-actions__badge[data-tone="muted"] {
+	color: var(--text-secondary);
+}
+.subm-actions__badgeicon {
+	display: inline-flex;
+}
+
+/* Narrow lanes: drop the Delete button's word, keep its icon (§B.6 icon-first density). */
+@media (max-width: 1100px) {
+	.subm-actions__btn--danger .subm-actions__btnlabel {
+		display: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.subm-actions__btn {
+		transition: none;
+	}
+}
+/* #endregion */
+
+/* #region Create / Upload modal (BodyPortal overlay) */
+.subm-modal {
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-overlay);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+	background: color-mix(in srgb, var(--on-surface) 38%, transparent);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+}
+.subm-modal__panel {
+	inline-size: min(28rem, 100%);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-5);
+	background: var(--surface);
+	border-radius: var(--radius-xl);
+	box-shadow: var(--elevation-high);
+}
+.subm-modal__title {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+.subm-modal__note {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+.subm-modal__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+.subm-modal__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.subm-modal__label {
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+.subm-modal__input {
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.875rem;
+}
+.subm-modal__input:focus {
+	outline: none;
+	border-color: var(--primary);
+}
+.subm-modal__revtag {
+	display: inline-flex;
+	align-items: center;
+	align-self: flex-start;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.subm-modal__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	margin-block-start: var(--space-1);
+}
+/* #endregion */
+
+/* #region Upload drop zone (stub) */
+.subm-upload__drop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-6) var(--space-4);
+	border: 1.5px dashed color-mix(in srgb, var(--on-surface) 26%, transparent);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--on-surface) 3%, transparent);
+	color: var(--text-secondary);
+	text-align: center;
+	cursor: pointer;
+	transition: border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.subm-upload__drop:hover,
+.subm-upload__drop:focus-visible {
+	outline: none;
+	border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+	background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.subm-upload__icon {
+	color: var(--text-secondary);
+}
+.subm-upload__primary {
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.subm-upload__secondary {
+	font-size: 0.75rem;
+}
+/* #endregion */
+
+/* #region Delete confirmation (alertdialog) */
+.subm-confirm {
+	position: fixed;
+	inset: 0;
+	z-index: var(--z-overlay);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+	background: color-mix(in srgb, var(--on-surface) 38%, transparent);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+}
+.subm-confirm__panel {
+	inline-size: min(24rem, 100%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-5);
+	text-align: center;
+	background: var(--surface);
+	border-radius: var(--radius-xl);
+	box-shadow: var(--elevation-high);
+}
+.subm-confirm__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 3rem;
+	block-size: 3rem;
+	border-radius: 999px;
+}
+.subm-confirm__icon[data-tone="danger"] {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.subm-confirm__title {
+	margin: 0;
+	font-size: 1.0625rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+.subm-confirm__body {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+.subm-confirm__actions {
+	display: flex;
+	justify-content: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+}
+/* #endregion */
+
+/* #region Tasks panel (sticky right column) */
+.subm-tasks {
+	position: sticky;
+	inset-block-start: var(--fx-chrome);
+	align-self: start;
+	block-size: calc(100dvh - var(--fx-chrome));
+	display: flex;
+	flex-direction: column;
+	/* Single hairline separates the panel from the workspace (§B.4 — not a four-sided box). */
+	border-inline-start: var(--hairline);
+	padding-inline-start: var(--space-4);
+}
+.subm-tasks__head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding-block: var(--space-2) var(--space-3);
+}
+.subm-tasks__title {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.8125rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+.subm-tasks__titleicon {
+	display: inline-flex;
+	color: var(--primary);
+}
+.subm-tasks__close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast)
+		var(--ease-standard);
+}
+.subm-tasks__close:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+.subm-tasks__close:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.subm-tasks__body {
+	flex: 1 1 auto;
+	overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+	.subm-tasks {
+		position: static;
+		block-size: auto;
+		border-inline-start: none;
+		border-block-start: var(--hairline);
+		padding-inline-start: 0;
+		padding-block-start: var(--space-3);
+	}
+}
+/* #endregion */
+
+/* #region Task checklist (shared: Tasks panel + Pre-Submit modal) */
+.subm-checklist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+.subm-checklist__meta {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+.subm-checklist__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.subm-checklist__grouptitle {
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-secondary);
+}
+.subm-checklist__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.subm-checklist__item {
+	font-size: 0.8125rem;
+	line-height: 1.4;
+	color: var(--on-surface);
+}
+.subm-checklist__item[data-done="true"] {
+	color: var(--text-secondary);
+}
+.subm-checklist[data-compact="true"] {
+	gap: var(--space-3);
+}
+
+.subm-presubmit__checklist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.subm-presubmit__h {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 700;
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Pre-Submit modal primary-button icon (reuses `.subm-btn` from submission-review.css) */
+.subm-btn__icon {
+	display: inline-flex;
+	margin-inline-end: var(--space-1);
+	vertical-align: -2px;
+}
+/* #endregion */

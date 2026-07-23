@@ -7,6 +7,7 @@ export * from "./summary.ts";
 export * from "./feed.ts";
 export * from "./create.ts";
 export * from "./detail.ts";
+export * from "./members.ts";
 export * from "./messages.ts";
 export * from "./files.ts";
 export * from "./submissions.ts";

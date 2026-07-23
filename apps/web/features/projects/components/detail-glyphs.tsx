@@ -154,6 +154,59 @@ export const DiscloseIcon = (
 );
 // #endregion
 
+// #region Channel-header action glyphs (kebab menu + drawer)
+/** Mute notifications — a bell. */
+export const BellIcon = (
+	<Svg>
+		<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z" />
+		<path d="M10 20a2 2 0 0 0 4 0" />
+	</Svg>
+);
+
+/** Muted notifications — a bell with a slash. */
+export const BellOffIcon = (
+	<Svg>
+		<path d="M8.5 4.5A6 6 0 0 1 18 9c0 3 1 4.5 1.6 5.3M6 9c0 5-2 6-2 6h11" />
+		<path d="M10 20a2 2 0 0 0 4 0" />
+		<path d="M3 3l18 18" />
+	</Svg>
+);
+
+/** Pin channel — a push-pin. */
+export const PinIcon = (
+	<Svg>
+		<path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6z" />
+		<path d="M12 18v3" />
+	</Svg>
+);
+
+/** Channel info — a circled i. */
+export const InfoIcon = (
+	<Svg>
+		<circle cx="12" cy="12" r="8.5" />
+		<path d="M12 11v5" />
+		<circle cx="12" cy="7.8" r="0.6" fill="currentColor" stroke="none" />
+	</Svg>
+);
+
+/** Copy link — two chain links. */
+export const LinkIcon = (
+	<Svg>
+		<path d="M9.5 13.5l5-5" />
+		<path d="M8 11l-2 2a3 3 0 0 0 4.2 4.2l2-2" />
+		<path d="M16 13l2-2a3 3 0 0 0-4.2-4.2l-2 2" />
+	</Svg>
+);
+
+/** A clock — the stage/session deadline row. */
+export const ClockIcon = (
+	<Svg>
+		<circle cx="12" cy="12" r="8.5" />
+		<path d="M12 7.5V12l3 2" />
+	</Svg>
+);
+// #endregion
+
 // #region Helpers
 /**
  * The dynamic Board-view label + icon for an engagement, per PRODUCT_SPEC: a pipeline renders a
@@ -170,30 +223,67 @@ export function boardView(format: ProjectFormat, kind: "project" | "service"): {
 	return { label: "Pipeline", icon: PipelineIcon };
 }
 
-/** One core view destination of a Project Details engagement (Details · Board · … · Settings). */
+/** One core view destination of a Project Details engagement (Details · Board · Members · …). */
 export interface ProjectViewLink {
 	key: string;
 	label: string;
 	icon: JSX.Element;
 	/** Sub-path segment after `/projects/{slug}` (`""` for the Details root). */
 	seg: string;
+	/**
+	 * Secondary destination — surfaced inline in the collapsed rail (which has vertical room) but
+	 * folded into the footer's "More" overflow menu so the footer stays minimalist.
+	 */
+	overflow?: boolean;
 }
 
 /**
  * The ordered core view links for an engagement, with the Board entry DYNAMICALLY labelled off the
  * engagement format/kind (Pipeline · Timeline · Calendar). Shared by the expanded footer nav
  * ({@link ProjectViewNav}) and the collapsed icon rail so both stay in lockstep.
+ *
+ * `sessionKind` keeps the links consistent with the channel-header tab matrix (task §2/§3): a session
+ * service (`normal`/`group`) forces the Board entry to the **Calendar** and DROPS the **Submissions**
+ * view (a session has no stage submissions), so the sidebar's view rail matches the tabs. Passing the
+ * effective (dev-overridable) archetype — not the raw `format` — means a dev-simulated session on a
+ * pipeline-format engagement adapts too.
+ *
+ * Settings is intentionally NOT a sidebar destination — consolidated project settings live inside the
+ * `/edit` project page. Attachments + Finances are flagged `overflow` so the footer keeps only the
+ * high-traffic views inline and tucks the rest behind a "More" menu.
  */
-export function projectViewLinks(detail: ProjectDetail): ProjectViewLink[] {
-	const board = boardView(detail.format, detail.kind);
-	return [
+export function projectViewLinks(
+	detail: ProjectDetail,
+	sessionKind: "none" | "normal" | "group" = "none",
+): ProjectViewLink[] {
+	const isSession = sessionKind === "normal" || sessionKind === "group";
+	const board = isSession
+		? { label: "Calendar", icon: CalendarIcon }
+		: boardView(detail.format, detail.kind);
+	const links: ProjectViewLink[] = [
 		{ key: "details", label: "Details", icon: DetailsIcon, seg: "" },
 		{ key: "board", label: board.label, icon: board.icon, seg: "board" },
 		{ key: "members", label: "Members", icon: MembersIcon, seg: "members" },
-		{ key: "attachments", label: "Attachments", icon: AttachmentsIcon, seg: "attachments" },
-		{ key: "submissions", label: "Submissions", icon: SubmissionsIcon, seg: "submissions" },
-		{ key: "finances", label: "Finances", icon: FinancesIcon, seg: "finances" },
-		{ key: "settings", label: "Settings", icon: SettingsIcon, seg: "settings" },
 	];
+	// Sessions have no stage submissions — hide the view (consistent with the hidden Submissions tab).
+	if (!isSession) {
+		links.push({
+			key: "submissions",
+			label: "Submissions",
+			icon: SubmissionsIcon,
+			seg: "submissions",
+		});
+	}
+	links.push(
+		{
+			key: "attachments",
+			label: "Attachments",
+			icon: AttachmentsIcon,
+			seg: "attachments",
+			overflow: true,
+		},
+		{ key: "finances", label: "Finances", icon: FinancesIcon, seg: "finances", overflow: true },
+	);
+	return links;
 }
 // #endregion

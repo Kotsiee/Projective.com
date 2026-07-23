@@ -12,7 +12,7 @@
 	inline-size: 100%;
 	max-inline-size: 1180px;
 	margin-inline: auto;
-	padding: var(--space-5) var(--space-5) var(--space-8);
+	padding: var(--space-5) var(--space-5) var(--space-6);
 	color: var(--on-surface);
 }
 
@@ -37,6 +37,16 @@
 .vw__back:hover {
 	color: var(--on-surface);
 	background: var(--surface-2);
+}
+
+/* On desktop the side-nav lane carries its own Back button in the lane header, so the in-body row is
+   redundant — hide the "laned" variant there. On mobile (≤767px) the lane is `display:none`, so the
+   in-body Back is the only one and must stay. The plain `.vw__back-row` (e.g. the not-found state,
+   which has no lane) is unaffected. */
+@media (min-width: 768px) {
+	.vw__back-row--laned {
+		display: none;
+	}
 }
 /* #endregion */
 
@@ -501,23 +511,16 @@
 /* #endregion */
 
 /* #region Sidebar action lane content (on the reused pf-lane skeleton) */
-.vw-lane__creator {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
+/* The lane header's Back button — the relocated `vw__back` (it replaces the old creator link). It may
+   shrink so the Share·Save·kebab cluster always fits; the label ellipsizes in a narrow lane. */
+.vw-lane__back {
 	min-inline-size: 0;
-	text-decoration: none;
-	color: var(--on-surface);
-	padding: 0.2rem 0.4rem;
-	border-radius: var(--radius-full, 999px);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	flex: 0 1 auto;
 }
-.vw-lane__creator:hover {
-	background: var(--surface-2);
+.vw-lane__back-arrow {
+	flex: none;
 }
-.vw-lane__creator-name {
-	font-size: 0.85rem;
-	font-weight: 600;
+.vw-lane__back-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -668,66 +671,257 @@
 }
 /* #endregion */
 
-/* #region Recommendation rails */
+/* #region Service view — showcase toggle, availability calendar, team roles */
+/* The main showcase region for a bookable service — media gallery ⇄ availability calendar. */
+.vw-showcase {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+/* In-showcase mode switch (mirrors the lane's `pf-availtoggle`, reachable on mobile). */
+.vw-showcase__switch {
+	display: inline-flex;
+	align-self: flex-start;
+	gap: 0.15rem;
+	padding: 0.2rem;
+	border-radius: var(--radius-full, 999px);
+	background: var(--surface-2);
+}
+.vw-showcase__tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.35rem 0.75rem;
+	font-size: 0.8rem;
+	font-weight: 600;
+	font-family: inherit;
+	color: var(--text-secondary);
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	background: transparent;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.vw-showcase__tab[data-active="true"] {
+	color: var(--on-surface);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+.vw-showcase__tab:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+/* Availability calendar frame inside the showcase. */
+.vw-showcase__calendar {
+	inline-size: 100%;
+	min-block-size: 460px;
+	border-radius: var(--radius-2xl, var(--radius-xl));
+	overflow: hidden;
+	background: var(--surface-1);
+	box-shadow: var(--elevation-low);
+}
+
+/* The side-nav lane's `pf-availtoggle` — the segmented Showcase / Availability switch (Part 2). */
+.pf-availtoggle {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.15rem;
+	padding: 0.2rem;
+	border-radius: var(--radius-full, 999px);
+	background: var(--surface-2);
+}
+.pf-availtoggle__opt {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	padding: 0.45rem 0.5rem;
+	font-size: 0.8rem;
+	font-weight: 600;
+	font-family: inherit;
+	color: var(--text-secondary);
+	border: none;
+	border-radius: var(--radius-full, 999px);
+	background: transparent;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.pf-availtoggle__opt[data-active="true"] {
+	color: var(--on-surface);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+}
+.pf-availtoggle__opt:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+/* A subtle text link to the full-page calendar under the booking CTAs. */
+.vw-lane__fulllink {
+	align-self: center;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--primary);
+	text-decoration: none;
+}
+.vw-lane__fulllink:hover {
+	text-decoration: underline;
+}
+
+/* Direct Deliverable — the "Project team roles" block in the overview column (Part 3). */
+.vw-teamroles {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.vw-teamrole {
+	display: grid;
+	grid-template-columns: 1.75rem minmax(0, 1fr);
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-radius: var(--radius-md);
+	background: var(--surface-1);
+}
+.vw-teamrole__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	color: var(--text-secondary);
+}
+.vw-teamrole__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	min-inline-size: 0;
+}
+.vw-teamrole__name {
+	font-size: 0.9rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+.vw-teamrole__summary {
+	font-size: 0.82rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+.vw-teamrole__skills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-start: 0.15rem;
+}
+.vw-teamrole__skill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0.2rem 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	color: var(--primary);
+}
+.vw-teamrole__skill svg {
+	flex: none;
+}
+/* #endregion */
+
+/* #region Recommendation sections */
 .vw-body {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-8);
-	margin-block-start: var(--space-8);
+	gap: var(--space-6);
+	margin-block-start: var(--space-6);
 }
-.vw-rail {
+
+/* A titled section ("More by …" / "Similar"), holding one dedicated block per entity type. */
+.vw-related {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
 }
-.vw-rail__head {
+.vw-related__head {
 	display: flex;
 	align-items: flex-end;
 	justify-content: space-between;
 	gap: var(--space-3);
 }
-.vw-rail__title {
+.vw-related__title {
 	margin: 0;
 	font-size: 1.15rem;
 	font-weight: 700;
 	color: var(--on-surface);
 }
-.vw-rail__sub {
+.vw-related__sub {
 	margin: 0.2rem 0 0;
 	font-size: 0.85rem;
 	color: var(--text-secondary);
 }
-.vw-rail__all {
+.vw-related__all {
 	flex: none;
 	font-size: 0.85rem;
 	font-weight: 600;
 	color: var(--primary);
 	text-decoration: none;
 }
-.vw-rail__all:hover {
+.vw-related__all:hover {
 	text-decoration: underline;
 }
-.vw-rail__track {
-	list-style: none;
-	margin: 0;
-	padding: 0 var(--space-1) var(--space-2);
-	display: grid;
-	grid-auto-flow: column;
-	grid-auto-columns: minmax(240px, 1fr);
-	gap: var(--space-4);
-	overflow-x: auto;
-	scroll-snap-type: x proximity;
-	scrollbar-width: thin;
-}
-.vw-rail__cell {
-	scroll-snap-align: start;
-	min-inline-size: 0;
+.vw-related__groups {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
 }
 
-@media (max-width: 540px) {
-	.vw-rail__track {
-		grid-auto-columns: minmax(200px, 78%);
-	}
+/* One single-type block. */
+.vw-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+.vw-group__label {
+	margin: 0;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+/* Carousel — every non-product format, via the `@projective/ui/display` Carousel island. Each slide
+ * holds one native card; the card's own `inline-size: 100%` fills the slot the library sizes. */
+.vw-slide {
+	block-size: 100%;
+}
+.vw-slide > .ex-card {
+	block-size: 100%;
+}
+
+/* Projects are divider-rows, not fixed cards — frame the row inside its (wider) slide. */
+.vw-slide--projects .ex-projrow {
+	block-size: 100%;
+	border-block-end: none;
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+	padding: var(--space-4);
+}
+
+/* Product masonry — distinct from the carousels; reuses the shared `.ex-masonry` flow (no library
+ * masonry equivalent). The compound selector (0,2,0) outranks the bare `.ex-masonry` (0,1,0)
+ * regardless of stylesheet order. */
+.ex-masonry.vw-group__masonry {
+	columns: 3 15rem;
 }
 /* #endregion */
 
@@ -736,7 +930,7 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
-	padding-block-start: var(--space-6);
+	padding-block-start: var(--space-5);
 	border-block-start: var(--hairline);
 	scroll-margin-block-start: calc(var(--shell-topbar-h, 56px) + var(--space-4));
 }

@@ -69,6 +69,20 @@ export interface ServerEnv {
 	 * + profile tables are implemented and verified, then flip per environment.
 	 */
 	profileBackendLive: boolean;
+	/**
+	 * Master switch for LIVE messaging-backend behaviour. Defaults **off**: {@link MessagingBackendService}
+	 * answers the `/messages` inbox (conversations · settings) from deterministic fixtures until the
+	 * RLS-scoped `messages.*` tables (unified with project channels by `chatId`) are implemented and
+	 * verified, then flip per environment.
+	 */
+	messagingBackendLive: boolean;
+	/**
+	 * Master switch for LIVE logging-backend behaviour. Defaults **off**: {@link LogBackendService}
+	 * accepts the production `error`/`warn` ingest into a no-op stub (console echo) until the
+	 * `logging.entries` table lands, then flip per environment. Orthogonal to `DENO_ENV` — this gates
+	 * *persistence*, `appEnv` gates *verbosity*.
+	 */
+	loggingBackendLive: boolean;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -85,5 +99,7 @@ export function serverEnv(): ServerEnv {
 			"true",
 		projectsBackendLive: (firstEnv("PROJECTS_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		profileBackendLive: (firstEnv("PROFILE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		messagingBackendLive: (firstEnv("MESSAGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		loggingBackendLive: (firstEnv("LOGGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 	};
 }

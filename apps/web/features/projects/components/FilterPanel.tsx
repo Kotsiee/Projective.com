@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { WorkspaceCombo } from "./WorkspaceCombo.tsx";
 import { IconMatrix } from "./IconMatrix.tsx";
-import { FormatGlyph, StatusGlyph } from "./glyphs.tsx";
+import { StatusGlyph } from "./glyphs.tsx";
 import { popoverActiveCount } from "../core/projects-state.ts";
 import type {
 	ProjectFeedParams,
@@ -16,8 +16,8 @@ import type {
 
 /**
  * FilterPanel — the contents of the Smart Filter popover. A masterclass mix of input mechanics rather
- * than one flat wall of tags: a workspace tag-combo, a borderless low-contrast Role text-matrix,
- * icon-only Format + Status matrices (each glyph tooltip-labelled), and a compact Sort segment. The
+ * than one flat wall of tags: a workspace tag-combo, a borderless low-contrast Role text-matrix, a
+ * named Project-type text-matrix, an icon-only Status matrix, and a compact Sort segment. The
  * available inputs transform by tab — the "Clients by service" queue renders **only** on the Services
  * tab and is hidden entirely on Projects. Every change applies live to the feed; a quiet header holds
  * the active-filter count and a plain "Reset" affordance.
@@ -138,13 +138,32 @@ export function FilterPanel(props: FilterPanelProps): JSX.Element {
 				</div>
 			</div>
 
-			{/* Format + Status — icon-only matrices. */}
-			<IconMatrix
-				label="Format"
-				options={FORMAT_OPTS.map((o) => ({ ...o, icon: <FormatGlyph format={o.value} /> }))}
-				active={params.formats}
-				onToggle={(v) => onApply({ ...params, formats: toggleIn(params.formats, v) })}
-			/>
+			{
+				/* Project type — a named multi-select text matrix (Pipeline / One-off / Session, plus any
+			    future formats). Named rather than icon-only so the delivery model reads at a glance. */
+			}
+			<div class="proj-filter__facet">
+				<span class="proj-filter__facet-label">Project type</span>
+				<div class="proj-textmatrix" role="group" aria-label="Project type">
+					{FORMAT_OPTS.map((opt) => {
+						const on = params.formats.includes(opt.value);
+						return (
+							<button
+								key={opt.value}
+								type="button"
+								class="proj-textmatrix__opt"
+								data-on={on ? "true" : undefined}
+								aria-pressed={on}
+								onClick={() => onApply({ ...params, formats: toggleIn(params.formats, opt.value) })}
+							>
+								{opt.label}
+							</button>
+						);
+					})}
+				</div>
+			</div>
+
+			{/* Status — the icon-only lifecycle matrix. */}
 			<IconMatrix
 				label="Status"
 				options={STATUS_OPTS.map((o) => ({ ...o, icon: <StatusGlyph status={o.value} /> }))}

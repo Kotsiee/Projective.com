@@ -71,7 +71,11 @@ export function severityVars(severity: Severity | undefined): Record<string, str
 	};
 }
 
-/** `aria-invalid` value derived from status. */
+/**
+ * `aria-invalid` value derived from status. `invalid` (malformed) and `required` (unmet initial
+ * creation gate — RED) are truly invalid; `gate` (AMBER publishing gate) is a soft, informative
+ * state, so it is intentionally NOT surfaced as `aria-invalid`.
+ */
 export function ariaInvalid(status: FieldStatus | undefined): boolean | undefined {
-	return status === "invalid" ? true : undefined;
+	return status === "invalid" || status === "required" ? true : undefined;
 }

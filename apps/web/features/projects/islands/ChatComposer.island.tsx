@@ -45,11 +45,29 @@ import type { DraftAttachment, PastedBlock } from "../types/composer-types.ts";
  * mutually exclusive by construction (the textarea is replaced by the waveform while a memo exists).
  */
 
+/** An imperative handle an external drop zone (e.g. the pop-out popover) uses to enqueue files. */
+export interface ComposerHandle {
+	/** Enqueue files into the attachment tray (respects the attachment cap). */
+	addFiles(files: FileList | File[]): void;
+}
+
 export interface ChatComposerProps {
 	/** The engagement route slug (thread scoping for the eventual send). */
 	projectId: string;
 	/** The channel route segment (its unified `chatId` is resolved server-side when live). */
 	channelId: string;
+	/**
+	 * Fired once after mount with an imperative {@link ComposerHandle}, so an external surface — the
+	 * floating "Pop Out Chat" popover's whole-panel drop zone (task §1) — can push dropped files into
+	 * this composer's upload queue. Unused by the in-frame composer.
+	 */
+	onReady?: (api: ComposerHandle) => void;
+	/**
+	 * Fired when the viewer sends (before the draft is cleared). The profile quick-message popover (task
+	 * §3) uses it to create the conversation record + navigate into `/messages/[conversationId]` on the
+	 * FIRST message. Unused by the in-frame composer (its send is optimistic/stubbed).
+	 */
+	onSend?: () => void;
 }
 
 /** The primary site sidebar the Plus popover must never slide under (edge-detection). */
@@ -57,7 +75,9 @@ const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 /** A press held at least this long is a hold-to-talk gesture; shorter is a click-to-latch. */
 const HOLD_THRESHOLD_MS = 350;
 
-export default function ChatComposer({ projectId, channelId }: ChatComposerProps): JSX.Element {
+export default function ChatComposer(
+	{ projectId, channelId, onReady, onSend }: ChatComposerProps,
+): JSX.Element {
 	// #region State
 	const text = useSignal("");
 	const attachments = useSignal<DraftAttachment[]>([]);
@@ -215,7 +235,9 @@ export default function ChatComposer({ projectId, channelId }: ChatComposerProps
 		if (!canSend) return;
 		// Optimistic/stubbed — the outgoing payload (text + pasted blocks + attachments, or the voice
 		// memo) is assembled here and dispatched once the messaging backend lands behind
-		// `PROJECTS_BACKEND_LIVE`. For now the draft is simply cleared.
+		// `PROJECTS_BACKEND_LIVE`. For now the draft is simply cleared. `onSend` lets a host (the profile
+		// quick-message popover) react to the first send (create + link the conversation).
+		onSend?.();
 		resetDraft();
 	}
 
@@ -260,6 +282,11 @@ export default function ChatComposer({ projectId, channelId }: ChatComposerProps
 				} catch { /* already revoked */ }
 			}
 		}
+	}, []);
+
+	// Expose the imperative handle so an external drop zone (the pop-out popover) can enqueue files.
+	useEffect(() => {
+		onReady?.({ addFiles });
 	}, []);
 	// #endregion
 

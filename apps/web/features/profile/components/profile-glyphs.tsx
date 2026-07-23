@@ -43,6 +43,8 @@ export type ProfileGlyph =
 	| "kebab"
 	| "link"
 	| "flag"
+	| "embed"
+	| "bookmark"
 	// Entity-type badge glyphs (Part 1).
 	| "entity-freelancer"
 	| "entity-client"
@@ -203,6 +205,10 @@ const PATHS: Record<ProfileGlyph, VNode> = {
 		<path d="M9 15l6-6M10.5 6.5l1.8-1.8a3.5 3.5 0 0 1 5 5l-2.3 2.3M13.5 17.5l-1.8 1.8a3.5 3.5 0 0 1-5-5l2.3-2.3" />
 	),
 	flag: <path d="M5 21V4M5 4h11l-2 3.5L16 11H5" />,
+	// Embed — angle brackets, for the "copy embed snippet" action.
+	embed: <path d="M9 8l-4 4 4 4M15 8l4 4-4 4" />,
+	// Bookmark ribbon — the "save to collection" action.
+	bookmark: <path d="M6 4h12v16l-6-3.5L6 20z" />,
 	// Entity-type glyphs (Part 1) — one distinct mark per profile kind.
 	"entity-freelancer": (
 		<>

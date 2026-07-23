@@ -1,0 +1,248 @@
+/*
+ * Dev Context Switcher (dev-ctx) — the body of the Context Switcher window. Token-only, BEM. Segmented
+ * single-choice controls, a master switch, and a live effective-context summary. Interactive controls
+ * carry full borders (permitted, §B.4); the summary is a borderless tonal panel.
+ */
+
+.dev-ctx {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+}
+
+/* --- Master switch --- */
+.dev-ctx__master {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+.dev-ctx__master-copy {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+.dev-ctx__master-copy strong {
+	font-weight: 600;
+}
+
+.dev-ctx__hint {
+	color: var(--text-secondary);
+	font-size: 0.6875rem;
+}
+
+.dev-ctx__switch {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	cursor: pointer;
+	flex: none;
+}
+.dev-ctx__switch-track {
+	display: inline-flex;
+	align-items: center;
+	inline-size: 2.25rem;
+	block-size: 1.25rem;
+	padding: 2px;
+	border-radius: 999px;
+	background: var(--surface-3);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.dev-ctx__switch[data-on="true"] .dev-ctx__switch-track {
+	background: var(--primary);
+}
+.dev-ctx__switch-thumb {
+	inline-size: 1rem;
+	block-size: 1rem;
+	border-radius: 999px;
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+	transition: transform var(--dur-fast) var(--spring-standard);
+}
+.dev-ctx__switch[data-on="true"] .dev-ctx__switch-thumb {
+	transform: translateX(1rem);
+}
+.dev-ctx__switch:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+/* --- Controls --- */
+.dev-ctx__controls {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.dev-ctx__controls[data-disabled="true"] {
+	opacity: 0.5;
+}
+
+/* A subtle divider heading that groups a related cluster of override controls. */
+.dev-ctx__grouphead {
+	margin-block-start: var(--space-1);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+	font-size: 0.625rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-secondary);
+}
+
+.dev-ctx__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.dev-ctx__label {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+.dev-ctx__input {
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.75rem;
+	font-family: var(--font-mono);
+}
+.dev-ctx__input::placeholder {
+	color: var(--text-secondary);
+	font-family: var(--font-sans);
+}
+.dev-ctx__input:focus {
+	outline: none;
+	border-color: var(--primary);
+}
+.dev-ctx__input:disabled {
+	cursor: not-allowed;
+	opacity: 0.7;
+}
+
+.dev-ctx__segment {
+	display: flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	border: var(--hairline);
+}
+.dev-ctx__seg {
+	flex: 1 1 0;
+	padding: var(--space-1) var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.75rem;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.dev-ctx__seg:hover:not(:disabled) {
+	color: var(--on-surface);
+}
+.dev-ctx__seg[data-active="true"] {
+	background: var(--surface);
+	color: var(--primary);
+	box-shadow: var(--elevation-low);
+}
+.dev-ctx__seg:disabled {
+	cursor: not-allowed;
+}
+.dev-ctx__seg:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+
+/* --- Effective-context summary (borderless tonal panel, §B.4) --- */
+.dev-ctx__summary {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
+	gap: var(--space-2);
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+.dev-ctx__summary div {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-inline-size: 0;
+}
+.dev-ctx__summary dt {
+	font-size: 0.625rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+.dev-ctx__summary dd {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.dev-ctx__summary dd[data-flag="true"] {
+	color: var(--success);
+}
+.dev-ctx__summary dd[data-flag="false"] {
+	color: var(--text-secondary);
+}
+
+/* --- Actions --- */
+.dev-ctx__actions {
+	display: flex;
+	justify-content: flex-end;
+}
+.dev-ctx__reset {
+	padding: var(--space-1) var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.75rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.dev-ctx__reset:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+.dev-ctx__reset:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}

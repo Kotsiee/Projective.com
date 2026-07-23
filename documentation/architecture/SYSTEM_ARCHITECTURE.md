@@ -718,6 +718,21 @@ live path (an upsert into `newsletter.subscriptions` + email-provider sync) wait
 The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the route and never
 reaches the service.
 
+### Messaging services
+
+The global inbox (`/messages`) is a READ-heavy implementation of the contract: `MessagingService`
+(client) → `/api/messaging/{conversations,conversation,messages,contacts,settings}` (thin) →
+`services/messaging/MessagingBackendService.ts` (fat) → `ServiceResult<T>`. Cross-boundary shapes —
+the conversation list / detail / contact-picker / settings projections — are the Zod SSOT at
+**`@projective/types/messaging`**; message BODIES reuse `@projective/types/projects`'
+`MessagePage`/`ChatMessage` because a project channel and the inbox are one thread, **unified by
+`chatId`** (`PRODUCT_SPEC.md` §Unified Messaging) — so the fixtures derive the `dm-{handle}`
+conversation ids to match the project DM ids. Stub-first behind **`MESSAGING_BACKEND_LIVE`** (default
+off), gated by `isMessagingBackendLive()`; the live path (RLS-scoped `messages.*` tables) slots in
+behind that guard with zero shape churn. Full feature detail (the floating pop-out chat with
+navigation memory, the role-specific advanced filters, the profile quick-message popover, the
+`messagingRole` dev-context axis) is logged in the root `CLAUDE.md` §8 Decision #49.
+
 ### Sessions & Google OAuth
 
 - **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue
@@ -726,13 +741,53 @@ reaches the service.
   checks) via `apps/web/utils/auth-cookies.ts`, folded in by `toAuthResponse`. Islands `fetch` the
   route, the browser stores the cookies, and the island's `location.href` navigation is
   authenticated.
+- **Session lifecycle & silent refresh.** The access token is short-lived (~1h, GoTrue `expires_in`);
+  the refresh token lives 30 days. A session must be **renewed**, not dropped, when the access cookie
+  expires. The single renewal primitive is fat `AuthBackendService.refreshSession(refreshToken)` (live
+  GoTrue `refreshSession({ refresh_token })` → rotated tokens; stub re-mints so the path is testable
+  without a wired GoTrue — it grants no access, and is only reachable when a refresh cookie is actually
+  presented). It feeds two consumers via `apps/web/utils/session.ts` `ensureSession(req)` — fast path
+  (access cookie present) → **refresh-before-redirect** (access gone + refresh present → renew in
+  place) → **fail-closed** (spent/invalid refresh → clear both cookies):
+  - **Server (the `(dashboard)` guard).** `routes/(dashboard)/_middleware.ts` calls `ensureSession`,
+    re-mints the renewed `sb-*` cookies onto the proceeding response, re-derives `ctx.state.userContext`
+    from the fresh token (so a just-renewed request never paints guest chrome), and — only for a
+    genuinely dead session — redirects to `/login` capturing the **full** target (`pathname + search`)
+    as `redirectTo` for a loss-free return.
+  - **Client (the 401 interceptor).** `POST /api/auth/refresh` (thin, NOT behind the guard — it must be
+    reachable when the access token has expired) renews the cookies via `toAuthResponse`. The shared
+    `apps/web/utils/api-client.ts` `apiFetch()` wraps `fetch`: on a `401` it triggers a single shared
+    refresh, retries the original request, and only routes to `/login?redirectTo=<path>` if the session
+    is truly gone. Feature `api.ts` transports adopt it by swapping `fetch`→`apiFetch` (done for
+    `features/projects/core/api.ts`).
+
+  This closes session **persistence** only; real signed-JWT **verification** via `@server/services`
+  (this section's remaining TODO) is where any *access* decision must still re-validate — the guard and
+  RLS remain the real gates, per root CLAUDE.md Decisions #14/#16. See Decision #46.
+- **Sign-out & the account projection (Decision #47).** `AuthService.logout()` → `POST /api/auth/logout`
+  (thin) → fat `AuthBackendService.signOut(accessToken)` (live: best-effort GoTrue **global** revocation;
+  stub: no-op) → the route **unconditionally clears** both `sb-*` cookies (`sessionClearCookies`). Cookie
+  clearing is the authoritative sign-out; revocation is defence-in-depth, so a failed revocation never
+  blocks logout. The header `UserActions` island then applies a **route-aware redirect**: a protected
+  `(dashboard)` route leaves for the public landing (`/`); a public route reloads in place as a guest —
+  the route GROUP that renders the shell is the public/protected source of truth (threaded
+  `protectedRoute` → `UserShell` → `UserActions`, set only by the `(dashboard)` layout). The account
+  popover binds **live account data** via `GET /api/user/me` (thin) → fat
+  `services/user/UserBackendService.me({ context, accessToken })`, which composes the chrome `UserContext`
+  (role badge + active workspace) with the live Supabase `auth.users` identity (name / email / avatar via
+  `auth.getUser`), degrading to the context projection when the live read is unavailable (it only 401s a
+  genuine guest). Shape: the Zod SSOT **`@projective/types/user`** (`CurrentUser`, `resolveAccountRole`).
+  The thin client `AccountService.current()` is chrome-safe — a failed load resolves to `null` (→ the
+  SSR-hydrated context fallback), never a sign-in redirect.
 - **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
   PKCE **code-verifier** in a short-lived cookie (a `CookieStore` storage adapter on the anon
   client); `/api/auth/callback` exchanges the `code` for a session, mints the `sb-*` cookies, clears
   the verifier, and routes — a **new** Google identity (no `org.users_public` yet) to `/join`
   pre-filled to finish onboarding via `complete_onboarding`, an existing user to their return path.
-  All gated by `AUTH_BACKEND_LIVE`; non-live, the start route simulates the pre-filled-`/join`
-  branch.
+  `/join` is only for a **confirmed** brand-new identity: a `users_public` lookup failure defaults to
+  *existing* (route to the return path), so a transient error never re-onboards a returning user
+  (Decision #46). All gated by `AUTH_BACKEND_LIVE`; non-live, the start route simulates the
+  pre-filled-`/join` branch.
 - **Enterprise SSO (SAML/OIDC).** `/api/auth/sso` calls `signInWithSSO({ domain })`; a resolved
   provider returns an IdP authorize URL that the login panel navigates to (carried as the external
   `AuthResult.ssoUrl`, distinct from the same-origin `redirectTo`). SSO reuses the OAuth PKCE

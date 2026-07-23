@@ -1,6 +1,11 @@
 import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
+import { MessagesEmptyState } from "@web/features/messaging/components/MessagesEmptyState.tsx";
 
-export default define.page(function MessagesPage() {
-	return <PagePlaceholder title="Messages" path="/messages" note="All conversations." />;
+/**
+ * `/messages` — the global inbox root. The conversation list + search + advanced filters live in the
+ * middle-nav lane (the `MessagesSidebar`, resolved by the dashboard `laneFor`); this canvas is the
+ * "pick or start a conversation" prompt shown before one is opened.
+ */
+export default define.page(function MessagesIndex() {
+	return <MessagesEmptyState />;
 });

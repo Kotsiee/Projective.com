@@ -22,12 +22,17 @@
 	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 }
 
-/* #region Layout — tree + main */
+/* #region Layout — tree + main (+ optional Tasks panel column) */
 .subm-layout {
 	display: grid;
 	grid-template-columns: 15rem minmax(0, 1fr);
 	gap: var(--space-5);
 	align-items: start;
+}
+
+/* When the Tasks drawer is open, a sticky right column joins the grid (root task §6). */
+.subm-layout[data-tasks="open"] {
+	grid-template-columns: 15rem minmax(0, 1fr) 17.5rem;
 }
 
 .subm-main {
@@ -53,12 +58,20 @@
 
 /* #endregion */
 
-/* #region Breadcrumbs bar (sticky) */
+/* #region Breadcrumbs bar (sticky) — trail (left) + workflow action bar (right) */
 .subm-crumbbar {
 	display: flex;
 	align-items: center;
+	gap: var(--space-3);
 	min-block-size: var(--subm-crumb-h);
 	padding: 0 var(--space-2);
+}
+
+.subm-crumbbar__trail {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
 }
 
 .subm-breadcrumbs {
@@ -133,7 +146,8 @@
 /* #endregion */
 
 @media (max-width: 768px) {
-	.subm-layout {
+	.subm-layout,
+	.subm-layout[data-tasks="open"] {
 		grid-template-columns: 1fr;
 	}
 

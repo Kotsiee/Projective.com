@@ -353,12 +353,32 @@
 
 .pf-tabs__list {
 	display: flex;
+	flex-wrap: nowrap;
 	align-items: stretch;
 	gap: var(--space-1);
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	min-inline-size: max-content;
+	/* Fill the strip so the right group (Reviews · More) can pin to the far edge via auto margins. */
+	inline-size: 100%;
+}
+
+/* Each item keeps its natural width — no flex-shrink — so the island measures true widths and the
+   visible tabs never squeeze/clip (the JS overflow split, not flex, decides what shows). */
+.pf-tabs__item {
+	flex: none;
+	display: flex;
+}
+
+/* Right group: Reviews pins to the far right; the More control sits at the absolute far right after it.
+   When there is no Reviews tab, More itself takes the auto margin and anchors the right edge. */
+.pf-tabs__item--trailing,
+.pf-tabs__item--more {
+	margin-inline-start: auto;
+}
+
+.pf-tabs__item--trailing ~ .pf-tabs__item--more {
+	margin-inline-start: 0;
 }
 
 .pf-tab {
@@ -442,17 +462,14 @@
 	transform: rotate(-90deg);
 }
 
-/* The overflow menu (portal Popover content) — a compact link list. */
-.pf-tabs__menu {
+/* Compact menu popover — actions render DIRECTLY inside `ui-popover__content` (no intermediary
+   wrapper): the Popover already supplies the elevated surface/hairline/radius/shadow, so `.pf-menu`
+   only tightens the content padding into a dense column. Shared by the tab overflow + lane kebab. */
+.ui-popover.pf-menu .ui-popover__content {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	min-inline-size: 11rem;
 	padding: var(--space-1);
-	background: var(--surface);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-medium, var(--elevation-low));
 }
 
 .pf-tabs__menu-item {
@@ -948,19 +965,19 @@
 	font-weight: 600;
 }
 
-/* Clients / Worked with — mini-cards with a prominent logo (Part 2.3). Interactive, so a full border
-   is allowed (§B.4). */
-.pf-clients {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-3);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+/* Clients / Worked with — mini-cards with a prominent logo (Part 2.3), rendered through the reusable
+   Carousel (a responsive, drag-swipeable track). Interactive, so a full border is allowed (§B.4). */
+.pf-clients-carousel {
+	margin-block-start: var(--space-1);
 }
 
 .pf-clientcard {
 	display: flex;
+}
+
+/* A card sitting in a carousel slide fills its slot (the slide owns the inter-card gutter). */
+.pf-clientcard--slide {
+	inline-size: 100%;
 }
 
 .pf-clientcard__link {
@@ -968,7 +985,8 @@
 	align-items: center;
 	gap: var(--space-3);
 	padding: var(--space-3);
-	min-inline-size: 11rem;
+	min-inline-size: 0;
+	inline-size: 100%;
 	text-decoration: none;
 	color: var(--on-surface);
 	background: var(--surface-1);
@@ -1533,19 +1551,8 @@
 	fill: currentColor;
 }
 
-/* Kebab dropdown menu (portal Popover content). */
-.pf-lane__menu {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-inline-size: 11rem;
-	padding: var(--space-1);
-	background: var(--surface);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-medium, var(--elevation-low));
-}
-
+/* Kebab dropdown menu — items render DIRECTLY inside `ui-popover__content` via the shared `.pf-menu`
+   compact-popover style (above); no intermediary `.pf-lane__menu` wrapper. */
 .pf-lane__menu-item {
 	display: flex;
 	align-items: center;

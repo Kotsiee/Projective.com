@@ -118,47 +118,25 @@ export function managementTabsFor(kind: ProfileKind): ProfileTab[] {
 }
 // #endregion
 
-// #region Tab-bar arrangement (Reviews-last + overflow)
+// #region Tab-bar arrangement (Reviews pinned last)
 /**
- * The key tabs kept directly visible when the tab bar overflows (root CLAUDE.md — Part 3.3). Reviews is
- * ALWAYS pinned to the far right by {@link arrangeTabs} (not listed here — it is the `trailing` slot).
- */
-export const PRIORITY_TABS: ReadonlyArray<ProfileTab> = ["services", "projects", "portfolio"];
-
-/** How many tabs may sit inline before the secondary ones collapse into the `More ▾` menu. */
-export const TAB_OVERFLOW_THRESHOLD = 6;
-
-/**
- * The tab bar's layout for a profile kind (root CLAUDE.md — Part 3):
- *  - `trailing` — **Reviews**, always the very last item on the right (when the kind has it), no matter
- *    the entity type or how many other tabs are enabled.
- *  - When the kind has **≤ {@link TAB_OVERFLOW_THRESHOLD}** tabs, everything else is `primary` (inline)
- *    and `overflow` is empty.
- *  - When it has more, only the {@link PRIORITY_TABS} that the kind actually has stay `primary`; the
- *    rest move into `overflow` (the `More ▾` dropdown). Reviews is never in the dropdown.
- *
- * The tab strip stays horizontally scrollable regardless (the island's wheel handler), so no tab is
- * ever clipped even when the dropdown is not shown.
+ * Reviews is always pinned to the far right of the tab bar (root CLAUDE.md — Part 3.3 / Decision #40):
+ * it never collapses into the `More ▾` overflow. The rest are "content" tabs the width-aware
+ * {@link ../islands/ProfileTabs.island.tsx} fits inline or moves into the dropdown, measured live —
+ * there is no longer a static inline threshold. `trailing` holds Reviews when the kind has it.
  */
 export interface TabArrangement {
-	primary: ProfileTab[];
-	overflow: ProfileTab[];
+	/** Content tabs (everything except Reviews), in matrix order — the island measures + splits these. */
+	content: ProfileTab[];
+	/** The pinned trailing slot — Reviews, when the kind has it. */
 	trailing: ProfileTab[];
 }
 
 export function arrangeTabs(kind: ProfileKind): TabArrangement {
 	const all = tabsFor(kind);
-	const hasReviews = all.includes("reviews");
-	const rest = all.filter((t) => t !== "reviews");
-	const trailing: ProfileTab[] = hasReviews ? ["reviews"] : [];
-
-	if (all.length <= TAB_OVERFLOW_THRESHOLD) {
-		return { primary: rest, overflow: [], trailing };
-	}
-	const priority = new Set(PRIORITY_TABS);
-	const primary = rest.filter((t) => priority.has(t));
-	const overflow = rest.filter((t) => !priority.has(t));
-	return { primary, overflow, trailing };
+	const trailing: ProfileTab[] = all.includes("reviews") ? ["reviews"] : [];
+	const content = all.filter((t) => t !== "reviews");
+	return { content, trailing };
 }
 // #endregion
 

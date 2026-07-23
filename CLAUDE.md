@@ -1057,6 +1057,321 @@ checkout routes land. | `PRODUCT_SPEC.md` §Sitemap (`/view`) · `packages/types
 `apps/web/routes/[handle]/view/[item].tsx` · `apps/web/routes/{(public),[handle]}/_layout.tsx` ·
 `apps/web/utils/storage-keys.ts` · Decisions #10 / #12 / #36 / #39 |
 
+| 42 | **Profile tab partials + width-aware `pf-tabs` overflow + menu/carousel polish (2026-07-22).**
+Four presentation refinements to the `/[handle]` profile (no DB/lifecycle/business-rule change — the
+profile stays a read projection over fixtures, like Decision #36). **(A) Tab partial views.** The
+monolithic `ProfileTabContent` render-dump was split into focused per-tab partial components under a
+new `apps/web/features/profile/components/tabs/` folder (`ServicesTab` · `ProductsTab` [also Portfolio]
+· `ProjectsTab` · `ArticlesTab` · `EntitiesTab` [Teams/Businesses] · `EducationTab` · `ExperienceTab` ·
+`MembersTab` [flat + org department-grouped] · `DepartmentsTab` · `ReviewsTab` + shared
+`Empty`/`formatDate` + a `mod.ts` barrel); `ProfileTabContent` is now a thin dispatcher (panel header +
+routing table). The **Availability** page stays a standalone full-page calendar (Decision #37,
+untouched). **(B) Genuinely width-aware `pf-tabs` overflow — REFINES Decision #40.** `ProfileTabs`
+dropped #40's static `TAB_OVERFLOW_THRESHOLD` (6) + `PRIORITY_TABS` heuristic for real measurement: a
+`ResizeObserver` on the strip + a one-time cache of each tab's natural width fit **as many tabs as the
+live container width allows**, collapsing the rest into the `More ▾` popover — recomputed on every
+resize (verified via a width simulation: 439px→2 visible, 700px→4, 1000px→7, 1467px→all-9-no-More).
+The **`More ▾` trigger now sits on the absolute far right** of the bar (`margin-inline-start:auto`;
+verified flush at the bar's right edge, rightmost). **Reviews stays pinned** (Decision #40 intent) as
+the last always-visible content tab, immediately left of More (a `.pf-tabs__item--trailing ~ --more`
+rule zeroes More's auto-margin so the two sit together at the right). All tabs render inline at
+SSR/no-JS (graceful fallback; the collapse is client-measured). `arrangeTabs` was simplified to return
+`{ content, trailing }`. **(C) Menu simplification.** The tab-overflow menu and the action-lane kebab
+now render their items **directly inside `ui-popover__content`** — the intermediary `.pf-tabs__menu` /
+`.pf-lane__menu` wrapper `<div>`s (which re-declared the popover's own surface/hairline/radius/shadow)
+are gone; a shared compact `.pf-menu` class passed to the `Popover` only tightens the content padding
+(`space-4`→`space-1`, flex column, 2px gap; verified). **(D) "Worked with" carousel.** The
+notable-clients row (`ProfileAbout`, Part 2.3) moved from a wrapping flex list into the reusable
+`@projective/ui/display` `Carousel` via a new `WorkedWithCarousel` island (responsive `numVisible`
+4→3→2→1, drag-swipe, looping, Prev/Next + dots). No new `@projective/ui` primitive (reuses `Carousel`/
+`Popover`) → no `DESIGN_SYSTEM.md` §C.1 change. **Flagged reconciliation (surface, do not silently
+resolve):** Decision #40 pinned Reviews as the literal far-right item; the owner's new "More on the
+absolute far right" directive supersedes that — Reviews is now the last *content* tab (just left of the
+More control), which is the reconciliation applied here. | `apps/web/features/profile/components/tabs/*`
+· `apps/web/features/profile/components/{ProfileTabContent,ProfileAbout}.tsx` ·
+`apps/web/features/profile/islands/{ProfileTabs,ProfileActionLane,WorkedWithCarousel}.island.tsx` ·
+`apps/web/features/profile/core/profile-model.ts` · `apps/web/features/profile/styles/profile.css` ·
+`packages/ui/display/islands/Carousel.tsx` · Decisions #36 / #40 |
+
+| 43 | **Custom Projects & Articles view templates — `/view/[id]` (2026-07-22).** The generic Amazon-style
+{@link EntityViewScreen} now **dispatches by `item.type`**: **projects** and **articles** render bespoke
+templates, everything else keeps the generic hero/rails/reviews. Additive Zod SSOT
+(`@projective/types/explore/view`): optional `project` (`ProjectViewSchema` — uploader `banner`, stage
+flow `ProjectStage[]`, `ProjectFinance`, metric chips) + `article` (`ArticleViewSchema` — rich
+`ArticleBlock[]`, derived `ArticleTocEntry[]`, `ArticleAsset[]`, `ArticleComment[]`) on `EntityViewSchema`,
+derived **deterministically** in `view-fixtures.ts` (`projectViewFor`/`articleViewFor`; no RNG) — a read
+projection, **no DB migration**. Stages derive from a project's `phases`/`roles`/`budget`; the article
+body/TOC/assets/comments from its `topic`/`readMinutes`/`media`. **Projects view** MIRRORS the profile
+chrome: it reuses the profile `pf-header` banner/avatar VERBATIM (banner resolved via the profile fixtures
+`findProfile` for parity) with the identity block swapped to the project title/meta/CTAs, and reuses the
+`.pf-stickyhead` scroll-migration EXACTLY — a new `viewHeaderFor(url)` slot (mirrors `viewLaneFor`) mounts
+`ProjectStickyHeader` into the `ui-middle-nav__header` band (authed) / guest sub-header, driven by the
+`ProjectViewHeader` window-scroll probe → shared `viewHeaderCondensed` signal. The centrepiece is the
+interactive **Stage Flow** (`StageFlow.island`, "expandable stacked cards" + status rail: per-stage
+description · seats/roles · stage ticket price · required-skill tags), a single-open accordion bridged to
+the side-nav **`ProjectViewLane`** (finance/metric summary + stage quick-jumps) via `selectedStageId` (a
+`view-state.ts` bridge, like the board/submissions footer↔body bridges). Per the brief the project view
+renders **NO** More-by/Similar/Reviews. **Articles view** (`ArticleViewScreen`): an editorial header
+(cover · title · author byline · published date · read time), a rich block body (`ArticleContent.island`:
+nested `h2`/`h3`, prose, lists, pull-quotes, inline images, a **privacy-facade YouTube embed** [poster →
+`youtube-nocookie` iframe only on click; placeholder id Big Buck Bunny], and inline `@projective/ui`
+`AudioVisualizer` players), a sticky interactive **Table of Contents** side nav (`ArticleTocLane.island` on
+the reused `pf-lane` skeleton — server-parsed from the heading blocks so it SSRs, + client smooth-scroll &
+scrollspy → `activeTocId`), a rounded-square media-asset **`Carousel`** (`ArticleMediaGallery.island`), then
+More-from-uploader + Suggested articles (reusing the concurrently-refactored `RelatedSection`) + a comments
+thread (`ArticleComments.island`, optimistic like/post stubs; guests bounce to sign-in). The lane is
+**dispatched by type** in `viewLaneFor` (project → `ProjectViewLane`, article → `ArticleTocLane`, else →
+`ViewActionLane`). **No new `@projective/ui` primitive** (reuses `Avatar`/`Carousel`/`AudioVisualizer`/
+`Tooltip`/`RatingStars` + the `pf-header`/`pf-stickyhead`/`pf-lane` skeletons) → no `DESIGN_SYSTEM.md` §C.1
+change; no lifecycle change → no `PRODUCT_MANAGEMENT.md` change. **Note:** `?type=` in the URL is
+presentational SEO only — dispatch keys off the resolved `item.type`. Built alongside a concurrent
+refactor of the generic recommendation rails (`RelatedRail`→`RelatedSection` + `RelatedCarousel`); the two
+are complementary (projects/articles bypass those rails; the article bottom reuses `RelatedSection`). |
+`PRODUCT_SPEC.md` §Sitemap (`/view`) · `packages/types/explore/view.ts` ·
+`packages/backend/services/explore/view-fixtures.ts` · `apps/web/features/view/{components/{EntityViewScreen,
+ProjectViewScreen,ArticleViewScreen,ProjectActions,view-glyphs},islands/{ProjectViewHeader,ProjectStickyHeader,
+StageFlow,ProjectViewLane,ArticleContent,ArticleTocLane,ArticleMediaGallery,ArticleComments}.island,
+core/{view-state,view-lane-slot,view-header-slot},styles/{project-view,article-view}.css}` ·
+`apps/web/routes/{(public),[handle]}/_layout.tsx` · Decisions #3 / #10 / #36 / #37 / #41 |
+
+| 44 | **Projects view — de-escrowed, classification-led, flexible stage openings (2026-07-22). REFINES
+Decisions #41/#43.** Reworks the custom Projects template (`/view/[id]?type=projects`) per the product
+owner. **(A) Classification is now first-class.** New Zod `ProjectClassification` enum (`pipeline` |
+`one-off`) on `ProjectItemSchema` (additive column-like field; the 5 project fixtures now declare it —
+Verdant is the demo One-Off, the rest Pipeline), surfaced as a prominent header pill + a "Project type"
+detail. A **Pipeline** derives multi-stage from `phases`; a **One-Off** collapses to a single "Full
+delivery" stage. **(B) Escrow chrome removed page-wide.** The "Escrow" title pill, "Escrow project"
+type badge/metric, the "Escrow-backed protection" trust line, escrow-worded stage copy, and the
+`ProjectFinance.budget`/`funded`/`escrowNote` fields are all gone; the page renders zero "escrow"
+occurrences (verified). **Escrow Budget → Ticket Price** everywhere (header details + side lane).
+`ProjectMetric` icon enum re-scoped to `stages|seats|type|ticket|roles` (dropped `budget|escrow|
+timeline`); the **Estimated Timeline** metric + per-stage `estimate` field removed. **(C) Layout
+removals.** The `.vw-project__aside` (finance hero + posted-by card), the "What's involved" deliverables
+section, and the Save + Message CTAs are deleted — **Apply to project is the single primary CTA**
+(`ProjectActions` is now Apply-only; the lane keeps Share/Save utilities per owner scope decision). The
+generic project details grid drops Client/Current-Stage/Engagement; the remaining cells are
+classification-tailored (Pipeline adds Current stage + Stages; both show Ticket price + Open seats).
+**(D) Flexible stage openings (new Zod shapes on `explore/view`).** `TicketPrice{min,max,label}` (fixed
+when `min===max`, else a range), `StageRole{name,openSeats,price}`, `StageSeatKind`. `ProjectStage`
+gains `seatKind` + `seatSummary` + `openSeats` + a `StageRole[]` `roles` (was `string[]`) + a
+`TicketPrice` `price` (replacing scalar `ticketPrice`/`ticketLabel`). A stage is either **Open Seats**
+(a general pool summary + one shared ticket price) or **Open Roles** (named roles, each with its own
+open-seat count + fixed/range ticket price); the pipeline alternates the two so both render. **No DB
+migration** (still a read projection over fixtures, like #41/#43) → no `documentation/database/*` change;
+no lifecycle change → no `PRODUCT_MANAGEMENT.md` change. Verified in-app on a Pipeline
+(`pj-helia-wallet-redesign`) + a One-Off (`pj-verdant-brand-refresh`): classification pill, ticket
+pricing, both seat/role variants, no aside/timeline/escrow, single Apply CTA; typecheck + fmt clean. |
+`packages/types/explore/{items,view}.ts` · `packages/backend/services/explore/{fixtures,view-fixtures}.ts`
+· `apps/web/features/view/{components/{ProjectViewScreen,ProjectActions}.tsx,islands/{ProjectViewHeader,
+StageFlow,ProjectViewLane,ProjectStickyHeader}.island.tsx,core/{view-model,view-state}.ts,
+styles/project-view.css}` · Decisions #10 / #41 / #43 |
+
+| 45 | **Services view — five delivery models + Projects-aligned stage showcase + availability toggle
+(2026-07-22).** The Entity-View Services template (`/view/[id]?type=services`) was rebuilt to cover all
+FIVE service delivery models. The `ServiceType` enum EXPANDED 3→5: `Pipeline` · `One-Off` ·
+**`Direct Deliverable`** (formerly "Single Task") · `Session` · **`Group Session`**. `EntityViewScreen`
+now dispatches `view.service` → a new `ServiceViewScreen` (which KEEPS the commercial More-by/Similar/
+Reviews rails, unlike the projects/articles templates). New Zod **`ServiceViewSchema`** on
+`EntityViewSchema` (`model`/`modelLabel`/`showcaseStages`/`stages: ProjectStage[]`/`roles: ServiceRole[]`
+/`bookable`/`group`/`seatsPerSession`/`bookingSummary`), derived deterministically by `serviceViewFor`
+in `view-fixtures.ts` from the discovery corpus — **no DB migration** (a read projection, like
+#41/#43/#44) → no `documentation/database/*` change; no lifecycle change → no `PRODUCT_MANAGEMENT.md`
+change. **Pipeline / One-Off** render the SAME interactive `StageFlow` accordion AND the same stage-jump
+**side navigation** as `?type=projects` (a Pipeline as per-ticket ranges, a One-Off as fixed milestone
+amounts): `ProjectStageSchema` gained additive optional `deliverables`/`turnaround`/`dependency`; a
+service stage sets `seatsTotal: 0`, so `StageFlow` HIDES the seat meter/facts behind a `hasSeats` gate
+and the lane `ViewActionLane` grows the Projects-style `.vw-jumps` quick-jump list + numbered
+collapsed-rail squares (the shared `selectedStageId` bridge; the lane now imports `project-view.css`).
+**Direct Deliverable** shows a "Project team roles" block (`ServiceRole[]` — named roles + per-role
+skills, dedicated `.vw-teamrole*` chips in `view.css` so it is independent of the stage-less
+`project-view.css`) in `ViewDetails`, and NO stages. **Session / Group Session** are `bookable`: the
+lane's new **`pf-availtoggle`** segmented pill writes a shared `availabilityMode` signal (`view-state.ts`)
+that the body **`ServiceShowcase.island`** reads to swap the media gallery ⇄ the `@projective/ui/calendar`
+viewport (schedule resolved server-side in `ServiceViewScreen` via `resolveSchedulePage`), so a client
+picks a slot in place; Group Session prices `sessionPrice` as `$X / seat`. The generic hero's
+**"What's included" spec block is REMOVED for services** (redundant beside the stage showcase). Pricing
+parity updated across `servicePricing` / `query.priceValue` / `DetailPanel` / `pricingFor` for all five
+models. Verified in-app on all five (`sv-brand-identity-sprint` · `sv-landing-page-in-a-week` ·
+`sv-packaging-art-direction` · `sv-portfolio-review-session` · `sv-design-systems-workshop`); typecheck +
+fmt clean. **Note:** the new `ServiceShowcase.island.tsx` needs a dev-server RESTART for Vite island
+discovery (HMR won't add it). | `PRODUCT_SPEC.md` §Sitemap (`/view`) ·
+`packages/types/explore/{items,view}.ts` ·
+`packages/backend/services/explore/{fixtures,view-fixtures,query}.ts` ·
+`apps/web/features/view/{components/{EntityViewScreen,ServiceViewScreen,ViewDetails}.tsx,islands/
+{ServiceShowcase,ViewActionLane,StageFlow}.island.tsx,core/{view-state,view-lane-slot,view-model}.ts,
+styles/{view,project-view}.css}` · `apps/web/features/explore/{core/pricing,components/DetailPanel}.tsx` ·
+Decisions #37 / #41 / #43 / #44 |
+
+| 46 | **Session-refresh lifecycle — silent renewal, refresh-before-redirect, redirect memory
+(2026-07-22).** Closed the missing half of the auth session lifecycle that logged active users out
+(notably Google-OAuth, whose access token is ~1h): `sb-refresh-token` (30d) was set on sign-in/OAuth
+but **read by nothing**, so once the short-lived `sb-access-token` cookie dropped, the `(dashboard)`
+guard bounced to `/login` with a valid refresh token sitting unused. Adds the renewal primitive to the
+existing thin/fat pattern: fat **`AuthBackendService.refreshSession(refreshToken)`** (live GoTrue
+`refreshSession({ refresh_token })` → rotated tokens; stub re-mints so the path is exercisable without
+a wired GoTrue — grants no access, RLS + guard remain the gates, and is only reachable when a refresh
+cookie is actually presented, which the stub sign-in never sets) → thin **`POST /api/auth/refresh`**
+(mints fresh `sb-*` cookies via `toAuthResponse`, `401`+clear on failure; deliberately NOT behind the
+guard — it must be reachable precisely when the access token has expired). New server glue
+**`apps/web/utils/session.ts` `ensureSession(req)`**: fast path (access cookie present) →
+**refresh-before-redirect** (access gone + refresh present → renew in place) → **fail-closed** (spent
+refresh token → clear both cookies). The **`(dashboard)/_middleware.ts` guard** now calls it, re-mints
+the renewed cookies onto the proceeding response, re-derives `ctx.state.userContext` from the fresh
+token (via new `resolveTokenContext`) so a just-renewed request never paints guest chrome, stashes the
+token on **`ctx.state.accessToken`** (State extended), and preserves the **FULL** target
+(`pathname + search`, previously pathname-only) in `redirectTo`. Client half: new
+**`apps/web/utils/api-client.ts` `apiFetch()`** — on a `401` it POSTs once to `/api/auth/refresh`
+(single shared in-flight refresh; no stampede), retries the original request, else redirects to
+`/login?redirectTo=<path+query>`; adopted in `features/projects/core/api.ts` (the reported `/projects/*`
+surface), and any feature `api.ts` adopts it by swapping `fetch`→`apiFetch`. Also: `exchangeOAuthCode`
+now defaults **`isNewUser=false`** on a `users_public` lookup error — `/join` is only for a CONFIRMED
+brand-new identity, so a transient failure never re-onboards a returning user. **Scope (surface, do not
+silently resolve):** refresh is wired into the dashboard guard + client interceptor, NOT the global
+`_middleware.ts` (kept network-free) — so a PUBLIC page (Home/Explore) with an expired-but-refreshable
+session shows guest chrome until a dashboard route or an `apiFetch` call renews (cosmetic, not a
+logout). **The real, signed-JWT verification via `@server/services` remains the TODO** wherever an
+*access* decision is made (unchanged from Decisions #14/#16) — this pass fixes session *persistence*,
+not verification. No DB migration (session cookies + GoTrue tokens, no schema). | `SYSTEM_ARCHITECTURE.md`
+§Security (Session lifecycle) · `packages/backend/services/auth/AuthBackendService.ts` ·
+`apps/web/utils/{session,api-client,auth-cookies,user-context,state}.ts` ·
+`apps/web/routes/api/auth/refresh.ts` · `apps/web/routes/(dashboard)/_middleware.ts` ·
+`apps/web/features/projects/core/api.ts` · Decisions #10 / #14 / #16 |
+
+| 47 | **Header search parity + smart logout + account popover real-data binding (2026-07-22).** Four
+coupled changes across the authenticated shell's header. **(A) Search parity.** The authed header search
+`shell-search` is **mirrored 1:1** to the guest `site-header__search` (root CLAUDE.md Decision #38 pins
+`SiteHeader` as unchanged, so the authed bar mirrors rather than the guest header being refactored):
+`NavSearchBar.island.tsx` markup + the `.shell-search*` block in `user-shell.css` were rewritten to the
+guest bar's structure (fused entity/scope selector → static `placeholder="Search Projective…"` field →
+filled-magnifier submit), dropping the bespoke typewriter placeholder / ghost / blinking caret and the
+stroked `NavIcon`. Same shape/tokens/dimensions/icon — the two bars are visually identical; the scope
+vocabulary stays shared via `landing-data`. Neither bar carries a `⌘K` shortcut chip, so "100% identical"
+means neither gains one. **(B) Smart logout.** Logout was **never implemented** — the control was a bare
+`<a href="/logout">` that 404'd through the reserved-handle catch-all without clearing cookies. Now
+`AuthService.logout()` → thin `POST /api/auth/logout` → fat `AuthBackendService.signOut(accessToken)`
+(live: best-effort GoTrue global revocation; stub: no-op) → the route **unconditionally clears** both
+`sb-*` cookies (cookie clearing is the authoritative sign-out; revocation is defence-in-depth). The
+island then does a **route-aware redirect**: a protected `(dashboard)` route leaves for the public
+landing (`/`); a public route reloads in place as a guest. The public/protected discriminator is the
+**route GROUP that renders the shell** (`protectedRoute` threaded `(dashboard)/_layout` → `UserShell` →
+`UserActions`; public/`[handle]` layouts default false) — reliable where the URL path alone is not
+(route groups are stripped from the path). **(C) Account popover real-data binding.** The
+`ui-popover__content` account menu was cosmetic (initials "You" + `@handle`). It now binds **live account
+data** — real name, avatar, email, role badge (Client/Freelancer/Team/Business/Organisation), online
+status, and active workspace — via the 12th thin/fat read: `AccountService.current()` (client, chrome-safe:
+a failed load → context fallback, never a redirect) → thin `GET /api/user/me` → fat
+`UserBackendService.me({ context, accessToken })`, which **composes** the chrome `UserContext` (role +
+workspace via `resolveAccountRole`) with the live Supabase `auth.users` identity (name/email/avatar via
+`auth.getUser`), **degrading** to the context projection when the live read is unavailable (only a genuine
+guest 401s). New Zod SSOT **`@projective/types/user`** (`CurrentUser`, `resolveAccountRole` — a derived
+read projection, **no DB table**). **(D) Migration (additive).** Own-profile RLS SELECT already works
+(`0203`'s "Any authenticated user can view public profiles"), so no policy change. The one gap —
+provisioning never seeded `org.user_preferences` — is closed additively by a new
+`AFTER INSERT ON org.users_public` trigger (`org.seed_user_preferences`, migration
+`20260722120000_seed_user_preferences.sql`) that seeds a default preferences row on **both** the email
+and OAuth signup paths (idempotent `ON CONFLICT DO NOTHING`) + a one-time backfill — no existing
+table/column/FK/function/trigger altered. **Not applied to any live database in this change** (additive
++ safe, but pushing migrations is a human step). **Dual-service pattern** honoured throughout: thin
+frontend `AuthService`/`AccountService`, thin routes `/api/auth/*` + `/api/user/*`, fat
+`AuthBackendService`/`UserBackendService`. | `SYSTEM_ARCHITECTURE.md` §Backend Services (Sign-out & the
+account projection) · `documentation/database/org/Functions.md` · `packages/types/user/` ·
+`packages/backend/services/{auth/AuthBackendService,user/UserBackendService}.ts` ·
+`apps/web/routes/api/{auth/logout,user/me}.ts` ·
+`apps/web/features/{auth/core/AuthService,shell/core/AccountService,shell/islands/{UserActions,NavSearchBar}.island,shell/styles/user-shell.css,shell/components/UserShell}` ·
+`apps/web/routes/(dashboard)/_layout.tsx` · `supabase/migrations/20260722120000_seed_user_preferences.sql`
+· Decisions #10 / #16 / #38 / #46 |
+
+| 48 | **Session-based service sidebars + functional channel-header actions (2026-07-22).** Completes
+the session-service surface across the Project Details sidebar and the channel header, discriminating a
+standard stage-based project from a **1-1 session** and a **group session**. **(§1) Channel-header
+actions** — the middle-nav header-band `ChannelHeader` island wires all three `chan-action` controls: a
+**Star** toggle (optimistic `isStarred` + per-channel persistence to `LocalKeys.PROJECT_CHANNEL_PREFS`),
+a **kebab** `Popover` menu (Mute notifications · Pin channel · Channel info · Copy link), and the middle
+control opening a right-docked **Stage Details `Drawer`** (kind · status · deadline · a progress meter ·
+an assigned-member avatar stack, built SSR by `channelHeaderFor`→`buildDetailInfo`). **(§2) Tab
+matrix** — `channel-view.ts` `visibleChannelTabKeys` gates by the effective **service archetype**:
+**Calendar** shows ONLY for a session; **Tasks + Submissions** hide for ANY session and otherwise appear
+only on a **stage** channel to a reviewer or an assigned freelancer. **(§3) Session sidebars** — the pure
+`session-model.ts` resolves the archetype (`SessionKind` = `none`|`normal`|`group`) from the SSR `format`
+baseline layered with the dev seam (`resolveSessionKind`/`liveSessionKind`, exactly like the header) and
+derives the projections. `ProjectSidebar.island` (now taking a `sessionKind` baseline prop, tracking the
+seam live) branches the expanded body: a **1-1 session** (`NormalSessionPanel`) reclaims the empty
+stage-tree real estate with a **bespoke interactive mini-calendar** (`SessionMiniCalendar` — month nav ·
+week-hover · booked-session-day + today highlights; **bespoke** because the pkg `MiniMonth`'s `.cal-mini`
+CSS ships only through the calendar *island's* stylesheet, so reusing it would drag the whole calendar
+sheet in or cross a workspace CSS boundary — root §2/§3), an **upcoming-session** card (time · duration ·
+a `Confirmed`/`Pending Proposal`/`Rescheduled` booking-proposal badge · a Propose-Time CTA), a **session
+counter** (`Session N of M` / `Pay-per-session`), Shared-files/resources quick links, and the minimal
+General channels (no stage tree, no nested PMs); a **group session** (`GroupSessionPanel`) shows a
+**General · Sub-groups · Private-messages** tree (sub-groups carry proficiency **level tags** +
+overlapping-schedule indicators + a joined/not-joined state), an active-tracks summary, a cohort
+**reschedule-vote** alert with a tally meter, and a **1-1 Continuation** CTA gated on the preset-ended
+flag. The footer/rail view-links (`projectViewLinks(detail, sessionKind)`, `ProjectViewNav`,
+`ProjectRail`) go session-aware too — Board→**Calendar**, **Submissions dropped**, Add-stage hidden.
+**(§4) Dev Context Switcher** carries the `serviceType` (Standard / 1-1 / Group) · `sessionBookingStatus`
+· `subGroupAssignment` (`multiSubGroup`) axes (`dev-context.ts` + `DevContextPanel` + the shipping-safe
+`dev-seam.ts` READ side), so every session surface (tabs · sidebar body · view-links) live-updates with
+**NO reload** (verified: normal→group swap in place, zero errors). Everything is presentation + THIN over
+the SSR `ProjectDetail`; booking / continuation / star persistence are optimistic/stubbed pending
+`PROJECTS_BACKEND_LIVE` → **no DB migration** (a derived read projection, like the sibling `detail`/`files`
+reads) → no `documentation/database/*` change, and **no new `@projective/ui` primitive** (the mini-calendar
+is an app-feature component) → no `DESIGN_SYSTEM.md` §C.1 change. **Bug fixed:** `session-model.ts` derived
+array indices with a **signed** `>>` over an unsigned (`>>> 0`) hash → a negative index → an `undefined`
+slot (a visible "undefined min" duration); switched to the unsigned `>>>` (the documented hash-index
+gotcha). | `PRODUCT_SPEC.md` §Sessions · `apps/web/features/projects/{core/{session-model,channel-view,
+channel-header-slot},islands/{ProjectSidebar,ChannelHeader}.island,components/{NormalSessionPanel,
+GroupSessionPanel,SessionMiniCalendar,session-glyphs,ChannelTree,ProjectViewNav,ProjectRail,detail-glyphs},
+styles/project-sidebar.css}` · `apps/web/features/devtools/{core/dev-context,components/DevContextPanel}` ·
+`apps/web/utils/dev-seam.ts` · `apps/web/routes/(dashboard)/_layout.tsx` · Decisions #21 / #23 / #26 / #37 |
+
+| 49 | **Global Messaging module — floating chat popover, `/messages` inbox, profile quick-message
+(2026-07-23).** The 13th thin-frontend/fat-backend READ and the standalone global inbox. New Zod SSOT
+**`@projective/types/messaging`** (`ConversationSummary`/`ConversationDetail`/`ConversationListPage(+Params/
+Filter)` · `MessagingContact`/`ContactList` · `MessagingSettings`/`AutoResponseRule`/`NotificationPreferences`
+· `MessagingRole`/`ConversationRelation`); message BODIES REUSE the projects `MessagePage`/`ChatMessage`
+projection — a project channel and the inbox are unified by `chatId` (PRODUCT_SPEC §Unified Messaging), so
+the fixtures derive the `dm-{handle}` conversation ids to MATCH the project DM ids. Fat
+**`MessagingBackendService`** (`conversations`/`conversation`/`messages`/`contacts`/`settings`) → thin
+`/api/messaging/*` → client `MessagingService` → SSR resolvers, gated by the NEW **`MESSAGING_BACKEND_LIVE`**
+(default off, `isMessagingBackendLive()`); fixtures DERIVE the corpus deterministically from the same
+multi-tenant cast as `/projects` (fixed clock, unsigned hash, **NOTE the TDZ**: `ALL = SEEDS.map(toSummary)`
+runs at module init, so the reference-clock `NOW` + `fmtActivity` must be declared ABOVE the corpus). No DB
+migration (a read projection over the eventual `messages.*` tables). **(§1) Floating "Pop Out Chat" popover**
+— a Pop-Out button on every project channel header (`ChannelHeader`) + the conversation header opens the
+active thread in a `@projective/ui/overlay` `DraggablePopover` (`ChatPopoutHost`, mounted once in the
+dashboard layout) carrying a lean CONTAINER-scrolled `PopoutChat` (the shared `ChatFeed` virtualizes against
+the WINDOW, wrong in a floating panel, so the popout reuses `MessageBubble`/`ChatComposer` directly) + a
+whole-panel file **drop zone** that forwards into the composer via a new additive `ChatComposer.onReady`
+`ComposerHandle`; **navigation memory** — the popout state persists in `sessionStorage`
+(`SessionKeys.CHAT_POPOUT`) so it SURVIVES full-page navigations and shows a **"Return to Channel"** button
+when the viewer has navigated away. **(§2) `/messages`** — the middle-nav lane hosts `MessagesSidebar`
+(dual-presentation like `ProjectSidebar`: expanded stack + collapsed `MessagesRail`, CSS-switched by
+`.ui-splitter[data-mode]`): conversation search + a **role-specific advanced filter** panel (freelancer:
+Service · Product · Client · Co-Freelancers · Teams · Team Members; client/business: Businesses · Business
+Members · Hired Freelancers · Direct Messages) + Starred/Archived/Unread partition + per-row
+Favourite/Archive/soft-Delete (optimistic, `LocalKeys.CONVERSATION_PREFS`); **visibility rule** — a
+conversation appears only when `messageCount > 0`. New Conversation / Add-members `ContactPicker` modal (1
+pick → DM, several → group; Members-tab add converts a DM → group) + a Message **Settings** modal
+(auto-responses ready for a future AI plug-in · notification prefs · quiet hours). The conversation view
+`/messages/[conversationId]` **strictly mirrors** the project channel layout with ONLY **Chat · Files ·
+Members** tabs (reuses the `.chan-*` header chrome + `ChatFeed` with a messaging pager + the footer
+`ChatComposer`). **(§3)** A profile **"Message"** button opens a `DraggablePopover` quick-composer
+(`ProfileMessagePopover`, mounted in `ProfileActionLane`; all 3 Message triggers flip a shared
+`quickMessageOpen` signal) — on the first send it creates + links into `/messages/dm-{handle}`. **(§4)** A
+NEW **`messagingRole`** Dev-Context axis (freelancer/client/business) live-swaps the filter set + the
+auto-response offer with no reload. No new `@projective/ui` primitive (reuses DraggablePopover · Dialog ·
+Popover · Tooltip · Avatar · ToggleSwitch + the `ChatFeed`/`ChatComposer`/`MessageBubble` islands) → no
+`DESIGN_SYSTEM.md` §C.1 change; no lifecycle change → no `PRODUCT_MANAGEMENT.md` change. **Deviations flagged
+(surface, do not silently resolve):** (a) message sender / participant profile links follow the codebase
+canonical `/@handle` (`profileHref`, Decision #3), NOT the task brief's `/messages/[conversation-id]`-adjacent
+`/profiles/[id]`; (b) a guest who sends from a profile is routed through the `(dashboard)` guard (sign-in) —
+messaging is authed-only. | `PRODUCT_SPEC.md` §Unified Messaging · `SYSTEM_ARCHITECTURE.md` §Backend Services ·
+`packages/types/messaging/` · `packages/backend/services/messaging/` · `apps/web/features/messaging/` ·
+`apps/web/routes/(dashboard)/messages/` · `apps/web/routes/api/messaging/` · `apps/web/features/{projects/islands/
+{ChannelHeader,ChatFeed,ChatComposer}.island,profile/{islands/{ProfileActionLane,ProfileMessagePopover}.island,
+components/ProfileActions}}` · `apps/web/utils/{dev-seam,storage-keys,lane-events}.ts` ·
+`apps/web/features/devtools/{core/dev-context,components/DevContextPanel}` · Decisions #3 / #10 / #16 / #31 / #48 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

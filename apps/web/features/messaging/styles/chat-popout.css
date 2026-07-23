@@ -1,0 +1,107 @@
+/*
+ * chat-popout.css — the floating "Pop Out Chat" popover body (task §1): a lean, container-scrolled
+ * message list + composer inside the `DraggablePopover` (`.chat-popout`), plus the whole-panel file
+ * drop-zone overlay. Token-only, strict BEM. The message bubbles themselves are styled by the reused
+ * projects `chat-feed.css` (`.msg-row` et al.); this file only lays out the popout shell.
+ */
+
+/* The DraggablePopover body hosts the chat flush (no default padding, no double scroll). */
+.chat-popout .ui-draggable-popover__body {
+	padding: 0;
+	overflow: hidden;
+	display: flex;
+	min-block-size: 0;
+}
+
+/* The "Return to Channel" / Maximize header action (shown when navigated away). */
+.chat-popout__return {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--primary);
+	text-decoration: none;
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	border-radius: 999px;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.chat-popout__return:hover {
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.chat-popout__return svg {
+	inline-size: 14px;
+	block-size: 14px;
+}
+
+.pop-chat {
+	position: relative;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+}
+.pop-chat__scroll {
+	flex: 1;
+	min-block-size: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-3);
+}
+.pop-chat__hint {
+	margin: auto;
+	padding: var(--space-4);
+	text-align: center;
+	font-size: 0.875rem;
+	color: var(--text-secondary);
+}
+.pop-chat__earlier {
+	align-self: center;
+	margin-block-end: var(--space-2);
+	padding: var(--space-1) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.75rem;
+	color: var(--primary);
+	background: var(--surface-2);
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+}
+.pop-chat__composer {
+	flex: none;
+	border-block-start: var(--hairline);
+}
+
+/* Whole-panel drop-zone overlay (task §1) — hidden until a file is dragged over. */
+.pop-chat__drop {
+	position: absolute;
+	inset: var(--space-2);
+	display: none;
+	align-items: center;
+	justify-content: center;
+	border: 2px dashed var(--primary);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+	z-index: 2;
+	pointer-events: none;
+}
+.pop-chat[data-drag="true"] .pop-chat__drop {
+	display: flex;
+}
+.pop-chat__drop-label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--primary);
+}
+.pop-chat__drop-label svg {
+	inline-size: 20px;
+	block-size: 20px;
+}

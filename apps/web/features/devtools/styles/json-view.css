@@ -1,0 +1,97 @@
+/*
+ * JSON tree viewer (dev-json) — collapsible, colour-typed JSON for the inspector. Token-only, BEM.
+ * Monospace; each leaf is coloured by JSON type; branches are expand/collapse buttons. Indentation is
+ * driven by the per-node `--depth` custom property (variable-mapping pattern — no hardcoded padding).
+ */
+
+.dev-json {
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	line-height: 1.55;
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.dev-json__row {
+	padding-inline-start: calc(var(--depth, 0) * 0.85rem + 0.85rem);
+}
+
+.dev-json__toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	inline-size: 100%;
+	padding: 0;
+	padding-inline-start: calc(var(--depth, 0) * 0.85rem);
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	border-radius: var(--radius-xs);
+}
+.dev-json__toggle:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.dev-json__toggle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+
+.dev-json__chevron {
+	display: inline-flex;
+	color: var(--text-secondary);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.dev-json__chevron[data-open="true"] {
+	transform: rotate(90deg);
+}
+
+.dev-json__children {
+	display: flex;
+	flex-direction: column;
+}
+
+.dev-json__close {
+	padding-inline-start: calc(var(--depth, 0) * 0.85rem);
+}
+
+/* --- Syntax colours (token-only) --- */
+.dev-json__key {
+	color: var(--primary);
+}
+.dev-json__punct,
+.dev-json__count {
+	color: var(--text-secondary);
+}
+.dev-json__count {
+	margin-inline: var(--space-1);
+	font-style: italic;
+}
+.dev-json__val--string {
+	color: var(--success);
+}
+.dev-json__val--number {
+	color: var(--secondary);
+}
+.dev-json__val--boolean {
+	color: var(--warning);
+}
+.dev-json__val--null,
+.dev-json__val--undefined {
+	color: var(--text-secondary);
+	font-style: italic;
+}
+
+.dev-json__more {
+	padding-inline-start: calc(var(--depth, 0) * 0.85rem + 0.85rem);
+	color: var(--text-secondary);
+	font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dev-json__chevron {
+		transition-duration: 0ms;
+	}
+}

@@ -7,31 +7,21 @@ import {
 	type SearchScope,
 	searchScopeLabel,
 } from "@features/marketing/core/landing-data.ts";
-import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 
 /**
  * NavSearchBar — the unified header's integrated discovery search (DESIGN_SYSTEM.md Part D.1, "Left
- * Block"). The same modular pattern the guest header uses — a fused **entity/scope selector** + a
- * large field whose placeholder **types itself out** phrase-by-phrase with a blinking caret, cycling
- * every few seconds per scope — packaged as a compact, hydrating island so the authenticated shell
- * gets the identical component (scope vocabulary shared via `landing-data`, so selector + placeholder
- * + `/explore?category=` navigation stay in lockstep). Submitting or picking a scope is a real
- * navigation to `/explore`, so the server re-renders the correct results layout. Reduced motion shows
- * a static placeholder. Dumb island — routes only, no data access.
+ * Block"). Its markup, layout, icon, placeholder, and styling **mirror the guest `site-header__search`
+ * bar 1:1** (root CLAUDE.md Decision #47): a fused entity/scope selector + a field with the static
+ * "Search Projective…" placeholder + a filled magnifier submit — the two bars are visually identical
+ * so the authenticated shell's discovery search reads exactly as the guest's. The scope vocabulary is
+ * shared via `landing-data`, so selector + `/explore?category=` navigation stay in lockstep with the
+ * guest header; submitting or picking a scope is a real navigation to `/explore`, so the server
+ * re-renders the correct results layout. Dumb island — routes only, no data access.
  */
 
-// #region Typewriter phrases
-/** Placeholder phrases per scope — keyed by the shared {@link SearchScope} vocabulary. */
-const PHRASES: Record<SearchScope, string[]> = {
-	all: ["anything you need", "a helper or a team", "your next big idea", "ready-made goodies"],
-	freelancers: ["a motion designer", "a Deno engineer", "a 3D artist", "a product design lead"],
-	users: ["a creative director", "a founder to back", "an advisor", "someone to collaborate with"],
-	projects: ["a fintech MVP build", "a mobile app redesign", "a commerce migration", "a dashboard"],
-	services: ["a brand identity sprint", "a 5-day landing page", "a design system", "a launch film"],
-	products: ["an Aurora UI kit", "Lightroom presets", "dashboard blocks", "a 640-icon set"],
-	articles: ["growing a small team", "keeping payments safe", "paying step by step", "hiring a team"],
-};
-// #endregion
+/** The guest header's filled magnifier path — reused verbatim so the submit glyph matches 1:1. */
+const SEARCH_ICON =
+	"M8.5 3a5.5 5.5 0 1 0 3.4 9.8l3.6 3.7 1.4-1.4-3.7-3.6A5.5 5.5 0 0 0 8.5 3Zm0 2a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z";
 
 /** Coerce an arbitrary category token to one of the selector scopes (unknown → neutral `all`). */
 function toScope(raw: string): SearchScope {
@@ -42,40 +32,7 @@ export default function NavSearchBar() {
 	const category = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE);
 	const menuOpen = useSignal(false);
 	const query = useSignal("");
-	const typed = useSignal("");
 	const menuRef = useRef<HTMLDivElement>(null);
-
-	// #region Typewriter placeholder — retype/erase the active scope's phrases; restart when it flips.
-	useEffect(() => {
-		const reduce = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-		const phrases = PHRASES[category.value];
-		if (reduce) {
-			typed.value = phrases[0];
-			return;
-		}
-		let i = 0;
-		let ch = 0;
-		let deleting = false;
-		let timer = 0;
-		const loop = () => {
-			const word = phrases[i % phrases.length];
-			ch += deleting ? -1 : 1;
-			typed.value = word.slice(0, ch);
-			if (!deleting && ch === word.length) {
-				deleting = true;
-				timer = setTimeout(loop, 1900) as unknown as number;
-				return;
-			}
-			if (deleting && ch === 0) {
-				deleting = false;
-				i++;
-			}
-			timer = setTimeout(loop, deleting ? 38 : 72) as unknown as number;
-		};
-		loop();
-		return () => clearTimeout(timer);
-	}, [category.value]);
-	// #endregion
 
 	// Reflect the active /explore search when the shell renders over the results page.
 	useEffect(() => {
@@ -114,25 +71,25 @@ export default function NavSearchBar() {
 				go(query.value.trim());
 			}}
 		>
-			<div class="shell-search__scope" ref={menuRef}>
+			<div class="shell-search__entity" ref={menuRef}>
 				<button
 					type="button"
-					class="shell-search__scope-btn"
+					class="shell-search__entity-btn"
 					aria-haspopup="listbox"
 					aria-expanded={menuOpen.value}
 					onClick={() => (menuOpen.value = !menuOpen.value)}
 				>
 					{searchScopeLabel(category.value)}
-					<span class="shell-search__scope-caret" aria-hidden="true" />
+					<span class="shell-search__chevron" aria-hidden="true" />
 				</button>
 				{menuOpen.value && (
-					<ul class="shell-search__menu" role="listbox" aria-label="Search scope">
+					<ul class="shell-search__entity-menu" role="listbox" aria-label="Search scope">
 						{SEARCH_SCOPES.map((opt) => (
 							<li
 								key={opt.value}
 								role="option"
 								aria-selected={category.value === opt.value}
-								class="shell-search__option"
+								class="shell-search__entity-option"
 								tabIndex={0}
 								onClick={() => {
 									category.value = opt.value;
@@ -153,26 +110,21 @@ export default function NavSearchBar() {
 				)}
 			</div>
 
-			<div class="shell-search__field">
-				<input
-					class="shell-search__input"
-					type="search"
-					value={query.value}
-					aria-label={`Search ${searchScopeLabel(category.value).toLowerCase()}`}
-					autoComplete="off"
-					onInput={(e) => (query.value = (e.currentTarget as HTMLInputElement).value)}
-				/>
-				{query.value === "" && (
-					<span class="shell-search__ghost" aria-hidden="true">
-						<span class="shell-search__ghost-lead">Find</span>
-						<span class="shell-search__typed">{typed.value}</span>
-						<span class="shell-search__caret" />
-					</span>
-				)}
-			</div>
+			<input
+				class="shell-search__search-input"
+				type="search"
+				name="q"
+				value={query.value}
+				placeholder="Search Projective…"
+				aria-label={`Search ${searchScopeLabel(category.value).toLowerCase()}`}
+				autoComplete="off"
+				onInput={(e) => (query.value = (e.currentTarget as HTMLInputElement).value)}
+			/>
 
-			<button type="submit" class="shell-search__submit" aria-label="Search">
-				<NavIcon name="search" />
+			<button type="submit" class="shell-search__search-go" aria-label="Search">
+				<svg viewBox="0 0 20 20" aria-hidden="true">
+					<path d={SEARCH_ICON} fill="currentColor" />
+				</svg>
 			</button>
 		</form>
 	);

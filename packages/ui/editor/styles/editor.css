@@ -1,0 +1,252 @@
+/*
+ * RichTextEditor — token-only theming for the stripped QuillJS wrapper. Quill's own `snow`/`bubble`
+ * stylesheets are deliberately NOT imported; every rule below reads `var(--*)` so the editor stays
+ * copy-paste portable and honours the design-system contract (packages/ui/CLAUDE.md §1). The subset
+ * of Quill *core* structure needed for a functional contenteditable (list markers, placeholder,
+ * block spacing) is reproduced here against tokens rather than pulled from Quill's asset.
+ *
+ * Separation hierarchy (§B.4): the editor IS an interactive control, so a full outline is allowed;
+ * the toolbar is set off from the editing surface by a single hairline, never a box.
+ */
+
+/* #region Shell + validation ring */
+.ui-rte {
+	--rte-accent: var(--primary);
+	--rte-min-rows: 4;
+
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-lg);
+	overflow: clip;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-rte:focus-within {
+	border-color: var(--rte-accent);
+	box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Two-tier creation gate, mirroring the fields' `required` (RED) / `gate` (AMBER) statuses. */
+.ui-rte--required {
+	--rte-accent: var(--danger);
+	border-color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+.ui-rte--gate {
+	--rte-accent: var(--warning);
+	border-color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 6%, var(--surface));
+}
+.ui-rte--invalid {
+	--rte-accent: var(--danger);
+	border-color: var(--danger);
+}
+/* #endregion */
+
+/* #region Toolbar */
+.ui-rte__toolbar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-2);
+	border-block-end: var(--hairline);
+	background: var(--surface-1);
+}
+.ui-rte__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+.ui-rte__sep {
+	inline-size: 1px;
+	block-size: 1.25rem;
+	margin-inline: var(--space-1);
+	background: var(--hairline-color);
+}
+.ui-rte__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding-inline: var(--space-1);
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.ui-rte__btn:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+.ui-rte__btn:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--focus-ring);
+}
+/* Quill toggles `.ql-active` on the bound button when the format is on at the caret. */
+.ui-rte__btn.ql-active {
+	color: var(--rte-accent);
+	background: color-mix(in srgb, var(--rte-accent) 12%, transparent);
+}
+
+.ui-rte__glyph {
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 700;
+	line-height: 1;
+}
+.ui-rte__glyph--bold {
+	font-weight: 800;
+}
+.ui-rte__glyph--italic {
+	font-style: italic;
+	font-weight: 600;
+}
+.ui-rte__glyph--underline {
+	text-decoration: underline;
+	font-weight: 600;
+}
+.ui-rte__glyph--strike {
+	text-decoration: line-through;
+	font-weight: 600;
+}
+/* #endregion */
+
+/* #region Editing surface (Quill upgrades `.ui-rte__editor` → `.ql-container`) */
+.ui-rte__editor,
+.ui-rte .ql-container {
+	position: relative;
+	flex: 1 1 auto;
+	min-block-size: calc(var(--rte-min-rows) * 1.6em + 2 * var(--space-3));
+	font-family: var(--font-sans);
+	font-size: 0.9375rem;
+}
+
+.ui-rte .ql-editor {
+	box-sizing: border-box;
+	block-size: 100%;
+	padding: var(--space-3);
+	color: var(--on-surface);
+	line-height: 1.6;
+	tab-size: 4;
+	text-align: start;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	outline: none;
+	overflow-y: auto;
+}
+.ui-rte .ql-editor > * {
+	cursor: text;
+}
+
+/* Placeholder — Quill adds `.ql-blank` and copies `placeholder` to `data-placeholder`. */
+.ui-rte .ql-editor.ql-blank::before {
+	content: attr(data-placeholder);
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-start: var(--space-3);
+	color: var(--text-secondary);
+	font-style: normal;
+	pointer-events: none;
+}
+
+/* Block rhythm — spacing + weight, no borders (§B.4). */
+.ui-rte .ql-editor p,
+.ui-rte .ql-editor ol,
+.ui-rte .ql-editor ul {
+	margin: 0 0 var(--space-2);
+}
+.ui-rte .ql-editor > *:last-child {
+	margin-block-end: 0;
+}
+.ui-rte .ql-editor h1,
+.ui-rte .ql-editor h2,
+.ui-rte .ql-editor h3 {
+	margin: var(--space-3) 0 var(--space-2);
+	font-family: var(--font-sans);
+	font-weight: 700;
+	line-height: 1.25;
+	color: var(--on-surface);
+}
+.ui-rte .ql-editor h1 {
+	font-size: 1.5rem;
+}
+.ui-rte .ql-editor h2 {
+	font-size: 1.25rem;
+}
+.ui-rte .ql-editor h3 {
+	font-size: 1.0625rem;
+}
+
+/* Inline marks render as native tags; strike is <s>, underline <u>. */
+.ui-rte .ql-editor strong {
+	font-weight: 700;
+}
+.ui-rte .ql-editor em {
+	font-style: italic;
+}
+.ui-rte .ql-editor s {
+	text-decoration: line-through;
+}
+.ui-rte .ql-editor u {
+	text-decoration: underline;
+}
+/* #endregion */
+
+/* #region Lists (Quill 2 model: <ol> + <li data-list> + a .ql-ui marker span) */
+.ui-rte .ql-editor ol,
+.ui-rte .ql-editor ul {
+	padding-inline-start: 1.5em;
+	counter-reset: list-0;
+}
+.ui-rte .ql-editor ol > li,
+.ui-rte .ql-editor ul > li {
+	position: relative;
+	list-style-type: none;
+	padding-inline-start: 0.3em;
+}
+.ui-rte .ql-editor li > .ql-ui {
+	position: absolute;
+	margin-inline-start: -1.5em;
+	inline-size: 1.4em;
+	text-align: end;
+	white-space: nowrap;
+	color: var(--text-secondary);
+}
+.ui-rte .ql-editor li[data-list="bullet"] > .ql-ui::before {
+	content: "\2022";
+}
+.ui-rte .ql-editor li[data-list="ordered"] {
+	counter-increment: list-0;
+}
+.ui-rte .ql-editor li[data-list="ordered"] > .ql-ui::before {
+	content: counter(list-0, decimal) ". ";
+}
+/* Bare <ul>/<li> fallback (e.g. seeded HTML that hasn't round-tripped through Quill yet). */
+.ui-rte .ql-editor ul > li:not([data-list])::marker {
+	color: var(--text-secondary);
+}
+.ui-rte .ql-editor ul > li:not([data-list]) {
+	list-style-type: disc;
+	padding-inline-start: 0;
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.ui-rte,
+	.ui-rte__btn {
+		transition: none;
+	}
+}
+/* #endregion */

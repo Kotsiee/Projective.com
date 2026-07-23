@@ -7,9 +7,7 @@ import type { ProjectQuickFilter } from "../types/projects-types.ts";
  * UtilityShortcuts — the permanent quick-filter row that sits right above the content list. The
  * high-frequency involvement modifiers (Starred · Unread · New tickets · Revision requested · Pending
  * review) are icon-only toggles for instantaneous feedback, each described by a floating
- * `@projective/ui` {@link Tooltip}. At the far end, the "All my involvement" plain-text button is the
- * Sovereign global-scope escape hatch — one tap to sweep every engagement across all active tenants,
- * one tap back. No pills, no borders; the row stays quiet until engaged.
+ * `@projective/ui` {@link Tooltip}. No pills, no borders; the row stays quiet until engaged.
  */
 
 /** The permanent quick-filter toggles, in display order (icon + tooltip/aria label). */
@@ -24,9 +22,6 @@ const QUICK_TOGGLES: readonly { key: ProjectQuickFilter; tip: string; icon: VNod
 export interface UtilityShortcutsProps {
 	quick: readonly ProjectQuickFilter[];
 	onToggleQuick: (key: ProjectQuickFilter) => void;
-	/** Whether the Sovereign global scope is active. */
-	global: boolean;
-	onToggleGlobal: () => void;
 }
 
 function IconToggle(
@@ -70,15 +65,6 @@ export function UtilityShortcuts(props: UtilityShortcutsProps): JSX.Element {
 					/>
 				))}
 			</div>
-			<button
-				type="button"
-				class="proj-shortcuts__all"
-				data-on={props.global ? "true" : undefined}
-				aria-pressed={props.global}
-				onClick={props.onToggleGlobal}
-			>
-				All my involvement
-			</button>
 		</div>
 	);
 }

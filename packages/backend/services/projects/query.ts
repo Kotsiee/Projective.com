@@ -6,6 +6,7 @@ import type {
 	ScopeOption,
 	ServiceOption,
 } from "@projective/types/projects";
+import { matchesInvolvement } from "@projective/types/projects";
 import { allProjects, allScopes, allServices } from "./fixtures.ts";
 
 /**
@@ -62,6 +63,9 @@ function applyFilters(rows: readonly ProjectSummary[], p: ProjectFeedParams): Pr
 				return false;
 			}
 		}
+
+		// Involvement (ownership) axis — owner/client/admin vs. worker/contributor (`all` = no narrowing).
+		if (!matchesInvolvement(row.viewerRole, p.involvement)) return false;
 
 		if (roles.size && !roles.has(row.viewerRole)) return false;
 		if (formats.size && !formats.has(row.format)) return false;
@@ -150,6 +154,26 @@ function buildGroups(rows: ProjectSummary[]): ProjectGroup[] {
 		(SCOPE_ORDER[a.scopeType] ?? 9) - (SCOPE_ORDER[b.scopeType] ?? 9) ||
 		a.title.localeCompare(b.title)
 	);
+}
+// #endregion
+
+// #region Scope resolvability (stub-mode guard)
+/**
+ * STUB-mode guard against a phantom scope pin. In stub mode the fixtures key their workspaces to fixed
+ * placeholder ids (`u_ahmed`, `t_northwind`, …), but a real/opaque auth `contextId` (a Supabase UUID)
+ * is what the feed pins the active context to — an id that names NO fixture workspace, so the scope
+ * filter would drop every row and strand the lane empty. This drops any `scopeId`/`workspaces` that
+ * names no known workspace, so the feed falls back to the acting account's full set instead of a false
+ * empty. An EXPLICIT workspace pick (from the filter combo) is a real fixture id and survives untouched;
+ * once the live RLS-scoped path lands the ids are always real workspaces, so this becomes a no-op (and
+ * `ProjectBackendService.list` only calls it in stub mode anyway).
+ */
+export function withResolvableScope(params: ProjectFeedParams): ProjectFeedParams {
+	const known = new Set(allScopes().map((s) => s.id));
+	const scopeId = params.scopeId && known.has(params.scopeId) ? params.scopeId : "";
+	const workspaces = params.workspaces.filter((w) => known.has(w));
+	if (scopeId === params.scopeId && workspaces.length === params.workspaces.length) return params;
+	return { ...params, scopeId, workspaces };
 }
 // #endregion
 

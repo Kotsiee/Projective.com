@@ -1,0 +1,480 @@
+/*
+ * ProjectCreateModal — the lightweight 2-panel "Create Project" surface. BodyPortal-mounted; panel
+ * enter/exit is opacity + a self-clearing transform (reverts to `none` when open, so descendant fixed
+ * overlays don't re-base — the glass-blur trap). A single hairline divides the left (general details)
+ * from the contextual right (stage/role config), which is hidden until a selection is made. Token-only;
+ * §B.4 (hairline separation, no boxes on non-interactive content); reduced-motion jumps to final.
+ *
+ * Validation is colour-coded to the two-tier creation gate: RED (`required`) fields must be filled to
+ * create the base record; AMBER (`gate`) fields gate publishing to Explore. The field controls carry
+ * the ring themselves (fields `required`/`gate` statuses); this sheet styles the label pills + footer.
+ */
+.pcm {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: clamp(0px, 2vw, 28px);
+}
+
+.pcm__panel {
+	position: relative;
+	inline-size: min(1040px, 96vw);
+	block-size: min(760px, 92vh);
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border-radius: var(--radius-xl);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	opacity: 0;
+	transform: translateY(10px) scale(0.99);
+	transition:
+		opacity var(--dur-medium) var(--ease-emphasized),
+		transform var(--dur-medium) var(--spring-standard);
+}
+.pcm__panel[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.pcm__panel {
+		transition: none;
+	}
+}
+
+/* #region Header */
+.pcm__top {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border-block-end: var(--hairline);
+}
+.pcm__heading {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: 1.05rem;
+	font-weight: 650;
+	color: var(--on-surface);
+}
+.pcm__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 1.1rem;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.pcm__close:hover {
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
+}
+.pcm__close:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+/* #endregion */
+
+/* #region Body — left always, right contextual */
+.pcm__body {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	align-items: stretch;
+}
+.pcm__left {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	block-size: 100%;
+	overflow-y: auto;
+	padding: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+.pcm__body[data-right="true"] .pcm__left {
+	border-inline-end: var(--hairline);
+}
+.pcm__right {
+	flex: 0 0 clamp(320px, 46%, 500px);
+	min-inline-size: 0;
+	block-size: 100%;
+	overflow-y: auto;
+	padding: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	animation: pcm-right-in var(--dur-medium) var(--ease-emphasized);
+}
+@keyframes pcm-right-in {
+	from {
+		opacity: 0;
+		transform: translateX(8px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.pcm__right {
+		animation: none;
+	}
+}
+/* #endregion */
+
+/* #region Sections + labels */
+.pcm__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.pcm__section--grow {
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+.pcm__label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+.pcm__managerhead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.pcm__hint {
+	margin: 0;
+	font-size: 0.76rem;
+	line-height: 1.4;
+	color: var(--text-secondary);
+}
+.pcm__row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-3);
+}
+.pcm__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* Gate pills — RED "Required" (initial creation) / AMBER "Publishing" (Explore) / neutral "Optional". */
+.pcm__req,
+.pcm__gate {
+	font-size: 0.62rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 1px 0.4rem;
+	border-radius: 999px;
+	line-height: 1.5;
+}
+.pcm__req {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.pcm__gate {
+	color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+/* #endregion */
+
+/* #region Stage / role manager list */
+.pcm-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0 0 var(--space-2);
+	padding: 0;
+	list-style: none;
+}
+.pcm-list__empty {
+	padding: var(--space-3);
+	color: var(--text-secondary);
+	font-size: 0.8rem;
+	line-height: 1.4;
+	background: var(--surface-1);
+	border-radius: var(--radius-base);
+}
+.pcm-stage {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 2px 2px 2px 0;
+	border-radius: var(--radius-sm);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.pcm-stage[data-over="true"] {
+	background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.pcm-stage[data-active="true"] {
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.pcm-stage[data-dragging="true"] {
+	opacity: 0.5;
+}
+.pcm-stage__grip {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.4rem;
+	block-size: 1.9rem;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: grab;
+	touch-action: none;
+	font-size: 1rem;
+	line-height: 1;
+}
+.pcm-stage__grip:active {
+	cursor: grabbing;
+}
+.pcm-stage__grip:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
+}
+.pcm-stage__main {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	border-radius: var(--radius-sm);
+}
+.pcm-stage__main--norole {
+	padding-inline-start: var(--space-3);
+}
+.pcm-stage__main:hover {
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+}
+.pcm-stage__index {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.35rem;
+	block-size: 1.35rem;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--primary);
+	font-size: 0.72rem;
+	font-weight: 700;
+}
+.pcm-stage__name {
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.86rem;
+	color: var(--on-surface);
+}
+.pcm-stage__meta {
+	flex: none;
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+.pcm-stage__remove {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 1rem;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.pcm-stage__remove:hover {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.pcm-stage__remove:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.pcm__add {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: 1px dashed var(--outline);
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.82rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.pcm__add:hover {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.pcm__add:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+.pcm__add-icon {
+	display: inline-flex;
+	font-size: 1rem;
+}
+/* #endregion */
+
+/* #region Right-panel stage/role head */
+.pcm__stagehead {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.pcm__back {
+	align-self: flex-start;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--primary);
+	font: inherit;
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+.pcm__back:hover {
+	text-decoration: underline;
+}
+.pcm__stagetitle {
+	margin: 0;
+	font-size: 0.98rem;
+	font-weight: 620;
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Skill tags (role config) */
+.pcm-tags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+.pcm-tags__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 0.25rem 2px 0.55rem;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	font-size: 0.74rem;
+	color: var(--on-surface);
+}
+.pcm-tags__x {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1px;
+	border: none;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+.pcm-tags__x:hover {
+	color: var(--on-surface);
+}
+.pcm-tags__input {
+	flex: 1 1 6rem;
+	min-inline-size: 4rem;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: 0.82rem;
+	color: var(--on-surface);
+}
+.pcm-tags__input:focus-visible {
+	outline: none;
+}
+/* #endregion */
+
+/* #region Footer */
+.pcm__foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border-block-start: var(--hairline);
+}
+.pcm__gatemsg {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+}
+.pcm__gatemsg[data-tone="required"] {
+	color: var(--danger);
+}
+.pcm__actions {
+	flex: none;
+	display: inline-flex;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+@media (max-width: 768px) {
+	.pcm__body {
+		flex-direction: column;
+	}
+	.pcm__right {
+		flex: 1 1 auto;
+	}
+	.pcm__body[data-right="true"] .pcm__left {
+		border-inline-end: none;
+		border-block-end: var(--hairline);
+	}
+	.pcm__row {
+		grid-template-columns: 1fr;
+	}
+}

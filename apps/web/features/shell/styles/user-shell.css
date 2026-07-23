@@ -36,199 +36,129 @@
 }
 /* #endregion */
 
-/* #region Integrated search (scope selector + typewriter field + magnifier submit) */
+/* #region Integrated search — mirrors the guest `site-header__search` 1:1 (root CLAUDE.md Decision #47) */
 .shell-search {
+	flex: 1 1 auto;
 	display: flex;
 	align-items: center;
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	max-inline-size: 34rem;
-	block-size: 38px;
-	padding-inline: var(--space-1);
-	/* Interactive field → a full contour is allowed (§B.4). */
-	border: var(--hairline);
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--surface) 70%, transparent);
-	color: var(--on-surface);
-	transition: border-color var(--dur-fast) var(--ease-standard);
+	gap: var(--space-1);
+	max-inline-size: 26rem;
+	margin-inline: auto;
+	padding-inline-end: var(--space-1);
+	/* The guest bar's height (`--site-bar-h - --space-4`), inlined so it needs no marketing-scoped token. */
+	block-size: calc(var(--space-7) + var(--space-2) - var(--space-4));
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
 }
 
-.shell-search:focus-within {
-	border-color: var(--primary);
-	outline: 3px solid var(--focus-ring);
-	outline-offset: 1px;
-}
-
-/* Scope selector segment */
-.shell-search__scope {
+/* Scope/entity selector segment */
+.shell-search__entity {
 	position: relative;
 	flex: 0 0 auto;
+	block-size: 100%;
 }
 
-.shell-search__scope-btn {
+.shell-search__entity-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	block-size: 30px;
+	block-size: 100%;
 	padding-inline: var(--space-3);
 	border: 0;
-	border-radius: 999px;
+	border-inline-end: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
 	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
 	font-size: 0.85rem;
-	font-weight: 500;
-	white-space: nowrap;
+	font-weight: 600;
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	border-start-start-radius: var(--radius-lg);
+	border-end-start-radius: var(--radius-lg);
 }
 
-.shell-search__scope-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+.shell-search__entity-btn:hover {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
 }
 
-.shell-search__scope-btn:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
-}
-
-.shell-search__scope-caret {
-	inline-size: 7px;
-	block-size: 7px;
-	border-inline-end: 2px solid currentColor;
-	border-block-end: 2px solid currentColor;
+.shell-search__chevron {
+	inline-size: 6px;
+	block-size: 6px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
 	transform: translateY(-1px) rotate(45deg);
-	opacity: 0.65;
+	opacity: 0.6;
 }
 
-.shell-search__menu {
+.shell-search__entity-menu {
 	position: absolute;
 	inset-block-start: calc(100% + var(--space-2));
 	inset-inline-start: 0;
+	/* Guest uses z-index 5; the authed shell's glass chrome needs the overlay layer to sit above it. */
 	z-index: var(--z-overlay);
-	min-inline-size: 13rem;
+	min-inline-size: 11rem;
 	margin: 0;
 	padding: var(--space-1);
 	list-style: none;
-	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	border: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	border-radius: var(--radius-lg);
 	box-shadow: var(--elevation-high);
 }
 
-.shell-search__option {
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-sm);
-	font-size: 0.9rem;
+.shell-search__entity-option {
+	padding: 0.65rem 0.9rem;
+	border-radius: var(--radius-base);
 	cursor: pointer;
+	font-size: 0.875rem;
+	font-weight: 450;
 }
 
-.shell-search__option:hover,
-.shell-search__option[aria-selected="true"] {
+/* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
+.shell-search__entity-option:hover,
+.shell-search__entity-option[aria-selected="true"] {
 	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
 	color: var(--on-surface);
 }
 
-.shell-search__option:focus-visible {
-	outline: 3px solid var(--focus-ring);
+.shell-search__entity-option:focus-visible {
+	outline: 2px solid var(--primary);
 	outline-offset: -2px;
 }
 
-/* Field + typewriter ghost */
-.shell-search__field {
-	position: relative;
+.shell-search__search-input {
 	flex: 1 1 auto;
-	min-inline-size: 0;
-	display: flex;
-	align-items: center;
-	padding-inline-start: var(--space-3);
-	/* Single hairline separating the scope segment from the field (§B.4). */
-	border-inline-start: var(--hairline);
-}
-
-.shell-search__input {
-	inline-size: 100%;
 	min-inline-size: 0;
 	border: 0;
 	background: transparent;
 	color: inherit;
 	font: inherit;
-	font-size: 0.92rem;
+	font-size: 0.9rem;
 	outline: none;
+	padding-inline-start: var(--space-2);
 }
 
-.shell-search__ghost {
-	position: absolute;
-	inset-inline-start: var(--space-3);
-	inset-block: 0;
-	display: flex;
-	align-items: center;
-	gap: 0.4ch;
-	pointer-events: none;
-	font-size: 0.92rem;
-	color: var(--text-secondary);
-	white-space: nowrap;
-	overflow: hidden;
-}
-
-.shell-search__ghost-lead {
-	opacity: 0.7;
-}
-
-.shell-search__typed {
-	color: var(--on-surface);
-	font-weight: 500;
-}
-
-.shell-search__caret {
-	inline-size: 2px;
-	block-size: 1.05em;
-	background: var(--primary);
-	animation: shell-search-blink 1.05s steps(1) infinite;
-}
-
-@keyframes shell-search-blink {
-	50% {
-		opacity: 0;
-	}
-}
-
-.shell-search__submit {
+.shell-search__search-go {
 	flex: 0 0 auto;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 30px;
-	block-size: 30px;
+	inline-size: 28px;
+	block-size: 28px;
+	padding: 0;
 	border: 0;
-	border-radius: 999px;
 	background: transparent;
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
 }
 
-.shell-search__submit svg {
-	inline-size: 18px;
-	block-size: 18px;
+.shell-search__search-go svg {
+	inline-size: 16px;
+	block-size: 16px;
 }
 
-.shell-search__submit:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-	color: var(--on-surface);
-}
-
-.shell-search__submit:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.shell-search__caret {
-		animation: none;
-	}
+.shell-search__search-go:hover {
+	color: var(--primary);
 }
 /* #endregion */
 
@@ -342,16 +272,26 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
+	inline-size: 100%;
 	padding: var(--space-2) var(--space-3);
+	border: 0;
 	border-radius: var(--radius-sm);
+	background: transparent;
 	color: var(--on-surface);
+	font: inherit;
 	font-size: 0.9rem;
+	text-align: start;
 	text-decoration: none;
 	cursor: pointer;
 }
 
 .shell-menu__item:hover {
 	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.shell-menu__item:disabled {
+	opacity: 0.6;
+	cursor: default;
 }
 
 .shell-menu__item:focus-visible {
@@ -451,9 +391,95 @@
 	outline-offset: -2px;
 }
 
+.shell-account__ident {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
 .shell-account__name {
 	font-weight: 600;
 	font-size: 0.92rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.shell-account__sub {
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Role badge + live status — the identity's dynamic state row. */
+.shell-account__meta {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: 2px;
+}
+
+.shell-account__badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px var(--space-2);
+	border-radius: 999px;
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	color: var(--primary);
+}
+
+.shell-account__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35ch;
+	font-size: 0.72rem;
+	color: var(--text-secondary);
+}
+
+.shell-account__status-dot {
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 999px;
+	background: var(--success);
+}
+
+.shell-account__status[data-online="false"] .shell-account__status-dot {
+	background: var(--text-secondary);
+}
+
+/* Active workspace/team — a tonal-tinted row (§B.4: no boxed border), only when in a tenant context. */
+.shell-account__workspace {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin: 2px var(--space-1) 0;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-sm);
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+}
+
+.shell-account__workspace-label {
+	font-size: 0.68rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-secondary);
+}
+
+.shell-account__workspace-name {
+	min-inline-size: 0;
+	font-size: 0.85rem;
+	font-weight: 500;
+	color: var(--on-surface);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .shell-account__row {

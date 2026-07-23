@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ProjectFormat } from "./summary.ts";
 import { MessageSenderSchema } from "./messages.ts";
 import { FileItemSchema, FileKind, FileScope, FileSortDir, FileSortKey } from "./files.ts";
 
@@ -172,6 +173,15 @@ export const SubmissionListParamsSchema = z.object({
 	kinds: z.array(FileKind).max(8).optional(),
 	/** Free-text filename match. */
 	query: z.string().max(120).optional(),
+	/**
+	 * Viewer perspective override for the deliverable isolation rule (Freelancer View & Submission
+	 * Isolation). A freelancer must ONLY ever see their own submissions — never another submitter's — so
+	 * when this is `true` the tree + files are pruned to the acting freelancer's own subtree and
+	 * `viewerIsClient` is forced off. `false` forces the full client/reviewer view (all submitters).
+	 * When absent the backend derives it from the resolved viewer role (a freelancer auto-isolates). It
+	 * is re-derived server-side and never grants access — RLS remains the real gate (root CLAUDE.md §6).
+	 */
+	asFreelancer: z.boolean().optional(),
 	/** Opaque paging cursor (the id of the last item of the previous page). */
 	cursor: z.string().max(120).nullable().optional(),
 	limit: z.number().int().min(1).max(200).optional(),
@@ -184,6 +194,13 @@ export type SubmissionListParams = z.infer<typeof SubmissionListParamsSchema>;
 export const SubmissionListPageSchema = z.object({
 	scope: FileScope,
 	projectId: z.string().min(1).max(120),
+	/** The engagement's title — the Create/Pre-submit submission modals surface it. */
+	projectTitle: z.string().min(1).max(160),
+	/**
+	 * The engagement's delivery format — drives the Create Submission modal's ticket handling: a
+	 * pipeline/session engagement fulfils tickets (a ticket dropdown), a one-off has no tickets.
+	 */
+	format: ProjectFormat,
 	channelId: z.string().max(120).nullable(),
 	/** The full navigation tree for the scope (root nodes; the client navigates it in-memory). */
 	tree: z.array(SubmissionTreeNodeSchema),

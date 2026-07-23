@@ -710,8 +710,12 @@
 	-webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
-.ex-media__type[data-type="Session"] {
+.ex-media__type[data-type="Session"],
+.ex-media__type[data-type="Group Session"] {
 	color: var(--primary);
+}
+.ex-media__type[data-type="Direct Deliverable"] {
+	color: var(--secondary);
 }
 
 /* Product price chip — lives in the top-left flag stack so it never collides with the top-right kebab;
