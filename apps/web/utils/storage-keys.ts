@@ -65,6 +65,12 @@ export const LocalKeys = {
 	REMEMBER_EMAIL: "pj.local.rememberEmail",
 	/** The last active profile/context handle, so the app can rehydrate the switcher instantly. */
 	LAST_ACTIVE_CONTEXT: "pj.local.lastActiveContext",
+	/**
+	 * The account popover's chosen presence status (`online` | `away` | `dnd` | `invisible`). A
+	 * client-side preference persisted across sessions until the live presence service owns it; read
+	 * after hydration so it never diverges from the SSR-painted default.
+	 */
+	ACCOUNT_STATUS: "pj.local.account.status",
 	/** Durable cache of onboarding progress metadata (see {@link CacheKeys.ONBOARDING_STAGE_CACHE}). */
 	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
 	/** Recent Explore search terms (most-recent-first, capped) — powers the search recall list. */
@@ -118,6 +124,22 @@ export const LocalKeys = {
 	/** Persisted File Explorer table column widths — a single JSON `Record<columnKey, px>` map. */
 	FILES_COLUMNS: "pj.local.files.columns",
 	/**
+	 * The Catalogue console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
+	 * the File Explorer, shared cross-island (the footer View Control Rig ↔ the console body). Its own key
+	 * so the seller's catalogue density is independent of their file density.
+	 */
+	CATALOGUE_ZOOM: "pj.local.catalogue.zoom",
+	/**
+	 * The Wallet Transactions ledger zoom-driven view density (a `0`–`1` float) — the same list⇄grid
+	 * model as the File Explorer, shared cross-island (the footer View Control Rig ↔ the ledger body).
+	 * Its own key so the ledger density is independent of the file/catalogue density.
+	 */
+	WALLET_ZOOM: "pj.local.wallet.zoom",
+	/** Persisted Wallet Transactions table column widths — a single JSON `Record<columnKey, px>` map. */
+	WALLET_COLUMNS: "pj.local.wallet.columns",
+	/** The Wallet lane's last-selected wallet param (`personal` | `team:{id}` | …) — restored across reloads. */
+	WALLET_ACTIVE: "pj.local.wallet.active",
+	/**
 	 * The Kanban board's view mode (`kanban` | `list`) — shared cross-island (the footer View Control
 	 * Rig ↔ the board body), so the board reopens in the last-used surface.
 	 */
@@ -156,6 +178,13 @@ export const LocalKeys = {
 	DEV_CONTEXT_WINDOW_POS: "pj.local.dev.contextWindowPos",
 	/** DEV-ONLY. Persisted screen position of the Dev Tools Log & API Inspector window (`{x,y}` JSON). */
 	DEV_INSPECTOR_WINDOW_POS: "pj.local.dev.inspectorWindowPos",
+	/**
+	 * DEV-ONLY. Persisted size of the Dev Tools Context-Switcher window (`{w,h}` px JSON), so a window
+	 * resized via its corner handle reopens at that size. Inert in production (Dev Tools are build-excluded).
+	 */
+	DEV_CONTEXT_WINDOW_SIZE: "pj.local.dev.contextWindowSize",
+	/** DEV-ONLY. Persisted size of the Dev Tools Log & API Inspector window (`{w,h}` px JSON). */
+	DEV_INSPECTOR_WINDOW_SIZE: "pj.local.dev.inspectorWindowSize",
 	/**
 	 * DEV-ONLY. Whether the Context-Switcher window is currently OPEN (`"1"`|`"0"`), so an open window
 	 * reappears (in its saved position) after a navigation or hard refresh. Inert in production.

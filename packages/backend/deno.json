@@ -9,6 +9,7 @@
 		"./services/newsletter/NewsletterBackendService.ts": "./services/newsletter/NewsletterBackendService.ts",
 		"./services/projects/ProjectBackendService.ts": "./services/projects/ProjectBackendService.ts",
 		"./services/messaging/MessagingBackendService.ts": "./services/messaging/MessagingBackendService.ts",
+		"./services/catalogue/CatalogueBackendService.ts": "./services/catalogue/CatalogueBackendService.ts",
 		"./services/profile/ProfileBackendService.ts": "./services/profile/ProfileBackendService.ts",
 		"./services/scheduling/ScheduleBackendService.ts": "./services/scheduling/ScheduleBackendService.ts",
 		"./services/user/UserBackendService.ts": "./services/user/UserBackendService.ts",

@@ -200,12 +200,36 @@ attribute on `:root` or a `<DesignSystemProvider>` scope), never per-component p
 		--dur-slow: 0ms;
 		--spring: none;
 	}
-	*, *::before, *::after {
+	*,
+	*::before,
+	*::after {
 		animation: none !important;
 		transition-duration: 0ms !important;
 	}
 }
 ```
+
+---
+
+### A.6 Layout direction (RtL / LtR) — the bidirectional contract
+
+Projective renders in **both** reading directions. Direction is a **user preference**, resolved
+independently of language, and the component layer is expected to mirror **for free**.
+
+| Concern             | Contract                                                                                                                                                                                                                                                                                                                                                                |
+| :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Source of truth** | `org.user_preferences.layout_direction` — `ltr` / `rtl` / `auto`. `auto` resolves to the natural direction of the user's `locale`. Chosen **independent of language** (an RtL reader may keep an LtR locale and vice-versa).                                                                                                                                            |
+| **Application**     | The resolved value is written as the document root **`dir`** attribute (`dir="rtl"` / `"ltr"`). Nothing else is toggled — no direction-specific stylesheet, no JS layout swap.                                                                                                                                                                                          |
+| **Mirroring**       | Automatic, because components style with **CSS logical properties only**: `inline-size`/`block-size`, `inset-inline-*`/`inset-block-*`, `margin-inline`/`padding-inline`, `border-inline-*`, `text-align: start/end`. Under `dir="rtl"` the shell sidebar flips to the right, list chevrons/affordances mirror, and anchored overlays resolve against the writing mode. |
+| **Prohibition**     | **No hardcoded physical directions** in component CSS (`left`/`right`, `margin-left`, `text-align: left`, `::before` pinned to a physical edge). Each is a migration target — convert to its logical equivalent. **No app-side per-component direction overrides** (matching the responsive rule, §C.3).                                                                |
+| **Icons/glyphs**    | Direction-agnostic glyphs are untouched; **directional** glyphs (back/forward carets, progress arrows) mirror under RtL via `scale-x` on a `:dir(rtl)` / `[dir="rtl"]` scope, never a swapped asset.                                                                                                                                                                    |
+| **Motion**          | Slide/enter transforms are expressed on the inline axis so they honour direction; reduced-motion (§A.5) still jumps to final.                                                                                                                                                                                                                                           |
+
+> This is the **documentation-only contract** for the 2026-07-23 Wallet & Finance / i18n foundation
+> — the DB column + preference exist; the CSS/UI mirroring pass is later work. Architecture side:
+> `SYSTEM_ARCHITECTURE.md` §Internationalization, Currency & Localization. Currency/number/date
+> **formatting** follows `locale`; money is stored in origin currency and displayed converted
+> (presentational only).
 
 ---
 
@@ -281,7 +305,9 @@ _same_ clock:
 
 ```css
 /* Applied globally; one clock, one duration → simultaneous crossfade */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
 	transition:
 		color var(--dur-slow) var(--ease-standard),
 		background-color var(--dur-slow) var(--ease-standard),
@@ -317,14 +343,16 @@ sidebar (global rail, middle-nav lane, Project Details channel tree) and any den
    grouped into **horizontal, icon-only button rows**, typically pinned to a **sticky footer**, so
    the scrollable content region keeps its full height (mirrors the §D.2 collapsed splitter's
    vertical icon-only rows and the §D.1 bottom-pinned collapse toggle).
-4. **Tooltips everywhere (mandatory).** Every icon-only button, action, or status indicator carries a
-   lightweight, **portal-based `@projective/ui` `Tooltip`** — never a native `title`. The visible
-   label may be hidden, but the anchor keeps an `aria-label` (icon-only ≠ nameless), so accessibility
-   holds without cluttering the canvas. This is the same discipline the collapsed rail already
-   enforces (§D.1).
+4. **Tooltips everywhere (mandatory).** Every icon-only button, action, or status indicator carries
+   a lightweight, **portal-based `@projective/ui` `Tooltip`** — never a native `title`. The visible
+   label may be hidden, but the anchor keeps an `aria-label` (icon-only ≠ nameless), so
+   accessibility holds without cluttering the canvas. This is the same discipline the collapsed rail
+   already enforces (§D.1).
 
-> Merge gate: a dense-list or sidebar PR that spells a status out in inline text (rather than an icon
-> + tooltip), or ships an icon-only control without a `Tooltip` + `aria-label`, is not mergeable.
+> Merge gate: a dense-list or sidebar PR that spells a status out in inline text (rather than an
+> icon
+>
+> - tooltip), or ships an icon-only control without a `Tooltip` + `aria-label`, is not mergeable.
 
 ---
 
@@ -336,31 +364,31 @@ verbatim because every component depends only on the token contract (Part A) —
 
 ### C.1 The seven taxonomies (authoritative roster)
 
-| Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                  |
-| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                            |
-| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl |
-| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                            |
-| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                 |
-| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window) (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                    |
-| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                            |
-| **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                          |
-| **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                        |
-| **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                          |
+| Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                                                                     |
+| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, **Lane chrome** (LaneHead, LaneFooter(+Actions), LaneList, LaneBar, LaneTabs, LaneSearch, LaneIconButton, LaneToggleRow, LaneSection(+LaneSections), LaneCollapseButton, LaneEmpty — the shared middle-nav lane control set every lane surface composes), Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination) |
+| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl                                                                                |
+| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                                                     |
+| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                                                                                                                         |
+| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window) (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                                                                                                                               |
+| **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                                                                                                                              |
+| **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                                                                                                                                 |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
 > package docs describe existing implementations now re-homed under these sub-paths.
 
 > **Field validation statuses — two-tier creation gate.** Beyond the generic `invalid`/`success`/
-> `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow to
-> set up" gate as two explicit severities: **`required` (RED)** — needed *now* to create the base
+> `warning` `FieldStatus`es, `fields` (and `editor`) expose the platform's "quick to onboard, slow
+> to set up" gate as two explicit severities: **`required` (RED)** — needed _now_ to create the base
 > record (e.g. a Project Name; drives the danger ramp + `aria-invalid`), and **`gate` (AMBER)** —
-> optional to draft but needed to *publish* to Explore / open for hiring (e.g. Description, Budget,
-> Stage details; drives the warning ramp, soft-informative so NOT `aria-invalid`). Both carry a faint
-> tonal fill so an unmet gate reads at a glance in a dense form.
+> optional to draft but needed to _publish_ to Explore / open for hiring (e.g. Description, Budget,
+> Stage details; drives the warning ramp, soft-informative so NOT `aria-invalid`). Both carry a
+> faint tonal fill so an unmet gate reads at a glance in a dense form.
 
 **Implementation status:** `layout` is built and consumed by the app — Box, Container, Grid, Row,
 Column, Stack, AspectRatio, Divider, Separator (`packages/ui/layout/`, zero-JS server components;
@@ -370,18 +398,17 @@ token-only BEM; `--space-*`/`--container-*`/`--font-*` tokens added to `styles/i
 PageCanvas (Green) with the ShellFrame exposed-corner curvature (top-left always; bottom-left when a
 parent track remains), persona/device gates (guest/mobile hide the sidebar and switch the top bar to
 a `--glass-blur` glass header). `MiddleNav` is a three-row frame carrying optional route-filled
-**`header`** (`.ui-middle-nav__header`, sticky at `--shell-topbar-h`, token `--shell-midnav-header-h`)
-and **`footer`** (`.ui-middle-nav__footer`, sticky at `bottom: 0`) bands flush against the lane; each
-collapses to zero when unset (see §D.4, Decisions #29/#31). Plus ShellTopBar, ShellSidebar,
-NavItem, Link, the
-`MiddleNavSplitter` and `MobileMenu` islands, and the `useSplitter`/`useFlushBottom`/`useMediaQuery`
-hooks (`packages/ui/navigation/`, wired into the app's group layouts). Shell tokens
-(`--radius-container-lg`, `--glass-blur`, `--shell-*`) added to `styles/index.css`. The **wayfinding
-atoms** now ship alongside the shell (`navigation/islands/` + `components/`): Menu, Menubar,
-MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu (cascading submenus over the shared
-`MenuItem` model + `navigation/core/menu.ts` helpers), Breadcrumb, Steps, TabMenu, TabView
-(+TabPanel), and Paginator (alias Pagination) — full WAI-ARIA menu/tab/menubar keyboard models,
-`useFloating`/`useDismiss` anchoring, and reduced-motion ink-bar transitions.
+**`header`** (`.ui-middle-nav__header`, sticky at `--shell-topbar-h`, token
+`--shell-midnav-header-h`) and **`footer`** (`.ui-middle-nav__footer`, sticky at `bottom: 0`) bands
+flush against the lane; each collapses to zero when unset (see §D.4, Decisions #29/#31). Plus
+ShellTopBar, ShellSidebar, NavItem, Link, the `MiddleNavSplitter` and `MobileMenu` islands, and the
+`useSplitter`/`useFlushBottom`/`useMediaQuery` hooks (`packages/ui/navigation/`, wired into the
+app's group layouts). Shell tokens (`--radius-container-lg`, `--glass-blur`, `--shell-*`) added to
+`styles/index.css`. The **wayfinding atoms** now ship alongside the shell (`navigation/islands/` +
+`components/`): Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu (cascading
+submenus over the shared `MenuItem` model + `navigation/core/menu.ts` helpers), Breadcrumb, Steps,
+TabMenu, TabView (+TabPanel), and Paginator (alias Pagination) — full WAI-ARIA menu/tab/menubar
+keyboard models, `useFloating`/`useDismiss` anchoring, and reduced-motion ink-bar transitions.
 
 **Shell overhaul (Part D four-profile matrix).** `NavItem` drops the native `title` (the collapsed
 rail wraps items in the real `Tooltip`, `placement="right"`) and gains a `dot` update-indicator
@@ -417,113 +444,120 @@ The remaining four taxonomies — **`display`, `feedback`, `overlay`, `utils`** 
 PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
 
 - **`display`** — the performance-first collections (Table with 3-state sort (asc→desc→none) +
-  Shift-click multi-sort gated by a per-table `multiSort` on/off flag, per-column filter,
-  row selection + expansion, column resize/reorder, row grouping, conditional styling, lazy loading
-  and `stateKey` persistence; TreeTable; Tree with checkboxes/drag-drop/filter/context-menu;
-  DataView list⇄grid; VirtualScroller; Scroller; **VirtualGrid** — a windowed, infinite-scroll GRID
-  of stretch-to-fill cells built as a "1D-by-row window" over `useVirtualScroll` (measures its own
+  Shift-click multi-sort gated by a per-table `multiSort` on/off flag, per-column filter, row
+  selection + expansion, column resize/reorder, row grouping, conditional styling, lazy loading and
+  `stateKey` persistence; TreeTable; Tree with checkboxes/drag-drop/filter/context-menu; DataView
+  list⇄grid; VirtualScroller; Scroller; **VirtualGrid** — a windowed, infinite-scroll GRID of
+  stretch-to-fill cells built as a "1D-by-row window" over `useVirtualScroll` (measures its own
   inline width → derives columns → virtualizes ROWS; `rowHeight` may be a function of the computed
   cell width for a square/aspect grid; the File Explorer's card grid) all window rows through the
-  package-level
-  `hooks/useVirtualScroll` (fixed **or** measured sizes; **own-container OR window scroll**; infinite
-  `onReachEnd`; and — additively, for bottom-up feeds like the channel chat — `startAtEnd`/`scrollToEnd`
-  to open at the bottom, `onReachStart` to load older at the head, and stable `getItemKey` measurement
-  keys so a head-prepend never corrupts the offset table). Plus OrgChart, Timeline, GMap (dumb embed
-  wrapper — no keys), Carousel,
-  Galleria, Image (zoom/rotate/fullscreen), **AudioVisualizer** — a token-driven voice/audio player
-  (play/pause · seekable rounded-bar waveform · elapsed clock · optional speed cycle) with a dual
-  real-`<audio>`/simulated transport and a two-tone `--wave-played`/`--wave-rest` waveform a consumer
-  can re-tint (the projects chat memo + attachment/review previews consume it), and the content atoms
-  (Card, Avatar/AvatarGroup,
-  Badge/OverlayBadge, RatingStars — a zero-JS read-only star meter (a `compact` prop renders a single
-  primary star + score for dense card bylines, in place of the full five-star meter), the display
-  counterpart to the interactive `fields` Rating — Chip, Tag, List/ListItem, Accordion).
+  package-level `hooks/useVirtualScroll` (fixed **or** measured sizes; **own-container OR window
+  scroll**; infinite `onReachEnd`; and — additively, for bottom-up feeds like the channel chat —
+  `startAtEnd`/`scrollToEnd` to open at the bottom, `onReachStart` to load older at the head, and
+  stable `getItemKey` measurement keys so a head-prepend never corrupts the offset table). Plus
+  OrgChart, Timeline, GMap (dumb embed wrapper — no keys), Carousel, Galleria, Image
+  (zoom/rotate/fullscreen), **AudioVisualizer** — a token-driven voice/audio player (play/pause ·
+  seekable rounded-bar waveform · elapsed clock · optional speed cycle) with a dual
+  real-`<audio>`/simulated transport and a two-tone `--wave-played`/`--wave-rest` waveform a
+  consumer can re-tint (the projects chat memo + attachment/review previews consume it), and the
+  content atoms (Card, Avatar/AvatarGroup, Badge/OverlayBadge, RatingStars — a zero-JS read-only
+  star meter (a `compact` prop renders a single primary star + score for dense card bylines, in
+  place of the full five-star meter), the display counterpart to the interactive `fields` Rating —
+  Chip, Tag, List/ListItem, Accordion).
 - **`feedback`** — Message/Messages/Alert/Banner, Toast (+`useToast`), the Dialog family
   (Dialog/DynamicDialog + `useDialog`/ConfirmDialog/ConfirmPopup), Drawer (alias Sidebar,
   bottom-sheet under `--bp-md`), Tooltip, Popover (alias OverlayPanel), and the progress/placeholder
   set (ProgressBar/Spinner/Ring, Spinner/Loader, Skeleton).
 - **`overlay`** — Portal (in-tree fixed-layer, no `preact/compat`), BodyPortal (a real
-  `document.body` DOM portal — still no `preact/compat`, built on Preact core `render` — for anchored
-  micro-popups that must escape a transformed ancestor's re-based `position: fixed`; used by Tooltip,
-  HoverCard, and ConfirmPopup), Backdrop, the generic controlled Overlay, HoverCard, **DraggablePopover**
-  (a non-modal draggable + resizable floating window — Pointer-Events drag with viewport clamping,
-  keyboard move, native resize, `aria-modal="false"`, no backdrop so the page stays interactive; renders
-  through BodyPortal), and the `usePresence` enter/exit helper.
+  `document.body` DOM portal — still no `preact/compat`, built on Preact core `render` — for
+  anchored micro-popups that must escape a transformed ancestor's re-based `position: fixed`; used
+  by Tooltip, HoverCard, and ConfirmPopup), Backdrop, the generic controlled Overlay, HoverCard,
+  **DraggablePopover** (a non-modal draggable + resizable floating window — Pointer-Events drag with
+  viewport clamping, keyboard move, a styled bottom-right corner resize handle [Pointer-Events +
+  keyboard, clamped to a min size and the viewport, with `onSizeChange` for persistence — a custom
+  grip rather than the browser's near-invisible `resize` under the rounded corner],
+  `aria-modal="false"`, no backdrop so the page stays interactive; renders through BodyPortal), and
+  the `usePresence` enter/exit helper.
 - **`utils`** — CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal,
   Captcha (dumb mount point), and the directives FocusTrap, Defer, AnimateOnScroll, Ripple.
 
 File-Explorer additions (root CLAUDE.md §8 Decision #32): **`fields/SortControl`** (a sort-property
 dropdown + an asc/desc toggle inside ONE borderless compound block, signal-first so it can share the
-sort signals with a table's clickable headers), **`fields/ZoomSlider`** (− · a segmented track with a
-distinct centre transition marker · +, for a zoom-density rig), the borderless **`.ui-field--bare`**
-variant (no resting border/background; hover reveals a faint tint, focus a soft ring — for dense
-enterprise toolbars), and **`layout/Splitter` `SplitterPanel.maxSize`** (a hard per-pane maximum so a
-modal split enforces a fixed structural ratio). **Splitter collision note:** the layout `Splitter` and
-the nav lane `MiddleNavSplitter` share the `.ui-splitter` block name and the nav's globally-loaded
-`splitter.css` sets `.ui-splitter { inline-size: var(--shell-lane-w) }`; the layout splitter's root
-box rules are therefore scoped to its `--horizontal`/`--vertical` modifiers (higher specificity; the
-lane never carries them) so the two never corrupt each other — do NOT move those declarations back
-onto the bare `.ui-splitter` selector.
+sort signals with a table's clickable headers), **`fields/ZoomSlider`** (− · a segmented track with
+a distinct centre transition marker · +, for a zoom-density rig), the borderless
+**`.ui-field--bare`** variant (no resting border/background; hover reveals a faint tint, focus a
+soft ring — for dense enterprise toolbars), and **`layout/Splitter` `SplitterPanel.maxSize`** (a
+hard per-pane maximum so a modal split enforces a fixed structural ratio). **Splitter collision
+note:** the layout `Splitter` and the nav lane `MiddleNavSplitter` share the `.ui-splitter` block
+name and the nav's globally-loaded `splitter.css` sets
+`.ui-splitter { inline-size: var(--shell-lane-w) }`; the layout splitter's root box rules are
+therefore scoped to its `--horizontal`/`--vertical` modifiers (higher specificity; the lane never
+carries them) so the two never corrupt each other — do NOT move those declarations back onto the
+bare `.ui-splitter` selector.
 
 Submissions additions (root CLAUDE.md §8 Decision #33): **`navigation/TreeNav`** — a wayfinding tree
-explorer (a lighter sibling of `display/Tree`): borderless disclosure rows with **chevron** open/close
-affordances (never triangles), an optional leading icon OR circular avatar per node, an icon-only
-trailing status slot + a muted count, controllable selection + a controllable/internal expanded-key
-set, `role="tree"`/`treeitem` with arrow/Home/End keys. Selecting a row scopes the host workspace; a
-single-hairline vertical divider between the tree and the workspace is the host's concern (§B.4). Also
-a backward-compatible **`Breadcrumb` extension**: a crumb may carry a `MenuItem.command` for
-**client-driven** trails (an in-place tree navigator) — the crumb stays an anchor (its `url` remains
-deep-linkable / new-tab-openable) but a plain left-click is intercepted (`preventDefault` → `command`);
-crumbs without a `command` are byte-identical to before. Both consume the review-modal's reuse of the
-existing `layout/Splitter` (hard min/max %), and inherit the same **Splitter collision** discipline
-above unchanged (the feature does not touch `splitter.css` or the nav splitter).
+explorer (a lighter sibling of `display/Tree`): borderless disclosure rows with **chevron**
+open/close affordances (never triangles), an optional leading icon OR circular avatar per node, an
+icon-only trailing status slot + a muted count, controllable selection + a controllable/internal
+expanded-key set, `role="tree"`/`treeitem` with arrow/Home/End keys. Selecting a row scopes the host
+workspace; a single-hairline vertical divider between the tree and the workspace is the host's
+concern (§B.4). Also a backward-compatible **`Breadcrumb` extension**: a crumb may carry a
+`MenuItem.command` for **client-driven** trails (an in-place tree navigator) — the crumb stays an
+anchor (its `url` remains deep-linkable / new-tab-openable) but a plain left-click is intercepted
+(`preventDefault` → `command`); crumbs without a `command` are byte-identical to before. Both
+consume the review-modal's reuse of the existing `layout/Splitter` (hard min/max %), and inherit the
+same **Splitter collision** discipline above unchanged (the feature does not touch `splitter.css` or
+the nav splitter).
 
 Kanban additions (root CLAUDE.md §8 Decision #35): two NEW sub-paths. **`@projective/ui/dnd`** — a
-dependency-free, **Pointer-Events** drag-and-drop kit (NO native HTML5 `draggable`, NO external library
-— root CLAUDE.md §3 · PRODUCT_SPEC §Libraries · SYSTEM_ARCHITECTURE §KanbanBoard). One `DndContext`
-island owns the sensor engine (a pointer sensor with a movement-threshold so a click is never a drag +
-capture-phase click-suppression, and a keyboard sensor: Space/Enter pick up · Arrows move · Enter drops
-· Escape cancels) over a signal-first store; `Draggable`/`Droppable`/`SortableContext` (alias
-`SortableContainer`) + the `useDraggable`/`useDroppable`/`useSortable` hooks mark nodes; `DragOverlay`
-renders the elevated ghost through `BodyPortal` (escapes the glass-blur `position: fixed` trap);
-`useDndMonitor` lets a consumer react to the drag lifecycle. Collision detectors (`pointerWithin` →
-`closestCenter` fallback, and `nextInDirection` for the keyboard sensor) are pure. Signal-first, `--z-`/
+dependency-free, **Pointer-Events** drag-and-drop kit (NO native HTML5 `draggable`, NO external
+library — root CLAUDE.md §3 · PRODUCT_SPEC §Libraries · SYSTEM_ARCHITECTURE §KanbanBoard). One
+`DndContext` island owns the sensor engine (a pointer sensor with a movement-threshold so a click is
+never a drag + capture-phase click-suppression, and a keyboard sensor: Space/Enter pick up · Arrows
+move · Enter drops · Escape cancels) over a signal-first store;
+`Draggable`/`Droppable`/`SortableContext` (alias `SortableContainer`) + the
+`useDraggable`/`useDroppable`/`useSortable` hooks mark nodes; `DragOverlay` renders the elevated
+ghost through `BodyPortal` (escapes the glass-blur `position: fixed` trap); `useDndMonitor` lets a
+consumer react to the drag lifecycle. Collision detectors (`pointerWithin` → `closestCenter`
+fallback, and `nextInDirection` for the keyboard sensor) are pure. Signal-first, `--z-`/
 `--elevation-high`/`--spring-*` token-only, reduced-motion collapses the ghost tilt, and it ships an
 `aria-live` keyboard-DnD announcer. **`@projective/ui/kanban`** — a generic, **controlled**
-`KanbanBoard` (+ `KanbanColumn`/`KanbanCard`) built on `dnd`: columns hold items; a card drags across
-columns (and reorders within a `sortable` column), `reorderable` columns re-sequence, with live drop
-indicators, WIP counts, sleek inner scrollbars, elevation-on-drag, and a grip handle for keyboard drag.
-It NEVER mutates the model — it emits `KanbanItemMove`/`KanbanColumnMove` on drop, so a consumer can
-commit immediately OR intercept a move behind a confirmation modal (the projects board's stage-reorder /
-claimed-ticket / revision warnings). §B.4: columns are non-interactive containers (tonal tint + a single
-hairline, no box); cards are interactive (surface + radius + resting elevation).
+`KanbanBoard` (+ `KanbanColumn`/`KanbanCard`) built on `dnd`: columns hold items; a card drags
+across columns (and reorders within a `sortable` column), `reorderable` columns re-sequence, with
+live drop indicators, WIP counts, sleek inner scrollbars, elevation-on-drag, and a grip handle for
+keyboard drag. It NEVER mutates the model — it emits `KanbanItemMove`/`KanbanColumnMove` on drop, so
+a consumer can commit immediately OR intercept a move behind a confirmation modal (the projects
+board's stage-reorder / claimed-ticket / revision warnings). §B.4: columns are non-interactive
+containers (tonal tint + a single hairline, no box); cards are interactive (surface + radius +
+resting elevation).
 
-Calendar additions (root CLAUDE.md §8 Decision #37): one NEW sub-path **`@projective/ui/calendar`** — a
-high-performance, generic, **controlled** Calendar & Schedule engine (Google-Calendar / Monday.com
-inspired), portable + **zod-free** (a consumer maps its own domain data into the presentational
-`CalendarEvent`/`CalendarAvailability` shapes and reacts to the selection/open callbacks, so the ONE
-engine serves the project/channel calendar, `@handle` availability, and session schedules). The
-`Calendar` island lays out a two-panel shell: a narrow left panel (`MiniMonth` mini-map — hovering a day
-tints its whole week ~15%, clicking jumps the main view — over an `AvailabilityPanel` of working hours ·
-timezone live clock · blackout dates) and a main viewport (`CalendarHeader` view-switch + nav + search +
-privacy-safe integration chips, over the `MonthGrid`, the Week `TimeGrid`, or the infinite Day
-`DayTimeline`). `useCalendarViewport` owns
-the time-grid engine: **virtualized** hour cells, an initial scroll centred on the time-scale (now when
-today is in view, else noon — symmetric room across both midnights via a ±3h overscroll pad), **Ctrl+wheel
-zoom** that scales `--cal`-px-per-hour in place AND transitions Day↔Week↔Month across thresholds,
-middle-mouse / Ctrl-drag 2D **panning** (handlers `preventDefault` so no native autoscroll/page-zoom), and
-a return-to-present pill, plus an immediate scroll-signal `sync` after any programmatic scroll (so a
-hidden/deferred `scroll` event never leaves a day-timeline virtualizing the wrong window). The **Week**
-`TimeGrid` is the standard bounded time-of-day grid; the **Day** `DayTimeline` is a genuinely INFINITE,
-virtualized continuous multi-day timeline — scroll flows seamlessly past midnight into adjacent days
-endlessly (a ~4-year elapsed-time axis, only the viewport's days rendered, DST-correct via zoned day
-arithmetic; inline date markers label each midnight and the centred day is tracked back to the header +
-mini-map). `packDayEvents` resolves overlap into fractional side-by-side columns; the
-`calendarTime` matrix utils are **timezone-explicit** (`Intl`) so SSR == the hydrated island (no drift).
-§Part 1.4 privacy masking: external-integration + general-availability blocks render ONLY Available /
-Busy / Tentative (never a real title); public group sessions may show an attendee counter. §B.4: grid
-lines/cells/panels separate by spacing + tonal surface + single hairlines; the interactive event blocks +
-day cells + controls carry the surface/accent/border + focus ring.
+Calendar additions (root CLAUDE.md §8 Decision #37): one NEW sub-path **`@projective/ui/calendar`**
+— a high-performance, generic, **controlled** Calendar & Schedule engine (Google-Calendar /
+Monday.com inspired), portable + **zod-free** (a consumer maps its own domain data into the
+presentational `CalendarEvent`/`CalendarAvailability` shapes and reacts to the selection/open
+callbacks, so the ONE engine serves the project/channel calendar, `@handle` availability, and
+session schedules). The `Calendar` island lays out a two-panel shell: a narrow left panel
+(`MiniMonth` mini-map — hovering a day tints its whole week ~15%, clicking jumps the main view —
+over an `AvailabilityPanel` of working hours · timezone live clock · blackout dates) and a main
+viewport (`CalendarHeader` view-switch + nav + search + privacy-safe integration chips, over the
+`MonthGrid`, the Week `TimeGrid`, or the infinite Day `DayTimeline`). `useCalendarViewport` owns the
+time-grid engine: **virtualized** hour cells, an initial scroll centred on the time-scale (now when
+today is in view, else noon — symmetric room across both midnights via a ±3h overscroll pad),
+**Ctrl+wheel zoom** that scales `--cal`-px-per-hour in place AND transitions Day↔Week↔Month across
+thresholds, middle-mouse / Ctrl-drag 2D **panning** (handlers `preventDefault` so no native
+autoscroll/page-zoom), and a return-to-present pill, plus an immediate scroll-signal `sync` after
+any programmatic scroll (so a hidden/deferred `scroll` event never leaves a day-timeline
+virtualizing the wrong window). The **Week** `TimeGrid` is the standard bounded time-of-day grid;
+the **Day** `DayTimeline` is a genuinely INFINITE, virtualized continuous multi-day timeline —
+scroll flows seamlessly past midnight into adjacent days endlessly (a ~4-year elapsed-time axis,
+only the viewport's days rendered, DST-correct via zoned day arithmetic; inline date markers label
+each midnight and the centred day is tracked back to the header + mini-map). `packDayEvents`
+resolves overlap into fractional side-by-side columns; the `calendarTime` matrix utils are
+**timezone-explicit** (`Intl`) so SSR == the hydrated island (no drift). §Part 1.4 privacy masking:
+external-integration + general-availability blocks render ONLY Available / Busy / Tentative (never a
+real title); public group sessions may show an attendee counter. §B.4: grid lines/cells/panels
+separate by spacing + tonal surface + single hairlines; the interactive event blocks + day cells +
+controls carry the surface/accent/border + focus ring.
 
 Cross-cutting behaviour lives in a new **package-level `packages/ui/hooks/`** (`useFloating`,
 `useEdgeDetection` [alias `usePopoverPosition`], `useDismiss`, `useFocusTrap`, `useOverlayStack`
@@ -531,9 +565,23 @@ Cross-cutting behaviour lives in a new **package-level `packages/ui/hooks/`** (`
 `useMediaQuery`, `useRipple`, + re-exports of the value/id/list-nav hooks). Additive tokens added to
 `styles/index.css`: the `--z-*` overlay-stacking scale, `--bp-*` breakpoints, and the over-damped
 `--spring-*` curves. Shared collection/menu/overlay vocabulary (`MenuItem`, `TreeNode`,
-`TableColumn`, `SortState`, `Placement`, `Edge`, …) lives in the package `types/mod.ts`. Overlays
-render **inline with `position: fixed` + a z token** (the Select pattern), coordinated by
-`useOverlayStack` — no DOM portals.
+`TableColumn`, `SortState`, `Placement`, `Edge`, …) lives in the package `types/mod.ts`.
+
+**Overlay portalling + the layered z-scale (2026-07-23).** Every anchored/modal overlay panel now
+renders through the real `document.body` **`BodyPortal`** — `Popover`/`Tooltip`/`HoverCard`/
+`Dialog`/`Drawer`/`ConfirmPopup`/`DraggablePopover`. A `position: fixed` panel that merely stays in
+the tree is NOT safe inside the authenticated shell: the sticky middle-nav lane is a stacking
+context that caps its subtree's paint order, and any glass ancestor's `backdrop-filter` re-bases
+`fixed` onto that ancestor's box — so a menu opened from the lane was clipped away. Portalling to
+the body escapes all three (stacking context, `overflow: clip`, and the transform/filter re-base).
+The `--z-*` scale in `styles/index.css` encodes a **strict class hierarchy** — page content
+`--z-base` < nav lane `--z-raised` < sticky bands `--z-sticky` < site header `--z-nav` < popovers
+`--z-popover`/`--z-overlay` (1100) < modals/drawers `--z-modal` (1300) < draggable windows
+`--z-draggable` (1500) < toasts < tooltips. `useOverlayStack(layer)` allocates each mounted overlay
+a live index from its class base, stepping above any overlay already open, so an
+independently-opened modal always outranks an independent popover AND a dropdown opened _inside_ a
+modal still stacks above it. The lane itself carries `z-index: var(--z-raised)` so its sticky bands
+can never paint over its own content.
 
 **Collision + boundary model (`useFloating` / `useEdgeDetection`).** Anchored overlays resolve in
 three layers: (1) **viewport flip/clamp** — flip to the opposite side when the preferred one lacks
@@ -542,11 +590,12 @@ constraint keeping the panel clear of primary layout chrome (the site sidebar, t
 it away (a left sidebar pushes it right); (3) **lower-level allowed overflow** (`allowOverflow`) —
 the panel may spill past the named viewport edges into subordinate regions (a header search dropping
 into the body/middle-nav). `avoid` accepts CSS selectors (re-measured on every reposition so
-collapsed/expanded/dragged chrome stays honoured), refs, or rects. `useFloating` is the ref-consuming
-engine `Popover`/`Tooltip` compose (both now take `avoid`/`allowOverflow`); `useEdgeDetection` is the
-ref-owning facade a feature reaches for to hand-roll a dropdown, returning `{ triggerRef, ref, style,
-placement, … }` to spread onto a panel carrying the `.ui-anchored` primitive class (fixed +
-`--float-*`), so ancestor `overflow: hidden`/`clip` never truncates it.
+collapsed/expanded/dragged chrome stays honoured), refs, or rects. `useFloating` is the
+ref-consuming engine `Popover`/`Tooltip` compose (both now take `avoid`/`allowOverflow`);
+`useEdgeDetection` is the ref-owning facade a feature reaches for to hand-roll a dropdown, returning
+`{ triggerRef, ref, style,
+placement, … }` to spread onto a panel carrying the `.ui-anchored`
+primitive class (fixed + `--float-*`), so ancestor `overflow: hidden`/`clip` never truncates it.
 
 ### C.2 Engineering guidelines (merge-gated)
 
@@ -609,10 +658,10 @@ selected by viewport and auth state (auth is resolved **site-wide** in the globa
 Home/Explore render the user shell when signed in):
 
 1. **Desktop Guest** (every guest-reachable route) — the unified floating `GuestShell`: the same
-   full-width, scroll-adaptive glass `SiteHeader` (the four discovery megamenus — Helpers · Services ·
-   Projects · Products) over a **full-bleed body**, plus, on routes that supply one, a **floating glass
-   side nav** (the route lane — no splitter handle, a footer collapse toggle) and a **floating glass
-   sub-header**. Guests never render the full-bleed `ui-shell-topbar` or the full-height
+   full-width, scroll-adaptive glass `SiteHeader` (the four discovery megamenus — Helpers · Services
+   · Projects · Products) over a **full-bleed body**, plus, on routes that supply one, a **floating
+   glass side nav** (the route lane — no splitter handle, a footer collapse toggle) and a **floating
+   glass sub-header**. Guests never render the full-bleed `ui-shell-topbar` or the full-height
    `ui-app-shell__sidebar`.
 2. **Desktop User** (site-wide incl. Explore) — the unified **L-shell** below: the header layers
    join the left sidebar; header (main + middle) carry a `--glass-blur` backdrop blur while the
@@ -632,38 +681,41 @@ is zero layout duplication. The guest shells (1, 3) are **likewise one compositi
 `AppShell persona="guest"` (see D.5).
 
 **Scroll model — native window scroll (every profile).** The shell flows in the document's **own**
-scroll on every form-factor × auth profile. The root grows past the viewport (`min-block-size:
-100dvh`, **no** `overflow` cap) and the **browser window** owns the single main scrollbar. The chrome
-stays put by **pinning to the viewport, not by locking the document**: the top bar is `position:
-sticky; top: 0`; the global sidebar and the middle-nav lane are `position: sticky` just below the top
-bar (`inset-block-start: var(--shell-topbar-h)`), each capped to the remaining viewport height
-(`block-size: calc(100dvh - topbar)`, `align-self: start`) with its **own** internal overflow
-(`.ui-shell-sidebar__items`, `.ui-splitter__body`) so a tall rail scrolls inside itself rather than
-lengthening — or scrolling away with — the page. The Green body (`.ui-page-canvas__body`,
-`overflow: visible`) flows naturally: its content lengthens the document and the window scrolls it,
-while in-view chrome (the channel header **band** + the chat composer **footer band**) sticks to the
-viewport within that same window scroll. The nested frames use `overflow: clip` (for the rounded
-corners), which does **not** establish a scroll container, so every sticky descendant resolves against
-the window — one scrollbar, no nested traps. The **main window scrollbar keeps standard browser
-behaviour** (always visible). Every **inner** scroll container instead gets a global **self-hiding
-custom scrollbar** (`styles/index.css`, scoped `:not(html):not(body)`): a permanently transparent
-track, hidden buttons/arrows, and a muted, highly-rounded pill thumb that is **invisible at rest** and
-**fades in while the container is hovered _or_ actively scrolling** (and deepens when the thumb is
-grabbed), token-driven `color-mix(--outline …)` — `scrollbar-color` for Firefox, `::-webkit-scrollbar-*`
-for Chromium. Pure CSS has no "is-scrolling" selector, so the scroll-driven half comes from the global
-**`ScrollIdle`** island (mounted once in `_app.tsx`): a capture-phase `scroll` listener stamps the
-scrolled element with `[data-ui-scrolling]` for a short idle window, which the CSS reveals exactly like
-`:hover`. The window scroll is skipped (a document/window scroll targets `document`, not an element), so
-the main window keeps its native bar; a `@projective/ui` consumer that omits the island degrades to the
+scroll on every form-factor × auth profile. The root grows past the viewport
+(`min-block-size:
+100dvh`, **no** `overflow` cap) and the **browser window** owns the single main
+scrollbar. The chrome stays put by **pinning to the viewport, not by locking the document**: the top
+bar is `position:
+sticky; top: 0`; the global sidebar and the middle-nav lane are `position: sticky`
+just below the top bar (`inset-block-start: var(--shell-topbar-h)`), each capped to the remaining
+viewport height (`block-size: calc(100dvh - topbar)`, `align-self: start`) with its **own** internal
+overflow (`.ui-shell-sidebar__items`, `.ui-splitter__body`) so a tall rail scrolls inside itself
+rather than lengthening — or scrolling away with — the page. The Green body
+(`.ui-page-canvas__body`, `overflow: visible`) flows naturally: its content lengthens the document
+and the window scrolls it, while in-view chrome (the channel header **band** + the chat composer
+**footer band**) sticks to the viewport within that same window scroll. The nested frames use
+`overflow: clip` (for the rounded corners), which does **not** establish a scroll container, so
+every sticky descendant resolves against the window — one scrollbar, no nested traps. The **main
+window scrollbar keeps standard browser behaviour** (always visible). Every **inner** scroll
+container instead gets a global **self-hiding custom scrollbar** (`styles/index.css`, scoped
+`:not(html):not(body)`): a permanently transparent track, hidden buttons/arrows, and a muted,
+highly-rounded pill thumb that is **invisible at rest** and **fades in while the container is
+hovered _or_ actively scrolling** (and deepens when the thumb is grabbed), token-driven
+`color-mix(--outline …)` — `scrollbar-color` for Firefox, `::-webkit-scrollbar-*` for Chromium. Pure
+CSS has no "is-scrolling" selector, so the scroll-driven half comes from the global **`ScrollIdle`**
+island (mounted once in `_app.tsx`): a capture-phase `scroll` listener stamps the scrolled element
+with `[data-ui-scrolling]` for a short idle window, which the CSS reveals exactly like `:hover`. The
+window scroll is skipped (a document/window scroll targets `document`, not an element), so the main
+window keeps its native bar; a `@projective/ui` consumer that omits the island degrades to the
 hover-only reveal.
 
 > _History: this **reverses Decision #20's** locked-viewport model and returns to the
-> native-window-scroll intent of Decision #15/#27. Decision #30 briefly re-pinned the middle-nav frame
-> (internal content scroll) so its rounded corners wouldn't scroll away; **Decision #31 reverses #30**
-> — the middle-nav region is back on the native window scroll, and the chat composer moves from inside
-> the scrolling body to a sticky **middle-nav footer band** (`.ui-middle-nav__footer`). The old
-> `.ui-page-canvas__scroll` is renamed `.ui-page-canvas__body` (it no longer scrolls — the window
-> does). See root CLAUDE.md §8 Decisions #27/#30/#31._
+> native-window-scroll intent of Decision #15/#27. Decision #30 briefly re-pinned the middle-nav
+> frame (internal content scroll) so its rounded corners wouldn't scroll away; **Decision #31
+> reverses #30** — the middle-nav region is back on the native window scroll, and the chat composer
+> moves from inside the scrolling body to a sticky **middle-nav footer band**
+> (`.ui-middle-nav__footer`). The old `.ui-page-canvas__scroll` is renamed `.ui-page-canvas__body`
+> (it no longer scrolls — the window does). See root CLAUDE.md §8 Decisions #27/#30/#31._
 
 ### D.1 Desktop layout
 
@@ -737,8 +789,9 @@ hover-only reveal.
     collapsed rail and holding the identical absolute x when expanded (only the dotted divider
     inside it slides; the button never jumps).
   - **Collapsed-rail tooltips** float above the body panel on a lifted stacking context (the rail
-    carries `position: relative; z-index: --z-sticky`) and are vertically centered on their link; expanded-rail
-    labels use a **medium** weight with **bolder** glyph strokes for a readable, high-end tone.
+    carries `position: relative; z-index: --z-sticky`) and are vertically centered on their link;
+    expanded-rail labels use a **medium** weight with **bolder** glyph strokes for a readable,
+    high-end tone.
 
 ### D.2 Middle-nav Flex Splitter
 
@@ -756,9 +809,10 @@ The Splitter is keyboard-accessible (`role="separator"`, `aria-orientation`, arr
 persists its width (per `SYSTEM_ARCHITECTURE.md` caching: local storage), and drives layout via a
 signal bound to a `--middle-nav-w` custom property so the reflow is a single synchronized
 transition. Beyond drag, `useSplitter` accepts an opt-in **`collapseEventName`**: a window
-`CustomEvent` (dispatched by lane chrome such as the Projects lane's footer toggle) collapses the lane
-to its rail (`min`) or restores the last expanded width — the programmatic equivalent of dragging the
-handle shut, matching the main-nav rail toggle. Off by default so the package stays portable.
+`CustomEvent` (dispatched by lane chrome such as the Projects lane's footer toggle) collapses the
+lane to its rail (`min`) or restores the last expanded width — the programmatic equivalent of
+dragging the handle shut, matching the main-nav rail toggle. Off by default so the package stays
+portable.
 
 ### D.3 Mobile adaptive navigation
 
@@ -797,67 +851,70 @@ scoped tokens without affecting the page beneath.
 ### D.4 Channel / chat view chrome
 
 Inside an open engagement, the `/projects/[project-id]/[channel-id]` view mounts its header into the
-**middle-nav frame's configurable header band** rather than rendering an independent header inside the
-scroll flow. The `MiddleNav` frame is a two-row grid: the **lane spans both rows** on the left, while
-the right (content) column splits into an optional **`header` band** (`.ui-middle-nav__header`, row 1)
-above the content canvas (row 2). The **shell layout fills the band per route** — a pure resolver keyed
-on the URL (`channelHeaderFor`, the sibling of the lane's `laneFor`), not a client context (which could
-not paint it on the first SSR byte). On a specific channel engagement it holds the app-level
-`ChannelHeader`; on every other route the band is **omitted entirely**, so the row collapses and the
-canvas fills the top of the frame with **no reserved space / no empty bar**. Crucially the band sits
-**flush against the lane on the shared Blue `--surface-1` frame + top curve**, so it and the lane's own
-Back/kebab header (sized to the same `--shell-midnav-header-h`) read as **ONE connected strip across the
-whole middle-nav frame** — the header is attached to the same surface/curve as the sidebar, not floating
-inside the content pane. The routed tab body + `ChatComposer` flow in the canvas beneath it:
+**middle-nav frame's configurable header band** rather than rendering an independent header inside
+the scroll flow. The `MiddleNav` frame is a two-row grid: the **lane spans both rows** on the left,
+while the right (content) column splits into an optional **`header` band**
+(`.ui-middle-nav__header`, row 1) above the content canvas (row 2). The **shell layout fills the
+band per route** — a pure resolver keyed on the URL (`channelHeaderFor`, the sibling of the lane's
+`laneFor`), not a client context (which could not paint it on the first SSR byte). On a specific
+channel engagement it holds the app-level `ChannelHeader`; on every other route the band is
+**omitted entirely**, so the row collapses and the canvas fills the top of the frame with **no
+reserved space / no empty bar**. Crucially the band sits **flush against the lane on the shared Blue
+`--surface-1` frame + top curve**, so it and the lane's own Back/kebab header (sized to the same
+`--shell-midnav-header-h`) read as **ONE connected strip across the whole middle-nav frame** — the
+header is attached to the same surface/curve as the sidebar, not floating inside the content pane.
+The routed tab body + `ChatComposer` flow in the canvas beneath it:
 
 - **Configurable header band (top).** A single row pinned `position: sticky` at the top-bar offset,
   spanning the content column of the frame — the active channel's identity (kind glyph / DM avatar +
-  title + presence/activity sub-line) on the left, the contextual **view tabs** (Chat · Files · Members
-  [· Submissions | Calendar] [· Tasks], format-gated) in the centre, and icon-only actions (primary
-  create · details drawer · star · kebab) on the right. It is **not** a boxed toolbar — a single
-  `--hairline` `border-block-end` continues the seam across from the lane header (§B.4). The band
-  (`.ui-middle-nav__header`) owns the sticky positioning; `ChannelHeader` itself is a plain in-flow strip
-  on `--surface-1` that fills it. `PageCanvas` no longer carries a header slot of its own.
+  title + presence/activity sub-line) on the left, the contextual **view tabs** (Chat · Files ·
+  Members [· Submissions | Calendar] [· Tasks], format-gated) in the centre, and icon-only actions
+  (primary create · details drawer · star · kebab) on the right. It is **not** a boxed toolbar — a
+  single `--hairline` `border-block-end` continues the seam across from the lane header (§B.4). The
+  band (`.ui-middle-nav__header`) owns the sticky positioning; `ChannelHeader` itself is a plain
+  in-flow strip on `--surface-1` that fills it. `PageCanvas` no longer carries a header slot of its
+  own.
 - **Underlined tabs.** Tabs are **plain text items**, no pill/box background. The active (and hover)
   indicator is a 2px `--primary` underline (`::after`, `scaleX` transform, jump-to-final under
-  reduced-motion) pinned to the header's bottom edge (`inset-block-end: -1px`) so it sits **precisely
-  on top of the divider hairline** — a seamless tab-to-body seam. Tabs are real anchors into the
-  nested routes (`.../[channel-id]/{chat,files,members,submissions,calendar,tasks}`), so the active
-  tab is URL-driven and deep-links land correctly. On mobile the labels collapse to their leading
-  glyph.
+  reduced-motion) pinned to the header's bottom edge (`inset-block-end: -1px`) so it sits
+  **precisely on top of the divider hairline** — a seamless tab-to-body seam. Tabs are real anchors
+  into the nested routes (`.../[channel-id]/{chat,files,members,submissions,calendar,tasks}`), so
+  the active tab is URL-driven and deep-links land correctly. On mobile the labels collapse to their
+  leading glyph.
 - **Composer footer band (bottom, Chat-only).** The blurred message input (`ChatComposer` —
   auto-growing field, attachment/paste chips, voice recorder, dynamic Mic→Send→Stop control) is the
-  content of the **middle-nav frame's configurable `footer` band** (`.ui-middle-nav__footer`), a sibling
-  of the header band that is `position: sticky; inset-block-end: 0` at `--z-sticky` under the native
-  window scroll — so it locks to the viewport bottom while the message stream scrolls in the window
-  beneath it (Decision #31). It is resolved per route by `channelFooterFor` and threaded through
-  `UserShell.middleNavFooter` → `MiddleNav.footer` **only for the Chat tab** (nothing to compose on
-  Files/Members/…), mirroring the header slot exactly. `.chat-composer` itself is only
+  content of the **middle-nav frame's configurable `footer` band** (`.ui-middle-nav__footer`), a
+  sibling of the header band that is `position: sticky; inset-block-end: 0` at `--z-sticky` under
+  the native window scroll — so it locks to the viewport bottom while the message stream scrolls in
+  the window beneath it (Decision #31). It is resolved per route by `channelFooterFor` and threaded
+  through `UserShell.middleNavFooter` → `MiddleNav.footer` **only for the Chat tab** (nothing to
+  compose on Files/Members/…), mirroring the header slot exactly. `.chat-composer` itself is only
   `position: relative` (the containing block for its scrim/drop overlays); its `--glass-blur` scrim
   stays on a separate underlay element (the fixed-overlay trap, root CLAUDE.md §8/§9).
-- **Native window scroll for the middle-nav region (Decision #31, reverses #30).** The middle-nav frame
-  is NOT pinned — it flows in the native window scroll like the rest of the shell. The frame is a
-  three-row grid (header band · content · footer band; the lane spans all three); the header band
-  (`sticky` at `--shell-topbar-h`) and footer band (`sticky; bottom: 0`) pin to the viewport while the
-  content flows and lengthens the document. `.ui-page-canvas__body` (renamed from `__scroll` — no longer
-  a scroll container) is a flex column so the channel view + chat feed can `flex: 1` to fill the content
-  row and bottom-anchor a short conversation just above the composer. **Mobile** keeps the native window
-  scroll and drops the frame chrome (Part D.3).
-- **Bottom-up, window-virtualized message feed (Chat tab).** The Chat body is the `ChatFeed` island: it
-  virtualizes the stream against the **window** (`useVirtualScroll` `useWindow`), opens at the newest
-  message, and loads OLDER history as the viewer scrolls up (a top IntersectionObserver sentinel → thin
-  `MessagesService` page → prepend, re-anchored by the exact document-growth delta so the view stays
-  put). Rows are keyed by message id so a head-prepend never corrupts the offset table (variable message
-  heights are measured at runtime). Grouping (same author within 10–30 min): reduced separation, one
-  avatar + name on the group's first row, and corner masking (others sharpen the group-toward LEFT
-  corners; own the RIGHT). Own messages align right, others left; bubbles cap at `max-width: 60%`. Hover
-  reveals the sent time (always in the DOM, opacity-toggled — no layout shift) + a Reply·React·Copy
-  toolbar and a `…` menu (Pin·Favourite·Report; Pin gated by server-derived `canPin` — anyone in a DM,
-  owner-granted in a project/team channel). A favourited message carries a custom **"wonky star"** mark
-  on its bubble border. Media lays out as an aspect-ratio row (≤3 visual media) or a rounded-square grid
-  (mixed/overflow, **max 4 tiles**, the 4th a `+N` overlay); audio memos reuse the composer's waveform
-  visualizer; system-activity notices render inline and route to their target on click. Up to **3
-  pinned** messages sit in a sticky banner (one at a time, `‹`/`›` loop, Expand, and jump-to-message).
+- **Native window scroll for the middle-nav region (Decision #31, reverses #30).** The middle-nav
+  frame is NOT pinned — it flows in the native window scroll like the rest of the shell. The frame
+  is a three-row grid (header band · content · footer band; the lane spans all three); the header
+  band (`sticky` at `--shell-topbar-h`) and footer band (`sticky; bottom: 0`) pin to the viewport
+  while the content flows and lengthens the document. `.ui-page-canvas__body` (renamed from
+  `__scroll` — no longer a scroll container) is a flex column so the channel view + chat feed can
+  `flex: 1` to fill the content row and bottom-anchor a short conversation just above the composer.
+  **Mobile** keeps the native window scroll and drops the frame chrome (Part D.3).
+- **Bottom-up, window-virtualized message feed (Chat tab).** The Chat body is the `ChatFeed` island:
+  it virtualizes the stream against the **window** (`useVirtualScroll` `useWindow`), opens at the
+  newest message, and loads OLDER history as the viewer scrolls up (a top IntersectionObserver
+  sentinel → thin `MessagesService` page → prepend, re-anchored by the exact document-growth delta
+  so the view stays put). Rows are keyed by message id so a head-prepend never corrupts the offset
+  table (variable message heights are measured at runtime). Grouping (same author within 10–30 min):
+  reduced separation, one avatar + name on the group's first row, and corner masking (others sharpen
+  the group-toward LEFT corners; own the RIGHT). Own messages align right, others left; bubbles cap
+  at `max-width: 60%`. Hover reveals the sent time (always in the DOM, opacity-toggled — no layout
+  shift) + a Reply·React·Copy toolbar and a `…` menu (Pin·Favourite·Report; Pin gated by
+  server-derived `canPin` — anyone in a DM, owner-granted in a project/team channel). A favourited
+  message carries a custom **"wonky star"** mark on its bubble border. Media lays out as an
+  aspect-ratio row (≤3 visual media) or a rounded-square grid (mixed/overflow, **max 4 tiles**, the
+  4th a `+N` overlay); audio memos reuse the composer's waveform visualizer; system-activity notices
+  render inline and route to their target on click. Up to **3 pinned** messages sit in a sticky
+  banner (one at a time, `‹`/`›` loop, Expand, and jump-to-message).
 - **Channel-tree icons (§B.6).** Stage channels render as ordinary **`#` hash channels** (matching
   General/Team rows), not a coloured lifecycle dot; their state surfaces through the trailing
   icon-only status signal + unread dot. DM/team rows keep their **circular avatar** thumbnail.
@@ -875,20 +932,22 @@ unchanged (the Explore **Search Results** now supply a filter lane — Decision 
   scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
   prior marketing-only header and the guest `AppShell` `ui-shell-topbar`.
 - **Side nav (route-driven).** When a route supplies a lane (today: the profile action lane; the
-  Explore Search filters — Decision #40) it mounts in a glass `.ui-guest-aside` (rounded, glass) — the
-  guest counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. It is an
-  **in-flow `position: sticky`** flex item of `.guest-shell__region` (Decision #40 changed it from
-  `position: fixed`): it pins below the header while the page scrolls, but is bounded by the region so
-  it **terminates cleanly above the full-width footer** instead of overlapping it. Collapse/expand is
-  the lane's own footer toggle, driving the same `MIDDLE_LANE_TOGGLE_EVENT`; the state is cached
-  (`LocalKeys.GUEST_NAV_COLLAPSED`) and expressed on the **pre-painted** `:root[data-guest-nav]`
-  (mirroring the authed rail's `:root[data-sidebar]`), so the width paints correctly on the first byte
-  (no flash-of-wrong-width). The filter lane has no toggle, so it forces the aside expanded.
+  Explore Search filters — Decision #40) it mounts in a glass `.ui-guest-aside` (rounded, glass) —
+  the guest counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. It is
+  an **in-flow `position: sticky`** flex item of `.guest-shell__region` (Decision #40 changed it
+  from `position: fixed`): it pins below the header while the page scrolls, but is bounded by the
+  region so it **terminates cleanly above the full-width footer** instead of overlapping it.
+  Collapse/expand is the lane's own footer toggle, driving the same `MIDDLE_LANE_TOGGLE_EVENT`; the
+  state is cached (`LocalKeys.GUEST_NAV_COLLAPSED`) and expressed on the **pre-painted**
+  `:root[data-guest-nav]` (mirroring the authed rail's `:root[data-sidebar]`), so the width paints
+  correctly on the first byte (no flash-of-wrong-width). The filter lane has no toggle, so it forces
+  the aside expanded.
 - **Full-width footer + flex-column region (Decision #40).** On lane routes GuestShell is a flex
   column: the aside + body share a growing `.guest-shell__region` (`flex: 1 0 auto`) above a
-  **full-width `PublicFooter`** that is a sibling of the region — so the footer spans the whole window
-  (never inheriting the aside's inline gutter) and pins to the viewport bottom on short pages. Lane-less
-  routes keep the plain `.site` block flow with the footer at the body's end (already full-width).
+  **full-width `PublicFooter`** that is a sibling of the region — so the footer spans the whole
+  window (never inheriting the aside's inline gutter) and pins to the viewport bottom on short
+  pages. Lane-less routes keep the plain `.site` block flow with the footer at the body's end
+  (already full-width).
 - **Floating sub-header (route-driven).** A route sticky header (the profile `ProfileStickyHeader`)
   mounts in a floating `.guest-shell__subheader` beneath the site header, adjacent to the side nav,
   revealed on scroll. It overlays the body (no reserved band).

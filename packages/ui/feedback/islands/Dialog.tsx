@@ -111,7 +111,11 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 	const isMobile = useIsMobile();
 	const asSheet = isMobile && position !== "center";
 
-	const stack = useOverlayStack({ active: mounted, lockScroll: blockScroll && modal });
+	const stack = useOverlayStack({
+		active: mounted,
+		lockScroll: blockScroll && modal,
+		layer: "modal",
+	});
 	const close = () => ctrl.set(false);
 
 	useFocusTrap({ active: mounted && modal, containerRef: panelRef });

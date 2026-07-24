@@ -149,15 +149,33 @@ Projective uses a tiered ledger, not a single monolithic wallet:
 
 ## 7. Wallet States & the Financial State Machine
 
-Three fund states, plus a state-machine trace of a stage's full lifecycle:
+**Four** fund states, plus a state-machine trace of a stage's full lifecycle. The canonical enum is
+`finance.fund_state` (`documentation/database/finance/Tables.md`):
 
-1. **Escrowed (Locked):** held by the platform until a trigger/approval is met.
-2. **Pending (7-day safety window):** released from escrow but held for final review.
-3. **Available:** withdrawable to the user's bank via Stripe Connect.
+1. **Escrowed / Locked** (`locked`): held by the platform until a trigger/approval is met
+   (`finance.escrows.status ∈ {held, funded}`).
+2. **Pending — 7-day safety window** (`pending`): released from escrow but held for final review.
+   Window length = `security.platform_params.pending_release_days` (**7 days**). Modelled by
+   `finance.pending_releases` (`available_at = released_at + 7d`).
+3. **Available** (`available`): withdrawable to the user's bank via Stripe Connect — the
+   materialised `finance.wallets.balance_cents`.
+4. **On hold — Dispute Lockbox** (`on_hold`): contested funds frozen while a dispute is open
+   (`finance.escrows.status = 'disputed'`; `finance-model.md` §6 Dispute Lockbox).
 
 ```text
-[Stage Funded] -> [Escrowed State] -> [Trigger/Approval] -> [7-Day Pending Window] -> [Available Balance]
+[Stage Funded] -> [Escrowed/Locked] -> [Trigger/Approval] -> [7-Day Pending Window] -> [Available Balance]
+                        │                                              │
+                        └──────────────► [On hold / Dispute Lockbox] ◄─┘   (dispute raised)
 ```
+
+> **Balances are a projection, not a stored total.** The three/four-state figure is derived from the
+> ledger + `finance.escrows` + `finance.pending_releases`. ⚠️ **Implementation reality:** the
+> wallet's **Available** balance is currently _materialised_ (`finance.wallets.balance_cents`,
+> maintained alongside `finance.transactions.balance_after_cents`) — a per-wallet single-entry
+> running ledger, not derived double-entry, and the 7-day `pending` window + `on_hold` state are
+> additive (`20260723094000`). Escrow release presently credits **Available** directly; wiring the
+> ledger to credit `pending` → sweep to `available` after 7 days is a follow-up (root `CLAUDE.md`
+> §8).
 
 **Worked example — £1,000 stage approval with a 10% team vault cut:**
 
@@ -199,3 +217,127 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   reflects a "right to payment," not a resale of services.
 - **Tax reporting:** Stripe issues 1099/local tax forms per jurisdiction, reducing Projective's own
   administrative/tax liability.
+
+---
+
+## 10. KYC / KYB Gating
+
+The abstract rule lives in `brain.md` §Identity Verification (KYC & KYB); this is the **concrete
+gate**. Schema: `finance.verification_cases` + the `org.freelancer_profiles.kyc_*` /
+`org.business_profiles.kyb_*` caches (migration `20260723091000`).
+
+| Actor                                      | Gate                                                                                              | Enforced before                                                 |
+| :----------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
+| **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Landing a gig or joining a team (`fn_freelancer_payout_ready`). |
+| **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
+| **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend).              |
+
+- **Why the freelancer gate is at _onboarding_, not payout-time:** it guarantees no funds ever land
+  in a **permanent-escrow / unpayable** state — a freelancer cannot accept work they can't be paid
+  for.
+- **Tier ladder** (mirrors `brain.md`): `1` Basic (email/phone) · `2` Verified (gov ID + liveness) ·
+  `3` Business (KYB/UBO). Stored as `finance.verification_cases.tier`.
+- **No PII in domain tables:** only opaque provider references (Stripe Identity session / Connect
+  account id) are stored; documents/PII live at Stripe / Supabase Vault (`brain.md` §Data Privacy).
+- ⚠️ **Distinct from email verification** (`org.user_emails.verified_at`). ⚠️ **Enforcement wiring**
+  into the hire/join/`fund_stage` functions is flagged for human sign-off (root `CLAUDE.md` §8) —
+  the predicates exist; the behavioural change to money-movement functions is not applied in this
+  pass.
+
+---
+
+## 11. Multi-Currency & FX
+
+The abstract intent ("price and be paid in your own currency; see prices in yours") is in `brain.md`
+§Escrow, Wallets & Finance. The **mechanics**:
+
+- **Store-in-origin.** Every amount is `(amount_minor, currency)`, stored and **settled** in the
+  currency it was entered in. No priced entity is currency-less (all already carry `currency`).
+- **Base currency = GBP** (`security.platform_params.base_currency`) for system accounts, fees, and
+  cross-currency bridging.
+- **Snapshot-at-commit.** At escrow lock / release / checkout the FX rate(s) used are captured onto
+  the row (`fx_rate`, `fx_base`, `fx_as_of` on `finance.transactions`/`escrows`), sourced from
+  `finance.fx_rates`. Settlement is therefore deterministic and reproducible — it never drifts with
+  the market.
+- **Display conversion is read-time only.** Balances/prices are shown in the viewer's
+  `org.user_preferences.preferred_display_currency` using the latest `finance.fx_rates` row; this
+  **never** mutates stored amounts or affects settlement.
+- ⚠️ **OPEN (flagged, root `CLAUDE.md` §8):** who bears the FX **spread** and how the conversion fee
+  is charged — payer-side spread, platform margin, or mid-market pass-through — is a
+  business-economics decision left open, cross-referenced to §1 (fees) and §9 (Stripe). Do not
+  invent the economics.
+
+---
+
+## 12. Payment Methods (spend vs earn)
+
+Schema: `finance.payment_methods` (`method_role ∈ funding | payout | both`). Card data is **never**
+stored — only an opaque Stripe reference + safe display fragments (`brand`, `last4`).
+
+- **Funding** methods back a Stripe **PaymentMethod** (the client tap-and-pay / business top-up).
+- **Payout** methods back a Stripe **Connect external account** (the freelancer/team withdrawal
+  destination) — complements the pre-existing `finance.payout_accounts`.
+- One default per role (`is_default_funding` / `is_default_payout`).
+
+---
+
+## 13. Money-Movement Rules
+
+- **Recurring deposits** (`finance.deposit_rules`): standing top-ups (weekly/monthly) from a funding
+  method; consecutive failures increment `failure_count` (drives dunning / auto-pause).
+- **Payout schedules** (`finance.payout_schedules`): `manual` · `scheduled_weekly` ·
+  `scheduled_monthly` · `threshold` (pay out when Available ≥ `threshold_cents`). **Instant Payout**
+  (`instant = true`) charges `security.platform_params.instant_payout_fee_bp` to bypass the standard
+  Stripe clearing window (§1.4).
+- **Income Smoother** (`finance.income_smoothing`): buffers earning peaks and tops up troughs into a
+  salary-like monthly figure. **Fee ~0.5%** (`income_smoother_fee_bp = 50`). **Eligibility gate:**
+  `income_smoother_min_months = 3` months of earnings history **and** ≥
+  `income_smoother_min_volume_cents` lifetime volume (the volume floor defaults to `0` pending
+  pricing sign-off — set a concrete figure when the economics land).
+- **Sub-wallets / pots** (`finance.wallet_pots`): named pots (`tax` / `savings` / `goal` /
+  `general`). A pot with `auto_allocate_bp > 0` auto-skims that % of each inbound payout — the
+  **tax-pot auto-set-aside** (suggested default `tax_pot_default_bp`, opt-in, `0` by default).
+
+---
+
+## 14. Vault Permissions, Caps & Approvals
+
+Governs shared wallets (Business / Team / Organisation).
+
+- **Capability grants** (`finance.vault_permissions`, not a single role): `view` · `add_funds` ·
+  `spend` · `distribute` · `withdraw` · `manage_members` · `manage_billing`. Enforced in-DB by
+  `finance.fn_has_vault_capability`. ⚠️ Overlaps `org.business_permission` / `org.team_permission` —
+  reconcile (root `CLAUDE.md` §8), do not fork.
+- **Spending caps** (`finance.spending_limits`, existing): per-member `cap_cents` per `weekly` /
+  `monthly` / `total` period; `spent_cents` tracked, `fn_check_spending_limit` enforced at hold
+  time.
+- **Approval thresholds** (`finance.spend_approvals`): a spend at/above
+  `vault_approval_threshold_cents` (or over a member's cap) queues for a **second approver** before
+  it executes.
+- **Audit** (`finance.ledger_audit`): immutable who/when/amount for every
+  add/spend/distribute/withdraw.
+- **Team smart-splits** (`finance.split_rules` template → `finance.contribution_agreements`
+  per-member, §5): **Co-op** `(100% − Vault%) / N` · **Finder's Fee** (fixed % to originator,
+  remainder split) · **Benevolent Dictator** (100% to Team Vault). **Deterministic remainder
+  rounding:** after integer division, any leftover minor unit(s) go to the **Team Vault**, so a
+  split always sums back to the released total (the ledger nets to zero).
+
+---
+
+## 15. Invoicing, Statements, Refunds, Reconciliation & Idempotency
+
+- **Intervaled invoicing** (`finance.invoices`, existing) — see `brain.md` §Business Invoicing:
+  per-payout lines consolidated into a `consolidated_monthly` invoice.
+- **Statements** (`finance.statements`): a monthly consolidated statement over the 30-day window,
+  issued on the **1st**, PDF-ready (`opening`/`closing`/`total_in`/`total_out`/`total_fees`).
+- **Refunds & chargebacks:** recorded as **negative** `finance.transactions` lines
+  (`reason ∈ refund | chargeback | escrow_refund | fair_exit_refund`); the chargeback **case**
+  (Stripe dispute) is tracked in `finance.chargebacks`.
+- **Reconciliation:** internal self-consistency via `finance.v_wallet_reconciliation` (materialised
+  balance vs ledger sum → `drift_cents` must be 0); external Stripe-balance-vs-escrow-pool
+  reconciliation is an ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints).
+- **Idempotency** (`finance.idempotency_keys`): every money-mutating request presents a key; a retry
+  replays the stored response rather than re-executing — retries **never double-move money**.
+- **Tax docs:** Stripe-issued 1099 / local forms surface to the user (§9); no PII is stored.
+- **Notifications:** finance events route through `comms.fn_notify` — low balance, escrow funded,
+  payout cleared, deposit failed, invoice due, cap exceeded, approval requested.

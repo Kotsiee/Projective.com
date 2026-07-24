@@ -114,6 +114,24 @@
 			"runtimeExecutable": "deno",
 			"runtimeArgs": ["task", "dev", "--port", "6973", "--strictPort"],
 			"port": 6973
+		},
+		{
+			"name": "web-navpop",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "7373", "--strictPort"],
+			"port": 7373
+		},
+		{
+			"name": "web-catalogue",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "7473", "--strictPort"],
+			"port": 7473
+		},
+		{
+			"name": "web-wallet",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "7573", "--strictPort"],
+			"port": 7573
 		}
 	]
 }

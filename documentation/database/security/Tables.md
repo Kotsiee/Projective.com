@@ -13,21 +13,21 @@ to drive Row-Level Security across all other schemas. The row is initialised dur
 `public.handle_new_user()` — freelancers get their profile as the active context, while client/buyer
 accounts start with no active profile until they create a Business or Team.
 
-| Column                | Type         | Notes                          |
-| :-------------------- | :----------- | :----------------------------- |
-| Column                   | Type         | Notes                                                              |
-| :----------------------- | :----------- | :----------------------------------------------------------------- |
-| `user_id`                | uuid         | PK, FK → `auth.users.id`.                                          |
-| `active_profile_type`    | profile_type | `freelancer` or `business`.                                        |
-| `active_profile_id`      | uuid         | UUID of the active profile.                                        |
-| `active_team_id`         | uuid         | Optional active team context.                                     |
+| Column                   | Type         | Notes                                                                                                                                                           |
+| :----------------------- | :----------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Column                   | Type         | Notes                                                                                                                                                           |
+| :----------------------- | :----------- | :-----------------------------------------------------------------                                                                                              |
+| `user_id`                | uuid         | PK, FK → `auth.users.id`.                                                                                                                                       |
+| `active_profile_type`    | profile_type | `freelancer` or `business`.                                                                                                                                     |
+| `active_profile_id`      | uuid         | UUID of the active profile.                                                                                                                                     |
+| `active_team_id`         | uuid         | Optional active team context.                                                                                                                                   |
 | `active_organisation_id` | uuid         | Optional active organisation (buyer-only entity) context. FK → `org.organisations.id` (added `20260715120000`). Mutually exclusive with the profile/team slots. |
-| `updated_at`             | timestamptz  | Last context switch timestamp.                                     |
+| `updated_at`             | timestamptz  | Last context switch timestamp.                                                                                                                                  |
 
 The active slots are kept mutually exclusive by the switch RPCs (`security.switch_session_context`
 selects a profile and clears team/organisation; `security.switch_organisation_context` selects an
-organisation and clears profile/team). All four are read back into the JWT by the custom access-token
-hook — see [Functions.md](Functions.md).
+organisation and clears profile/team). All four are read back into the JWT by the custom
+access-token hook — see [Functions.md](Functions.md).
 
 ```sql
 CREATE TABLE security.session_context (
@@ -102,6 +102,31 @@ CREATE TABLE security.audit_logs (
   CONSTRAINT audit_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 ```
+
+---
+
+## ⚙️ Tunable Parameters
+
+### `security.platform_params`
+
+A `key`/`value(jsonb)` store of tunable platform magnitudes (created in `0004_security_tables.sql`).
+`SELECT` is open to `authenticated` (`0205`); writes are service-role only. Magnitudes intentionally
+default to safe values — the concrete numbers live in `finance-model.md`, not hardcoded in schema.
+
+Finance-relevant keys:
+
+| Key                                | Default | Meaning                                                                            |
+| :--------------------------------- | :------ | :--------------------------------------------------------------------------------- |
+| `platform_fee_bp`                  | `500`   | Platform service fee in basis points (canonical **5%**, set in `0305`).            |
+| `base_currency`                    | `"GBP"` | **Additive (`20260723090000`).** Internal accounting/FX-bridging base currency.    |
+| `pending_release_days`             | `7`     | **Additive.** Length of the post-release safety ("Pending") window.                |
+| `instant_payout_fee_bp`            | `0`     | **Additive.** Fee for an Instant Payout (magnitude pending pricing sign-off).      |
+| `income_smoother_fee_bp`           | `50`    | **Additive.** Income Smoother micro-fee (~0.5%).                                   |
+| `income_smoother_min_months`       | `3`     | **Additive.** Minimum earnings-history months for smoother eligibility.            |
+| `income_smoother_min_volume_cents` | `0`     | **Additive.** Minimum lifetime earnings volume for eligibility (pending sign-off). |
+| `tax_pot_default_bp`               | `0`     | **Additive.** Suggested default tax-pot auto-set-aside percentage (opt-in).        |
+| `vault_approval_threshold_cents`   | `0`     | **Additive.** Spend amount at/above which a second approver is required (0 = off). |
+| `session_payout_hours`             | `24`    | Negative-consent window before a session payout auto-releases.                     |
 
 ---
 

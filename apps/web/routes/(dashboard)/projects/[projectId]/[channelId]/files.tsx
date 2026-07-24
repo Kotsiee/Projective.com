@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { resolveFilePage } from "@web/features/projects/core/files-ssr.ts";
-import FileExplorer from "@web/features/projects/islands/FileExplorer.island.tsx";
+import { FilesView } from "@web/features/projects/components/workspace-views.tsx";
 
 /**
  * Files tab — the channel-scoped File Explorer (`/projects/[projectId]/[channelId]/files`): the
@@ -13,5 +13,5 @@ import FileExplorer from "@web/features/projects/islands/FileExplorer.island.tsx
 export default define.page(function ChannelFilesPage(ctx) {
 	const { projectId, channelId } = ctx.params;
 	const { page } = resolveFilePage(projectId, channelId);
-	return <FileExplorer scope="channel" projectId={projectId} channelId={channelId} initial={page} />;
+	return <FilesView scope="channel" id={projectId} channelId={channelId} initial={page} />;
 });

@@ -107,8 +107,14 @@ export type FileSortKey = z.infer<typeof FileSortKey>;
 export const FileSortDir = z.enum(["asc", "desc"]);
 export type FileSortDir = z.infer<typeof FileSortDir>;
 
-/** Whether the explorer is scoped to one channel or the whole project. */
-export const FileScope = z.enum(["channel", "project"]);
+/**
+ * Which space the explorer is reading. `channel`/`project` are the engagement scopes; `conversation`
+ * is the global-inbox scope (`/messages/[conversationId]/files`) — the SAME projection derived from a
+ * conversation's attachments, so the inbox mounts the identical File Explorer rather than a lookalike
+ * grid. A conversation read carries its id in `channelId` (the unified `chatId`); `projectId` holds the
+ * conversation id too, keeping the params shape common to all three scopes.
+ */
+export const FileScope = z.enum(["channel", "project", "conversation"]);
 export type FileScope = z.infer<typeof FileScope>;
 // #endregion
 

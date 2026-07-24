@@ -235,6 +235,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 							href={href}
 							data-active={active ? "true" : undefined}
 							aria-current={active ? "page" : undefined}
+							data-tab-key={tab.key}
 						>
 							<span class="chan-tab__icon" aria-hidden="true">
 								{cloneElement(TAB_ICONS[tab.key])}
@@ -410,7 +411,9 @@ function ChannelDetailBody(
 				{info.deadlineLabel && (
 					<div class="chan-details__row">
 						<dt class="chan-details__term">
-							<span class="chan-details__termicon" aria-hidden="true">{cloneElement(ClockIcon)}</span>
+							<span class="chan-details__termicon" aria-hidden="true">
+								{cloneElement(ClockIcon)}
+							</span>
 							Deadline
 						</dt>
 						<dd class="chan-details__def">{info.deadlineLabel}</dd>

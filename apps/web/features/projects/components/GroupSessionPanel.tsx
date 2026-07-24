@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { LaneSections } from "@projective/ui/navigation";
 import { AccordionGroup, ChannelRow, DmRow } from "./ChannelTree.tsx";
 import { DmIcon, HashIcon } from "./detail-glyphs.tsx";
 import { ContinuationIcon, LevelsIcon, OverlapIcon, PollIcon } from "./session-glyphs.tsx";
@@ -118,7 +119,7 @@ export function GroupSessionPanel(
 			</section>
 
 			{/* Channel tree — General · Sub-groups · Private messages */}
-			<div class="proj-chan-tree sess-tree">
+			<LaneSections class="sess-tree">
 				<AccordionGroup
 					id="general"
 					icon={HashIcon}
@@ -153,7 +154,7 @@ export function GroupSessionPanel(
 						? <p class="proj-chan-empty">No cohort messages yet.</p>
 						: projectDms.map((dm) => <DmRow key={dm.chatId} dm={dm} slug={detail.slug} />)}
 				</AccordionGroup>
-			</div>
+			</LaneSections>
 
 			{/* 1-1 Continuation Request — unlocks once the preset sessions end */}
 			<section class="sess-continue" data-ready={data.presetEnded ? "true" : undefined}>

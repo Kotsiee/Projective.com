@@ -9,6 +9,7 @@ import type {
 	MemberRole,
 	MemberRosterPage,
 	MemberRosterParams,
+	MemberScope,
 	ProjectMemberRow,
 } from "../types/projects-types.ts";
 import { MembersService } from "../core/MembersService.ts";
@@ -45,9 +46,15 @@ import { type DevSeamState, readDevSeam, subscribeDevSeam } from "@web/utils/dev
  * backend behind `PROJECTS_BACKEND_LIVE` (root CLAUDE.md §10). Dumb island: no DB/Supabase, no @server.
  */
 export interface MemberRosterProps {
-	scope: "channel" | "project";
+	/**
+	 * Which space is being read. `channel`/`project` are the engagement scopes; `conversation` is the
+	 * global inbox (`/messages/[conversationId]/members`) — the same roster over a conversation's
+	 * participants, routed to `/api/messaging/members` by the shared {@link MembersService}.
+	 */
+	scope: MemberScope;
+	/** The project id — or, in `conversation` scope, the conversation id. */
 	projectId: string;
-	/** The channel id in channel scope; unused in project scope. */
+	/** The channel id in channel scope (the conversation id in conversation scope). */
 	channelId?: string;
 	initial: MemberRosterPage | null;
 }
@@ -96,7 +103,7 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 	// #endregion
 
 	// #region DEV seam re-simulation (tree-shaken out of production)
-	async function refetch(params: MemberRosterParams): Promise<void> {
+	async function refetch(params: MemberRosterParams & { scope?: MemberScope }): Promise<void> {
 		const my = ++reqId.current;
 		loading.value = true;
 		const res = await MembersService.list(params);
@@ -237,7 +244,9 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 			: null;
 
 	const isEmpty = filtered.length === 0;
-	const contextLine = roster.scope === "channel"
+	const contextLine = roster.scope === "conversation"
+		? `Everyone in this conversation`
+		: roster.scope === "channel"
 		? `People with access to ${roster.channelName ?? "this channel"}`
 		: `Everyone in ${roster.projectTitle}`;
 

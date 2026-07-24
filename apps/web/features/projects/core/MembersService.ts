@@ -1,5 +1,5 @@
 import { getProjects } from "./api.ts";
-import type { MemberRosterPage, MemberRosterParams } from "../types/projects-types.ts";
+import type { MemberRosterPage, MemberRosterParams, MemberScope } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
 
 /**
@@ -8,9 +8,22 @@ import type { ProjectsResult } from "../types/results.ts";
  * throws, so the roster island stays dumb (mirrors {@link FilesService}). The island uses it for the
  * DEV-seam re-simulation refetch (persona / project type / pending-invite toggles); everyday
  * search/role/stage filtering is a pure client-side pass over the bounded roster (no round-trip).
+ *
+ * **Scope routing.** The roster is mounted by BOTH route hierarchies, so the endpoint is chosen from
+ * the scope rather than duplicated per feature: an engagement scope reads `/api/projects/members`, the
+ * global-inbox `conversation` scope reads `/api/messaging/members`. Both answer the identical
+ * `MemberRosterPage` contract.
  */
 export const MembersService = {
-	list(params: MemberRosterParams): Promise<ProjectsResult<{ page: MemberRosterPage }>> {
+	list(
+		params: MemberRosterParams & { scope?: MemberScope },
+	): Promise<ProjectsResult<{ page: MemberRosterPage }>> {
+		if (params.scope === "conversation") {
+			const id = params.channelId || params.projectId;
+			return getProjects<{ page: MemberRosterPage }>(
+				`/api/messaging/members?conversationId=${encodeURIComponent(id)}`,
+			);
+		}
 		const qs = new URLSearchParams({ projectId: params.projectId });
 		if (params.channelId) qs.set("channelId", params.channelId);
 		if (params.simViewer) qs.set("simViewer", params.simViewer);

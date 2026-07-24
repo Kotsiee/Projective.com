@@ -34,13 +34,13 @@
     min-block-size: 0;
 
     /*
-	 * Augment the nested-frame seam accumulator (app-shell.css / shell-frame.css) for the Green canvas
-	 * this frame wraps: it sits further inline-start-inward by the Blue lane's width, and further down
-	 * when a header band is present. `--shell-lane-w` is the lane's live width — published up to this
-	 * frame (the only common ancestor of the lane and the canvas) so the fixed seam tracks drag/collapse
-	 * (see the width-hoist note); it degrades to the `:root` 280px default if not hoisted. `:has()`
-	 * handles the discrete lane states the width var alone can't when un-hoisted (collapsed / absent).
-	 */
+	* Augment the nested-frame seam accumulator (app-shell.css / shell-frame.css) for the Green canvas
+	* this frame wraps: it sits further inline-start-inward by the Blue lane's width, and further down
+	* when a header band is present. `--shell-lane-w` is the lane's live width — published up to this
+	* frame (the only common ancestor of the lane and the canvas) so the fixed seam tracks drag/collapse
+	* (see the width-hoist note); it degrades to the `:root` 280px default if not hoisted. `:has()`
+	* handles the discrete lane states the width var alone can't when un-hoisted (collapsed / absent).
+	*/
     --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
 }
 
@@ -101,10 +101,18 @@
 .ui-middle-nav__lane {
     grid-column: 1;
     /* Span all three rows so the lane owns the full frame height — its own header rides into the header
-	   band's row and its footer into the footer band's row, with the body flowing between. */
+	band's row and its footer into the footer band's row, with the body flowing between. */
     grid-row: 1 / -1;
     position: sticky;
     inset-block-start: var(--shell-topbar-h);
+    /*
+	* Explicit rung on the shared z-scale (styles/index.css): page content (--z-base) < the nav lane
+	* (--z-raised) < the sticky header/footer bands (--z-sticky) < the site header (--z-nav). `sticky`
+	* makes the lane a stacking context whatever its z-index, so leaving it `auto` pinned the whole
+	* subtree at level 0 and let the bands paint over anything inside it. Overlays are unaffected —
+	* they are portalled to `document.body` and never inherit this context.
+	*/
+    z-index: var(--z-raised);
     align-self: start;
     block-size: calc(100dvh - var(--shell-topbar-h));
     min-inline-size: 0;
@@ -141,6 +149,17 @@
     z-index: var(--z-sticky);
     min-block-size: 0;
     /* background: var(--surface-1, var(--surface)); */
+}
+
+.ui-middle-nav__footer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in srgb, var(--surface-1) 62%, transparent);
+    backdrop-filter: blur(var(--glass-blur, 18px));
+    -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+    pointer-events: none;
 }
 
 /* Mobile viewport isolation (≤ --bp-md): remove the lane (a desktop side-panel layer) AND its content

@@ -18,7 +18,11 @@
 	padding-block: var(--space-3) var(--space-6);
 }
 
-.fx-explorer[data-scope="channel"] {
+/* Channel AND conversation scopes both sit under the middle-nav header band (the channel/conversation
+   header the shell mounts), so the sticky toolbar/tree pin below the top bar + that band — the
+   `/messages/[id]/files` toolbar therefore pins identically to the projects channel Files toolbar. */
+.fx-explorer[data-scope="channel"],
+.fx-explorer[data-scope="conversation"] {
 	--fx-chrome: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 }
 
@@ -36,47 +40,9 @@
 	flex-direction: column;
 }
 
-/* #region Toolbar (sticky, borderless controls) */
-.fx-toolbar {
-	position: sticky;
-	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
-	z-index: var(--z-sticky);
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-block-size: var(--fx-toolbar-h);
-	padding-block: var(--space-2);
-}
-
-.fx-toolbar::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	background: color-mix(in srgb, var(--surface) 62%, transparent);
-	backdrop-filter: blur(var(--glass-blur, 18px));
-	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-	pointer-events: none;
-	border-radius: 50px;
-}
-
-.fx-toolbar__search {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	/* A clean max-width — the search never expands endlessly (task §Part 1). */
-	max-inline-size: 22rem;
-}
-
-.fx-toolbar__searchicon {
-	display: inline-flex;
-	color: var(--text-secondary);
-}
-
-.fx-toolbar__spacer {
-	flex: 1 1 auto;
-}
-
-/* #endregion */
+/* The sticky, glass `.fx-toolbar` itself is shared chrome — see `./fx-toolbar.css` (imported by the
+   island) — so the File Explorer and the Catalogue console render ONE toolbar. Only `--fx-chrome` /
+   `--fx-toolbar-h` (set on `.fx-explorer` above) localise where it pins. */
 
 /* #region Channels tree (project scope) */
 .fx-aside-tree {

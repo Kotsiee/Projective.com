@@ -32,6 +32,33 @@ export { BottomNav, type BottomNavItem, type BottomNavProps } from "./components
 export { Link, type LinkProps } from "./components/Link.tsx";
 // #endregion
 
+// #region Lane chrome — the shared control set every middle-nav lane composes
+export {
+	LaneBar,
+	LaneCollapseButton,
+	type LaneCollapseButtonProps,
+	LaneEmpty,
+	type LaneEmptyProps,
+	LaneFooter,
+	LaneFooterActions,
+	LaneHead,
+	LaneIconButton,
+	type LaneIconButtonProps,
+	LaneList,
+	LaneSearch,
+	type LaneSearchProps,
+	LaneSection,
+	type LaneSectionProps,
+	LaneSections,
+	type LaneTabOption,
+	LaneTabs,
+	type LaneTabsProps,
+	type LaneToggleOption,
+	LaneToggleRow,
+	type LaneToggleRowProps,
+} from "./components/LaneChrome.tsx";
+// #endregion
+
 // #region Islands (interactive — hydrate via app wrappers)
 export { MiddleNavSplitter, type MiddleNavSplitterProps } from "./islands/MiddleNavSplitter.tsx";
 export { MobileMenu, type MobileMenuProps } from "./islands/MobileMenu.tsx";

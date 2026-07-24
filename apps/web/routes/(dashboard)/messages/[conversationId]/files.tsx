@@ -1,29 +1,25 @@
 import { define } from "@web/utils/state.ts";
-import { resolveConversationMessages } from "@web/features/messaging/core/conversations-ssr.ts";
-import {
-	type ConversationFileEntry,
-	ConversationFilesView,
-} from "@web/features/messaging/components/ConversationFilesView.tsx";
+import { resolveConversationFiles } from "@web/features/messaging/core/conversations-ssr.ts";
+import { FilesView } from "@web/features/projects/components/workspace-views.tsx";
 
 /**
- * Files tab — the conversation's shared attachments (`/messages/[conversationId]/files`). Derives the
- * file list server-side from the latest message page (the live path pages `messages.attachments` behind
- * `MESSAGING_BACKEND_LIVE`) and renders the lean {@link ConversationFilesView} grid. The header (active
- * Files tab) is mounted by the shell; this route renders only the workspace body.
+ * Files tab — the conversation's shared attachments (`/messages/[conversationId]/files`). Resolves the
+ * first file page server-side (the fat {@link MessagingBackendService.files}, no HTTP hop) and hands it
+ * to the shared {@link FilesView} — the SAME component tree the channel Files tab mounts, so the inbox
+ * gets the identical zoom-driven grid⇄list explorer, window virtualization, and universal preview modal
+ * rather than a lookalike grid. The island refines via the thin `FilesService`, which routes a
+ * `conversation` scope to `/api/messaging/files`.
+ *
+ * The header (with the active Files tab) is mounted by the shell; this route renders only the body.
  */
 export default define.page(function ConversationFilesPage(ctx) {
 	const { conversationId } = ctx.params;
-	const page = resolveConversationMessages(conversationId);
-	const files: ConversationFileEntry[] = (page?.messages ?? []).flatMap((m) =>
-		m.attachments.map((a) => ({
-			id: `${m.id}-${a.id}`,
-			kind: a.kind,
-			url: a.url,
-			name: a.name,
-			ext: a.ext,
-			from: m.isOwn ? "You" : m.sender?.name ?? "Unknown",
-			dayLabel: m.dayLabel,
-		}))
+	return (
+		<FilesView
+			scope="conversation"
+			id={conversationId}
+			channelId={conversationId}
+			initial={resolveConversationFiles(conversationId)}
+		/>
 	);
-	return <ConversationFilesView files={files} />;
 });

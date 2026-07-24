@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { resolveMemberRoster } from "@web/features/projects/core/members-ssr.ts";
-import MemberRoster from "@web/features/projects/islands/MemberRoster.island.tsx";
+import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
 
 /**
  * Members tab — the channel/stage-scoped roster (`/projects/[projectId]/[channelId]/members`): the
@@ -14,7 +14,5 @@ import MemberRoster from "@web/features/projects/islands/MemberRoster.island.tsx
 export default define.page(function ChannelMembersPage(ctx) {
 	const { projectId, channelId } = ctx.params;
 	const { page } = resolveMemberRoster(projectId, channelId);
-	return (
-		<MemberRoster scope="channel" projectId={projectId} channelId={channelId} initial={page} />
-	);
+	return <MembersView scope="channel" id={projectId} channelId={channelId} initial={page} />;
 });

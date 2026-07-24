@@ -20,158 +20,13 @@
 	color: var(--on-surface);
 }
 
-.proj-lane__top {
-	flex: none;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding: var(--space-4) var(--space-4) var(--space-3);
-	background: var(--surface-1);
-	border-block-end: var(--hairline);
-}
-/* #endregion */
-
-/* #region Tabs */
-.proj-tabs {
-	display: flex;
-	gap: var(--space-5);
-}
-
-.proj-tabs__tab {
-	appearance: none;
-	position: relative;
-	padding: 0.1rem 0 0.35rem;
-	font: inherit;
-	font-size: 1rem;
-	font-weight: 450;
-	letter-spacing: -0.01em;
-	color: var(--text-secondary);
-	background: none;
-	border: none;
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-tabs__tab:hover {
-	color: var(--on-surface);
-}
-
-.proj-tabs__tab[data-selected="true"] {
-	color: var(--on-surface);
-	font-weight: 600;
-}
-
-/* Quiet sliding underline — a thin indicator, no filled pill. */
-.proj-tabs__tab[data-selected="true"]::after {
-	content: "";
-	position: absolute;
-	inset-inline: 0;
-	inset-block-end: -1px;
-	block-size: 2px;
-	border-radius: 2px;
-	background: var(--primary);
-}
-
-.proj-tabs__tab:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-	border-radius: var(--radius-xs);
-}
-/* #endregion */
-
-/* #region Header bar (search + icon actions) */
-.proj-lane__bar {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-}
-
-.proj-lane__search {
-	position: relative;
-	display: flex;
-	flex: 1 1 auto;
-	align-items: center;
-	min-inline-size: 0;
-}
-
-.proj-lane__search-icon {
-	position: absolute;
-	inset-inline-start: 0.7rem;
-	display: inline-flex;
-	font-size: 0.95rem;
-	color: var(--text-secondary);
-	pointer-events: none;
-}
-
-.proj-lane__search-input {
-	inline-size: 100%;
-	padding: 0.5rem 0.7rem 0.5rem 2.1rem;
-	font: inherit;
-	font-size: 0.8125rem;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: 1px solid transparent;
-	border-radius: var(--radius-full, 999px);
-	transition:
-		border-color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-lane__search-input::placeholder {
-	color: var(--text-secondary);
-}
-
-.proj-lane__search-input:focus-visible {
-	outline: none;
-	background: var(--surface);
-	border-color: var(--primary);
-	box-shadow: var(--focus-ring);
-}
-
-/* Icon-only actions (Create + / Filter sliders) — soft circular hover, vertically centered. */
-.proj-iconbtn {
-	position: relative;
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2.1rem;
-	block-size: 2.1rem;
-	font-size: 1.1rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: 999px;
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-iconbtn:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.proj-iconbtn[data-on="true"] {
-	color: var(--primary);
-}
-
-.proj-iconbtn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-
-.proj-iconbtn__dot {
-	position: absolute;
-	inset-block-start: 0.35rem;
-	inset-inline-end: 0.35rem;
-	inline-size: 6px;
-	block-size: 6px;
-	border-radius: 50%;
-	background: var(--primary);
-	box-shadow: 0 0 0 2px var(--surface-1);
-}
+/*
+ * The header band, the search row, the tab strip, the quick-filter toggles, the scrolling list, the
+ * footer band, and the collapse toggle are all the SHARED lane chrome (`.ui-lane-*`, owned by
+ * `@projective/ui/navigation/styles/lane.css`) — so this feed and the `/messages` inbox render one
+ * control set. Only the feed-specific pieces below (cards, role toggle, service modifier, incoming
+ * requests, create button) are styled locally.
+ */
 /* #endregion */
 
 /* #region Service-queue modifier (Services tab only) */
@@ -344,55 +199,6 @@
 	outline: none;
 	box-shadow: var(--focus-ring);
 }
-
-.proj-shortcuts {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
-}
-
-.proj-shortcuts__group {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.1rem;
-}
-
-.proj-shortcut {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.7rem;
-	block-size: 1.7rem;
-	font-size: 0.95rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: 999px;
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-shortcut:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.proj-shortcut[data-on="true"] {
-	color: var(--primary);
-}
-
-.proj-shortcut[data-on="true"] svg {
-	fill: color-mix(in srgb, currentColor 16%, transparent);
-}
-
-.proj-shortcut:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-/* #endregion */
 
 /* #region Popovers (create menu + glass filter panel) */
 .ui-popover.proj-menu-pop {
@@ -1181,75 +987,6 @@
 }
 /* #endregion */
 
-/* #region Lane footer — always pinned to the bottom: collapse (left) · Incoming + Create (right) */
-.proj-lane__footer {
-	flex: none;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-2);
-	padding: var(--space-3) var(--space-4);
-	background: var(--surface-1);
-	border-block-start: var(--hairline);
-}
-
-/* Collapse/expand — reuses the main-nav sidebar toggle glyph AND its morphing-divider animation. */
-.proj-lane__collapse {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-lane__collapse:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.proj-lane__collapse:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-
-.proj-lane__collapse .shell-toggle {
-	inline-size: 22px;
-	block-size: 22px;
-	stroke-width: 1.8;
-}
-
-/* The dotted divider slides right when expanded, left when collapsed — matching the rail. The
-   `.proj-lane` ancestor lifts specificity above the package's global
-   `:root[data-sidebar="expanded"] .shell-toggle__bar` rule so this bar tracks the LANE's state, not
-   the main sidebar's. */
-.proj-lane .proj-lane__collapse .shell-toggle__bar {
-	transition: transform var(--dur-medium) var(--spring-standard);
-}
-
-.proj-lane .proj-lane__collapse:not([data-collapsed="true"]) .shell-toggle__bar {
-	transform: translateX(6px);
-}
-
-.proj-lane .proj-lane__collapse[data-collapsed="true"] .shell-toggle__bar {
-	transform: translateX(0);
-}
-
-/* Right-hand action group — Incoming (count-tagged) then the primary Create button. */
-.proj-lane__footer-actions {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex: none;
-}
-
 /* Incoming requests — one icon toggle carrying a numeric count tag. */
 .proj-incoming {
 	position: relative;
@@ -1343,26 +1080,6 @@
 }
 /* #endregion */
 
-/* #region Empty */
-.proj-lane__empty {
-	padding: var(--space-7) var(--space-4);
-	text-align: center;
-}
-
-.proj-lane__empty-title {
-	margin: 0 0 var(--space-1);
-	font-size: 0.9375rem;
-	font-weight: 600;
-	color: var(--on-surface);
-}
-
-.proj-lane__empty-note {
-	margin: 0;
-	font-size: 0.8rem;
-	color: var(--text-secondary);
-}
-/* #endregion */
-
 /* #region Density — collapse chrome when the lane is dragged/toggled to the narrow rail */
 .ui-splitter[data-mode="collapsed"] .proj-card__ident,
 .ui-splitter[data-mode="collapsed"] .proj-card__actions,
@@ -1372,7 +1089,8 @@
 .ui-splitter[data-mode="collapsed"] .proj-lane__involvement,
 .ui-splitter[data-mode="collapsed"] .proj-modifier,
 .ui-splitter[data-mode="collapsed"] .proj-lane__create-label,
-.ui-splitter[data-mode="collapsed"] .proj-lane__search {
+.ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-search,
+.ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-tabs {
 	display: none;
 }
 
@@ -1381,13 +1099,13 @@
 	justify-content: center;
 }
 
-.ui-splitter[data-mode="collapsed"] .proj-lane__footer {
+.ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-footer {
 	flex-direction: column;
 	gap: var(--space-2);
 	padding: var(--space-3) var(--space-2);
 }
 
-.ui-splitter[data-mode="collapsed"] .proj-lane__footer-actions {
+.ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-footer__actions {
 	flex-direction: column;
 }
 
@@ -1397,18 +1115,15 @@
 /* #endregion */
 
 /* #region Loading */
-.proj-lane[data-loading="true"] .proj-lane__list {
+.proj-lane[data-loading="true"] .ui-lane-list {
 	opacity: 0.6;
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.proj-card,
-	.proj-tabs__tab,
 	.proj-textmatrix__opt,
 	.proj-matrix__btn,
-	.proj-iconbtn,
-	.proj-shortcut,
 	.proj-roletoggle__seg,
 	.proj-card__role,
 	.proj-modifier__caret,
@@ -1416,9 +1131,7 @@
 	.proj-card__star,
 	.proj-card__actions,
 	.proj-incoming,
-	.proj-lane__collapse .shell-toggle__bar,
-	.proj-lane__search-input,
-	.proj-lane[data-loading="true"] .proj-lane__list {
+	.proj-lane[data-loading="true"] .ui-lane-list {
 		transition: none;
 	}
 

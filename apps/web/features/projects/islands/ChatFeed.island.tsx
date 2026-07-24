@@ -131,6 +131,9 @@ export default function ChatFeed(
 	// #endregion
 
 	// #region Open at the bottom (re-pin as measurements settle)
+	// The feed opens on the NEWEST message. Every navigation is a full page load, so this mounts fresh
+	// each time; we pin to the end immediately and again as the variable-height rows measure in, on the
+	// SAME window scroller the feed virtualizes against (`vs.scrollToEnd`, `useWindow`).
 	useEffect(() => {
 		vs.scrollToEnd("auto");
 		const timers = [60, 220, 480].map((ms) => setTimeout(() => vs.scrollToEnd("auto"), ms));

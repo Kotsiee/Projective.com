@@ -3,6 +3,17 @@ import { useEffect, useRef } from "preact/hooks";
 import type { JSX, RefObject } from "preact";
 import "../styles/projects-lane.css";
 import { Popover } from "@projective/ui/feedback";
+import {
+	LaneBar,
+	LaneCollapseButton,
+	LaneEmpty,
+	LaneFooter,
+	LaneFooterActions,
+	LaneHead,
+	LaneIconButton,
+	LaneList,
+	LaneSearch,
+} from "@projective/ui/navigation";
 import { ProjectCard } from "../components/ProjectCard.tsx";
 import { LaneTabs } from "../components/LaneTabs.tsx";
 import { RoleToggle } from "../components/RoleToggle.tsx";
@@ -343,21 +354,17 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 
 	return (
 		<div class="proj-lane" data-loading={loading.value ? "true" : undefined}>
-			<div class="proj-lane__top">
+			<LaneHead>
 				{canProvide && <LaneTabs view={active.view} onSelect={onSelectView} />}
 
-				<div class="proj-lane__bar">
-					<div class="proj-lane__search">
-						<span class="proj-lane__search-icon" aria-hidden="true">{SearchIcon}</span>
-						<input
-							class="proj-lane__search-input"
-							type="search"
-							placeholder={isServices ? "Search services & clients" : "Search projects"}
-							aria-label="Search"
-							value={queryText.value}
-							onInput={(e) => onSearch((e.target as HTMLInputElement).value)}
-						/>
-					</div>
+				<LaneBar>
+					<LaneSearch
+						value={queryText.value}
+						placeholder={isServices ? "Search services & clients" : "Search projects"}
+						label="Search"
+						icon={SearchIcon}
+						onInput={onSearch}
+					/>
 
 					<Popover
 						open={filterOpen}
@@ -366,20 +373,18 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 						allowOverflow={["bottom"]}
 						class="proj-filter-pop"
 						trigger={(api) => (
-							<button
-								type="button"
-								ref={api.ref as RefObject<HTMLButtonElement>}
-								class="proj-iconbtn"
-								data-on={filterCount > 0 ? "true" : undefined}
-								aria-label={filterCount > 0 ? `Filters (${filterCount} active)` : "Filters"}
-								aria-haspopup="dialog"
-								aria-expanded={api.expanded}
-								aria-controls={api.panelId}
+							<LaneIconButton
+								triggerRef={api.ref as RefObject<HTMLElement>}
+								icon={SlidersIcon}
+								label={filterCount > 0 ? `Filters (${filterCount} active)` : "Filters"}
+								tooltip="Filters"
+								active={filterCount > 0}
+								dot={filterCount > 0}
+								ariaHasPopup="dialog"
+								ariaExpanded={api.expanded}
+								ariaControls={api.panelId}
 								onClick={api.toggle}
-							>
-								{SlidersIcon}
-								{filterCount > 0 && <span class="proj-iconbtn__dot" aria-hidden="true" />}
-							</button>
+							/>
 						)}
 					>
 						<FilterPanel
@@ -391,7 +396,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 							onReset={resetFilters}
 						/>
 					</Popover>
-				</div>
+				</LaneBar>
 
 				{isServices && (
 					<ServiceModifier
@@ -411,21 +416,19 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 					{canProvide && <RoleToggle value={active.involvement} onSelect={onSelectInvolvement} />}
 					<UtilityShortcuts quick={active.quick} onToggleQuick={onQuick} />
 				</div>
-			</div>
+			</LaneHead>
 
-			<div class="proj-lane__list" aria-busy={loading.value ? "true" : undefined}>
+			<LaneList label="Projects" busy={loading.value}>
 				{feed.count === 0
 					? (
-						<div class="proj-lane__empty">
-							<p class="proj-lane__empty-title">Nothing here yet</p>
-							<p class="proj-lane__empty-note">
-								{filterCount > 0 || active.scope === "global" || active.q
-									? "Try clearing a filter or widening your scope."
-									: isServices
-									? "Services you deliver will appear here."
-									: "Projects you own or contribute to will appear here."}
-							</p>
-						</div>
+						<LaneEmpty
+							title="Nothing here yet"
+							note={filterCount > 0 || active.scope === "global" || active.q
+								? "Try clearing a filter or widening your scope."
+								: isServices
+								? "Services you deliver will appear here."
+								: "Projects you own or contribute to will appear here."}
+						/>
 					)
 					: feed.items.map((item) => (
 						<ProjectCard
@@ -436,21 +439,16 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 							onMenuAction={onMenuAction}
 						/>
 					))}
-			</div>
+			</LaneList>
 
-			<div class="proj-lane__footer">
-				<button
-					type="button"
-					class="proj-lane__collapse"
-					aria-label={collapsed.value ? "Expand lane" : "Collapse lane"}
-					aria-pressed={collapsed.value}
-					data-collapsed={collapsed.value ? "true" : undefined}
-					onClick={onToggleCollapse}
-				>
-					<SidebarToggleIcon />
-				</button>
+			<LaneFooter>
+				<LaneCollapseButton
+					collapsed={collapsed.value}
+					icon={<SidebarToggleIcon />}
+					onToggle={onToggleCollapse}
+				/>
 
-				<div class="proj-lane__footer-actions">
+				<LaneFooterActions>
 					<IncomingRequests
 						count={feed.incomingCount}
 						active={active.requests.length > 0}
@@ -482,8 +480,8 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 					>
 						<CreateMenu view={active.view} onPick={openCreate} />
 					</Popover>
-				</div>
-			</div>
+				</LaneFooterActions>
+			</LaneFooter>
 
 			<ProjectCreateModal
 				open={modalOpen.value}

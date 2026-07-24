@@ -23,6 +23,7 @@ import {
 } from "../core/session-model.ts";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
+import { activeChannelIdOf } from "../core/chat-context.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
 /** SSR default open-set — the highest-traffic groups (General + Stages/Sub-groups) lead expanded. */
@@ -280,6 +281,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 									onToggleGroup={toggleGroup}
 									onCreateStage={openCreateStage}
 									filters={filters.value}
+									activeChannelId={activeChannelIdOf(currentPath.value)}
 								/>
 							</>
 						)}

@@ -15,6 +15,10 @@ import { submissionsFooterFor } from "@web/features/projects/core/submissions-fo
 import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
 import { conversationFooterFor } from "@web/features/messaging/core/conversation-footer-slot.tsx";
+import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-slot.tsx";
+import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
+import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
+import { walletFooterFor } from "@web/features/wallet/core/wallet-footer-slot.tsx";
 import {
 	resolveConversationList,
 	resolveMessagingSettings,
@@ -66,15 +70,16 @@ function projectSlugOf(pathname: string): string | null {
 }
 
 /**
- * Resolve the middle-nav footer band: the channel Chat composer on a channel's Chat tab, else the
- * File Explorer's View Control Rig on a `/files` route, else the Submissions explorer's View Control Rig
- * + Review trigger on a `/submissions` route, else nothing. Composed so exactly one owns the single
- * footer slot per URL (Decision #31 / the File Explorer + Submissions features).
+ * Resolve the middle-nav footer band for a request: the channel/conversation Chat composer on a Chat
+ * tab, the File Explorer's View Control Rig on a `/files` route, the Submissions rig on
+ * `/submissions`, the Board rig on `/board`, else nothing. Composed so exactly one owns the single
+ * footer slot per URL. Every navigation is a full page render, so this simply resolves fresh each time.
  */
 function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
 	return channelFooterFor(url, context) ?? filesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
-		conversationFooterFor(url, context);
+		conversationFooterFor(url, context) ?? catalogueFooterFor(url, context) ??
+		walletFooterFor(url, context);
 }
 
 /**
@@ -97,9 +102,31 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 	if (url.pathname.startsWith("/messages")) {
 		const { page, role } = resolveConversationList(context);
 		const settings = resolveMessagingSettings(context) ??
-			{ autoResponsesEnabled: false, autoResponses: [], readReceipts: true, showTypingIndicator: true, notifications: { newMessage: true, mentions: true, groupActivity: true, serviceInquiries: true, sound: true, muteAll: false, quietHoursEnabled: false, quietStart: "22:00", quietEnd: "08:00" } };
+			{
+				autoResponsesEnabled: false,
+				autoResponses: [],
+				readReceipts: true,
+				showTypingIndicator: true,
+				notifications: {
+					newMessage: true,
+					mentions: true,
+					groupActivity: true,
+					serviceInquiries: true,
+					sound: true,
+					muteAll: false,
+					quietHoursEnabled: false,
+					quietStart: "22:00",
+					quietEnd: "08:00",
+				},
+			};
 		return <MessagesSidebar initial={page} role={role} path={url.pathname} settings={settings} />;
 	}
+
+	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
+	if (url.pathname.startsWith("/catalogue")) return catalogueLaneFor(url, context);
+
+	// The Wallet (`/wallet`) hosts its finance lane (account switcher + capability-gated sub-nav).
+	if (url.pathname.startsWith("/wallet")) return walletLaneFor(url, context);
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();
 

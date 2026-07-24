@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/devtools.css";
-import { DraggablePopover, type PopoverPosition } from "@projective/ui/overlay";
+import { DraggablePopover, type PopoverPosition, type PopoverSize } from "@projective/ui/overlay";
 import { type MenuAction, SpeedDial } from "@projective/ui/fields";
 import type { UserContext } from "@projective/types/auth";
 import { logger } from "@web/utils/logger.ts";
@@ -44,6 +44,24 @@ function readPos(key: StorageKey): PopoverPosition | undefined {
 /** Persist a window position under `key`. */
 function savePos(key: StorageKey): (p: PopoverPosition) => void {
 	return (p) => writeStored("local", key, JSON.stringify(p));
+}
+
+/** Read a persisted `{w,h}` window size, or `undefined` when unset/invalid. */
+function readSize(key: StorageKey): PopoverSize | undefined {
+	const raw = readStored("local", key);
+	if (!raw) return undefined;
+	try {
+		const s = JSON.parse(raw) as PopoverSize;
+		if (typeof s?.w === "number" && typeof s?.h === "number") return s;
+	} catch {
+		// invalid blob
+	}
+	return undefined;
+}
+
+/** Persist a window size under `key`. */
+function saveSize(key: StorageKey): (s: PopoverSize) => void {
+	return (s) => writeStored("local", key, JSON.stringify(s));
 }
 
 /** Read a persisted window OPEN flag (`"1"` = open). */
@@ -154,6 +172,8 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 				width="20rem"
 				defaultPosition={readPos(LocalKeys.DEV_CONTEXT_WINDOW_POS) ?? { x: 24, y: 96 }}
 				onPositionChange={savePos(LocalKeys.DEV_CONTEXT_WINDOW_POS)}
+				defaultSize={readSize(LocalKeys.DEV_CONTEXT_WINDOW_SIZE)}
+				onSizeChange={saveSize(LocalKeys.DEV_CONTEXT_WINDOW_SIZE)}
 				class="dev-window"
 			>
 				<DevContextPanel baseContext={props.context} />
@@ -167,6 +187,8 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 				height="27rem"
 				defaultPosition={readPos(LocalKeys.DEV_INSPECTOR_WINDOW_POS) ?? { x: vw - 460, y: 96 }}
 				onPositionChange={savePos(LocalKeys.DEV_INSPECTOR_WINDOW_POS)}
+				defaultSize={readSize(LocalKeys.DEV_INSPECTOR_WINDOW_SIZE)}
+				onSizeChange={saveSize(LocalKeys.DEV_INSPECTOR_WINDOW_SIZE)}
 				class="dev-window"
 			>
 				<LogInspector />

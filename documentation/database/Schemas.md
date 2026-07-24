@@ -8,19 +8,19 @@ marketplace layers without architectural friction.
 
 The following schemas are initialized to isolate data by business domain:
 
-| Schema             | Responsibility                                                     |
-| :----------------- | :----------------------------------------------------------------- |
-| **`org`**          | Identity, Freelancer/Business profiles, Teams, and Skills.         |
-| **`projects`**     | Project headers, modular stages, assignments, and submissions.     |
-| **`finance`**      | Wallets, multi-party escrows, transactions, and dispute records.   |
-| **`comms`**        | Real-time project channels, DM threads, and notification delivery. |
-| **`security`**     | Session context, JWT-linked RLS helpers, and audit logging.        |
-| **`files`**        | User file library, folder structures, and storage item metadata.   |
-| **`marketplace`**  | Digital asset listings, versions, and purchase history.            |
-| **`search`**       | Full-text search indexes and semantic embeddings (pgvector).       |
-| **`ops`**          | Platform administration, moderation flags, and outbound webhooks.  |
-| **`analytics`**    | Event logging and pre-calculated daily rollups.                    |
-| **`integrations`** | OAuth connections and third-party app installations.               |
+| Schema             | Responsibility                                                                                                                               |
+| :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`org`**          | Identity, Freelancer/Business profiles, Teams, and Skills.                                                                                   |
+| **`projects`**     | Project headers, modular stages, assignments, and submissions.                                                                               |
+| **`finance`**      | Wallets, escrows, the transaction ledger, disputes, invoicing/statements, multi-currency/FX, KYC/KYB, payment methods, and vault governance. |
+| **`comms`**        | Real-time project channels, DM threads, and notification delivery.                                                                           |
+| **`security`**     | Session context, JWT-linked RLS helpers, and audit logging.                                                                                  |
+| **`files`**        | User file library, folder structures, and storage item metadata.                                                                             |
+| **`marketplace`**  | Digital asset listings, versions, and purchase history.                                                                                      |
+| **`search`**       | Full-text search indexes and semantic embeddings (pgvector).                                                                                 |
+| **`ops`**          | Platform administration, moderation flags, and outbound webhooks.                                                                            |
+| **`analytics`**    | Event logging and pre-calculated daily rollups.                                                                                              |
+| **`integrations`** | OAuth connections and third-party app installations.                                                                                         |
 
 ---
 
@@ -63,6 +63,29 @@ CREATE TYPE timeline_preset AS ENUM ('sequential', 'simultaneous', 'staggered', 
 CREATE TYPE ip_option_mode AS ENUM ('exclusive_transfer', 'licensed_use', 'shared_ownership', 'projective_partner');
 CREATE TYPE portfolio_rights AS ENUM ('allowed', 'forbidden', 'embargoed');
 CREATE TYPE budget_type AS ENUM ('fixed_price', 'hourly_cap');
+```
+
+### Wallet & Finance (schema-scoped, migrations `20260723090000`–`20260723094000`)
+
+```sql
+-- Verification, methods & money-movement
+CREATE TYPE finance.kyc_status       AS ENUM ('unverified', 'pending', 'verified', 'rejected', 'expired');
+CREATE TYPE finance.method_role      AS ENUM ('funding', 'payout', 'both');
+CREATE TYPE finance.deposit_interval AS ENUM ('weekly', 'monthly');
+CREATE TYPE finance.payout_mode      AS ENUM ('manual', 'scheduled_weekly', 'scheduled_monthly', 'threshold');
+CREATE TYPE finance.pot_purpose      AS ENUM ('tax', 'savings', 'goal', 'general');
+-- Vault governance
+CREATE TYPE finance.vault_capability AS ENUM ('view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing');
+CREATE TYPE finance.split_rule_type  AS ENUM ('co_op', 'finders_fee', 'benevolent_dictator');
+CREATE TYPE finance.approval_status  AS ENUM ('pending', 'approved', 'rejected', 'expired');
+CREATE TYPE finance.vault_action     AS ENUM ('add_funds', 'spend', 'distribute', 'withdraw', 'transfer');
+-- Fund states & settlement
+CREATE TYPE finance.fund_state       AS ENUM ('locked', 'pending', 'available', 'on_hold');
+CREATE TYPE finance.statement_status AS ENUM ('draft', 'issued', 'final');
+CREATE TYPE finance.chargeback_status AS ENUM ('opened', 'under_review', 'won', 'lost', 'refunded');
+
+-- i18n preference (org schema, migration 20260723090000)
+CREATE TYPE org.layout_direction    AS ENUM ('ltr', 'rtl', 'auto');
 ```
 
 ---

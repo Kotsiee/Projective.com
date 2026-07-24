@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { resolveMemberRoster } from "@web/features/projects/core/members-ssr.ts";
-import MemberRoster from "@web/features/projects/islands/MemberRoster.island.tsx";
+import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
 
 /**
  * Project-scoped Members management (`/projects/[projectId]/members`) — every participant across the
@@ -14,5 +14,5 @@ import MemberRoster from "@web/features/projects/islands/MemberRoster.island.tsx
 export default define.page(function ProjectMembersPage(ctx) {
 	const { projectId } = ctx.params;
 	const { page } = resolveMemberRoster(projectId);
-	return <MemberRoster scope="project" projectId={projectId} initial={page} />;
+	return <MembersView scope="project" id={projectId} initial={page} />;
 });

@@ -134,6 +134,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 							href={href}
 							data-active={active ? "true" : undefined}
 							aria-current={active ? "page" : undefined}
+							data-tab-key={tab.key}
 						>
 							<span class="chan-tab__icon" aria-hidden="true">{TAB_ICON[tab.key]}</span>
 							<span class="chan-tab__label">{tab.label}</span>

@@ -7,6 +7,7 @@ import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useFocusTrap } from "../../hooks/useFocusTrap.ts";
 import { usePresence } from "../../overlay/core/usePresence.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { useControllable } from "../../hooks/useControllable.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useId } from "../../hooks/useId.ts";
@@ -76,6 +77,12 @@ export interface PopoverProps {
  * outside-pointer/Escape ({@link useDismiss}), and focus-managed by {@link useFocusTrap} (initial
  * focus in, restore out, Tab cycles). `role="dialog"`; the trigger wires `aria-expanded`/`aria-controls`
  * via the render-prop api. An optional arrow points at the anchor. Presence animates the exit.
+ *
+ * The PANEL is projected into `document.body` via {@link BodyPortal} while the trigger stays in place.
+ * A `position: fixed` panel that stays in the tree is not safe: an ancestor with `overflow: clip`
+ * clips it outright, one with `transform`/`filter`/`backdrop-filter` re-bases it, and one that is a
+ * stacking context (a `position: sticky` nav lane) caps its paint order. The authenticated shell's
+ * middle-nav lane is all three, so panels opened from the lane were clipped to nothing.
  */
 export function Popover(props: PopoverProps): JSX.Element {
 	const {
@@ -103,7 +110,7 @@ export function Popover(props: PopoverProps): JSX.Element {
 	const panelRef = useRef<HTMLDivElement>(null);
 	const panelId = useId(undefined, "popover");
 
-	const stack = useOverlayStack({ active: mounted });
+	const stack = useOverlayStack({ active: mounted, layer: "popover" });
 	const floating = useFloating({
 		open: mounted,
 		triggerRef: anchorRef,
@@ -159,28 +166,30 @@ export function Popover(props: PopoverProps): JSX.Element {
 		<>
 			{trigger?.(api)}
 			{mounted && (
-				<div
-					ref={panelRef}
-					id={panelId}
-					role="dialog"
-					data-state={state}
-					class={cx(
-						"ui-popover",
-						arrow && "ui-popover--arrow",
-						`ui-popover--${floating?.placement ?? placement}`,
-						className,
-					)}
-					style={styleVars({
-						"--float-top": floating ? `${floating.top}px` : undefined,
-						"--float-left": floating ? `${floating.left}px` : undefined,
-						"--float-width": floating && matchWidth ? `${floating.width}px` : undefined,
-						"--z-portal": String(stack.zIndex),
-					})}
-					tabIndex={-1}
-				>
-					{arrow && <span class="ui-popover__arrow" aria-hidden="true" />}
-					<div class="ui-popover__content">{children}</div>
-				</div>
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						id={panelId}
+						role="dialog"
+						data-state={state}
+						class={cx(
+							"ui-popover",
+							arrow && "ui-popover--arrow",
+							`ui-popover--${floating?.placement ?? placement}`,
+							className,
+						)}
+						style={styleVars({
+							"--float-top": floating ? `${floating.top}px` : undefined,
+							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--float-width": floating && matchWidth ? `${floating.width}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
+						tabIndex={-1}
+					>
+						{arrow && <span class="ui-popover__arrow" aria-hidden="true" />}
+						<div class="ui-popover__content">{children}</div>
+					</div>
+				</BodyPortal>
 			)}
 		</>
 	);

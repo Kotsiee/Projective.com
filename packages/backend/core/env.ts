@@ -77,12 +77,29 @@ export interface ServerEnv {
 	 */
 	messagingBackendLive: boolean;
 	/**
+	 * Master switch for LIVE catalogue-backend behaviour. Defaults **off**: {@link CatalogueBackendService}
+	 * answers the seller `/catalogue` reads from deterministic fixtures and mutates an in-module session
+	 * store (create/update/publish) until the RLS-scoped `catalogue.*` tables + mutation policies land,
+	 * then flip per environment. This is the first WRITE surface, so the gate protects a half-wired
+	 * mutation from firing against a real project.
+	 */
+	catalogueBackendLive: boolean;
+	/**
 	 * Master switch for LIVE logging-backend behaviour. Defaults **off**: {@link LogBackendService}
 	 * accepts the production `error`/`warn` ingest into a no-op stub (console echo) until the
 	 * `logging.entries` table lands, then flip per environment. Orthogonal to `DENO_ENV` — this gates
 	 * *persistence*, `appEnv` gates *verbosity*.
 	 */
 	loggingBackendLive: boolean;
+	/**
+	 * Master switch for LIVE finance-backend behaviour. Defaults **off**: {@link WalletBackendService}
+	 * answers the `/wallet` reads from deterministic fixtures and mutates an in-module session store
+	 * (top-up / withdraw / transfer / distribute / …) until the RLS-scoped `finance.*` tables + money
+	 * functions are wired, then flip per environment. Like the catalogue write gate, this protects a
+	 * half-wired money mutation from firing against a real project — the reason it defaults off even
+	 * where other backends are live.
+	 */
+	financeBackendLive: boolean;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -100,6 +117,8 @@ export function serverEnv(): ServerEnv {
 		projectsBackendLive: (firstEnv("PROJECTS_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		profileBackendLive: (firstEnv("PROFILE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		messagingBackendLive: (firstEnv("MESSAGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		catalogueBackendLive: (firstEnv("CATALOGUE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		loggingBackendLive: (firstEnv("LOGGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		financeBackendLive: (firstEnv("FINANCE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 	};
 }

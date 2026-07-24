@@ -6,7 +6,12 @@ import type {
 	MessagingRole,
 	MessagingSettings,
 } from "@projective/types/messaging";
-import type { MessagePage } from "@projective/types/projects";
+import type {
+	FileListPage,
+	FileListParams,
+	MemberRosterPage,
+	MessagePage,
+} from "@projective/types/projects";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isMessagingBackendLive } from "../../core/supabase.ts";
 import {
@@ -18,6 +23,7 @@ import {
 	type ConversationMessageParams,
 	findConversationMessagePage,
 } from "./messages-fixtures.ts";
+import { findConversationFilePage, findConversationRoster } from "./workspace-fixtures.ts";
 import { findSettings } from "./settings-fixtures.ts";
 
 /**
@@ -53,6 +59,27 @@ export class MessagingBackendService {
 	/** A bottom-anchored page of a conversation's messages (the chat feed). */
 	static messages(params: ConversationMessageParams): ServiceResult<{ page: MessagePage }> {
 		const page = findConversationMessagePage(params);
+		if (!page) return fail(404, { message: "No such conversation." });
+		return ok({ page });
+	}
+
+	/**
+	 * A page of the conversation's shared attachments — the SAME {@link FileListPage} projection the
+	 * engagement File Explorer reads, so `/messages/[id]/files` mounts the identical island.
+	 */
+	static files(params: FileListParams): ServiceResult<{ page: FileListPage }> {
+		const page = findConversationFilePage(params);
+		if (!page) return fail(404, { message: "No such conversation." });
+		return ok({ page });
+	}
+
+	/**
+	 * The conversation's participant roster — the SAME {@link MemberRosterPage} projection the
+	 * engagement Members tab reads, so `/messages/[id]/members` mounts the identical island. A
+	 * conversation has no stages and no invitation queue, so those slices come back empty.
+	 */
+	static members(conversationId: string): ServiceResult<{ page: MemberRosterPage }> {
+		const page = findConversationRoster(conversationId);
 		if (!page) return fail(404, { message: "No such conversation." });
 		return ok({ page });
 	}

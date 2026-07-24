@@ -22,6 +22,8 @@ import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
 	DEV_SEAM_EVENT,
+	type DevDisplayCurrency,
+	type DevLayoutDirection,
 	type DevMemberRole,
 	type DevMessagingRole,
 	type DevPersona,
@@ -31,6 +33,10 @@ import {
 	type DevSessionBookingStatus,
 	type DevStageAssignment,
 	type DevSubmissionState,
+	type DevWalletFundMix,
+	type DevWalletKyc,
+	type DevWalletSmoother,
+	type DevWalletVaultRole,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
 
@@ -45,6 +51,8 @@ export type DevAccountType = DevPersona;
 export type DevRole = DevSeamRole;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
+	DevDisplayCurrency,
+	DevLayoutDirection,
 	DevMemberRole,
 	DevMessagingRole,
 	DevProjectType,
@@ -52,6 +60,10 @@ export type {
 	DevSessionBookingStatus,
 	DevStageAssignment,
 	DevSubmissionState,
+	DevWalletFundMix,
+	DevWalletKyc,
+	DevWalletSmoother,
+	DevWalletVaultRole,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -112,6 +124,22 @@ export interface DevOverrides {
 	 * by the messaging sidebar + settings modal to re-simulate the role-specific chrome.
 	 */
 	messagingRole: DevMessagingRole;
+	/**
+	 * Simulated `/wallet` vault capability role (Owner/Admin/PM/member) — a NEW axis the Wallet surface's
+	 * capability gating rolls up from (which money controls the viewer may operate). Personal wallets are
+	 * always owner; this bites only on a team/business vault.
+	 */
+	walletVaultRole: DevWalletVaultRole;
+	/** Simulated `/wallet` finance-verification (KYC) state — drives the KYC-locked earn/withdraw states. */
+	walletKyc: DevWalletKyc;
+	/** Simulated `/wallet` Income-Smoother state (ineligible / eligible / enrolled). */
+	walletSmoother: DevWalletSmoother;
+	/** Simulated `/wallet` fund-state mix — which of the three-state balance projection's states carry a balance. */
+	walletFundMix: DevWalletFundMix;
+	/** Simulated display currency — drives the fat service's conversion + `Intl` formatting (RtL-independent). */
+	displayCurrency: DevDisplayCurrency;
+	/** Simulated document layout direction (LtR/RtL) — verifies the whole surface mirrors under `dir="rtl"`. */
+	layoutDirection: DevLayoutDirection;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -139,6 +167,12 @@ export const DEV_DEFAULTS: DevOverrides = {
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	messagingRole: "freelancer",
+	walletVaultRole: "admin",
+	walletKyc: "verified",
+	walletSmoother: "enrolled",
+	walletFundMix: "normal",
+	displayCurrency: "GBP",
+	layoutDirection: "ltr",
 };
 
 /** Account-type options in display order. */
@@ -206,6 +240,50 @@ export const DEV_MESSAGING_ROLES: ReadonlyArray<DevOption<DevMessagingRole>> = [
 	{ value: "client", label: "Client" },
 	{ value: "business", label: "Business" },
 ];
+
+/** Wallet vault-role options in display order (`/wallet` capability gating). */
+export const DEV_WALLET_VAULT_ROLES: ReadonlyArray<DevOption<DevWalletVaultRole>> = [
+	{ value: "owner", label: "Owner" },
+	{ value: "admin", label: "Admin" },
+	{ value: "pm", label: "PM" },
+	{ value: "member", label: "Member" },
+];
+
+/** Wallet KYC-state options in display order (`/wallet` verification-locked states). */
+export const DEV_WALLET_KYCS: ReadonlyArray<DevOption<DevWalletKyc>> = [
+	{ value: "verified", label: "Verified" },
+	{ value: "unverified", label: "Unverified" },
+	{ value: "payout_setup", label: "No payout set" },
+];
+
+/** Income-Smoother state options in display order (`/wallet`). */
+export const DEV_WALLET_SMOOTHERS: ReadonlyArray<DevOption<DevWalletSmoother>> = [
+	{ value: "ineligible", label: "Ineligible" },
+	{ value: "eligible", label: "Eligible" },
+	{ value: "enrolled", label: "Enrolled" },
+];
+
+/** Fund-state mix options in display order (`/wallet` three-state balance). */
+export const DEV_WALLET_FUND_MIXES: ReadonlyArray<DevOption<DevWalletFundMix>> = [
+	{ value: "normal", label: "Normal" },
+	{ value: "locked", label: "Locked" },
+	{ value: "pending", label: "Pending" },
+	{ value: "dispute", label: "Dispute" },
+];
+
+/** Display-currency options in display order. */
+export const DEV_DISPLAY_CURRENCIES: ReadonlyArray<DevOption<DevDisplayCurrency>> = [
+	{ value: "GBP", label: "GBP £" },
+	{ value: "USD", label: "USD $" },
+	{ value: "EUR", label: "EUR €" },
+];
+
+/** Layout-direction options in display order (LtR/RtL). */
+export const DEV_LAYOUT_DIRECTIONS: ReadonlyArray<DevOption<DevLayoutDirection>> = [
+	{ value: "ltr", label: "LtR" },
+	{ value: "rtl", label: "RtL" },
+	{ value: "auto", label: "Auto" },
+];
 // #endregion
 
 // #region Store
@@ -255,6 +333,15 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devMessagingRole = next.messagingRole;
+		root.dataset.devWalletRole = next.walletVaultRole;
+		root.dataset.devWalletKyc = next.walletKyc;
+		root.dataset.devWalletSmoother = next.walletSmoother;
+		root.dataset.devWalletFundMix = next.walletFundMix;
+		root.dataset.devDisplayCurrency = next.displayCurrency;
+		root.dataset.devDirection = next.layoutDirection;
+		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
+		// properties everywhere mean the wallet (and the rest of the shell) mirror to the opposite edge.
+		root.dir = next.layoutDirection;
 		if (next.activeEntity) root.dataset.devEntity = next.activeEntity;
 		else delete root.dataset.devEntity;
 	} else {
@@ -272,6 +359,14 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devMessagingRole;
+		delete root.dataset.devWalletRole;
+		delete root.dataset.devWalletKyc;
+		delete root.dataset.devWalletSmoother;
+		delete root.dataset.devWalletFundMix;
+		delete root.dataset.devDisplayCurrency;
+		delete root.dataset.devDirection;
+		// Restore the document's natural direction (the pref-driven default, LtR here).
+		root.removeAttribute("dir");
 	}
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
 }

@@ -4,6 +4,8 @@ import type { UserContext } from "@projective/types/auth";
 import {
 	ACCOUNT_TYPES,
 	applyDevContext,
+	DEV_DISPLAY_CURRENCIES,
+	DEV_LAYOUT_DIRECTIONS,
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_PROJECT_TYPES,
@@ -12,6 +14,10 @@ import {
 	DEV_SESSION_BOOKINGS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
+	DEV_WALLET_FUND_MIXES,
+	DEV_WALLET_KYCS,
+	DEV_WALLET_SMOOTHERS,
+	DEV_WALLET_VAULT_ROLES,
 	type DevOption,
 	devOverrides,
 	patchDevContext,
@@ -327,6 +333,68 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.messagingRole}
 						disabled={!o.enabled}
 						onChange={(messagingRole) => patchDevContext({ messagingRole })}
+					/>
+				</Field>
+
+				<div class="dev-ctx__grouphead">Wallet / Finance</div>
+
+				<Field label="Vault role" hint="capability">
+					<Segment
+						name="Vault role"
+						options={DEV_WALLET_VAULT_ROLES}
+						value={o.walletVaultRole}
+						disabled={!o.enabled}
+						onChange={(walletVaultRole) => patchDevContext({ walletVaultRole })}
+					/>
+				</Field>
+
+				<Field label="Verification" hint="KYC state">
+					<Segment
+						name="Verification"
+						options={DEV_WALLET_KYCS}
+						value={o.walletKyc}
+						disabled={!o.enabled}
+						onChange={(walletKyc) => patchDevContext({ walletKyc })}
+					/>
+				</Field>
+
+				<Field label="Income Smoother" hint="eligibility">
+					<Segment
+						name="Income Smoother"
+						options={DEV_WALLET_SMOOTHERS}
+						value={o.walletSmoother}
+						disabled={!o.enabled}
+						onChange={(walletSmoother) => patchDevContext({ walletSmoother })}
+					/>
+				</Field>
+
+				<Field label="Fund states" hint="balance mix">
+					<Segment
+						name="Fund states"
+						options={DEV_WALLET_FUND_MIXES}
+						value={o.walletFundMix}
+						disabled={!o.enabled}
+						onChange={(walletFundMix) => patchDevContext({ walletFundMix })}
+					/>
+				</Field>
+
+				<Field label="Display currency" hint="Intl format">
+					<Segment
+						name="Display currency"
+						options={DEV_DISPLAY_CURRENCIES}
+						value={o.displayCurrency}
+						disabled={!o.enabled}
+						onChange={(displayCurrency) => patchDevContext({ displayCurrency })}
+					/>
+				</Field>
+
+				<Field label="Direction" hint="LtR / RtL">
+					<Segment
+						name="Direction"
+						options={DEV_LAYOUT_DIRECTIONS}
+						value={o.layoutDirection}
+						disabled={!o.enabled}
+						onChange={(layoutDirection) => patchDevContext({ layoutDirection })}
 					/>
 				</Field>
 			</div>

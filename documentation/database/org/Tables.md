@@ -26,24 +26,42 @@ data remains isolated while providing a searchable directory for the platform.
 
 The "Seller" persona. A user has exactly one freelancer profile.
 
-| Column                              | Type    | Notes                                                                                                                       |
-| :---------------------------------- | :------ | :-------------------------------------------------------------------------------------------------------------------------- |
-| `user_id`                           | uuid    | PK, FK → `auth.users.id`.                                                                                                   |
-| `skills`                            | text[]  | Fast-lookup array of skill tags.                                                                                            |
-| `is_freelancer` (on `users_public`) | boolean | Denormalised persona flag; flipped to `true` by `org.enable_freelancer_profile` when a client unlocks a freelancer profile. |
+| Column                              | Type                 | Notes                                                                                                                                |
+| :---------------------------------- | :------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`                           | uuid                 | PK, FK → `auth.users.id`.                                                                                                            |
+| `skills`                            | text[]               | Fast-lookup array of skill tags.                                                                                                     |
+| `is_freelancer` (on `users_public`) | boolean              | Denormalised persona flag; flipped to `true` by `org.enable_freelancer_profile` when a client unlocks a freelancer profile.          |
+| `kyc_status`                        | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) / `pending` / `verified` / `rejected` / `expired`. The earner's KYC cache.   |
+| `kyc_tier`                          | smallint             | **Additive.** Verification ladder tier (1 Basic / 2 Verified / 3 Business).                                                          |
+| `kyc_verified_at`                   | timestamptz          | **Additive.** When KYC was granted.                                                                                                  |
+| `payout_ready`                      | boolean              | **Additive.** The onboarding gate — `true` only when KYC-verified AND a payout method exists (`finance.fn_freelancer_payout_ready`). |
+| `identity_provider_ref`             | text                 | **Additive.** Stripe Identity session id (placeholder; **no PII**).                                                                  |
+
+> ⚠️ `kyc_*` is **identity/KYC** verification — distinct from **email** verification
+> (`org.user_emails.verified_at`, migration 0312). Gating rule in `finance-model.md` §KYC/KYB
+> Gating: freelancers are gated at onboarding; individual clients need **no** ID verification
+> (tap-and-pay).
 
 ### `org.business_profiles`
 
 The "Buyer" persona. Users can manage multiple business profiles (e.g., for different brands or
 projects).
 
-| Column          | Type | Notes                                |
-| :-------------- | :--- | :----------------------------------- |
-| `id`            | uuid | PK.                                  |
-| `owner_user_id` | uuid | FK → `auth.users.id`.                |
-| `name`          | text | Business display name.               |
-| `plan`          | text | Subscription tier (default: `free`). |
-| `billing_email` | text | Primary contact for invoices.        |
+| Column             | Type                 | Notes                                                                                                                     |
+| :----------------- | :------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| `id`               | uuid                 | PK.                                                                                                                       |
+| `owner_user_id`    | uuid                 | FK → `auth.users.id`.                                                                                                     |
+| `name`             | text                 | Business display name.                                                                                                    |
+| `plan`             | text                 | Subscription tier (default: `free`).                                                                                      |
+| `billing_email`    | text                 | Primary contact for invoices.                                                                                             |
+| `default_currency` | text                 | Origin currency for the pooled fund (default `USD`).                                                                      |
+| `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to OPERATE the pooled Business Wallet.** |
+| `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
+| `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
+
+> KYB verification for **businesses** is the new `kyb_*` cache here; **organisations** keep their
+> own `org.organisation_verification_level` (migration 0314). Reconciles with the tiered KYC/KYB
+> model (Decisions #6/#7). Predicate: `finance.fn_business_kyb_verified(business_id)`.
 
 ---
 
@@ -128,6 +146,33 @@ CREATE TABLE org.profile_links (
     CONSTRAINT profile_links_pkey PRIMARY KEY (id)
 );
 ```
+
+---
+
+## ⚙️ Preferences
+
+### `org.user_preferences`
+
+Per-user preferences (one row per user, seeded by the `org.seed_user_preferences` trigger — Decision
+#47 — which inserts only the PK and relies on column DEFAULTs). Zod SSOT in
+`packages/types/org/preferences.ts`.
+
+| Column                       | Type                   | Notes                                                                                                                                                              |
+| :--------------------------- | :--------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`                    | uuid                   | PK, FK → `auth.users.id` (CASCADE).                                                                                                                                |
+| `theme`                      | text                   | `system` (default) / `light` / `dark`.                                                                                                                             |
+| `notification_email`         | boolean                | Default `true`.                                                                                                                                                    |
+| `notification_push`          | boolean                | Default `false`.                                                                                                                                                   |
+| `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`. **This is the language source.**                                                                               |
+| `preferred_display_currency` | char(3)                | **Additive (`20260723090000`).** Presentational display-conversion target (ISO-4217); `NULL` = follow origin/locale default. Never affects stored/settled amounts. |
+| `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction. See `DESIGN_SYSTEM.md` §A.6.              |
+| `ui_settings`                | jsonb                  | Misc client UI state.                                                                                                                                              |
+
+> **Reconciliation (flagged, root `CLAUDE.md` §8):** `locale` already carries the BCP-47 locale, so
+> **no** separate `preferred_locale`/`language` column was added (avoids duplication);
+> `layout_direction` is deliberately independent of it. RLS (migration 0213: view/update/insert own)
+> is table-level and already covers the new columns. The seed trigger picks up the new DEFAULTs
+> automatically — no trigger change was required.
 
 ---
 

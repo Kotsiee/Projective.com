@@ -1,0 +1,49 @@
+/*
+ * fx-toolbar — the shared sticky content toolbar. It is the single source of truth for the borderless,
+ * glass-backed control bar used by the File Explorer (`/projects/.../files`, `/messages/.../files`) AND
+ * the Catalogue console (`/catalogue`), so those surfaces render ONE toolbar rather than lookalikes.
+ *
+ * The bar pins under the middle-nav chrome (native WINDOW scroll, Decision #31): consumers set
+ * `--fx-chrome` (the viewport offset it pins below) and `--fx-toolbar-h` (its min height) on an
+ * ancestor. The glass wash rides a `::before` UNDERLAY (never `backdrop-filter` on the bar itself) so
+ * it doesn't re-base a descendant field's `position: fixed` overlay panel (the glass-blur fixed-overlay
+ * trap). Token-only, strict BEM (root CLAUDE.md §3).
+ */
+.fx-toolbar {
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
+	z-index: var(--z-sticky);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fx-toolbar-h);
+	padding-block: var(--space-2);
+}
+
+.fx-toolbar::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur, 18px));
+	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	pointer-events: none;
+	border-radius: 50px;
+}
+
+.fx-toolbar__search {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	/* A clean max-width — the search never expands endlessly. */
+	max-inline-size: 22rem;
+}
+
+.fx-toolbar__searchicon {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+
+.fx-toolbar__spacer {
+	flex: 1 1 auto;
+}

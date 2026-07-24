@@ -18,6 +18,7 @@ export type IconName =
 	| "teams"
 	| "business"
 	| "dashboard"
+	| "analytics"
 	| "wallet"
 	| "settings"
 	| "create"
@@ -29,7 +30,13 @@ export type IconName =
 	| "product"
 	| "article"
 	| "user"
-	| "logout";
+	| "logout"
+	| "briefcase"
+	| "switch"
+	| "check"
+	| "arrowLeft"
+	| "sun"
+	| "moon";
 // #endregion
 
 const PATHS: Record<IconName, VNode> = {
@@ -46,6 +53,13 @@ const PATHS: Record<IconName, VNode> = {
 			<path d="M4 21V10a8 8 0 0 1 16 0v11" />
 			<path d="M4 21h16" />
 			<path d="M9.5 21v-5.5a2.5 2.5 0 0 1 5 0V21" />
+		</>
+	),
+	// A sleek briefcase — the Projects destination (LucideBriefcase equivalent, inline per this set).
+	briefcase: (
+		<>
+			<rect x="3" y="7.5" width="18" height="12.5" rx="2.4" />
+			<path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5M3 12.5h18" />
 		</>
 	),
 	services: <path d="M12 3 3 8l9 5 9-5zM3 13l9 5 9-5M3 8v5m18-5v5" />,
@@ -66,6 +80,13 @@ const PATHS: Record<IconName, VNode> = {
 			<path d="M4 13a8 8 0 0 1 16 0" />
 			<path d="M12 13 15 9" />
 			<path d="M4 13v4h16v-4" />
+		</>
+	),
+	// Analytics — a compact bar chart (replaces the generic Dashboard gauge).
+	analytics: (
+		<>
+			<path d="M4 20h16" />
+			<path d="M7 20v-6M12 20V8M17 20v-9" />
 		</>
 	),
 	wallet: (
@@ -120,6 +141,26 @@ const PATHS: Record<IconName, VNode> = {
 			<path d="M10 8l-4 4 4 4M6 12h9" />
 		</>
 	),
+	// Context switch — two counter-facing arrows (swap between workspaces).
+	switch: (
+		<>
+			<path d="M17 3.5 20.5 7 17 10.5M20.5 7H9a4 4 0 0 0-4 4" />
+			<path d="M7 20.5 3.5 17 7 13.5M3.5 17H15a4 4 0 0 0 4-4" />
+		</>
+	),
+	// Check — a selected status/context marker.
+	check: <path d="M4.5 12.5 9 17l10.5-11" />,
+	// Back — a left-pointing arrow for sub-view headers.
+	arrowLeft: <path d="M11 5l-7 7 7 7M4 12h16" />,
+	// Sun — light theme (shown to switch INTO light while dark is active).
+	sun: (
+		<>
+			<circle cx="12" cy="12" r="4" />
+			<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
+		</>
+	),
+	// Moon — dark theme (shown to switch INTO dark while light is active).
+	moon: <path d="M21 13a8.5 8.5 0 0 1-10-10 8.5 8.5 0 1 0 10 10z" />,
 };
 
 /**

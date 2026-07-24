@@ -1,0 +1,469 @@
+/*
+ * Lane chrome (`ui-lane-*`) — the shared control vocabulary of a middle-nav lane: the underline tab
+ * strip, the pill search, circular icon buttons, the icon-only quick-filter row, collapsible section
+ * groups, and the pinned footer with its collapse toggle.
+ *
+ * This is the SINGLE SOURCE OF TRUTH for lane chrome. Every lane surface (the `/projects` feed, the
+ * `/projects/[id]` details sidebar, the `/messages` inbox) composes these classes, so the three read
+ * as one control set rather than three lookalikes. Pure CSS + strict BEM, token-only (root CLAUDE.md
+ * §3): no hardcoded hex/radius/duration/shadow.
+ *
+ * Separation hierarchy (DESIGN_SYSTEM.md §B.4): the header and footer bands are set off by a SINGLE
+ * hairline plus the `--surface-1` tonal tint — never a four-sided box. Full borders appear only on
+ * genuinely interactive controls (the focused search field).
+ */
+
+/* #region Header / footer bands */
+.ui-lane-head {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-4) var(--space-3);
+	background: var(--surface-1);
+	border-block-end: var(--hairline);
+}
+
+.ui-lane-footer {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-4);
+	background: var(--surface-1);
+	border-block-start: var(--hairline);
+}
+
+.ui-lane-footer__actions {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region Tabs — quiet sliding underline, never a filled pill */
+.ui-lane-tabs {
+	display: flex;
+	gap: var(--space-5);
+}
+
+.ui-lane-tabs__tab {
+	appearance: none;
+	position: relative;
+	padding: 0.1rem 0 0.35rem;
+	font: inherit;
+	font-size: 1rem;
+	font-weight: 450;
+	letter-spacing: -0.01em;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-tabs__tab:hover {
+	color: var(--on-surface);
+}
+
+.ui-lane-tabs__tab[data-selected="true"] {
+	color: var(--on-surface);
+	font-weight: 600;
+}
+
+.ui-lane-tabs__tab[data-selected="true"]::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px;
+	background: var(--primary);
+}
+
+.ui-lane-tabs__tab:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Search row + pill field */
+.ui-lane-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.ui-lane-search {
+	position: relative;
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.ui-lane-search__icon {
+	position: absolute;
+	inset-inline-start: 0.7rem;
+	display: inline-flex;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.ui-lane-search__input {
+	inline-size: 100%;
+	padding: 0.5rem 0.7rem 0.5rem 2.1rem;
+	font: inherit;
+	font-size: 0.8125rem;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-full, 999px);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-search__input::placeholder {
+	color: var(--text-secondary);
+}
+
+.ui-lane-search__input:focus-visible {
+	outline: none;
+	background: var(--surface);
+	border-color: var(--primary);
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Icon button — soft circular hover, optional active dot */
+.ui-lane-iconbtn {
+	position: relative;
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.1rem;
+	block-size: 2.1rem;
+	font-size: 1.1rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-iconbtn:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.ui-lane-iconbtn[data-on="true"] {
+	color: var(--primary);
+}
+
+.ui-lane-iconbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.ui-lane-iconbtn--accent {
+	color: var(--primary);
+}
+
+.ui-lane-iconbtn--accent:hover {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.ui-lane-iconbtn__dot {
+	position: absolute;
+	inset-block-start: 0.35rem;
+	inset-inline-end: 0.35rem;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 50%;
+	background: var(--primary);
+	box-shadow: 0 0 0 2px var(--surface-1);
+}
+/* #endregion */
+
+/* #region Quick-filter toggle row — icon-only, quiet until engaged (§B.6) */
+.ui-lane-toggles {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+/* Two groups on the one row → spread to opposite ends (a single group stays right-aligned). */
+.ui-lane-toggles:has(.ui-lane-toggles__group + .ui-lane-toggles__group) {
+	inline-size: 100%;
+	justify-content: space-between;
+}
+
+.ui-lane-toggles__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.1rem;
+}
+
+.ui-lane-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.7rem;
+	block-size: 1.7rem;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-toggle:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.ui-lane-toggle[data-on="true"] {
+	color: var(--primary);
+}
+
+.ui-lane-toggle[data-on="true"] svg {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.ui-lane-toggle:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* #endregion */
+
+/* #region Collapsible section group (the channel/conversation accordion) */
+.ui-lane-sections {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.ui-lane-section__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ui-lane-section__toggle {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.35rem 0.4rem;
+	font: inherit;
+	font-size: 0.72rem;
+	font-weight: 650;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-section__toggle:hover {
+	color: var(--on-surface);
+}
+
+.ui-lane-section__toggle:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.ui-lane-section__chevron {
+	display: inline-flex;
+	font-size: 0.9rem;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-section[data-open="true"] .ui-lane-section__chevron {
+	transform: rotate(90deg);
+}
+
+.ui-lane-section__icon {
+	display: inline-flex;
+	font-size: 0.95rem;
+}
+
+.ui-lane-section__label {
+	flex: 1 1 auto;
+	text-align: start;
+}
+
+.ui-lane-section__dot {
+	flex: none;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 50%;
+	background: var(--primary);
+}
+
+.ui-lane-section__action {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+}
+
+/*
+ * Smooth collapse — animate the panel height via `grid-template-rows: 0fr → 1fr`. The single grid
+ * child must clip its own overflow + carry `min-block-size: 0` so it can shrink to zero. Consumers set
+ * `inert` while closed, keeping hidden links out of the tab order and the a11y tree.
+ */
+.ui-lane-section__body {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
+}
+
+.ui-lane-section[data-open="true"] .ui-lane-section__body {
+	grid-template-rows: 1fr;
+}
+
+.ui-lane-section__body-inner {
+	overflow: hidden;
+	min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding-block: 0.15rem;
+	padding-inline-start: 0.6rem;
+}
+
+/* Trim the vertical padding while collapsed so a closed group has no residual gap. */
+.ui-lane-section:not([data-open="true"]) .ui-lane-section__body-inner {
+	padding-block: 0;
+}
+/* #endregion */
+
+/* #region Collapse toggle — reuses the app rail's morphing glyph, scoped to THIS lane's state */
+.ui-lane-collapse {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-lane-collapse:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.ui-lane-collapse:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+
+.ui-lane-collapse .shell-toggle {
+	inline-size: 22px;
+	block-size: 22px;
+	stroke-width: 1.8;
+}
+
+/*
+ * The dotted divider slides right when expanded, left when collapsed — matching the global rail. The
+ * doubled class lifts specificity above the package's global
+ * `:root[data-sidebar="expanded"] .shell-toggle__bar` rule so this bar tracks the LANE's own state,
+ * not the main sidebar's.
+ */
+.ui-lane-collapse.ui-lane-collapse .shell-toggle__bar {
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.ui-lane-collapse.ui-lane-collapse:not([data-collapsed="true"]) .shell-toggle__bar {
+	transform: translateX(6px);
+}
+
+.ui-lane-collapse.ui-lane-collapse[data-collapsed="true"] .shell-toggle__bar {
+	transform: translateX(0);
+}
+/* #endregion */
+
+/* #region Scrolling body + empty state */
+.ui-lane-list {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-3) var(--space-2) var(--space-5);
+}
+
+.ui-lane-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-6) var(--space-4);
+	text-align: center;
+	color: var(--text-secondary);
+}
+
+.ui-lane-empty__glyph {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+
+.ui-lane-empty__glyph svg {
+	inline-size: 28px;
+	block-size: 28px;
+}
+
+.ui-lane-empty__title {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.ui-lane-empty__note {
+	margin: 0;
+	font-size: 0.8125rem;
+}
+/* #endregion */
+
+/* Motion — jump straight to the final state (DESIGN_SYSTEM.md §Motion / a11y). */
+@media (prefers-reduced-motion: reduce) {
+	.ui-lane-tabs__tab,
+	.ui-lane-search__input,
+	.ui-lane-iconbtn,
+	.ui-lane-toggle,
+	.ui-lane-section__toggle,
+	.ui-lane-section__chevron,
+	.ui-lane-section__body,
+	.ui-lane-collapse,
+	.ui-lane-collapse.ui-lane-collapse .shell-toggle__bar {
+		transition: none;
+	}
+}

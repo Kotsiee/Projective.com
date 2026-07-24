@@ -23,7 +23,7 @@ export type { DismissOptions } from "./useDismiss.ts";
 export { getTabbable, useFocusTrap } from "./useFocusTrap.ts";
 export type { FocusTrapOptions } from "./useFocusTrap.ts";
 export { useOverlayStack } from "./useOverlayStack.ts";
-export type { OverlayStackOptions, OverlayStackState } from "./useOverlayStack.ts";
+export type { OverlayLayer, OverlayStackOptions, OverlayStackState } from "./useOverlayStack.ts";
 export { useVirtualScroll } from "./useVirtualScroll.ts";
 export type {
 	UseVirtualScrollOptions,

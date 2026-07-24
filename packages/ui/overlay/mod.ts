@@ -24,6 +24,10 @@ export type { OverlayProps } from "./islands/Overlay.tsx";
 export { HoverCard } from "./islands/HoverCard.tsx";
 export type { HoverCardProps } from "./islands/HoverCard.tsx";
 export { DraggablePopover } from "./islands/DraggablePopover.tsx";
-export type { DraggablePopoverProps, PopoverPosition } from "./islands/DraggablePopover.tsx";
+export type {
+	DraggablePopoverProps,
+	PopoverPosition,
+	PopoverSize,
+} from "./islands/DraggablePopover.tsx";
 export { usePresence } from "./core/usePresence.ts";
 export type { Presence, PresenceState } from "./core/usePresence.ts";

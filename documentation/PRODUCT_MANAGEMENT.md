@@ -186,6 +186,30 @@ and block taking precedence:
 > Rollup is computed, not stored authoritatively at the parent — the same "source of truth lives at
 > the leaf" discipline the platform uses for ticket→stage→project state.
 
+### 3.5 Domain lifecycles are NOT build-tracker states (finance & verification)
+
+The §3.1 state-machine governs **build Tasks** on the delivery tracker. The 2026-07-23 Wallet &
+Finance foundation adds several **product/finance domain lifecycles** — these are **separate**
+finite state machines that live at the schema/business layer, and they are recorded here **only so
+nobody mints a bespoke build-board column for them.** Their canonical definitions are the enum + doc
+listed:
+
+| Domain lifecycle           | States                                                     | Canonical home                                       |
+| :------------------------- | :--------------------------------------------------------- | :--------------------------------------------------- |
+| **KYC / KYB verification** | `unverified → pending → verified` (`rejected` / `expired`) | `finance.kyc_status` · `finance-model.md` §10        |
+| **Fund state**             | `locked → pending → available`; `on_hold` (dispute)        | `finance.fund_state` · `finance-model.md` §7         |
+| **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
+| **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |
+| **Dispute**                | `open → under_review → resolved` / `refunded`              | `dispute_status` · `brain.md` §Disputes              |
+| **Spend approval**         | `pending → approved` / `rejected` / `expired`              | `finance.approval_status` · `finance-model.md` §14   |
+| **Chargeback**             | `opened → under_review → won` / `lost` / `refunded`        | `finance.chargeback_status` · `finance-model.md` §15 |
+
+**Rules:** (1) these never appear as delivery-board columns (§6 maps only §3.1 states); (2) nothing
+is hard-deleted — a retired verification/invoice/dispute goes to a terminal state, never a `DELETE`
+(§5.4); (3) a change to any of these transitions updates its canonical home **and** this row in the
+same change (§5.1). The build state-machine's own **Disputed** state and **Review/Escrow-Locked**
+substates (§3.3) _mirror_ the product's escrow semantics but remain build-tracker states, not these.
+
 ---
 
 ## 4. Estimation & Capacity (Workload Intensity)
@@ -272,14 +296,15 @@ Column definitions are **frozen to §3.1** — see §5.2.
 
 > **Product board vs this tracker (Decision #35, 2026-07-20).** The columns above are the states of
 > **this dogfooding tracker**. The _product's_ Kanban — the client-facing board at
-> `/projects/[id]/board` and the stage Tasks board — renders the canonical Postgres **`ticket_status`**
-> enum, which is a distinct (shorter) vocabulary and MUST NOT be conflated with the tracker's states.
-> The product board's five column ↔ `ticket_status` mapping is fixed (per `0121_kanban_sync.sql`), and
-> the product relabels two of them for display: **New = `backlog`** · **Ready = `todo`** · **In Progress
-> = `in_progress`** (with `claimed` folded in — there is no separate Claimed _column_ on the product
-> board) · **Review = `in_review`** · **Completed = `completed`**. `cancelled` and `reported_hidden`
-> are card **overlays**, never columns. Both vocabularies still obey §5.2 (columns map 1:1 to a
-> frozen state machine — no bespoke columns); they are simply two machines at two altitudes.
+> `/projects/[id]/board` and the stage Tasks board — renders the canonical Postgres
+> **`ticket_status`** enum, which is a distinct (shorter) vocabulary and MUST NOT be conflated with
+> the tracker's states. The product board's five column ↔ `ticket_status` mapping is fixed (per
+> `0121_kanban_sync.sql`), and the product relabels two of them for display: **New = `backlog`** ·
+> **Ready = `todo`** · **In Progress = `in_progress`** (with `claimed` folded in — there is no
+> separate Claimed _column_ on the product board) · **Review = `in_review`** · **Completed =
+> `completed`**. `cancelled` and `reported_hidden` are card **overlays**, never columns. Both
+> vocabularies still obey §5.2 (columns map 1:1 to a frozen state machine — no bespoke columns);
+> they are simply two machines at two altitudes.
 
 ---
 

@@ -20,6 +20,29 @@ export function channelHref(projectId: string, channelId: string): string {
 }
 
 /**
+ * The active channel's route segment for a `/projects/{projectId}/{channelId}[/tab]` pathname, or
+ * `null` when the path is the project root / a project-level view (`/projects/{id}`,
+ * `/projects/{id}/board`, …). Drives the channel tree's active-row highlight; kept pure so the island
+ * can re-derive it whenever the URL changes under Partial navigation.
+ */
+export function activeChannelIdOf(pathname: string): string | null {
+	const segs = pathname.split("/").filter(Boolean); // ["projects", projectId, channelId, ...tab]
+	if (segs[0] !== "projects" || segs.length < 3) return null;
+	// A project-level view segment (not a channel) rather than a channel id.
+	const PROJECT_VIEWS = new Set([
+		"board",
+		"calendar",
+		"edit",
+		"files",
+		"attachments",
+		"members",
+		"submissions",
+		"create",
+	]);
+	return PROJECT_VIEWS.has(segs[2]) ? null : segs[2];
+}
+
+/**
  * Build a deep link to a specific message inside its channel chat:
  * `/projects/{projectId}/{channelId}/chat#m-{messageId}`. Routing to the channel's Chat tab is the
  * guaranteed behaviour; the `#m-` anchor lets the feed scroll to the message when it is mounted (a

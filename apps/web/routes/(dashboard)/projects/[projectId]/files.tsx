@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { resolveFilePage } from "@web/features/projects/core/files-ssr.ts";
-import FileExplorer from "@web/features/projects/islands/FileExplorer.island.tsx";
+import { FilesView } from "@web/features/projects/components/workspace-views.tsx";
 
 /**
  * Project-scoped File Explorer (`/projects/[projectId]/files`) — every attachment across the project's
@@ -13,5 +13,5 @@ import FileExplorer from "@web/features/projects/islands/FileExplorer.island.tsx
 export default define.page(function ProjectFilesPage(ctx) {
 	const { projectId } = ctx.params;
 	const { page } = resolveFilePage(projectId);
-	return <FileExplorer scope="project" projectId={projectId} initial={page} />;
+	return <FilesView scope="project" id={projectId} initial={page} />;
 });

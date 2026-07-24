@@ -559,6 +559,38 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
   pre-approved monthly credit or current Wallet balance, the system prompts for a "Top-Up" or a
   budget increase before work can proceed.
 
+#### 5. Funding, Payout Readiness & the "No Forever-Escrow" Guarantee
+
+Money enters and leaves the platform through two deliberately asymmetric paths:
+
+- **Clients pay with zero friction (tap-and-pay).** An individual client needs **no ID verification
+  and no wallet** — they pay by card through Stripe (with an optional save-card for reuse). Buying
+  should never require onboarding.
+- **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
+  configured payout method are **onboarding gates**: a freelancer cannot land a gig or join a team
+  until both are in place. This is the platform's **No Forever-Escrow Guarantee** — because every
+  earner is payable before any work is accepted, funds can never become locked in a permanent,
+  un-releasable escrow state.
+- **Business owners verify to operate the pool.** Wallet verification (KYB) is required to _operate_
+  a pooled Business Wallet — see §Identity Verification. (Concrete gates: `finance-model.md` §10
+  KYC/KYB Gating.)
+
+#### 6. Global Multi-Currency & Localized Money
+
+Projective is currency-global by design.
+
+- **You price and are paid in your own currency.** Every project, service, product, ticket, and
+  stage is priced in the creator's local currency, and the creator is paid that exact amount in that
+  currency. Stored and settled values never leave their origin currency.
+- **You see money in yours.** Prices and balances are _displayed_ in each viewer's preferred
+  currency — a purely presentational, read-time conversion that never changes what is stored or
+  settled.
+- **Settlement is reproducible.** The exchange rate used is captured at the moment money is
+  committed, so a settlement figure never drifts with the market afterward.
+
+(The base-currency choice, rate-snapshot mechanics, display-conversion service, and the **open**
+question of who bears the FX spread are all in `finance-model.md` §11 Multi-Currency & FX.)
+
 ---
 
 ### The Hiring Process
@@ -1148,6 +1180,13 @@ security.
   Owner" (UBO) verification. Necessary to open a **Business Wallet** and utilise **Intervaled
   Invoicing**.
 
+> **Where each gate applies (refinement, 2026-07-23 — logged in root `CLAUDE.md` §8):** Level-2
+> verification is a **freelancer onboarding gate** (an earner is verified _before_ landing a gig,
+> not only at payout time), and **individual clients are exempt** — buying is tap-and-pay, requiring
+> no ID and no wallet (§Escrow, Wallets & Finance #5). Level-3 KYB is required to **operate** a
+> pooled Business Wallet. This narrows the former "Freelancer/Client" Level-2 label to the earner.
+> Concrete gate + predicates: `finance-model.md` §10.
+
 #### 2. Automated Tax Compliance
 
 Projective removes the "Tax Season" headache by automating the generation of all necessary tax
@@ -1225,8 +1264,8 @@ alongside the roadmap's Microsoft/GitHub/Apple SSO in `SYSTEM_ARCHITECTURE.md` �
 `/join` is a fixed, viewport-height (no-scroll) two-column experience: a deep-primary **illustrative
 sidebar** — a single large SVG scene that adapts to the active step, expressive imaginative step
 titles (never a literal "Step 1.2"), and a progress track — beside a stepped form. Choice-only steps
-**auto-advance** the instant a card is picked (no "Next" click), and the first step opens **neutral**
-(neither account type pre-selected).
+**auto-advance** the instant a card is picked (no "Next" click), and the first step opens
+**neutral** (neither account type pre-selected).
 
 **Account paths diverge on the first choice.** An **Individual** is asked **1.2** Client or
 Freelancer _(required)_. An **Organization is a buyer/client by definition** — it registers to hire,
@@ -1240,8 +1279,8 @@ interests _(Individual: optional, max 5, **shown only when Freelancer**; Organiz
 address + departments)_ · **1.5** identity _(Individual: first/last/username; Organization:
 legal/brand name, handle, CRN)_ · **1.6** credentials _(Individual: email, DoB, password;
 Organization: corporate email, phone, admin password)_. **Password setup is skipped entirely for
-OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** — authenticating mid-flow
-pre-fills their identity and returns them to the flow rather than bypassing it.
+OAuth/SSO signups.** Individuals may reach for **Google OAuth at any step** — authenticating
+mid-flow pre-fills their identity and returns them to the flow rather than bypassing it.
 
 The optional Purpose/Skills tags are chosen from an interactive **pill cluster** with a combobox for
 adding custom tags, capped at **5** per cluster.
@@ -1265,11 +1304,11 @@ registry); names/email are length-clamped.
 
 Individual signup collects **Date of Birth** and enforces, on both client and server:
 
-| Age          | State          | Capability                                                                     |
-| :----------- | :------------- | :----------------------------------------------------------------------------- |
-| **< 13**     | **Blocked**    | Cannot create an account. A friendly minimum-age message is shown.             |
-| **13 – 17**  | **Restricted** | Account is created but flagged: **cannot buy services or sell work until 18.**  |
-| **≥ 18**     | **Full**       | Unrestricted access.                                                           |
+| Age         | State          | Capability                                                                     |
+| :---------- | :------------- | :----------------------------------------------------------------------------- |
+| **< 13**    | **Blocked**    | Cannot create an account. A friendly minimum-age message is shown.             |
+| **13 – 17** | **Restricted** | Account is created but flagged: **cannot buy services or sell work until 18.** |
+| **≥ 18**    | **Full**       | Unrestricted access.                                                           |
 
 The `restricted` flag is **re-derived server-side from DoB** (never trusted from the client) and
 persisted on the individual profile; buy/sell capability unlocks automatically at 18. (Constants:
@@ -1310,78 +1349,78 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 
 ## Sitemap and Route Overview
 
-| Category      | Path / Route              | Sub-Path                 | Description                                                                                 |
-| :------------ | :------------------------ | :----------------------- | :------------------------------------------------------------------------------------------ |
-| **Auth**      | `/onboarding`             |                          | User onboarding flow                                                                        |
-|               | `/reset`                  |                          | Reset password                                                                              |
-|               | `/verify`                 |                          | Account verification                                                                        |
-|               | `/login`                  |                          | User login                                                                                  |
-|               | `/join`                   |                          | User registration (account creation — canonical; renamed from `/register`, 2026-07-13)      |
-|               | `/forgot-password`        |                          | Password recovery                                                                           |
-| **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker) |
-|               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                    |
-|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                       |
-|               | `/business`               |                          | Show all businesses                                                                         |
-|               | `/business/create`        |                          | Create a new business                                                                       |
-|               | `/business/[business id]` | `index`                  | View business details                                                                       |
-|               |                           | `members`                | View business members                                                                       |
-|               |                           | `settings`               | Edit business settings                                                                      |
-|               |                           | `projects`               | View business projects                                                                      |
-|               |                           | `billing`                | Stripe Connect integration                                                                  |
-|               |                           | `invoices`               |                                                                                             |
-|               | `/connections`            | `index`                  | View network connections                                                                    |
-|               | `/messages`               | `index`                  | All messages list                                                                           |
-|               | `/messages/[message id]`  | `chat`                   | Active conversation                                                                         |
-|               |                           | `details`                | Message/Contact info                                                                        |
-|               |                           | `files/index`            | List shared files                                                                           |
-|               |                           | `files/[file id]`        | View specific file                                                                          |
-|               | `/settings`               | `index`                  | General account settings                                                                    |
-|               | `/teams`                  | `index`                  | Show all teams                                                                              |
-|               | `/teams/create`           |                          | Create a new team                                                                           |
-|               | `/teams/[team id]`        | `index`                  | View team details                                                                           |
-|               |                           | `members`                | View team members                                                                           |
-|               |                           | `settings`               | Edit team settings                                                                          |
-|               |                           | `projects`               | View team projects                                                                          |
-|               |                           | `vault`                  | Shared wallet access                                                                        |
-|               | `/analytics`              | `index`                  | Performance data                                                                            |
-|               | `/wallet`                 | `index`                  | Overview of wallets                                                                         |
-|               |                           | `create`                 | Setup new wallet                                                                            |
-|               |                           | `[wallet id]`            | View specific wallet                                                                        |
-|               | `/projects`               | `index`                  | List all projects                                                                           |
-|               | `/projects/create`        |                          | Start a new project                                                                         |
-|               | `/projects/[project id]`  | `index` / `details`      | Project overview                                                                            |
-|               |                           | `board`                  | Task/Kanban board                                                                           |
-|               |                           | `finance`                | Project budget/costs                                                                        |
-|               |                           | `settings`               | Project configuration                                                                       |
-|               |                           | `team`                   | Project-specific members                                                                    |
-|               |                           | `timeline`               | Roadmap view                                                                                |
-|               |                           | `calendar`               | Project dates                                                                               |
+| Category      | Path / Route              | Sub-Path                 | Description                                                                                    |
+| :------------ | :------------------------ | :----------------------- | :--------------------------------------------------------------------------------------------- |
+| **Auth**      | `/onboarding`             |                          | User onboarding flow                                                                           |
+|               | `/reset`                  |                          | Reset password                                                                                 |
+|               | `/verify`                 |                          | Account verification                                                                           |
+|               | `/login`                  |                          | User login                                                                                     |
+|               | `/join`                   |                          | User registration (account creation — canonical; renamed from `/register`, 2026-07-13)         |
+|               | `/forgot-password`        |                          | Password recovery                                                                              |
+| **Dashboard** | `/home`                   |                          | Persona-adaptive engagement feed (recommended work, reels, activity, profile-setup tracker)    |
+|               | `/become-partner`         |                          | Freelancer conversion funnel (Client/Operator → unlock freelancer suite)                       |
+|               | `/articles/[slug]`        |                          | Editorial reader for freelancer stories linked from `/become-partner`                          |
+|               | `/business`               |                          | Show all businesses                                                                            |
+|               | `/business/create`        |                          | Create a new business                                                                          |
+|               | `/business/[business id]` | `index`                  | View business details                                                                          |
+|               |                           | `members`                | View business members                                                                          |
+|               |                           | `settings`               | Edit business settings                                                                         |
+|               |                           | `projects`               | View business projects                                                                         |
+|               |                           | `billing`                | Stripe Connect integration                                                                     |
+|               |                           | `invoices`               |                                                                                                |
+|               | `/connections`            | `index`                  | View network connections                                                                       |
+|               | `/messages`               | `index`                  | All messages list                                                                              |
+|               | `/messages/[message id]`  | `chat`                   | Active conversation                                                                            |
+|               |                           | `details`                | Message/Contact info                                                                           |
+|               |                           | `files/index`            | List shared files                                                                              |
+|               |                           | `files/[file id]`        | View specific file                                                                             |
+|               | `/settings`               | `index`                  | General account settings                                                                       |
+|               | `/teams`                  | `index`                  | Show all teams                                                                                 |
+|               | `/teams/create`           |                          | Create a new team                                                                              |
+|               | `/teams/[team id]`        | `index`                  | View team details                                                                              |
+|               |                           | `members`                | View team members                                                                              |
+|               |                           | `settings`               | Edit team settings                                                                             |
+|               |                           | `projects`               | View team projects                                                                             |
+|               |                           | `vault`                  | Shared wallet access                                                                           |
+|               | `/analytics`              | `index`                  | Performance data                                                                               |
+|               | `/wallet`                 | `index`                  | Overview of wallets                                                                            |
+|               |                           | `create`                 | Setup new wallet                                                                               |
+|               |                           | `[wallet id]`            | View specific wallet                                                                           |
+|               | `/projects`               | `index`                  | List all projects                                                                              |
+|               | `/projects/create`        |                          | Start a new project                                                                            |
+|               | `/projects/[project id]`  | `index` / `details`      | Project overview                                                                               |
+|               |                           | `board`                  | Task/Kanban board                                                                              |
+|               |                           | `finance`                | Project budget/costs                                                                           |
+|               |                           | `settings`               | Project configuration                                                                          |
+|               |                           | `team`                   | Project-specific members                                                                       |
+|               |                           | `timeline`               | Roadmap view                                                                                   |
+|               |                           | `calendar`               | Project dates                                                                                  |
 |               |                           | `[channel id]/index`     | In-project channel/DM conversation (`/projects/[project id]/[channel id]`; §Unified Messaging) |
-|               |                           | `[stage id]/index`       | Specific stage view                                                                         |
-|               |                           | `[stage id]/review`      | Stage approval/review                                                                       |
-|               |                           | `[stage id]/files`       | Stage-specific files                                                                        |
-|               |                           | `[stage id]/submissions` | Stage deliverables                                                                          |
-|               | `/disputes`               | `index`                  |                                                                                             |
-|               |                           | `[dispute id]`           |                                                                                             |
-|               | `/legal`                  | `index`                  |                                                                                             |
-|               |                           | `audit-packs`            |                                                                                             |
-|               |                           | `transfers`              |                                                                                             |
-|               | `/services`               | `index`                  |                                                                                             |
-|               |                           | `create`                 |                                                                                             |
-|               |                           | `availability`           |                                                                                             |
-| **Public**    | `/index`                  |                          | Landing Page                                                                                |
-|               | `/about`                  |                          | Company information                                                                         |
-|               | `/explore`                |                          | Discovery/Search                                                                            |
-|               | `/[handle]`               | `index`                  | Public profile home                                                                         |
-|               |                           | `reviews`                | User reviews/ratings                                                                        |
-|               |                           | `teams`                  | Public team listings                                                                        |
-|               |                           | `projects`               | Public project showcase                                                                     |
-|               |                           | `services`               | Offered services                                                                            |
-|               |                           | `products`               | Products for sale                                                                           |
-|               |                           | `articles`               | Blog/Published posts                                                                        |
-|               |                           | `portfolio`              | Work portfolio items                                                                        |
-|               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                 |
-|               | `/view/[entity type]`     | `index`                  | Public entity viewer                                                                        |
+|               |                           | `[stage id]/index`       | Specific stage view                                                                            |
+|               |                           | `[stage id]/review`      | Stage approval/review                                                                          |
+|               |                           | `[stage id]/files`       | Stage-specific files                                                                           |
+|               |                           | `[stage id]/submissions` | Stage deliverables                                                                             |
+|               | `/disputes`               | `index`                  |                                                                                                |
+|               |                           | `[dispute id]`           |                                                                                                |
+|               | `/legal`                  | `index`                  |                                                                                                |
+|               |                           | `audit-packs`            |                                                                                                |
+|               |                           | `transfers`              |                                                                                                |
+|               | `/services`               | `index`                  |                                                                                                |
+|               |                           | `create`                 |                                                                                                |
+|               |                           | `availability`           |                                                                                                |
+| **Public**    | `/index`                  |                          | Landing Page                                                                                   |
+|               | `/about`                  |                          | Company information                                                                            |
+|               | `/explore`                |                          | Discovery/Search                                                                               |
+|               | `/[handle]`               | `index`                  | Public profile home                                                                            |
+|               |                           | `reviews`                | User reviews/ratings                                                                           |
+|               |                           | `teams`                  | Public team listings                                                                           |
+|               |                           | `projects`               | Public project showcase                                                                        |
+|               |                           | `services`               | Offered services                                                                               |
+|               |                           | `products`               | Products for sale                                                                              |
+|               |                           | `articles`               | Blog/Published posts                                                                           |
+|               |                           | `portfolio`              | Work portfolio items                                                                           |
+|               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
+|               | `/view/[entity type]`     | `index`                  | Public entity viewer                                                                           |
 
 ---
 

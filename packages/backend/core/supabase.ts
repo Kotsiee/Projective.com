@@ -51,9 +51,19 @@ export function isMessagingBackendLive(): boolean {
 	return serverEnv().messagingBackendLive && isSupabaseConfigured();
 }
 
+/** True when LIVE catalogue-backend behaviour is enabled AND Supabase is configured. */
+export function isCatalogueBackendLive(): boolean {
+	return serverEnv().catalogueBackendLive && isSupabaseConfigured();
+}
+
 /** True when LIVE logging-backend behaviour is enabled AND Supabase is configured. */
 export function isLoggingBackendLive(): boolean {
 	return serverEnv().loggingBackendLive && isSupabaseConfigured();
+}
+
+/** True when LIVE finance-backend behaviour is enabled AND Supabase is configured. */
+export function isFinanceBackendLive(): boolean {
+	return serverEnv().financeBackendLive && isSupabaseConfigured();
 }
 
 /**

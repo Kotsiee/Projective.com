@@ -6,6 +6,14 @@ import type { JSX, VNode } from "preact";
  * returns a FRESH 24×24 `currentColor` line VNode per call — so the same glyph can render in the collapsed
  * rail AND the expanded stack without the Preact VNode-reuse hazard (no `cloneElement` needed). Every glyph
  * is `aria-hidden`; the control's label carries the accessible name.
+ *
+ * **Iconography parity.** Every glyph the inbox lane shares with the `/projects` lane is byte-identical
+ * to its counterpart in `features/projects/components/glyphs.tsx` — the same path data, the same
+ * `stroke-width: 1.8`, the same `1em` intrinsic sizing — so the two lanes render ONE icon set. The
+ * paths are re-declared here rather than imported because the projects module exports its glyphs as
+ * VNode CONSTANTS, and a constant VNode mounted in two places at once (the expanded stack and the
+ * collapsed rail) is the Preact reuse hazard this function-component form exists to avoid. Messaging-only
+ * glyphs (compose · popout · mute · robot …) have no projects counterpart and are original.
  */
 
 /** Every glyph the messaging module can render. */
@@ -17,6 +25,7 @@ export type MessagingIconName =
 	| "back"
 	| "kebab"
 	| "star"
+	| "mail"
 	| "archive"
 	| "unarchive"
 	| "trash"
@@ -29,12 +38,15 @@ export type MessagingIconName =
 	| "addMember"
 	| "chat"
 	| "files"
+	| "plus"
+	| "chevron"
 	| "close"
 	| "check"
 	| "inbox"
 	| "robot";
 
 const PATHS: Record<MessagingIconName, VNode> = {
+	// Shared with `/projects` — SearchIcon.
 	search: (
 		<>
 			<circle cx="11" cy="11" r="7" />
@@ -53,16 +65,32 @@ const PATHS: Record<MessagingIconName, VNode> = {
 			<path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
 		</>
 	),
-	filter: <path d="M4 5h16M7 12h10M10 19h4" />,
-	back: <path d="M15 5l-7 7 7 7" />,
-	kebab: (
+	// Shared with `/projects` — SlidersIcon (the Smart Filter trigger).
+	filter: (
 		<>
-			<circle cx="12" cy="5" r="1.4" />
-			<circle cx="12" cy="12" r="1.4" />
-			<circle cx="12" cy="19" r="1.4" />
+			<path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+			<circle cx="16" cy="7" r="2.2" />
+			<circle cx="8" cy="17" r="2.2" />
 		</>
 	),
-	star: <path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 17l-5.3 2.6 1-5.8L3.5 9.7l5.9-.9z" />,
+	back: <path d="M15 5l-7 7 7 7" />,
+	// Shared with `/projects` — KebabIcon (filled dots, see the per-name overrides below).
+	kebab: (
+		<>
+			<circle cx="12" cy="5" r="1.7" />
+			<circle cx="12" cy="12" r="1.7" />
+			<circle cx="12" cy="19" r="1.7" />
+		</>
+	),
+	// Shared with `/projects` — StarIcon.
+	star: <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />,
+	// Shared with `/projects` — MailIcon (the Unread quick filter).
+	mail: (
+		<>
+			<rect x="3" y="5" width="18" height="14" rx="2.4" />
+			<path d="m4 7 8 6 8-6" />
+		</>
+	),
 	archive: (
 		<>
 			<rect x="3" y="4" width="18" height="5" rx="1" />
@@ -75,7 +103,15 @@ const PATHS: Record<MessagingIconName, VNode> = {
 			<path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M12 17v-5M9.5 14l2.5-2.5L14.5 14" />
 		</>
 	),
-	trash: <path d="M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13M10 11v6M14 11v6" />,
+	// Shared with `/projects` — TrashIcon.
+	trash: (
+		<>
+			<path d="M4 7h16" />
+			<path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+			<path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+			<path d="M10 11v6M14 11v6" />
+		</>
+	),
 	mute: (
 		<>
 			<path d="M6 9a6 6 0 0 1 9.4-4.9M18 12v-2M6 9v3s-2 1-2 4h11" />
@@ -108,12 +144,19 @@ const PATHS: Record<MessagingIconName, VNode> = {
 	),
 	chat: <path d="M4 5h16v11H9l-4 3v-3H4z" />,
 	files: <path d="M4 7a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />,
-	close: <path d="M6 6l12 12M18 6 6 18" />,
-	check: <path d="M5 12l5 5 9-11" />,
+	// Shared with `/projects` — PlusIcon.
+	plus: <path d="M12 5v14M5 12h14" />,
+	// Shared with `/projects` — ChevronIcon.
+	chevron: <path d="m6 9 6 6 6-6" />,
+	// Shared with `/projects` — CloseIcon.
+	close: <path d="M6 6l12 12M18 6L6 18" />,
+	// Shared with `/projects` — CheckIcon.
+	check: <path d="m5 12.5 4.5 4.5L19 6.5" />,
+	// Shared with `/projects` — InboxIcon.
 	inbox: (
 		<>
-			<path d="M4 13l2.5-8h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
-			<path d="M4 13h4a2 2 0 0 0 4 2 2 2 0 0 0 4-2h4" />
+			<path d="M6 4h12l2 9v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-5z" />
+			<path d="M4 13h4a4 4 0 0 0 8 0h4" />
 		</>
 	),
 	robot: (
@@ -124,19 +167,27 @@ const PATHS: Record<MessagingIconName, VNode> = {
 	),
 };
 
+/** Glyphs drawn as solid shapes rather than strokes (matches the projects `KebabIcon`). */
+const FILLED: ReadonlySet<MessagingIconName> = new Set<MessagingIconName>(["kebab"]);
+
 /**
- * MessagingIcon — renders a messaging glyph by name. Stroke-based, `currentColor`, `aria-hidden`. Extra
- * SVG props (e.g. `class`) are forwarded to the root `<svg>`.
+ * MessagingIcon — renders a messaging glyph by name. Stroke-based, `currentColor`, `aria-hidden`, and
+ * intrinsically `1em` so it scales off the control's `font-size` exactly like the projects glyphs (a
+ * consumer with its own explicit `inline-size` still wins — CSS beats presentational attributes).
+ * Extra SVG props (e.g. `class`) are forwarded to the root `<svg>`.
  */
 export function MessagingIcon(
 	{ name, ...svg }: { name: MessagingIconName } & JSX.SVGAttributes<SVGSVGElement>,
 ): VNode {
+	const filled = FILLED.has(name);
 	return (
 		<svg
 			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.6"
+			width="1em"
+			height="1em"
+			fill={filled ? "currentColor" : "none"}
+			stroke={filled ? "none" : "currentColor"}
+			stroke-width="1.8"
 			stroke-linecap="round"
 			stroke-linejoin="round"
 			aria-hidden="true"

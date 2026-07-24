@@ -16,23 +16,24 @@ and every custom enum type with its literal values.
 Each domain below gets its own folder with up to four files: `Tables.md`, `Policies.md`,
 `Functions.md`, and (for `files/` only) `Storage.md`.
 
-| Domain         | Tables | Policies | Functions | Notes                                                      |
-| :------------- | :----: | :------: | :-------: | :--------------------------------------------------------- |
-| `analytics`    |   —    |    —     |     —     | Not yet documented                                         |
-| `comms`        |   ✅   |    —     |     —     |                                                            |
-| `files`        |   ✅   |    —     |     —     | Plus [Storage.md](files/Storage.md) (quarantine lifecycle) |
-| `finance`      |   —    |    —     |     —     | Not yet documented                                         |
-| `integrations` |   —    |    —     |     —     | Not yet documented                                         |
-| `marketplace`  |   —    |    —     |     —     | Not yet documented                                         |
-| `ops`          |   —    |    —     |     —     | Not yet documented                                         |
-| `org`          |   ✅   |    ✅    |     —     |                                                            |
-| `projects`     |   ✅   |    —     |     —     |                                                            |
-| `search`       |   —    |    —     |     —     | Not yet documented                                         |
-| `security`     |   ✅   |    —     |     —     |                                                            |
+| Domain         | Tables | Policies | Functions | Notes                                                              |
+| :------------- | :----: | :------: | :-------: | :----------------------------------------------------------------- |
+| `analytics`    |   —    |    —     |     —     | Not yet documented                                                 |
+| `comms`        |   ✅   |    —     |     —     |                                                                    |
+| `files`        |   ✅   |    —     |     —     | Plus [Storage.md](files/Storage.md) (quarantine lifecycle)         |
+| `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation |
+| `integrations` |   —    |    —     |     —     | Not yet documented                                                 |
+| `marketplace`  |   —    |    —     |     —     | Not yet documented                                                 |
+| `ops`          |   —    |    —     |     —     | Not yet documented                                                 |
+| `org`          |   ✅   |    ✅    |     —     |                                                                    |
+| `projects`     |   ✅   |    —     |     —     |                                                                    |
+| `search`       |   —    |    —     |     —     | Not yet documented                                                 |
+| `security`     |   ✅   |    —     |     —     |                                                                    |
 
 ✅ = populated with real schema detail. `—` = stub file stamped `_Not yet documented._` — this is an
-intentional placeholder, not a deletion or accident. Every `Functions.md` across all 11 domains is
-currently a stub; populate them as RPCs are implemented.
+intentional placeholder, not a deletion or accident. `finance/Functions.md` is populated (the escrow
+engine + the Wallet & Finance foundation); the remaining `Functions.md` files are still stubs —
+populate them as RPCs are implemented.
 
 ## For Future Agents
 

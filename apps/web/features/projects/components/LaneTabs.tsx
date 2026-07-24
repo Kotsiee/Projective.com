@@ -1,11 +1,16 @@
 import type { JSX } from "preact";
+import { LaneTabs as UiLaneTabs } from "@projective/ui/navigation";
 import type { ProjectView } from "../types/projects-types.ts";
 
 /**
  * LaneTabs — the two friendly, plain-language tabs at the very peak of the projects lane. `Projects`
  * (work the actor commissions or contributes to) vs. `Services` (the provider-side client engagements
- * the actor delivers). A quiet sliding underline marks the active tab; no filled pill, no count — the
- * lane stays calm and spacious (DESIGN_SYSTEM.md §B.4: no boxes on non-interactive chrome).
+ * the actor delivers).
+ *
+ * A thin domain adapter over the shared `@projective/ui/navigation` {@link UiLaneTabs}: the quiet
+ * sliding underline, weights, and focus ring are owned by the package, so this strip and the
+ * `/messages` inbox partitions render from ONE implementation (§B.4 — no boxes on non-interactive
+ * chrome).
  */
 
 const TABS: readonly { value: ProjectView; label: string }[] = [
@@ -20,23 +25,11 @@ export interface LaneTabsProps {
 
 export function LaneTabs({ view, onSelect }: LaneTabsProps): JSX.Element {
 	return (
-		<div class="proj-tabs" role="tablist" aria-label="Projects and services">
-			{TABS.map((tab) => {
-				const selected = view === tab.value;
-				return (
-					<button
-						key={tab.value}
-						type="button"
-						role="tab"
-						aria-selected={selected}
-						class="proj-tabs__tab"
-						data-selected={selected ? "true" : undefined}
-						onClick={() => onSelect(tab.value)}
-					>
-						{tab.label}
-					</button>
-				);
-			})}
-		</div>
+		<UiLaneTabs
+			label="Projects and services"
+			value={view}
+			options={TABS}
+			onSelect={onSelect}
+		/>
 	);
 }

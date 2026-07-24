@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/file-card.css";
 import "../styles/file-table.css";
@@ -12,6 +13,7 @@ import type {
 	FileItem,
 	FileKind,
 	FileListPage,
+	FileScope,
 	FileSortDir,
 	FileSortKey,
 } from "../types/projects-types.ts";
@@ -49,9 +51,16 @@ import { SearchIcon } from "../components/file-glyphs.tsx";
  * lands with the files backend behind `PROJECTS_BACKEND_LIVE`.
  */
 export interface FileExplorerProps {
-	scope: "channel" | "project";
+	/**
+	 * Which space is being read. `channel`/`project` are the engagement scopes; `conversation` is the
+	 * global inbox (`/messages/[conversationId]/files`) — the same explorer over a conversation's
+	 * attachments, routed to `/api/messaging/files` by the shared {@link FilesService}. A conversation
+	 * has a single implicit channel, so it renders the flat (tree-less) layout like channel scope.
+	 */
+	scope: FileScope;
+	/** The project id — or, in `conversation` scope, the conversation id. */
 	projectId: string;
-	/** The channel id in channel scope; unused in project scope. */
+	/** The channel id in channel scope (the conversation id in conversation scope); unused for project. */
 	channelId?: string;
 	initial: FileListPage | null;
 }
@@ -148,8 +157,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	// #region Data loading (thin refine + infinite scroll)
 	function baseParams(nextCursor: string | null) {
 		return {
+			scope,
 			projectId,
-			channelId: scope === "channel" ? (channelId ?? null) : activeChannel.value,
+			channelId: scope === "project" ? activeChannel.value : (channelId ?? null),
 			// An empty key is the 3rd sort state ("none") — omit `sort` so the backend returns its
 			// default order.
 			sort: sortKey.value ? (sortKey.value as FileSortKey) : undefined,

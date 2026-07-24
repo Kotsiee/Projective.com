@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
-import { DiscloseIcon, DmIcon, HashIcon, StagesIcon, TeamsIcon } from "./detail-glyphs.tsx";
+import { LaneSection, LaneSections } from "@projective/ui/navigation";
+import { DmIcon, HashIcon, StagesIcon, TeamsIcon } from "./detail-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
 import type { ChannelFilterKey } from "./ChannelQuickFilters.tsx";
@@ -32,8 +33,7 @@ import type {
 // #region Accordion group shell
 /**
  * Shared accordion-group props. Exported alongside {@link AccordionGroup} so the session sidebars
- * (the group-session channel tree) reuse the same collapsible group shell + its `project-sidebar.css`
- * styling rather than re-deriving it.
+ * (the group-session channel tree) reuse the same collapsible group shell rather than re-deriving it.
  */
 export interface GroupProps {
 	id: string;
@@ -48,47 +48,27 @@ export interface GroupProps {
 	children: ComponentChildren;
 }
 
+/**
+ * AccordionGroup — a domain adapter over the shared `@projective/ui/navigation` {@link LaneSection}.
+ * The disclosure chevron, uppercase group label, unread dot, and the `grid-template-rows: 0fr → 1fr`
+ * reveal (with `inert` while closed) are all owned by the package, so a project channel group and a
+ * `/messages` conversation group are ONE collapsible section rather than two lookalikes.
+ */
 export function AccordionGroup(
 	{ id, icon, label, open, onToggle, action, hasUnread, children }: GroupProps,
 ): JSX.Element {
-	const panelId = `changroup-${id}`;
 	return (
-		<div class="proj-chan-group" data-open={open ? "true" : undefined}>
-			<div class="proj-chan-group__head">
-				<button
-					type="button"
-					class="proj-chan-group__toggle"
-					aria-expanded={open}
-					aria-controls={panelId}
-					onClick={onToggle}
-				>
-					<span class="proj-chan-group__chevron" aria-hidden="true">{DiscloseIcon}</span>
-					<span class="proj-chan-group__icon" aria-hidden="true">{icon}</span>
-					<span class="proj-chan-group__label">{label}</span>
-					{hasUnread && (
-						<span class="proj-chan-group__dot" role="status" aria-label="has unread channels" />
-					)}
-				</button>
-				{action && <span class="proj-chan-group__action">{action}</span>}
-			</div>
-			{
-				/*
-				 * Smoothly reveal/hide via a `grid-template-rows: 0fr → 1fr` transition (see
-				 * project-sidebar.css) instead of the instant `hidden` attribute. The panel stays in the DOM
-				 * so the height can animate; `inert` when collapsed keeps its links out of the tab order + the
-				 * a11y tree, and reduced-motion jumps straight to the final state.
-				 */
-			}
-			<div
-				id={panelId}
-				class="proj-chan-group__body"
-				role="region"
-				aria-label={label}
-				{...(open ? {} : { inert: true })}
-			>
-				<div class="proj-chan-group__body-inner">{children}</div>
-			</div>
-		</div>
+		<LaneSection
+			id={`chan-${id}`}
+			icon={icon}
+			label={label}
+			open={open}
+			onToggle={onToggle}
+			action={action}
+			hasUnread={hasUnread}
+		>
+			{children}
+		</LaneSection>
 	);
 }
 // #endregion
@@ -96,10 +76,20 @@ export function AccordionGroup(
 // #region Channel rows
 /** A generic channel row (General / Team channels) — a hash-marked link into the project channel. */
 export function ChannelRow(
-	{ channel, slug }: { channel: ProjectChannel; slug: string },
+	{ channel, slug, activeChannelId }: {
+		channel: ProjectChannel;
+		slug: string;
+		activeChannelId?: string | null;
+	},
 ): JSX.Element {
+	const active = activeChannelId === channel.id;
 	return (
-		<a class="proj-chan" href={channelHref(slug, channel.id)}>
+		<a
+			class="proj-chan"
+			href={channelHref(slug, channel.id)}
+			data-active={active ? "true" : undefined}
+			aria-current={active ? "page" : undefined}
+		>
 			<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
 			<span class="proj-chan__name">{channel.name}</span>
 			{channel.sublabel && <span class="proj-chan__sub">{channel.sublabel}</span>}
@@ -115,13 +105,20 @@ export function ChannelRow(
  * status signal + unread dot rather than a leading colour dot. Links into the stage channel.
  */
 function StageRow(
-	{ stage, slug }: { stage: StageChannel; slug: string },
+	{ stage, slug, activeChannelId }: {
+		stage: StageChannel;
+		slug: string;
+		activeChannelId?: string | null;
+	},
 ): JSX.Element {
+	const active = activeChannelId === stage.id;
 	return (
 		<a
 			class="proj-chan proj-chan--stage"
 			href={channelHref(slug, stage.id)}
 			data-status={stage.status}
+			data-active={active ? "true" : undefined}
+			aria-current={active ? "page" : undefined}
 		>
 			<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
 			<span class="proj-chan__name">{stage.name}</span>
@@ -137,10 +134,20 @@ function StageRow(
 
 /** A DM row — a project member the viewer has messaged; opens the DM inside the project. */
 export function DmRow(
-	{ dm, slug }: { dm: DmChannel; slug: string },
+	{ dm, slug, activeChannelId }: {
+		dm: DmChannel;
+		slug: string;
+		activeChannelId?: string | null;
+	},
 ): JSX.Element {
+	const active = activeChannelId === dm.chatId;
 	return (
-		<a class="proj-chan proj-chan--dm" href={channelHref(slug, dm.chatId)}>
+		<a
+			class="proj-chan proj-chan--dm"
+			href={channelHref(slug, dm.chatId)}
+			data-active={active ? "true" : undefined}
+			aria-current={active ? "page" : undefined}
+		>
 			<Avatar image={dm.party.avatar ?? undefined} label={dm.party.name} size={22} shape="circle" />
 			<span class="proj-chan__name">{dm.party.name}</span>
 			{dm.unread && <span class="proj-chan__dot" role="status" aria-label="unread" />}
@@ -159,12 +166,14 @@ export interface ChannelTreeProps {
 	onCreateStage: () => void;
 	/** Active quick-filter facets (OR-combined); empty → show everything. */
 	filters: ChannelFilterKey[];
+	/** The open channel's route segment — highlights its row; re-derived on Partial navigation. */
+	activeChannelId?: string | null;
 }
 
 const anyUnread = (chans: { unread: boolean }[]) => chans.some((c) => c.unread);
 
 export function ChannelTree(
-	{ detail, openGroups, onToggleGroup, onCreateStage, filters }: ChannelTreeProps,
+	{ detail, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }: ChannelTreeProps,
 ): JSX.Element {
 	const { general, stages, teams, dms } = detail.channels;
 	const slug = detail.slug;
@@ -201,15 +210,15 @@ export function ChannelTree(
 		fDms.length === 0
 	) {
 		return (
-			<div class="proj-chan-tree">
+			<LaneSections>
 				<p class="proj-chan-empty">No channels match these filters.</p>
-			</div>
+			</LaneSections>
 		);
 	}
 	// #endregion
 
 	return (
-		<div class="proj-chan-tree">
+		<LaneSections>
 			{/* 1 — General */}
 			{show(fGeneral.length) && (
 				<AccordionGroup
@@ -220,7 +229,9 @@ export function ChannelTree(
 					onToggle={() => onToggleGroup("general")}
 					hasUnread={anyUnread(general)}
 				>
-					{fGeneral.map((c) => <ChannelRow key={c.id} channel={c} slug={slug} />)}
+					{fGeneral.map((c) => (
+						<ChannelRow key={c.id} channel={c} slug={slug} activeChannelId={activeChannelId} />
+					))}
 				</AccordionGroup>
 			)}
 
@@ -246,7 +257,9 @@ export function ChannelTree(
 						)
 						: undefined}
 				>
-					{fStages.map((s) => <StageRow key={s.id} stage={s} slug={slug} />)}
+					{fStages.map((s) => (
+						<StageRow key={s.id} stage={s} slug={slug} activeChannelId={activeChannelId} />
+					))}
 				</AccordionGroup>
 			)}
 
@@ -276,7 +289,14 @@ export function ChannelTree(
 										<span class="proj-team__stages">{team.assignedStages.join(" · ")}</span>
 									)}
 								</div>
-								{team.channels.map((c) => <ChannelRow key={c.id} channel={c} slug={slug} />)}
+								{team.channels.map((c) => (
+									<ChannelRow
+										key={c.id}
+										channel={c}
+										slug={slug}
+										activeChannelId={activeChannelId}
+									/>
+								))}
 							</div>
 						))}
 				</AccordionGroup>
@@ -294,10 +314,12 @@ export function ChannelTree(
 				>
 					{fDms.length === 0
 						? <p class="proj-chan-empty">No project messages yet.</p>
-						: fDms.map((dm) => <DmRow key={dm.chatId} dm={dm} slug={slug} />)}
+						: fDms.map((dm) => (
+							<DmRow key={dm.chatId} dm={dm} slug={slug} activeChannelId={activeChannelId} />
+						))}
 				</AccordionGroup>
 			)}
-		</div>
+		</LaneSections>
 	);
 }
 // #endregion

@@ -1,7 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icons.tsx";
-import { getDashboardSublinks, getRecentWorkspaces } from "./nav-fixtures.ts";
+import { getAccountCapabilities, getOfferings, getWorkspacesByKind } from "./nav-fixtures.ts";
 
 /**
  * nav-model — the single source of truth for the global sidebar's destinations, their glyphs, active
@@ -49,40 +49,62 @@ function isActive(path: string, base: string): boolean {
 	return path === base || path.startsWith(`${base}/`);
 }
 
-/** Seller-earnings-flavoured Dashboard sublinks only a freelancer/seller should see. */
-const SELLER_SUBLINKS = new Set(["/dashboard/earnings", "/dashboard/reviews"]);
-
 /**
- * The global navigation roster for a given pathname, tailored to the hydrated {@link UserContext}.
- * Projects exposes the most-recently-active workspaces (YouTube-style, each shown by its owner's
- * circular avatar); Dashboard exposes compact quick-links. Both pull from `nav-fixtures`.
+ * The global navigation roster for a given pathname, tailored to the hydrated {@link UserContext} +
+ * the account's standing {@link getAccountCapabilities}. Kind-strict disclosures expose the
+ * most-recently-active workspaces of exactly one entity kind (Projects → projects, Teams → teams,
+ * Businesses → businesses) and the seller's offerings (Products & Services → services/products),
+ * pulled from `nav-fixtures`.
  *
- * Context tailoring (chrome only — never an access decision):
- *  - **Services & Products** and **Businesses** are seller surfaces → shown only when
- *    `isFreelancer` (organisations, being buyer-only, never see them).
- *  - **Teams** is hidden inside an `organisation` context (an org is its own tenant, not a team).
- *  - Dashboard **Earnings/Reviews** sublinks are dropped for non-sellers.
+ * Role/context tailoring (chrome only — never an access decision; the server re-checks under RLS):
+ *  - **Products & Services** → freelancers and teams only (a seller surface).
+ *  - **Teams** → freelancers and teams only.
+ *  - **Businesses** → only when the account has enabled a business account (independent of seller
+ *    capability), or when acting inside a `business` context.
+ *  - **Analytics** (replaces the generic Dashboard) → freelancers, teams, businesses, or anyone who
+ *    belongs to a team/business.
  *
  * `context` defaults to {@link PERSONAL_MEMBER_CONTEXT} so a caller that hasn't resolved one yet
  * still gets a populated authenticated rail.
  */
-export function globalNav(path: string, context: UserContext = PERSONAL_MEMBER_CONTEXT): NavModelItem[] {
+export function globalNav(
+	path: string,
+	context: UserContext = PERSONAL_MEMBER_CONTEXT,
+): NavModelItem[] {
 	const { isFreelancer, contextType } = context;
+	const caps = getAccountCapabilities();
 
-	const recent = getRecentWorkspaces().map((w): NavSublink => ({
-		label: w.label,
-		href: w.href,
-		avatar: w.ownerAvatar,
-		owner: w.owner,
-		active: isActive(path, w.href),
-		dot: w.hasUpdate,
-	}));
-	const dashboardLinks = getDashboardSublinks()
-		.filter((l) => isFreelancer || !SELLER_SUBLINKS.has(l.href))
-		.map((l): NavSublink => ({
-			label: l.label,
-			href: l.href,
-			active: path === l.href,
+	// #region Capability predicates (chrome only)
+	const isTeamCtx = contextType === "team";
+	const isBusinessCtx = contextType === "business";
+	const belongsToOrg = caps.belongsToTeam || caps.belongsToBusiness || isTeamCtx || isBusinessCtx ||
+		contextType === "organisation";
+	/** Seller-surface actors: individual freelancers or a team context. */
+	const isSeller = isFreelancer || isTeamCtx;
+	const showServices = isSeller;
+	const showTeams = isSeller;
+	const showBusinesses = caps.businessAccountEnabled || isBusinessCtx;
+	const showAnalytics = isFreelancer || isTeamCtx || isBusinessCtx || belongsToOrg;
+	// #endregion
+
+	/** Map recent workspaces of one kind into kind-strict disclosure sublinks (owner-avatar led). */
+	const workspaceSublinks = (kind: "project" | "team" | "business"): NavSublink[] =>
+		getWorkspacesByKind(kind).map((w): NavSublink => ({
+			label: w.label,
+			href: w.href,
+			avatar: w.ownerAvatar,
+			owner: w.owner,
+			active: isActive(path, w.href),
+			dot: w.hasUpdate,
+		}));
+
+	/** The seller's products & services, as offering-glyph-led sublinks. */
+	const offeringSublinks = (): NavSublink[] =>
+		getOfferings().map((o): NavSublink => ({
+			label: o.label,
+			href: o.href,
+			icon: o.kind === "product" ? "product" : "services",
+			active: isActive(path, o.href),
 		}));
 
 	const items: Array<NavModelItem | null> = [
@@ -102,52 +124,60 @@ export function globalNav(path: string, context: UserContext = PERSONAL_MEMBER_C
 			active: isActive(path, "/messages"),
 			dot: true,
 		},
+		// Projects — a sleek briefcase; the disclosure is STRICTLY projects (never teams/businesses).
 		{
 			key: "projects",
 			label: "Projects",
 			href: "/projects",
-			icon: "projects",
+			icon: "briefcase",
 			active: isActive(path, "/projects"),
-			children: recent,
+			children: workspaceSublinks("project"),
 		},
-		// Seller surface — freelancers/sellers only.
-		isFreelancer
+		// Catalogue (Products & Services) — freelancers and teams only; the seller-side management
+		// surface, repointed from the `/services` placeholder to the `/catalogue` console (Decision #53);
+		// disclosure is STRICTLY the seller's offerings.
+		showServices
 			? {
-				key: "services",
-				label: "Services & Products",
-				href: "/services",
+				key: "catalogue",
+				label: "Catalogue",
+				href: "/catalogue",
 				icon: "services",
-				active: isActive(path, "/services"),
+				active: isActive(path, "/catalogue"),
+				children: offeringSublinks(),
 			}
 			: null,
-		// Teams — everyone except an organisation context (an org is its own tenant, not a team).
-		contextType !== "organisation"
+		// Teams — freelancers and teams only; disclosure is STRICTLY teams.
+		showTeams
 			? {
 				key: "teams",
 				label: "Teams",
 				href: "/teams",
 				icon: "teams",
 				active: isActive(path, "/teams"),
+				children: workspaceSublinks("team"),
 			}
 			: null,
-		// Businesses — seller-side entity; buyers/organisations don't manage one.
-		isFreelancer
+		// Businesses — only when a business account is enabled; disclosure is STRICTLY businesses.
+		showBusinesses
 			? {
 				key: "business",
 				label: "Businesses",
 				href: "/business",
 				icon: "business",
 				active: isActive(path, "/business"),
+				children: workspaceSublinks("business"),
 			}
 			: null,
-		{
-			key: "dashboard",
-			label: "Dashboard",
-			href: "/dashboard",
-			icon: "dashboard",
-			active: isActive(path, "/dashboard"),
-			children: dashboardLinks,
-		},
+		// Analytics — replaces the generic Dashboard; gated to sellers / entity members.
+		showAnalytics
+			? {
+				key: "analytics",
+				label: "Analytics",
+				href: "/analytics",
+				icon: "analytics",
+				active: isActive(path, "/analytics"),
+			}
+			: null,
 		{
 			key: "wallet",
 			label: "Wallet",

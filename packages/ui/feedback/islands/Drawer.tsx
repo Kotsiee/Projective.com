@@ -75,7 +75,11 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 	const rootId = useId(undefined, "drawer");
 	const titleId = `${rootId}-title`;
 
-	const stack = useOverlayStack({ active: mounted, lockScroll: blockScroll && modal });
+	const stack = useOverlayStack({
+		active: mounted,
+		lockScroll: blockScroll && modal,
+		layer: "modal",
+	});
 	const close = () => ctrl.set(false);
 
 	useFocusTrap({ active: mounted && modal, containerRef: panelRef });

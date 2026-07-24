@@ -49,8 +49,13 @@ export type StageAssignment = z.infer<typeof StageAssignment>;
 export const MemberPresence = z.enum(["online", "away", "offline"]);
 export type MemberPresence = z.infer<typeof MemberPresence>;
 
-/** Whether the roster is scoped to one channel/stage or the whole project. */
-export const MemberScope = z.enum(["channel", "project"]);
+/**
+ * Which space the roster is reading. `channel`/`project` are the engagement scopes; `conversation` is
+ * the global-inbox scope (`/messages/[conversationId]/members`) — the SAME projection derived from a
+ * conversation's participants, so the inbox mounts the identical Members roster rather than a
+ * lookalike list. A conversation roster has no stages and no invitation queue.
+ */
+export const MemberScope = z.enum(["channel", "project", "conversation"]);
 export type MemberScope = z.infer<typeof MemberScope>;
 
 /** The lifecycle of a pending invitation. */

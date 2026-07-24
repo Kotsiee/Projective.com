@@ -2,7 +2,20 @@ import type { JSX, RefObject } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/messages.css";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Popover } from "@projective/ui/feedback";
+import {
+	LaneBar,
+	LaneCollapseButton,
+	LaneEmpty,
+	LaneFooter,
+	LaneFooterActions,
+	LaneHead,
+	LaneIconButton,
+	LaneList,
+	LaneSearch,
+	type LaneToggleOption,
+	LaneToggleRow,
+} from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
@@ -32,18 +45,24 @@ import type {
 } from "../types/messaging-types.ts";
 
 /**
- * MessagesSidebar — the `/messages` inbox lane (task §2A), the messaging counterpart of `ProjectSidebar`.
+ * MessagesSidebar — the `/messages` inbox lane, the messaging counterpart of the `/projects` feed lane.
  * It renders BOTH presentations at once and lets CSS reveal exactly one via
- * `.ui-splitter[data-mode="collapsed"]`: an expanded stack (title + New/Settings · search · advanced
- * filter popover · Starred/Archived/Unread quick filters · the conversation list) and a collapsed
- * {@link MessagesRail}. It mounts the New Conversation + Message Settings modals (driven by the shared
- * `messaging-state` signals, so the conversation Members tab + header can open them too).
+ * `.ui-splitter[data-mode="collapsed"]`: an expanded stack and a collapsed {@link MessagesRail}. It
+ * mounts the New Conversation + Message Settings modals (driven by the shared `messaging-state`
+ * signals, so the conversation Members tab + header can open them too).
+ *
+ * **Chrome parity.** Every control is a shared `@projective/ui/navigation` lane primitive — the
+ * {@link LaneHead}/{@link LaneFooter} bands, {@link LaneSearch}, {@link LaneIconButton},
+ * {@link LaneToggleRow} (both the partition switch and the quick filters), {@link LaneList},
+ * {@link LaneCollapseButton} — the
+ * same components the `/projects` lane composes. Parity is therefore structural (one source of truth),
+ * not a visual copy: a change to lane chrome lands on both surfaces at once.
  *
  * THIN: first paint from SSR; search + advanced facets refine through the API (`MessagingService`); the
- * conversation-state actions (Favourite · Archive · Soft-delete, task §2A) + the Starred/Archived/Unread
+ * conversation-state actions (Favourite · Archive · Soft-delete) + the Starred/Archived/Unread
  * partition are overlaid CLIENT-side from a persisted per-conversation preference map, so they reflect
  * instantly without a refetch. The advanced-filter SET is role-specific and live-updates from the Dev
- * Context Switcher's `messagingRole` axis (task §4).
+ * Context Switcher's `messagingRole` axis.
  */
 
 // #region Props
@@ -69,6 +88,22 @@ interface ConvPref {
 const SEARCH_DEBOUNCE_MS = 220;
 const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 
+/** The inbox partitions — subtle icon toggles (a single-select `ui-lane-toggles` row) rather than a
+ * prominent underline tab strip, matching the non-freelancer `/projects` sidebar chrome (§B.6). */
+const VIEW_TOGGLES: readonly LaneToggleOption<ConversationView>[] = [
+	{ key: "inbox", label: "All", icon: <MessagingIcon name="inbox" /> },
+	{ key: "starred", label: "Starred", icon: <MessagingIcon name="star" /> },
+	{ key: "archived", label: "Archived", icon: <MessagingIcon name="archive" /> },
+];
+
+/** The permanent icon-only quick filters (mirrors the projects UtilityShortcuts row). */
+const QUICK_TOGGLES = [
+	{ key: "unread" as const, label: "Unread", icon: <MessagingIcon name="mail" /> },
+	{ key: "starred" as const, label: "Starred", icon: <MessagingIcon name="star" /> },
+];
+
+type QuickKey = (typeof QUICK_TOGGLES)[number]["key"];
+
 /** The active conversation id from the pathname (`/messages/{id}/…`), or null. */
 function conversationIdFromPath(path: string): string | null {
 	const segs = path.split("/").filter(Boolean);
@@ -76,6 +111,8 @@ function conversationIdFromPath(path: string): string | null {
 }
 
 export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Element {
+	// Every navigation is a full page load, so the lane re-renders with a fresh `path` — the active
+	// conversation is derived straight from it.
 	const activeId = conversationIdFromPath(props.path);
 
 	// #region State
@@ -87,9 +124,11 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	const view = useSignal<ConversationView>("inbox");
 	const q = useSignal("");
 	const unread = useSignal(false);
+	const starredOnly = useSignal(false);
 	const filter = useSignal<ConversationFilter>({});
 	const filterOpen = useSignal(false);
 	const loading = useSignal(false);
+	const collapsed = useSignal(false);
 
 	const searchTimer = useRef<number | null>(null);
 	const reqId = useRef(0);
@@ -126,7 +165,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	}
 	// #endregion
 
-	// #region Hydrate: prefs, saved filters, dev-seam role
+	// #region Hydrate: prefs, saved filters, dev-seam role, lane density
 	useEffect(() => {
 		// Per-conversation prefs.
 		const rawPrefs = readStored("local", LocalKeys.CONVERSATION_PREFS);
@@ -151,6 +190,11 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				if (saved.filter) filter.value = saved.filter;
 			} catch { /* ignore */ }
 		}
+		// Seed the collapse toggle from the splitter's persisted density (matches the projects lane).
+		try {
+			const el = globalThis.document?.querySelector(".ui-splitter");
+			collapsed.value = (el as HTMLElement | null)?.dataset.mode === "collapsed";
+		} catch { /* no DOM — non-fatal */ }
 		// Dev-seam messaging-view override + live subscription.
 		const recompute = () => {
 			const next = liveMessagingRole(props.role, readDevSeam());
@@ -167,7 +211,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	}, []);
 	// #endregion
 
-	// #region Derived (merge prefs → partition by view)
+	// #region Derived (merge prefs → partition by view → apply quick filters)
 	const displayed = useComputed<ConversationSummary[]>(() => {
 		const p = prefs.value;
 		const merged = serverList.value
@@ -179,15 +223,27 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				muted: p[c.id]?.muted ?? c.muted,
 			}));
 		const v = view.value;
-		if (v === "archived") return merged.filter((c) => c.archived);
-		if (v === "starred") return merged.filter((c) => c.starred && !c.archived);
-		return merged.filter((c) => !c.archived);
+		const partitioned = v === "archived"
+			? merged.filter((c) => c.archived)
+			: v === "starred"
+			? merged.filter((c) => c.starred && !c.archived)
+			: merged.filter((c) => !c.archived);
+		// The quick-filter row narrows the partition further (each toggle is an AND on the visible set).
+		return partitioned.filter((c) =>
+			(!starredOnly.value || c.starred) && (!unread.value || c.unread)
+		);
 	});
 
 	const services = useComputed(() => serviceOptions(optionSource.value));
 	const products = useComputed(() => productOptions(optionSource.value));
 	const entities = useComputed(() => entityOptions(optionSource.value));
 	const filterCount = useComputed(() => activeFilterCount({ filter: filter.value }));
+	const activeQuick = useComputed<QuickKey[]>(() => {
+		const keys: QuickKey[] = [];
+		if (unread.value) keys.push("unread");
+		if (starredOnly.value) keys.push("starred");
+		return keys;
+	});
 	// #endregion
 
 	// #region Conversation-state actions (optimistic, persisted locally)
@@ -210,9 +266,21 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	function del(id: string): void {
 		updatePref(id, { deleted: true });
 	}
+
+	/** Toggle one quick filter. `unread` is a server facet (refetch); `starred` is a local overlay. */
+	function onQuick(key: QuickKey): void {
+		if (key === "unread") {
+			unread.value = !unread.value;
+			void apply();
+			return;
+		}
+		starredOnly.value = !starredOnly.value;
+	}
 	// #endregion
 
+	/** Drive the whole middle-nav lane's width via the splitter (shared collapse event). */
 	function setLaneCollapsed(next: boolean): void {
+		collapsed.value = next;
 		try {
 			globalThis.dispatchEvent(
 				new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
@@ -220,11 +288,13 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		} catch { /* SSR / no window — non-fatal */ }
 	}
 
-	const VIEWS: Array<{ key: ConversationView; label: string }> = [
-		{ key: "inbox", label: "All" },
-		{ key: "starred", label: "Starred" },
-		{ key: "archived", label: "Archived" },
-	];
+	const emptyNote = view.value === "archived"
+		? "Conversations you archive are kept here."
+		: view.value === "starred"
+		? "Star a conversation to pin it here."
+		: q.value || filterCount.value > 0 || activeQuick.value.length > 0
+		? "Try clearing a filter or widening your search."
+		: "Conversations you start or receive will appear here.";
 
 	return (
 		<div class="msg-sidebar" data-role={role.value}>
@@ -239,71 +309,37 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 
 			{/* Expanded stack. */}
 			<div class="msg-sidebar__full">
-				<header class="msg-sidebar__header">
-					<div class="msg-sidebar__titlerow">
-						<h2 class="msg-sidebar__title">Messages</h2>
-						<div class="msg-sidebar__head-actions">
-							<Tooltip content="New message" placement="bottom">
-								<button
-									type="button"
-									class="msg-iconbtn msg-iconbtn--accent"
-									aria-label="New message"
-									onClick={openNewConversation}
-								>
-									<MessagingIcon name="compose" />
-								</button>
-							</Tooltip>
-							<Tooltip content="Message settings" placement="bottom">
-								<button
-									type="button"
-									class="msg-iconbtn"
-									aria-label="Message settings"
-									onClick={() => (settingsModalOpen.value = true)}
-								>
-									<MessagingIcon name="settings" />
-								</button>
-							</Tooltip>
-						</div>
-					</div>
+				<LaneHead>
+					<LaneBar>
+						<LaneSearch
+							value={q.value}
+							placeholder="Search conversations"
+							label="Search conversations"
+							icon={<MessagingIcon name="search" />}
+							onInput={onSearch}
+						/>
 
-					<div class="msg-sidebar__searchrow">
-						<div class="msg-sidebar__search">
-							<span class="msg-sidebar__search-icon" aria-hidden="true">
-								<MessagingIcon name="search" />
-							</span>
-							<input
-								type="search"
-								class="msg-sidebar__search-input"
-								placeholder="Search conversations…"
-								value={q.value}
-								aria-label="Search conversations"
-								onInput={(e) => onSearch((e.target as HTMLInputElement).value)}
-							/>
-						</div>
 						<Popover
 							open={filterOpen}
 							placement="bottom-end"
 							avoid={SHELL_AVOID}
+							allowOverflow={["bottom"]}
 							class="msg-filter-pop"
 							trigger={(api) => (
-								<Tooltip content="Filters" placement="bottom">
-									<button
-										type="button"
-										ref={api.ref as RefObject<HTMLButtonElement>}
-										class="msg-iconbtn"
-										data-on={filterCount.value > 0 ? "true" : undefined}
-										aria-label={filterCount.value > 0
-											? `Filters (${filterCount.value} active)`
-											: "Filters"}
-										aria-haspopup="dialog"
-										aria-expanded={api.expanded}
-										aria-controls={api.panelId}
-										onClick={api.toggle}
-									>
-										<MessagingIcon name="filter" />
-										{filterCount.value > 0 && <span class="msg-iconbtn__dot" aria-hidden="true" />}
-									</button>
-								</Tooltip>
+								<LaneIconButton
+									triggerRef={api.ref as RefObject<HTMLElement>}
+									icon={<MessagingIcon name="filter" />}
+									label={filterCount.value > 0
+										? `Filters (${filterCount.value} active)`
+										: "Filters"}
+									tooltip="Filters"
+									active={filterCount.value > 0}
+									dot={filterCount.value > 0}
+									ariaHasPopup="dialog"
+									ariaExpanded={api.expanded}
+									ariaControls={api.panelId}
+									onClick={api.toggle}
+								/>
 							)}
 						>
 							<MessagesFilterPanel
@@ -322,62 +358,30 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 								}}
 							/>
 						</Popover>
-					</div>
+					</LaneBar>
 
-					<div class="msg-sidebar__quickfilters">
-						<div class="msg-viewseg" role="radiogroup" aria-label="Conversation view">
-							{VIEWS.map((v) => (
-								<button
-									key={v.key}
-									type="button"
-									role="radio"
-									aria-checked={view.value === v.key}
-									class="msg-viewseg__opt"
-									data-on={view.value === v.key ? "true" : undefined}
-									onClick={() => (view.value = v.key)}
-								>
-									{v.label}
-								</button>
-							))}
-						</div>
-						<Tooltip
-							content={unread.value ? "Showing unread" : "Show unread only"}
-							placement="bottom"
-						>
-							<button
-								type="button"
-								class="msg-iconbtn msg-iconbtn--sm"
-								data-on={unread.value ? "true" : undefined}
-								aria-pressed={unread.value}
-								aria-label="Unread only"
-								onClick={() => {
-									unread.value = !unread.value;
-									void apply();
-								}}
-							>
-								<MessagingIcon name="bell" />
-							</button>
-						</Tooltip>
-					</div>
-				</header>
+					<LaneToggleRow
+						label="Inbox views"
+						options={VIEW_TOGGLES}
+						active={[view.value]}
+						onToggle={(next) => (view.value = next)}
+						trailing={{
+							label: "Quick filters",
+							options: QUICK_TOGGLES,
+							active: activeQuick.value,
+							onToggle: onQuick,
+						}}
+					/>
+				</LaneHead>
 
-				<div class="msg-sidebar__list" role="list" aria-busy={loading.value}>
+				<LaneList label="Conversations" busy={loading.value}>
 					{displayed.value.length === 0
 						? (
-							<div class="msg-sidebar__empty">
-								<span class="msg-sidebar__empty-glyph" aria-hidden="true">
-									<MessagingIcon name="inbox" />
-								</span>
-								<p class="msg-sidebar__empty-text">
-									{view.value === "archived"
-										? "No archived conversations."
-										: view.value === "starred"
-										? "No starred conversations yet."
-										: q.value || filterCount.value > 0
-										? "No conversations match your filters."
-										: "No conversations yet."}
-								</p>
-							</div>
+							<LaneEmpty
+								icon={<MessagingIcon name="inbox" />}
+								title="Nothing here yet"
+								note={emptyNote}
+							/>
 						)
 						: (
 							displayed.value.map((c) => (
@@ -392,33 +396,30 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 								/>
 							))
 						)}
-				</div>
+				</LaneList>
 
-				<footer class="msg-sidebar__footer">
-					<Tooltip content="Collapse lane" placement="top">
-						<button
-							type="button"
-							class="msg-sidebar__collapse"
-							aria-label="Collapse lane"
-							aria-pressed={false}
-							onClick={() => setLaneCollapsed(true)}
-						>
-							<SidebarToggleIcon />
-						</button>
-					</Tooltip>
-					<div class="msg-sidebar__footer-actions">
-						<Tooltip content="New message" placement="top">
-							<button
-								type="button"
-								class="msg-iconbtn msg-iconbtn--accent"
-								aria-label="New message"
-								onClick={openNewConversation}
-							>
-								<MessagingIcon name="compose" />
-							</button>
-						</Tooltip>
-					</div>
-				</footer>
+				<LaneFooter>
+					<LaneCollapseButton
+						collapsed={collapsed.value}
+						icon={<SidebarToggleIcon />}
+						onToggle={() => setLaneCollapsed(!collapsed.value)}
+					/>
+					<LaneFooterActions>
+						<LaneIconButton
+							icon={<MessagingIcon name="settings" />}
+							label="Message settings"
+							tooltipPlacement="top"
+							onClick={() => (settingsModalOpen.value = true)}
+						/>
+						<LaneIconButton
+							icon={<MessagingIcon name="compose" />}
+							label="New message"
+							tooltipPlacement="top"
+							accent
+							onClick={openNewConversation}
+						/>
+					</LaneFooterActions>
+				</LaneFooter>
 			</div>
 
 			{/* Modals (driven by the shared messaging-state signals). */}

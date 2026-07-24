@@ -1,5 +1,6 @@
 import type { UserContext } from "@projective/types/auth";
 import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
+import type { FileListPage, MemberRosterPage } from "@projective/types/projects";
 import type {
 	ConversationDetail,
 	ConversationListPage,
@@ -42,6 +43,26 @@ export function resolveConversation(id: string): ConversationDetail | null {
 /** Resolve the latest message page for a conversation (the Chat tab first paint). */
 export function resolveConversationMessages(id: string): MessagePage | null {
 	const res = MessagingBackendService.messages({ conversationId: id });
+	return res.ok && res.data ? res.data.page : null;
+}
+
+/**
+ * Resolve the conversation's shared-attachment page (the Files tab first paint). Returns the SAME
+ * {@link FileListPage} projection the engagement File Explorer reads, so the route hands it straight to
+ * the shared `FilesView` — mirrors {@link resolveFilePage}.
+ */
+export function resolveConversationFiles(id: string): FileListPage | null {
+	const res = MessagingBackendService.files({ projectId: id, channelId: id });
+	return res.ok && res.data ? res.data.page : null;
+}
+
+/**
+ * Resolve the conversation's participant roster (the Members tab first paint). Returns the SAME
+ * {@link MemberRosterPage} projection the engagement Members tab reads — mirrors
+ * {@link resolveMemberRoster}.
+ */
+export function resolveConversationRoster(id: string): MemberRosterPage | null {
+	const res = MessagingBackendService.members(id);
 	return res.ok && res.data ? res.data.page : null;
 }
 

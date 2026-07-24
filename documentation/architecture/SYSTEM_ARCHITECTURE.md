@@ -712,11 +712,11 @@ smallest write: `NewsletterService` (client) → `POST /api/newsletter/subscribe
 `services/newsletter/NewsletterBackendService.ts` (fat) → `ServiceResult<T>`. The subscribe shape is
 the Zod SSOT at **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`), validated in three
 places without drift: the client service (before the round-trip), the thin route (the request body),
-and the fat service (defence in depth). Stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default off),
-gated by `isNewsletterBackendLive()`; every well-formed address gets a friendly confirmation while the
-live path (an upsert into `newsletter.subscriptions` + email-provider sync) waits behind that guard.
-The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the route and never
-reaches the service.
+and the fat service (defence in depth). Stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default
+off), gated by `isNewsletterBackendLive()`; every well-formed address gets a friendly confirmation
+while the live path (an upsert into `newsletter.subscriptions` + email-provider sync) waits behind
+that guard. The footer's `NewsletterForm` island is the only client touchpoint — it `fetch`es the
+route and never reaches the service.
 
 ### Messaging services
 
@@ -727,11 +727,64 @@ the conversation list / detail / contact-picker / settings projections — are t
 **`@projective/types/messaging`**; message BODIES reuse `@projective/types/projects`'
 `MessagePage`/`ChatMessage` because a project channel and the inbox are one thread, **unified by
 `chatId`** (`PRODUCT_SPEC.md` §Unified Messaging) — so the fixtures derive the `dm-{handle}`
-conversation ids to match the project DM ids. Stub-first behind **`MESSAGING_BACKEND_LIVE`** (default
-off), gated by `isMessagingBackendLive()`; the live path (RLS-scoped `messages.*` tables) slots in
-behind that guard with zero shape churn. Full feature detail (the floating pop-out chat with
-navigation memory, the role-specific advanced filters, the profile quick-message popover, the
+conversation ids to match the project DM ids. Stub-first behind **`MESSAGING_BACKEND_LIVE`**
+(default off), gated by `isMessagingBackendLive()`; the live path (RLS-scoped `messages.*` tables)
+slots in behind that guard with zero shape churn. Full feature detail (the floating pop-out chat
+with navigation memory, the role-specific advanced filters, the profile quick-message popover, the
 `messagingRole` dev-context axis) is logged in the root `CLAUDE.md` §8 Decision #49.
+
+### Catalogue services (the first WRITE surface)
+
+The seller-side Catalogue (`/catalogue` + the per-item manage page `/catalogue/[id]`) is the **first
+write-oriented** implementation of the contract — every prior read is now joined by create / update
+/ publish mutations, all still through the same thin/fat split: `CatalogueService` (client) →
+`/api/catalogue/{list,item,create,update,status}` (thin) →
+`services/catalogue/CatalogueBackendService.ts` (fat) → `ServiceResult<T>`. Reads are GETs; the
+mutations are JSON POSTs the fat service applies. Cross-boundary shapes — the listing LIST +
+editable detail projections, the light analytics (`ListingMetrics`/`CatalogueStats`), and the
+`CreateListingInput`/`UpdateListingInput`/`SetListingStatusInput` payloads — are the Zod SSOT at
+**`@projective/types/catalogue`**; pricing is **not forked** (the service delivery model reuses
+`ServiceType`, the display projection reuses `EntityPricing`, the per-unit prices reuse the
+discovery `ticketPrice`/`sessionPrice` fields). Stub-first behind **`CATALOGUE_BACKEND_LIVE`**
+(default off, gated by `isCatalogueBackendLive()`); the fat service DERIVES the seller catalogue
+deterministically from the discovery corpus (re-owned to a fixed acting seller) so a listing agrees
+with the `ServiceCard`/`ProductCard`/`/view/[id]` it links to, and — because this is the first write
+surface — seeds those listings into an **in-module session store** so the create→edit→publish flow
+is fully exercisable with the gate off (`createListing` mints an optimistic draft, `updateListing`
+merges a patch, `setListingStatus` runs the publish gate). It grants **no persistence** (the store
+is per-process). Seller-ness is **not a hard server-side redirect**: the client-side **Dev Context
+Switcher** must be able to flip an authed dev to a seller persona at runtime, and the server never
+sees that override — so the surface is authed-reachable (the `(dashboard)` middleware bounces
+guests; no route gates on `isFreelancer`, per Decisions #14/#16/#48), seller-ness lives in the
+dev-seam-reactive sidebar chrome, and the deferred `catalogue.*` RLS + mutation policies are the
+real access gate. The publish gate (`publishReadiness`: title + a price + ≥1 media) IS enforced both
+client-side (to enable/explain the Publish action) and server-side (defence in depth). The
+**deferred live path** is the RLS-scoped `catalogue.*` tables + mutation policies (no DB migration
+in this pass — the catalogue is a read+write projection over fixtures, like `detail`/`messages`/
+`files`); it slots in behind the same gate with zero shape churn. Full feature detail is logged in
+the root `CLAUDE.md` §8 Decision #53.
+
+**`WalletBackendService`** (`services/finance/`) is the context-scoped Wallet & Finance surface
+(`/wallet` + its deep pages + action modals) — the 14th thin/fat read and the finance domain's first
+WRITE surface, over the finance Zod SSOT (`@projective/types/finance`). Thin `WalletService` (client) →
+`apiFetch` → `/api/wallet/{overview,switcher,transactions,activity,payouts,funding,methods,invoices,
+access,action}` (thin routes = HTTP + Zod + guard, NO server capability gate) → the fat service →
+`ServiceResult<T>`. **All money math is the fat service's** (or its `wallet-fixtures.ts`): the
+three-state balance projection, the 5%-fee→vault-cut→template→remainder-to-vault team split
+(finance-model §5), FX conversion + `Intl` formatting into the viewer's display currency, the KYC gate
+— the client only formats the returned `MoneyView`s (never computes a balance/split/fee/conversion).
+The read projections + action inputs + the `MoneyView`/`WalletQuery`/`WalletSim` shapes + the pure
+`formatMoney`/`capabilitiesForRole` helpers are the SSOT at **`packages/types/finance/wallet.ts`**.
+Stub-first behind **`FINANCE_BACKEND_LIVE`** (default off, `isFinanceBackendLive()`): the fat service
+DERIVES a coherent finance world (a personal wallet + team/business vaults + an "All accounts"
+aggregate) deterministically from the same cast as `/projects` + `/messages`, and — as a write surface —
+mutates an **in-module session store** (top-up / withdraw / transfer / distribute / fund-escrow /
+recurring / method / payout / spend / smoother) so the flows are exercisable with the gate off (no
+persistence). **No DB migration** — a read+write projection over fixtures; the RLS-scoped `finance.*`
+tables + money functions (the real engine, migrations 0009/0305/0310 + 20260723090000..094000) are the
+deferred live path behind the same gate. The wallet is the **finance face of the active context**
+(Decisions #16/#17): the same route resolves a different wallet via a `?w=scope:id` switcher override.
+Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55.
 
 ### Sessions & Google OAuth
 
@@ -741,51 +794,53 @@ navigation memory, the role-specific advanced filters, the profile quick-message
   checks) via `apps/web/utils/auth-cookies.ts`, folded in by `toAuthResponse`. Islands `fetch` the
   route, the browser stores the cookies, and the island's `location.href` navigation is
   authenticated.
-- **Session lifecycle & silent refresh.** The access token is short-lived (~1h, GoTrue `expires_in`);
-  the refresh token lives 30 days. A session must be **renewed**, not dropped, when the access cookie
-  expires. The single renewal primitive is fat `AuthBackendService.refreshSession(refreshToken)` (live
-  GoTrue `refreshSession({ refresh_token })` → rotated tokens; stub re-mints so the path is testable
-  without a wired GoTrue — it grants no access, and is only reachable when a refresh cookie is actually
-  presented). It feeds two consumers via `apps/web/utils/session.ts` `ensureSession(req)` — fast path
-  (access cookie present) → **refresh-before-redirect** (access gone + refresh present → renew in
-  place) → **fail-closed** (spent/invalid refresh → clear both cookies):
+- **Session lifecycle & silent refresh.** The access token is short-lived (~1h, GoTrue
+  `expires_in`); the refresh token lives 30 days. A session must be **renewed**, not dropped, when
+  the access cookie expires. The single renewal primitive is fat
+  `AuthBackendService.refreshSession(refreshToken)` (live GoTrue `refreshSession({ refresh_token })`
+  → rotated tokens; stub re-mints so the path is testable without a wired GoTrue — it grants no
+  access, and is only reachable when a refresh cookie is actually presented). It feeds two consumers
+  via `apps/web/utils/session.ts` `ensureSession(req)` — fast path (access cookie present) →
+  **refresh-before-redirect** (access gone + refresh present → renew in place) → **fail-closed**
+  (spent/invalid refresh → clear both cookies):
   - **Server (the `(dashboard)` guard).** `routes/(dashboard)/_middleware.ts` calls `ensureSession`,
-    re-mints the renewed `sb-*` cookies onto the proceeding response, re-derives `ctx.state.userContext`
-    from the fresh token (so a just-renewed request never paints guest chrome), and — only for a
-    genuinely dead session — redirects to `/login` capturing the **full** target (`pathname + search`)
-    as `redirectTo` for a loss-free return.
-  - **Client (the 401 interceptor).** `POST /api/auth/refresh` (thin, NOT behind the guard — it must be
-    reachable when the access token has expired) renews the cookies via `toAuthResponse`. The shared
-    `apps/web/utils/api-client.ts` `apiFetch()` wraps `fetch`: on a `401` it triggers a single shared
-    refresh, retries the original request, and only routes to `/login?redirectTo=<path>` if the session
-    is truly gone. Feature `api.ts` transports adopt it by swapping `fetch`→`apiFetch` (done for
-    `features/projects/core/api.ts`).
+    re-mints the renewed `sb-*` cookies onto the proceeding response, re-derives
+    `ctx.state.userContext` from the fresh token (so a just-renewed request never paints guest
+    chrome), and — only for a genuinely dead session — redirects to `/login` capturing the **full**
+    target (`pathname + search`) as `redirectTo` for a loss-free return.
+  - **Client (the 401 interceptor).** `POST /api/auth/refresh` (thin, NOT behind the guard — it must
+    be reachable when the access token has expired) renews the cookies via `toAuthResponse`. The
+    shared `apps/web/utils/api-client.ts` `apiFetch()` wraps `fetch`: on a `401` it triggers a
+    single shared refresh, retries the original request, and only routes to
+    `/login?redirectTo=<path>` if the session is truly gone. Feature `api.ts` transports adopt it by
+    swapping `fetch`→`apiFetch` (done for `features/projects/core/api.ts`).
 
   This closes session **persistence** only; real signed-JWT **verification** via `@server/services`
-  (this section's remaining TODO) is where any *access* decision must still re-validate — the guard and
-  RLS remain the real gates, per root CLAUDE.md Decisions #14/#16. See Decision #46.
-- **Sign-out & the account projection (Decision #47).** `AuthService.logout()` → `POST /api/auth/logout`
-  (thin) → fat `AuthBackendService.signOut(accessToken)` (live: best-effort GoTrue **global** revocation;
-  stub: no-op) → the route **unconditionally clears** both `sb-*` cookies (`sessionClearCookies`). Cookie
-  clearing is the authoritative sign-out; revocation is defence-in-depth, so a failed revocation never
-  blocks logout. The header `UserActions` island then applies a **route-aware redirect**: a protected
-  `(dashboard)` route leaves for the public landing (`/`); a public route reloads in place as a guest —
-  the route GROUP that renders the shell is the public/protected source of truth (threaded
-  `protectedRoute` → `UserShell` → `UserActions`, set only by the `(dashboard)` layout). The account
-  popover binds **live account data** via `GET /api/user/me` (thin) → fat
-  `services/user/UserBackendService.me({ context, accessToken })`, which composes the chrome `UserContext`
-  (role badge + active workspace) with the live Supabase `auth.users` identity (name / email / avatar via
-  `auth.getUser`), degrading to the context projection when the live read is unavailable (it only 401s a
-  genuine guest). Shape: the Zod SSOT **`@projective/types/user`** (`CurrentUser`, `resolveAccountRole`).
-  The thin client `AccountService.current()` is chrome-safe — a failed load resolves to `null` (→ the
-  SSR-hydrated context fallback), never a sign-in redirect.
+  (this section's remaining TODO) is where any _access_ decision must still re-validate — the guard
+  and RLS remain the real gates, per root CLAUDE.md Decisions #14/#16. See Decision #46.
+- **Sign-out & the account projection (Decision #47).** `AuthService.logout()` →
+  `POST /api/auth/logout` (thin) → fat `AuthBackendService.signOut(accessToken)` (live: best-effort
+  GoTrue **global** revocation; stub: no-op) → the route **unconditionally clears** both `sb-*`
+  cookies (`sessionClearCookies`). Cookie clearing is the authoritative sign-out; revocation is
+  defence-in-depth, so a failed revocation never blocks logout. The header `UserActions` island then
+  applies a **route-aware redirect**: a protected `(dashboard)` route leaves for the public landing
+  (`/`); a public route reloads in place as a guest — the route GROUP that renders the shell is the
+  public/protected source of truth (threaded `protectedRoute` → `UserShell` → `UserActions`, set
+  only by the `(dashboard)` layout). The account popover binds **live account data** via
+  `GET /api/user/me` (thin) → fat `services/user/UserBackendService.me({ context, accessToken })`,
+  which composes the chrome `UserContext` (role badge + active workspace) with the live Supabase
+  `auth.users` identity (name / email / avatar via `auth.getUser`), degrading to the context
+  projection when the live read is unavailable (it only 401s a genuine guest). Shape: the Zod SSOT
+  **`@projective/types/user`** (`CurrentUser`, `resolveAccountRole`). The thin client
+  `AccountService.current()` is chrome-safe — a failed load resolves to `null` (→ the SSR-hydrated
+  context fallback), never a sign-in redirect.
 - **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
   PKCE **code-verifier** in a short-lived cookie (a `CookieStore` storage adapter on the anon
   client); `/api/auth/callback` exchanges the `code` for a session, mints the `sb-*` cookies, clears
   the verifier, and routes — a **new** Google identity (no `org.users_public` yet) to `/join`
   pre-filled to finish onboarding via `complete_onboarding`, an existing user to their return path.
-  `/join` is only for a **confirmed** brand-new identity: a `users_public` lookup failure defaults to
-  *existing* (route to the return path), so a transient error never re-onboards a returning user
+  `/join` is only for a **confirmed** brand-new identity: a `users_public` lookup failure defaults
+  to _existing_ (route to the return path), so a transient error never re-onboards a returning user
   (Decision #46). All gated by `AUTH_BACKEND_LIVE`; non-live, the start route simulates the
   pre-filled-`/join` branch.
 - **Enterprise SSO (SAML/OIDC).** `/api/auth/sso` calls `signInWithSSO({ domain })`; a resolved
@@ -796,13 +851,14 @@ navigation memory, the role-specific advanced filters, the profile quick-message
   `SAML_PRIVATE_KEY` and a per-domain provider registered via the CLI (see `supabase/config.toml`);
   with none configured the panel shows a friendly "no provider" note.
 - **Corporate-domain member signal.** On a standard (email/password) individual signup,
-  `AuthBackendService.provisionAccount` fires a best-effort, non-blocking check: if the new address's
-  domain matches an existing `org.organisations` registered domain (`website`, normalised — scheme /
-  `www.` / path stripped; sub-domains match), it inserts a `comms.notifications` row
+  `AuthBackendService.provisionAccount` fires a best-effort, non-blocking check: if the new
+  address's domain matches an existing `org.organisations` registered domain (`website`, normalised
+  — scheme / `www.` / path stripped; sub-domains match), it inserts a `comms.notifications` row
   (`type: "organisation.domain_member_signup"`) for that org's active **owners/admins** so they can
   invite or approve the colleague. No new schema — it reuses `comms.notifications` + the org
-  membership join. Gated by `AUTH_BACKEND_LIVE` (non-live: no-op); any failure is swallowed so it can
-  never fail account creation. OAuth completions are excluded (only inbound email registrations).
+  membership join. Gated by `AUTH_BACKEND_LIVE` (non-live: no-op); any failure is swallowed so it
+  can never fail account creation. OAuth completions are excluded (only inbound email
+  registrations).
 
 ---
 
@@ -958,6 +1014,46 @@ PostgreSQL RLS.
 
 ---
 
+## Internationalization, Currency & Localization
+
+Projective is a currency-global, locale-aware, bidirectional application. The contract is resolved
+from **one source of preference** (`org.user_preferences`) and applied at read time.
+
+### Layout direction (RtL / LtR)
+
+- The app supports **both** left-to-right and right-to-left layouts. Direction is chosen by user
+  preference (`org.user_preferences.layout_direction` — `ltr` / `rtl` / `auto`) **independent of
+  language**; `auto` falls back to the natural direction of the user's `locale`.
+- **Mechanism:** the resolved direction is written as the `dir` attribute on the document root; the
+  UI mirrors automatically because the codebase already styles with **CSS logical properties**
+  (`inline-size`, `inset-inline`, `margin-inline`, `padding-inline`, `border-inline-*`) rather than
+  physical `left`/`right`. Under RtL, sidebars flip to the right, list affordances mirror, and
+  scroll/anchor logic follows the writing mode — with **no app-side per-component overrides**.
+- **Migration target:** any remaining hardcoded physical-direction rule (`left:`/`right:`/
+  `margin-left`/`text-align: left`) is a bug to convert to its logical equivalent. The RtL/LtR
+  **token contract** is `DESIGN_SYSTEM.md` §A.6; UI implementation is a later pass (this is the
+  contract).
+
+### Locale & currency resolution
+
+- `org.user_preferences.locale` (BCP-47, default `en-GB`) drives language, number/date formatting,
+  and the `auto` direction fallback.
+- **Money is stored in origin currency, displayed in the viewer's.** Stored/settled amounts are
+  never converted. A **presentational currency-conversion service** resolves display figures at read
+  time: it reads the viewer's `preferred_display_currency`, applies the **latest**
+  `finance.fx_rates` row, and formats to locale — a pure read-model transform that touches no ledger
+  row. The rate used at **commit** (settlement) is a separate, snapshotted value (`fx_*` columns)
+  and is authoritative for money movement. See `finance-model.md` §11.
+
+### Financial idempotency
+
+Every money-mutating operation is idempotent: the service presents an operation key recorded in
+`finance.idempotency_keys` (paired with Stripe's `Idempotency-Key`), so a retried request or
+redelivered webhook replays the stored result instead of re-executing. This is a hard requirement
+for any code path that moves money.
+
+---
+
 ## Caching Strategy
 
 Projective uses a tiered caching strategy to minimize latency and database load. We prioritize
@@ -1079,12 +1175,26 @@ incorrect API flows.
 ### 1. Stripe (Financial Engine)
 
 - **Architecture:** We utilize **Stripe Connect Express** for Freelancers and Teams. This offloads
-  KYC/AML compliance to Stripe.
-- **Payment Flow:** We use **Destination Charges**. The Client’s credit card is charged, funds are
-  held in the platform's Stripe balance (acting as Escrow), and upon approval, the funds are routed
-  to the connected Express account minus the platform fee.
+  KYC/AML compliance to Stripe. The platform owns the **ledger of record** (`finance.wallets` /
+  `finance.transactions` / `finance.escrows` — who is owed what); Stripe owns the **fiat rails**.
+- **Payment Flow:** We use **Destination Charges**. The Client’s credit card is charged
+  (tap-and-pay, no client KYC), funds are held in the platform's Stripe balance (acting as Escrow),
+  and upon approval, the funds are routed to the connected Express account minus the platform fee.
+- **Identity & readiness (KYC/KYB):** **Stripe Identity** performs the freelancer Level-2 gov-ID /
+  liveness check; **Stripe Connect** onboarding performs business KYB. The verdicts are mirrored
+  into the app-owned caches (`org.freelancer_profiles.kyc_*`, `org.business_profiles.kyb_*`) and the
+  `finance.verification_cases` trail — **only opaque provider references are stored, never PII**.
+  The freelancer payout-ready gate (`finance.fn_freelancer_payout_ready`) is the "no forever-escrow"
+  guarantee.
+- **Idempotency:** every money-mutating call carries a `finance.idempotency_keys` key (and Stripe's
+  own `Idempotency-Key` header) so a retried webhook or request **never double-moves money**.
+- **FX:** cross-currency commits snapshot the rate used (`finance.fx_rates` → `fx_rate`/`fx_base`/
+  `fx_as_of` on the ledger row) so settlement is reproducible; display conversion is read-time only.
 - **Webhooks:** The `PaymentService` must listen to Stripe Webhooks (e.g.,
-  `payment_intent.succeeded`, `transfer.created`) to update the internal `transactions` ledger.
+  `payment_intent.succeeded`, `transfer.created`, `identity.verification_session.verified`,
+  `charge.dispute.created`) to update the internal `transactions` ledger, verification caches, and
+  `finance.chargebacks`. Reconciliation compares the Stripe balance against the internal escrow pool
+  (and `finance.v_wallet_reconciliation` checks ledger self-consistency).
 
 ### 2. Conferencing (Session Engine)
 

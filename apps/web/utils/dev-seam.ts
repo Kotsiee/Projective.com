@@ -70,6 +70,31 @@ export type DevStageAssignment = "assigned" | "unassigned";
 /** The lifecycle state of the simulated freelancer's active submission (drives the action state machine). */
 export type DevSubmissionState = "draft" | "submitted" | "approved" | "revision_requested";
 
+/**
+ * The vault capability role the Context Switcher can simulate for `/wallet` (task §Dev-axes) — the coarse
+ * role a shared-wallet member holds, which the capability gating of every money control rolls up from
+ * (Owner ⊇ Admin ⊇ PM ⊇ Member).
+ */
+export type DevWalletVaultRole = "owner" | "admin" | "pm" | "member";
+/**
+ * The finance-verification state the Context Switcher can simulate for `/wallet` — drives the KYC-locked
+ * earn/withdraw states: `verified` (payout-ready), `unverified` (no ID → earning/withdrawal locked), or
+ * `payout_setup` (KYC-verified but no payout method wired → withdrawal locked).
+ */
+export type DevWalletKyc = "verified" | "unverified" | "payout_setup";
+/** The Income-Smoother state the Context Switcher can simulate for `/wallet` (ineligible / eligible / enrolled). */
+export type DevWalletSmoother = "ineligible" | "eligible" | "enrolled";
+/**
+ * The fund-state mix the Context Switcher can simulate for `/wallet` — which of the three-state balance
+ * projection's states carry a balance (`normal` baseline · extra `locked` escrow · extra `pending`
+ * clearing · extra `dispute`/on-hold), so every balance state is reachable at runtime.
+ */
+export type DevWalletFundMix = "normal" | "locked" | "pending" | "dispute";
+/** The display currency the Context Switcher can simulate (drives the server-side conversion + Intl formatting). */
+export type DevDisplayCurrency = "GBP" | "USD" | "EUR";
+/** The document layout direction the Context Switcher can simulate (RtL/LtR verification, independent of language). */
+export type DevLayoutDirection = "ltr" | "rtl" | "auto";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -105,6 +130,18 @@ export interface DevSeamState {
 	pendingInvites: boolean;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
+	/** The simulated `/wallet` vault capability role (Owner/Admin/PM/member). */
+	walletVaultRole: DevWalletVaultRole;
+	/** The simulated `/wallet` finance-verification (KYC) state. */
+	walletKyc: DevWalletKyc;
+	/** The simulated `/wallet` Income-Smoother state. */
+	walletSmoother: DevWalletSmoother;
+	/** The simulated `/wallet` fund-state mix (which balance states carry a balance). */
+	walletFundMix: DevWalletFundMix;
+	/** The simulated display currency (drives the server conversion + Intl formatting). */
+	displayCurrency: DevDisplayCurrency;
+	/** The simulated document layout direction (RtL/LtR). */
+	layoutDirection: DevLayoutDirection;
 }
 // #endregion
 
@@ -178,6 +215,12 @@ const SUBMISSION_STATES: readonly DevSubmissionState[] = [
 	"approved",
 	"revision_requested",
 ];
+const WALLET_VAULT_ROLES: readonly DevWalletVaultRole[] = ["owner", "admin", "pm", "member"];
+const WALLET_KYCS: readonly DevWalletKyc[] = ["verified", "unverified", "payout_setup"];
+const WALLET_SMOOTHERS: readonly DevWalletSmoother[] = ["ineligible", "eligible", "enrolled"];
+const WALLET_FUND_MIXES: readonly DevWalletFundMix[] = ["normal", "locked", "pending", "dispute"];
+const DISPLAY_CURRENCIES: readonly DevDisplayCurrency[] = ["GBP", "USD", "EUR"];
+const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -211,6 +254,12 @@ export function readDevSeam(): DevSeamState | null {
 		memberRole: coerce(ds.devMemberRole, MEMBER_ROLES, "owner_admin"),
 		pendingInvites: ds.devPendingInvites !== "false",
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
+		walletVaultRole: coerce(ds.devWalletRole, WALLET_VAULT_ROLES, "admin"),
+		walletKyc: coerce(ds.devWalletKyc, WALLET_KYCS, "verified"),
+		walletSmoother: coerce(ds.devWalletSmoother, WALLET_SMOOTHERS, "enrolled"),
+		walletFundMix: coerce(ds.devWalletFundMix, WALLET_FUND_MIXES, "normal"),
+		displayCurrency: coerce(ds.devDisplayCurrency, DISPLAY_CURRENCIES, "GBP"),
+		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
 	};
 }
 

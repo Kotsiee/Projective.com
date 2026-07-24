@@ -34,197 +34,15 @@
 }
 /* #endregion */
 
-/* #region Header */
-.msg-sidebar__header {
-	flex: none;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding: var(--space-4) var(--space-4) var(--space-3);
-	border-block-end: var(--hairline);
-}
-.msg-sidebar__titlerow {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-2);
-}
-.msg-sidebar__title {
-	margin: 0;
-	font-family: var(--font-sans);
-	font-size: 1.05rem;
-	font-weight: 700;
-	color: var(--on-surface);
-}
-.msg-sidebar__head-actions {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-}
-
-.msg-iconbtn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	position: relative;
-	inline-size: 2.25rem;
-	block-size: 2.25rem;
-	padding: 0;
-	border: none;
-	border-radius: 999px;
-	background: transparent;
-	color: var(--text-secondary);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-.msg-iconbtn svg {
-	inline-size: 20px;
-	block-size: 20px;
-}
-.msg-iconbtn:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
-}
-.msg-iconbtn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
-}
-.msg-iconbtn[data-on="true"] {
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
-}
-.msg-iconbtn--accent {
-	color: var(--primary);
-}
-.msg-iconbtn--accent:hover {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
-	color: var(--primary);
-}
-.msg-iconbtn--sm {
-	inline-size: 2rem;
-	block-size: 2rem;
-}
-.msg-iconbtn--sm svg {
-	inline-size: 18px;
-	block-size: 18px;
-}
-.msg-iconbtn__dot {
-	position: absolute;
-	inset-block-start: 6px;
-	inset-inline-end: 6px;
-	inline-size: 7px;
-	block-size: 7px;
-	border-radius: 999px;
-	background: var(--primary);
-}
-
-.msg-sidebar__searchrow {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-}
-.msg-sidebar__search {
-	flex: 1;
-	position: relative;
-	display: flex;
-	align-items: center;
-	min-inline-size: 0;
-}
-.msg-sidebar__search-icon {
-	position: absolute;
-	inset-inline-start: var(--space-3);
-	display: inline-flex;
-	color: var(--text-secondary);
-	pointer-events: none;
-}
-.msg-sidebar__search-icon svg {
-	inline-size: 16px;
-	block-size: 16px;
-}
-.msg-sidebar__search-input {
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-5) + var(--space-2));
-	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: 1px solid transparent;
-	border-radius: var(--radius-lg);
-	transition: border-color var(--dur-fast) var(--ease-standard);
-}
-.msg-sidebar__search-input::placeholder {
-	color: var(--text-secondary);
-}
-.msg-sidebar__search-input:focus-visible {
-	outline: none;
-	border-color: var(--primary);
-}
-
-.msg-sidebar__quickfilters {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-2);
-}
-.msg-viewseg {
-	display: inline-flex;
-	gap: 2px;
-	padding: 2px;
-	background: var(--surface-2);
-	border-radius: var(--radius-lg);
-}
-.msg-viewseg__opt {
-	padding: var(--space-1) var(--space-3);
-	font-family: var(--font-sans);
-	font-size: 0.8125rem;
-	font-weight: 500;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-.msg-viewseg__opt[data-on="true"] {
-	color: var(--on-surface);
-	background: var(--surface-1);
-	box-shadow: var(--elevation-low, 0 1px 2px rgba(0, 0, 0, 0.08));
-}
-/* #endregion */
+/*
+ * The lane's header band, tab strip, search field, icon buttons, quick-filter toggles, scrolling
+ * list, empty state, footer band, and collapse toggle are ALL the shared lane chrome (`.ui-lane-*`,
+ * owned by `@projective/ui/navigation/styles/lane.css`) — the very same components the `/projects`
+ * lane composes, so the two surfaces are identical by construction rather than by duplication. Only
+ * the conversation rows, the collapsed rail, and the messaging modals are styled here.
+ */
 
 /* #region Conversation list */
-.msg-sidebar__list {
-	flex: 1;
-	min-block-size: 0;
-	overflow-y: auto;
-	padding: var(--space-2);
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-.msg-sidebar__empty {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-6) var(--space-4);
-	text-align: center;
-	color: var(--text-secondary);
-}
-.msg-sidebar__empty-glyph svg {
-	inline-size: 28px;
-	block-size: 28px;
-	color: var(--text-tertiary, var(--text-secondary));
-}
-.msg-sidebar__empty-text {
-	margin: 0;
-	font-size: 0.875rem;
-}
-
 .msg-conv {
 	display: flex;
 	align-items: center;
@@ -394,44 +212,6 @@
 .conv-menu__icon svg {
 	inline-size: 16px;
 	block-size: 16px;
-}
-/* #endregion */
-
-/* #region Footer */
-.msg-sidebar__footer {
-	flex: none;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-2);
-	padding: var(--space-2) var(--space-3);
-	border-block-start: var(--hairline);
-}
-.msg-sidebar__collapse {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--text-secondary);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-.msg-sidebar__collapse:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
-}
-.msg-sidebar__collapse svg {
-	inline-size: 22px;
-	block-size: 22px;
-}
-.msg-sidebar__footer-actions {
-	display: inline-flex;
-	gap: var(--space-1);
 }
 /* #endregion */
 
@@ -1046,10 +826,8 @@
 /* #endregion */
 
 @media (prefers-reduced-motion: reduce) {
-	.msg-iconbtn,
 	.msg-conv,
 	.msg-conv__kebab,
-	.msg-viewseg__opt,
 	.msg-matrix__opt,
 	.msg-btn {
 		transition: none;

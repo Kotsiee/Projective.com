@@ -28,17 +28,17 @@
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    background: linear-gradient(to bottom,
+    /* background: linear-gradient(to bottom,
             transparent 0%,
             var(--frame-surface, var(--surface)) 100%);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 48%);
-    mask-image: linear-gradient(to bottom, transparent 0%, black 48%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 48%); */
 }
 
-.ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h) + var(--space-1) - var(--space-5) - var(--space-3));
+.ui-shell-frame:has(.chan-tab[data-tab-key="chat"][data-active="true"]) .ui-page-canvas::before {
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h) + var(--space-1) - var(--space-5) - var(--space-5) + 2px);
 }
 
 .chat-composer__inner {

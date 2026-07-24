@@ -7,7 +7,6 @@ import ShellSidebar from "@web/features/shell/islands/ShellSidebar.island.tsx";
 import MiddleNavSplitter from "@web/features/shell/islands/MiddleNavSplitter.island.tsx";
 import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
 import UserActions from "@web/features/shell/islands/UserActions.island.tsx";
-import { globalNav } from "@web/features/shell/core/nav-model.ts";
 import { bottomNavItems } from "@web/features/shell/core/bottom-nav-model.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 
@@ -94,7 +93,7 @@ export function UserShell(
 					</div>
 				}
 				utilityBar={<UserActions context={context} protectedRoute={protectedRoute} />}
-				sidebar={<ShellSidebar items={globalNav(path, context)} />}
+				sidebar={<ShellSidebar path={path} context={context} />}
 			>
 				{lane
 					? (

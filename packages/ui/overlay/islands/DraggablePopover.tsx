@@ -16,6 +16,12 @@ export interface PopoverPosition {
 	y: number;
 }
 
+/** A user-resized panel size, in CSS pixels. */
+export interface PopoverSize {
+	w: number;
+	h: number;
+}
+
 /** Props for {@link DraggablePopover}. */
 export interface DraggablePopoverProps {
 	/** Controlled/uncontrolled open state. */
@@ -30,12 +36,16 @@ export interface DraggablePopoverProps {
 	defaultPosition?: PopoverPosition;
 	/** Fired when a drag or keyboard move finishes, so the caller can persist the position. */
 	onPositionChange?: (position: PopoverPosition) => void;
-	/** Panel width (CSS length, default `22rem`). */
+	/** Panel width (CSS length, default `22rem`). Used until the user resizes via the corner handle. */
 	width?: string;
 	/** Panel height (CSS length). When omitted the panel is content-sized up to a viewport cap. */
 	height?: string;
-	/** Allow the user to resize the panel (native corner handle + internal scroll). Default `true`. */
+	/** Allow the user to resize the panel (corner drag handle + internal scroll). Default `true`. */
 	resizable?: boolean;
+	/** Initial user size (px). When set, overrides {@link width}/{@link height} — e.g. a persisted size. */
+	defaultSize?: PopoverSize;
+	/** Fired when a resize drag or keyboard resize finishes, so the caller can persist the size. */
+	onSizeChange?: (size: PopoverSize) => void;
 	/** Extra controls rendered in the header, before the close button. */
 	headerActions?: ComponentChildren;
 	/** Extra class(es) merged onto the panel (e.g. to raise its z-index for a dev overlay). */
@@ -49,6 +59,12 @@ export interface DraggablePopoverProps {
 const KEEP_VISIBLE = 48;
 /** Keyboard nudge distance (px); Shift multiplies it. */
 const NUDGE = 12;
+/** Minimum resized panel width (px) — mirrors the CSS `min-inline-size: 16rem` safety floor. */
+const MIN_W = 256;
+/** Minimum resized panel height (px) — mirrors the CSS `min-block-size: 8rem` safety floor. */
+const MIN_H = 128;
+/** Gap kept between a resized edge and the viewport edge so the panel never spills off-screen. */
+const RESIZE_MARGIN = 12;
 /** Module-level "top" z so the most-recently-touched window floats above its siblings. */
 let zTop = 0;
 
@@ -60,9 +76,12 @@ let zTop = 0;
  *
  * **Move & resize.** The header is a drag handle (Pointer Events + `setPointerCapture`, clamped so it
  * can never be lost off-screen) and is also keyboard-movable (focus it, then arrow keys; `Shift` for a
- * larger step). When `resizable`, the panel gets a native corner resize handle and its body scrolls
- * internally on overflow. `onPositionChange` fires at the end of a move so the caller can persist it.
- * Touching any part of a window lifts it above the others (a shared z-counter).
+ * larger step). When `resizable`, a styled bottom-right corner handle resizes the panel the same way
+ * (pointer drag or arrow keys, clamped to a min size and the viewport) and its body scrolls internally
+ * on overflow — a custom handle rather than the browser's near-invisible `resize` grip, which the
+ * rounded corner and internal scroll make unreliable. `onPositionChange`/`onSizeChange` fire at the end
+ * of a move/resize so the caller can persist them. Touching any part of a window lifts it above the
+ * others (a shared z-counter).
  *
  * **A11y.** `role="dialog"` with `aria-modal="false"` (explicitly non-blocking) + `aria-labelledby`.
  * The drag handle is a `role="button"` with a descriptive `aria-label`; the close control is a sibling
@@ -81,6 +100,8 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 		width = "22rem",
 		height,
 		resizable = true,
+		defaultSize,
+		onSizeChange,
 		headerActions,
 		class: className,
 		children,
@@ -93,12 +114,30 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	const posRef = useRef<PopoverPosition>(defaultPosition ?? { x: 24, y: 88 });
 	const [pos, setPosState] = useState<PopoverPosition>(posRef.current);
 	const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
+	const sizeRef = useRef<PopoverSize | null>(defaultSize ?? null);
+	const [size, setSizeState] = useState<PopoverSize | null>(sizeRef.current);
+	const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
 	const [z, setZ] = useState(0);
 	const titleId = useId(undefined, "dpopover") + "-title";
 
 	const setPos = (next: PopoverPosition) => {
 		posRef.current = next;
 		setPosState(next);
+	};
+
+	const setSize = (next: PopoverSize) => {
+		sizeRef.current = next;
+		setSizeState(next);
+	};
+
+	/** Constrain a candidate size to the min floors and to what fits from the panel's top-left corner. */
+	const clampSize = (w: number, h: number): PopoverSize => {
+		const maxW = Math.max(MIN_W, globalThis.innerWidth - posRef.current.x - RESIZE_MARGIN);
+		const maxH = Math.max(MIN_H, globalThis.innerHeight - posRef.current.y - RESIZE_MARGIN);
+		return {
+			w: Math.max(MIN_W, Math.min(w, maxW)),
+			h: Math.max(MIN_H, Math.min(h, maxH)),
+		};
 	};
 
 	/** Constrain a candidate position so the panel stays reachable within the viewport. */
@@ -162,6 +201,61 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	};
 	// #endregion
 
+	// #region Resize (Pointer Events on the corner handle)
+	const onResizePointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		if (e.button !== 0) return;
+		e.stopPropagation();
+		const el = panelRef.current;
+		resizeStart.current = {
+			px: e.clientX,
+			py: e.clientY,
+			w: el?.offsetWidth ?? MIN_W,
+			h: el?.offsetHeight ?? MIN_H,
+		};
+		e.currentTarget.setPointerCapture(e.pointerId);
+		lift();
+	};
+	const onResizePointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		const s = resizeStart.current;
+		if (!s) return;
+		setSize(clampSize(s.w + (e.clientX - s.px), s.h + (e.clientY - s.py)));
+	};
+	const onResizePointerUp = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		if (!resizeStart.current) return;
+		resizeStart.current = null;
+		e.currentTarget.releasePointerCapture?.(e.pointerId);
+		if (sizeRef.current) onSizeChange?.(sizeRef.current);
+	};
+
+	const onResizeKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+		const step = e.shiftKey ? NUDGE * 4 : NUDGE;
+		const el = panelRef.current;
+		const cur = sizeRef.current ?? { w: el?.offsetWidth ?? MIN_W, h: el?.offsetHeight ?? MIN_H };
+		let handled = true;
+		switch (e.key) {
+			case "ArrowUp":
+				setSize(clampSize(cur.w, cur.h - step));
+				break;
+			case "ArrowDown":
+				setSize(clampSize(cur.w, cur.h + step));
+				break;
+			case "ArrowLeft":
+				setSize(clampSize(cur.w - step, cur.h));
+				break;
+			case "ArrowRight":
+				setSize(clampSize(cur.w + step, cur.h));
+				break;
+			default:
+				handled = false;
+		}
+		if (handled) {
+			e.preventDefault();
+			e.stopPropagation();
+			if (sizeRef.current) onSizeChange?.(sizeRef.current);
+		}
+	};
+	// #endregion
+
 	const onPanelKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
 		if (e.key === "Escape") {
 			e.stopPropagation();
@@ -188,8 +282,8 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 					"--dd-x": `${pos.x}px`,
 					"--dd-y": `${pos.y}px`,
 					"--dd-z": z,
-					"--ddp-w": width,
-					"--ddp-h": height,
+					"--ddp-w": size ? `${size.w}px` : width,
+					"--ddp-h": size ? `${size.h}px` : height,
 				})}
 				onKeyDownCapture={onPanelKeyDown}
 				onPointerDownCapture={lift}
@@ -230,6 +324,27 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 					</div>
 				</div>
 				<div class="ui-draggable-popover__body">{children}</div>
+				{resizable && (
+					<div
+						class="ui-draggable-popover__resize"
+						role="button"
+						tabIndex={0}
+						aria-label="Resize window. Use arrow keys."
+						onPointerDown={onResizePointerDown}
+						onPointerMove={onResizePointerMove}
+						onPointerUp={onResizePointerUp}
+						onKeyDown={onResizeKeyDown}
+					>
+						<svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+							<path
+								d="M11 3 3 11M11 7l-4 4"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
+						</svg>
+					</div>
+				)}
 			</div>
 		</BodyPortal>
 	);

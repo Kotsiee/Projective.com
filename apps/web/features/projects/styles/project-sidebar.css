@@ -451,120 +451,24 @@
 	border-block-start: var(--hairline);
 }
 
-.proj-qfilters {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-}
-
-.proj-qfilter {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.9rem;
-	block-size: 1.9rem;
-	font-size: 1rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-full, 999px);
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-qfilter:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.proj-qfilter[data-on="true"] {
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
-}
-
-.proj-qfilter:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-
-.proj-qfilter__icon {
-	display: inline-flex;
+/*
+ * The channel quick-filter row is the SHARED lane chrome (`.ui-lane-toggles` / `.ui-lane-toggle`,
+ * owned by `@projective/ui/navigation/styles/lane.css`) — identical to the `/projects` feed shortcuts
+ * and the `/messages` quick filters. Nothing to style locally; it sits flush in the sidebar's flow.
+ */
+.proj-detail__scroll .ui-lane-toggles {
+	justify-content: flex-start;
 }
 
 /* #endregion */
 
 /* #region Channel tree */
-.proj-chan-tree {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-}
-
-.proj-chan-group__head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-}
-
-.proj-chan-group__toggle {
-	flex: 1 1 auto;
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.35rem 0.4rem;
-	font: inherit;
-	font-size: 0.72rem;
-	font-weight: 650;
-	letter-spacing: 0.03em;
-	text-transform: uppercase;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-sm);
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-chan-group__toggle:hover {
-	color: var(--on-surface);
-}
-
-.proj-chan-group__toggle:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-
-.proj-chan-group__chevron {
-	display: inline-flex;
-	font-size: 0.9rem;
-	transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.proj-chan-group[data-open="true"] .proj-chan-group__chevron {
-	transform: rotate(90deg);
-}
-
-.proj-chan-group__icon {
-	display: inline-flex;
-	font-size: 0.95rem;
-}
-
-.proj-chan-group__label {
-	flex: 1 1 auto;
-	text-align: start;
-}
-
-.proj-chan-group__dot {
-	flex: none;
-	inline-size: 6px;
-	block-size: 6px;
-	border-radius: 50%;
-	background: var(--primary);
-}
-
-/* Client-only "＋" create-stage trigger. */
+/*
+ * The collapsible group shell itself is the SHARED lane chrome (`.ui-lane-section*`, owned by
+ * `@projective/ui/navigation/styles/lane.css`) — the chevron, uppercase label, unread dot, and the
+ * `0fr → 1fr` reveal are identical to the `/messages` conversation groups. Only the project-specific
+ * "＋ create stage" trigger and the channel rows below are styled here.
+ */
 .proj-chan-group__plus {
 	display: inline-flex;
 	align-items: center;
@@ -592,43 +496,6 @@
 	box-shadow: var(--focus-ring);
 }
 
-.proj-chan-group__action {
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-}
-
-/*
- * Smooth collapse — animate the panel height via `grid-template-rows: 0fr → 1fr`. The single grid
- * child (`__body-inner`) must clip its own overflow + carry `min-block-size: 0` so it can shrink to
- * zero. The `inert` attribute (set in ChannelTree when closed) removes the hidden links from the tab
- * order + a11y tree; reduced-motion jumps straight to the final state (see §Motion).
- */
-.proj-chan-group__body {
-	display: grid;
-	grid-template-rows: 0fr;
-	transition: grid-template-rows var(--dur-medium) var(--spring-standard);
-}
-
-.proj-chan-group[data-open="true"] .proj-chan-group__body {
-	grid-template-rows: 1fr;
-}
-
-.proj-chan-group__body-inner {
-	overflow: hidden;
-	min-block-size: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	padding-block: 0.15rem;
-	padding-inline-start: 0.6rem;
-}
-
-/* Trim the vertical padding while collapsed so a closed group has no residual gap. */
-.proj-chan-group:not([data-open="true"]) .proj-chan-group__body-inner {
-	padding-block: 0;
-}
-
 .proj-chan-empty {
 	margin: 0;
 	padding: 0.35rem 0.5rem;
@@ -654,6 +521,20 @@
 
 .proj-chan:hover {
 	background: var(--surface-2);
+}
+
+/* Active (open) channel — tinted like the inbox's active-conversation row (parity, §B.4). */
+.proj-chan[data-active="true"] {
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	color: var(--on-surface);
+}
+
+.proj-chan[data-active="true"] .proj-chan__glyph {
+	color: var(--primary);
+}
+
+.proj-chan[data-active="true"] .proj-chan__name {
+	font-weight: 600;
 }
 
 .proj-chan:focus-visible {
@@ -1678,13 +1559,10 @@
 
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
-	.proj-chan-group__chevron,
-	.proj-chan-group__body,
 	.proj-detail__back,
 	.proj-chan,
 	.proj-ctx__desc,
 	.proj-ctx__owner-name,
-	.proj-qfilter,
 	.proj-railbtn,
 	.proj-railbtn--add,
 	.proj-viewnav__btn,

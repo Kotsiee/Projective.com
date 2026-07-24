@@ -6,6 +6,7 @@
     "jsr:@deno/loader@~0.3.10": "0.3.14",
     "jsr:@fresh/build-id@1": "1.0.1",
     "jsr:@fresh/core@2": "2.3.3",
+    "jsr:@fresh/core@2.2.2": "2.2.2",
     "jsr:@fresh/core@^2.2.2": "2.3.3",
     "jsr:@fresh/core@^2.3.3": "2.3.3",
     "jsr:@fresh/plugin-vite@1": "1.1.2",
@@ -71,6 +72,7 @@
     "npm:pixi.js@^8.17.1": "8.19.0",
     "npm:preact-render-to-string@^6.6.3": "6.7.0_preact@10.29.4",
     "npm:preact@^10.28.2": "10.29.4",
+    "npm:preact@^10.28.3": "10.29.4",
     "npm:preact@^10.29.0": "10.29.4",
     "npm:preact@^10.29.1": "10.29.4",
     "npm:quill-delta-to-html@~0.12.1": "0.12.1",
@@ -100,6 +102,21 @@
       "integrity": "12a2ec25fd52ae9ec68c26848a5696cd1c9b537f7c983c7e56e4fb1e7e816c20",
       "dependencies": [
         "jsr:@std/encoding@^1.0.10"
+      ]
+    },
+    "@fresh/core@2.2.2": {
+      "integrity": "c34873df58457720f7b915a65fef6fe5cd7215f237cf4d1064d1925b320de96c",
+      "dependencies": [
+        "jsr:@fresh/build-id",
+        "jsr:@std/fmt@^1.0.8",
+        "jsr:@std/fs@^1.0.19",
+        "jsr:@std/html@^1.0.5",
+        "jsr:@std/http@^1.0.21",
+        "jsr:@std/path@^1.1.2",
+        "npm:@opentelemetry/api",
+        "npm:@preact/signals@^2.5.1",
+        "npm:preact-render-to-string",
+        "npm:preact@^10.28.3"
       ]
     },
     "@fresh/core@2.3.3": {

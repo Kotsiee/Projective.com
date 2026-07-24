@@ -1,16 +1,25 @@
 import { define } from "@web/utils/state.ts";
-import { resolveConversation } from "@web/features/messaging/core/conversations-ssr.ts";
-import ConversationMembers from "@web/features/messaging/islands/ConversationMembers.island.tsx";
+import { resolveConversationRoster } from "@web/features/messaging/core/conversations-ssr.ts";
+import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
 import { ConversationNotFound } from "@web/features/messaging/components/ConversationNotFound.tsx";
 
 /**
  * Members tab — the conversation participants (`/messages/[conversationId]/members`). Resolves the
- * conversation metadata server-side and hands the roster to the {@link ConversationMembers} island,
- * whose Add-members action (a group-conversion, task §2B) opens the shared contact picker.
+ * roster server-side (the fat {@link MessagingBackendService.members}, no HTTP hop) and hands it to the
+ * shared {@link MembersView} — the SAME component tree the channel Members tab mounts, so the inbox
+ * gets the identical table, avatar stacks, role tags, and management actions rather than a lookalike
+ * list. A conversation has no stages and no invitation queue, so those columns simply stay empty.
  */
 export default define.page(function ConversationMembersPage(ctx) {
 	const { conversationId } = ctx.params;
-	const detail = resolveConversation(conversationId);
-	if (!detail) return <ConversationNotFound />;
-	return <ConversationMembers detail={detail} />;
+	const page = resolveConversationRoster(conversationId);
+	if (!page) return <ConversationNotFound />;
+	return (
+		<MembersView
+			scope="conversation"
+			id={conversationId}
+			channelId={conversationId}
+			initial={page}
+		/>
+	);
 });

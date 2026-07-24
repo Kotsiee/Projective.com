@@ -1,6 +1,8 @@
 import { Fragment, type JSX, type VNode } from "preact";
-import { useSignal } from "@preact/signals";
+import { useComputed, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import type { UserContext } from "@projective/types/auth";
+import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import { NavItem, ShellSidebar } from "@projective/ui/navigation";
 import { Tooltip } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
@@ -10,11 +12,22 @@ import { Avatar } from "@projective/ui/display";
 import "@web/features/shell/styles/user-shell.css";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { NavIcon, SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import type { NavModelItem, NavSublink } from "@web/features/shell/core/nav-model.ts";
+import {
+	globalNav,
+	type NavModelItem,
+	type NavSublink,
+} from "@web/features/shell/core/nav-model.ts";
+import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 
 export interface ShellSidebarIslandProps {
-	/** Primary global destinations (from `globalNav(path)`). */
-	items: NavModelItem[];
+	/** Current pathname — drives active state (was resolved server-side; now re-gated live too). */
+	path: string;
+	/**
+	 * The hydrated user context — the roster is derived from it (seller-only Services/Businesses/Teams,
+	 * Analytics gating). Re-derived live from the DEV Context Switcher seam so a persona flip re-gates
+	 * the rail with no reload; inert in production. Defaults to a personal member.
+	 */
+	context?: UserContext;
 }
 
 /**
@@ -22,19 +35,32 @@ export interface ShellSidebarIslandProps {
  * Part D.1). Owns the cached collapse/expand preference (persisted via storage-keys.ts, mirrored to
  * `:root[data-sidebar]` so width paints pre-hydration with no flash), renders collapsed icons as
  * square blocks with real `Tooltip` labels (never native `title`), and exposes YouTube-style nested
- * disclosures under items that carry `children` (Projects → recent workspaces shown by their owner's
- * circular avatar, Dashboard → quick links). The collapse/expand control is a labelless custom
- * morphing SVG pinned bottom-left. Composes the package's presentational `ShellSidebar` frame.
+ * disclosures under items that carry `children` (Projects → project workspaces shown by their owner's
+ * circular avatar, Products & Services / Teams / Businesses → kind-strict lists). The collapse/expand
+ * control is a labelless custom morphing SVG pinned bottom-left. Composes the package's presentational
+ * `ShellSidebar` frame.
+ *
+ * The roster is computed **in the island** via {@link globalNav} off a live {@link useEffectiveContext}
+ * so it matches SSR on hydration (same inputs) yet re-gates instantly when the DEV Context Switcher
+ * changes the simulated persona — the same seam every other role-aware surface consumes.
  */
-export default function ShellSidebarIsland({ items }: ShellSidebarIslandProps): JSX.Element {
+export default function ShellSidebarIsland(
+	{ path, context = PERSONAL_MEMBER_CONTEXT }: ShellSidebarIslandProps,
+): JSX.Element {
+	// Live effective context (SSR base → dev-seam-overridden). `globalNav` is pure, so recomputing on
+	// change is cheap and paints the correct roster with no reload.
+	const effective = useEffectiveContext(context);
+	const items = useComputed<NavModelItem[]>(() => globalNav(path, effective.value.context));
+
 	// SSR default = collapsed (matches the _app.tsx pre-paint script's default); reconciled to the
 	// cached preference on mount to avoid a hydration mismatch.
 	const collapsed = useSignal(true);
-	// Groups whose disclosure is open — seeded from the active route so a deep link lands expanded.
+	// Groups whose disclosure is open — seeded from the active route (baseline roster) so a deep link
+	// lands expanded. A persona flip may add/remove groups; the user's open set carries over harmlessly.
 	const openGroups = useSignal<string[]>(
-		items.filter((i) => i.children?.length && (i.active || i.children.some((c) => c.active))).map(
-			(i) => i.key,
-		),
+		globalNav(path, context).filter((i) =>
+			i.children?.length && (i.active || i.children.some((c) => c.active))
+		).map((i) => i.key),
 	);
 
 	useEffect(() => {
@@ -152,7 +178,7 @@ export default function ShellSidebarIsland({ items }: ShellSidebarIslandProps): 
 				</button>
 			}
 		>
-			{items.map((item) => <Fragment key={item.key}>{renderItem(item)}</Fragment>)}
+			{items.value.map((item) => <Fragment key={item.key}>{renderItem(item)}</Fragment>)}
 		</ShellSidebar>
 	);
 }
