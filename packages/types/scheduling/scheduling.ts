@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PublicCallOfferSchema } from "./calls.ts";
 
 /**
  * scheduling — the Zod SSOT for the Calendar & Schedule domain shared across every surface: the
@@ -9,9 +10,10 @@ import { z } from "zod";
  * contract exactly, so a page payload flows straight into it.
  *
  * This is a READ projection, not a table row (like `projects/detail`, `projects/messages`): it flattens
- * the parts of the eventual `scheduling.events` / `scheduling.availability_rules` / `scheduling.blackouts`
- * tables a calendar view needs. No DB migration lands with it — the live path (RLS-scoped reads +
- * external-integration sync) fills in behind each surface's existing backend gate with zero shape churn.
+ * the parts of the `scheduling.events` / `scheduling.availability_rules` / `scheduling.blackout_dates`
+ * tables a calendar view needs. Those tables now EXIST — see {@link ./rows.ts} for their row shapes and
+ * `supabase/migrations/20260724100000..094000_*` for the schema — so the live path fills in behind each
+ * surface's existing backend gate with zero shape churn.
  * Only enum/array/string/number/boolean primitives are used, so the schema is stable across Zod majors.
  *
  * Times are epoch **milliseconds (UTC)**; the display timezone is a separate, explicit field so SSR and
@@ -66,6 +68,27 @@ export const CalendarEventSchema = z.object({
 	/** External source of a privacy-masked block (`google`|`outlook`|`apple`|`samsung`|`notion`). */
 	source: z.string().max(40).optional(),
 	href: z.string().max(400).optional(),
+
+	// #region Discovery-call projection (additive, all optional)
+	/**
+	 * A discovery call is projected as a `booking`, deliberately NOT a tenth `CalendarEventKind` —
+	 * a new kind would break the shipped engine's exhaustive `Record<CalendarEventKind, …>` label
+	 * and accent maps, turning a data change into a design-system change (root CLAUDE.md §3). These
+	 * optional fields carry the call-specific detail instead. See `./calls.ts`.
+	 */
+	callId: z.string().max(120).optional(),
+	/** True on a synthetic block a visitor may CLICK to request a call (a free call-window slot). */
+	bookable: z.boolean().optional(),
+	/** `courtesy` (free) or `paid` — drives whether the booking flow asks for payment. */
+	callType: z.enum(["courtesy", "paid"]).optional(),
+	/** The conferencing provider that minted (or will mint) the room. */
+	conferenceProvider: z.string().max(40).optional(),
+	/** The generated meeting room. Present only to the call's own parties. */
+	meetingUrl: z.string().max(600).optional(),
+	/** Price of a paid call, in integer minor units + its ISO-4217 currency. */
+	feeAmountMinor: z.number().int().min(0).optional(),
+	feeCurrency: z.string().min(3).max(8).optional(),
+	// #endregion
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
 // #endregion
@@ -80,6 +103,14 @@ export const AvailabilityRuleSchema = z.object({
 	/** Minutes from local midnight the window closes (> startMinute). */
 	endMinute: z.number().int().min(0).max(1440),
 	label: z.string().max(80).optional(),
+	/**
+	 * What the band MEANS (`scheduling.availability_kind`). `working_hours` is the broad "at my
+	 * desk" overlay; `call_window` is the narrower subset during which the owner accepts a
+	 * discovery call — so the UI can paint a call band as a visually distinct subset rather than
+	 * conflating "I am working" with "interrupt me". Optional and defaulting to `working_hours`, so
+	 * every pre-existing payload stays valid.
+	 */
+	kind: z.enum(["working_hours", "call_window"]).optional(),
 });
 export type AvailabilityRule = z.infer<typeof AvailabilityRuleSchema>;
 
@@ -154,6 +185,12 @@ export const SchedulePageSchema = z.object({
 	availability: CalendarAvailabilitySchema,
 	events: z.array(CalendarEventSchema),
 	integrations: z.array(CalendarIntegrationSchema),
+	/**
+	 * What this owner offers by way of discovery calls — the public slice of
+	 * `scheduling.call_settings` (never the caps, cooldowns, or buffers). Absent when the owner
+	 * takes no calls, which is also the default for every pre-existing payload.
+	 */
+	callOffer: PublicCallOfferSchema.optional(),
 });
 export type SchedulePage = z.infer<typeof SchedulePageSchema>;
 
@@ -178,7 +215,14 @@ export type ScheduleParams = z.infer<typeof ScheduleParamsSchema>;
 // #endregion
 
 // #region Shared helpers
-/** The standard set of external integrations a surface can advertise (privacy-safe chips). */
+/**
+ * The standard set of external CALENDAR-SYNC integrations a surface can advertise (privacy-safe
+ * chips). These are the `capabilities @> {calendar}` rows of `integrations.providers`.
+ *
+ * ⚠️ Calendar sync and CONFERENCING are two separate axes and must not be collapsed into one chip
+ * set — see {@link CONFERENCING_PROVIDERS} and `@projective/types/integrations`. Google appears in
+ * both because it is genuinely capable of both, not because the axes are the same.
+ */
 export const INTEGRATION_SOURCES = ["google", "outlook", "apple", "samsung", "notion"] as const;
 export type IntegrationSource = (typeof INTEGRATION_SOURCES)[number];
 
@@ -189,5 +233,28 @@ export const INTEGRATION_LABEL: Record<IntegrationSource, string> = {
 	apple: "Apple",
 	samsung: "Samsung",
 	notion: "Notion",
+};
+
+/**
+ * The providers capable of MINTING A MEETING ROOM (`capabilities @> {conferencing}`). A separate
+ * axis from {@link INTEGRATION_SOURCES}; the full catalogue lives in `integrations.providers` and
+ * its shapes in `@projective/types/integrations`.
+ */
+export const CONFERENCING_PROVIDERS = [
+	"google",
+	"outlook",
+	"zoom",
+	"microsoft_teams",
+	"discord",
+] as const;
+export type ConferencingProvider = (typeof CONFERENCING_PROVIDERS)[number];
+
+/** Human labels for the conferencing providers. */
+export const CONFERENCING_LABEL: Record<ConferencingProvider, string> = {
+	google: "Google Meet",
+	outlook: "Outlook",
+	zoom: "Zoom",
+	microsoft_teams: "Microsoft Teams",
+	discord: "Discord",
 };
 // #endregion

@@ -78,3 +78,122 @@ RPCs that operate them are the live-path TODO (behind the eventual `FINANCE_BACK
 gate): recurring-deposit runner, payout-schedule runner + Instant Payout, Income-Smoother
 allocation, tax-pot auto-set-aside, vault-permission grant/revoke, spend-approval decision, the
 pending-release (7-day-window) sweep, monthly statement generation, and the FX-rate ingestion job.
+
+---
+
+## Entitlement resolution & allowance metering (migrations `20260724112000` / `20260724113000`)
+
+The entitlement resolver is the bridge between the two ladders: it reads the **paid** layer
+(`finance.plans` â†’ `plan_entitlements`) and scales it by the **earned** layer
+(`org.standing_levels`), then lets an admin `entitlement_grant` raise â€” never lower â€” the result.
+
+### Plan resolution
+
+- **`finance.fn_audience_for(subject_type) â†’ finance.plan_audience`** â€” `IMMUTABLE`.
+  `user`/`freelancer` â†’ `individual`; `team` â†’ `team`; `business` â†’ `business`; `organisation` â†’
+  `organisation`.
+- **`finance.fn_active_plan(subject_type, subject_id) â†’ uuid`** â€” the subject's live plan
+  (`state IN ('trialing','active','past_due')` and not past `current_period_end`), falling back to
+  its audience's default free plan. **Every subject always resolves to a plan** â€” there is no
+  unentitled state.
+- **`finance.fn_subject_standing_level(subject_type, subject_id) â†’ smallint`** â€” defers to
+  `org.fn_standing_level` for earning subjects; buyer subjects (`business`/`organisation`) resolve to
+  rung `1`, because they carry the Client Trust Score rather than Standing.
+
+### `finance.fn_effective_limit(subject_type, subject_id, key) â†’ integer`
+
+The core resolver. `NULL` = **unlimited**; `0` = the subject's plan does not grant the lever at all
+(deny-by-default for any key a plan does not name).
+
+1. Look up the plan's `plan_entitlements` row.
+2. Apply `scaling`:
+   - `none` â†’ `limit_value`.
+   - `standing_base` â†’ `standing_levels.listing_base Ã— multiplier_bp / 10000` (Free = 1.0Ã—, Pro =
+     2.0Ã— â€” Pro **doubles what was earned** rather than replacing it).
+   - `standing_bonus` â†’ `limit_value + standing_levels.proposal_bonus` (reliability buys volume the
+     same way money does).
+3. Take `GREATEST(base, active grant)`; any unlimited flag anywhere wins.
+
+- **`finance.fn_has_entitlement(subject_type, subject_id, key) â†’ boolean`** â€” the flag-kind twin
+  (grant first, then plan, then `false`).
+
+Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlements.ts`
+(`scaleEntitlement`, `canConsumeAllowance`) so the client can preview a value without a round trip.
+
+### Effective rates
+
+- **`finance.fn_effective_commission_bp(subject_type, subject_id) â†’ integer`** â€” negotiated rate â†’
+  `standing_commission_tiers` for the rung â†’ `800` (8%). This is the **earned** marketplace taper.
+- **`finance.fn_effective_platform_fee_bp(subject_type, subject_id) â†’ integer`** â€” negotiated rate â†’
+  `security.platform_params.platform_fee_bp` â†’ `0`. The 5% project service fee does **not** taper
+  with Standing and is not bundled with any plan; the only sanctioned flex is an admin-approved
+  `finance.negotiated_rates` row for an Organisation/Business volume commitment.
+
+### Allowance metering
+
+- **`finance.fn_current_allowance(subject_type, subject_id, key) â†’ finance.allowance_periods`** â€”
+  opens or rolls the weekly period (`date_trunc('week', now())`), snapshotting `granted_units` with
+  its `base_units` / `standing_bonus_units` provenance so a mid-week upgrade or promotion is an
+  explicit new grant rather than a silent drift. Also applies the lazy buffer drip. Emits
+  `allowance.period_rolled` / `allowance.buffer_replenished`. Granted to `authenticated` (read own).
+- **`finance.fn_consume_allowance(subject, units, key, reason, ref_table, ref_id) â†’ boolean`** â€”
+  spends units. Requires **both** weekly headroom and a buffer token, so a week's allowance can never
+  be dumped into one hour of spam. Emits `allowance.consumed` on success and `allowance.exhausted` on
+  refusal â€” the refusal is recorded either way, because the denial rate is the upgrade signal.
+  **`service_role` only.**
+- **`finance.fn_refund_allowance(...) â†’ boolean`** â€” returns units (a withdrawn proposal should not
+  cost the week's allowance). **`service_role` only.**
+
+### Footprint
+
+- **`finance.fn_footprint_usage(subject_type, subject_id, key) â†’ integer`** â€” live counts for
+  `active_public_projects` / `business_public_projects` / `team_public_projects` (from
+  `projects.projects` where `status IN ('active','on_hold')` **and** `visibility = 'public'`),
+  `teams_owned`, `businesses_owned`, `team_seats`, `organisation_seats`.
+
+  **Drafts are never counted** â€” unlimited private drafting is the baseline promise.
+  `published_listings` returns `0` until the `catalogue.*` listing tables land (Decision #53 keeps
+  `/catalogue` on fixtures); its **cap already resolves**, only its usage count is pending.
+- **`finance.fn_footprint_remaining(...) â†’ integer`** â€” headroom, or `NULL` when unlimited.
+
+---
+
+## âš–ï¸ Enforcement triggers (migration `20260724113000`)
+
+Triggers on existing project tables. They **meter unconditionally** and **block only when their
+platform param is switched on** â€” `proposal_allowance_enforced` and `footprint_caps_enforced`, both
+seeded `false`.
+
+> **Why fail-open.** Turning a cap into a hard block changes user-visible behaviour on a live
+> marketplace. Metering first means the magnitudes (50/wk, 3-per-10h, 3 live projects) get tuned
+> against `analytics.events` before anyone is ever refused. Flipping either param is a deliberate
+> human decision, never a side effect of running a migration.
+
+| Trigger                              | On                                                                   | Behaviour                                                                                                                                                        |
+| :----------------------------------- | :------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trg_meter_application_allowance`    | `AFTER INSERT ON projects.project_applications`                      | Spends one `weekly_proposals` unit from the applicant (the **team** when a team applies, else the user). Emits `entitlement.denied` when exhausted.               |
+| `trg_refund_withdrawn_application`   | `AFTER UPDATE OF status ON projects.project_applications`            | Returns the unit on a transition to `withdrawn` â€” selectivity should never be punished twice.                                                                    |
+| `trg_check_public_project_footprint` | `BEFORE INSERT OR UPDATE OF status, visibility ON projects.projects` | Counts a slot only when a project **becomes** `active` + `public` (a project already live is not re-counted). Business-owned projects meter against the business. |
+
+None of these touch execution capacity: `projects.check_ticket_capacity` and the $W_i$ caps remain
+the sole authority over how much work a freelancer may hold.
+
+> **⚠️ Known limit of the fail-open design.** While a param is `false` the `entitlement.denied` event
+> commits normally. Once it is `true`, the `RAISE` aborts the transaction — which also rolls back the
+> analytics row written moments earlier. Postgres has no autonomous transactions, so **after the
+> switch is flipped, a denial must be recorded by the app layer**: catch the `check_violation` and
+> call `analytics.fn_emit` from the service. Without that, the denial funnel goes dark at exactly the
+> moment enforcement starts mattering.
+
+## ðŸŽ› Platform parameters added
+
+| Key                                 | Default | Meaning                                                             |
+| :---------------------------------- | :------ | :------------------------------------------------------------------- |
+| `proposal_allowance_enforced`       | `false` | Meter-only until flipped.                                           |
+| `footprint_caps_enforced`           | `false` | Meter-only until flipped.                                           |
+| `proposal_buffer_window_hours`      | `10`    | The "3 per 10 hours" drip window.                                   |
+| `proposal_buffer_hold_multiple`     | `4`     | Buffer hold cap as a multiple of the drip â€” how many may be banked. |
+| `subscription_grace_days`           | `7`     | Days a `past_due` subscription keeps its paid entitlements.         |
+| `standing_recompute_interval_hours` | `24`    | Standing sweep cadence (migration `20260724111000`).                |
+| `standing_demotion_grace_days`      | `30`    | Reserved anti-flapping guard on demotions.                          |
+

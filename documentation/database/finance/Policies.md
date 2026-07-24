@@ -26,8 +26,14 @@ the `projects.*` stage wrappers). No `authenticated` grant.
 `finance.wallets`, `finance.transactions`, `finance.invoices`, `finance.invoice_line_items`
 (migration 0201 enables RLS; no policy), `finance.disputes`, `finance.dispute_messages`,
 `finance.contribution_agreements` (0201), `finance.payout_splits` (0201), `finance.spending_limits`
-(0201), `finance.subscriptions`, `finance.ratings`, `finance.payout_accounts`, and
-`finance.idempotency_keys` (additive — system table, service-role only).
+(0201), `finance.ratings`, `finance.payout_accounts`, and `finance.idempotency_keys` (additive —
+system table, service-role only).
+
+> **Changed 2026-07-24 (`20260724112000`):** `finance.subscriptions` is **no longer definer-only**. It
+> gained a subject-scoped `SELECT` policy (`View own subscriptions`) so a subject can read its own
+> plan — a user must be able to see what they are paying for. **Writes remain definer/service-only**
+> (a Stripe webhook owns the lifecycle); no `INSERT`/`UPDATE`/`DELETE` grant or policy exists for
+> `authenticated`.
 
 ## 👁 Escrow visibility (`0205_security.sql`)
 
@@ -65,3 +71,32 @@ Writes to `finance.escrows` remain definer-only (`fn_hold_ticket_escrow` /
 > **Rationale:** read policies are scoped to the money's owner; every mutation that moves or
 > reclassifies capital is a `SECURITY DEFINER` RPC so financial invariants (fee application, splits,
 > caps, idempotency) are enforced in one auditable place, never by a raw client write.
+
+## 🆕 Additive-table policies (2026-07-24 Subscriptions, Standing & Entitlements)
+
+Migrations `20260724112000` / `20260724113000`. The posture matches the rest of the schema: reads are
+scoped to the money's owner (or public where the value *is* the public contract), and every mutation
+flows through a `SECURITY DEFINER` function.
+
+| Table                               | SELECT                                                          | Write                                                                          |
+| :---------------------------------- | :-------------------------------------------------------------- | :------------------------------------------------------------------------------ |
+| `finance.plans`                     | `USING (is_public OR security.is_admin())` — the catalogue is a public price list. | Service-role only.                                          |
+| `finance.plan_entitlements`         | `USING (true)` — what a plan grants must be inspectable before buying. | Service-role only.                                                        |
+| `finance.subscriptions`             | `fn_owner_visible(subject_type, subject_id)`.                   | Definer / service only (Stripe webhook owns the lifecycle).                    |
+| `finance.subscription_events`       | `fn_owner_visible(subject_type, subject_id)`.                   | Definer / service only.                                                        |
+| `finance.entitlement_grants`        | `fn_owner_visible(subject_type, subject_id)`.                   | Service-role only (a grant is an admin act).                                   |
+| `finance.standing_commission_tiers` | `USING (true)` — the earned taper is a public promise.          | Service-role only.                                                             |
+| `finance.negotiated_rates`          | `fn_owner_visible(subject_type, subject_id)`.                   | Service-role only; every row is admin-approved and time-boxed.                  |
+| `finance.allowance_periods`         | `fn_owner_visible(subject_type, subject_id)`.                   | Definer only — via `fn_current_allowance` / `fn_consume_allowance`.            |
+| `finance.allowance_ledger`          | `fn_owner_visible(subject_type, subject_id)`.                   | Definer only (append-only).                                                    |
+
+> **Why the catalogue and the taper are world-readable.** They are the platform's published terms. A
+> freelancer deciding whether a rung is worth chasing, or whether Pro is worth £12.99, has to be able
+> to read the exact numbers — hiding them would undercut the "earn it or accelerate it" promise the
+> whole system rests on.
+
+**Allowance write path.** `authenticated` may `EXECUTE` `fn_current_allowance` (read/roll its own
+period) but **not** `fn_consume_allowance` / `fn_refund_allowance`, which are `REVOKE`d from `public`
+and granted to `service_role`. Consumption therefore only ever happens through the metering trigger
+on `projects.project_applications` or a backend service — a client cannot spend, refund, or inflate
+its own allowance.

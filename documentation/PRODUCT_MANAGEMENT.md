@@ -186,13 +186,13 @@ and block taking precedence:
 > Rollup is computed, not stored authoritatively at the parent — the same "source of truth lives at
 > the leaf" discipline the platform uses for ticket→stage→project state.
 
-### 3.5 Domain lifecycles are NOT build-tracker states (finance & verification)
+### 3.5 Domain lifecycles are NOT build-tracker states (finance, verification, scheduling & comms)
 
 The §3.1 state-machine governs **build Tasks** on the delivery tracker. The 2026-07-23 Wallet &
-Finance foundation adds several **product/finance domain lifecycles** — these are **separate**
-finite state machines that live at the schema/business layer, and they are recorded here **only so
-nobody mints a bespoke build-board column for them.** Their canonical definitions are the enum + doc
-listed:
+Finance foundation, the 2026-07-24 Availability & Discovery Calls foundation and the 2026-07-24
+Notification Engine add several **product domain lifecycles** — these are **separate** finite state machines that live at the
+schema/business layer, and they are recorded here **only so nobody mints a bespoke build-board
+column for them.** Their canonical definitions are the enum + doc listed:
 
 | Domain lifecycle           | States                                                     | Canonical home                                       |
 | :------------------------- | :--------------------------------------------------------- | :--------------------------------------------------- |
@@ -203,6 +203,20 @@ listed:
 | **Dispute**                | `open → under_review → resolved` / `refunded`              | `dispute_status` · `brain.md` §Disputes              |
 | **Spend approval**         | `pending → approved` / `rejected` / `expired`              | `finance.approval_status` · `finance-model.md` §14   |
 | **Chargeback**             | `opened → under_review → won` / `lost` / `refunded`        | `finance.chargeback_status` · `finance-model.md` §15 |
+| **Discovery call**         | `proposed → confirmed → completed`; `declined` / `expired` / `cancelled` / `no_show` | `scheduling.call_status` · `PRODUCT_SPEC.md` §Discovery & Courtesy Calls |
+| **Integration connection** | `active → expired` (refreshable) / `revoked` (terminal); `error` | `integrations.connection_status` · `SYSTEM_ARCHITECTURE.md` §Conferencing 2.1 |
+| **Subscription**           | `trialing → active`; `active ⇄ past_due` / `paused`; `cancelled` / `expired` (terminal) | `finance.subscription_state` · `finance-model.md` §16 |
+| **Standing rung**          | `L1 New → L2 Established → L3 Trusted → L4 Expert → L5 Elite` (bidirectional — a rung can be lost) | `org.standing_levels` · `finance-model.md` §16.3 |
+| **Allowance period**       | Rolls weekly; `granted → consumed`, buffer drips back on a timer   | `finance.allowance_periods` · `finance-model.md` §16.2 |
+| **Notification delivery**  | `pending → queued → sent → delivered`; `failed` / `suppressed` (policy said no) / `skipped` (nothing to send to) | `comms.delivery_status` · `database/comms/Functions.md` |
+| **Scheduled notification** | `scheduled → processing → sent`; `cancelled` (the reason went away) / `failed` (3 attempts) | `comms.queue_status` · `database/comms/Tables.md` |
+
+> **The discovery call is the sharpest illustration of why this section exists.** A booked call is
+> not a unit of delivery: it creates no Project, Stage or Ticket, never appears on a board, and does
+> **not** count toward Workload Intensity (§4). A **reschedule is not a state** either — it returns
+> the row to `proposed` and increments a counter, so a call that moved three times is still one
+> call, not three. Enforced by `scheduling.fn_enforce_call_transition`; mirrored for the client in
+> `packages/types/scheduling/calls.ts` (`CALL_TRANSITIONS`), where **the trigger is the authority**.
 
 **Rules:** (1) these never appear as delivery-board columns (§6 maps only §3.1 states); (2) nothing
 is hard-deleted — a retired verification/invoice/dispute goes to a terminal state, never a `DELETE`

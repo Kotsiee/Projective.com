@@ -472,6 +472,40 @@ protected; a timestamp once unlocked), read via `projects.is_protected_phase`.
    filter switches off for that project's threads and the full, unrestricted file library unlocks,
    allowing the "Contact Handover."
 
+#### Notifications — what we tell you, and what you can turn off
+
+Every notification belongs to one of eight **categories**: Money · Work · Messages · Schedule ·
+Discovery · Account · System · Marketing. A user controls delivery at three grains — globally, per
+category, and per individual event — across four transports (in-app, push, email, SMS).
+
+Three product rules govern the whole surface:
+
+1. **Some alerts cannot be turned off.** Anything that moves money, changes access, or affects legal
+   standing — escrow and payout events, chargebacks, invoices, identity-verification outcomes,
+   password and new-device events, permission changes, moderation decisions, policy updates — is
+   **mandatory** and ignores every preference. A user is never left unaware that they were paid, that
+   a payout failed, or that someone signed in as them.
+2. **Quiet hours silence the interruption, not the record.** Inside a user's quiet window, push and
+   SMS are withheld; the in-app inbox still receives everything, so nothing is lost. A small set of
+   genuinely time-critical events (a session starting in minutes, a security alert, a failed payout)
+   is allowed to break through, and a **global snooze is pierced only by critical alerts**.
+3. **Unsubscribing from marketing never silences anything else.** An unsubscribe or a bounce
+   suppresses that address for Marketing only — a transactional or security email still reaches it.
+
+Supporting behaviours the user should expect: repeated events of the same kind **collapse into one
+entry** rather than flooding the inbox (five messages in one channel become one line, not five); a
+digest cadence rolls low-urgency mail into a daily or weekly summary delivered at the user's local
+hour; an urgent alert left unread falls back to email after a short window; and **dismissing archives
+rather than deletes**, so the record survives.
+
+Reminders (a session at T-60/T-15/T-5, a nudge on an abandoned basket, a chase on a submission left
+unreviewed) are scheduled ahead of time and **cancelled automatically when the reason disappears** —
+cancelling a session cancels its reminders.
+
+_Schema, routing precedence and delivery mechanics:
+[`database/comms/`](../database/comms/Tables.md) · `SYSTEM_ARCHITECTURE.md` §The Notification
+Engine._
+
 ---
 
 ### Escrow, Wallets & Finance
@@ -591,6 +625,52 @@ Projective is currency-global by design.
 (The base-currency choice, rate-snapshot mechanics, display-conversion service, and the **open**
 question of who bears the FX spread are all in `finance-model.md` §11 Multi-Currency & FX.)
 
+#### 7. Subscriptions, Allowances & Entitlements
+
+Projective monetises **three axes, and never the fourth**. The distinction is a platform-level rule,
+not a pricing detail:
+
+| Axis                       | What it governs                                                              | Monetised?                    |
+| :------------------------- | :--------------------------------------------------------------------------- | :---------------------------- |
+| **Execution capacity**     | How much work a freelancer may hold concurrently                             | **Never** — governed by $W_i$ |
+| **Distribution**           | Outbound proposals and invitations                                           | Yes — a tiered _allowance_    |
+| **Marketplace footprint**  | Live public projects, published listings, entities owned, seats, promotion   | Yes — tiered caps             |
+| **Reputation (Standing)**  | The earned rung a client reads before hiring                                 | **Never** — earned only       |
+
+Charging for execution capacity would be the hourly-tracking sin Projective exists to avoid, and a
+purchasable rung would make the trust signal worthless. Both are permanently off the table.
+
+##### Governing principles
+
+- **Plenty, then acceleration.** A user must never feel suffocated by their tier; the features they
+  hold should feel plentiful, and upgrading should simply make sense. Free limits are set generously
+  by intent.
+- **Unlimited private drafting.** Drafting a project, service or listing is always free and always
+  unlimited. Only going **live and public** consumes a footprint slot — you are never charged to
+  think.
+- **A freelancer is a superset of a client.** There is one universal free baseline that carries the
+  full buyer experience; seller and scale upgrades layer on top. There is no separate client plan.
+- **Two payment planes.** A **personal** plan raises what a _user_ may do; an **entity** plan raises
+  what a _team/business/organisation_ may do. Owning more entities never powers them — each pays for
+  its own muscle.
+- **Joining is never capped.** Owning teams and businesses is metered; joining them is not.
+
+##### Proposal allowances
+
+Outbound proposals are metered per week, with a rolling buffer that returns a few every several
+hours. This is an **anti-spam** mechanism, not a paywall: when the same handful of top performers
+apply to every posting, the average freelancer is less likely to be chosen and the client's shortlist
+is worse. A ceiling therefore exists on **every** tier — a paid plan raises it, never removes it, and
+proposals are never sold à la carte. Withdrawing a proposal returns its unit.
+
+An entity must hold at least **two members** before it may send proposals as a team.
+
+##### Entitlement resolution
+
+A subject's effective limit is **plan × earned rung**, then optionally raised by an administrative
+grant. A grant may only ever raise a limit, never lower it. Concrete magnitudes, prices, the ladder
+table and the fee-flex rules are in `finance-model.md` §16.
+
 ---
 
 ### The Hiring Process
@@ -609,6 +689,68 @@ There are two primary ways an engagement begins:
 - **The Outbound Invitation (Client-Led):** A client uses the "Explore" page to find a freelancer or
   team that matches their needs and sends a direct **Invitation** to join a specific project or
   stage.
+
+##### Discovery & Courtesy Calls (the third path)
+
+Before either party commits to a negotiation, they may simply **talk**. A discovery call is a
+short, scheduled conversation booked directly from a provider's availability page — the
+lowest-friction way for a client to establish fit and for a provider to qualify a lead.
+
+> **A discovery call is a conversion tool, not a deliverable.** It creates **no** Project, Stage, or
+> Ticket; it never enters the delivery state-machine in
+> [`PRODUCT_MANAGEMENT.md`](../PRODUCT_MANAGEMENT.md) §3.1; and it does **not** count toward
+> Workload Intensity. This is the distinction that keeps a fifteen-minute chat from being
+> administratively identical to a paid engagement.
+
+**Two flavours.**
+
+| | **Courtesy Call** (free) | **Paid Consultation** |
+| :--- | :--- | :--- |
+| Purpose | Establish fit, qualify a lead | Sell expertise directly |
+| Money | None | Provider-set price |
+| Escrow | **No** | Session money path (see the flag below) |
+| KYC gate | **No** | Follows the standard Session rules |
+| Flow | Request → Confirm → auto-generated meeting link (the **Calendar Handshake**) | As above, plus payment |
+
+The courtesy call is the common case and is deliberately frictionless: no payment surface, no
+verification wall, no negotiation. It must remain bookable even by a provider who has connected no
+third-party tools at all — the platform falls back to a manually supplied link.
+
+**Pricing.** A paid consultation is priced by the provider and is **not negotiable**, for exactly
+the reason given in [§Why Sessions are Fixed](#why-sessions-are-fixed): consultation time is the
+provider's product, and haggling over it reintroduces the friction the fixed-price rule exists to
+remove.
+
+**Availability is two layers, not one.** A provider's **working hours** say when they are at their
+desk; a **call window** is the narrower subset during which they will accept an interruption. The
+two are configured and displayed separately — "I am working" and "interrupt me" are not the same
+statement. Providers additionally set **buffers** either side of a call (so bookings cannot be
+stacked back-to-back), a **minimum notice** period, a **booking horizon**, and — for free calls
+only — a **weekly cap** and a **per-requester cooldown**. These are burnout and abuse guards, and
+they belong to the provider, not the platform.
+
+**Cancellation, lateness and no-shows.**
+
+- A **courtesy** call carries **no financial consequence**, because there is no money in it. A late
+  cancel (inside the platform cancellation window) or a no-show is recorded as a **reliability
+  signal only**.
+  > **Open (flagged):** whether that reliability signal feeds the reputation / discovery-rank
+  > machinery in [§Reputation & Discovery](#reputation--discovery) needs a deliberate decision.
+- A **paid** consultation follows the Session cancellation rules. Those rules are subject to the
+  standing, already-logged conflict between [`finance-model.md`](finance-model.md) §4 (50% penalty)
+  and this document's Session table (full forfeit); per the source-of-truth hierarchy **this
+  document wins**. The schema records the resulting refund/penalty per call rather than assuming
+  either, so the ratified rule can be applied without a migration.
+
+**Attendance is evidence.** When a call runs on a connected conferencing provider, participant
+join/leave callbacks are logged as a **Digital Handshake** — the same evidence trail a delivered
+Session Service produces, and the basis on which a no-show can be asserted rather than alleged.
+
+**Where it is configured.** The public booking surface is the provider's availability page
+(`/[handle]/availability`); the configuration — call windows, durations, fees, buffers, caps, and
+connected conferencing tools — lives under Settings. See
+[`SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) §Conferencing for the technical
+contract and `documentation/database/scheduling/` for the schema.
 
 #### 2. The Negotiation Logic
 
@@ -1081,6 +1223,68 @@ Index**.
   **Digital Handshake** data (No-show rates).
 - **Marketplace Feedback:** For templates and digital assets, ranking is driven by "Utility Scores"
   (successful downloads and positive usage signals from clients who implemented the asset).**
+
+#### 5. Standing, Mastery & Progression
+
+**Standing** is the client-facing rung of the Reliability Index — the same score, discretised into a
+five-step ladder (New → Established → Trusted → Expert → Elite) so that both a freelancer and a
+prospective client can read it at a glance. It does not replace $R_i$; it is $R_i$ made legible.
+
+##### The governing rule of gamification
+
+> **Every reward must map to something a client independently values. Reputation is the currency, not
+> points.**
+
+Projective is moving real money through escrow, and clients are paying for professionalism. The
+moment progression feels like an arcade, it cheapens what the client is buying and invites gaming.
+Held to that rule, progression stops being a bolt-on feature and becomes the platform's competitive
+position: incumbents rank by who earned most or paid most; Projective ranks by who is **reliable and
+available**.
+
+##### What a rung unlocks
+
+Standing carries real capacity, not cosmetics: a larger published-listing allowance, a weekly
+proposal bonus, a higher discovery weighting, and a lower marketplace commission at the top rungs.
+There are therefore **two paths up the same mountain — earn it, or accelerate it with a
+subscription — and they stack.** A high-standing free user is rewarded rather than starved, and a
+paid plan reads as an accelerant rather than a gate.
+
+##### What moves a rung
+
+Stage completion, on-time delivery, the dual-track review scores, a low dispute rate, $W_i$
+reliability (delivering at capacity without dropping tickets), and tenure — each offset by active
+penalties. **Never raw earnings and never raw proposal counts.** Ranking by spend or by volume is the
+pay-to-win trap the ladder exists to avoid. A volume floor also applies at each rung, so a single
+flawless engagement cannot vault a newcomer to the top.
+
+##### CREATE mastery
+
+Because every stage is typed against the CREATE framework, a freelancer's specialisation is
+**derived** from what they have actually delivered rather than self-declared — an intensity-weighted
+share per category that surfaces as "Create specialist", "Advise specialist", and feeds discovery
+matching so Create-heavy stages route to proven Create deliverers. No competing marketplace can
+compute this, because none have the stage taxonomy.
+
+##### Streaks, milestones and designations
+
+Streaks track **delivered quality** — on-time delivery, fast response, dispute-free runs — and are
+visible to clients because they are things a client cares about. Milestones (first payout, first
+five-star, a returning client) are light celebratory garnish. A **designation** such as _Architect_
+carries real capability: leading multi-person, team-based stages and authoring Marketplace stage
+templates.
+
+Deliberately absent: login and attendance streaks, vanity points detached from client value, and
+public earnings leaderboards. The first is hostile to freelancer wellbeing, the second cheapens the
+signal, and the third drives race-to-the-bottom pricing.
+
+##### Buyers are not gamified
+
+Clients, businesses and organisations carry the **Client Trust Score** and verification badges, not a
+Standing rung. Buyers want efficiency and trust, not quests; over-gamifying that side makes serious
+clients leave.
+
+(Rung thresholds, the score weighting, the listing/proposal/commission ladder and the interaction
+with subscriptions are all in `finance-model.md` §16.3.)
 
 ---
 

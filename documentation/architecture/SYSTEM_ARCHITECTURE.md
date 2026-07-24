@@ -930,6 +930,51 @@ logic and external integrations.
 - **Idempotency:** Functions must be designed to handle duplicate events without corrupting data or
   double-sending notifications.
 
+### The Notification Engine
+
+Migrations `20260724090000`–`20260724094000`. Zod SSOT `@projective/types/comms`; schema reference
+[`database/comms/`](../database/comms/Tables.md).
+
+**Routing policy is data, not code.** `comms.notification_types` holds one row per event key
+(81 seeded) declaring its category, urgency, default channel fan-out, mute-ability, quiet-hours
+override, dedupe window and audit flag. `comms.fn_resolve_channels` intersects that with the
+recipient's global / per-category / per-type preferences, their quiet hours and their digest cadence.
+Adding an event is a catalog row, not a code change in every emit site.
+
+```
+Event (RPC / trigger / cron)
+  └─ comms.fn_notify ─┬─ INSERT comms.notifications ──► Supabase Realtime      (in-app)
+                      ├─ INSERT comms.notification_deliveries (per channel/device)
+                      │     └─ AFTER INSERT trigger ──► dispatch Edge Function (push · email · SMS)
+                      └─ security.audit_logs                                    (financial/security events)
+pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps
+```
+
+**Boundaries that matter:**
+
+- **The engine never raises.** `fn_notify` is invoked from inside escrow and stage RPCs; its body is
+  wrapped so a notification problem can never roll back a money movement.
+- **A row is always written; delivery is separate.** `comms.notifications.channels` records what the
+  router decided — an empty array means "recorded, delivered nowhere". The in-app inbox reads the
+  `comms.notification_feed` view, which filters on `in_app` membership.
+- **Clients cannot write notifications.** There is no `INSERT` policy; rows come from the
+  SECURITY DEFINER writer or the service role, so _"Payout sent"_ cannot be spoofed. The only client
+  write is flipping read/seen/archived on your own row.
+- **`mandatory` types bypass preferences entirely** — security, money-movement, legal and moderation
+  events are not suppressible, and a `marketing_only` unsubscribe can never silence them.
+- **Webhook idempotency is a unique index.** `comms.delivery_events (provider, provider_event_id)`
+  is the concrete implementation of the standard above: a replayed gateway callback can never
+  double-apply. Its row is never deleted — only its `raw` body is compacted after 30 days.
+- **Deferred work is durable and cancellable.** `comms.notification_queue` holds promises of future
+  notifications (session T-60/T-15/T-5 reminders, abandoned-basket nudges, ghosting/auto-approve
+  timers) keyed by a deterministic `dedupe_key`, so re-running a scheduler is a no-op and the event
+  that invalidates a reminder cancels it by key.
+
+**Still to build (not in the database layer):** the `dispatch-push` / `send-email` Edge Functions and
+their provider credentials (VAPID keypair, FCM/APNs, an SMTP or email-provider block in
+`config.toml`). The outbound trigger is feature-flagged **off** with an `XXXX-XXXX` placeholder URL
+until they exist.
+
 ---
 
 ## Security
@@ -1205,6 +1250,67 @@ incorrect API flows.
 - **Verification:** The system listens to server-to-server Webhooks (e.g., Zoom's
   `participant_joined`) to power the "Digital Handshake" attendance logs.
 
+#### 2.1 The connection store (`integrations` schema, 2026-07-24)
+
+The OAuth grants above are persisted by the `integrations` schema — declared empty since
+`0001_init_schemas.sql`, populated by migration `20260724101000`. Full schema in
+[`documentation/database/integrations/`](../database/integrations/Tables.md); the contract that
+matters here:
+
+- **Authentication ≠ authorization.** The Google OAuth in `apps/web/features/auth/` is **sign-in**:
+  GoTrue owns it and **no third-party API token is retained**. A connection is a *separate,
+  additional* consent that stores a long-lived grant so the platform can act on the user's behalf
+  later. The two flows must never be conflated or share a token store — a user signed in with
+  Google still has to grant a calendar connection explicitly.
+- **Calendar sync and conferencing are two axes, not one.** `integrations.providers.capabilities`
+  is an array (`{calendar}` / `{conferencing}` / both) because Google mints a Meet room *through*
+  the Calendar API. Do not collapse them into a single provider chip set:
+  `INTEGRATION_SOURCES` (sync) and `CONFERENCING_PROVIDERS` (rooms) in
+  `@projective/types/scheduling` are deliberately distinct.
+- **No plaintext credentials.** Tokens are stored as ciphertext produced in an Edge Function with
+  `ENCRYPTION_KEY` (§Environment Variable Contract). `integrations.user_connections` is
+  **definer-only** — RLS on, **no policy, no `authenticated` grant** — the same hidden-ledger
+  posture the core `finance` tables use. Clients read the `integrations.v_my_connections` view,
+  which cannot project a token column: the safety is **structural, not a policy**.
+- **Capability checks never touch credentials.** `integrations.fn_has_capability(user, kind)` and
+  `integrations.fn_conferencing_provider(user)` are the sanctioned way to ask "can this user mint a
+  room?" — they return a boolean and a slug, nothing more.
+- **A NULL provider is a normal answer.** A user who has connected nothing must still be bookable;
+  the caller falls back to `scheduling.call_settings.preferred_provider_slug`, a platform-hosted
+  room, or a manually entered link.
+
+#### 2.2 Discovery & courtesy calls (`scheduling` schema, 2026-07-24)
+
+Migrations `20260724100000`–`20260724104000` add the twelfth schema, `scheduling`, and with it the
+pre-engagement booking layer. See [`PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Discovery &
+Courtesy Calls for the business rules and
+[`documentation/database/scheduling/`](../database/scheduling/Tables.md) for the schema.
+
+- **Why a new schema.** `@projective/types/scheduling` has described itself as a read projection
+  "over the eventual `scheduling.*` tables" since 2026-07-21, but the schema did not exist. This
+  materialises it. `projects.session_events` / `cohorts` / `session_attendance` remain the SSOT for
+  a **paid Session Service's delivery** and are untouched; a `scheduling.events` row may *mirror*
+  one for calendar rendering via `source_session_event_id`.
+- **The booking rules live in the database.** They protect a person's calendar and (for a paid
+  call) their money, so they are enforced where RLS is. `scheduling.fn_call_request_refusal` returns
+  **NULL or a reason code**, and the *same* function backs both the pre-flight UI check and the
+  `BEFORE INSERT` trigger — so the two can never drift, and a hand-rolled PostgREST insert cannot
+  bypass the gate. The legal-transition matrix is likewise a trigger, not a policy.
+- **Enforcement skips service-role.** Both triggers no-op when `auth.uid()` is NULL: webhooks,
+  sweeps and backfills own the rules in their own layer. The triggers guard the *client* path.
+- **Shape is public, content is not.** A published schedule exposes its bands, blackout **spans**,
+  and free/busy overlay kinds to `anon` — a visitor must see when someone is free to book them —
+  while syncs, milestones and bookings stay private. Blackout **labels** are withheld unless the
+  owner opts in (`label_is_public`), because a policy cannot mask a column.
+- **A discovery call is a `booking`, not a tenth `CalendarEventKind`.** Adding a kind would break
+  the shipped calendar engine's exhaustive `Record<CalendarEventKind, …>` maps, turning a data
+  change into a design-system change (root `CLAUDE.md` §3).
+- **⚠️ Paid calls have no escrow path yet.** `finance.escrows` requires both `project_stage_id` and
+  `payer_business_id` NOT NULL, so a standalone 1-1 paid call between an individual client and a
+  freelancer has no legal escrow row. `discovery_calls.escrow_id` is nullable and set only when a
+  call attaches to an already-funded stage. Relaxing those columns (a **protected** table) or
+  auto-provisioning a session-format micro-project both need human sign-off — flagged, not chosen.
+
 ---
 
 ## Testing Protocols
@@ -1235,9 +1341,20 @@ SUPABASE_URL=XXXX-XXXX
 SUPABASE_ANON_KEY=XXXX-XXXX
 SUPABASE_SERVICE_ROLE_KEY=XXXX-XXXX
 
-# Authentication (OAuth)
+# Authentication (OAuth) — SIGN-IN only; GoTrue owns this and retains no API token
 GOOGLE_CLIENT_ID=XXXX-XXXX
 GOOGLE_CLIENT_SECRET=XXXX-XXXX
+
+# Integrations (connection OAuth) — a SEPARATE consent that stores a long-lived API grant.
+# Never share a client or a token store with the sign-in credentials above.
+# Calendar sync + conferencing; each provider ships DISABLED until its credentials exist.
+GOOGLE_INTEGRATION_CLIENT_ID=XXXX-XXXX
+GOOGLE_INTEGRATION_CLIENT_SECRET=XXXX-XXXX
+MICROSOFT_INTEGRATION_CLIENT_ID=XXXX-XXXX
+MICROSOFT_INTEGRATION_CLIENT_SECRET=XXXX-XXXX
+ZOOM_CLIENT_ID=XXXX-XXXX
+ZOOM_CLIENT_SECRET=XXXX-XXXX
+ZOOM_WEBHOOK_SECRET=XXXX-XXXX
 
 # Stripe (Finance)
 STRIPE_SECRET_KEY=XXXX-XXXX

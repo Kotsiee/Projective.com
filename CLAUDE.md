@@ -1804,6 +1804,200 @@ REAL `org.user_preferences.layout_direction`-driven `dir` at the shell root is a
 `apps/web/routes/(dashboard)/_layout.tsx` · `apps/web/utils/{dev-seam,storage-keys}.ts` ·
 `apps/web/features/devtools/` · Decisions #1 / #10 / #16 / #32 / #37 / #48 / #53 / #54 |
 
+| 56 | **Availability & Discovery Calls — documentation + database FOUNDATION (2026-07-24).** A
+**docs + DB-only** pass (NO UI / islands / routes / features / backend services), mirroring the
+Decision #54 shape. Adds **5 additive, timestamped migrations** (`20260724100000`–`104000`) — (1)
+the **twelfth schema `scheduling`** + owner schedules + weekly availability bands + blackouts, (2)
+the **first tables in the long-declared-but-empty `integrations` schema** (provider catalogue +
+per-user OAuth connections + consent audit), (3) `scheduling.events` (the persisted backing for the
+`CalendarEvent` projection) + free/busy predicates, (4) discovery-call settings / the booking record
+/ the "Digital Handshake" attendance log / the transition audit, (5) the in-DB **booking gate**
+(timezone-aware band coverage, buffer-widened conflict detection, the refusal-code function, the
+legal-transition + audit triggers, and five new `security.platform_params` knobs) — each **RLS-on
+with policies**, **additive-only** (no FK/table/column drop; **no protected Escrow/Wallet/Stage
+table touched at all**), **authored, NOT applied to any live DB** (a human step, Decisions #47/#54
+precedent). Lands with the **Zod SSOT** (new `@projective/types/integrations`; new
+`scheduling/rows.ts` + `scheduling/calls.ts`; additive optional fields on the existing
+`scheduling.ts` projections) and the **de-stubbed**
+`documentation/database/{scheduling,integrations}/{Tables,Policies,Functions}.md` + `Schemas.md` /
+`README.md`. Business/arch: `PRODUCT_SPEC.md` §Discovery & Courtesy Calls (a THIRD discovery path
+under §The Hiring Process), `SYSTEM_ARCHITECTURE.md` §Conferencing 2.1/2.2 + the Environment
+Variable Contract (connection-OAuth keys), `PRODUCT_MANAGEMENT.md` §3.5 (two new domain
+lifecycles). **Key decisions:** (a) **A discovery call is a conversion tool, not a deliverable** —
+no Project/Stage/Ticket, never in the §3.1 delivery state-machine, no Workload Intensity; a
+**reschedule is not a state** (return to `proposed` + a counter). (b) **Courtesy (free) vs paid** —
+the free "Calendar Handshake" has no payment, no escrow, no KYC gate and must stay bookable by
+someone who has connected nothing. (c) **Authentication ≠ authorization** — the GoTrue sign-in OAuth
+retains no API token; `integrations.user_connections` is a separate consent, **definer-only** (RLS
+on, no policy, no `authenticated` grant) with ciphertext-only tokens, read through the
+`v_my_connections` view so column safety is **structural, not a policy**. (d) **Calendar sync and
+conferencing are two axes** (`providers.capabilities` is an array; `INTEGRATION_SOURCES` vs the new
+`CONFERENCING_PROVIDERS`), never one chip set. (e) **Working hours vs call windows** are two layers
+(`scheduling.availability_kind`) — "I am working" ≠ "interrupt me". (f) **A discovery call is a
+`booking`, NOT a tenth `CalendarEventKind`** — a new kind would break the shipped engine's
+exhaustive `Record<CalendarEventKind, …>` maps (§3). (g) **The booking rules live in triggers, not
+policies** — one refusal function backs both the pre-flight UI check and the hard `BEFORE INSERT`
+gate, so they cannot drift and PostgREST cannot bypass them; both triggers skip when `auth.uid()` is
+NULL (service-role owns its own layer). (h) **Shape is public, content is not** — a published
+schedule exposes bands/blackout spans/free-busy kinds to `anon`; blackout **labels** need
+`label_is_public` because a policy cannot mask a column. **Reused, NOT forked:** money is the
+existing `(amount_minor, currency)` pair; visibility mirrors `finance.fn_owner_visible`; project
+events reuse `projects.has_project_access`; the knobs go in the existing
+`security.platform_params`; `projects.session_events`/`cohorts`/`session_attendance` remain the SSOT
+for paid Session delivery (mirrored, never replaced) and
+`org.freelancer_profiles.availability_status` stays the coarse ranking cache. **Flagged conflicts
+(surface, do NOT resolve):** (a) **Paid calls have no escrow path** — `finance.escrows` requires
+BOTH `project_stage_id` and `payer_business_id` NOT NULL, so a standalone 1-1 paid call is
+inexpressible; `escrow_id` is nullable and set only for an already-funded stage. Relaxing those
+columns (a **protected** table, §1) or auto-provisioning a session-format micro-project both need
+human sign-off. (b) **Cancellation economics** — the pre-existing `finance-model.md` §4 (50%) vs
+`PRODUCT_SPEC.md` §Sessions (full forfeit) conflict is untouched; the schema records
+`refund_amount_minor`/`penalty_amount_minor` as OUTCOMES so either rule is expressible without a
+migration. Courtesy-call rules are NEW and deliberate: **no financial consequence**, reliability
+signal only. (c) Whether that reliability signal feeds `security.penalties` / discovery rank is
+undecided. (d) The shared-entity schedule **write** gate is "any active member" /
+`org.is_team_lead`; tightening it to a specific `org.team_permission`/`business_permission` needs a
+human. (e) **`documentation/database/Schemas.md` has always listed 11 schemas but
+`0001_init_schemas.sql` creates 12** — it also creates **`reviews`**, undocumented and folder-less;
+`scheduling` makes the documented set 12 of the real 13. Reconciling `reviews` needs a human. (f) An
+availability band **cannot cross local midnight** (`end_minute > start_minute`) — a deliberate
+simplification, so 23:00–01:00 is two bands. | root CLAUDE.md §1/§3/§5/§6 ·
+`supabase/migrations/20260724100000..104000_*` · `packages/types/integrations/*` +
+`packages/types/scheduling/{rows,calls,scheduling}.ts` ·
+`documentation/database/{scheduling,integrations}/*` ·
+`documentation/database/{Schemas,README}.md` · `PRODUCT_SPEC.md` §The Hiring Process ·
+`SYSTEM_ARCHITECTURE.md` §Conferencing + §Environment Variable Contract · `PRODUCT_MANAGEMENT.md`
+§3.5 · Decisions #37 / #47 / #54 |
+
+| 57 | **Notification Engine — documentation + database FOUNDATION (2026-07-24).** A **docs + DB +
+Zod-only** pass (NO UI / islands / routes / features / backend services), mirroring the Decision #54
+/ #56 shape. Adds **5 additive, timestamped migrations** (`20260724090000`–`094000`) — (1) the
+**`comms.notification_types` catalog** (routing policy as data: category · urgency · default channel
+fan-out · mute-ability · quiet-hours override · dedupe window · audit flag; **81 event keys seeded**)
+plus the additive event-envelope columns on `comms.notifications` (`category`, `urgency`,
+`actor_user_id`, `context_type`/`context_id`, `action_url`, `payload`, `group_key`/`group_count`,
+`channels`, `seen_at`, `archived_at`, `expires_at`) and 9 partial indexes; (2) **preference
+granularity** — recurring, timezone-aware quiet hours + digest cadence + global snooze +
+`escalate_after` on `comms.notification_prefs`, the new sparse `notification_category_prefs` and
+`notification_type_mutes`, and a real `device_tokens` shape (platform · Web Push endpoint/keys ·
+soft-revoke · failure count) with a seed-on-signup trigger; (3) **delivery & scheduling** —
+`notification_deliveries` (one row per notification × channel × device), `notification_queue`
+(durable, cancellable, dedupe-keyed promises), `notification_digests`, `delivery_events` (the
+webhook idempotency ledger) and `channel_suppressions`; (4) the **router + writer** — `fn_notify`
+(compatible superset of the 0305 six-arg signature), `fn_resolve_channels`, `fn_is_quiet_hours`,
+`fn_is_suppressed`, the inbox RPCs, and three `security_invoker` read views; (5) **RLS, grants,
+realtime, `pg_cron` jobs** and a feature-flagged outbound dispatch trigger. **THE HEADLINE FIX:**
+`comms.notifications`/`notification_prefs`/`device_tokens` have had RLS **enabled since 0201 with
+ZERO policies** — default-deny — so `authenticated` could never read a notification and Realtime
+(publishing the table since 0206) could never emit one; the in-app channel has never worked. Lands
+with the **Zod SSOT** `@projective/types/comms` (`common`/`catalog`/`notifications`/`preferences` +
+the `./comms` export) and the de-stubbed `documentation/database/comms/{Tables,Policies,Functions}.md`
+(Policies + Functions were `_Not yet documented._`), plus `Schemas.md`, `database/README.md`,
+`PRODUCT_MANAGEMENT.md` §3.5 (two new domain lifecycles: notification delivery + scheduled
+notification) and `SYSTEM_ARCHITECTURE.md` §The Notification Engine. **Verified against a real
+Postgres 16** (throwaway container, Supabase-shaped scaffold): all 5 migrations apply clean; legacy
+alias resolution, collapse, quiet-hours push-drop, critical-pierces-quiet-hours,
+mandatory-survives-snooze, per-type mute, audit write, queue dedupe + processing, per-device push
+fan-out, feed exclusion of muted rows, expiry sweep, escalation idempotency and suppression
+semantics all behave; RLS verified as an `authenticated` role (own-rows-only, forging blocked,
+reassignment blocked). **Authored, NOT applied to any live database** (a human step, Decisions
+#47/#54/#56 precedent). **Design invariants:** the catalog is **policy, not a gate** (deliberately
+NO FK from `notifications.type`, and `fn_notify` auto-registers an unknown key); **the engine never
+raises** (it is called from inside escrow/stage RPCs); a notification **row is always written** while
+`channels` records what the router decided (empty = recorded, delivered nowhere); there is **no
+client INSERT policy**, so _"Payout sent"_ cannot be spoofed; nothing is hard-deleted (dismiss =
+`archived_at`). **Flagged conflicts (surface, do not silently resolve):** (a) **key-convention
+split** — `comms/Tables.md` has always documented dotted keys (`message.new`) but the live escrow
+callers (0305/0311) emit underscored ones (`stage_funded`, `stage_approved`, `stage_cancelled`,
+`project_handover`); resolved non-destructively (dotted canonical + the four legacy keys in
+`aliases[]` + `fn_resolve_type_key`) so those call sites are untouched — **rewriting the
+money-movement RPCs needs human sign-off**. (b) **`quiet_hours tstzrange` superseded** — it is an
+ABSOLUTE range and cannot express a recurring nightly window; kept under the Additive Rule and still
+honoured, with the new `quiet_hours_*`+`timezone` columns authoritative. (c) **`digest boolean`
+superseded** by `digest_frequency` (backfilled `true`→`daily`). (d) **`org.user_preferences`
+`notification_email`/`notification_push` are a second, coarser copy** of the same toggles (seeded by
+Decision #47's trigger) — `comms.notification_prefs` is the engine's SSOT and the two are **not
+reconciled** (a data decision). (e) `fn_notify` is replaced via **DROP + CREATE**, not
+`CREATE OR REPLACE` — adding defaulted params changes the signature and keeping both would make a
+six-arg call ambiguous; every existing call site still resolves to the new function unchanged.
+(f) **Push/email/SMS have no transport yet** — the `dispatch-push`/`send-email` Edge Functions, the
+VAPID keypair, FCM/APNs credentials and an SMTP/email-provider block in `config.toml` are the
+deferred live path; the outbound trigger ships **feature-flagged off** with an `XXXX-XXXX`
+placeholder URL. (g) `pg_cron`/`pg_net` are **optional** — registration is guarded and only raises a
+`NOTICE`, so the jobs may need scheduling by hand. | root CLAUDE.md §1/§5/§6 ·
+`supabase/migrations/20260724090000..094000_*` · `packages/types/comms/*` ·
+`documentation/database/comms/{Tables,Policies,Functions}.md` ·
+`documentation/database/{Schemas,README}.md` · `SYSTEM_ARCHITECTURE.md` §The Notification Engine ·
+`PRODUCT_MANAGEMENT.md` §3.5 · Decisions #47 / #54 / #56 |
+
+| 58 | **Subscriptions, Entitlements & the earned Standing ladder — documentation + database
+FOUNDATION (2026-07-24).** A **docs + DB + Zod-only** pass (NO UI / islands / routes / features /
+backend services). Adds **4 additive, timestamped migrations** (`20260724110000`–`113000`) — (1) the
+**`analytics` event substrate** (that schema's first tables: `event_catalogue` · append-only `events`
+· `daily_rollups` · `fn_emit` · `v_unregistered_events`), (2) the **earned Standing ladder** in `org`
+(`standing_levels` · `entity_standing` · `standing_events` · `create_mastery` · `achievements` +
+`entity_achievements` · `quality_streaks` + `fn_recompute_standing`/`fn_award_achievement`/
+`fn_touch_streak`/`fn_record_mastery`), (3) the **paid ladder** in `finance` (`plans` ·
+`plan_entitlements` · `subscriptions` **extended additively** · `subscription_events` ·
+`entitlement_grants` · `standing_commission_tiers` · `negotiated_rates`), (4) **resolution, metering
+& enforcement** (`allowance_periods` · `allowance_ledger` · `fn_effective_limit`/`fn_has_entitlement`
+/`fn_effective_commission_bp`/`fn_effective_platform_fee_bp`/`fn_current_allowance`/
+`fn_consume_allowance`/`fn_footprint_usage` + three param-gated triggers) — each **RLS-on with
+policies**, **additive-only** (no table/column/FK/function/trigger dropped; the pre-existing
+`finance.subscriptions` skeleton is EXTENDED and its legacy `plan`/`status`/`profile_id` columns
+mirrored by a BEFORE trigger rather than relaxed), **authored, NOT applied to any live DB** (a human
+step, Decisions #47/#54 precedent). Lands with the **Zod SSOT** (`@projective/types/analytics` — a
+NEW sub-path — + `org/standing.ts` + `finance/{plans,entitlements}.ts`) and the de-stubbed
+`documentation/database/analytics/{Tables,Policies,Functions}.md` plus `org`/`finance`/`Schemas.md`/
+`README.md` updates. Business: `finance-model.md` §1.1–1.5 rewritten + new §16 (concrete numbers),
+`PRODUCT_SPEC.md` §Escrow…#7 "Subscriptions, Allowances & Entitlements" + §Reputation…#5 "Standing,
+Mastery & Progression" (abstract rules), `PRODUCT_MANAGEMENT.md` §3.5 (+3 domain lifecycles).
+**Architecture — the three axes:** execution capacity is **never** monetised ($W_i$ caps stay the
+sole authority); only **distribution** (proposals) and **marketplace footprint** are tiered; and a
+plan **accelerates capacity but can never buy reputation** (nothing in `finance` writes to
+`org.entity_standing`; every Standing mutator is `REVOKE`d from `public`). **Reused, NOT forked:**
+Standing is the discretised rung of the EXISTING Reliability Index ($R_i$, `PRODUCT_SPEC.md`
+§Reputation & Discovery), not a competing score; `security.penalties` remains the penalty SSOT;
+`finance.subscriptions` was extended rather than replaced; the "Architect" designation is seeded into
+`org.achievements` rather than reinvented. **Owner decisions applied (2026-07-24):** Individual Pro =
+**£12.99/mo**; free published listings **10 scaling with rank** (Pro = 2×); active public projects
+**3 free / 15 Pro**; **no cap on joining** teams/businesses; the 5% **may** flex for Organisation
+volume deals; governing constraint = _"never feel suffocated; upgrading should just make sense."_
+**Flagged conflicts / open items (surface, do NOT silently resolve):** (a) **`finance-model.md` §1.1
+reworded** — "no paywall on freelancer **project** volume" → "no paywall on **execution** volume";
+this is a real semantic change to a previously absolute guardrail, made on the owner's explicit
+instruction, and is logged here rather than applied silently. (b) **`business_pro` price is unset** —
+entitlements seeded, `finance.plans.price_cents` deliberately `NULL`. (c) **Enforcement ships
+fail-open** — `proposal_allowance_enforced` + `footprint_caps_enforced` default `false`, so the caps
+**meter** but never refuse; flipping them changes live user-visible behaviour and needs a human. (d)
+**`published_listings` usage count returns 0** until the `catalogue.*` tables land (Decision #53
+keeps `/catalogue` on fixtures) — the cap already resolves, only its live count is pending. (e)
+**Standing is never recomputed by a trigger** — it is a sweep
+(`standing_recompute_interval_hours`), because recomputing reputation inside a stage-approval
+transaction would couple money movement to reputation math; the sweep job itself is not yet written.
+(f) `standing_demotion_grace_days` is seeded but **not yet consumed** by `fn_recompute_standing`
+(anti-flapping guard reserved). (g) `finance.plan_entitlements` `organisation_businesses` counts 0
+because businesses are **not yet FK-linked** to an organisation (Phase 2). (h) The Standing metric
+inputs (`completion_rate`, `on_time_rate`, dual-track ratings, `dispute_rate`,
+`workload_reliability`) have **no writer yet** — the backfill from `projects.*`/`finance.ratings` is
+a follow-up. (i) **Timestamp collision avoided:** these migrations were renumbered from
+`2026072409xxxx` to `2026072411xxxx` because the concurrent Notification Engine (#57) had already
+claimed the `090000`–`094000` slots. (j) **Denial telemetry goes dark once enforcement is ON** — the
+`RAISE` that blocks also rolls back the `entitlement.denied` row written moments earlier (Postgres
+has no autonomous transactions); after either param is flipped, the app layer must catch the
+`check_violation` and emit the denial itself, or the conversion funnel stops being measurable exactly
+when it starts mattering. **Validated by execution, not inspection:** all four migrations were
+applied to a throwaway Postgres 16 container against a stub of their dependencies, and the resolver /
+metering / enforcement paths exercised (free→Pro resolution, rung scaling 10→20→40 listings, 50→70→170
+proposals, the L5 volume floor holding a 95.9-score subject at L4, legacy-column mirroring, buffer
+exhaustion, draft-vs-live footprint, and both triggers refusing once switched on). | root CLAUDE.md
+§1/§5/§6 ·
+`supabase/migrations/20260724110000..113000_*` · `packages/types/{analytics,org/standing,
+finance/{plans,entitlements}}` · `documentation/database/{analytics,org,finance}/*` ·
+`documentation/database/{Schemas,README}.md` · `finance-model.md` §1/§16 · `PRODUCT_SPEC.md`
+§Escrow/Wallets/Finance #7 + §Reputation & Discovery #5 · `PRODUCT_MANAGEMENT.md` §3.5 · Decisions #2
+/ #47 / #53 / #54 / #57 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

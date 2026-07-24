@@ -20,7 +20,8 @@ The following schemas are initialized to isolate data by business domain:
 | **`search`**       | Full-text search indexes and semantic embeddings (pgvector).                                                                                 |
 | **`ops`**          | Platform administration, moderation flags, and outbound webhooks.                                                                            |
 | **`analytics`**    | Event logging and pre-calculated daily rollups.                                                                                              |
-| **`integrations`** | OAuth connections and third-party app installations.                                                                                         |
+| **`integrations`** | OAuth connections and third-party app installations (calendar sync + conferencing).                                                          |
+| **`scheduling`**   | Availability (working hours, call windows, blackouts), calendar events, and discovery/courtesy calls.                                        |
 
 ---
 
@@ -88,6 +89,88 @@ CREATE TYPE finance.chargeback_status AS ENUM ('opened', 'under_review', 'won', 
 CREATE TYPE org.layout_direction    AS ENUM ('ltr', 'rtl', 'auto');
 ```
 
+### Notification Engine (schema-scoped, migrations `20260724090000`–`20260724094000`)
+
+```sql
+-- Routing vocabulary
+CREATE TYPE comms.notification_channel  AS ENUM ('in_app', 'push', 'email', 'sms', 'webhook');
+CREATE TYPE comms.notification_urgency  AS ENUM ('critical', 'high', 'medium', 'low');
+CREATE TYPE comms.notification_category AS ENUM ('money', 'work', 'messages', 'schedule', 'discovery', 'account', 'system', 'marketing');
+-- Delivery & scheduling
+CREATE TYPE comms.delivery_status       AS ENUM ('pending', 'queued', 'sent', 'delivered', 'failed', 'suppressed', 'skipped');
+CREATE TYPE comms.queue_status          AS ENUM ('scheduled', 'processing', 'sent', 'cancelled', 'failed');
+CREATE TYPE comms.digest_frequency      AS ENUM ('off', 'daily', 'weekly');
+CREATE TYPE comms.device_platform       AS ENUM ('web', 'ios', 'android');
+```
+
+`notification_category` is a **UI taxonomy** (preference-centre groups and inbox tabs), not the event
+namespace — event keys live in the `comms.notification_types` catalog as dotted `domain.event`
+strings. See [comms/Tables.md](comms/Tables.md).
+
+### Subscriptions, Standing & Analytics (migrations `20260724110000`–`20260724113000`)
+
+```sql
+-- The event substrate (analytics schema — its first tables)
+CREATE TYPE analytics.subject_kind AS ENUM ('user', 'freelancer', 'business', 'team', 'organisation',
+                                            'project', 'stage', 'ticket', 'listing', 'platform');
+
+-- The EARNED ladder (org schema). Standing is never purchasable.
+CREATE TYPE org.standing_subject   AS ENUM ('user', 'freelancer', 'team');
+CREATE TYPE org.create_category    AS ENUM ('create', 'run', 'educate', 'advise', 'test', 'empower');
+CREATE TYPE org.streak_kind        AS ENUM ('on_time_delivery', 'fast_response', 'dispute_free', 'client_repeat');
+CREATE TYPE org.achievement_tier   AS ENUM ('milestone', 'bronze', 'silver', 'gold', 'designation');
+
+-- The PAID ladder (finance schema)
+CREATE TYPE finance.plan_audience       AS ENUM ('individual', 'team', 'business', 'organisation');
+CREATE TYPE finance.plan_tier           AS ENUM ('free', 'pro', 'enterprise');
+CREATE TYPE finance.billing_interval    AS ENUM ('monthly', 'annual', 'custom');
+CREATE TYPE finance.subscription_state  AS ENUM ('trialing', 'active', 'past_due', 'paused', 'cancelled', 'expired');
+CREATE TYPE finance.entitlement_kind    AS ENUM ('limit', 'flag');
+CREATE TYPE finance.entitlement_scaling AS ENUM ('none', 'standing_base', 'standing_bonus');
+CREATE TYPE finance.entitlement_key     AS ENUM (
+    'active_public_projects', 'private_drafts', 'published_listings',
+    'weekly_proposals', 'proposal_buffer_per_10h',
+    'teams_owned', 'businesses_owned', 'teams_joined', 'businesses_joined',
+    'team_seats', 'team_public_projects', 'business_public_projects', 'business_managers',
+    'organisation_seats', 'organisation_businesses', 'departments',
+    'promoted_placement', 'advanced_analytics', 'discovery_boost', 'instant_payouts_included',
+    'pooled_wallet_full', 'advanced_vault_splits', 'intervaled_invoicing',
+    'sso_enabled', 'api_access', 'audit_log_retention_days', 'dedicated_support',
+    'negotiated_platform_fee'
+);
+```
+
+> `finance.entitlement_key` is a **closed** vocabulary on purpose: adding a lever requires a migration
+> plus a matching change in `@projective/types/finance/entitlements.ts` in the same commit. That
+> friction is what stops the tier matrix drifting away from the SSOT.
+
+### Availability, Integrations & Discovery Calls (schema-scoped, migrations `20260724100000`–`20260724104000`)
+
+```sql
+-- Third-party connections
+CREATE TYPE integrations.provider_kind     AS ENUM ('calendar', 'conferencing');
+CREATE TYPE integrations.connection_status AS ENUM ('active', 'expired', 'revoked', 'error');
+CREATE TYPE integrations.connection_action AS ENUM ('connected', 'refreshed', 'scope_changed', 'expired', 'revoked', 'error', 'synced');
+
+-- Availability & calendar entries
+CREATE TYPE scheduling.owner_type          AS ENUM ('user', 'freelancer', 'team', 'business', 'organisation');
+CREATE TYPE scheduling.availability_kind   AS ENUM ('working_hours', 'call_window');
+CREATE TYPE scheduling.event_kind          AS ENUM ('deadline', 'milestone', 'sync', 'session', 'booking', 'availability', 'busy', 'holiday', 'general');
+CREATE TYPE scheduling.event_status        AS ENUM ('confirmed', 'tentative', 'busy', 'available', 'cancelled');
+
+-- Discovery / courtesy calls
+CREATE TYPE scheduling.call_type           AS ENUM ('courtesy', 'paid');
+CREATE TYPE scheduling.call_status         AS ENUM ('proposed', 'confirmed', 'declined', 'cancelled', 'completed', 'no_show', 'expired');
+CREATE TYPE scheduling.call_party          AS ENUM ('host', 'requester', 'both');
+CREATE TYPE scheduling.call_action         AS ENUM ('requested', 'confirmed', 'declined', 'rescheduled', 'cancelled', 'completed', 'marked_no_show', 'expired', 'link_generated', 'reminder_sent');
+```
+
+> `scheduling.event_kind` / `event_status` mirror `CalendarEventKind` / `CalendarEventStatus` in
+> `@projective/types/scheduling` **value-for-value**. A discovery call is deliberately **not** a
+> tenth kind — it is a `booking` — because a new kind would break the shipped calendar engine's
+> exhaustive `Record<CalendarEventKind, …>` maps, turning a data change into a design-system change
+> (root `CLAUDE.md` §3).
+
 ---
 
 ## 🛠 Initialization SQL
@@ -107,3 +190,15 @@ CREATE SCHEMA IF NOT EXISTS analytics;
 CREATE SCHEMA IF NOT EXISTS integrations;
 CREATE SCHEMA IF NOT EXISTS files;
 ```
+
+A twelfth schema was added later, by migration `20260724100000_scheduling_schema_availability.sql`:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS scheduling;
+```
+
+> `scheduling` was **not** part of the original eleven, even though
+> `@projective/types/scheduling` had described itself as a read projection "over the eventual
+> `scheduling.*` tables" since 2026-07-21 (root `CLAUDE.md` §8 Decision #37). Creating it is
+> additive; the pre-existing `projects.session_events` / `cohorts` / `session_attendance` tables
+> remain the SSOT for a **paid Session Service's delivery** and were not touched.

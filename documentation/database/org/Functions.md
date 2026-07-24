@@ -80,3 +80,57 @@ defaults to `NULL`, and the 0314 `industry_other` CHECK still applies), seeds th
 `CreateOrganisation` shape. Returns the new org id; a duplicate `handle` surfaces as a
 `unique_violation` the service maps to a 422. Owner-only (buyer) by construction — organisations
 carry no service/product surface.
+
+---
+
+## 🏅 Standing & progression (migration `20260724111000_standing_reputation.sql`)
+
+All four mutating functions are `SECURITY DEFINER` with a pinned `search_path`, **`REVOKE`d from
+`public`, and granted to `service_role` only** — Standing is earned, never client-written. The two
+read helpers are granted to `authenticated`.
+
+### Read helpers
+
+- **`org.fn_level_for_score(score numeric, stages integer) → smallint`** — `STABLE`. The highest rung
+  whose `min_score` **and** `min_completed_stages` are both satisfied; falls back to `1`. Mirrored
+  exactly by the pure `levelForScore()` in `packages/types/org/standing.ts`.
+- **`org.fn_standing_level(subject_type, subject_id) → smallint`** — `STABLE`, `SECURITY DEFINER`. The
+  subject's current rung (default `1`). This is the single read the finance entitlement resolver uses
+  to scale a plan value.
+
+### Mutators
+
+- **`org.fn_recompute_standing(subject_type, subject_id) → smallint`** — recomputes the composite from
+  the stored inputs, persists `score`/`level`/`components`, appends an `org.standing_events` row
+  (`promoted` / `demoted` / `recomputed`) and emits `standing.recomputed` (+ `standing.level_changed`
+  on a transition). Creates the `entity_standing` row on first call.
+
+  The weight vector is a **tunable dial**, deliberately surfaced in `components` so the profile can
+  explain the rung and the magnitudes can be re-fitted against `analytics.events`:
+
+  | Component      | Weight | Source                                     |
+  | :------------- | -----: | :----------------------------------------- |
+  | `completion`   |     25 | `completion_rate`                          |
+  | `on_time`      |     25 | `on_time_rate`                             |
+  | `reviews`      |     20 | mean of `client_rating_avg` / `peer_rating_avg` |
+  | `dispute_free` |     15 | `1 - dispute_rate`                         |
+  | `workload`     |     10 | `workload_reliability` ($W_i$)             |
+  | `tenure`       |      5 | `min(tenure_days / 365, 1)`                |
+  | `penalty`      |      — | minus active `security.penalties` severity |
+
+- **`org.fn_award_achievement(subject_type, subject_id, code, source_ref) → boolean`** — idempotent.
+  Returns `true` only on the **first** grant, so the caller can fire a celebration exactly once.
+  Emits `achievement.awarded`.
+- **`org.fn_touch_streak(subject_type, subject_id, kind, success) → integer`** — extends on a good
+  outcome, resets to `0` on a bad one; maintains `best_count`. Emits `streak.extended` /
+  `streak.broken`. Quality events only — there is no attendance streak.
+- **`org.fn_record_mastery(subject_type, subject_id, category, intensity, on_time) → smallint`** —
+  records one delivered stage against a CREATE category, then re-derives every category's `share_bp`
+  (intensity-weighted, so specialisation reflects effort delivered rather than stage count) and
+  `mastery_level`. Emits `mastery.progressed`.
+
+> **Sweep, not trigger.** These are invoked by the backend / an Edge Function cron at
+> `security.platform_params.standing_recompute_interval_hours` (default 24), not by triggers on the
+> project tables — recomputing a composite inside a stage-approval transaction would couple money
+> movement to reputation math. `standing_demotion_grace_days` (default 30) is reserved for the
+> anti-flapping guard on demotions.

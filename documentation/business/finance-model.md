@@ -23,22 +23,60 @@
 - **Standard Service Fee:** 5% plus Stripe processing costs, applied to each project stage upon
   escrow release.
 - Split between platform operations, escrow management, and dispute mediation infrastructure.
-- No paywall on freelancer project volume — capacity is governed by the Workload Intensity ($W_i$)
-  caps described in `brain.md`, not by subscription tier.
+- **No paywall on freelancer _execution_ volume** — how much work a freelancer may hold concurrently
+  is governed by the Workload Intensity ($W_i$) caps described in `PRODUCT_SPEC.md`, never by
+  subscription tier. **Distribution** (outbound proposals) and **marketplace footprint** (live public
+  projects, published listings, entities owned, seats, promoted placement) _are_ tiered — see §16.
+
+  > **⚠️ Reworded 2026-07-24** (product owner). This clause previously read "no paywall on freelancer
+  > **project** volume", which read as a blanket ban on tiering anything. The distinction that
+  > actually matters is **execution vs distribution vs footprint**: charging for execution capacity
+  > would be Upwork's hourly-tracking sin and is permanently off the table; metering outbound
+  > proposals is an **anti-spam** mechanism that benefits everyone (a marketplace where the same top
+  > performers apply to every posting is worse for the average freelancer _and_ for the client
+  > reading the shortlist). Logged in root `CLAUDE.md` §8.
 
 ### 1.2 Marketplace Commissions
 
 - Digital asset sales (templates, codebases, design assets): **8–20%** commission.
 - Base rate (8%) is comparable to Etsy; the 20% tier applies to listings using internal "Search
   Boosts" or promoted placement.
+- **The base rate tapers with earned Standing, never with the plan** (§16.3):
+
+  | Standing rung     | L1 New | L2 Established | L3 Trusted | L4 Expert | L5 Elite |
+  | :---------------- | :----- | :------------- | :--------- | :-------- | :------- |
+  | Marketplace commission | 8%     | 8%             | 7.5%       | 7%        | 6.5%     |
+
+  Letting the best sellers pay the least is the single strongest retention mechanic available, and it
+  costs nothing on sellers who would have churned anyway. It is **not purchasable** — see §16.3.
 
 ### 1.3 Subscription Tiers (Phase 3+)
 
-| Tier           | Target           | Key Paywall Triggers                                                   | Pricing (Est.) |
-| :------------- | :--------------- | :--------------------------------------------------------------------- | :------------- |
-| **Starter**    | Solo Freelancers | Unlimited portfolios, unlimited active stages (capacity-based)         | Free           |
-| **Pro Team**   | Micro-Agencies   | High limit on team members and active team projects                    | £29/mo         |
-| **Enterprise** | Large Corps      | Unlimited Businesses, multi-department scoping, API access, audit logs | Custom         |
+Two payment planes, because a user and the entities they own are separately scaled:
+
+- **Personal plan** — attached to the _user_. Raises their proposal allowance, how many teams and
+  businesses they may own, their promoted placement and analytics.
+- **Entity plan** — attached to each _Team / Business / Organisation_. Raises that entity's seats,
+  concurrent public projects, pooled-wallet features and departments.
+
+**Ownership ≠ power.** A personal Pro plan lets you spin up 5 businesses; each of those businesses
+still only gets 3 concurrent public projects until _it_ is upgraded.
+
+| Plan                | Audience              | Price              | What it raises                                                                     |
+| :------------------ | :-------------------- | :----------------- | :---------------------------------------------------------------------------------- |
+| **Free**            | Everyone (buyer+seller) | £0               | The universal baseline. A freelancer is a superset of a client, so there is **no separate client plan**. |
+| **Pro**             | Individuals           | **£12.99/mo**      | Proposals 50 → 150/wk, live public projects 3 → 15, listings ×2, teams owned 3 → 6, businesses owned 1 → 3, promoted placement, full analytics. |
+| **Pro Team**        | Micro-agencies        | £29/mo per team    | Seats 4 → 15, team public projects 2 → 15, a dedicated pooled proposal quota, advanced vault splits. |
+| **Business Pro**    | SMB buyers            | **TBD** ⚠️         | Public projects 3 → 25, managers 2 → 15, full pooled wallet + spending caps, intervaled invoicing, light departments. |
+| **Organisation**    | Enterprise/procurement | Custom, seat-based | Unlimited nested businesses + full departmental isolation, SSO/SAML, API access, audit logs, consolidated invoicing, dedicated support, **negotiated platform fee**. |
+
+> ⚠️ **Business Pro price is not set.** The entitlements are seeded in `finance.plan_entitlements`;
+> `finance.plans.price_cents` is deliberately `NULL` until the product owner sets it. Flagged in root
+> `CLAUDE.md` §8.
+
+Organisation seat pricing keys off the existing `org.employee_scale` tiers (1-50 / 51-200 / 201-500 /
+500+). An Organisation is **free to draft** — creating and configuring one costs nothing; going
+active and adding seats requires the subscription, the same draft-first pattern used everywhere else.
 
 ### 1.4 Financial Services & Visibility
 
@@ -53,6 +91,8 @@
 - Team/Business profile count per user.
 - Seat limits within a Team/Business entity (Phase 3).
 - Active project volume per Business without an upgrade.
+
+Concrete magnitudes for all three now live in §16.1 and in `finance.plan_entitlements`.
 
 ---
 
@@ -341,3 +381,125 @@ Governs shared wallets (Business / Team / Organisation).
 - **Tax docs:** Stripe-issued 1099 / local forms surface to the user (§9); no PII is stored.
 - **Notifications:** finance events route through `comms.fn_notify` — low balance, escrow funded,
   payout cleared, deposit failed, invoice due, cap exceeded, approval requested.
+
+---
+
+## 16. Subscriptions, Entitlements & the Standing Ladder
+
+Schema: `finance.plans` / `plan_entitlements` / `subscriptions` / `entitlement_grants` /
+`standing_commission_tiers` / `negotiated_rates` / `allowance_periods` / `allowance_ledger`
+(migrations `20260724112000`, `20260724113000`) and `org.standing_levels` / `entity_standing` /
+`create_mastery` / `achievements` / `quality_streaks` (migration `20260724111000`). Zod SSOT:
+`@projective/types/finance` (`plans.ts`, `entitlements.ts`) and `@projective/types/org/standing.ts`.
+Abstract rules live in `PRODUCT_SPEC.md` Â§Standing, Mastery & Progression; the numbers live here.
+
+**The governing design constraint** (product owner, 2026-07-24):
+
+> _"A user should never feel suffocated by the tier they are on. It should feel like the features
+> they have are plentiful, and upgrading to a higher tier just makes sense."_
+
+Every magnitude below is held against that constraint â€” the free tier is generous by intent, and each
+ceiling exists for anti-spam or shared-resource fairness, not as a toll.
+
+### 16.1 The entitlement matrix (starting dials)
+
+**Individuals** â€” the freelancer plan _contains_ the client plan, because a freelancer is a superset
+of a client. There is no separate buyer plan to reconcile.
+
+| Lever                       | Free                | Pro (Â£12.99/mo)     |
+| :-------------------------- | :------------------ | :------------------ |
+| Private draft projects      | **Unlimited**       | Unlimited           |
+| Active public projects      | 3 concurrent        | 15 concurrent       |
+| Published listings (seller) | rung base: 10 â†’ 50  | **2Ã—** the rung base |
+| Weekly proposals            | 50 + rung bonus     | 150 + rung bonus    |
+| Proposal buffer             | 3 per 10h           | 5 per 10h           |
+| Teams owned                 | 3                   | 6                   |
+| Businesses owned            | 1                   | 3                   |
+| Teams / businesses **joined** | **Uncapped**      | Uncapped            |
+| Promoted placement, full analytics | â€”            | âœ…                  |
+
+**Entities** â€” attached to the team/business itself, not to its owner.
+
+| Lever                     | Team Free | Pro Team (Â£29) | | Lever                    | Business Free | Business Pro |
+| :------------------------ | :-------- | :------------- |-| :----------------------- | :------------ | :----------- |
+| Members / seats           | 4         | 15             | | Concurrent public projects | 3           | 25           |
+| Concurrent public projects | 2        | 15             | | PMs / Observers          | 2             | 15           |
+| Proposal pool             | members'  | dedicated      | | Pooled wallet            | basic         | full + caps  |
+| Advanced vault splits     | â€”         | âœ…             | | Intervaled invoicing     | â€”             | âœ…           |
+| Promoted placement        | â€”         | âœ…             | | Departments              | 0             | 5            |
+
+A team must hold **â‰¥ 2 members** before it may send proposals.
+
+**Organisation** â€” unlimited seats, nested businesses, departments and projects; adds SSO/SAML, API
+access, 730-day audit retention, dedicated support, consolidated cross-department invoicing, and the
+only sanctioned platform-fee negotiation.
+
+**Uncapped joining is deliberate.** Owning entities is metered; _joining_ them is not. Joining is the
+viral motion of the platform, and capping it would suppress exactly the behaviour that grows supply.
+
+### 16.2 Proposal allowances (distribution, not a paywall)
+
+- **Weekly allowance** â€” 50 (Free) / 150 (Pro), plus the earned rung bonus (up to +40). Both figures
+  are chosen to be comfortably above real usage: 50 is enough for a freelancer to thrive without ever
+  subscribing, and most will not spend it.
+- **The buffer** â€” a rolling drip of 3 (Free) / 5 (Pro) proposals returned every 10 hours, capped at
+  `proposal_buffer_hold_multiple` Ã— the drip. A spend needs **both** weekly headroom and a buffer
+  token, so a week's allowance can never be dumped into one hour of spam.
+- **Withdrawing a proposal refunds the unit.** Selectivity should never be punished twice.
+- **Never sold Ã  la carte.** A paid tier _raises_ the ceiling; it never removes it. The moment deep
+  pockets can buy raw proposal volume, the anti-spam promise â€” the entire point of the mechanism â€” is
+  broken, and the platform has rebuilt Upwork Connects.
+
+**Enforcement is fail-open until tuned.** `security.platform_params.proposal_allowance_enforced` and
+`footprint_caps_enforced` both default to `false`: the caps are **metered** from day one but refuse
+nothing until a human flips them. Every magnitude on this page is a dial to be re-fitted against
+`analytics.events` (`allowance.*`, `entitlement.denied`) â€” see `documentation/database/analytics/`.
+
+### 16.3 The Standing ladder (earned, never purchasable)
+
+Standing is the discretised rung of the Reliability Index ($R_i$) â€” see `PRODUCT_SPEC.md`
+Â§Reputation & Discovery. Two paths up the same mountain: **earn it** (rung) or **accelerate it**
+(Pro), and they stack.
+
+| Rung               | Min score | Min stages | Free listings | Proposal bonus | Discovery weight | Marketplace commission |
+| :----------------- | --------: | ---------: | ------------: | -------------: | ---------------: | ---------------------: |
+| **L1 New**         |         0 |          0 |            10 |             â€”  |            1.00Ã— |                     8% |
+| **L2 Established** |        55 |          5 |            15 |           +10  |            1.05Ã— |                     8% |
+| **L3 Trusted**     |        70 |         20 |            20 |           +20  |            1.10Ã— |                   7.5% |
+| **L4 Expert**      |        82 |         50 |            30 |           +30  |            1.15Ã— |                     7% |
+| **L5 Elite**       |        92 |        120 |            50 |           +40  |            1.20Ã— |                   6.5% |
+
+Pro **doubles the listing column at every rung** â€” it multiplies what was earned rather than
+replacing it, so a high-rung free user feels rewarded and Pro reads as an accelerant, not a gate.
+
+**Score inputs** (all client-valued; weights are tunable dials, exposed in
+`org.entity_standing.components`): stage completion 25 Â· on-time delivery 25 Â· dual-track review
+scores 20 Â· dispute-free rate 15 Â· $W_i$ reliability 10 Â· tenure 5, minus active
+`security.penalties` severity. **Never raw earnings and never raw proposal counts** â€” ranking by spend
+or by volume is the pay-to-win trap this ladder exists to avoid.
+
+The `min_stages` column is a volume floor: a flawless single engagement must not vault a subject to
+the top of the ladder.
+
+### 16.4 The 5% service fee and where it may flex
+
+The project service fee does **not** taper with Standing and is **not** bundled into any plan. The
+one sanctioned exception (owner decision, 2026-07-24) is an **Organisation or Business volume
+commitment**, recorded as an explicit, admin-approved, time-boxed `finance.negotiated_rates` row with
+its `minimum_volume_cents` commitment and `contract_ref`. `finance.fn_effective_platform_fee_bp`
+resolves it; absent a contract it falls through to `security.platform_params.platform_fee_bp`.
+
+Keeping the flex in a contract table rather than a plan entitlement means the fee can never drift
+downward as a silent side effect of someone upgrading a subscription.
+
+### 16.5 What the platform deliberately does not do
+
+- **No pay-to-win rank.** Pro accelerates capacity, never reputation. If clients suspect a rung can
+  be bought, the signal collapses and the ladder is worthless to everyone.
+- **No public earnings leaderboards.** They trigger race-to-the-bottom pricing and reward spam.
+- **No vanity points** detached from something a client independently values.
+- **No login or attendance streaks.** Streaks celebrate delivered quality (on-time delivery, fast
+  response, dispute-free runs), never presence. Guilt mechanics are hostile to freelancer wellbeing
+  and attract the wrong behaviour.
+- **No metering of execution capacity.** Ever. See Â§1.1.
+

@@ -229,6 +229,116 @@ Join table mapping users to organisations with a role — the multi-tenant link.
 
 ---
 
+## 🏅 Standing, Mastery & Progression (the EARNED ladder)
+
+Added in `supabase/migrations/20260724111000_standing_reputation.sql`; Zod SSOT in
+`packages/types/org/standing.ts`.
+
+**Standing is the discretised rung of the continuous Reliability Index ($R_i$)** already specified in
+`PRODUCT_SPEC.md` §Reputation & Discovery. It does **not** fork or replace $R_i$ —
+`entity_standing.score` _is_ the composite, and `level` is the ladder derived from it. The existing
+caches (`org.users_public.rating_average`, `org.freelancer_profiles.rating_*`, `finance.ratings`,
+`security.penalties`) are untouched and are the **inputs** this layer reads.
+
+> ⚠️ **Standing can never be purchased.** No subscription plan, entitlement grant or payment writes to
+> any table below — every mutating function is `SECURITY DEFINER` and revoked from `public`. The paid
+> ladder (`finance.plans`) accelerates _capacity_; only delivery moves a rung. Keeping the two ladders
+> strictly separate is what makes the rung a trustworthy signal to a client.
+
+### `org.standing_levels`
+
+The tunable ladder. Money perks live in `finance.standing_commission_tiers`; this table holds only
+the non-money rungs.
+
+| Column                 | Type          | L1     | L2          | L3      | L4     | L5    |
+| :--------------------- | :------------ | :----- | :---------- | :------ | :----- | :---- |
+| `level` (PK)           | smallint      | 1      | 2           | 3       | 4      | 5     |
+| `code` / `label`       | text          | New    | Established | Trusted | Expert | Elite |
+| `min_score`            | numeric(5,2)  | 0      | 55          | 70      | 82     | 92    |
+| `min_completed_stages` | integer       | 0      | 5           | 20      | 50     | 120   |
+| `listing_base`         | integer       | 10     | 15          | 20      | 30     | 50    |
+| `proposal_bonus`       | integer       | 0      | +10         | +20     | +30    | +40   |
+| `discovery_weight_bp`  | integer       | 10000  | 10500       | 11000   | 11500  | 12000 |
+
+`min_completed_stages` is a **volume floor** — a flawless single engagement must not vault a subject
+to the top of the ladder.
+
+### `org.entity_standing`
+
+One row per earning subject (`subject_type` ∈ `user` | `freelancer` | `team`; UNIQUE on
+`(subject_type, subject_id)`). Buyers are deliberately **not** ranked here — they carry the separate
+Client Trust Score.
+
+| Column                                             | Type          | Notes                                                                 |
+| :------------------------------------------------- | :------------ | :---------------------------------------------------------------------- |
+| `level`                                            | smallint      | FK → `org.standing_levels.level`. Default `1`.                        |
+| `score`                                            | numeric(5,2)  | 0–100 composite.                                                      |
+| `stages_completed`                                 | integer       | Volume, for the floor above.                                          |
+| `completion_rate` / `on_time_rate`                 | numeric(5,4)  | 0–1 rates.                                                            |
+| `client_rating_avg` / `peer_rating_avg`            | numeric(3,2)  | The **dual-track** reviews (§Reciprocal Reviews).                     |
+| `dispute_rate`                                     | numeric(5,4)  | 0–1.                                                                  |
+| `workload_reliability`                             | numeric(5,4)  | Delivering at capacity without dropping tickets — the $W_i$ signal.   |
+| `tenure_days`                                      | integer       | —                                                                     |
+| `penalty_severity`                                 | numeric(6,2)  | Active `security.penalties` aggregate, subtracted at recompute.       |
+| `components`                                       | jsonb         | Per-component contribution, for the "why am I this rung" surface.     |
+| `level_changed_at` / `computed_at`                 | timestamptz   | —                                                                     |
+
+> **Every input is client-valued.** Raw earnings and raw proposal counts are deliberately absent:
+> ranking by spend or by volume is exactly the pay-to-win trap this ladder exists to avoid.
+
+### `org.standing_events`
+
+Append-only progression audit (`recomputed` / `promoted` / `demoted` / `penalty_applied` /
+`manual_review`) with `from_level`, `to_level`, `score`, `components`. Private to the subject — it
+carries the score internals; the level itself is public via `entity_standing`.
+
+### `org.create_mastery`
+
+Specialisation **derived** from delivered work, never self-declared. UNIQUE on
+`(subject_type, subject_id, category)` over `org.create_category` (`create` · `run` · `educate` ·
+`advise` · `test` · `empower` — `PRODUCT_SPEC.md` §The CREATE Framework).
+
+| Column                | Type          | Notes                                                                  |
+| :-------------------- | :------------ | :----------------------------------------------------------------------- |
+| `stages_completed`    | integer       | —                                                                       |
+| `intensity_delivered` | numeric(10,2) | $W_i$-weighted, so a hard Create stage counts for more than a trivial one. |
+| `on_time_rate`        | numeric(5,4)  | Running average.                                                        |
+| `share_bp`            | integer       | This category's share of delivered intensity (0–10000).                 |
+| `mastery_level`       | smallint      | 0–5.                                                                    |
+
+`share_bp` is a real **matching** signal: it routes Create-heavy stages to proven Create specialists.
+No other marketplace can compute this, because none have the stage taxonomy.
+
+### `org.achievements` + `org.entity_achievements`
+
+Catalogue + awards. `tier` ∈ `milestone` | `bronze` | `silver` | `gold` | `designation`, where
+`designation` carries **real capability** — the `architect` row is the "Architect" designation of
+`PRODUCT_SPEC.md` §Reliability Index (unlocks leading Team-based stages and authoring Marketplace
+stage templates). Awards are idempotent (UNIQUE on `(subject_type, subject_id, achievement_code)`).
+Seeded: `first_payout`, `first_five_star`, `repeat_client`, `squad_ten_stages`, `dispute_free_year`,
+`architect`.
+
+### `org.quality_streaks`
+
+Consecutive good outcomes over `org.streak_kind` (`on_time_delivery` · `fast_response` ·
+`dispute_free` · `client_repeat`) with `current_count` / `best_count` / `last_event_at` /
+`broken_at`.
+
+> **There is deliberately no login/attendance streak kind.** A streak must celebrate good work, never
+> mere presence — the guilt mechanic is hostile to freelancer wellbeing and attracts exactly the
+> behaviour this platform is trying to avoid.
+
+### 🏷 Enums
+
+```sql
+CREATE TYPE org.standing_subject  AS ENUM ('user', 'freelancer', 'team');
+CREATE TYPE org.create_category   AS ENUM ('create', 'run', 'educate', 'advise', 'test', 'empower');
+CREATE TYPE org.streak_kind       AS ENUM ('on_time_delivery', 'fast_response', 'dispute_free', 'client_repeat');
+CREATE TYPE org.achievement_tier  AS ENUM ('milestone', 'bronze', 'silver', 'gold', 'designation');
+```
+
+---
+
 ## 🚩 Refactor Notes & Suggestions
 
 - **DRY Violations**: `headline`, `description`, `languages`, and `timezone` are currently

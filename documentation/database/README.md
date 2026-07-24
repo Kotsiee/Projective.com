@@ -8,8 +8,16 @@ lifecycle, Edge Function/webhook standards, and general RLS principles.
 
 This folder documents the **actual per-domain schema** — real table/column lists, RLS policy
 definitions, and RPC/function signatures — which `brain2.md` deliberately does not enumerate.
-[Schemas.md](Schemas.md) is the top-level ERD-adjacent reference: the 11 `CREATE SCHEMA` statements
-and every custom enum type with its literal values.
+[Schemas.md](Schemas.md) is the top-level ERD-adjacent reference: the `CREATE SCHEMA` statements and
+every custom enum type with its literal values.
+
+> ⚠️ **Flagged drift (surface, do not silently resolve).** [Schemas.md](Schemas.md) has always
+> listed **11** schemas, but `0001_init_schemas.sql` actually creates **12** — it also creates
+> `reviews`, which the doc's table and its "Initialization SQL" block both omit, and for which there
+> is no folder here. `scheduling` (migration `20260724100000`) was added to both the table and the
+> SQL block on 2026-07-24, so the documented set is now 12 of the 13 real schemas. Reconciling
+> `reviews` — document it, or confirm it is dead and remove it from the init migration — needs a
+> human (root `CLAUDE.md` §8).
 
 ## Structure
 
@@ -18,22 +26,24 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 
 | Domain         | Tables | Policies | Functions | Notes                                                              |
 | :------------- | :----: | :------: | :-------: | :----------------------------------------------------------------- |
-| `analytics`    |   —    |    —     |     —     | Not yet documented                                                 |
-| `comms`        |   ✅   |    —     |     —     |                                                                    |
+| `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24            |
+| `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                     |
 | `files`        |   ✅   |    —     |     —     | Plus [Storage.md](files/Storage.md) (quarantine lifecycle)         |
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation |
-| `integrations` |   —    |    —     |     —     | Not yet documented                                                 |
+| `integrations` |   ✅   |    ✅    |    ✅     | OAuth connections (calendar sync + conferencing), 2026-07-24       |
 | `marketplace`  |   —    |    —     |     —     | Not yet documented                                                 |
 | `ops`          |   —    |    —     |     —     | Not yet documented                                                 |
-| `org`          |   ✅   |    ✅    |     —     |                                                                    |
+| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs + the 2026-07-24 Standing & progression ladder |
 | `projects`     |   ✅   |    —     |     —     |                                                                    |
+| `scheduling`   |   ✅   |    ✅    |    ✅     | Availability, calendar events & discovery calls, 2026-07-24        |
 | `search`       |   —    |    —     |     —     | Not yet documented                                                 |
 | `security`     |   ✅   |    —     |     —     |                                                                    |
 
 ✅ = populated with real schema detail. `—` = stub file stamped `_Not yet documented._` — this is an
-intentional placeholder, not a deletion or accident. `finance/Functions.md` is populated (the escrow
-engine + the Wallet & Finance foundation); the remaining `Functions.md` files are still stubs —
-populate them as RPCs are implemented.
+intentional placeholder, not a deletion or accident. `comms/`, `finance/`, `integrations/` and
+`scheduling/` have populated `Functions.md` (the notification engine; the escrow engine + the Wallet
+& Finance foundation; the OAuth capability predicates; the discovery-call booking gate); the
+remaining `Functions.md` files are still stubs — populate them as RPCs are implemented.
 
 ## For Future Agents
 

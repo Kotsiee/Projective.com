@@ -202,3 +202,25 @@ to seed their own owner-membership at creation time (when no members exist yet),
 - **Public Discovery**: Currently, `freelancer_profiles` are only visible to the owner. To enable
   the 'Explore' page, a policy allowing public `SELECT` based on `visibility = 'public'` is
   required.
+
+---
+
+## 🏅 Standing, Mastery & Progression (migration `20260724111000`)
+
+RLS is enabled on all six tables. The posture is **public read, definer-only write** — Standing is a
+client-facing trust signal, so it must be visible before hiring; but nothing client-side can move a
+rung, because no `INSERT`/`UPDATE` grant or policy exists for `authenticated` on any of them.
+
+| Table                     | Policy                        | Effect                                                                                                          |
+| :------------------------ | :---------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `org.standing_levels`     | `Read standing ladder`        | `SELECT ... USING (true)` — a client must be able to read what a rung means.                                    |
+| `org.entity_standing`     | `Read standing`               | `SELECT ... USING (true)` — public, like `users_public.rating_average`.                                          |
+| `org.standing_events`     | `View own standing history`   | Subject-scoped (self / `org.is_active_team_member`) or `security.is_admin()` — it carries the score internals.   |
+| `org.create_mastery`      | `Read create mastery`         | `SELECT ... USING (true)` — the specialisation signal is public and feeds discovery.                            |
+| `org.achievements`        | `Read achievement catalogue`  | `SELECT ... USING (true)`.                                                                                      |
+| `org.entity_achievements` | `Read awarded achievements`   | Public when the catalogue row is `is_public`; otherwise subject-scoped or admin.                                |
+| `org.quality_streaks`     | `Read quality streaks`        | `SELECT ... USING (true)` — clients see on-time/response streaks, which is the point of having them.            |
+
+**Grants.** `authenticated` gets `SELECT` only, plus `EXECUTE` on the two read helpers
+(`org.fn_level_for_score`, `org.fn_standing_level`). The four mutating functions are `REVOKE`d from
+`public` and granted to `service_role` alone — see [Functions.md](Functions.md).

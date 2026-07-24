@@ -200,9 +200,79 @@ fragments (`brand`, `last4`).
 
 ---
 
-## 7. Enums (this schema)
+## 7. Subscriptions, plans & entitlements (additive — `20260724112000` / `20260724113000`)
+
+The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements.ts`.
+
+> **The three axes** (`finance-model.md` §1.1). **Execution capacity** — how much work a freelancer
+> may hold concurrently — is **never monetised**; it stays governed by the Workload Intensity ($W_i$)
+> caps. Only **distribution** (outbound proposals) and **marketplace footprint** (live public
+> projects, published listings, entities owned, seats, promoted placement) are tiered.
+>
+> **And a plan can never buy reputation.** Nothing in these tables writes to `org.entity_standing`.
+> The two ladders stack — earn it, or accelerate it — but a rung is never for sale.
+
+| Table                                | Purpose & key columns                                                                                                                                                                                                                                                                                                                        |
+| :----------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finance.plans`                      | The catalogue: `code` (UNIQUE), `audience`, `tier`, `price_cents`+`currency`, `billing_interval`, `is_custom_priced`, `per_seat_cents`, `is_default` (one per audience — partial UNIQUE index), `provider_price_ref`. Seeded with the 8 plans below.                                                                                          |
+| `finance.plan_entitlements`          | What a plan grants: `entitlement_key`, `kind` (limit/flag), `limit_value`, `is_unlimited`, `flag_value`, `scaling` (none/standing_base/standing_bonus), `multiplier_bp`. `(plan, key)` UNIQUE.                                                                                                                                               |
+| `finance.subscriptions` _(extended)_ | The 0009 skeleton gained `subject_type`/`subject_id`, `plan_id` FK, `state`, `billing_interval`, `current_period_start`/`_end`, `cancel_at_period_end`, `trial_ends_at`, `seats`, `price_cents`+`currency`, `provider`/`provider_ref`, `created_at`/`updated_at`. Partial UNIQUE: one live subscription per subject.                          |
+| `finance.subscription_events`        | Billing audit trail: `event_type` (started/upgraded/downgraded/renewed/payment_failed/paused/resumed/cancelled/expired), `from_plan_id`/`to_plan_id`, `amount_cents`, `provider_ref`.                                                                                                                                                        |
+| `finance.entitlement_grants`         | Manual overrides (comps, trials, negotiation): `entitlement_key`, `limit_value`/`is_unlimited`/`flag_value`, `reason`, `granted_by`, `starts_at`/`expires_at`. A grant may only **raise** an effective limit, never lower it — a misconfigured comp can never suffocate a paying subject.                                                     |
+| `finance.standing_commission_tiers`  | The **earned** marketplace-commission taper keyed to `org.standing_levels.level`: 8% · 8% · 7.5% · 7% · 6.5%. `platform_fee_bp` is `NULL` at every rung — the 5% service fee does **not** taper with Standing.                                                                                                                               |
+| `finance.negotiated_rates`           | The one sanctioned flex of the 5%: `subject_type` (business/organisation), `platform_fee_bp`, optional `marketplace_commission_bp`, `minimum_volume_cents`, `contract_ref`, `approved_by`, `starts_at`/`ends_at`, `status`. Explicit, admin-approved, time-boxed — never an implicit consequence of holding a plan.                           |
+| `finance.allowance_periods`          | Metered distribution, one live row per `(subject, key, period_start)`: `granted_units`, `consumed_units`, `base_units`, `standing_bonus_units`, `buffer_units`, `buffer_cap`, `buffer_refreshed_at`.                                                                                                                                         |
+| `finance.allowance_ledger`           | Append-only consumption record behind "42/50 used this week": `period_id`, `units` (negative = refund), `reason`, `ref_table`/`ref_id`.                                                                                                                                                                                                      |
+
+### The seeded plans
+
+| Code                | Audience     | Price              | Notes                                                                                                                                              |
+| :------------------ | :----------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `individual_free`   | individual   | £0                 | The universal baseline. A freelancer is a superset of a client, so this carries the full buyer baseline too — there is **no separate client plan**. |
+| `individual_pro`    | individual   | £12.99/mo          | Accelerates footprint + distribution.                                                                                                              |
+| `team_free`         | team         | £0                 | A team needs ≥ 2 members to send proposals.                                                                                                        |
+| `team_pro`          | team         | £29/mo per team    | Pre-existing rate (`finance-model.md` §1.3).                                                                                                       |
+| `business_free`     | business     | £0                 | Pooled wallet in basic mode; KYB still gates operation.                                                                                            |
+| `business_pro`      | business     | **`NULL` (TBD)**   | ⚠️ Entitlements seeded, **price not set** — flagged, root `CLAUDE.md` §8.                                                                          |
+| `organisation_free` | organisation | £0                 | Free-to-draft; going active + adding seats needs the paid tier.                                                                                    |
+| `organisation`      | organisation | Custom, seat-based | Keyed to `org.employee_scale`. The only place the platform fee may flex.                                                                            |
+
+### The entitlement matrix (starting dials)
+
+| Lever                                | Individual Free     | Individual Pro (£12.99) |
+| :----------------------------------- | :------------------ | :---------------------- |
+| `private_drafts`                     | **Unlimited**       | Unlimited               |
+| `active_public_projects`             | 3 concurrent        | 15 concurrent           |
+| `published_listings`                 | rung base (10 → 50) | **2×** the rung base    |
+| `weekly_proposals`                   | 50 + rung bonus     | 150 + rung bonus        |
+| `proposal_buffer_per_10h`            | 3                   | 5                       |
+| `teams_owned`                        | 3                   | 6                       |
+| `businesses_owned`                   | 1                   | 3                       |
+| `teams_joined` / `businesses_joined` | **Uncapped**        | Uncapped                |
+
+| Lever                     | Team Free | Pro Team (£29)  | Lever                      | Business Free | Business Pro |
+| :------------------------ | :-------- | :-------------- | :------------------------- | :------------ | :----------- |
+| `team_seats`              | 4         | 15              | `business_public_projects` | 3             | 25           |
+| `team_public_projects`    | 2         | 15              | `business_managers`        | 2             | 15           |
+| `weekly_proposals` (pool) | 50        | 150 (dedicated) | `departments`              | 0             | 5            |
+| `advanced_vault_splits`   | —         | ✅              | `pooled_wallet_full`       | basic         | ✅           |
+| `promoted_placement`      | —         | ✅              | `intervaled_invoicing`     | —             | ✅           |
+
+The Organisation tier is unlimited on seats/businesses/departments/projects and adds `sso_enabled`,
+`api_access`, `audit_log_retention_days` (730), `dedicated_support` and `negotiated_platform_fee`.
+
+> **Ownership ≠ power.** Raising `teams_owned`/`businesses_owned` on a _personal_ plan lets a user
+> spin up more entities; each entity still pays for its own muscle through its own plan. That split
+> is why there are two payment planes rather than one.
+
+---
+
+## 8. Enums (this schema)
 
 `finance.kyc_status`, `finance.method_role`, `finance.deposit_interval`, `finance.payout_mode`,
 `finance.pot_purpose`, `finance.vault_capability`, `finance.split_rule_type`,
 `finance.approval_status`, `finance.vault_action`, `finance.fund_state`, `finance.statement_status`,
-`finance.chargeback_status`. See [`../Schemas.md`](../Schemas.md) for the global enum registry.
+`finance.chargeback_status`, `finance.plan_audience`, `finance.plan_tier`,
+`finance.billing_interval`, `finance.subscription_state`, `finance.entitlement_kind`,
+`finance.entitlement_scaling`, `finance.entitlement_key`. See [`../Schemas.md`](../Schemas.md) for
+the global enum registry.

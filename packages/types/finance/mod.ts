@@ -13,4 +13,6 @@ export * from "./verification.ts";
 export * from "./methods.ts";
 export * from "./vault.ts";
 export * from "./billing.ts";
+export * from "./plans.ts";
+export * from "./entitlements.ts";
 export * from "./wallet.ts";
