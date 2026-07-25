@@ -280,13 +280,25 @@ ALTER TABLE scheduling.availability_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scheduling.blackout_dates ENABLE ROW LEVEL SECURITY;
 
 
--- --- from 20260724101000_integrations_connections.sql ---
+-- --- integrations: connectors + plugin ecosystem ---
+-- Every integrations table is RLS-on. The operational/secret tables (connection_secrets,
+-- connection_sync_state, webhook_*, plugin_grants) get NO policy — default-deny, service-role only.
 
 ALTER TABLE integrations.providers ENABLE ROW LEVEL SECURITY;
-
 ALTER TABLE integrations.user_connections ENABLE ROW LEVEL SECURITY;
-
+ALTER TABLE integrations.connection_secrets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.connection_sync_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.webhook_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.webhook_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE integrations.connection_audit ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE integrations.extension_points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.plugin_scopes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.plugins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.plugin_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.plugin_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.plugin_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE integrations.plugin_audit ENABLE ROW LEVEL SECURITY;
 
 
 -- --- from 20260724102000_scheduling_events.sql ---

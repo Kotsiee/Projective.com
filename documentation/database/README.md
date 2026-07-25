@@ -28,9 +28,9 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | :------------- | :----: | :------: | :-------: | :----------------------------------------------------------------- |
 | `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24            |
 | `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                     |
-| `files`        |   ✅   |    —     |     —     | Plus [Storage.md](files/Storage.md) (quarantine lifecycle)         |
+| `files`        |   ✅   |    —     |     —     | Plus [Storage.md](files/Storage.md) (9-bucket storage architecture) |
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation |
-| `integrations` |   ✅   |    ✅    |    ✅     | OAuth connections (calendar sync + conferencing), 2026-07-24       |
+| `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |
 | `marketplace`  |   —    |    —     |     —     | Not yet documented                                                 |
 | `ops`          |   —    |    —     |     —     | Not yet documented                                                 |
 | `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs + the 2026-07-24 Standing & progression ladder |

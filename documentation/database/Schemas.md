@@ -20,7 +20,7 @@ The following schemas are initialized to isolate data by business domain:
 | **`search`**       | Full-text search indexes and semantic embeddings (pgvector).                                                                                 |
 | **`ops`**          | Platform administration, moderation flags, and outbound webhooks.                                                                            |
 | **`analytics`**    | Event logging and pre-calculated daily rollups.                                                                                              |
-| **`integrations`** | OAuth connections and third-party app installations (calendar sync + conferencing).                                                          |
+| **`integrations`** | The connector + plugin substrate: third-party OAuth connections (calendar/storage/dev…) with a KMS token vault, sync + webhook machinery, and the plugin ecosystem (registry, versions, extension points, scoped installations). |
 | **`scheduling`**   | Availability (working hours, call windows, blackouts), calendar events, and discovery/courtesy calls.                                        |
 
 ---
@@ -147,10 +147,14 @@ CREATE TYPE finance.entitlement_key     AS ENUM (
 ### Availability, Integrations & Discovery Calls (schema-scoped, migrations `20260724100000`–`20260724104000`)
 
 ```sql
--- Third-party connections
-CREATE TYPE integrations.provider_kind     AS ENUM ('calendar', 'conferencing');
-CREATE TYPE integrations.connection_status AS ENUM ('active', 'expired', 'revoked', 'error');
-CREATE TYPE integrations.connection_action AS ENUM ('connected', 'refreshed', 'scope_changed', 'expired', 'revoked', 'error', 'synced');
+-- Third-party connectors + plugin ecosystem (full set in database/integrations/Tables.md)
+CREATE TYPE integrations.provider_kind     AS ENUM ('calendar','conferencing','freebusy','storage','docs','contacts','code','issues','crm','messaging','identity','payments');
+CREATE TYPE integrations.provider_category AS ENUM ('identity','payments','calendar','conferencing','storage','productivity','developer','crm','communication','automation');
+CREATE TYPE integrations.connection_status AS ENUM ('pending','active','degraded','expired','revoked','disconnected','error');
+CREATE TYPE integrations.plugin_status     AS ENUM ('draft','submitted','in_review','approved','published','suspended','delisted');
+CREATE TYPE integrations.plugin_runtime    AS ENUM ('iframe','declarative','headless');
+-- + auth_scheme, sync_direction, webhook_status, connection_action, plugin_version_status,
+--   plugin_surface, install_status, install_scope, scope_risk, plugin_action
 
 -- Availability & calendar entries
 CREATE TYPE scheduling.owner_type          AS ENUM ('user', 'freelancer', 'team', 'business', 'organisation');

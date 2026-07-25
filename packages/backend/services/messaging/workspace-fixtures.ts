@@ -12,6 +12,7 @@ import type {
 	MemberViewerCaps,
 	ProjectMemberRow,
 } from "@projective/types/projects";
+import { categorizeFile } from "@projective/types/files";
 import type { ConversationDetail } from "@projective/types/messaging";
 import { findConversationDetail } from "./conversation-fixtures.ts";
 import { findConversationMessagePage } from "./messages-fixtures.ts";
@@ -128,6 +129,7 @@ function filesOf(detail: ConversationDetail): FileItem[] {
 			rows.push({
 				id: `${m.id}-${a.id}`,
 				kind,
+				category: categorizeFile(a.name),
 				name: a.name,
 				ext: a.ext,
 				url: a.url,
@@ -158,6 +160,7 @@ function filesOf(detail: ConversationDetail): FileItem[] {
 			rows.push({
 				id: `${m.id}-voice`,
 				kind: "audio",
+				category: categorizeFile(`x.${AUDIO_EXT}`),
 				name: `Voice note — ${m.dayLabel} ${m.timeLabel}.${AUDIO_EXT}`,
 				ext: AUDIO_EXT,
 				url: m.audio.url,

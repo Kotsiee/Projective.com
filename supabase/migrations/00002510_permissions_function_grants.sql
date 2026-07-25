@@ -183,13 +183,22 @@ GRANT EXECUTE ON FUNCTION scheduling.fn_schedule_is_public(uuid) TO anon,
 authenticated;
 
 
--- --- from 20260724101000_integrations_connections.sql ---
+-- --- integrations: connector + plugin predicates ---
 
 GRANT
 EXECUTE ON FUNCTION integrations.fn_has_capability (uuid, integrations.provider_kind) TO authenticated;
 
 GRANT
 EXECUTE ON FUNCTION integrations.fn_conferencing_provider (uuid) TO authenticated;
+
+GRANT
+EXECUTE ON FUNCTION integrations.fn_plugin_installed (uuid) TO authenticated;
+
+GRANT
+EXECUTE ON FUNCTION integrations.fn_plugin_has_scope (uuid, text) TO authenticated;
+
+GRANT
+EXECUTE ON FUNCTION integrations.fn_is_plugin_publisher (uuid) TO authenticated;
 
 
 -- --- from 20260724102000_scheduling_events.sql ---

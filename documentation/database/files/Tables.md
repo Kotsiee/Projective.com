@@ -51,6 +51,7 @@ database entry and the actual Supabase Storage object.
 | `original_name` | text    | Filename as uploaded by the client.                           |
 | `mime_type`     | text    | Sanitized MIME type.                                          |
 | `size_bytes`    | bigint  | File size for quota management.                               |
+| `category`      | `files.file_category` | Rich, searchable taxonomy (`Document`, `Image`, `Code`, …). Classified by the fat backend on upload from `(original_name, mime_type)` via `@projective/types/files` `describeFile`; `NOT NULL DEFAULT 'Other'`. See [Storage.md](Storage.md#-file-classification). |
 | `metadata`      | jsonb   | Extra fields (e.g., image dimensions, PDF page count).        |
 | `status`        | text    | `pending_upload`, `uploaded`, `error`.                        |
 | `is_archived`   | boolean | Logical deletion flag.                                        |
@@ -68,6 +69,7 @@ CREATE TABLE files.items (
   original_name text NOT NULL,
   mime_type text NOT NULL,
   size_bytes bigint NOT NULL,
+  category files.file_category NOT NULL DEFAULT 'Other',
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text DEFAULT 'pending_upload',
   is_archived boolean DEFAULT false,

@@ -1,16 +1,15 @@
 # integrations Schema: Functions
 
-Two capability predicates and one maintenance trigger. Added 2026-07-24 by migration
-`20260724101000_integrations_connections.sql`.
-
-Both predicates are `SECURITY DEFINER` (so they can read the definer-only
-`integrations.user_connections`) and return **only a boolean or a slug** — they are the sanctioned
-way for the booking flow to ask *"can this user mint a room?"* with no path to the credentials that
-answer it.
+Capability/authorization **predicates** plus maintenance **triggers**. Every predicate is
+`SECURITY DEFINER` (so it can read the definer-only tables) and returns **only a boolean or a slug**
+— the sanctioned way to ask an authorization question with no path to the credentials or other
+users' rows that answer it. Functions live in `00001500`; their triggers in `00001870`.
 
 ---
 
-## `integrations.fn_has_capability(p_user uuid, p_kind integrations.provider_kind) → boolean`
+## Connector capability predicates
+
+### `fn_has_capability(p_user uuid, p_kind integrations.provider_kind) → boolean`
 
 Does the user hold an **active** connection granting that capability?
 
@@ -23,52 +22,89 @@ SELECT EXISTS (
 );
 ```
 
-Note it tests `granted_kinds` (what the consent actually returned), **not** the provider's
-`capabilities` (what it could in principle do). A user who connected Google for calendar sync only
-does not thereby get conferencing.
+Tests `granted_kinds` (what the consent actually returned), **not** the provider's `capabilities`
+(what it could in principle do). A user who connected Google for calendar only does not thereby get
+conferencing or storage. `STABLE`. `EXECUTE` → `authenticated`.
 
-`STABLE`. `EXECUTE` granted to `authenticated`.
-
----
-
-## `integrations.fn_conferencing_provider(p_user uuid) → text`
+### `fn_conferencing_provider(p_user uuid) → text`
 
 Which provider slug should mint a meeting room for this user right now — the most recently updated
-active conferencing connection — or **NULL** when none is connected.
-
-NULL is a normal, expected answer, not an error: the caller then falls back to
-`scheduling.call_settings.preferred_provider_slug`, a platform-hosted room, or a manually entered
-link. **A discovery call must remain bookable by someone who has connected nothing at all** — the
-courtesy call is meant to be frictionless (`PRODUCT_SPEC.md` §Discovery & Courtesy Calls).
-
-`STABLE`. `EXECUTE` granted to `authenticated`.
+active conferencing connection — or **NULL** when none is connected. NULL is a normal answer, not an
+error: the caller falls back to `scheduling.call_settings.preferred_provider_slug`, a platform room,
+or a manual link. **A discovery call stays bookable by someone who has connected nothing**
+(`PRODUCT_SPEC.md` §Discovery & Courtesy Calls). `STABLE`. `EXECUTE` → `authenticated`.
 
 ---
 
-## `integrations.fn_touch_updated_at()`
+## Plugin authorization predicates
 
-The shared `BEFORE UPDATE` trigger function maintaining `updated_at`. Bound to
-`user_connections` as `trg_user_connections_touch`.
+### `fn_plugin_installed(p_plugin uuid) → boolean`
+
+Is this plugin **active-installed** for the current user (`auth.uid()`)? The gate a host surface
+checks before rendering a plugin's contributed slot. `SECURITY DEFINER`, `STABLE`.
+
+### `fn_plugin_has_scope(p_plugin uuid, p_scope text) → boolean`
+
+Has the current user's active installation been granted a given capability scope? **This is the gate
+the Plugin-API mediator checks before honouring a plugin's data request** — a plugin that never
+received `read:messages` cannot read a message, regardless of what its manifest asked for.
+`SECURITY DEFINER`, `STABLE`.
+
+### `fn_is_plugin_publisher(p_plugin uuid) → boolean`
+
+Does the current user publish this plugin? Backs the "publisher manages own plugin/versions"
+policies. `SECURITY DEFINER`, `STABLE`.
+
+All three: `EXECUTE` → `authenticated`.
+
+---
+
+## Triggers
+
+### `fn_touch_updated_at() → trigger`
+
+Shared `BEFORE UPDATE` `updated_at` maintainer, bound in `00001870` to `user_connections`,
+`connection_secrets`, `connection_sync_state`, `webhook_subscriptions`, `plugins`,
+`plugin_installations`.
+
+### `fn_recount_installs() → trigger`
+
+Keeps `integrations.plugins.install_count` in step, counting only **active** installations. Bound
+`AFTER INSERT OR UPDATE OF status OR DELETE ON plugin_installations`. `SECURITY DEFINER`.
 
 ---
 
 ## Not yet implemented (deferred, deliberately)
 
-The schema is the durable half; the moving parts are Edge Functions, which are code rather than
-migrations and are **not** written yet:
+The schema is the durable half; the moving parts are Edge Functions (code, not migrations) and are
+**not written yet**. The critical engineering is here, not in the "list of providers":
 
-- **The consent handshake** — authorize → callback → encrypt with `ENCRYPTION_KEY` → insert a
-  `user_connections` row + a `connected` audit line.
-- **Token refresh** — a scheduled/lazy refresh writing a `refreshed` line, flipping `status` to
-  `expired` or `error` on failure.
-- **Revocation** — call the provider's revoke endpoint, set `status = 'revoked'` + `revoked_at`,
-  and null the cipher columns.
-- **Free/busy sync** — pull external events into `scheduling.events` keyed by
-  `(source_connection_id, external_event_id)`, always with `is_masked = true` unless the owner opts
-  out (`schedules.mask_external_events`).
-- **Room provisioning + attendance webhooks** — mint the meeting URL onto
-  `scheduling.discovery_calls`, then feed `participant_joined`-style callbacks into
-  `scheduling.call_attendance` (the "Digital Handshake", `SYSTEM_ARCHITECTURE.md` §Conferencing).
+### Connectors
 
-Every one of those paths runs as service-role and writes tables that have no client write policy —
-which is the point.
+- **The consent handshake** — authorize → callback → **envelope-encrypt** with the KMS key
+  (`connection_secrets.key_id`) → insert a `user_connections` row + a `connected` audit line.
+- **A proactive token-refresh scheduler** — a background job refreshing tokens **before** expiry
+  (not lazily on 401), writing a `refreshed` line and flipping `status` to `degraded` → `expired` on
+  repeated failure. Providers differ (Google refresh tokens lapse if unused ~6 months; Microsoft
+  rotates on every refresh) — this is where connector platforms bleed.
+- **Webhook ingestion + renewal** — verify each provider signature, dedupe on
+  `webhook_deliveries (provider_slug, external_delivery_id)`, and a cron that **re-registers
+  channels before `expires_at`** (a lapsed channel silently stops sync).
+- **Canonical-model sync** — map provider shapes into `scheduling.events` (and a future `files.*`)
+  through per-provider adapters; MVP is **read-only inbound**, bidirectional is a per-connector
+  project with echo-suppression + conflict resolution.
+- **Per-user + global rate limiting** — a provider quota is shared across all users; one aggressive
+  sync must not rate-limit everyone.
+
+### Plugins
+
+- **The Plugin-API mediator** — a capability-scoped server API every plugin call passes through,
+  enforced with `fn_plugin_has_scope`; a plugin never touches the DB directly.
+- **Sandboxed runtime** — sandboxed cross-origin iframes (`bundle_url` on a separate origin) with a
+  typed `postMessage` host bridge, plus a declarative (Block-Kit-style) tier the host renders with
+  `@projective/ui`. Shadow DOM is **not** a security boundary.
+- **Version review + publish pipeline** — the `submitted → in_review → approved → published`
+  transitions and SRI (`bundle_integrity`) verification, run as service-role.
+
+Every one of those paths runs as service-role and writes tables with no client write policy — which
+is the point.

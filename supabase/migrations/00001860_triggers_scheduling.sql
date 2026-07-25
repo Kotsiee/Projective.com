@@ -1,5 +1,5 @@
--- Scheduling & integrations triggers.
--- Trigger functions live in 00001500/00001510; tables in 00000020/00000022.
+-- Scheduling triggers. (integrations triggers live in 00001870_triggers_integrations.sql.)
+-- Trigger functions live in 00001510; tables in 00000022.
 
 CREATE OR REPLACE TRIGGER trg_schedules_touch
     BEFORE UPDATE ON scheduling.schedules
@@ -12,10 +12,6 @@ CREATE OR REPLACE TRIGGER trg_availability_rules_touch
 CREATE OR REPLACE TRIGGER trg_blackout_dates_touch
     BEFORE UPDATE ON scheduling.blackout_dates
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
-
-CREATE OR REPLACE TRIGGER trg_user_connections_touch
-    BEFORE UPDATE ON integrations.user_connections
-    FOR EACH ROW EXECUTE FUNCTION integrations.fn_touch_updated_at ();
 
 CREATE OR REPLACE TRIGGER trg_events_touch
     BEFORE UPDATE ON scheduling.events

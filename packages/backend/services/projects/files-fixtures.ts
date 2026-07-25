@@ -9,6 +9,7 @@ import type {
 	MessageSender,
 	ProjectDetail,
 } from "@projective/types/projects";
+import { categorizeFile } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 
 /**
@@ -306,6 +307,7 @@ function filesForChannel(detail: ProjectDetail, chan: ChanDesc): FileItem[] {
 			items.push({
 				id: `${messageId}-${i}`,
 				kind,
+				category: categorizeFile(`x.${ext}`),
 				name: `${base}-${(p % 4) + 1}${
 					kind === "image" && shape.filter((k) => k === "image").length > 1 ? `-${i + 1}` : ""
 				}.${ext}`,

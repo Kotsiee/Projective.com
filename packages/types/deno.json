@@ -9,6 +9,7 @@
 		"./org": "./org/mod.ts",
 		"./finance": "./finance/mod.ts",
 		"./explore": "./explore/mod.ts",
+		"./files": "./files/mod.ts",
 		"./integrations": "./integrations/mod.ts",
 		"./catalogue": "./catalogue/mod.ts",
 		"./comms": "./comms/mod.ts",

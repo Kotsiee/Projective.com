@@ -29,14 +29,43 @@ to them.
 
 ---
 
-## 1. Database & Schema Mutability — The Additive Rule
+## 1. Database & Schema — Consolidated, Edit-In-Place Migrations
 
-Add columns, indexes, tables, constraints freely. **Never** delete tables, drop columns, or alter
-existing foreign-key relationships (especially around **Escrows, Wallets, Stages**) without explicit
-human permission — in the real Supabase migrations, not just the docs. **Zod SSOT:** a migration
-must land with its matching `@projective/types` Zod schema/interface **and** the matching
-`documentation/database/[domain]/*` update **in the same change**. The DB, the types package, and
-the docs must never drift.
+`supabase/migrations/` is a **consolidated, from-scratch, reset-driven schema**, NOT a chronological
+additive log. The local database is rebuilt with `supabase db reset` (there is no production data to
+preserve yet), so schema changes are made by **editing the existing consolidated files in place** —
+never by appending new timestamped migrations that patch earlier ones.
+
+- **Fold, don't patch.** A new column goes **directly into the object's `CREATE TABLE`**; a new enum
+  value into its `CREATE TYPE ... AS ENUM`; a changed default/constraint is edited on the column
+  itself. **Do NOT** add `ALTER TABLE ... ADD COLUMN`, `ALTER TYPE ... ADD VALUE`, `DROP CONSTRAINT`
+  + re-`ADD`, or any "migration on top of a migration." The only permitted `ALTER TABLE` is an
+  `ADD CONSTRAINT ... FOREIGN KEY` placed in a trailing `00000###_tables_fk_*.sql` file **when and
+  only when** a genuine circular dependency makes an inline FK impossible.
+- **Naming convention (strict):** every file is `vvvvtooo_type_purpose.sql` — an 8-digit numeric
+  prefix `vvvv`(=`0000`) + `t`(1-digit category) + `ooo`(3-digit order within category) + a verbose
+  `type` matching `t` + a snake_case `purpose`. Categories run in order and MUST stay layered:
+
+  | `t` | Category | `type` names | Holds |
+  | :- | :------- | :----------- | :---- |
+  | 0 | Core setup | `schemas` · `extensions` · `enums` · `tables` | `CREATE SCHEMA/EXTENSION/TYPE`, `CREATE TABLE` (all columns/constraints inline) |
+  | 1 | Functions & triggers | `functions` · `rpcs` · `triggers` | `CREATE FUNCTION`/`RPC`s first, then all `CREATE TRIGGER` |
+  | 2 | Security | `policies` · `permissions` | `ENABLE ROW LEVEL SECURITY`, `CREATE POLICY`, `GRANT`/`REVOKE`, realtime publication |
+  | 3 | Views | `views` | `CREATE [MATERIALIZED] VIEW` |
+  | 4 | Indexes | `indexes` | standalone `CREATE INDEX` |
+  | 5 | Seed | `seed` | top-level reference-data `INSERT`s (never backfills or in-function inserts) |
+
+- **Place each statement in its category, not next to related code.** A new table's columns go in the
+  cat-0 table file; its policies in cat-2; its indexes in cat-4; its seed rows in cat-5 — each edited
+  into the existing domain file for that category. Keep cat-0 table files dependency-ordered (no
+  forward-referencing FK across files). Triggers always live in a cat-1 `triggers` file (after every
+  `functions` file), because a trigger needs its function to exist first.
+- **Escrows, Wallets, Stages** remain protected: do not remove their columns or alter their existing
+  FK relationships without explicit human permission — the reset convenience is for **additive/edit**
+  schema evolution, not for silently dropping financial structure.
+- **Zod SSOT:** a schema change must land with its matching `@projective/types` Zod schema/interface
+  **and** the matching `documentation/database/[domain]/*` update **in the same change**. The DB, the
+  types package, and the docs must never drift.
 
 ## 2. Architecture & the Islands Boundary
 
@@ -1998,6 +2027,57 @@ finance/{plans,entitlements}}` · `documentation/database/{analytics,org,finance
 §Escrow/Wallets/Finance #7 + §Reputation & Discovery #5 · `PRODUCT_MANAGEMENT.md` §3.5 · Decisions #2
 / #47 / #53 / #54 / #57 |
 
+| 59 | **Integration & Plugin Platform — `integrations` schema redesigned from scratch (2026-07-25).
+Docs + DB + Zod-only** pass (NO UI / islands / routes / features / backend services). The
+calendar-only connection store (Decision #56) is generalised into the platform's **connector +
+plugin substrate**, architected on the rule that "integration" is **four systems with irreconcilable
+trust models — Auth (GoTrue), Infra (Stripe/Maps, server keys), Connectors, Plugins** — and the unit
+of architecture is the `(provider, capability)` pair, NOT the vendor. **(A) Connector substrate**
+(generic provider/consent/sync framework so a 50th connector is a seed row + adapter code, never a
+schema change): `integrations.providers` enriched (category vs. multi-valued capability axes,
+`auth_scheme`, `broker` recording the integration STRATEGY — calendar→Nylas unified API,
+storage/dev→direct, CRM tail→Merge, always wrapped behind our own adapter), `user_connections` now a
+`(user, provider, external_account_id)` **state machine** (`pending→active→degraded→expired/revoked/
+disconnected`, multi-account per vendor), the token vault **split into `connection_secrets`** (its
+own table, **no policy/no view/service-role only**, KMS **envelope encryption** via `key_id`, never a
+symmetric env secret), `connection_sync_state` (delta cursors), `webhook_subscriptions` (first-class
+`expires_at` a cron renews) + `webhook_deliveries` (idempotency ledger, dedupe on
+`(provider_slug, external_delivery_id)`), `connection_audit`. **(B) Plugin ecosystem** ("Projective
+OS", post-MVP, schema+seams laid now so the later build is not a rewrite): `extension_points` (the
+slot registry — first-party counterpart of the app's `channelHeaderFor`/`laneFor`/`middleNavFooterFor`
+resolvers), `plugin_scopes` (capability-permission vocabulary AS DATA), `plugins` + `plugin_versions`
+(GitHub-hosted, SRI-pinned `bundle_url` on a SEPARATE origin, manifest jsonb), `plugin_installations`
+(scoped consent, `granted_scopes` the mediator enforces), `plugin_grants` (hashed client secrets,
+headless/automation) + `plugin_audit`. **Trust model is adversarial (Figma/Shopify, NOT Obsidian):**
+third-party code never runs in the host origin (sandboxed cross-origin iframe / declarative Block-Kit
+tier the host renders with `@projective/ui`; **Shadow DOM is a styling boundary, not a security
+one**); every data touch is capability-scoped through a server Plugin-API mediator
+(`fn_plugin_has_scope`) — a plugin is a first-party OAuth client with extra UI rights. **The three
+retrofit-killing seams already hold today:** thin-routes/fat-services (a plugin `/api/*` call ==
+an island `/api/*` call — anything a plugin could call already goes through HTTP, never a service
+import), the slot-resolver pattern, and the token-only design-system contract. Enums greatly
+expanded (`provider_kind` 2→12, `provider_category`, `auth_scheme`, `sync_direction`,
+`webhook_status`, `connection_action` + 8 plugin enums). Preserves `providers.slug` + `user_connections.id`
+PKs (scheduling FKs untouched). Full functions/triggers/RLS/grants/views/indexes/seed wired; a
+`v_plugin_catalog` LATERAL view replaces a circular `latest_version_id` FK. Zod SSOT split into
+`providers.ts`/`connections.ts`/`plugins.ts` (+ `common.ts`), NO token/secret shape anywhere.
+Consolidated edit-in-place (root CLAUDE.md §1) — **NOT applied to any live DB** (a human step,
+Decisions #47/#54 precedent). **Deferred (code, not migrations):** the consent handshake, the
+**proactive token-refresh scheduler** (refresh before expiry, not lazily on 401), webhook ingestion
++ channel renewal, canonical-model sync adapters, per-user + global rate limiting, and the entire
+plugin SDK/CLI/review-pipeline/marketplace (post-PMF). **AI workflows/automation agents ride the
+same capability-scoped Plugin API — an agent is a `headless` plugin.** **Flagged (surface, do not
+silently resolve):** (a) connections stay **per-user** (the freelancer-workspace scope), NOT
+per-vault — a team/business shared connection would need an owner axis; deferred. (b) `outlook` +
+`microsoft_teams` remain **separate vendor rows** (both Microsoft) to preserve the scheduling FKs
+rather than consolidate to one `microsoft` slug + capability array; reconcile if a unified Microsoft
+provider is wanted. (c) `notion` keeps its `calendar` capability (Decision #37's `INTEGRATION_SOURCES`
+lists it) AND gains `docs`; confirm Notion-as-calendar is still intended. | `SYSTEM_ARCHITECTURE.md`
+§Integration Blueprints #3 (§3.1–3.4) · `documentation/database/integrations/{Tables,Policies,Functions}.md`
+· `documentation/database/{Schemas,README}.md` · `packages/types/integrations/*` ·
+`supabase/migrations/{00000004,00000020,00001500,00001870,00002001,00002015,00002510,00002520,00003004,00003005,00004008,00005050}*`
+· Decisions #37 / #47 / #54 / #56 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._
@@ -2005,7 +2085,9 @@ _Second-order conflicts noted but out of this pass (surface if you touch them): 
 ## 9. PR Validation Checklist
 
 - [ ] No source-of-truth doc contradicted (or the doc was updated in the same PR).
-- [ ] Additive-only DB change; Zod + `documentation/database/*` updated together.
+- [ ] Schema change edited **in place** into the consolidated `vvvvtooo_type_purpose.sql` files (no
+      new ALTER-on-top migration; columns folded into `CREATE TABLE`); each statement in its correct
+      category; Zod + `documentation/database/*` updated together.
 - [ ] Islands dumb; routes thin; services fat; aliases only.
 - [ ] Pure CSS + BEM, token-only; Material lib only in `packages/ui/system/`.
 - [ ] Separation-hierarchy, a11y overlays, reduced-motion, ARIA, responsive all satisfied.

@@ -68,69 +68,108 @@ INSERT INTO analytics.event_catalogue (name, domain, description, subject_kinds,
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
--- #region integrations.providers — provider catalogue (from 20260724101000)
+-- #region integrations.providers — connector catalogue
+-- Reference data: every integrable vendor. ALL ship is_enabled=false — enabling one is an operator
+-- decision that requires credentials in the Environment Variable Contract to exist first. `broker`
+-- records the integration strategy (SYSTEM_ARCHITECTURE.md §Integration & Plugin Platform): calendar
+-- goes through a unified API (nylas), most storage/dev goes direct, the CRM long tail via merge.
 INSERT INTO
     integrations.providers (
-        slug,
-        label,
-        capabilities,
-        is_enabled,
-        default_scopes
+        slug, label, category, capabilities, auth_scheme,
+        is_enabled, broker, supports_webhooks, default_scopes
     )
-VALUES (
-        'google',
-        'Google',
-        ARRAY['calendar', 'conferencing']::integrations.provider_kind[],
-        false,
-        ARRAY['https://www.googleapis.com/auth/calendar.events']
-    ),
-    (
-        'outlook',
-        'Outlook',
-        ARRAY['calendar', 'conferencing']::integrations.provider_kind[],
-        false,
-        ARRAY['Calendars.ReadWrite', 'OnlineMeetings.ReadWrite']
-    ),
-    (
-        'apple',
-        'Apple',
-        ARRAY['calendar']::integrations.provider_kind[],
-        false,
-        ARRAY[]::text[]
-    ),
-    (
-        'samsung',
-        'Samsung',
-        ARRAY['calendar']::integrations.provider_kind[],
-        false,
-        ARRAY[]::text[]
-    ),
-    (
-        'notion',
-        'Notion',
-        ARRAY['calendar']::integrations.provider_kind[],
-        false,
-        ARRAY[]::text[]
-    ),
-    (
-        'zoom',
-        'Zoom',
-        ARRAY['conferencing']::integrations.provider_kind[],
-        false,
-        ARRAY['meeting:write']
-    ),
-    (
-        'microsoft_teams',
-        'Microsoft Teams',
-        ARRAY['conferencing']::integrations.provider_kind[],
-        false,
-        ARRAY['OnlineMeetings.ReadWrite']
-    ),
-    (
-        'discord',
-        'Discord',
-        ARRAY['conferencing']::integrations.provider_kind[],
-        false,
-        ARRAY[]::text[]
-    ) ON CONFLICT (slug) DO NOTHING;
+VALUES
+    -- Calendars & conferencing (MVP focus; brokered by a unified calendar API).
+    ('google', 'Google', 'calendar',
+        ARRAY['calendar', 'freebusy', 'conferencing']::integrations.provider_kind[], 'oauth2',
+        false, 'nylas', true, ARRAY['https://www.googleapis.com/auth/calendar.events']),
+    ('outlook', 'Outlook', 'calendar',
+        ARRAY['calendar', 'freebusy', 'conferencing']::integrations.provider_kind[], 'oauth2',
+        false, 'nylas', true, ARRAY['Calendars.ReadWrite', 'OnlineMeetings.ReadWrite']),
+    ('apple', 'Apple', 'calendar',
+        ARRAY['calendar', 'freebusy']::integrations.provider_kind[], 'app_password',
+        false, 'nylas', false, ARRAY[]::text[]),
+    ('samsung', 'Samsung', 'calendar',
+        ARRAY['calendar']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', false, ARRAY[]::text[]),
+    ('calendly', 'Calendly', 'calendar',
+        ARRAY['calendar', 'freebusy']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['default']),
+    ('zoom', 'Zoom', 'conferencing',
+        ARRAY['conferencing']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', false, ARRAY['meeting:write']),
+    ('microsoft_teams', 'Microsoft Teams', 'conferencing',
+        ARRAY['conferencing']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', false, ARRAY['OnlineMeetings.ReadWrite']),
+    ('discord', 'Discord', 'communication',
+        ARRAY['conferencing', 'messaging']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', false, ARRAY[]::text[]),
+    -- Storage & docs (V2 focus; direct integrations — a unified file API is too leaky).
+    ('google_drive', 'Google Drive', 'storage',
+        ARRAY['storage', 'docs']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['https://www.googleapis.com/auth/drive.readonly']),
+    ('dropbox', 'Dropbox', 'storage',
+        ARRAY['storage']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['files.content.read']),
+    ('notion', 'Notion', 'productivity',
+        ARRAY['docs', 'calendar']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', false, ARRAY[]::text[]),
+    -- Developer & CRM long tail (Scale; GitHub direct, the CRM tail via a unified broker).
+    ('github', 'GitHub', 'developer',
+        ARRAY['code', 'issues']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['repo', 'read:user']),
+    ('slack', 'Slack', 'communication',
+        ARRAY['messaging']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['channels:read', 'chat:write']),
+    ('monday', 'Monday.com', 'crm',
+        ARRAY['crm']::integrations.provider_kind[], 'oauth2',
+        false, 'merge', false, ARRAY[]::text[]),
+    ('google_contacts', 'Google Contacts', 'crm',
+        ARRAY['contacts']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', false, ARRAY['https://www.googleapis.com/auth/contacts.readonly'])
+ON CONFLICT (slug) DO NOTHING;
+-- #endregion
+
+-- #region integrations.extension_points — plugin slot catalogue
+-- The first-party registry of surfaces a plugin may inject into. Mirrors the app's own URL-keyed
+-- slot resolvers (channelHeaderFor / laneFor / middleNavFooterFor …). Post-MVP, seeded now so the
+-- later plugin build is not a schema change.
+INSERT INTO
+    integrations.extension_points (key, surface, label, description, allowed_runtimes)
+VALUES
+    ('messages.tab', 'page_tab', 'Messages tab',
+        'A custom tab inside a conversation or channel.', ARRAY['iframe', 'declarative']::integrations.plugin_runtime[]),
+    ('project.panel', 'panel', 'Project side panel',
+        'A panel in the project workspace middle-nav lane.', ARRAY['iframe', 'declarative']::integrations.plugin_runtime[]),
+    ('dashboard.widget', 'dashboard_widget', 'Dashboard widget',
+        'A widget on the home dashboard grid.', ARRAY['iframe', 'declarative']::integrations.plugin_runtime[]),
+    ('sidebar.item', 'sidebar_item', 'Sidebar item',
+        'A navigation entry in the global rail.', ARRAY['declarative']::integrations.plugin_runtime[]),
+    ('command.palette', 'command', 'Command',
+        'An action registered in the command palette.', ARRAY['declarative', 'headless']::integrations.plugin_runtime[]),
+    ('settings.section', 'settings_section', 'Settings section',
+        'A configuration section under Settings → Integrations.', ARRAY['iframe', 'declarative']::integrations.plugin_runtime[]),
+    ('automation.action', 'automation_action', 'Automation action',
+        'A step usable in an automation/agent workflow.', ARRAY['headless']::integrations.plugin_runtime[])
+ON CONFLICT (key) DO NOTHING;
+-- #endregion
+
+-- #region integrations.plugin_scopes — Plugin-API permission vocabulary
+-- The capability scopes a plugin version may request and a user consents to. Kept as DATA so a new
+-- capability is a seed row, not a migration + type change. `risk` drives consent-UI emphasis.
+INSERT INTO
+    integrations.plugin_scopes (key, label, description, domain, risk)
+VALUES
+    ('read:profile', 'Read your profile', 'Read your public profile and handle.', 'profile', 'low'),
+    ('read:messages', 'Read messages', 'Read messages in conversations you open the plugin in.', 'messaging', 'high'),
+    ('write:messages', 'Send messages', 'Send messages on your behalf.', 'messaging', 'high'),
+    ('read:projects', 'Read projects', 'Read your projects, stages and tickets.', 'projects', 'medium'),
+    ('write:projects', 'Modify projects', 'Create or update projects, stages and tickets.', 'projects', 'high'),
+    ('read:files', 'Read files', 'Read attachments and submissions.', 'files', 'medium'),
+    ('write:files', 'Write files', 'Upload or modify attachments.', 'files', 'high'),
+    ('read:calendar', 'Read calendar', 'Read your schedule and availability.', 'scheduling', 'medium'),
+    ('write:calendar', 'Write calendar', 'Create or update calendar events.', 'scheduling', 'high'),
+    ('read:catalogue', 'Read catalogue', 'Read your products and services.', 'catalogue', 'low'),
+    ('read:wallet', 'Read wallet', 'Read wallet balances and transactions (never move funds).', 'finance', 'high')
+ON CONFLICT (key) DO NOTHING;
 -- #endregion

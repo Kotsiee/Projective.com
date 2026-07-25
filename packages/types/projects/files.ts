@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MessageSenderSchema } from "./messages.ts";
 import { ChannelKind } from "./detail.ts";
+import { FileCategory } from "../files/categories.ts";
 
 /**
  * projects.files — the Zod SSOT for the File Explorer read (`/projects/[projectId]/files` and the
@@ -42,6 +43,11 @@ export const FileItemSchema = z.object({
 	/** Stable file id (the grid/list key and the preview-modal selector). */
 	id: z.string().min(1).max(120),
 	kind: FileKind,
+	/**
+	 * The rich {@link FileCategory} (search/filter/facets/analytics), classified from name + MIME. It
+	 * maps to `kind` for rendering via `CATEGORY_META`; persisted as `files.items.category`.
+	 */
+	category: FileCategory,
 	/** Original filename (also the image alt text + the rename seed). */
 	name: z.string().min(1).max(200),
 	/** Lower-cased extension, no dot ("png", "pdf", "mp4", "zip", "ts"). */

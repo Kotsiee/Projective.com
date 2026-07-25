@@ -1250,36 +1250,113 @@ incorrect API flows.
 - **Verification:** The system listens to server-to-server Webhooks (e.g., Zoom's
   `participant_joined`) to power the "Digital Handshake" attendance logs.
 
-#### 2.1 The connection store (`integrations` schema, 2026-07-24)
+### 3. The Integration & Plugin Platform (`integrations` schema)
 
-The OAuth grants above are persisted by the `integrations` schema — declared empty since
-`0001_init_schemas.sql`, populated by migration `20260724101000`. Full schema in
-[`documentation/database/integrations/`](../database/integrations/Tables.md); the contract that
-matters here:
+Conferencing above is one consumer of a general **connector + plugin substrate**: the `integrations`
+schema, redesigned 2026-07-25 from a calendar-only connection store into a generic
+provider / consent / sync framework plus a plugin ecosystem. Full schema in
+[`documentation/database/integrations/`](../database/integrations/Tables.md) and shapes in
+`@projective/types/integrations`. This is a durable architectural spine, so its rules are pinned
+here.
 
-- **Authentication ≠ authorization.** The Google OAuth in `apps/web/features/auth/` is **sign-in**:
-  GoTrue owns it and **no third-party API token is retained**. A connection is a *separate,
-  additional* consent that stores a long-lived grant so the platform can act on the user's behalf
-  later. The two flows must never be conflated or share a token store — a user signed in with
-  Google still has to grant a calendar connection explicitly.
-- **Calendar sync and conferencing are two axes, not one.** `integrations.providers.capabilities`
-  is an array (`{calendar}` / `{conferencing}` / both) because Google mints a Meet room *through*
-  the Calendar API. Do not collapse them into a single provider chip set:
-  `INTEGRATION_SOURCES` (sync) and `CONFERENCING_PROVIDERS` (rooms) in
-  `@projective/types/scheduling` are deliberately distinct.
-- **No plaintext credentials.** Tokens are stored as ciphertext produced in an Edge Function with
-  `ENCRYPTION_KEY` (§Environment Variable Contract). `integrations.user_connections` is
-  **definer-only** — RLS on, **no policy, no `authenticated` grant** — the same hidden-ledger
-  posture the core `finance` tables use. Clients read the `integrations.v_my_connections` view,
-  which cannot project a token column: the safety is **structural, not a policy**.
-- **Capability checks never touch credentials.** `integrations.fn_has_capability(user, kind)` and
-  `integrations.fn_conferencing_provider(user)` are the sanctioned way to ask "can this user mint a
-  room?" — they return a boolean and a slug, nothing more.
-- **A NULL provider is a normal answer.** A user who has connected nothing must still be bookable;
-  the caller falls back to `scheduling.call_settings.preferred_provider_slug`, a platform-hosted
-  room, or a manually entered link.
+#### 3.1 Four systems, not one — the boundary that must never blur
 
-#### 2.2 Discovery & courtesy calls (`scheduling` schema, 2026-07-24)
+The word "integration" spans four subsystems with **irreconcilable runtime and trust models**.
+Conflating them (one "integrations" module for all four) is the mistake that cannot be undone
+cheaply, so the boundary is drawn on **capability shape**, not on which vendor is involved:
+
+| System | What | Runtime | Home |
+| :--- | :--- | :--- | :--- |
+| **Auth** | SSO / OAuth login | Identity federation, no token retained | **GoTrue** (`apps/web/features/auth/`) — _not_ this schema |
+| **Infra** | Payments, geocoding | Server-to-server, platform-owned keys | Behind the service layer — _not_ this schema |
+| **Connectors** | A user's stored authorization to act at a third party | Per-user OAuth, token vault, sync, webhooks | `integrations` (§3.2) |
+| **Plugins** | Third-party code injected into the app | Sandboxed, capability-scoped | `integrations` (§3.4) |
+
+The same vendor spans tiers (Google is Auth **and** a Calendar connector **and**, later, a plugin) —
+so the **`(provider, capability)` pair**, not the provider, is the unit of architecture.
+**Authentication ≠ authorization**: a user signed in "with Google" still grants a Google Calendar
+**connection** separately, and that connection's token lives in the vault — never shared with the
+sign-in flow.
+
+#### 3.2 The connector substrate — designed so a 50th connector is a seed row
+
+A generic framework, not per-vendor tables (`integrations.providers` + `user_connections` +
+`connection_secrets` + `connection_sync_state` + `webhook_subscriptions` + `webhook_deliveries` +
+`connection_audit`). The variability lives in `providers.auth_config` and adapter code, not the
+schema.
+
+- **Category vs. capability are two axes.** `providers.category` is the coarse UI family (one value);
+  `providers.capabilities` (`provider_kind[]`) is the fine-grained thing a connection may _do_ and
+  the **unit of consent** — a user may grant `calendar` but not `storage` at one vendor. Calendar
+  sync and conferencing stay distinct (`INTEGRATION_SOURCES` vs. `CONFERENCING_PROVIDERS` in
+  `@projective/types/scheduling`).
+- **The connection is a state machine, not a token.** `pending → active → degraded → expired /
+  revoked / disconnected`. The settings UI surfaces **reconnect** for recoverable states — a dead
+  token that silently stops syncing is the classic connector-platform support fire.
+- **Multiple accounts per vendor.** The unit is `(user, provider, external_account_id)`, so a user
+  can connect a personal and a work Google without a later migration.
+- **The token vault is split and KMS-backed.** Secrets live in `connection_secrets` (a separate
+  table, **no policy, no view, service-role only**) under **envelope encryption** — a per-record
+  data key wrapped by a KMS master key (`key_id`), not a symmetric secret in an env var.
+  `user_connections` itself is definer-only; clients read `v_my_connections`, which cannot project a
+  token. Safety is **structural, not a policy**.
+- **Webhooks are a distributed-systems problem.** Provider push channels are registered rows with a
+  first-class `expires_at` a cron re-registers before it lapses; inbound pushes dedupe on
+  `webhook_deliveries (provider_slug, external_delivery_id)` and record signature verification. Same
+  idempotency discipline as `comms.delivery_events`.
+- **Integration strategy is recorded per provider (`broker`).** **Calendar → a unified API (Nylas)**
+  — recurrence/timezone/webhook-renewal is a solved-elsewhere nightmare not worth re-owning.
+  **Storage/developer → direct** (a unified file API is too leaky). **CRM long tail → a unified
+  broker (Merge)** where adapter-per-vendor stops paying off. The broker is **always wrapped behind
+  our own adapter interface**, so it stays a replaceable implementation detail.
+- **MVP is read-only inbound.** `sync_direction` defaults `inbound`; `bidirectional` is a per-connector
+  project (echo-suppression + conflict resolution), never the default.
+- **Capability checks never touch credentials.** `fn_has_capability(user, kind)` /
+  `fn_conferencing_provider(user)` return a boolean / a slug. A NULL provider is a **normal** answer —
+  a user who connected nothing is still bookable (falls back to a platform room / manual link).
+
+#### 3.3 The Edge-Function moving parts (deferred, deliberately)
+
+The schema is the durable half; the runtime is Edge Functions (code, not migrations) and is where
+the real engineering is: the consent handshake (authorize → callback → envelope-encrypt →
+`user_connections` + audit line), a **proactive token-refresh scheduler** (refresh _before_ expiry,
+not lazily on 401 — Google tokens lapse if unused ~6 months, Microsoft rotates every refresh),
+webhook ingestion + channel renewal, canonical-model sync adapters into `scheduling.events`, and
+per-user + global rate limiting. See [`integrations/Functions.md`](../database/integrations/Functions.md).
+
+#### 3.4 The plugin ecosystem — "Projective OS" (post-MVP, schema laid now)
+
+Third-party code (Shopify/Figma/Obsidian-class) injected into governed extension points. Deferred by
+roadmap, but the schema + the three retrofit-killing **seams** are laid down now so the later build
+is not a rewrite (`extension_points`, `plugin_scopes`, `plugins`, `plugin_versions`,
+`plugin_installations`, `plugin_grants`, `plugin_audit`).
+
+- **The trust model is adversarial — Figma/Shopify, not Obsidian.** A plugin touches other people's
+  client data and money, so third-party code **never runs in the host origin**. UI injects via a
+  **sandboxed cross-origin iframe** (`plugin_versions.bundle_url` on a separate origin, SRI-pinned by
+  `bundle_integrity`) talking to the host over a typed `postMessage` bridge, or via a **declarative
+  (Block-Kit-style) descriptor** the host renders with `@projective/ui`. **Shadow DOM is a styling
+  boundary, not a security one** — it is never the isolation mechanism.
+- **Every data touch is capability-scoped.** `plugin_scopes` is the permission vocabulary (as data),
+  a version's manifest requests a subset, the user consents (`plugin_installations.granted_scopes`),
+  and a server-side **Plugin-API mediator** enforces it via `fn_plugin_has_scope` on every call — a
+  plugin never touches the DB directly. This is the **same consent machinery as connection scopes**:
+  a plugin is a first-party OAuth client with extra UI rights.
+- **The three seams that make it retrofittable are already true today.** (1) The thin-routes /
+  fat-services boundary — an island calling `/api/*` is indistinguishable from a plugin calling
+  `/api/*`, so **anything a plugin could call already goes through the HTTP API**, never a direct
+  service import. (2) `extension_points` mirrors the app's own URL-keyed slot resolvers
+  (`channelHeaderFor`, `laneFor`, `middleNavFooterFor`) — first-party and plugin slots share one
+  registry. (3) The token-only, BEM design-system contract is what makes the declarative plugin-UI
+  tier possible (plugins emit `@projective/ui` descriptors, not arbitrary CSS).
+- **Not built now:** the SDK/CLI, GitHub-repo plugin loading, the review/publish pipeline, the
+  marketplace, revenue share. All post-PMF. **AI workflows/automation agents** ride the _same_
+  capability-scoped Plugin API — an agent is a `headless` plugin with programmatic scopes.
+
+_The `integrations` connection store was originally described under Conferencing §2.1 (2026-07-24);
+this §3 supersedes and generalises it — Conferencing is now one consumer of §3._
+
+### 4. Discovery & courtesy calls (`scheduling` schema, 2026-07-24)
 
 Migrations `20260724100000`–`20260724104000` add the twelfth schema, `scheduling`, and with it the
 pre-engagement booking layer. See [`PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Discovery &

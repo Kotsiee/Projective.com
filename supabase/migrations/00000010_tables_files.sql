@@ -27,6 +27,10 @@ CREATE TABLE files.items (
   original_name text NOT NULL,
   mime_type text NOT NULL,
   size_bytes bigint NOT NULL,
+  -- Rich taxonomy for search/filter/facets/analytics; classified by the fat backend on upload from
+  -- (original_name, mime_type) via @projective/types/files `describeFile`. NOT NULL so every row is
+  -- faceable; defaults to 'Other' until classified. See documentation/database/files/Storage.md.
+  category files.file_category NOT NULL DEFAULT 'Other',
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text DEFAULT 'pending_upload',
   is_archived boolean DEFAULT false,

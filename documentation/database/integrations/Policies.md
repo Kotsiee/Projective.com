@@ -1,69 +1,94 @@
 # integrations Schema: Policies
 
-RLS is **always on** for `integrations`. The schema mixes two very different postures in four
-objects, because it mixes two very different kinds of data: a **public catalogue** and a **secret
-token store**.
+RLS is **always on** for `integrations`. The schema deliberately mixes three postures because it
+mixes three kinds of data: **public catalogues**, **secret / operational stores**, and
+**user-owned records**.
 
 ## Posture at a glance
 
-| Object                            | RLS | `authenticated` grant | Policy                              |
-| :-------------------------------- | :-- | :-------------------- | :----------------------------------- |
-| `integrations.providers`          | on  | `SELECT`              | `USING (true)` — public reference    |
-| `integrations.user_connections`   | on  | **none**              | **none — definer-only**              |
-| `integrations.v_my_connections`   | —   | `SELECT`              | (view; filtered to `auth.uid()`)     |
-| `integrations.connection_audit`   | on  | `SELECT`              | own rows or admin                    |
+| Object | RLS | `authenticated` grant | Policy |
+| :--- | :-- | :--- | :--- |
+| **Public catalogues** | | | |
+| `providers` · `extension_points` · `plugin_scopes` | on | `SELECT` | `USING (true)` — reference data |
+| **Secret / operational — no policy, service-role only** | | | |
+| `user_connections` | on | **none** | **none — definer-only** |
+| `connection_secrets` | on | **none** | **none — the token vault** |
+| `connection_sync_state` · `webhook_subscriptions` · `webhook_deliveries` | on | **none** | **none** |
+| `plugin_grants` | on | **none** | **none — hashed client secrets** |
+| **Safe projections (views)** | | | |
+| `v_my_connections` | — | `SELECT` | definer view, filtered to `auth.uid()` |
+| `v_plugin_catalog` | — | `SELECT` | definer view, filtered to `status = 'published'` |
+| **User-owned records** | | | |
+| `connection_audit` | on | `SELECT` | own rows or admin |
+| `plugins` | on | `SELECT`+`INSERT`+`UPDATE` | published, or own (publisher), or admin |
+| `plugin_versions` | on | `SELECT`+`INSERT`+`UPDATE` | published, or own plugin, or admin |
+| `plugin_installations` | on | `SELECT`+`INSERT`+`UPDATE` | own (installer) or admin |
+| `plugin_audit` | on | `SELECT` | own, or own-plugin publisher, or admin |
 
-## 🔓 `integrations.providers` — deliberately public
+## 🔓 Public catalogues
 
-```sql
-CREATE POLICY "View integration providers" ON integrations.providers
-FOR SELECT TO anon, authenticated USING (true);
-```
+`providers`, `extension_points`, `plugin_scopes` are `USING (true)` for `anon`, `authenticated`.
+Labels/capabilities/scopes drive the Settings → Integrations chips and the plugin consent UI, and a
+visitor on a public availability page may legitimately see a host uses Zoom. `default_scopes` is
+**configuration, not a credential** — nothing is hidden because nothing secret is stored. Writes are
+service-role only.
 
-Labels, capabilities and enablement drive the Settings → Integrations provider chips, and a visitor
-on a public availability page may legitimately see that a host uses Zoom. `default_scopes` is
-**configuration, not a credential** — no secret is stored on this table, so there is nothing to
-hide. Writes are service-role only.
+## 🔒 Definer-only, no policy — the connection + vault + operational tables
 
-## 🔒 `integrations.user_connections` — definer-only, no policy
+`user_connections`, `connection_secrets`, `connection_sync_state`, `webhook_subscriptions`,
+`webhook_deliveries` and `plugin_grants` have RLS enabled and **no policy, no `authenticated`
+grant** — the hidden-ledger posture the core `finance` money tables use. There is no client path to
+any of them.
 
-The token store. RLS is enabled and **no policy is created and no grant is issued to
-`authenticated`** — exactly the hidden-ledger posture the core `finance` money tables use. There is
-no client path to this table at all.
+This is **not** an oversight to be "fixed" later with a `user_id = auth.uid()` policy. Such a policy
+on `user_connections` would make the connection reachable and re-introduce the very join-to-secrets
+risk the split prevents. **Column security here is structural** — the client-facing surface is a
+view that cannot name the secret columns — rather than a policy a later edit could weaken. The token
+vault (`connection_secrets`) is a step further: it has no view either.
 
-This is not an oversight to be "fixed" later by adding a `user_id = auth.uid()` policy. Such a
-policy would make `access_token_cipher` and `refresh_token_cipher` selectable by anyone who can
-craft a PostgREST query with their own JWT, which is precisely what the design prevents. **Column
-security here is structural** — the client-facing surface is a view that cannot name those columns —
-rather than a policy that a later edit could weaken.
+## 👁 `v_my_connections` — the safe connection projection
 
-## 👁 `integrations.v_my_connections` — the safe projection
-
-A **non-`security_invoker`** view: it runs as its owner, so it can read the un-policied base table,
-and its `WHERE c.user_id = auth.uid ()` clause scopes each caller to their own rows. Only
-`SELECT` is granted, only to `authenticated`.
+A **non-`security_invoker`** view: it runs as its owner (so it can read the un-policied base table)
+and its `WHERE c.user_id = auth.uid ()` clause scopes each caller to their own rows. Only `SELECT`,
+only to `authenticated`. The token vault is a **different table**, so the view cannot project a
+token even by accident.
 
 > ⚠️ **Do not add `WITH (security_invoker = true)`** to this view. Under invoker semantics it would
-> execute as the caller, who has no privilege on `user_connections`, and every read would fail. If a
-> future Postgres/Supabase default flips, this view needs `security_invoker = false` stated
-> explicitly.
+> execute as the caller, who has no privilege on `user_connections`, and every read would fail.
 
-## 📜 `integrations.connection_audit` — own history
+## 🧩 Plugin records — publisher- and installer-scoped
 
-```sql
-CREATE POLICY "View own connection audit" ON integrations.connection_audit
-FOR SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
-```
+- **`plugins` / `plugin_versions`** — visible when `published`, or to the **publisher**
+  (`developer_user_id = auth.uid()` / `fn_is_plugin_publisher`), or an admin. A publisher may
+  `INSERT`/`UPDATE` only their own rows (`FOR ALL` with a matching `USING` + `WITH CHECK`). Approval
+  transitions (`in_review` → `approved` → `published`) are performed by the review pipeline running
+  as service-role, not by the publisher flipping their own `status`.
+- **`plugin_installations`** — an installer sees and manages only their own. `INSERT` requires
+  `installer_user_id = auth.uid()`; uninstall is a soft `UPDATE` (`status → revoked`), never a
+  delete. The consented `granted_scopes` are the gate the Plugin-API mediator enforces at runtime.
+- **`plugin_audit`** — read-only for the acting user and the plugin's publisher; every line is
+  appended service-side, so a client can't forge an invocation record.
 
-Read-only for the user. **No write policy is opened**: every line is appended by the OAuth Edge
-Function running as service-role, so a client cannot forge or backdate a consent record.
+## 👁 `v_plugin_catalog` — the public marketplace
 
-## Capability checks never leak tokens
+A **definer** view (like `v_my_connections`) with an explicit `WHERE status = 'published'`, so it
+exposes only published plugins to everyone without needing base-table grants for `anon`. A publisher
+sees their own drafts through the base `plugins` table (their RLS grant), not this catalogue. Granted
+`SELECT` to `anon`, `authenticated`.
 
-The two predicates in [Functions.md](Functions.md) — `fn_has_capability` and
-`fn_conferencing_provider` — are `SECURITY DEFINER` and return only a boolean and a slug. They are
-the sanctioned way for the booking flow to ask *"can this user mint a room?"* without any path to
-the credentials that would answer it.
+## 📜 `connection_audit` — own history
+
+`USING (user_id = auth.uid () OR security.is_admin ())`, `SELECT` only. **No write policy** — every
+line is appended by the OAuth/sync Edge Function running as service-role, so a consent record can't
+be forged or backdated.
+
+## Capability checks never leak secrets
+
+The predicates in [Functions.md](Functions.md) — `fn_has_capability`, `fn_conferencing_provider`,
+`fn_plugin_installed`, `fn_plugin_has_scope`, `fn_is_plugin_publisher` — are `SECURITY DEFINER` and
+return **only a boolean or a slug**. They are the sanctioned way to ask *"can this user mint a
+room?"* or *"may this plugin read messages?"* with no path to the credentials or the other users'
+rows that would answer it.
 
 ---
 

@@ -53,7 +53,11 @@ WITH
     );
 
 
--- --- from 20260724101000_integrations_connections.sql ---
+-- --- integrations: connectors ---
+-- The provider catalogue and the extension-point / scope catalogues are public reference data.
+-- user_connections and every secret/operational table (connection_secrets, connection_sync_state,
+-- webhook_subscriptions, webhook_deliveries) carry NO policy on purpose — definer-only /
+-- service-role only; clients read integrations.v_my_connections instead.
 
 CREATE POLICY "View integration providers" ON integrations.providers FOR
 SELECT TO anon,
@@ -62,6 +66,80 @@ authenticated USING (true);
 CREATE POLICY "View own connection audit" ON integrations.connection_audit FOR
 SELECT TO authenticated USING (
         user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
+-- --- integrations: plugin ecosystem ---
+
+-- Catalogues are public reference data.
+CREATE POLICY "View extension points" ON integrations.extension_points FOR
+SELECT TO anon,
+authenticated USING (true);
+
+CREATE POLICY "View plugin scopes" ON integrations.plugin_scopes FOR
+SELECT TO anon,
+authenticated USING (true);
+
+-- A plugin is visible when published, or to its own publisher/an admin at any status.
+CREATE POLICY "View published or own plugins" ON integrations.plugins FOR
+SELECT TO anon,
+authenticated USING (
+        status = 'published'::integrations.plugin_status
+        OR developer_user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
+CREATE POLICY "Publisher manages own plugin" ON integrations.plugins FOR ALL TO authenticated USING (
+    developer_user_id = auth.uid ()
+    OR security.is_admin ()
+)
+WITH
+    CHECK (
+        developer_user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
+-- Versions follow their plugin: published versions are world-visible, drafts only to the publisher.
+CREATE POLICY "View published or own plugin versions" ON integrations.plugin_versions FOR
+SELECT TO anon,
+authenticated USING (
+        status = 'published'::integrations.plugin_version_status
+        OR integrations.fn_is_plugin_publisher (plugin_id)
+        OR security.is_admin ()
+    );
+
+CREATE POLICY "Publisher manages own plugin versions" ON integrations.plugin_versions FOR ALL TO authenticated USING (
+    integrations.fn_is_plugin_publisher (plugin_id)
+    OR security.is_admin ()
+)
+WITH
+    CHECK (
+        integrations.fn_is_plugin_publisher (plugin_id)
+        OR security.is_admin ()
+    );
+
+-- Installations belong to their installer. Uninstall is a soft UPDATE (status → revoked).
+CREATE POLICY "View own installations" ON integrations.plugin_installations FOR
+SELECT TO authenticated USING (
+        installer_user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
+CREATE POLICY "Install a plugin" ON integrations.plugin_installations FOR INSERT TO authenticated
+WITH
+    CHECK (installer_user_id = auth.uid ());
+
+CREATE POLICY "Manage own installations" ON integrations.plugin_installations FOR
+UPDATE TO authenticated USING (
+    installer_user_id = auth.uid ()
+)
+WITH
+    CHECK (installer_user_id = auth.uid ());
+
+CREATE POLICY "View own plugin audit" ON integrations.plugin_audit FOR
+SELECT TO authenticated USING (
+        user_id = auth.uid ()
+        OR integrations.fn_is_plugin_publisher (plugin_id)
         OR security.is_admin ()
     );
 

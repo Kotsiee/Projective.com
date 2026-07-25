@@ -64,16 +64,8 @@ GRANT SELECT ON search.search_weights TO authenticated;
 GRANT ALL ON search.search_weights TO service_role;
 
 
--- --- from 0300_message_file_details.sql ---
-
-GRANT SELECT ON comms.message_file_details TO authenticated;
-
-GRANT SELECT ON comms.message_file_details TO service_role;
-
-
--- --- from 0301_business_views.sql ---
-
-GRANT SELECT ON org.view_business_staff TO authenticated;
+-- NOTE: grants on views live in 00003005_permissions_view_grants.sql (they must run after the views
+-- are created in Category 3): comms.message_file_details, org.view_business_staff, and others below.
 
 
 -- --- from 20260723090000_finance_currency_fx.sql ---
@@ -148,10 +140,7 @@ GRANT ALL ON TABLE finance.chargebacks TO service_role;
 
 GRANT ALL ON TABLE finance.idempotency_keys TO service_role;
 
--- The view is SECURITY INVOKER by default; it reads finance.wallets/transactions (no RLS policy =
--- definer-only), so it is reachable only via a SECURITY DEFINER wrapper / service-role — matching the
--- hidden-ledger posture. Exposed to service_role for the reconciliation job / admin tooling.
-GRANT SELECT ON finance.v_wallet_reconciliation TO service_role;
+-- finance.v_wallet_reconciliation grant → 00003005_permissions_view_grants.sql (view, Category 3).
 
 
 -- --- from 20260724094000_comms_notification_rls_jobs.sql ---
@@ -211,11 +200,7 @@ GRANT ALL ON TABLE comms.channel_suppressions TO service_role;
 
 GRANT ALL ON TABLE comms.delivery_events TO service_role;
 
-GRANT SELECT ON comms.notification_feed TO authenticated;
-
-GRANT SELECT ON comms.notification_unread_counts TO authenticated;
-
-GRANT SELECT ON comms.notification_delivery_health TO authenticated;
+-- comms notification view grants → 00003005_permissions_view_grants.sql (views, Category 3).
 
 
 -- --- from 20260724100000_scheduling_schema_availability.sql ---
@@ -251,21 +236,53 @@ GRANT ALL ON TABLE scheduling.availability_rules TO service_role;
 GRANT ALL ON TABLE scheduling.blackout_dates TO service_role;
 
 
--- --- from 20260724101000_integrations_connections.sql ---
+-- --- integrations: connectors ---
 
 GRANT SELECT ON TABLE integrations.providers TO anon,
 authenticated;
 
 GRANT ALL ON TABLE integrations.providers TO service_role;
 
--- Deliberately NO grant to `authenticated` and NO policy: the token store is definer-only.
+-- Deliberately NO grant to `authenticated` and NO policy: the connection + token store is
+-- definer-only. Clients read integrations.v_my_connections (Category 3).
 GRANT ALL ON TABLE integrations.user_connections TO service_role;
 
-GRANT SELECT ON integrations.v_my_connections TO authenticated;
+-- The token VAULT and every operational table are service-role only — no anon/authenticated grant.
+GRANT ALL ON TABLE integrations.connection_secrets TO service_role;
+GRANT ALL ON TABLE integrations.connection_sync_state TO service_role;
+GRANT ALL ON TABLE integrations.webhook_subscriptions TO service_role;
+GRANT ALL ON TABLE integrations.webhook_deliveries TO service_role;
 
 GRANT SELECT ON TABLE integrations.connection_audit TO authenticated;
 
 GRANT ALL ON TABLE integrations.connection_audit TO service_role;
+
+-- --- integrations: plugin ecosystem ---
+-- Catalogues are public-readable reference data.
+GRANT SELECT ON TABLE integrations.extension_points TO anon,
+authenticated;
+
+GRANT SELECT ON TABLE integrations.plugin_scopes TO anon,
+authenticated;
+
+-- Publishers (authenticated) create/update their own plugins + versions; RLS scopes to own rows.
+GRANT SELECT, INSERT, UPDATE ON TABLE integrations.plugins TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE ON TABLE integrations.plugin_versions TO authenticated;
+
+-- Installers create/update their own installations; uninstall is a soft UPDATE.
+GRANT SELECT, INSERT, UPDATE ON TABLE integrations.plugin_installations TO authenticated;
+
+GRANT SELECT ON TABLE integrations.plugin_audit TO authenticated;
+
+-- plugin_grants holds hashed client secrets → service-role only, no anon/authenticated grant.
+GRANT ALL ON TABLE integrations.extension_points TO service_role;
+GRANT ALL ON TABLE integrations.plugin_scopes TO service_role;
+GRANT ALL ON TABLE integrations.plugins TO service_role;
+GRANT ALL ON TABLE integrations.plugin_versions TO service_role;
+GRANT ALL ON TABLE integrations.plugin_installations TO service_role;
+GRANT ALL ON TABLE integrations.plugin_grants TO service_role;
+GRANT ALL ON TABLE integrations.plugin_audit TO service_role;
 
 
 -- --- from 20260724102000_scheduling_events.sql ---
@@ -322,7 +339,7 @@ GRANT SELECT ON TABLE analytics.daily_rollups TO authenticated;
 
 GRANT ALL ON TABLE analytics.daily_rollups TO service_role;
 
-GRANT SELECT ON analytics.v_unregistered_events TO service_role;
+-- analytics.v_unregistered_events grant → 00003005_permissions_view_grants.sql (view, Category 3).
 
 
 -- --- from 20260724111000_standing_reputation.sql ---
