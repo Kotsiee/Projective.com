@@ -1,0 +1,207 @@
+/*
+ * wallet-overlays — the drawer, the confirmation modal, and the parked mini-wallet
+ * (BUILD CONTRACT §2.7 / §7).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Every overlay mounts through `BodyPortal`
+ * (the shared components already do): the middle-nav lane is a glass, `overflow: clip` stacking
+ * context, which re-bases `position: fixed` descendants — the documented trap on this shell.
+ */
+
+/* #region Drawer — header + scrolling body + sticky confirm footer */
+.wlt-drawer {
+	inline-size: var(--wlt-drawer-w);
+	max-inline-size: 100vw;
+}
+
+.wlt-drawer__head {
+	padding: var(--space-5);
+	border-block-end: var(--hairline);
+}
+
+.wlt-drawer__title {
+	margin: 0;
+	font-size: var(--wlt-fs-key);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wlt-drawer__body {
+	padding: var(--space-5);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	overflow-y: auto;
+}
+
+.wlt-drawer__figure {
+	margin: 0;
+}
+
+.wlt-drawer__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wlt-drawer__sectitle {
+	margin: 0;
+}
+
+.wlt-drawer__state {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/* Sticky, so the commit is reachable without scrolling back — and always the last thing read. */
+.wlt-drawer__foot {
+	position: sticky;
+	inset-block-end: 0;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-5);
+	background: var(--surface-2);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Confirmation modal — the grammar of "you cannot take this back" */
+.wlt-modal {
+	inline-size: min(28rem, 92vw);
+}
+
+.wlt-modal__head {
+	padding: var(--space-5) var(--space-5) var(--space-3);
+}
+
+.wlt-modal__body {
+	padding-inline: var(--space-5);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.wlt-modal__figure {
+	margin: 0;
+}
+
+.wlt-modal__breakdown {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.wlt-modal__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wlt-modal__row:first-child {
+	border-block-start: none;
+}
+
+.wlt-modal__label {
+	font-size: var(--wlt-fs-body);
+	color: var(--text-secondary);
+}
+
+.wlt-modal__value {
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+.wlt-modal__warn {
+	margin: 0;
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	max-inline-size: var(--wlt-prose);
+}
+
+.wlt-modal__foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	padding: var(--space-5);
+}
+
+.wlt-modal__done {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block: var(--space-5);
+	text-align: center;
+}
+
+.wlt-modal__check {
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	border-radius: 999px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--wlt-credit);
+	background: color-mix(in srgb, var(--success) 16%, transparent);
+	font-size: var(--wlt-fs-key);
+}
+/* #endregion */
+
+/* #region The parked mini-wallet */
+.wlt-float {
+	inline-size: 20rem;
+}
+
+.wlt-float__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border-block-end: var(--hairline);
+}
+
+.wlt-float__balance {
+	padding: var(--space-4);
+}
+
+.wlt-float__spark {
+	block-size: 3rem;
+	padding-inline: var(--space-4);
+}
+
+.wlt-float__rows {
+	list-style: none;
+	margin: 0;
+	padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+.wlt-float__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+	font-size: var(--wlt-fs-micro);
+}
+
+.wlt-float__row:first-child {
+	border-block-start: none;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-drawer,
+	.wlt-modal {
+		transition: opacity var(--dur-fast) var(--ease-standard);
+		transform: none;
+	}
+}

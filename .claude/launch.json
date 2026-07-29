@@ -132,6 +132,12 @@
 			"runtimeExecutable": "deno",
 			"runtimeArgs": ["task", "dev", "--port", "7573", "--strictPort"],
 			"port": 7573
+		},
+		{
+			"name": "web-wallet2",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "7673", "--strictPort"],
+			"port": 7673
 		}
 	]
 }

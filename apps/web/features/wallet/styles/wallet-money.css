@@ -1,0 +1,257 @@
+/*
+ * wallet-money — how a money figure and a fund state reach the screen (BUILD CONTRACT §1.1/§1.2, §2.3).
+ *
+ * Two blocks live here, and they are the surface's smallest load-bearing units:
+ *
+ *   `wlt-money`     — the rendering of a SERVER-formatted `MoneyView`. It only ever styles a string
+ *                     the server produced; nothing here formats, rounds or composes currency.
+ *   `wlt-fundstate` — the STATIC SHAPE channel for the four fund states (RULE C-3: colour is never a
+ *                     sole channel, so every state is a distinct silhouette before it is a hue).
+ *
+ * These rules style exactly the markup `components/Money.tsx` and `components/FundStateMark.tsx`
+ * emit — the class names are read off those components, not invented here.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY (§A.6): there is no `left`, `right`,
+ * `margin-left`, `text-align: left` or `translateX` in this file, so a balance mirrors cleanly to the
+ * opposite edge under `dir="rtl"`. There is not a single four-sided border either (§B.4) — a money
+ * figure is non-interactive content and is separated by spacing and type weight alone.
+ */
+
+/* #region wlt-money — a server-formatted MoneyView */
+
+/*
+ * A column, because a cross-currency figure discloses its origin INLINE beneath the amount and never
+ * on hover — hover-only money fails touch entirely, and this is the one disclosure the surface is
+ * contractually required to always show (§12.7). `align-items: start` is the flexbox logical keyword,
+ * so the stack aligns to the reading edge in both directions.
+ */
+.wlt-money {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: start;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	color: var(--on-surface);
+}
+
+/*
+ * The amount is a baseline-aligned inline row so the symbol, major run and pence share one baseline —
+ * the reason the pence are sized, not raised (see `__minor`).
+ */
+.wlt-money__amount {
+	display: inline-flex;
+	align-items: baseline;
+	white-space: nowrap;
+	min-inline-size: 0;
+}
+
+.wlt-money__sign {
+	margin-inline-end: 0.08em;
+}
+
+.wlt-money__symbol {
+	margin-inline-end: 0.06em;
+	font-weight: inherit;
+}
+
+.wlt-money__major {
+	font-weight: inherit;
+}
+
+/*
+ * RULE T-1 — pence are de-emphasised by SIZE and TONE, never by a superscript: a raised minor run
+ * breaks tabular alignment down a ledger column and reads as retail price-tag typography on a
+ * custody balance. `letter-spacing: 0` cancels the inherited `--wlt-num-track` so the small run does
+ * not open up. Under `data-contrast="high"` the token layer lifts `--wlt-minor-fade` to 82%.
+ */
+.wlt-money__minor {
+	font-size: var(--wlt-minor-size);
+	letter-spacing: 0;
+	align-self: baseline;
+	vertical-align: baseline;
+	/*
+	 * `opacity`, not `color-mix(… currentColor …)`. Resolving `currentColor` inside a `color-mix()`
+	 * that is itself defining `color` is legal per spec but is dropped by engines in practice, which
+	 * silently left the pence at full weight — the de-emphasis simply never happened. Opacity
+	 * composites reliably, keeps the hue in both themes, and still honours the token: the value is a
+	 * percentage, which `opacity` accepts, so the high-contrast overlay's lift to 82% works unchanged.
+	 */
+	opacity: var(--wlt-minor-fade);
+}
+
+/*
+ * The cross-currency disclosure: origin amount, then the rate. Exactly three facts, in that order.
+ * There is deliberately no fee, spread, cost or saving element in this block — who bears the FX
+ * spread is an open business question, and rendering a placeholder would be fabricating policy.
+ */
+.wlt-money__fx {
+	font-size: var(--wlt-fs-micro);
+	font-weight: 400;
+	letter-spacing: 0;
+	line-height: 1.4;
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region wlt-money — the five size steps (§1.1) */
+
+.wlt-money--hero .wlt-money__amount {
+	font-size: var(--wlt-fs-hero);
+	font-weight: 600;
+	line-height: 1;
+}
+
+.wlt-money--figure .wlt-money__amount {
+	font-size: var(--wlt-fs-figure);
+	font-weight: 600;
+	line-height: 1.1;
+}
+
+.wlt-money--key .wlt-money__amount {
+	font-size: var(--wlt-fs-key);
+	font-weight: 600;
+	line-height: 1.15;
+}
+
+.wlt-money--body .wlt-money__amount {
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.wlt-money--micro .wlt-money__amount {
+	font-size: var(--wlt-fs-micro);
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+/* #endregion */
+
+/* #region wlt-money — the six tones (§1.2) */
+
+.wlt-money--default {
+	color: var(--on-surface);
+}
+
+/* RULE C-2 — `--success` means REALISED, CREDITED, IN THE PAST. It is never a fund state. */
+.wlt-money--credit {
+	color: var(--wlt-credit);
+}
+
+/* A debit is an ordinary movement, not a failure, so it is achromatic. Debits are NEVER red. */
+.wlt-money--debit {
+	color: var(--wlt-debit);
+}
+
+.wlt-money--fee {
+	color: var(--wlt-fee);
+}
+
+/*
+ * RULE C-1 — the ONLY money tone permitted to reach `--danger`, and only in a ledger row's reason
+ * chip, the Standing penalty bar, or a band-scoped error. A balance the user still owns is never red.
+ */
+.wlt-money--dispute {
+	color: var(--wlt-dispute);
+}
+
+.wlt-money--muted {
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region wlt-fundstate — the static shape channel */
+
+/*
+ * The mark carries the state's colour on `currentColor`, so the glyph's own `stroke`/`fill` inherit
+ * it and the shape stays the primary channel with the hue as the fourth (RULE C-3).
+ */
+.wlt-fundstate__mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	line-height: 0;
+}
+
+/*
+ * The dense-row variant (§4.5/§6.1): status in a ledger row is a DOT, never inline status text
+ * (§B.6). The words live in the caller's portal `Tooltip`. Each state gets its own silhouette, so the
+ * four remain distinguishable under every `data-cvd` overlay and in greyscale print:
+ *
+ *   available — a filled disc            locked  — a rounded square (the strongbox)
+ *   pending   — a hollow ring            on hold — an upright bar (the pause)
+ */
+.wlt-fundstate__dot {
+	display: inline-block;
+	flex: none;
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+/* #endregion */
+
+/* #region wlt-fundstate — the four state colours */
+
+.wlt-fundstate--available {
+	color: var(--wlt-available);
+}
+
+/*
+ * In escrow is the SAME HUE as Available at a lower temperature — capital at work is the same
+ * substance at a different temperature, so money held against contracted work never reads as money
+ * taken. The `-hi` mix is used for a glyph because a small stroke needs more separation than a 16px
+ * rail fill does.
+ */
+.wlt-fundstate--locked {
+	color: var(--wlt-locked-hi);
+}
+
+.wlt-fundstate--pending {
+	color: var(--wlt-pending-hi);
+}
+
+/*
+ * Both spellings are styled deliberately: `FundStateMark` interpolates the raw `FundState` value
+ * (`on_hold`) while §2.3's modifier inventory names it `--hold`. Styling both keeps the emitted
+ * markup correct without renaming a shipped component's output.
+ */
+.wlt-fundstate--on_hold,
+.wlt-fundstate--hold {
+	color: var(--wlt-hold-hi);
+}
+
+/*
+ * RULE H-4 / the zero invariant — a state at zero never places its chroma anywhere on the instrument.
+ * On hold at £0.00 is the common case and must never tint anything amber. The compound selector
+ * outranks the state class, so this wins wherever both are present.
+ */
+.wlt-fundstate__mark.is-zero {
+	color: var(--on-surface-variant);
+}
+
+/* #endregion */
+
+/* #region wlt-fundstate — per-state dot silhouettes */
+
+.wlt-fundstate__dot.wlt-fundstate--locked {
+	border-radius: var(--radius-xs);
+}
+
+.wlt-fundstate__dot.wlt-fundstate--pending {
+	background: transparent;
+	box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.wlt-fundstate__dot.wlt-fundstate--on_hold,
+.wlt-fundstate__dot.wlt-fundstate--hold {
+	inline-size: 5px;
+	block-size: 10px;
+	border-radius: var(--radius-xs);
+}
+
+/* #endregion */

@@ -2,24 +2,31 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
 import { Avatar } from "@projective/ui/display";
+import { Checkbox } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
-import { Meter, Money, SectionCard } from "../components/wallet-bits.tsx";
+import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { CapsRoster } from "../components/CapsRoster.tsx";
+import { Money } from "../components/Money.tsx";
 import { WalletService } from "../core/WalletService.ts";
+import { can } from "../core/capability.ts";
 import { currentWalletContext, notifyWalletChanged } from "../core/wallet-state.ts";
 import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type {
 	AccessView,
-	SpendApprovalView,
 	VaultCapability,
-	VaultMember,
+	WalletScope as VaultScope,
 } from "../types/wallet-types.ts";
 
 /**
- * WalletAccessScreen — `/wallet/access` (team/business): the capability matrix (members × the seven vault
- * capabilities), spending caps, the pending-approvals queue, and the money audit log. Every
- * capability-gated control is hidden/disabled per the viewer's grants (`viewerCapabilities`) — the server
- * re-checks under RLS. Matrix edits + approvals are optimistic stubs until the live path lands. THIN: SSR
- * + refetch on dev axis / mutation. The matrix scrolls horizontally inside its own container.
+ * WalletAccessScreen — vault governance (`/wallet/access`, team/business).
+ *
+ * Three bands: who may do what, what is waiting on a second approver, and what has already happened.
+ * The audit trail is append-only by design and carries no edit or delete affordance — a money log a
+ * participant can rewrite is not a control, and offering the control would imply we allow it.
+ *
+ * The matrix is a full-bleed table with no max-width: it is read across, and cropping it defeats it.
+ * Capability toggles are only rendered for a viewer who holds `manage_members`; everyone else sees
+ * the same grid as a read-only record of the arrangement they are part of.
  */
 export interface WalletAccessScreenProps {
 	initial: AccessView;
@@ -27,7 +34,7 @@ export interface WalletAccessScreenProps {
 	display: string;
 }
 
-const CAPS: VaultCapability[] = [
+const CAPS: readonly VaultCapability[] = [
 	"view",
 	"add_funds",
 	"spend",
@@ -36,6 +43,7 @@ const CAPS: VaultCapability[] = [
 	"manage_members",
 	"manage_billing",
 ];
+
 const CAP_LABEL: Record<VaultCapability, string> = {
 	view: "View",
 	add_funds: "Add funds",
@@ -48,222 +56,219 @@ const CAP_LABEL: Record<VaultCapability, string> = {
 
 export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.Element {
 	const view = useSignal<AccessView>(props.initial);
-	async function reload(): Promise<void> {
+	const busy = useSignal<string | null>(null);
+
+	const refetch = async () => {
 		const res = await WalletService.access(currentWalletContext());
 		if (res.ok && res.data) view.value = res.data.access;
-	}
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: reload });
-	useWalletRefresh(reload);
+	};
+	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletRefresh(refetch);
 
 	const a = view.value;
-	const canManage = a.viewerCapabilities.includes("manage_members");
-	const canApprove = a.viewerCapabilities.includes("manage_billing") ||
-		a.viewerCapabilities.includes("distribute");
-	const empty = a.members.length === 0;
+	const canManage = can(a.viewerCapabilities, "manage_members");
+	const canDecide = can(a.viewerCapabilities, "manage_billing") ||
+		can(a.viewerCapabilities, "distribute");
 
-	async function decide(id: string, decision: "approve" | "reject"): Promise<void> {
-		const ctx = currentWalletContext();
-		const [scope, contextId] = (ctx.wallet ?? "personal").includes(":")
-			? (ctx.wallet ?? "personal").split(":")
-			: ["personal", ""];
-		const res = await WalletService.decideSpend({
-			scope: scope as never,
-			contextId,
-			approvalId: id,
-			decision,
-			display: ctx.display ?? undefined,
-		});
-		if (res.ok) {
-			notifyWalletChanged();
-			void reload();
-		}
-	}
-
-	if (empty) {
+	if (a.members.length === 0) {
 		return (
-			<div class="wallet-page wallet-access">
-				<header class="wallet-page__head">
-					<h1 class="wallet-page__title">Access</h1>
-				</header>
-				<p class="wallet-empty-note" role="status">
-					Vault access controls are available on team and business wallets.
-				</p>
-			</div>
+			<main class="wlt" aria-label="Access">
+				<div class="wlt__stack">
+					<Band tone="head" index={0} label="Access">
+						<PageHead title="Access" />
+					</Band>
+					<Band tone="page" index={1} label="Members">
+						<EmptyBand
+							text="This wallet has no shared members."
+							hint="Governance applies to a team vault or a business wallet."
+						/>
+					</Band>
+				</div>
+			</main>
 		);
 	}
 
-	return (
-		<div class="wallet-page wallet-access">
-			<header class="wallet-page__head">
-				<h1 class="wallet-page__title">Access</h1>
-				{canManage && <span class="wallet-badge" data-tone="info">You manage this vault</span>}
-			</header>
+	const decide = async (id: string, decision: "approve" | "reject") => {
+		busy.value = id;
+		const target = currentWalletContext();
+		const res = await WalletService.decideSpend({
+			scope: (target.wallet?.split(":")[0] ?? "personal") as VaultScope,
+			contextId: target.wallet?.split(":")[1] ?? "",
+			approvalId: id,
+			decision,
+		});
+		busy.value = null;
+		if (res.ok) {
+			notifyWalletChanged();
+			await refetch();
+		}
+	};
 
-			<SectionCard title="Capability matrix">
-				<div class="wallet-matrix__scroll">
-					<table class="wallet-matrix" aria-label="Vault capability matrix">
-						<thead>
-							<tr>
-								<th class="wallet-matrix__memberhead" scope="col">Member</th>
-								{CAPS.map((c) => (
-									<th key={c} class="wallet-matrix__caphead" scope="col">
-										<span>{CAP_LABEL[c]}</span>
-									</th>
+	return (
+		<main class="wlt" aria-label="Access">
+			<div class="wlt__stack">
+				<Band tone="head" index={0} label="Access">
+					<PageHead
+						title="Access"
+						meta={
+							<>
+								<span>{a.members.length} members</span>
+								{a.approvals.length > 0 && <span>{a.approvals.length} awaiting approval</span>}
+							</>
+						}
+					/>
+				</Band>
+
+				<Band tone="intel" index={1} titleId="wlt-acc-matrix">
+					<BandHead id="wlt-acc-matrix" title="Capabilities" />
+					<div class="wlt-matrix__scroll">
+						<table class="wlt-matrix">
+							<caption class="ui-visually-hidden">
+								Vault capabilities granted to each member
+							</caption>
+							<thead>
+								<tr>
+									<th scope="col" class="wlt-matrix__memberhead">Member</th>
+									{CAPS.map((c) => (
+										<th scope="col" class="wlt-matrix__caphead" key={c}>{CAP_LABEL[c]}</th>
+									))}
+								</tr>
+							</thead>
+							<tbody>
+								{a.members.map((m) => (
+									<tr key={m.userId}>
+										<th scope="row" class="wlt-matrix__member">
+											<Avatar
+												image={m.avatar ?? undefined}
+												label={m.name}
+												size="sm"
+												shape="circle"
+											/>
+											<span class="wlt-matrix__name">
+												{m.handle
+													? <a class="wlt-link" href={`/@${m.handle}`}>{m.name}</a>
+													: m.name}
+											</span>
+											<span class="wlt-matrix__role">{m.role}</span>
+										</th>
+										{CAPS.map((c) => {
+											const granted = m.capabilities.includes(c);
+											// `view` is implied by membership and is never revocable.
+											const editable = canManage && c !== "view";
+											return (
+												<td class="wlt-matrix__cell" key={c}>
+													{editable
+														? (
+															<Checkbox
+																value={granted}
+																aria-label={`${CAP_LABEL[c]} for ${m.name}`}
+																onValueChange={() => {/* persistence lands with the live path */}}
+															/>
+														)
+														: (
+															<Tooltip
+																content={`${granted ? "Granted" : "Not granted"}: ${CAP_LABEL[c]}`}
+																placement="top"
+															>
+																<span
+																	class="wlt-matrix__mark"
+																	data-on={granted ? "true" : "false"}
+																	aria-label={granted ? "Granted" : "Not granted"}
+																	role="img"
+																>
+																	{granted ? "●" : "–"}
+																</span>
+															</Tooltip>
+														)}
+												</td>
+											);
+										})}
+									</tr>
 								))}
-							</tr>
-						</thead>
-						<tbody>
-							{a.members.map((m) => <MatrixRow key={m.userId} member={m} canManage={canManage} />)}
-						</tbody>
-					</table>
-				</div>
-			</SectionCard>
+							</tbody>
+						</table>
+					</div>
+				</Band>
 
-			{a.approvals.length > 0 && (
-				<SectionCard title={`Approvals · ${a.approvals.length}`} class="wallet-access__approvals">
-					<ul class="wallet-approvals">
-						{a.approvals.map((ap) => (
-							<ApprovalRow key={ap.id} approval={ap} canApprove={canApprove} onDecide={decide} />
-						))}
-					</ul>
-				</SectionCard>
-			)}
-
-			{a.caps.length > 0 && (
-				<SectionCard title="Spending caps" class="wallet-access__caps">
-					<ul class="wallet-caps__list">
-						{a.caps.map((c) => (
-							<li key={c.id} class="wallet-caps__row">
-								<span class="wallet-caps__name">{c.memberName}</span>
-								<Meter
-									ratioBp={c.utilizationBp}
-									label={`${c.memberName} cap`}
-									class="wallet-caps__meter"
-								/>
-								<span class="wallet-caps__amt">
-									<Money value={c.spent} />{" "}
-									<span class="wallet-caps__of">
-										/ <Money value={c.cap} muted />
-									</span>
-								</span>
-							</li>
-						))}
-					</ul>
-				</SectionCard>
-			)}
-
-			<SectionCard title="Audit log" class="wallet-access__audit">
-				<ul class="wallet-audit">
-					{a.audit.map((row) => (
-						<li key={row.id} class="wallet-audit__row">
-							<span class="wallet-audit__action" data-action={row.action}>
-								{row.action.replace("_", " ")}
-							</span>
-							<span class="wallet-audit__label">{row.label}</span>
-							<Money value={row.amount} class="wallet-audit__amt" />
-							<span class="wallet-audit__date">{row.dateLabel}</span>
-						</li>
-					))}
-				</ul>
-			</SectionCard>
-		</div>
-	);
-}
-
-function MatrixRow(
-	{ member, canManage }: { member: VaultMember; canManage: boolean },
-): JSX.Element {
-	// Optimistic local grants (stub — the live path persists via a manage-members mutation).
-	const grants = useSignal<Set<VaultCapability>>(new Set(member.capabilities));
-	function toggle(cap: VaultCapability): void {
-		if (!canManage || cap === "view") return;
-		const next = new Set(grants.value);
-		if (next.has(cap)) next.delete(cap);
-		else next.add(cap);
-		grants.value = next;
-	}
-	return (
-		<tr class="wallet-matrix__row">
-			<th class="wallet-matrix__member" scope="row">
-				<Avatar image={member.avatar ?? undefined} label={member.name} size={24} alt="" />
-				<span class="wallet-matrix__name">{member.name}</span>
-				<span class="wallet-matrix__role" data-role={member.role}>{member.role}</span>
-			</th>
-			{CAPS.map((cap) => {
-				const has = grants.value.has(cap);
-				return (
-					<td key={cap} class="wallet-matrix__cell">
-						{canManage && cap !== "view"
-							? (
-								<button
-									type="button"
-									class="wallet-matrix__toggle"
-									data-on={has ? "true" : undefined}
-									aria-pressed={has}
-									aria-label={`${CAP_LABEL[cap]} for ${member.name}`}
-									onClick={() => toggle(cap)}
-								>
-									{has ? "✓" : ""}
-								</button>
-							)
-							: (
-								<span
-									class="wallet-matrix__mark"
-									data-on={has ? "true" : undefined}
-									aria-label={has ? "granted" : "not granted"}
-								>
-									{has ? "✓" : "—"}
-								</span>
-							)}
-					</td>
-				);
-			})}
-		</tr>
-	);
-}
-
-function ApprovalRow(
-	{ approval, canApprove, onDecide }: {
-		approval: SpendApprovalView;
-		canApprove: boolean;
-		onDecide: (id: string, decision: "approve" | "reject") => void;
-	},
-): JSX.Element {
-	return (
-		<li class="wallet-approvals__row">
-			<span class="wallet-approvals__meta">
-				<span class="wallet-approvals__reason">{approval.reason}</span>
-				<span class="wallet-approvals__who">
-					{approval.requesterHandle
-						? <a href={`/@${approval.requesterHandle}`}>{approval.requesterName}</a>
-						: approval.requesterName} · {approval.dateLabel}
-				</span>
-			</span>
-			<Money value={approval.amount} class="wallet-approvals__amt" />
-			{canApprove
-				? (
-					<span class="wallet-approvals__actions">
-						<button
-							type="button"
-							class="wallet-btn wallet-btn--ghost"
-							onClick={() => onDecide(approval.id, "reject")}
-						>
-							Reject
-						</button>
-						<button
-							type="button"
-							class="wallet-btn wallet-btn--primary"
-							onClick={() => onDecide(approval.id, "approve")}
-						>
-							Approve
-						</button>
-					</span>
-				)
-				: (
-					<Tooltip content="You don't have approval rights on this vault" placement="top">
-						<span class="wallet-badge" data-tone="muted">Pending</span>
-					</Tooltip>
+				{a.caps.length > 0 && (
+					<Band tone="flow" index={2} titleId="wlt-acc-caps">
+						<BandHead id="wlt-acc-caps" title="Spending caps" />
+						<CapsRoster caps={a.caps} invoicesDue={0} invoicesDueAmount={null} />
+					</Band>
 				)}
-		</li>
+
+				<Band tone="intel" index={3} titleId="wlt-acc-appr">
+					<BandHead id="wlt-acc-appr" title="Awaiting approval" />
+					{a.approvals.length === 0
+						? <EmptyBand text="Nothing awaiting approval." />
+						: (
+							<ul class="wlt-rows wlt-rows--ledger" role="list">
+								{a.approvals.map((ap) => (
+									<li class="wlt-rows__row" key={ap.id}>
+										<span class="wlt-rows__title">
+											{ap.requesterHandle
+												? (
+													<a class="wlt-link" href={`/@${ap.requesterHandle}`}>
+														{ap.requesterName}
+													</a>
+												)
+												: ap.requesterName}
+										</span>
+										<span class="wlt-rows__meta">{ap.reason}</span>
+										<span class="wlt-rows__amount">
+											<Money value={ap.amount} size="body" showFx={false} />
+										</span>
+										<span class="wlt-rows__meta">{ap.dateLabel}</span>
+										{canDecide && ap.status === "pending" && (
+											<span class="wlt-rows__actions">
+												<button
+													type="button"
+													class="wlt-btn wlt-btn--ghost"
+													disabled={busy.value === ap.id}
+													onClick={() => void decide(ap.id, "reject")}
+												>
+													Decline
+												</button>
+												<button
+													type="button"
+													class="wlt-btn wlt-btn--primary"
+													disabled={busy.value === ap.id}
+													onClick={() => void decide(ap.id, "approve")}
+												>
+													Approve {ap.amount.display}
+												</button>
+											</span>
+										)}
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
+
+				<Band tone="ledger" index={4} titleId="wlt-acc-audit">
+					<BandHead
+						id="wlt-acc-audit"
+						title="Audit trail"
+						meta={<span class="wlt-rows__tag" data-tone="muted">Append-only</span>}
+					/>
+					{a.audit.length === 0
+						? <EmptyBand text="No vault activity recorded yet." />
+						: (
+							<ul class="wlt-rows wlt-rows--ledger" role="list">
+								{a.audit.map((r) => (
+									<li class="wlt-rows__row" key={r.id}>
+										<span class="wlt-rows__title">{r.label}</span>
+										<span class="wlt-rows__meta">{r.action.replace(/_/g, " ")}</span>
+										<span class="wlt-rows__amount">
+											<Money value={r.amount} size="body" tone="muted" showFx={false} />
+										</span>
+										<span class="wlt-rows__meta">{r.dateLabel}</span>
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
+			</div>
+		</main>
 	);
 }

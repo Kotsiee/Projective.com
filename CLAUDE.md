@@ -2078,6 +2078,71 @@ lists it) AND gains `docs`; confirm Notion-as-calendar is still intended. | `SYS
 `supabase/migrations/{00000004,00000020,00001500,00001870,00002001,00002015,00002510,00002520,00003004,00003005,00004008,00005050}*`
 · Decisions #37 / #47 / #54 / #56 |
 
+| 60 | **Wallet & Finance surface — complete redesign to a band architecture (2026-07-28). SUPERSEDES the
+presentation of Decision #55.** The `/wallet` frontend is rebuilt from a boxed card grid into a
+**vertical stack of FULL-BLEED bands**. The single biggest change: `max-inline-size: 1100px;
+margin-inline: auto` is **deleted** from both `.wallet-overview` and `.wallet-page` — on this surface
+a money figure, a chart and a table always get the whole content region, and `max-inline-size` now
+survives in exactly two places (`.wlt-prose` running text, `.wlt-formfield` form fields) with a rule
+forbidding any figure/chart/table from being their descendant. The whole `.wallet-*` BEM tree is
+replaced by `.wlt-*`; `wallet.css` becomes an `@import` barrel over 13 sheets. **Region contract
+(strict):** the LANE owns the account switcher + section nav + an ambient verification chip; a **NEW
+middle-nav HEADER band** (`walletHeaderFor`, composed into `middleNavHeaderFor` — the wallet had none
+before) owns identity + the 30/60/90 range + search/filter entry + the display-currency toggle; the
+FOOTER band (`walletFooterFor`, widened from `/wallet/transactions` only to **every** `/wallet*`
+route) owns every money action + density/sort + Export; the BODY owns viewing and selecting data
+ONLY — no tabs, no filter dropdowns, no primary CTAs. **The signature element** is the four-state
+capital meter: one shared rail split by `flex-grow` into Available/Locked/Pending/On-hold with **no
+minimum width ever** (a sliver gets an achromatic overhanging pip instead of a dishonest floor), the
+track `aria-hidden` and decorative while the legend carries every fact in five redundant static
+channels (shape mark · label · figure · printed % · tone). Locked is `color-mix(--primary 34%,
+--surface-2)` — the same hue as spendable cash at a lower temperature, so escrowed capital reads as
+stored, never blocked; **`--danger` is banned above the fold** and appears only on a ledger reason
+chip, the Standing penalty bar, and a band-scoped error. **Two gates behave differently on purpose:**
+capability → **absence** (a member never sees Access or Distribute), verification → **rendered but
+locked** with the one permitted lock glyph and a nudge carrying `verification.prompt` (removing it
+hides the path to getting paid; locking it teaches it) — `quickActionsFor` was changed to stop folding
+`canWithdraw` into the OFFER so the client can draw the lock. **Additive SSOT** (no DB migration —
+still a read+write projection over fixtures): `WalletOverviewSchema.capital` (server-summed, so the
+client never totals money), `lockedStageCount`, `heldCaseCount`, `IncomingItemSchema.clearingFraction`
+(server clock — an unsynced client would draw a dishonest 7-day ring), and **`WalletStandingSchema`**
++ `StandingRung`/`StandingComponent`/`StandingGate`, carrying the earned ladder verbatim from
+`finance-model.md` §16.3 and the commission taper priced as MONEY against the wallet's own trailing
+volume. The **Standing gauge** renders the rung as what it PAYS: an arc for the continuous index, a
+**hatched ceiling veil** for everything past the stage-gated rung, and a separate LINEAR stage meter —
+because a rung has TWO conditions and an arc can only encode one, so the score may sweep past a notch
+while the rung honestly does not advance. It carries no button, plan badge or upgrade affordance:
+Standing is earned and can never be bought (§16.5). A **7th Dev axis** (`walletStanding`, incl. the
+`stage_floor` edge case) mirrors it per §5. **Three defects found and fixed in verification, all the
+same class — a fact depending on an animation or a scope that may not resolve:** (a) the hero
+count-up painted a starting `0` before its first `rAF`, so a backgrounded tab showed £0.00 for a
+funded wallet — it no longer lowers a figure it cannot raise, and a watchdog snaps to the server
+string; (b) the meter's segments animated `flex-grow` with a `backwards` fill, so a frozen animation
+clock left every share at zero width — motion now only ever decorates `transform`/`opacity`, never the
+property that encodes data; (c) the local token layer was scoped to `.wlt`, but the lane, header band,
+footer rig and every `BodyPortal` overlay render OUTSIDE it, so all `--wlt-*` silently fell back —
+tokens are now on `:root` (all names are `--wlt-`-prefixed). Also: `opacity` replaces
+`color-mix(… currentColor …)` for the pence de-emphasis (engines drop a `currentColor` mix that is
+itself defining `color`), and the fade token is unitless (a `%` through `var()` is rejected by older
+`<alpha-value>` grammar). **No new `@projective/ui` primitive** (reuses Drawer · Dialog · Popover ·
+Tooltip · Avatar · Select · SelectButton · InputNumber · InputText · Checkbox · ZoomSlider · Grid ·
+Message · Alert · LaneChrome) → **no `DESIGN_SYSTEM.md` §C.1 change**; no lifecycle change → no
+`PRODUCT_MANAGEMENT.md` change. Verified in-browser: all four variants (personal/team/business +
+read-only aggregate), all 7 deep pages, the Transfer flow end-to-end (footer → drawer → modal reading
+`Transfer £250.00` → success → the movement appears in the ledger), light + dark, `dir="rtl"` (lane
+64→1241, deck 1165→51, segments reverse, **zero horizontal overflow both directions**), mobile 390px,
+the verification lock, the member capability gate, and the converted-currency 2×2 reflow.
+**Flagged (surface, do not silently resolve):** (a) the fixtures now generate Standing for a `team`
+subject too, but per the brief the gauge renders only in the PERSONAL intelligence band — decide
+whether a team vault should surface its own rung; (b) `/wallet/access` capability toggles and the
+`/wallet/methods` detail drawer remain optimistic stubs pending `FINANCE_BACKEND_LIVE`; (c) the FX
+spread and the Instant-Payout fee magnitude stay undecided platform economics and the surface
+deliberately renders neither — three facts inline (origin · converted · rate) and the literal phrase
+"a small fee applies". | `packages/types/finance/wallet.ts` ·
+`packages/backend/services/finance/wallet-fixtures.ts` · `apps/web/features/wallet/**` ·
+`apps/web/routes/(dashboard)/wallet/*` · `apps/web/routes/(dashboard)/_layout.tsx` ·
+`apps/web/utils/dev-seam.ts` · `apps/web/features/devtools/` · Decisions #1 / #10 / #54 / #55 / #58 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

@@ -1,0 +1,236 @@
+/*
+ * wallet-states — empty, loading, error, and the verification lock (BUILD CONTRACT §9).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * Two principles worth stating here because both are easy to violate with good intentions:
+ *  1. **An empty band keeps the band.** No centred cartoon, no illustration — the stack's rhythm is
+ *     what teaches the surface's shape, and a brand-new wallet is exactly when the user is learning it.
+ *  2. **Errors are band-scoped.** A wallet that blanks entirely because one fetch failed destroys
+ *     the sense of custody the whole surface exists to produce.
+ */
+
+/* #region Empty */
+.wlt-empty {
+	padding-block: var(--space-5);
+}
+
+.wlt-empty__text {
+	margin: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface-variant);
+}
+
+.wlt-empty__hint {
+	margin: var(--space-1) 0 0;
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	max-inline-size: var(--wlt-prose);
+}
+/* #endregion */
+
+/* #region Error — a tonal fill, never a contour */
+.wlt-error {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	padding: var(--space-4);
+	border-radius: var(--radius-container-lg);
+	background: color-mix(in srgb, var(--danger) 12%, var(--surface-1));
+}
+
+.wlt-error__alert {
+	flex: 1 1 20rem;
+	min-inline-size: 0;
+}
+
+.wlt-error__retry {
+	color: var(--primary);
+	font-size: var(--wlt-fs-body);
+	text-decoration: none;
+}
+
+.wlt-error__retry:hover {
+	text-decoration: underline;
+}
+
+.wlt-error__retry:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+/* #region Verification lock */
+.wlt-locked {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding: var(--space-3) var(--space-4);
+	border-block-start: var(--hairline);
+	background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+	border-radius: var(--radius-lg);
+}
+
+.wlt-locked--inline {
+	margin-block-start: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+}
+
+.wlt-locked__glyph {
+	display: inline-flex;
+	color: var(--warning);
+}
+
+.wlt-locked__text {
+	margin: 0;
+	flex: 1 1 16rem;
+	min-inline-size: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+}
+
+.wlt-locked__link {
+	font-size: var(--wlt-fs-body);
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.wlt-locked__link:hover {
+	text-decoration: underline;
+}
+
+.wlt-locked__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+/* #region Skeletons — the real geometry, not generic rectangles */
+.wlt-skel {
+	inline-size: 100%;
+}
+
+.wlt-skel__block,
+.wlt-skel__line,
+.wlt-skel__row,
+.wlt-skel__card {
+	display: block;
+	background: var(--surface-2);
+	border-radius: var(--radius-base);
+	position: relative;
+	overflow: hidden;
+}
+
+.wlt-skel__block--figure {
+	block-size: 4.5rem;
+	inline-size: 11rem;
+	margin-block-end: var(--space-5);
+}
+
+.wlt-skel__block--track {
+	block-size: var(--wlt-track-h);
+	inline-size: 100%;
+	border-radius: var(--radius-sm);
+	margin-block-end: var(--space-5);
+}
+
+.wlt-skel__legend {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	column-gap: var(--space-5);
+}
+
+.wlt-skel__line {
+	block-size: 0.8rem;
+	inline-size: 5rem;
+}
+
+.wlt-skel__block--chart {
+	block-size: var(--wlt-chart-h);
+	inline-size: 100%;
+}
+
+.wlt-skel__plates {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--wlt-band-gap);
+}
+
+.wlt-skel__block--plate {
+	block-size: 16rem;
+	border-radius: var(--radius-container-lg);
+}
+
+.wlt-skel__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.wlt-skel__row {
+	block-size: var(--wlt-rowh);
+	inline-size: 100%;
+}
+
+.wlt-skel__deck {
+	position: relative;
+	block-size: 15rem;
+}
+
+.wlt-skel__card {
+	position: absolute;
+	inset-block-start: calc(var(--wlt-i, 0) * -7px);
+	inset-inline-start: calc(var(--wlt-i, 0) * 6px);
+	inline-size: 100%;
+	max-inline-size: 25rem;
+	block-size: 13rem;
+	border-radius: var(--radius-2xl);
+}
+
+.wlt-skel__card[data-i="1"] {
+	--wlt-i: 1;
+}
+
+.wlt-skel__card[data-i="2"] {
+	--wlt-i: 2;
+}
+
+/* The shimmer. Its sweep is on the inline axis so it travels with the reading direction. */
+@media (prefers-reduced-motion: no-preference) {
+	.wlt-skel__block::after,
+	.wlt-skel__line::after,
+	.wlt-skel__row::after,
+	.wlt-skel__card::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			90deg,
+			transparent,
+			color-mix(in srgb, var(--on-surface) 6%, transparent),
+			transparent
+		);
+		animation: wlt-shimmer var(--dur-slow) linear infinite;
+	}
+}
+
+@keyframes wlt-shimmer {
+	from {
+		transform: translate3d(-100%, 0, 0);
+	}
+	to {
+		transform: translate3d(100%, 0, 0);
+	}
+}
+
+/* Reduced motion: a static tonal block, not a faster shimmer. */
+:root[data-motion="reduced"] .wlt-skel__block::after,
+:root[data-motion="reduced"] .wlt-skel__line::after,
+:root[data-motion="reduced"] .wlt-skel__row::after,
+:root[data-motion="reduced"] .wlt-skel__card::after {
+	display: none;
+}
+/* #endregion */

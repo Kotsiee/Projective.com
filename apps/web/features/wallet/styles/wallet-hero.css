@@ -1,0 +1,735 @@
+/*
+ * wallet-hero — the four-state capital meter (BUILD CONTRACT §2.3, §4.2, §8, §9, §10, §11).
+ *
+ * This is the surface's signature instrument, and its whole emotional argument is geometric rather
+ * than written: on-hold occupies its true share of ONE shared rail and therefore cannot dominate;
+ * in-escrow capital sits shoulder-to-shoulder with spendable cash in the same hue at a lower
+ * temperature and therefore cannot read as subtracted. No copywriting reproduces that, so nothing
+ * here is allowed to soften it.
+ *
+ * RULE H-1 (load-bearing). `.wlt-hero__track` is an AMBIENT PROPORTION INSTRUMENT ONLY. It is
+ * `aria-hidden`, it is never the sole carrier of any fact, and this design must remain fully legible
+ * with the track deleted. Every fact lives in the legend below it in five static, redundant
+ * channels — shape mark · text label · money figure · PRINTED percentage · tone — none of which
+ * depends on animation, on saturation discrimination, or on comparing two shapes' sizes. That is
+ * what makes the rail survive `data-cvd` + `data-contrast="high"` + `data-motion="reduced"` at once.
+ *
+ * RULE H-2. There is NO minimum width on any segment, ever. `flex-grow` is always the honest share;
+ * a sliver is solved by decoupling visibility from width (the overhanging pip), never by a floor.
+ *
+ * RULE H-3. The pip's dot and stem are `var(--hairline-color)` and carry NO state chroma. The pip
+ * says "there is something here", never "be alarmed" — an elevated amber marker floating above the
+ * viewer's own capital is precisely the failure this rule exists to prevent.
+ *
+ * RULE H-4. A zero state never places its chroma anywhere on the instrument.
+ *
+ * RULE C-1. `--danger` is banned from this block entirely. A balance the user still owns is never red.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY (§A.6) — no `left`, `right`, `margin-left`,
+ * `text-align: left` or `translateX` anywhere, so the whole instrument mirrors under `dir="rtl"`.
+ * §B.4: the only full contour in this file belongs to `.wlt-hero__key`, and only on hover/focus,
+ * which is legal precisely because that cell is an `<a>`.
+ */
+
+/* #region The hero column */
+
+/*
+ * The left column of band 1. The band owns the `2fr / 1fr` split against the card deck; this block
+ * only fills the cell it is given and never constrains itself (RULE L-1 — no `max-inline-size`
+ * anywhere near a money figure).
+ */
+.wlt-hero {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/* #endregion */
+
+/* #region Identity — the eyebrow, the balance, and lifetime earned */
+
+.wlt-hero__body {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-6);
+	flex-wrap: wrap;
+}
+
+.wlt-hero__identity {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wlt-hero__eyebrow {
+	margin: 0;
+}
+
+/*
+ * A `<span>` in the markup so the gated variant can be wrapped by an inline `Tooltip` anchor without
+ * putting block content inside phrasing content; the block box is restored here.
+ */
+.wlt-hero__figure {
+	display: block;
+	color: var(--on-surface);
+	min-inline-size: 0;
+}
+
+/*
+ * An honest zero: §9 keeps the empty balance at the FULL hero size and the full text colour. The
+ * modifier deliberately changes neither — dimming a zero would imply the wallet is broken rather
+ * than new, and a brand-new wallet is exactly when the viewer is learning the instrument's shape.
+ * It exists as a hook for the count-up, which has nothing to count to and is skipped.
+ */
+.wlt-hero__figure--zero {
+	color: var(--on-surface);
+}
+
+/*
+ * §9 verification-gated: when the viewer cannot yet earn, the figure recedes and the reason arrives
+ * through a portal `Tooltip` on the island side. A data attribute rather than a modifier, because
+ * §2.3 lists `--zero` as `__figure`'s only modifier and names are not invented here.
+ */
+.wlt-hero__figure[data-muted="true"] {
+	color: var(--text-secondary);
+}
+
+.wlt-hero__lifetime {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-1);
+	text-align: end;
+	min-inline-size: 0;
+}
+
+.wlt-hero__lifetime-value {
+	color: var(--text-secondary);
+}
+
+/* The live region for a currency or account change. Never a persistent `aria-live` on the balance. */
+.wlt-hero__sr {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* #endregion */
+
+/* #region The meter */
+
+.wlt-hero__meter {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+/*
+ * One shared rail. `overflow` stays visible for two reasons that are both load-bearing: a pip
+ * overhangs above it, and a hovered segment grows past its block-size rather than pushing neighbours.
+ */
+.wlt-hero__track {
+	display: flex;
+	align-items: center;
+	gap: var(--wlt-seg-gap);
+	block-size: var(--wlt-track-h);
+	background: var(--wlt-track-bg);
+	border-radius: var(--radius-sm);
+	min-inline-size: 0;
+}
+
+/* Room for the overhanging pip labels, reserved only when a sliver actually produced one. */
+.wlt-hero__track:has(.wlt-hero__pip) {
+	margin-block-start: calc(var(--space-7) + 20px);
+}
+
+/*
+ * RULE H-2 — `flex-grow` IS the share. `flex-basis: 0` and `min-inline-size: 0` together guarantee
+ * that nothing but the honest proportion decides a segment's width.
+ */
+.wlt-hero__segment {
+	flex: var(--wlt-seg, 0) 0 0px;
+	position: relative;
+	min-inline-size: 0;
+	block-size: var(--wlt-track-h);
+	background-color: var(--wlt-track-bg);
+	transition:
+		block-size var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-hero__track > .wlt-hero__segment:first-child {
+	border-start-start-radius: var(--radius-sm);
+	border-end-start-radius: var(--radius-sm);
+}
+
+.wlt-hero__track > .wlt-hero__segment:last-child {
+	border-start-end-radius: var(--radius-sm);
+	border-end-end-radius: var(--radius-sm);
+}
+
+/* #endregion */
+
+/* #region Segment fills — hatch angle is a SECOND, static channel beside hue (§1.3) */
+
+.wlt-hero__segment--available {
+	background-color: var(--wlt-available);
+}
+
+.wlt-hero__segment--locked {
+	background-color: var(--wlt-locked);
+	background-image: repeating-linear-gradient(
+		135deg,
+		transparent 0 5px,
+		var(--wlt-hatch) 5px 6px
+	);
+}
+
+/*
+ * Pending's hatch runs at 115deg against locked's 135deg, so when a CVD overlay collapses the hue
+ * difference the two are still told apart by angle alone. The drift adds "in transit"; it never
+ * CREATES the distinction, which is why the pattern stays fully legible when the motion stops.
+ */
+.wlt-hero__segment--pending {
+	background-color: var(--wlt-pending);
+	background-image: repeating-linear-gradient(
+		115deg,
+		transparent 0 5px,
+		var(--wlt-hatch) 5px 6px
+	);
+}
+
+.wlt-hero__segment--hold {
+	background-color: var(--wlt-hold);
+	background-image: repeating-linear-gradient(
+		45deg,
+		transparent 0 5px,
+		var(--wlt-hatch-warn) 5px 6px
+	);
+}
+
+/* RULE H-4 — a zero state contributes no width and no chroma to the rail. */
+.wlt-hero__segment--zero {
+	flex-grow: 0;
+	background-color: transparent;
+	background-image: none;
+}
+
+/* #endregion */
+
+/* #region Segment emphasis — segment hover AND legend focus, per §8 */
+
+/*
+ * The legend cell is the only focusable control (RULE G8), so keyboard emphasis has to travel from
+ * the cell to its segment. Neighbours are NEVER dimmed: dimming would make the rail assert a
+ * hierarchy between four states that are deliberately equal in standing.
+ */
+.wlt-hero__segment--available:hover,
+.wlt-hero:has(.wlt-hero__key--available:hover) .wlt-hero__segment--available,
+.wlt-hero:has(.wlt-hero__key--available:focus-visible) .wlt-hero__segment--available {
+	block-size: var(--wlt-track-h-hi);
+}
+
+.wlt-hero__segment--locked:hover,
+.wlt-hero:has(.wlt-hero__key--locked:hover) .wlt-hero__segment--locked,
+.wlt-hero:has(.wlt-hero__key--locked:focus-visible) .wlt-hero__segment--locked {
+	block-size: var(--wlt-track-h-hi);
+	background-color: var(--wlt-locked-hi);
+}
+
+.wlt-hero__segment--pending:hover,
+.wlt-hero:has(.wlt-hero__key--pending:hover) .wlt-hero__segment--pending,
+.wlt-hero:has(.wlt-hero__key--pending:focus-visible) .wlt-hero__segment--pending {
+	block-size: var(--wlt-track-h-hi);
+	background-color: var(--wlt-pending-hi);
+}
+
+.wlt-hero__segment--hold:hover,
+.wlt-hero:has(.wlt-hero__key--hold:hover) .wlt-hero__segment--hold,
+.wlt-hero:has(.wlt-hero__key--hold:focus-visible) .wlt-hero__segment--hold {
+	block-size: var(--wlt-track-h-hi);
+	background-color: var(--wlt-hold-hi);
+}
+
+/* A zero segment never grows and never tints, whatever the pointer does. */
+.wlt-hero__segment--zero:hover,
+.wlt-hero:has(.wlt-hero__key--zero:hover) .wlt-hero__segment--zero {
+	block-size: var(--wlt-track-h);
+	background-color: transparent;
+}
+
+/* #endregion */
+
+/* #region The pip — visibility decoupled from width (RULE H-3) */
+
+/*
+ * Centred over its segment with `inset-inline: 0` + `margin-inline: auto`, NEVER `translateX`, so it
+ * stays centred under RtL. The padding buys a ~24px touch target without stealing a single pixel of
+ * rail width from the honest shares. Collision lift arrives as `--wlt-pip-lift` from the island,
+ * because whether two pips overlap depends on which segments happen to be slivers in THIS wallet —
+ * a fact no static `nth-of-type` stagger can know.
+ */
+.wlt-hero__pip {
+	position: absolute;
+	inset-block-end: calc(100% + var(--space-2) + var(--wlt-pip-lift, 0px));
+	inset-inline: 0;
+	margin-inline: auto;
+	inline-size: max-content;
+	padding-block: var(--space-2);
+	padding-inline: var(--space-3);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+/*
+ * Achromatic by rule. The pip marks presence, not alarm — an amber dot hovering above the viewer's
+ * own capital would say "confiscation", which is never true of money they still own.
+ */
+.wlt-hero__pip-dot {
+	flex: none;
+	inline-size: var(--wlt-pip-dot);
+	block-size: var(--wlt-pip-dot);
+	border-radius: 50%;
+	background: var(--hairline-color);
+}
+
+.wlt-hero__pip-stem {
+	position: absolute;
+	inset-block-start: 100%;
+	inset-inline: 0;
+	margin-inline: auto;
+	inline-size: 1px;
+	block-size: calc(var(--space-2) + var(--wlt-pip-lift, 0px));
+	background: var(--hairline-color);
+}
+
+/* #endregion */
+
+/* #region The caption — the whole the rail divides, summed and formatted server-side */
+
+.wlt-hero__caption {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--text-secondary);
+}
+
+.wlt-hero__caption-value {
+	color: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region The legend — where every fact actually lives (RULE H-1) */
+
+.wlt-hero__legend {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	column-gap: var(--space-5);
+	row-gap: var(--space-5);
+}
+
+/*
+ * RULE H-5 — the FX reflow. An inline cross-currency line needs roughly twice the cell width, so a
+ * converted wallet drops to 2×2 rather than crowding four ~176px columns. Order stays rail order:
+ * Available · In escrow / Pending · On hold.
+ */
+.wlt-hero__legend--split {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	column-gap: var(--space-6);
+	row-gap: var(--space-5);
+}
+
+/*
+ * A two-column grid rather than a wrapper element, so the mark and label share a row without
+ * inventing a `__key-head` name. The rest-state border is transparent: §B.4 forbids a contour on
+ * non-interactive content, and reserving the 1px here means earning the contour on hover costs no
+ * layout shift.
+ */
+.wlt-hero__key {
+	position: relative;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	column-gap: var(--space-2);
+	row-gap: var(--space-1);
+	min-inline-size: 0;
+	padding-block: var(--space-4) var(--space-3);
+	padding-inline: var(--space-3);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: inherit;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+/* The state tone, resolved once per cell and reused by the rail and the active tint. */
+.wlt-hero__key--available {
+	--wlt-key-tone: var(--wlt-available);
+}
+
+.wlt-hero__key--locked {
+	--wlt-key-tone: var(--wlt-locked-hi);
+}
+
+.wlt-hero__key--pending {
+	--wlt-key-tone: var(--wlt-pending-hi);
+}
+
+.wlt-hero__key--hold {
+	--wlt-key-tone: var(--wlt-hold-hi);
+}
+
+/*
+ * The 3px tone rail: ONE edge, and the cell's only chromatic marker at rest. It is pulled out to the
+ * border box so it covers the block-start border once that border becomes visible on hover —
+ * the rail owns that edge in both states.
+ */
+.wlt-hero__key-rail {
+	position: absolute;
+	inset-block-start: -1px;
+	inset-inline: -1px;
+	block-size: 3px;
+	background: var(--wlt-key-tone, var(--wlt-zero));
+	border-start-start-radius: var(--radius-base);
+	border-start-end-radius: var(--radius-base);
+}
+
+.wlt-hero__key-mark {
+	grid-column: 1;
+	grid-row: 1;
+	display: inline-flex;
+	align-items: center;
+}
+
+.wlt-hero__key-label {
+	grid-column: 2;
+	grid-row: 1;
+	font-size: var(--wlt-fs-label);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+	min-inline-size: 0;
+}
+
+.wlt-hero__key-value {
+	grid-column: 1 / -1;
+	min-inline-size: 0;
+}
+
+/*
+ * G2 — the printed share. This is the single change that makes proportion survive colour-vision
+ * deficiency, high-contrast flattening, sliver crowding and RtL in one move, and it is why the rail
+ * is allowed to be purely ambient.
+ */
+.wlt-hero__key-share {
+	grid-column: 1 / -1;
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+/*
+ * Always visible, never hover-gated. §B.6 puts a dense row's words in a tooltip; the hero legend is
+ * not a dense row, and a cross-currency figure must disclose inline on touch as well as pointer.
+ */
+.wlt-hero__key-note {
+	grid-column: 1 / -1;
+	margin: 0;
+	font-size: var(--wlt-fs-micro);
+	line-height: 1.45;
+	color: var(--text-secondary);
+}
+
+.wlt-hero__key-note[data-fx="true"] {
+	color: var(--on-surface-variant);
+	letter-spacing: 0;
+}
+
+/* #endregion */
+
+/* #region Legend cell states */
+
+/*
+ * The cell earns a full contour only on hover/focus — legal precisely because it is an interactive
+ * `<a>`. `:not(--zero)` keeps a zero cell, which renders as a `<div>`, completely inert.
+ */
+.wlt-hero__key:not(.wlt-hero__key--zero):hover,
+.wlt-hero__key:not(.wlt-hero__key--zero):focus-visible {
+	background: var(--surface-2);
+	border-color: var(--hairline-color);
+	border-block-start-color: transparent;
+}
+
+.wlt-hero__key:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* Declared after hover so a selected cell keeps its tint while the pointer is over it. */
+.wlt-hero__key--active {
+	background: color-mix(in srgb, var(--wlt-key-tone) 12%, var(--surface-1));
+}
+
+.wlt-hero__key--active:hover {
+	background: color-mix(in srgb, var(--wlt-key-tone) 16%, var(--surface-1));
+}
+
+.wlt-hero__key--active .wlt-hero__key-label {
+	color: var(--on-surface);
+}
+
+/*
+ * RULE H-4 — the zero cell. The rail reverts to the achromatic `--wlt-zero`, the figures recede, the
+ * note is omitted by the island, and the mark hollows out. Nothing about a state at zero is allowed
+ * to place its colour on the instrument.
+ */
+.wlt-hero__key--zero {
+	--wlt-key-tone: var(--wlt-zero);
+	cursor: default;
+}
+
+.wlt-hero__key--zero .wlt-hero__key-share {
+	color: var(--on-surface-variant);
+}
+
+/* #endregion */
+
+/* #region The verification gate (§9) */
+
+/*
+ * A locked path is taught, never hidden: the strip states the outstanding step and links to it. One
+ * hairline on one edge over a tonal fill — `--warning`, never `--danger`, because an outstanding
+ * verification step is a process, not a fault.
+ */
+.wlt-hero__gate {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding-block: var(--space-4);
+	padding-inline: var(--space-4);
+	border-block-start: var(--hairline);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+}
+
+/*
+ * The one permitted lock on this surface. It marks a PROCESS STEP the viewer can complete, and must
+ * never appear on a balance, a segment or a card.
+ */
+.wlt-hero__gate > svg {
+	flex: none;
+	color: var(--warning);
+}
+
+.wlt-hero__gate-text {
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+}
+
+.wlt-hero__gate-link {
+	margin-inline-start: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.wlt-hero__gate-link:hover {
+	text-decoration: underline;
+}
+
+.wlt-hero__gate-link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+/* #endregion */
+
+/* #region The empty state (§9) */
+
+/*
+ * A pointer to the footer rig, NOT a call to action in the body — §4.6 keeps every money-moving
+ * affordance in the chrome. It sits BENEATH the legend, never in place of it: the rail's rhythm is
+ * the instrument, and a brand-new wallet is exactly when its shape is being learned.
+ */
+.wlt-hero__empty-note {
+	margin: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--text-secondary);
+}
+
+/* An empty meter keeps its full geometry — an honest empty rail, never a collapsed one. */
+.wlt-hero__meter--empty .wlt-hero__track {
+	background: var(--wlt-meter-bg);
+}
+
+/* #endregion */
+
+/* #region Motion (§8) */
+
+/*
+ * The mount reveal.
+ *
+ * It animates `transform` and `opacity` ONLY — never `flex-grow`, which is what encodes the share.
+ * An earlier version grew the segment by animating `flex-grow` from 0, and that made the
+ * instrument's geometry depend on the animation actually running: in a backgrounded tab, a
+ * throttled renderer, or any environment that defers compositing, every segment stayed at zero width
+ * and the meter silently reported that the user had no money anywhere. The proportion is data, and
+ * data must be correct in the resting state with no animation at all — motion may only ever decorate
+ * it. `transform-origin` is on the inline-start edge so the growth direction mirrors under RtL.
+ *
+ * A static `nth-child` stagger rather than a JS `data-mounted` flip: the segment order is fixed at
+ * four states, SSR stays correct with no JavaScript, there is no hydration flash, and because the
+ * elements persist across a refetch the animation cannot re-run — which is what RULE M-3 requires.
+ */
+@keyframes wlt-seg-in {
+	from {
+		transform: scaleX(0);
+		opacity: 0;
+	}
+}
+
+@keyframes wlt-drift {
+	to {
+		background-position-x: 12px;
+	}
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	/*
+	 * No `backwards` fill, deliberately. A backwards fill holds the `from` keyframe during the delay
+	 * — and if the animation clock never advances (a tab backgrounded at first paint, a throttled
+	 * renderer), it holds it indefinitely, leaving every segment collapsed at `scaleX(0)`. The
+	 * meter would then show an empty rail for a wallet that is not empty. Without a fill mode the
+	 * resting state is the truth, and the reveal only ever plays on top of it.
+	 */
+	.wlt-hero__segment {
+		transform-origin: inline-start center;
+		animation: wlt-seg-in var(--dur-slow) var(--spring-standard);
+	}
+
+	.wlt-hero__segment:nth-child(2) {
+		animation-delay: 60ms;
+	}
+
+	.wlt-hero__segment:nth-child(3) {
+		animation-delay: 120ms;
+	}
+
+	.wlt-hero__segment:nth-child(4) {
+		animation-delay: 180ms;
+	}
+
+	/*
+	 * Pending carries both animations in one shorthand. The shorthand resets `animation-delay` to
+	 * `0s`, but `:nth-child(3)` above outranks this selector, so the 120ms rail-order stagger still
+	 * wins — do not raise this rule's specificity without restating the delay here.
+	 */
+	.wlt-hero__segment--pending {
+		animation:
+			wlt-seg-in var(--dur-slow) var(--spring-standard) backwards,
+			wlt-drift calc(var(--dur-slow) * 8) linear infinite;
+	}
+}
+
+/*
+ * RULE M-1 — jump to the FINAL state, not to a faster one. The hatch pattern stays: it was never the
+ * animation that made pending distinguishable. The count-up is refused on the island side, so a
+ * reduced-motion viewer sees the server's final strings on the first paint and no rAF loop starts.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.wlt-hero__segment,
+	.wlt-hero__key {
+		animation: none;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-hero__segment,
+:root[data-motion="reduced"] .wlt-hero__key {
+	animation: none;
+	transition: none;
+}
+
+/* #endregion */
+
+/* #region Responsive (§10) */
+
+/* Four ~176px legend columns stop being readable before the layout does. */
+@media (max-width: 1199px) {
+	.wlt-hero__legend {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		column-gap: var(--space-6);
+	}
+}
+
+@media (max-width: 1023px) {
+	.wlt-hero {
+		--wlt-track-h: 14px;
+		--wlt-track-h-hi: 20px;
+	}
+}
+
+/*
+ * Mobile. The legend becomes a single column and the notes stay permanently visible — long-press
+ * tooltips are unreliable, so §B.6's "the words live in the tooltip" rule yields to touch reality
+ * here. Hover emphasis becomes `:active`, since a touch pointer has no hover state to lose.
+ */
+@media (max-width: 767px) {
+	.wlt-hero {
+		--wlt-track-h: 12px;
+		--wlt-track-h-hi: 18px;
+		--wlt-pip-dot: 6px;
+		gap: var(--space-5);
+	}
+
+	.wlt-hero__body {
+		gap: var(--space-4);
+	}
+
+	.wlt-hero__legend,
+	.wlt-hero__legend--split {
+		grid-template-columns: minmax(0, 1fr);
+		row-gap: var(--space-4);
+	}
+
+	.wlt-hero__key:not(.wlt-hero__key--zero):active {
+		background: var(--surface-2);
+		border-color: var(--hairline-color);
+		border-block-start-color: transparent;
+	}
+}
+
+/* #endregion */

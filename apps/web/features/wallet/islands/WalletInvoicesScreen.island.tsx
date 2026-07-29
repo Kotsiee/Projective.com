@@ -1,17 +1,21 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { Meter, Money, SectionCard } from "../components/wallet-bits.tsx";
-import { ExportIcon, WalletIcon } from "../components/wallet-glyphs.tsx";
+import { Tooltip } from "@projective/ui/feedback";
+import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Money } from "../components/Money.tsx";
+import { CapsRoster } from "../components/CapsRoster.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { currentWalletContext } from "../core/wallet-state.ts";
 import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
-import type { InvoicesView, StatementRow } from "../types/wallet-types.ts";
+import type { InvoicesView } from "../types/wallet-types.ts";
 
 /**
- * WalletInvoicesScreen — `/wallet/invoices` (business): the live accruing current-cycle statement, past
- * monthly statements (PDF), bills due (with over-budget prompts), and the spending caps. THIN: SSR +
- * refetch on dev axis / mutation. Non-business wallets show an empty state.
+ * WalletInvoicesScreen — statements and bills (`/wallet/invoices`, business variant).
+ *
+ * An overdue bill carries a `--wlt-dispute` STATUS CHIP, never a red amount: the money owed is a
+ * fact about a date, not about the figure, and colouring the number red says "this amount is wrong"
+ * (RULE C-1). Status is a dot plus a tooltip, per the dense-row rule.
  */
 export interface WalletInvoicesScreenProps {
 	initial: InvoicesView;
@@ -21,134 +25,134 @@ export interface WalletInvoicesScreenProps {
 
 export default function WalletInvoicesScreen(props: WalletInvoicesScreenProps): JSX.Element {
 	const view = useSignal<InvoicesView>(props.initial);
-	async function reload(): Promise<void> {
+
+	const refetch = async () => {
 		const res = await WalletService.invoices(currentWalletContext());
 		if (res.ok && res.data) view.value = res.data.invoices;
+	};
+	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletRefresh(refetch);
+
+	const v = view.value;
+	const hasAnything = v.current || v.statements.length > 0 || v.bills.length > 0;
+
+	if (!hasAnything) {
+		return (
+			<main class="wlt" aria-label="Invoices">
+				<div class="wlt__stack">
+					<Band tone="head" index={0} label="Invoices">
+						<PageHead title="Invoices" />
+					</Band>
+					<Band tone="page" index={1} label="Statements">
+						<EmptyBand
+							text="Statements appear here at the end of each billing cycle."
+							hint="Invoices and statements are a business-wallet instrument."
+						/>
+					</Band>
+				</div>
+			</main>
+		);
 	}
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: reload });
-	useWalletRefresh(reload);
-
-	const inv = view.value;
-	const empty = !inv.current && inv.statements.length === 0 && inv.bills.length === 0;
 
 	return (
-		<div class="wallet-page wallet-invoices">
-			<header class="wallet-page__head">
-				<h1 class="wallet-page__title">Invoices & statements</h1>
-			</header>
+		<main class="wlt" aria-label="Invoices">
+			<div class="wlt__stack">
+				<Band tone="head" index={0} label="Invoices">
+					<PageHead
+						title="Invoices"
+						meta={
+							<>
+								<span>{v.bills.length} due</span>
+								<span>{v.statements.length} statements</span>
+							</>
+						}
+					/>
+				</Band>
 
-			{empty && (
-				<p class="wallet-empty-note" role="status">
-					Consolidated statements are available on business wallets.
-				</p>
-			)}
+				{v.current && (
+					<Band tone="intel" index={1} titleId="wlt-inv-cur">
+						<BandHead
+							id="wlt-inv-cur"
+							title={`This cycle · ${v.current.periodLabel}`}
+							meta={<span class="wlt-rows__tag">Accruing</span>}
+						/>
+						<dl class="wlt-facts wlt-facts--inline">
+							<div class="wlt-facts__row">
+								<dt class="wlt-facts__label">In</dt>
+								<dd class="wlt-facts__value">
+									<Money value={v.current.totalIn} size="figure" tone="credit" showFx={false} />
+								</dd>
+							</div>
+							<div class="wlt-facts__row">
+								<dt class="wlt-facts__label">Out</dt>
+								<dd class="wlt-facts__value">
+									<Money value={v.current.totalOut} size="figure" tone="debit" showFx={false} />
+								</dd>
+							</div>
+							<div class="wlt-facts__row">
+								<dt class="wlt-facts__label">Fees</dt>
+								<dd class="wlt-facts__value">
+									<Money value={v.current.totalFees} size="figure" tone="fee" showFx={false} />
+								</dd>
+							</div>
+						</dl>
+					</Band>
+				)}
 
-			{inv.current && (
-				<SectionCard
-					title="This cycle"
-					class="wallet-invoices__current"
-					action={<span class="wallet-badge" data-tone="info">Accruing</span>}
-				>
-					<div class="wallet-statement">
-						<span class="wallet-statement__period">{inv.current.periodLabel}</span>
-						<div class="wallet-statement__figs">
-							<span class="wallet-figure">
-								<span class="wallet-figure__label">In</span>
-								<Money value={inv.current.totalIn} class="wallet-figure__value" />
-							</span>
-							<span class="wallet-figure">
-								<span class="wallet-figure__label">Out</span>
-								<Money value={inv.current.totalOut} class="wallet-figure__value" />
-							</span>
-							<span class="wallet-figure">
-								<span class="wallet-figure__label">Fees</span>
-								<Money value={inv.current.totalFees} muted class="wallet-figure__value" />
-							</span>
-						</div>
-					</div>
-				</SectionCard>
-			)}
+				<Band tone="flow" index={2} titleId="wlt-inv-bills">
+					<BandHead id="wlt-inv-bills" title="Bills due" />
+					{v.bills.length === 0
+						? <EmptyBand text="Nothing due." />
+						: (
+							<ul class="wlt-rows wlt-rows--ledger" role="list">
+								{v.bills.map((b) => (
+									<li class="wlt-rows__row" key={b.id} data-overdue={b.overdue ? "true" : "false"}>
+										<Tooltip content={b.overdue ? "Overdue" : b.status} placement="top">
+											<span class="wlt-rows__chip" data-tone={b.overdue ? "dispute" : "neutral"}>
+												{b.overdue ? "Overdue" : b.status}
+											</span>
+										</Tooltip>
+										<span class="wlt-rows__title">{b.label}</span>
+										<span class="wlt-rows__meta">{b.dueLabel}</span>
+										<span class="wlt-rows__amount">
+											<Money value={b.amount} size="body" tone="debit" showFx={false} />
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
 
-			{inv.bills.length > 0 && (
-				<SectionCard title="Bills due" class="wallet-invoices__bills">
-					<ul class="wallet-bills">
-						{inv.bills.map((b) => (
-							<li
-								key={b.id}
-								class="wallet-bills__row"
-								data-overdue={b.overdue ? "true" : undefined}
-							>
-								<span class="wallet-bills__meta">
-									<span class="wallet-bills__label">{b.label}</span>
-									<span class="wallet-bills__due" data-overdue={b.overdue ? "true" : undefined}>
-										{b.dueLabel}
-									</span>
-								</span>
-								<Money value={b.amount} class="wallet-bills__amt" />
-								{b.overdue && (
-									<button type="button" class="wallet-btn wallet-btn--primary wallet-bills__cta">
-										Top up
-									</button>
-								)}
-							</li>
-						))}
-					</ul>
-				</SectionCard>
-			)}
+				<Band tone="ledger" index={3} titleId="wlt-inv-stmt">
+					<BandHead id="wlt-inv-stmt" title="Statements" />
+					{v.statements.length === 0
+						? <EmptyBand text="No statements yet." />
+						: (
+							<ul class="wlt-rows wlt-rows--ledger" role="list">
+								{v.statements.map((s) => (
+									<li class="wlt-rows__row" key={s.id}>
+										<span class="wlt-rows__title">{s.periodLabel}</span>
+										<span class="wlt-rows__meta">
+											<Money value={s.totalIn} size="body" tone="credit" sign="+" showFx={false} />
+											{" "}
+											<Money value={s.totalOut} size="body" tone="debit" sign="−" showFx={false} />
+										</span>
+										{s.hasPdf
+											? <a class="wlt-link" href={`/api/wallet/statement/${s.id}`}>PDF</a>
+											: <span class="wlt-rows__tag" data-tone="muted">{s.status}</span>}
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
 
-			{inv.statements.length > 0 && (
-				<SectionCard title="Statements" class="wallet-invoices__statements">
-					<ul class="wallet-statements">
-						{inv.statements.map((s) => <StatementRowView key={s.id} row={s} />)}
-					</ul>
-				</SectionCard>
-			)}
-
-			{inv.caps.length > 0 && (
-				<SectionCard title="Budgets & caps" class="wallet-invoices__caps">
-					<ul class="wallet-caps__list">
-						{inv.caps.map((c) => (
-							<li key={c.id} class="wallet-caps__row">
-								<span class="wallet-caps__name">{c.memberName}</span>
-								<Meter
-									ratioBp={c.utilizationBp}
-									label={`${c.memberName} cap`}
-									class="wallet-caps__meter"
-								/>
-								<span class="wallet-caps__amt">
-									<Money value={c.spent} />{" "}
-									<span class="wallet-caps__of">
-										/ <Money value={c.cap} muted />
-									</span>
-								</span>
-							</li>
-						))}
-					</ul>
-				</SectionCard>
-			)}
-		</div>
-	);
-}
-
-function StatementRowView({ row }: { row: StatementRow }): JSX.Element {
-	return (
-		<li class="wallet-statements__row">
-			<span class="wallet-statements__period">{row.periodLabel}</span>
-			<span class="wallet-statements__figs">
-				<span class="wallet-statements__in">
-					+<Money value={row.totalIn} />
-				</span>
-				<span class="wallet-statements__out">
-					−<Money value={row.totalOut} />
-				</span>
-			</span>
-			{row.hasPdf
-				? (
-					<button type="button" class="wallet-btn wallet-btn--ghost wallet-statements__pdf">
-						<ExportIcon size={15} /> PDF
-					</button>
-				)
-				: <span class="wallet-badge" data-tone="muted">Draft</span>}
-		</li>
+				{v.caps.length > 0 && (
+					<Band tone="intel" index={4} titleId="wlt-inv-caps">
+						<BandHead id="wlt-inv-caps" title="Budgets and caps" />
+						<CapsRoster caps={v.caps} invoicesDue={0} invoicesDueAmount={null} />
+					</Band>
+				)}
+			</div>
+		</main>
 	);
 }

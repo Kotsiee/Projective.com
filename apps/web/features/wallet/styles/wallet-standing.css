@@ -1,0 +1,303 @@
+/*
+ * wallet-standing — the earned-rung arc and its commission payoff (BUILD CONTRACT §4.7).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Nothing here is boxed: the gauge sits on the
+ * intelligence band's tonal plate and separates its footer with a single hairline.
+ *
+ * One rule worth stating in the stylesheet because it is easy to "fix" by accident: **the dial is
+ * never mirrored under RtL.** A physical instrument reads the same in every locale — only the text
+ * around it flips alignment. There is deliberately no `[dir="rtl"] .wlt-standing__arc` rule.
+ */
+
+.wlt-standing {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wlt-standing__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.wlt-standing__earned {
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wlt-standing__body {
+	display: grid;
+	grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
+	gap: var(--space-5);
+	align-items: center;
+}
+
+/* #region The arc */
+.wlt-standing__gauge {
+	position: relative;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wlt-standing__arc {
+	inline-size: 100%;
+	block-size: auto;
+	max-inline-size: 17rem;
+	display: block;
+	overflow: visible;
+}
+
+.wlt-standing__arc-track,
+.wlt-standing__arc-fill,
+.wlt-standing__arc-veil {
+	fill: none;
+	stroke-width: 14;
+	stroke-linecap: butt;
+}
+
+.wlt-standing__arc-track {
+	stroke: var(--wlt-track-bg);
+}
+
+.wlt-standing__arc-fill {
+	stroke: var(--primary);
+	transition: stroke-dasharray var(--dur-slow) var(--ease-emphasized);
+}
+
+/*
+ * Score already earned past what the completed-stage floor permits. It is real — so it is drawn —
+ * but it is not promoting anything, so it recedes rather than reading as fresh progress.
+ */
+.wlt-standing__arc-fill--capped {
+	stroke: color-mix(in srgb, var(--primary) 32%, var(--wlt-plate));
+}
+
+.wlt-standing__arc-veil {
+	stroke: url(#wlt-standing-hatch);
+}
+
+/* Notches read as CUTS in the arc, not as marks on top of it. */
+.wlt-standing__notch {
+	fill: var(--wlt-plate);
+	stroke: none;
+}
+
+.wlt-standing__notch[data-state="next"] {
+	fill: var(--primary);
+}
+
+.wlt-standing__notch[data-state="gated"] {
+	fill: var(--outline);
+}
+
+.wlt-standing__readout {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: 44%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	pointer-events: none;
+}
+
+.wlt-standing__score {
+	font-size: var(--wlt-fs-score);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wlt-num-track);
+}
+
+.wlt-standing__rung {
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wlt-standing__rung-code {
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region The payoff — the emotional centre */
+.wlt-standing__payoff {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	background: var(--wlt-plate-inner);
+	border-radius: var(--radius-lg);
+	padding: var(--space-4) var(--space-5);
+}
+
+.wlt-standing__rates {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.wlt-standing__rate {
+	font-size: var(--wlt-fs-rate);
+	font-weight: 600;
+	line-height: 1;
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wlt-num-track);
+}
+
+.wlt-standing__rate--now {
+	color: var(--on-surface);
+}
+
+/*
+ * The next rung's rate is aspirational, NOT owed — so it is never `--success`. Painting a rate the
+ * user has not earned in the credit colour would read as money already banked.
+ */
+.wlt-standing__rate--next {
+	color: var(--text-secondary);
+}
+
+.wlt-standing__rate-label,
+.wlt-standing__rate-caption {
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	margin: 0;
+}
+
+.wlt-standing__rate-caption {
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+}
+
+.wlt-standing__arrow {
+	color: var(--outline);
+	font-size: var(--wlt-fs-body);
+}
+
+.wlt-standing__gain,
+.wlt-standing__gate {
+	margin: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--text-secondary);
+	line-height: 1.5;
+	max-inline-size: var(--wlt-prose);
+}
+
+.wlt-standing__gate {
+	color: var(--on-surface-variant);
+}
+
+/*
+ * The stage floor is a LINEAR meter, deliberately a different form from the arc. Two dials would
+ * imply two independent scores; one dial plus one bar reads as one rung with two conditions.
+ */
+.wlt-standing__stages {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.wlt-standing__stages-label {
+	white-space: nowrap;
+}
+
+.wlt-standing__stage-meter {
+	display: block;
+	block-size: 4px;
+	inline-size: 100%;
+	border-radius: var(--radius-xs);
+	background: var(--wlt-meter-bg);
+	overflow: hidden;
+}
+
+.wlt-standing__stage-fill {
+	display: block;
+	block-size: 100%;
+	inline-size: var(--wlt-fill, 0%);
+	border-radius: inherit;
+	background: var(--secondary);
+	transition: inline-size var(--dur-slow) var(--spring-standard);
+}
+
+.wlt-standing__stage-count {
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums lining-nums;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region The fee strip — stated so the two rates can never be conflated */
+.wlt-standing__fee {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.wlt-standing__fee-text {
+	margin: 0;
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wlt-standing__why {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border-radius: 999px;
+	color: var(--text-secondary);
+	text-decoration: none;
+}
+
+.wlt-standing__why:hover {
+	color: var(--on-surface);
+	background: var(--surface-3);
+}
+
+.wlt-standing__why:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+@media (max-width: 1100px) {
+	.wlt-standing__body {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.wlt-standing__arc {
+		max-inline-size: 15rem;
+		margin-inline: auto;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-standing__arc-fill,
+	.wlt-standing__stage-fill {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-standing__arc-fill,
+:root[data-motion="reduced"] .wlt-standing__stage-fill {
+	transition: none;
+}

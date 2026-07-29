@@ -1,262 +1,256 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/wallet.css";
 import {
 	LaneCollapseButton,
 	LaneFooter,
-	LaneFooterActions,
 	LaneHead,
 	LaneList,
+	NavItem,
 } from "@projective/ui/navigation";
-import { NavItem } from "@projective/ui/navigation";
-import { Popover } from "@projective/ui/feedback";
+import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
-import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
-import { WalletRail } from "../components/WalletRail.tsx";
-import WalletActionModals from "./WalletActionModals.island.tsx";
-import { ChevronIcon, WalletIcon } from "../components/wallet-glyphs.tsx";
-import { WalletService } from "../core/WalletService.ts";
-import { capabilitiesForRole, walletVariant } from "../types/wallet-types.ts";
-import { visibleNav, walletHref, type WalletView } from "../core/wallet-model.ts";
+import { WalletIdCard } from "../components/WalletIdCard.tsx";
+import {
+	AccessGlyph,
+	ActivityGlyph,
+	CollapseGlyph,
+	FundingGlyph,
+	InvoicesGlyph,
+	MethodsGlyph,
+	OverviewGlyph,
+	PayoutsGlyph,
+	TransactionsGlyph,
+} from "../core/glyphs.tsx";
+import { laneItemsFor, viewHref, viewOf, type WalletView } from "../core/capability.ts";
 import { seedWalletContext } from "../core/wallet-state.ts";
-import { currentWalletContext, type FlowPeriod, flowPeriod } from "../core/wallet-state.ts";
-import { useWalletSeam } from "../core/wallet-seam.ts";
-import type { WalletRef, WalletSwitcher } from "../types/wallet-types.ts";
+import type {
+	VaultCapability,
+	WalletRef,
+	WalletSwitcher,
+	WalletVariant,
+	WalletVerification,
+} from "../types/wallet-types.ts";
 
 /**
- * WalletLane — the middle-nav lane for `/wallet`, the finance face of the active context. Dual
- * presentation (an expanded stack + a collapsed {@link WalletRail}, CSS-switched by
- * `.ui-splitter[data-mode]`), composed from the shared `@projective/ui/navigation` lane chrome. It hosts
- * the account/context switcher (the active wallet + selectable vaults + the read-only "All accounts"
- * aggregate), the capability-gated sub-nav (Overview · Transactions · Activity · Payouts · Funding ·
- * Methods · (Invoices) · (Access)), and a footer (collapse toggle + a flow-period selector). Dumb — it
- * navigates + reads the shared context; the pages own their data. Active row is the SSR `path` prop (no
- * partials, Decision #52); the switcher balances refresh live when the dev currency axis changes.
+ * WalletLane — the middle-nav lane: which wallet, which section, and whether this identity can be
+ * paid.
+ *
+ * Both presentations are always in the DOM and CSS reveals exactly one, keyed off the splitter's
+ * `data-mode`. That is the shipped repo pattern, and it matters particularly here: a width observer
+ * would paint the wrong presentation for a frame on every load, and an account switcher that
+ * flickers on a finance surface reads as a bug in the money.
+ *
+ * Navigation is gated by **absence, not disablement**. `Invoices` is a business instrument and
+ * `Access` is vault governance, so a personal wallet and a plain member never receive them — a
+ * greyed-out Access tab would advertise a power the viewer will never hold on this vault.
  */
-
 export interface WalletLaneProps {
 	switcher: WalletSwitcher;
 	activeWallet: string;
-	activeView: WalletView;
+	variant: WalletVariant;
+	capabilities: VaultCapability[];
+	verification: WalletVerification;
 	display: string;
 	path: string;
 }
 
-export default function WalletLane(props: WalletLaneProps): JSX.Element {
-	const switcher = useSignal<WalletSwitcher>(props.switcher);
-	const collapsed = useSignal(false);
+const VIEW_GLYPH: Record<WalletView, JSX.Element> = {
+	overview: OverviewGlyph,
+	transactions: TransactionsGlyph,
+	activity: ActivityGlyph,
+	payouts: PayoutsGlyph,
+	funding: FundingGlyph,
+	methods: MethodsGlyph,
+	invoices: InvoicesGlyph,
+	access: AccessGlyph,
+};
 
-	// Seed the shared context, then mirror the dev seam (currency + sim) and refresh the switcher balances.
-	seedWalletContext(props.activeWallet, props.display);
-	useWalletSeam({
-		display: props.display,
-		wallet: props.activeWallet,
-		onRefetch: async () => {
-			const res = await WalletService.switcher(currentWalletContext());
-			if (res.ok && res.data) switcher.value = res.data.switcher;
-		},
-	});
-
-	// Seed the collapse glyph from the splitter density on mount (deterministic; no width observer).
-	useEffect(() => {
-		const el = globalThis.document?.querySelector(".ui-splitter");
-		collapsed.value = (el as HTMLElement | null)?.dataset.mode === "collapsed";
-	}, []);
-
-	function setLaneCollapsed(next: boolean): void {
-		collapsed.value = next;
-		try {
-			globalThis.dispatchEvent(
-				new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
-			);
-		} catch { /* SSR / no window */ }
-	}
-
-	const active = switcher.value.active;
-	const variant = walletVariant(active.scope);
-	const caps = capabilitiesForRole(active.role ?? "owner");
-	const nav = visibleNav(variant, caps);
-
-	return (
-		<div class="wallet-lane">
-			<WalletRail
-				switcher={switcher.value}
-				nav={nav}
-				activeView={props.activeView}
-				activeWallet={props.activeWallet}
-				onExpand={() => setLaneCollapsed(false)}
-			/>
-
-			<div class="wallet-lane__full">
-				<LaneHead class="wallet-lane__head">
-					<WalletSwitcherControl switcher={switcher.value} activeWallet={props.activeWallet} />
-				</LaneHead>
-
-				<LaneList label="Wallet sections" class="wallet-lane__nav">
-					{nav.map((entry) => (
-						<NavItem
-							key={entry.view}
-							href={walletHref(entry.view, props.activeWallet)}
-							label={entry.label}
-							icon={<WalletIcon name={entry.icon} size={20} />}
-							active={entry.view === props.activeView}
-						/>
-					))}
-				</LaneList>
-
-				<LaneFooter>
-					<LaneCollapseButton
-						collapsed={collapsed.value}
-						icon={<SidebarToggleIcon />}
-						onToggle={() => setLaneCollapsed(!collapsed.value)}
-					/>
-					<LaneFooterActions>
-						<PeriodSelector />
-					</LaneFooterActions>
-				</LaneFooter>
-			</div>
-
-			{/* Money-move modals — mounted once in the lane (present on every wallet page), opened via signals. */}
-			<WalletActionModals />
-		</div>
-	);
+/**
+ * The verification signal. Each state carries its own WORDS as well as its tone, so the meaning
+ * survives a colour-blind palette and a greyscale print (RULE C-3).
+ */
+function verificationTone(v: WalletVerification): { tone: string; text: string } {
+	if (v.kycStatus !== "verified") return { tone: "warn", text: "Verification needed" };
+	if (!v.payoutReady) return { tone: "warn", text: "No payout method" };
+	return { tone: "ok", text: "Verified · payouts on" };
 }
 
-// #region Account switcher (Popover: active wallet + accounts + aggregate)
-function WalletSwitcherControl(
-	{ switcher, activeWallet }: { switcher: WalletSwitcher; activeWallet: string },
-): JSX.Element {
-	const active = switcher.active;
-	function switchTo(ref: WalletRef): void {
+export default function WalletLane(props: WalletLaneProps): JSX.Element {
+	const collapsed = useSignal(false);
+	const switcherOpen = useSignal(false);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+
+	const items = laneItemsFor(props.variant, props.capabilities, props.switcher.active.scope);
+	const active = viewOf(props.path);
+	const verify = verificationTone(props.verification);
+
+	useEffect(() => {
+		seedWalletContext(props.activeWallet, props.display);
+		// The splitter owns the width; the lane mirrors its state only so the toggle glyph is right.
+		const el = document.querySelector(".ui-splitter") as HTMLElement | null;
+		if (el) collapsed.value = el.dataset.mode === "collapsed";
+	}, []);
+
+	const setCollapsed = (next: boolean) => {
+		collapsed.value = next;
+		globalThis.dispatchEvent(
+			new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
+		);
+	};
+
+	const accountHref = (ref: WalletRef) => {
 		const param = ref.scope === "personal"
 			? "personal"
 			: ref.scope === "aggregate"
 			? "aggregate"
 			: `${ref.scope}:${ref.id}`;
-		try {
-			const url = new URL(globalThis.location.href);
-			if (param === "personal") url.searchParams.delete("w");
-			else url.searchParams.set("w", param);
-			globalThis.location.assign(url.pathname + url.search);
-		} catch { /* no window */ }
-	}
+		return viewHref(active, param, props.display);
+	};
+
+	const isActive = (a: WalletRef) =>
+		a.scope === "personal"
+			? props.activeWallet === "personal"
+			: `${a.scope}:${a.id}` === props.activeWallet;
 
 	return (
-		<Popover
-			placement="bottom-start"
-			matchWidth
-			trigger={(api) => (
-				<button
-					type="button"
-					class="wallet-switch"
-					aria-haspopup="menu"
-					aria-expanded={api.expanded}
-					aria-controls={api.panelId}
-					ref={api.ref as RefObject<HTMLButtonElement>}
-					onClick={api.toggle}
-				>
-					<WalletAvatar w={active} />
-					<span class="wallet-switch__meta">
-						<span class="wallet-switch__name">{active.name}</span>
-						<span class="wallet-switch__balance">{active.available.display}</span>
-					</span>
-					<ChevronIcon size={16} class="wallet-switch__caret" />
-				</button>
-			)}
-		>
-			<div class="wallet-accounts" role="menu" aria-label="Switch wallet">
-				{switcher.accounts.map((w) => (
-					<WalletAccountRow
-						key={`${w.scope}:${w.id}`}
-						w={w}
-						active={isActive(w, activeWallet)}
-						onSelect={() => switchTo(w)}
-					/>
-				))}
-				<div class="wallet-accounts__sep" role="separator" />
-				<WalletAccountRow
-					w={switcher.aggregate}
-					active={activeWallet === "aggregate"}
-					onSelect={() => switchTo(switcher.aggregate)}
-					aggregate
-				/>
+		<div class="wlt-lanewrap">
+			{/* Collapsed presentation — revealed by CSS at the rail density. */}
+			<div class="wlt-rail">
+				<div class="wlt-rail__brand">
+					<Tooltip content={props.switcher.active.name} placement="right">
+						<a
+							class="wlt-rail__switch"
+							href={viewHref("overview", props.activeWallet, props.display)}
+							aria-label={`Active wallet: ${props.switcher.active.name}`}
+							data-verify={verify.tone}
+						>
+							<Avatar
+								image={props.switcher.active.avatar ?? undefined}
+								label={props.switcher.active.name}
+								size="sm"
+								shape="circle"
+							/>
+						</a>
+					</Tooltip>
+				</div>
+
+				<div class="wlt-rail__items" role="list">
+					{items.map((item) => (
+						<Tooltip content={item.label} placement="right" key={item.view}>
+							<a
+								class="wlt-rail__item"
+								href={viewHref(item.view, props.activeWallet, props.display)}
+								data-active={item.view === active ? "true" : "false"}
+								aria-current={item.view === active ? "page" : undefined}
+								aria-label={item.label}
+							>
+								{VIEW_GLYPH[item.view]}
+							</a>
+						</Tooltip>
+					))}
+				</div>
+
+				<div class="wlt-rail__bottom">
+					<Tooltip content={props.verification.prompt ?? verify.text} placement="right">
+						<span
+							class="wlt-rail__verify"
+							data-tone={verify.tone}
+							role="img"
+							aria-label={verify.text}
+						/>
+					</Tooltip>
+					<Tooltip content="Expand lane" placement="right">
+						<button
+							type="button"
+							class="wlt-rail__toggle"
+							aria-label="Expand lane"
+							onClick={() => setCollapsed(false)}
+						>
+							{CollapseGlyph}
+						</button>
+					</Tooltip>
+				</div>
 			</div>
-		</Popover>
-	);
-}
 
-function isActive(w: WalletRef, activeWallet: string): boolean {
-	if (w.scope === "personal") return activeWallet === "personal";
-	if (w.scope === "aggregate") return activeWallet === "aggregate";
-	return activeWallet === `${w.scope}:${w.id}`;
-}
+			{/* Expanded presentation. */}
+			<div class="wlt-lane">
+				<LaneHead class="wlt-lane__head">
+					<button
+						type="button"
+						class="wlt-lane__switch"
+						ref={triggerRef}
+						aria-haspopup="listbox"
+						aria-expanded={switcherOpen.value}
+						onClick={() => {
+							switcherOpen.value = !switcherOpen.value;
+						}}
+					>
+						<WalletIdCard account={props.switcher.active} size="md" active />
+					</button>
+					<Popover
+						open={switcherOpen}
+						targetRef={triggerRef}
+						placement="bottom-start"
+						avoid={[".ui-app-shell__sidebar"]}
+					>
+						<div class="wlt-lane__accounts" role="listbox" aria-label="Switch wallet">
+							{props.switcher.accounts.map((a) => (
+								<a
+									class="wlt-lane__account"
+									key={`${a.scope}:${a.id}`}
+									href={accountHref(a)}
+									role="option"
+									aria-selected={isActive(a)}
+								>
+									<WalletIdCard account={a} size="md" active={isActive(a)} />
+								</a>
+							))}
+							<div class="wlt-lane__accounts-sep" role="separator" />
+							<a
+								class="wlt-lane__account"
+								href={accountHref(props.switcher.aggregate)}
+								role="option"
+								aria-selected={props.activeWallet === "aggregate"}
+							>
+								<WalletIdCard account={props.switcher.aggregate} size="md" readonly />
+								<span class="wlt-lane__account-note">All accounts · read-only</span>
+							</a>
+						</div>
+					</Popover>
+				</LaneHead>
 
-function WalletAvatar({ w }: { w: WalletRef }): JSX.Element {
-	if (w.scope === "aggregate") {
-		return (
-			<span class="wallet-switch__agg" aria-hidden="true">
-				<WalletIcon name="wallet" size={18} />
-			</span>
-		);
-	}
-	return <Avatar image={w.avatar ?? undefined} label={w.name} size={28} alt="" />;
-}
+				<LaneList label="Wallet sections" class="wlt-lane__nav">
+					{items.map((item) => (
+						<NavItem
+							key={item.view}
+							href={viewHref(item.view, props.activeWallet, props.display)}
+							label={item.label}
+							icon={VIEW_GLYPH[item.view]}
+							active={item.view === active}
+						/>
+					))}
+				</LaneList>
 
-function WalletAccountRow(
-	{ w, active, onSelect, aggregate }: {
-		w: WalletRef;
-		active: boolean;
-		onSelect: () => void;
-		aggregate?: boolean;
-	},
-): JSX.Element {
-	return (
-		<button
-			type="button"
-			class="wallet-account"
-			role="menuitemradio"
-			aria-checked={active}
-			data-active={active ? "true" : undefined}
-			onClick={onSelect}
-		>
-			<WalletAvatar w={w} />
-			<span class="wallet-account__meta">
-				<span class="wallet-account__name">{w.name}</span>
-				<span class="wallet-account__sub">
-					{aggregate ? "Rollup" : w.role ? capitalise(w.role) : "Personal"}
-				</span>
-			</span>
-			<span class="wallet-account__balance">{w.available.display}</span>
-		</button>
-	);
-}
+				{/* Ambient, not an alert: the state is always shown, the CTA only when there is one. */}
+				<div class="wlt-lane__verify" data-tone={verify.tone}>
+					<span class="wlt-lane__verify-dot" aria-hidden="true" />
+					<span class="wlt-lane__verify-text">{verify.text}</span>
+					{props.verification.href && props.verification.prompt && (
+						<a class="wlt-lane__verify-link" href={props.verification.href}>Finish</a>
+					)}
+				</div>
 
-function capitalise(s: string): string {
-	return s.charAt(0).toUpperCase() + s.slice(1);
-}
-// #endregion
-
-// #region Flow-period selector (lane footer)
-const PERIODS: readonly FlowPeriod[] = ["30d", "60d", "90d"];
-
-function PeriodSelector(): JSX.Element {
-	return (
-		<div class="wallet-period" role="group" aria-label="Flow period">
-			{PERIODS.map((p) => (
-				<button
-					key={p}
-					type="button"
-					class="wallet-period__btn"
-					data-on={flowPeriod.value === p ? "true" : undefined}
-					aria-pressed={flowPeriod.value === p}
-					onClick={() => (flowPeriod.value = p)}
-				>
-					{p}
-				</button>
-			))}
+				<LaneFooter>
+					<LaneCollapseButton
+						collapsed={collapsed.value}
+						icon={CollapseGlyph}
+						onToggle={() => setCollapsed(!collapsed.value)}
+					/>
+				</LaneFooter>
+			</div>
 		</div>
 	);
 }
-// #endregion

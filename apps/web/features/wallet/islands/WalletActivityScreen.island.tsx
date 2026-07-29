@@ -1,21 +1,24 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { CashflowChart } from "../components/CashflowChart.tsx";
-import { BurnDownChart } from "../components/BurnDownChart.tsx";
-import { Money, SectionCard } from "../components/wallet-bits.tsx";
+import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { FlowBand } from "../components/FlowBand.tsx";
+import { BurnDownPanel } from "../components/BurnDownPanel.tsx";
+import { Money } from "../components/Money.tsx";
+import { buildCategoryBars, buildProjectBars } from "../core/category-chart.ts";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext } from "../core/wallet-state.ts";
+import { currentWalletContext, flowPeriod } from "../core/wallet-state.ts";
 import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
-import { categoryLabel } from "../core/wallet-model.ts";
-import type { ActivityRange, ActivityView, CategorySlice } from "../types/wallet-types.ts";
+import { styleVars } from "@ui/core/style.ts";
+import type { ActivityView } from "../types/wallet-types.ts";
 
 /**
- * WalletActivityScreen — where the charts live (`/wallet/activity`), kept off the calm overview: totals,
- * in-vs-out (a `d3-scale` cashflow chart, Decision #1), a by-category breakdown, a by-project list, and
- * the role-specific series (a freelancer's locked capital + projected income, a business's budget
- * burn-down). THIN: first paint from SSR; the range selector + dev axes refetch. Charts are token-only so
- * they read correctly in light and dark.
+ * WalletActivityScreen — where the analysis lives (`/wallet/activity`).
+ *
+ * Three full-bleed bands, no cards. The two breakdowns are HORIZONTAL BAR LISTS rather than donuts:
+ * a marketplace answers "how much" before "what shape", and a donut here is the neobank tell (§6.2).
+ * Every chart carries a `role="img"` summary and a visually-hidden data table — a chart no screen
+ * reader can read is not accessible, and this is a financial surface.
  */
 export interface WalletActivityScreenProps {
 	initial: ActivityView;
@@ -23,135 +26,100 @@ export interface WalletActivityScreenProps {
 	display: string;
 }
 
-const RANGES: { value: ActivityRange; label: string }[] = [
-	{ value: "30d", label: "30 days" },
-	{ value: "90d", label: "90 days" },
-	{ value: "12m", label: "12 months" },
-];
-
 export default function WalletActivityScreen(props: WalletActivityScreenProps): JSX.Element {
 	const activity = useSignal<ActivityView>(props.initial);
-	const range = useSignal<ActivityRange>(props.initial.range);
 
-	async function reload(): Promise<void> {
-		const res = await WalletService.activity(currentWalletContext(), range.value);
+	const refetch = async () => {
+		const range = flowPeriod.value === "30d" ? "30d" : "90d";
+		const res = await WalletService.activity(currentWalletContext(), range);
 		if (res.ok && res.data) activity.value = res.data.activity;
-	}
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: reload });
-	useWalletRefresh(reload);
-
-	function setRange(r: ActivityRange): void {
-		range.value = r;
-		void reload();
-	}
+	};
+	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletRefresh(refetch);
 
 	const a = activity.value;
-	return (
-		<div class="wallet-page wallet-activity">
-			<header class="wallet-page__head">
-				<h1 class="wallet-page__title">Activity</h1>
-				<div class="wallet-range" role="group" aria-label="Activity range">
-					{RANGES.map((r) => (
-						<button
-							key={r.value}
-							type="button"
-							class="wallet-range__btn"
-							data-on={range.value === r.value ? "true" : undefined}
-							aria-pressed={range.value === r.value}
-							onClick={() => setRange(r.value)}
-						>
-							{r.label}
-						</button>
-					))}
-				</div>
-			</header>
+	// The bar lists are laid out in a 100×N coordinate space so `--wlt-fill` can be a percentage.
+	const categories = buildCategoryBars(a.byCategory, 100, a.byCategory.length * 100);
+	const projects = buildProjectBars(a.byProject, 100, a.byProject.length * 100);
 
-			<div class="wallet-activity__tiles">
-				<Tile label="Money in" value={a.totalIn.display} tone="in" />
-				<Tile label="Money out" value={a.totalOut.display} tone="out" />
-				<Tile label="Net" value={a.net.display} tone={a.net.minor >= 0 ? "in" : "out"} />
-				{a.lockedCapital && (
-					<Tile label="Locked capital" value={a.lockedCapital.display} tone="neutral" />
-				)}
-				{a.projectedIncome && (
-					<Tile label="Projected income" value={a.projectedIncome.display} tone="neutral" />
+	return (
+		<main class="wlt" aria-label="Activity">
+			<div class="wlt__stack">
+				<Band tone="head" index={0} label="Activity">
+					<PageHead
+						title="Activity"
+						meta={
+							<>
+								<span>
+									In <Money value={a.totalIn} size="body" tone="credit" showFx={false} />
+								</span>
+								<span>
+									Out <Money value={a.totalOut} size="body" tone="debit" showFx={false} />
+								</span>
+								<span>
+									Net <Money value={a.net} size="body" showFx={false} />
+								</span>
+							</>
+						}
+					/>
+				</Band>
+
+				<Band tone="flow" index={1} titleId="wlt-act-flow">
+					<BandHead id="wlt-act-flow" title="Money in vs out" />
+					<FlowBand flow={a.flow} range={a.range === "12m" ? "90d" : a.range} id="wlt-act-chart" />
+				</Band>
+
+				<Band tone="intel" index={2} titleId="wlt-act-cat">
+					<BandHead id="wlt-act-cat" title="Spend by category" />
+					{categories.length === 0
+						? <EmptyBand text="Nothing categorised in this window yet." />
+						: (
+							<ul class="wlt-barlist" role="list">
+								{categories.map((row) => (
+									<li class="wlt-barlist__row" key={row.key}>
+										<span class="wlt-barlist__label">{row.label}</span>
+										<span class="wlt-barlist__amount wlt-num">{row.amount.display}</span>
+										<span class="wlt-barlist__share wlt-num">{row.sharePct}</span>
+										<span
+											class="wlt-barlist__bar"
+											style={styleVars({ "--wlt-fill": row.sharePct })}
+											aria-hidden="true"
+										/>
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
+
+				<Band tone="ledger" index={3} titleId="wlt-act-proj">
+					<BandHead id="wlt-act-proj" title="Spend by project" />
+					{projects.length === 0
+						? <EmptyBand text="No project-attributed movement in this window." />
+						: (
+							<ul class="wlt-barlist" role="list">
+								{projects.map((row) => (
+									<li class="wlt-barlist__row" key={row.key}>
+										<a class="wlt-barlist__label wlt-link" href={row.href ?? "#"}>{row.label}</a>
+										<span class="wlt-barlist__amount wlt-num">{row.amount.display}</span>
+										<span class="wlt-barlist__share wlt-num">{row.sharePct}</span>
+										<span
+											class="wlt-barlist__bar"
+											style={styleVars({ "--wlt-fill": row.sharePct })}
+											aria-hidden="true"
+										/>
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
+
+				{a.burnDown && (
+					<Band tone="intel" index={4} titleId="wlt-act-burn">
+						<BandHead id="wlt-act-burn" title="Budget burn-down" />
+						<BurnDownPanel burn={a.burnDown} />
+					</Band>
 				)}
 			</div>
-
-			<SectionCard title="In & out" class="wallet-activity__chart">
-				<div class="wallet-chartwrap">
-					<CashflowChart points={a.flow} />
-				</div>
-				<div class="wallet-chartlegend" aria-hidden="true">
-					<span data-k="in">Money in</span>
-					<span data-k="out">Money out</span>
-				</div>
-			</SectionCard>
-
-			{a.burnDown && (
-				<SectionCard
-					title={a.burnDown.label}
-					class="wallet-activity__chart"
-					action={
-						<span
-							class="wallet-badge"
-							data-tone={a.burnDown.utilizationBp >= 10000 ? "danger" : "info"}
-						>
-							{Math.round(a.burnDown.utilizationBp / 100)}% used
-						</span>
-					}
-				>
-					<div class="wallet-chartwrap">
-						<BurnDownChart data={a.burnDown} />
-					</div>
-				</SectionCard>
-			)}
-
-			<div class="wallet-activity__split">
-				{a.byCategory.length > 0 && (
-					<SectionCard title="By category" class="wallet-activity__cats">
-						<ul class="wallet-cats__list">
-							{a.byCategory.map((c) => <CategoryRow key={c.category} slice={c} />)}
-						</ul>
-					</SectionCard>
-				)}
-				{a.byProject.length > 0 && (
-					<SectionCard title="By project" class="wallet-activity__projects">
-						<ul class="wallet-projflow">
-							{a.byProject.map((p) => (
-								<li key={p.id} class="wallet-projflow__row">
-									<a class="wallet-projflow__name" href={`/projects/${p.id}`}>{p.name}</a>
-									<Money value={p.amount} class="wallet-projflow__amt" />
-								</li>
-							))}
-						</ul>
-					</SectionCard>
-				)}
-			</div>
-		</div>
-	);
-}
-
-function Tile({ label, value, tone }: { label: string; value: string; tone: string }): JSX.Element {
-	return (
-		<div class="wallet-tile" data-tone={tone}>
-			<span class="wallet-tile__label">{label}</span>
-			<span class="wallet-tile__value">{value}</span>
-		</div>
-	);
-}
-
-function CategoryRow({ slice }: { slice: CategorySlice }): JSX.Element {
-	const pct = Math.round(slice.shareBp / 100);
-	return (
-		<li class="wallet-cats__row">
-			<span class="wallet-cats__label">{categoryLabel(slice.category)}</span>
-			<span class="wallet-cats__bar" aria-hidden="true">
-				<span class="wallet-cats__fill" style={`inline-size:${pct}%`} data-cat={slice.category} />
-			</span>
-			<span class="wallet-cats__amt">
-				<Money value={slice.amount} />
-			</span>
-		</li>
+		</main>
 	);
 }

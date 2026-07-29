@@ -22,6 +22,7 @@ export function simFromSeam(seam: DevSeamState | null): WalletSim | undefined {
 		kyc: seam.walletKyc,
 		smoother: seam.walletSmoother,
 		fundMix: seam.walletFundMix,
+		standing: seam.walletStanding,
 	};
 }
 

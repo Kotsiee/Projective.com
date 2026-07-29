@@ -1,17 +1,41 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
-import WalletViewControlRig from "../islands/WalletViewControlRig.island.tsx";
+import WalletFooterRig from "../islands/WalletFooterRig.island.tsx";
+import { resolveWalletOverview } from "./wallet-ssr.ts";
+import { defaultWalletParam } from "./wallet-model.ts";
+import { viewOf } from "./capability.ts";
+import { walletVariant } from "../types/wallet-types.ts";
 
 /**
- * wallet-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band on the Wallet
- * Transactions ledger (`/wallet/transactions`). It mounts the zoom {@link WalletViewControlRig} (mirrors
- * `filesFooterFor`/`catalogueFooterFor`), a dumb island driving the shared ledger zoom signal — so it
- * stays a pure URL match. The other wallet pages carry their own controls (the overview period selector
- * lives in the lane footer), so they get no rig. Returns `null` everywhere else. Composed after the
- * projects/messaging/catalogue footer resolvers so exactly one owns the footer band per URL.
+ * wallet-footer-slot — the middle-nav FOOTER band on EVERY `/wallet*` route.
+ *
+ * The region contract puts every money-moving action in the footer and nothing but data in the body,
+ * so unlike its siblings this resolver is not scoped to one page: a wallet without its action bar
+ * would have no way to move money at all. The rig changes CONFIGURATION per view (the Overview
+ * carries the action cluster; a table page adds density + sort and collapses the cluster into a
+ * menu), which is the island's job, not this resolver's.
+ *
+ * It resolves the overview because the cluster is capability- and verification-gated, and both of
+ * those must be correct in the first byte — a footer that paints five actions and then removes three
+ * on hydration is worse than one that paints two.
+ *
+ * Server-only. Composed last, after the projects/messaging/catalogue footer resolvers, so exactly
+ * one owns the band per URL.
  */
-export function walletFooterFor(url: URL, _context: UserContext): ComponentChildren {
-	const segs = url.pathname.split("/").filter(Boolean); // ["wallet", view?]
-	if (segs[0] !== "wallet" || segs[1] !== "transactions") return null;
-	return <WalletViewControlRig />;
+export function walletFooterFor(url: URL, context: UserContext): ComponentChildren {
+	if (!url.pathname.startsWith("/wallet")) return null;
+
+	const { overview } = resolveWalletOverview(context, url);
+	const wallet = url.searchParams.get("w") ?? defaultWalletParam(context);
+
+	return (
+		<WalletFooterRig
+			view={viewOf(url.pathname)}
+			variant={walletVariant(overview.ref.scope)}
+			scope={wallet}
+			quickActions={overview.quickActions}
+			capabilities={overview.capabilities}
+			verification={overview.verification}
+		/>
+	);
 }

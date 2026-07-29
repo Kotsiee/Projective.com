@@ -26,11 +26,15 @@ import type {
 	SimFundMix,
 	SimKyc,
 	SimSmoother,
+	SimStanding,
 	SpendApprovalView,
 	SpendingCapView,
 	SplitMember,
 	SplitRuleView,
 	SplitShare,
+	StandingComponent,
+	StandingGate,
+	StandingRung,
 	StatementRow,
 	TeamExtras,
 	TransactionListParams,
@@ -42,6 +46,7 @@ import type {
 	WalletQuery,
 	WalletRef,
 	WalletSim,
+	WalletStanding,
 	WalletSwitcher,
 	WalletVariant,
 	WalletVerification,
@@ -87,6 +92,8 @@ import {
 /** Fixed reference "now" (no `Date.now()`), matching the sibling fixtures. */
 const NOW = Date.parse("2026-07-17T16:20:00Z");
 const DAY = 86_400_000;
+/** `security.platform_params.pending_release_days` — the 7-day safety window (finance-model.md §7). */
+const PENDING_WINDOW_DAYS = 7;
 const HOUR = 3_600_000;
 
 /** A tiny stable hash → non-negative int (unsigned `>>>`, per the documented hash-index gotcha). */
@@ -790,6 +797,8 @@ function incoming(seed: WalletSeed, display: string, locale: string): IncomingIt
 			state: "pending",
 			clearingLabel: clearingLabel(clearMs),
 			clearingAt: new Date(clearMs).toISOString(),
+			// 4 of the 7-day window elapsed (release was 4 days ago, 3 days remain).
+			clearingFraction: 4 / PENDING_WINDOW_DAYS,
 			href: "/wallet/transactions",
 		});
 	}
@@ -803,6 +812,8 @@ function incoming(seed: WalletSeed, display: string, locale: string): IncomingIt
 			state: "locked",
 			clearingLabel: "On active stage",
 			clearingAt: null,
+			// Escrowed capital has not entered a clearing window at all.
+			clearingFraction: 0,
 			href: "/projects/helia-wallet-redesign",
 		});
 	}
@@ -817,6 +828,7 @@ function incoming(seed: WalletSeed, display: string, locale: string): IncomingIt
 			state: "available",
 			clearingLabel: clearingLabel(runMs),
 			clearingAt: new Date(runMs).toISOString(),
+			clearingFraction: 5 / PENDING_WINDOW_DAYS,
 			href: "/wallet/payouts",
 		});
 	}
@@ -828,11 +840,20 @@ function incoming(seed: WalletSeed, display: string, locale: string): IncomingIt
 function quickActionsFor(
 	variant: WalletVariant,
 	caps: VaultCapability[],
-	verification: WalletVerification,
+	/** Retained for the live path, which will re-check it server-side before money moves. */
+	_verification: WalletVerification,
 ): WalletAction[] {
 	const actions: WalletAction[] = [];
 	if (caps.includes("add_funds")) actions.push("top_up");
-	if (caps.includes("withdraw") && verification.canWithdraw) actions.push("withdraw");
+	/*
+	 * Offered on CAPABILITY alone, deliberately — an outstanding verification step does not remove
+	 * this action, it locks it. The two gates behave differently on purpose: a capability the viewer
+	 * will never hold is absent, but a step they can still complete is shown locked with the way
+	 * forward attached. Removing it here would hide the path to getting paid from exactly the person
+	 * who needs to find it. The surface reads `verification.canWithdraw` to draw the lock, and the
+	 * server re-checks it before any money actually moves.
+	 */
+	if (caps.includes("withdraw")) actions.push("withdraw");
 	if (caps.includes("view")) actions.push("transfer");
 	if (variant === "team" && caps.includes("distribute")) actions.push("distribute");
 	if (caps.includes("spend")) actions.push("fund_escrow");
@@ -1085,6 +1106,150 @@ export function switcher(query: WalletQuery): WalletSwitcher {
 	return { active: activeRef, accounts, aggregate };
 }
 
+// #region Standing (the earned rung + its commission taper)
+/**
+ * The five-rung ladder, verbatim from `finance-model.md` §16.3. Score + stage floors are BOTH gates —
+ * a flawless single engagement must not vault a subject to the top — and only the commission column
+ * tapers (the flat 5% service fee never does, §16.4).
+ */
+const STANDING_LADDER: readonly StandingRung[] = [
+	{ level: 1, label: "New", minScore: 0, minStages: 0, commissionBp: 800 },
+	{ level: 2, label: "Established", minScore: 55, minStages: 5, commissionBp: 800 },
+	{ level: 3, label: "Trusted", minScore: 70, minStages: 20, commissionBp: 750 },
+	{ level: 4, label: "Expert", minScore: 82, minStages: 50, commissionBp: 700 },
+	{ level: 5, label: "Elite", minScore: 92, minStages: 120, commissionBp: 650 },
+];
+
+/** The weighted Reliability Index inputs (§16.3 — weights sum to 100). */
+const STANDING_COMPONENTS: readonly {
+	key: StandingComponent["key"];
+	label: string;
+	weight: number;
+}[] = [
+	{ key: "completion", label: "Stage completion", weight: 25 },
+	{ key: "on_time", label: "On-time delivery", weight: 25 },
+	{ key: "reviews", label: "Review scores", weight: 20 },
+	{ key: "dispute_free", label: "Dispute-free rate", weight: 15 },
+	{ key: "workload", label: "Workload reliability", weight: 10 },
+	{ key: "tenure", label: "Tenure", weight: 5 },
+];
+
+/** The rung a `(score, stagesCompleted)` pair resolves to — mirrors `org.fn_level_for_score`. */
+function rungFor(score: number, stages: number): StandingRung {
+	let resolved = STANDING_LADDER[0];
+	for (const rung of STANDING_LADDER) {
+		if (score >= rung.minScore && stages >= rung.minStages) resolved = rung;
+	}
+	return resolved;
+}
+
+/** The `(score, stages)` pair a dev-sim knob forces, or `null` to derive from the subject. */
+function simStandingPair(sim: SimStanding | undefined): { score: number; stages: number } | null {
+	switch (sim) {
+		case "l1":
+			return { score: 41.5, stages: 2 };
+		case "l2":
+			return { score: 62.4, stages: 11 };
+		case "l3":
+			return { score: 74.8, stages: 27 };
+		case "l4":
+			return { score: 86.2, stages: 63 };
+		case "l5":
+			return { score: 95.1, stages: 148 };
+		// The honest edge case: the SCORE gate for L5 is cleared but the 120-stage volume floor is
+		// not, so the subject is still L4. The gauge must not imply promotion.
+		case "stage_floor":
+			return { score: 93.6, stages: 74 };
+		default:
+			return null;
+	}
+}
+
+/**
+ * The Standing projection for a wallet. Buyer-only subjects carry NO Standing (a client wallet, a
+ * business/organisation vault, the aggregate) → `null`, so the surface omits the gauge entirely
+ * rather than drawing an empty one.
+ *
+ * Everything is derived deterministically from the seed handle (no RNG); the commission money is
+ * priced against the seed's own lifetime volume so the figures agree with the balances above them.
+ */
+function standingFor(
+	seed: WalletSeed,
+	variant: WalletVariant,
+	isFreelancer: boolean,
+	display: string,
+	locale: string,
+	sim: WalletSim,
+): WalletStanding | null {
+	// Standing is a SELLER signal. A buyer-only individual and every business/organisation vault
+	// carry none (finance-model.md §16.3 · entitlements `standingLevel` is null for buyer subjects).
+	if (variant === "business") return null;
+	if (variant === "personal" && !isFreelancer) return null;
+
+	const forced = simStandingPair(sim.standing);
+	const f = frac(`standing:${seed.id}`);
+	const score = forced?.score ?? Math.round((58 + f * 36) * 10) / 10;
+	const stages = forced?.stages ?? 12 + Math.floor(f * 70);
+
+	const current = rungFor(score, stages);
+	const next = STANDING_LADDER.find((r) => r.level === current.level + 1) ?? null;
+
+	const scoreToNext = next ? Math.max(0, Math.round((next.minScore - score) * 10) / 10) : 0;
+	const stagesToNext = next ? Math.max(0, next.minStages - stages) : 0;
+	const blockedBy: StandingGate = !next
+		? "none"
+		: scoreToNext > 0 && stagesToNext > 0
+		? "both"
+		: scoreToNext > 0
+		? "score"
+		: stagesToNext > 0
+		? "stages"
+		: "none";
+
+	// Per-component scores: distribute around the index so the disclosure sums back to `score`.
+	const components: StandingComponent[] = STANDING_COMPONENTS.map((c, i) => {
+		const spread = (frac(`sc:${seed.id}:${c.key}`) - 0.5) * 14;
+		return {
+			key: c.key,
+			label: c.label,
+			weight: c.weight,
+			scored: Math.min(100, Math.max(0, Math.round((score + spread + i * 0.4) * 10) / 10)),
+		};
+	});
+
+	// The taper made concrete: price the CURRENT and NEXT rates against the trailing-12m volume the
+	// commission was actually charged on. Derived from the seed's own lifetime, never invented.
+	const volumeMinor = Math.round(seed.lifetimeMinor * 0.34);
+	const paidMinor = Math.round((volumeMinor * current.commissionBp) / 10000);
+	const atNextMinor = next && next.commissionBp !== current.commissionBp
+		? Math.round((volumeMinor * next.commissionBp) / 10000)
+		: null;
+
+	return {
+		subject: variant === "team" ? "team" : "freelancer",
+		level: current.level,
+		label: current.label,
+		score,
+		stagesCompleted: stages,
+		ladder: [...STANDING_LADDER],
+		next,
+		scoreToNext,
+		stagesToNext,
+		blockedBy,
+		commissionBp: current.commissionBp,
+		nextCommissionBp: next && next.commissionBp !== current.commissionBp ? next.commissionBp : null,
+		platformFeeBp: PLATFORM_FEE_BP,
+		components,
+		commissionPaid: toMoney(paidMinor, seed.currency, display, locale),
+		commissionAtNext: atNextMinor === null
+			? null
+			: toMoney(atNextMinor, seed.currency, display, locale),
+		volumeWindow: toMoney(volumeMinor, seed.currency, display, locale),
+		windowLabel: "Last 12 months",
+	};
+}
+// #endregion
+
 /** The Overview hub projection for the query's wallet (or the aggregate). */
 export function overview(query: WalletQuery): WalletOverview {
 	const seed = resolveSeed(query);
@@ -1099,7 +1264,7 @@ export function overview(query: WalletQuery): WalletOverview {
 	const caps = capabilitiesForRole(role);
 	const verification = resolveVerification(variant, isFreelancer, sim.kyc ?? "verified");
 	const bal = resolveBalances(seed, sim.fundMix ?? "normal");
-	const lines = rawLedger(seed).slice(0, 5).map((r) => toLine(r, display, LOCALE));
+	const lines = rawLedger(seed).slice(0, 8).map((r) => toLine(r, display, LOCALE));
 
 	return {
 		ref: walletRef(seed, display, LOCALE, sim),
@@ -1117,6 +1282,15 @@ export function overview(query: WalletQuery): WalletOverview {
 		pending: toMoney(bal.pendingMinor, seed.currency, display, LOCALE),
 		onHold: toMoney(bal.onHoldMinor, seed.currency, display, LOCALE),
 		lifetime: toMoney(bal.lifetimeMinor, seed.currency, display, LOCALE),
+		// The whole the four-state meter divides — summed server-side so the client never totals money.
+		capital: toMoney(
+			bal.availableMinor + bal.lockedMinor + bal.pendingMinor + bal.onHoldMinor,
+			seed.currency,
+			display,
+			LOCALE,
+		),
+		lockedStageCount: bal.lockedMinor > 0 ? 1 + (hash(`stages:${seed.id}`) % 4) : 0,
+		heldCaseCount: bal.onHoldMinor > 0 ? 1 + (hash(`cases:${seed.id}`) % 2) : 0,
 		incoming: incoming(seed, display, LOCALE),
 		flow: flowSeries(seed, 90, 12, display),
 		flowRange: "90d",
@@ -1124,6 +1298,7 @@ export function overview(query: WalletQuery): WalletOverview {
 		quickActions: quickActionsFor(variant, caps, verification),
 		capabilities: caps,
 		verification,
+		standing: standingFor(seed, variant, isFreelancer, display, LOCALE, sim),
 		personal: variant === "personal"
 			? personalExtras(seed, isFreelancer, display, LOCALE, sim)
 			: null,
@@ -1184,13 +1359,18 @@ function aggregateOverview(query: WalletQuery): WalletOverview {
 		pending: money(pending),
 		onHold: money(onHold),
 		lifetime: money(lifetime),
+		capital: money(available + locked + pending + onHold),
+		lockedStageCount: 0,
+		heldCaseCount: 0,
 		incoming: [],
 		flow,
 		flowRange: "90d",
-		recent: allLines.slice(0, 5).map((r) => toLine(r, display, LOCALE)),
+		recent: allLines.slice(0, 8).map((r) => toLine(r, display, LOCALE)),
 		quickActions: [], // aggregate is read-only — actions live on the individual wallets
 		capabilities: ["view"],
 		verification: resolveVerification("personal", query.isFreelancer ?? true, "verified"),
+		// The rollup spans several subjects, so no single rung applies — the gauge is omitted.
+		standing: null,
 		personal: null,
 		team: null,
 		business: null,

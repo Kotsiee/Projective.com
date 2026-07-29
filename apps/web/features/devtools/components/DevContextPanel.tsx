@@ -17,6 +17,7 @@ import {
 	DEV_WALLET_FUND_MIXES,
 	DEV_WALLET_KYCS,
 	DEV_WALLET_SMOOTHERS,
+	DEV_WALLET_STANDINGS,
 	DEV_WALLET_VAULT_ROLES,
 	type DevOption,
 	devOverrides,
@@ -375,6 +376,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.walletFundMix}
 						disabled={!o.enabled}
 						onChange={(walletFundMix) => patchDevContext({ walletFundMix })}
+					/>
+				</Field>
+
+				<Field label="Standing" hint="earned rung">
+					<Segment
+						name="Standing"
+						options={DEV_WALLET_STANDINGS}
+						value={o.walletStanding}
+						disabled={!o.enabled}
+						onChange={(walletStanding) => patchDevContext({ walletStanding })}
 					/>
 				</Field>
 

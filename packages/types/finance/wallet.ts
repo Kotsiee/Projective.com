@@ -179,6 +179,12 @@ export const IncomingItemSchema = z.object({
 	/** "Clears in 3 days" / "Funded on Helia" — the human clearing note. */
 	clearingLabel: z.string().max(60),
 	clearingAt: timestamp.nullable(),
+	/**
+	 * How far through its clearing window this money is, `0`–`1`, measured against the **server**
+	 * clock. Drives the Pending state's progress-ring mark; the client never computes elapsed time
+	 * (an unsynced client clock would render a dishonest ring).
+	 */
+	clearingFraction: z.number().min(0).max(1),
 	href: z.string().max(200).nullable(),
 });
 export type IncomingItem = z.infer<typeof IncomingItemSchema>;
@@ -352,6 +358,97 @@ export const BusinessExtrasSchema = z.object({
 export type BusinessExtras = z.infer<typeof BusinessExtrasSchema>;
 // #endregion
 
+// #region Standing (the earned rung + its commission taper)
+/**
+ * One rung of the earned Standing ladder, as the wallet surfaces it. Mirrors `org.standing_levels`
+ * (the non-money columns, `@projective/types/org/standing`) joined to `finance.standing_commission_tiers`
+ * (the money perk, {@link StandingCommissionTierSchema}) — the wallet is the one surface that needs
+ * BOTH halves at once, because the whole point of showing a rung here is its commission payoff.
+ *
+ * finance-model.md §16.3: L1 New 8% · L2 Established 8% · L3 Trusted 7.5% · L4 Expert 7% · L5 Elite 6.5%.
+ */
+export const StandingRungSchema = z.object({
+	level: z.number().int().min(1).max(5),
+	/** "New" · "Established" · "Trusted" · "Expert" · "Elite". */
+	label: z.string().max(40),
+	/** The Reliability Index floor for this rung (0 · 55 · 70 · 82 · 92). */
+	minScore: z.number().int().min(0).max(100),
+	/** The completed-stage volume floor (0 · 5 · 20 · 50 · 120) — the SECOND gate an arc can't express. */
+	minStages: z.number().int().min(0),
+	/** The marketplace commission at this rung, in basis points (800 · 800 · 750 · 700 · 650). */
+	commissionBp: basisPoints,
+});
+export type StandingRung = z.infer<typeof StandingRungSchema>;
+
+/** Which gate is holding a subject below the next rung (both floors must clear). */
+export const StandingGate = z.enum(["score", "stages", "both", "none"]);
+export type StandingGate = z.infer<typeof StandingGate>;
+
+/** One weighted input of the Reliability Index, for the "why am I this rung" disclosure. */
+export const StandingComponentSchema = z.object({
+	key: z.enum(["completion", "on_time", "reviews", "dispute_free", "workload", "tenure"]),
+	label: z.string().max(60),
+	/** The component's weight in the index (25 · 25 · 20 · 15 · 10 · 5). */
+	weight: z.number().int().min(0).max(100),
+	/** The subject's score on this component, 0–100. */
+	scored: z.number().min(0).max(100),
+});
+export type StandingComponent = z.infer<typeof StandingComponentSchema>;
+
+/**
+ * The wallet's Standing projection — the EARNED rung, its position on the continuous Reliability
+ * Index, and the marketplace-commission taper that is its direct financial payoff.
+ *
+ * Two invariants this shape exists to protect:
+ *  1. **Standing is earned, never purchasable** (finance-model.md §16.5). Nothing in a subscription
+ *     writes here; the shape carries no plan/upgrade field precisely so a surface cannot imply one.
+ *  2. **The flat 5% platform service fee does NOT taper** — {@link platformFeeBp} is carried alongside
+ *     {@link commissionBp} so the two can be shown together and never conflated (§16.4).
+ *
+ * A read projection over `org.entity_standing` + `finance.standing_commission_tiers`; no wallet table.
+ */
+export const WalletStandingSchema = z.object({
+	/** Whose standing this is — a buyer-only subject carries none, so the block is nullable upstream. */
+	subject: z.enum(["user", "freelancer", "team"]),
+	level: z.number().int().min(1).max(5),
+	label: z.string().max(40),
+	/** The continuous Reliability Index, 0–100. */
+	score: z.number().min(0).max(100),
+	stagesCompleted: z.number().int().min(0),
+	/** The full five-rung ladder, so the gauge can mark every threshold on its arc. */
+	ladder: z.array(StandingRungSchema).max(5),
+	/** The rung above; `null` at L5 (already at the top). */
+	next: StandingRungSchema.nullable(),
+	/** Index points still needed for {@link next}; `0` when the score floor is already cleared. */
+	scoreToNext: z.number().min(0),
+	/** Completed stages still needed for {@link next}; `0` when the volume floor is already cleared. */
+	stagesToNext: z.number().int().min(0),
+	blockedBy: StandingGate,
+	/** The subject's CURRENT marketplace commission, in basis points. */
+	commissionBp: basisPoints,
+	/** The commission at the next rung; `null` at L5, or when the next rung does not improve it. */
+	nextCommissionBp: basisPoints.nullable(),
+	/** The flat platform service fee (500bp = 5%). Never tapers — shown so it can't be confused. */
+	platformFeeBp: basisPoints,
+	components: z.array(StandingComponentSchema).max(8),
+	/**
+	 * Commission actually charged over the trailing window, as money — the taper made concrete.
+	 * `null` when the subject has no earning history to price it against.
+	 */
+	commissionPaid: MoneyViewSchema.nullable(),
+	/**
+	 * What that same trailing volume would have cost at {@link next}'s rate — i.e. the money the next
+	 * rung is worth. `null` at L5 or without history. NEVER a projection of future earnings.
+	 */
+	commissionAtNext: MoneyViewSchema.nullable(),
+	/** The earned volume {@link commissionPaid}/{@link commissionAtNext} are priced against. */
+	volumeWindow: MoneyViewSchema.nullable(),
+	/** The window those figures cover ("Last 12 months"). */
+	windowLabel: z.string().max(40),
+});
+export type WalletStanding = z.infer<typeof WalletStandingSchema>;
+// #endregion
+
 // #region Overview (the calm hub)
 /** The 30/60/90-day window the overview sparkline reports over. */
 export const FlowRange = z.enum(["30d", "60d", "90d"]);
@@ -371,6 +468,16 @@ export const WalletOverviewSchema = z.object({
 	pending: MoneyViewSchema,
 	onHold: MoneyViewSchema,
 	lifetime: MoneyViewSchema,
+	/**
+	 * `available + locked + pending + onHold` — the whole the four-state meter divides. Summed and
+	 * formatted SERVER-side: the client may compute a display *ratio* (`minor / Σminor`) to size a
+	 * segment, but never a total, and never a currency string (finance-model.md §7).
+	 */
+	capital: MoneyViewSchema,
+	/** Active stages the Locked balance is working on — the legend's "Working on 3 stages" note. */
+	lockedStageCount: z.number().int().min(0),
+	/** Open dispute cases the On-hold balance is frozen against — the legend's "1 case in review". */
+	heldCaseCount: z.number().int().min(0),
 	incoming: z.array(IncomingItemSchema).max(12),
 	flow: z.array(FlowPointSchema).max(24),
 	flowRange: FlowRange,
@@ -378,6 +485,12 @@ export const WalletOverviewSchema = z.object({
 	quickActions: z.array(WalletAction).max(10),
 	capabilities: z.array(VaultCapability),
 	verification: WalletVerificationSchema,
+	/**
+	 * The earned Standing rung + its commission taper. `null` for a buyer-only subject (a client
+	 * wallet, a business/organisation vault) and for the read-only aggregate — those carry no
+	 * Standing, so the surface omits the gauge rather than drawing an empty one.
+	 */
+	standing: WalletStandingSchema.nullable(),
 	personal: PersonalExtrasSchema.nullable(),
 	team: TeamExtrasSchema.nullable(),
 	business: BusinessExtrasSchema.nullable(),
@@ -862,6 +975,12 @@ export type SimKyc = "verified" | "unverified" | "payout_setup";
 export type SimSmoother = "auto" | "ineligible" | "eligible" | "enrolled";
 /** The fund-state mix the switcher can simulate (surface locked / pending / disputed balances). */
 export type SimFundMix = "normal" | "locked" | "pending" | "dispute";
+/**
+ * The Standing rung the switcher can simulate (`auto` derives it from the subject). `stage_floor`
+ * is the honest edge case the gauge must render: the score gate is cleared but the completed-stage
+ * volume floor is not, so the rung has NOT advanced (finance-model.md §16.3).
+ */
+export type SimStanding = "auto" | "l1" | "l2" | "l3" | "l4" | "l5" | "stage_floor";
 
 /**
  * The fixture-shaping simulation knobs the Dev Context Switcher drives (dev-only; ignored on the live
@@ -872,6 +991,7 @@ export interface WalletSim {
 	kyc?: SimKyc;
 	smoother?: SimSmoother;
 	fundMix?: SimFundMix;
+	standing?: SimStanding;
 }
 
 /** A resolved wallet read query: which wallet, in which display currency, for whom, under which sim. */

@@ -1,19 +1,26 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { Money, SectionCard } from "../components/wallet-bits.tsx";
-import { IncomeSmootherCard } from "../components/IncomeSmootherCard.tsx";
-import { WalletIcon } from "../components/wallet-glyphs.tsx";
+import { Tooltip } from "@projective/ui/feedback";
+import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { FundStateMark } from "../components/FundStateMark.tsx";
+import { VerificationGate } from "../components/VerificationGate.tsx";
+import { Money } from "../components/Money.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext, openWalletAction } from "../core/wallet-state.ts";
+import { currentWalletContext } from "../core/wallet-state.ts";
 import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
-import type { PayoutHistoryRow, PayoutsView } from "../types/wallet-types.ts";
+import type { PayoutsView } from "../types/wallet-types.ts";
 
 /**
- * WalletPayoutsScreen — `/wallet/payouts`: the payout-schedule summary + editor trigger, destinations,
- * the Income Smoother, the Instant Payout offer (fee disclosed as configurable — never a fabricated %),
- * and withdrawal history. Withdrawal paths are locked behind the verification gate (a freelancer without
- * payout setup sees a prompt instead of the controls). THIN: SSR + refetch on dev axis / mutation.
+ * WalletPayoutsScreen — payout configuration and history (`/wallet/payouts`).
+ *
+ * The schedule reads as a statement of fact rather than a form: every control that CHANGES it lives
+ * in the footer rig (§6.3). History is a ledger-shaped table showing what each run actually cost —
+ * the flat 5% platform fee and the marketplace commission at the acting rung — because a payout the
+ * user cannot decompose is a payout they will distrust.
+ *
+ * The Instant Payout offer discloses "a small fee applies" and nothing more: its magnitude is an
+ * undecided platform economic, and rendering a placeholder percentage would be fabricating policy.
  */
 export interface WalletPayoutsScreenProps {
 	initial: PayoutsView;
@@ -25,167 +32,125 @@ const MODE_LABEL: Record<string, string> = {
 	manual: "Manual",
 	scheduled_weekly: "Weekly",
 	scheduled_monthly: "Monthly",
-	threshold: "When balance reaches a threshold",
+	threshold: "At a threshold",
 };
+
+const STATUS_STATE = {
+	paid: "available",
+	in_transit: "pending",
+	pending: "pending",
+	failed: "on_hold",
+} as const;
 
 export default function WalletPayoutsScreen(props: WalletPayoutsScreenProps): JSX.Element {
 	const view = useSignal<PayoutsView>(props.initial);
-	async function reload(): Promise<void> {
+
+	const refetch = async () => {
 		const res = await WalletService.payouts(currentWalletContext());
 		if (res.ok && res.data) view.value = res.data.payouts;
-	}
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: reload });
-	useWalletRefresh(reload);
+	};
+	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletRefresh(refetch);
 
 	const p = view.value;
-	const locked = !p.verification.canWithdraw;
 
 	return (
-		<div class="wallet-page wallet-payouts">
-			<header class="wallet-page__head">
-				<h1 class="wallet-page__title">Payouts</h1>
-			</header>
+		<main class="wlt" aria-label="Payouts">
+			<div class="wlt__stack">
+				<Band tone="head" index={0} label="Payouts">
+					<PageHead
+						title="Payouts"
+						meta={<span>{p.history.length} runs</span>}
+					/>
+					<VerificationGate verification={p.verification} tone="inline" />
+				</Band>
 
-			{locked && p.verification.prompt && (
-				<div class="wallet-verify" role="status" data-locked="true">
-					<span class="wallet-verify__glyph" aria-hidden="true">
-						<WalletIcon name="access" size={20} />
-					</span>
-					<p class="wallet-verify__text">{p.verification.prompt}</p>
-					{p.verification.href && (
-						<a class="wallet-btn wallet-btn--primary" href={p.verification.href}>Finish setup</a>
-					)}
-				</div>
-			)}
+				<Band tone="intel" index={1} titleId="wlt-pay-sched">
+					<BandHead id="wlt-pay-sched" title="Schedule" />
+					<dl class="wlt-facts">
+						<div class="wlt-facts__row">
+							<dt class="wlt-facts__label">Frequency</dt>
+							<dd class="wlt-facts__value">{MODE_LABEL[p.schedule.mode] ?? p.schedule.mode}</dd>
+						</div>
+						{p.schedule.threshold && (
+							<div class="wlt-facts__row">
+								<dt class="wlt-facts__label">Threshold</dt>
+								<dd class="wlt-facts__value">
+									<Money value={p.schedule.threshold} size="body" showFx={false} />
+								</dd>
+							</div>
+						)}
+						{p.schedule.destinationLabel && (
+							<div class="wlt-facts__row">
+								<dt class="wlt-facts__label">Destination</dt>
+								<dd class="wlt-facts__value">{p.schedule.destinationLabel}</dd>
+							</div>
+						)}
+						{p.schedule.nextRunLabel && (
+							<div class="wlt-facts__row">
+								<dt class="wlt-facts__label">Next run</dt>
+								<dd class="wlt-facts__value">{p.schedule.nextRunLabel}</dd>
+							</div>
+						)}
+						<div class="wlt-facts__row">
+							<dt class="wlt-facts__label">Available now</dt>
+							<dd class="wlt-facts__value">
+								<Money value={p.instantAvailable} size="body" showFx={false} />
+							</dd>
+						</div>
+					</dl>
+					{/* The magnitude is deliberately undecided platform-wide — never a percentage. */}
+					<p class="wlt-prose wlt-facts__note">{p.instantFeeLabel}</p>
+				</Band>
 
-			<div class="wallet-payouts__grid">
-				<SectionCard
-					title="Schedule"
-					class="wallet-payouts__schedule"
-					action={
-						<button
-							type="button"
-							class="wallet-btn wallet-btn--ghost"
-							disabled={locked}
-							onClick={() => openWalletAction("set_payout")}
-						>
-							Edit
-						</button>
-					}
-				>
-					<div class="wallet-metarow">
-						<span class="wallet-metarow__label">Frequency</span>
-						<span class="wallet-metarow__value">
-							{MODE_LABEL[p.schedule.mode] ?? p.schedule.mode}
-						</span>
-					</div>
-					{p.schedule.threshold && (
-						<div class="wallet-metarow">
-							<span class="wallet-metarow__label">Threshold</span>
-							<span class="wallet-metarow__value">
-								<Money value={p.schedule.threshold} />
-							</span>
-						</div>
-					)}
-					{p.schedule.destinationLabel && (
-						<div class="wallet-metarow">
-							<span class="wallet-metarow__label">To</span>
-							<span class="wallet-metarow__value">{p.schedule.destinationLabel}</span>
-						</div>
-					)}
-					{p.schedule.nextRunLabel && (
-						<div class="wallet-metarow">
-							<span class="wallet-metarow__label">Next run</span>
-							<span class="wallet-metarow__value">{p.schedule.nextRunLabel}</span>
-						</div>
-					)}
-				</SectionCard>
+				<Band tone="flow" index={2} titleId="wlt-pay-dest">
+					<BandHead id="wlt-pay-dest" title="Destinations" />
+					{p.destinations.length === 0
+						? (
+							<EmptyBand
+								text="No payout destination yet."
+								hint="Add one from the action bar to receive money."
+							/>
+						)
+						: (
+							<ul class="wlt-rows" role="list">
+								{p.destinations.map((d) => (
+									<li class="wlt-rows__row" key={d.id}>
+										<span class="wlt-rows__title">{d.label}</span>
+										<span class="wlt-rows__meta wlt-num">
+											{d.brand ? `${d.brand} ·· ${d.last4 ?? "—"}` : d.last4 ?? ""}
+										</span>
+										{d.isDefault && <span class="wlt-rows__tag">Default</span>}
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
 
-				<SectionCard
-					title="Instant payout"
-					class="wallet-payouts__instant"
-					action={
-						<button
-							type="button"
-							class="wallet-btn wallet-btn--primary"
-							disabled={locked}
-							onClick={() => openWalletAction("withdraw")}
-						>
-							Withdraw now
-						</button>
-					}
-				>
-					<div class="wallet-figure">
-						<span class="wallet-figure__label">Available</span>
-						<Money value={p.instantAvailable} class="wallet-figure__value" />
-					</div>
-					<p class="wallet-figure__sub">{p.instantFeeLabel}</p>
-				</SectionCard>
+				<Band tone="ledger" index={3} titleId="wlt-pay-hist">
+					<BandHead id="wlt-pay-hist" title="History" />
+					{p.history.length === 0
+						? <EmptyBand text="No payouts yet." />
+						: (
+							<ul class="wlt-rows wlt-rows--ledger" role="list">
+								{p.history.map((h) => (
+									<li class="wlt-rows__row" key={h.id}>
+										<Tooltip content={h.status.replace("_", " ")} placement="top">
+											<span class="wlt-rows__state" aria-label={`Status: ${h.status}`}>
+												<FundStateMark state={STATUS_STATE[h.status]} clearingFraction={0.6} />
+											</span>
+										</Tooltip>
+										<span class="wlt-rows__title">{h.destinationLabel}</span>
+										<span class="wlt-rows__meta">{h.dateLabel}</span>
+										<span class="wlt-rows__amount">
+											<Money value={h.amount} size="body" tone="debit" sign="−" showFx={false} />
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+				</Band>
 			</div>
-
-			{p.incomeSmoother && (
-				<IncomeSmootherCard
-					state={p.incomeSmoother}
-					onEnrol={() => openWalletAction("enrol_smoother")}
-				/>
-			)}
-
-			<SectionCard
-				title="Destinations"
-				class="wallet-payouts__dests"
-				action={
-					<button
-						type="button"
-						class="wallet-btn wallet-btn--ghost"
-						onClick={() => openWalletAction("add_method")}
-					>
-						Add
-					</button>
-				}
-			>
-				{p.destinations.length === 0
-					? <p class="wallet-empty-note">No payout destinations yet.</p>
-					: (
-						<ul class="wallet-methods__list">
-							{p.destinations.map((d) => (
-								<li key={d.id} class="wallet-methods__row">
-									<span class="wallet-methods__brand">
-										<WalletIcon name="card" size={18} /> {d.brand ?? "Bank"} ·· {d.last4 ?? "0000"}
-									</span>
-									<span class="wallet-methods__label">{d.label}</span>
-									{d.isDefault && <span class="wallet-badge" data-tone="info">Default</span>}
-								</li>
-							))}
-						</ul>
-					)}
-			</SectionCard>
-
-			<SectionCard title="History" class="wallet-payouts__history">
-				{p.history.length === 0
-					? <p class="wallet-empty-note">No withdrawals yet.</p>
-					: (
-						<ul class="wallet-histlist">
-							{p.history.map((h) => <HistoryRow key={h.id} row={h} />)}
-						</ul>
-					)}
-			</SectionCard>
-		</div>
-	);
-}
-
-function HistoryRow({ row }: { row: PayoutHistoryRow }): JSX.Element {
-	const tone = row.status === "paid" ? "success" : row.status === "failed" ? "danger" : "warning";
-	const label = row.status === "in_transit"
-		? "In transit"
-		: row.status.charAt(0).toUpperCase() + row.status.slice(1);
-	return (
-		<li class="wallet-histlist__row">
-			<span class="wallet-histlist__meta">
-				<span class="wallet-histlist__dest">{row.destinationLabel}</span>
-				<span class="wallet-histlist__date">{row.dateLabel}</span>
-			</span>
-			<span class="wallet-chip" data-tone={tone}>{label}</span>
-			<Money value={row.amount} class="wallet-histlist__amt" />
-		</li>
+		</main>
 	);
 }

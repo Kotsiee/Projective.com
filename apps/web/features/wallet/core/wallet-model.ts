@@ -5,6 +5,7 @@ import type {
 	SimFundMix,
 	SimKyc,
 	SimSmoother,
+	SimStanding,
 	TxnCategory,
 	VaultCapability,
 	WalletAction,
@@ -131,6 +132,15 @@ export function defaultWalletParam(context: UserContext): string {
 const KYC_VALUES: readonly SimKyc[] = ["verified", "unverified", "payout_setup"];
 const SMOOTHER_VALUES: readonly SimSmoother[] = ["auto", "ineligible", "eligible", "enrolled"];
 const FUNDMIX_VALUES: readonly SimFundMix[] = ["normal", "locked", "pending", "dispute"];
+const STANDING_VALUES: readonly SimStanding[] = [
+	"auto",
+	"l1",
+	"l2",
+	"l3",
+	"l4",
+	"l5",
+	"stage_floor",
+];
 const ROLE_VALUES = ["owner", "admin", "pm", "member"] as const;
 
 /** Parse the dev-simulation knobs from a query string (routes read these; islands write them). */
@@ -150,6 +160,10 @@ export function parseSim(sp: URLSearchParams): WalletSim | undefined {
 	if (fundMix && (FUNDMIX_VALUES as readonly string[]).includes(fundMix)) {
 		sim.fundMix = fundMix as SimFundMix;
 	}
+	const standing = sp.get("standing");
+	if (standing && (STANDING_VALUES as readonly string[]).includes(standing)) {
+		sim.standing = standing as SimStanding;
+	}
 	return Object.keys(sim).length > 0 ? sim : undefined;
 }
 
@@ -167,6 +181,7 @@ export function buildSimQuery(opts: {
 	if (s?.kyc) qs.set("kyc", s.kyc);
 	if (s?.smoother) qs.set("smoother", s.smoother);
 	if (s?.fundMix) qs.set("fundMix", s.fundMix);
+	if (s?.standing) qs.set("standing", s.standing);
 	return qs.toString();
 }
 

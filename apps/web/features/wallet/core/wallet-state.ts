@@ -1,5 +1,5 @@
 import { computed, signal } from "@preact/signals";
-import type { WalletAction, WalletSim } from "../types/wallet-types.ts";
+import type { FundState, LedgerLine, WalletAction, WalletSim } from "../types/wallet-types.ts";
 import type { WalletContext } from "./WalletService.ts";
 
 /**
@@ -102,6 +102,66 @@ export function withSim<T extends Record<string, unknown>>(payload: T): T {
 		...(s.kyc ? { kyc: s.kyc } : {}),
 		...(s.smoother ? { smoother: s.smoother } : {}),
 		...(s.fundMix ? { fundMix: s.fundMix } : {}),
+		...(s.standing ? { standing: s.standing } : {}),
 	} as T;
+}
+// #endregion
+
+// #region Surface state (hero ⇄ ledger selection, deck, overlays)
+/**
+ * The fund state the viewer has selected in the hero's capital meter. Selecting a legend cell filters
+ * the Recent band and syncs the URL; selecting the active one clears it. This is DATA SELECTION —
+ * the body's stated remit — not navigation, so it is legal in the body (BUILD CONTRACT §12.2).
+ */
+export const fundFilter = signal<FundState | null>(null);
+
+/** Whether the payment-method deck has expanded from its fanned rest state into the grid overlay. */
+export const deckExpanded = signal<boolean>(false);
+/** The method whose detail drawer is open (`null` = none). */
+export const activeMethodId = signal<string | null>(null);
+
+/**
+ * Whether the hero has already run its count-up. Module-level so it survives a re-render: a refetch
+ * (range change, currency flip, dev axis, account switch) must paint the new strings INSTANTLY and
+ * never re-animate — money that appears to be spinning reads as money being counted, not held
+ * (RULE M-2 / M-3).
+ */
+export const heroAnimated = signal<boolean>(false);
+
+/** The ledger line whose detail drawer is open (`null` = none). */
+export const drawerLine = signal<LedgerLine | null>(null);
+
+/** Whether the parked mini-wallet (a `DraggablePopover`) is open. */
+export const popoutOpen = signal<boolean>(false);
+
+/** A money-movement flow in progress: which step, and the composed input awaiting confirmation. */
+export interface MoveFlowState {
+	kind: "transfer" | "withdraw" | "top_up" | "fund_escrow" | "distribute";
+	step: "confirm" | "pending" | "done" | "error";
+	/** The server-formatted amount, echoed verbatim into the confirm button (RULE O-2). */
+	amountDisplay: string;
+	amountMinor: number;
+	currency: string;
+	fromLabel: string;
+	toLabel: string;
+	note: string | null;
+	/** Server message on success/failure — never composed client-side. */
+	message: string | null;
+	/** Recipient count, for the Distribute confirmation and its live-region announcement. */
+	recipients: number;
+}
+
+/** The active money-movement flow (`null` = none). Drives {@link ConfirmMoveModal}. */
+export const moveFlow = signal<MoveFlowState | null>(null);
+
+/**
+ * Reset the per-view selection state. Called when the viewer switches wallet or currency, so a
+ * filter selected against one wallet's ledger never silently persists into another's.
+ */
+export function resetOnRefetch(): void {
+	fundFilter.value = null;
+	drawerLine.value = null;
+	deckExpanded.value = false;
+	activeMethodId.value = null;
 }
 // #endregion

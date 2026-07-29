@@ -36,6 +36,7 @@ import {
 	type DevWalletFundMix,
 	type DevWalletKyc,
 	type DevWalletSmoother,
+	type DevWalletStanding,
 	type DevWalletVaultRole,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
@@ -63,6 +64,7 @@ export type {
 	DevWalletFundMix,
 	DevWalletKyc,
 	DevWalletSmoother,
+	DevWalletStanding,
 	DevWalletVaultRole,
 };
 
@@ -136,6 +138,12 @@ export interface DevOverrides {
 	walletSmoother: DevWalletSmoother;
 	/** Simulated `/wallet` fund-state mix — which of the three-state balance projection's states carry a balance. */
 	walletFundMix: DevWalletFundMix;
+	/**
+	 * Simulated earned Standing rung — drives the `/wallet` Standing gauge and the marketplace-commission
+	 * taper it pays out (8% -> 6.5%). `stage_floor` reaches the state where the score gate is cleared but
+	 * the completed-stage volume floor is not, so the rung has NOT advanced.
+	 */
+	walletStanding: DevWalletStanding;
 	/** Simulated display currency — drives the fat service's conversion + `Intl` formatting (RtL-independent). */
 	displayCurrency: DevDisplayCurrency;
 	/** Simulated document layout direction (LtR/RtL) — verifies the whole surface mirrors under `dir="rtl"`. */
@@ -171,6 +179,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	walletKyc: "verified",
 	walletSmoother: "enrolled",
 	walletFundMix: "normal",
+	walletStanding: "auto",
 	displayCurrency: "GBP",
 	layoutDirection: "ltr",
 };
@@ -271,6 +280,20 @@ export const DEV_WALLET_FUND_MIXES: ReadonlyArray<DevOption<DevWalletFundMix>> =
 	{ value: "dispute", label: "Dispute" },
 ];
 
+/**
+ * Standing-rung options in display order (`/wallet` Standing gauge + commission taper). `Auto` derives
+ * the rung from the subject; `Stage floor` is the score-cleared-but-volume-short edge case.
+ */
+export const DEV_WALLET_STANDINGS: ReadonlyArray<DevOption<DevWalletStanding>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "l1", label: "L1 New" },
+	{ value: "l2", label: "L2 Estab." },
+	{ value: "l3", label: "L3 Trusted" },
+	{ value: "l4", label: "L4 Expert" },
+	{ value: "l5", label: "L5 Elite" },
+	{ value: "stage_floor", label: "Stage floor" },
+];
+
 /** Display-currency options in display order. */
 export const DEV_DISPLAY_CURRENCIES: ReadonlyArray<DevOption<DevDisplayCurrency>> = [
 	{ value: "GBP", label: "GBP £" },
@@ -337,6 +360,7 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devWalletKyc = next.walletKyc;
 		root.dataset.devWalletSmoother = next.walletSmoother;
 		root.dataset.devWalletFundMix = next.walletFundMix;
+		root.dataset.devWalletStanding = next.walletStanding;
 		root.dataset.devDisplayCurrency = next.displayCurrency;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
@@ -363,6 +387,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devWalletKyc;
 		delete root.dataset.devWalletSmoother;
 		delete root.dataset.devWalletFundMix;
+		delete root.dataset.devWalletStanding;
 		delete root.dataset.devDisplayCurrency;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).

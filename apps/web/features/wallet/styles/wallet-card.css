@@ -1,0 +1,680 @@
+/*
+ * wallet-card — the payment instrument (`wlt-card`) and the deck that holds it (`wlt-deck`).
+ * BUILD CONTRACT §1.4 (card face tokens) · §1.6 (radius language) · §2.4 (BEM inventory) ·
+ * §4.2 (the hero's right third) · §6.5 (the methods grid) · §8 (fan / grid / gloss motion, RULE M-1).
+ *
+ * Token-only, strict BEM. Every colour is a runtime token or a `color-mix()` of runtime tokens, so
+ * the whole instrument recolours with the theme in one simultaneous crossfade and resolves in light
+ * AND dark, under `data-contrast="high"`, and under every `data-cvd` overlay. There is no raw hex,
+ * no brand hex, and — the rule that kills the concept deck's Mastercard-as-`--warning` — no
+ * money-semantic token anywhere in the brand ladder: an alarm colour must never sit on a payment
+ * instrument.
+ *
+ * CSS LOGICAL PROPERTIES ONLY, so the surface mirrors under `dir="rtl"` with zero horizontal
+ * overflow. The fan and the gloss sweep multiply `--wlt-fan-dir` rather than translating along a
+ * physical axis, and the face gradient mirrors by flipping `--wlt-key-angle`.
+ *
+ * `--danger` appears nowhere in this file: the deck is above the fold, and a payment instrument the
+ * viewer still owns is never rendered as an alarm (RULE C-1).
+ */
+
+/* #region Card — face tokens (§1.4) */
+.wlt-card {
+	/*
+	 * Brand tint is DERIVED, never looked up. A graphite floor (`--wlt-base`) keeps four anchors
+	 * reading as one family; only the key hue, its strength, and the sweep angle change.
+	 */
+	--wlt-key: var(--primary);
+	--wlt-key-mix: 26%;
+	--wlt-key-angle: 145deg;
+	--wlt-base: color-mix(in srgb, var(--surface-3) 82%, var(--on-surface) 18%);
+	--wlt-sheen: color-mix(in srgb, var(--on-primary) 16%, transparent);
+	--wlt-fan-dir: 1;
+}
+
+.wlt-card--brand-visa {
+	--wlt-key: var(--primary);
+	--wlt-key-mix: 30%;
+	--wlt-key-angle: 145deg;
+}
+
+.wlt-card--brand-mastercard {
+	--wlt-key: var(--tertiary);
+	--wlt-key-mix: 26%;
+	--wlt-key-angle: 118deg;
+}
+
+.wlt-card--brand-amex {
+	--wlt-key: var(--secondary);
+	--wlt-key-mix: 32%;
+	--wlt-key-angle: 165deg;
+}
+
+.wlt-card--brand-bank {
+	--wlt-key: var(--outline);
+	--wlt-key-mix: 18%;
+	--wlt-key-angle: 100deg;
+}
+
+.wlt-card--brand-generic {
+	--wlt-key: var(--outline);
+	--wlt-key-mix: 10%;
+	--wlt-key-angle: 145deg;
+}
+
+/*
+ * The gradient sweep is the one physical direction on the face, so it flips wholesale under RtL —
+ * a card lit from the reading edge in one locale must be lit from the reading edge in the other.
+ */
+[dir="rtl"] .wlt-card {
+	--wlt-key-angle: 215deg;
+	--wlt-fan-dir: -1;
+}
+
+/*
+ * High contrast pulls the tint back so the face never erodes the contrast of the label, the PAN or
+ * the seal. The instrument stays identifiable by its wordmark and its geometry, which is what the
+ * overlay is protecting.
+ */
+:root[data-contrast="high"] .wlt-card {
+	--wlt-key-mix: 14%;
+	--wlt-sheen: color-mix(in srgb, var(--on-primary) 8%, transparent);
+}
+/* #endregion */
+
+/* #region Card — the object */
+.wlt-card {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	gap: var(--space-3);
+	inline-size: 100%;
+	aspect-ratio: 1.586;
+	margin: 0;
+	padding: var(--space-5);
+	/*
+	 * No stroke. The card is the one interactive object RULE B-1 would allow a contour, and it
+	 * declines it: definition comes from the gradient edge and the elevation, which is what makes it
+	 * read as an object rather than a boxed region (§12.4).
+	 */
+	border: 0;
+	border-radius: var(--radius-2xl);
+	overflow: clip;
+	color: var(--on-surface);
+	background-color: var(--wlt-base);
+	background-image:
+		radial-gradient(140% 100% at 50% -10%, var(--wlt-sheen), transparent 62%),
+		linear-gradient(
+		var(--wlt-key-angle),
+		color-mix(in srgb, var(--wlt-key) var(--wlt-key-mix), var(--wlt-base)) 0%,
+		var(--wlt-base) 58%,
+		color-mix(in srgb, var(--wlt-key) calc(var(--wlt-key-mix) / 2), var(--wlt-base)) 100%
+	);
+	box-shadow: var(--elevation-medium);
+	font: inherit;
+	text-align: start;
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-card:is(button) {
+	appearance: none;
+	cursor: pointer;
+}
+
+.wlt-card:is(button):hover {
+	transform: translateY(-10px);
+	box-shadow: var(--elevation-high);
+}
+
+.wlt-card:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/*
+ * A retired instrument loses its brand tint entirely rather than gaining an alarm colour: the face
+ * goes graphite, the PAN recedes, and the badge states the fact in words. Tone is the fourth
+ * channel here, never the first (RULE C-3).
+ */
+.wlt-card--expired {
+	--wlt-key-mix: 0%;
+	box-shadow: none;
+}
+
+.wlt-card--inactive {
+	--wlt-key-mix: 6%;
+}
+
+.wlt-card--expired .wlt-card__pan,
+.wlt-card--inactive .wlt-card__pan {
+	color: var(--text-secondary);
+}
+
+.wlt-card--size-deck {
+	max-inline-size: 400px;
+}
+
+.wlt-card--size-detail {
+	padding: var(--space-6);
+}
+/* #endregion */
+
+/* #region Card — elements */
+/*
+ * The gloss is an entrance flourish for the detail face only; it is absent from the deck and the
+ * methods grid, where several sweeps at once would read as a screensaver rather than an object.
+ */
+.wlt-card__gloss {
+	display: none;
+}
+
+.wlt-card--size-detail .wlt-card__gloss {
+	display: block;
+	position: absolute;
+	inset-block: -20%;
+	inset-inline-start: 0;
+	inline-size: 100%;
+	pointer-events: none;
+	background-image: linear-gradient(105deg, transparent 42%, var(--wlt-sheen) 50%, transparent 58%);
+	animation: wlt-card-gloss var(--dur-slow) var(--ease-standard) both;
+}
+
+@keyframes wlt-card-gloss {
+	from {
+		transform: translate(calc(-130% * var(--wlt-fan-dir, 1)));
+	}
+	to {
+		transform: translate(calc(130% * var(--wlt-fan-dir, 1)));
+	}
+}
+
+.wlt-card__chip {
+	position: relative;
+	inline-size: 2.75rem;
+	block-size: 2.125rem;
+	border-radius: var(--radius-xs);
+	background-image: linear-gradient(
+		150deg,
+		color-mix(in srgb, var(--on-surface) 26%, var(--surface-3)),
+		color-mix(in srgb, var(--on-surface) 8%, var(--surface-3))
+	);
+}
+
+/* Contact traces drawn as gradient hairlines — a texture, not a border, so no contour is implied. */
+.wlt-card__chip-trace {
+	position: absolute;
+	inset-block: 18%;
+	inset-inline: 16%;
+	background-image:
+		linear-gradient(
+		180deg,
+		transparent calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% + 0.5px),
+		transparent calc(50% + 0.5px)
+	),
+		linear-gradient(
+		90deg,
+		transparent calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% + 0.5px),
+		transparent calc(50% + 0.5px)
+	);
+}
+
+.wlt-card__badges {
+	display: flex;
+	flex-direction: column;
+	align-items: end;
+	gap: var(--space-1);
+	justify-self: end;
+}
+
+.wlt-card__badge {
+	padding-block: 2px;
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-base);
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	white-space: nowrap;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+
+.wlt-card__badge--funding {
+	background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.wlt-card__badge--payout {
+	background: color-mix(in srgb, var(--secondary) 22%, transparent);
+}
+
+.wlt-card__badge--expired {
+	background: color-mix(in srgb, var(--warning) 24%, transparent);
+}
+
+/*
+ * The PAN zone. Three masked groups are ornament (hidden from assistive tech in the markup); only
+ * the trailing group holds a fact. There is no expiry element, no cardholder-name element and no
+ * flip-to-reveal anywhere in this block — the void is the card's thesis, not a gap (§12.6).
+ */
+.wlt-card__pan {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	align-self: center;
+	grid-column: 1 / -1;
+	margin: 0;
+	font-size: var(--wlt-fs-key);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wlt-num-track);
+	color: var(--on-surface);
+}
+
+.wlt-card__pan-group--masked {
+	color: color-mix(in srgb, currentColor 58%, transparent);
+	letter-spacing: 0.06em;
+}
+
+/*
+ * The rows are declared explicitly so the wordmark's `grid-row: 1 / -1` resolves against a real
+ * explicit grid; against an implicit one `-1` collapses to a single-row span.
+ */
+.wlt-card__custody {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-rows: auto auto auto;
+	align-items: end;
+	gap: var(--space-1) var(--space-4);
+	grid-column: 1 / -1;
+}
+
+.wlt-card__label {
+	grid-column: 1;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wlt-card__roles {
+	display: flex;
+	grid-column: 1;
+	gap: var(--space-2);
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+/* A dot separator drawn in CSS so the roles read as one line, never as two chips. */
+.wlt-card__role + .wlt-card__role::before {
+	content: "·";
+	margin-inline-end: var(--space-2);
+}
+
+.wlt-card__seal {
+	display: flex;
+	align-items: center;
+	grid-column: 1;
+	gap: var(--space-2);
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wlt-card__seal-glyph {
+	display: inline-flex;
+	flex: none;
+}
+
+.wlt-card__seal-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A wordmark is a logo, not text: it keeps its own direction in every locale (§11 RtL). */
+.wlt-card__brand {
+	grid-column: 2;
+	grid-row: 1 / -1;
+	align-self: end;
+	direction: ltr;
+	unicode-bidi: isolate;
+	font-size: var(--wlt-fs-body);
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Deck — the fanned stack */
+.wlt-deck {
+	--wlt-fan-dir: 1;
+	inline-size: 100%;
+}
+
+[dir="rtl"] .wlt-deck {
+	--wlt-fan-dir: -1;
+}
+
+.wlt-deck__wrap {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	/* The fan always overhangs toward the block-start and the inline-end, in both directions. */
+	padding-block-start: var(--space-7);
+	padding-inline-end: var(--space-7);
+}
+
+.wlt-deck__list {
+	position: relative;
+	grid-column: 1 / -1;
+	inline-size: 100%;
+	max-inline-size: 400px;
+	aspect-ratio: 1.586;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*
+ * Fan geometry (§8). Every inline offset multiplies `--wlt-fan-dir`, so the stack fans away from the
+ * reading edge in both writing directions — there is no raw horizontal translation in this file.
+ */
+.wlt-deck__list > li {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	inline-size: 100%;
+	z-index: calc(20 - var(--wlt-i, 0));
+	transform-origin: 50% 100%;
+	transform:
+		translate(calc(var(--wlt-i, 0) * 6px * var(--wlt-fan-dir)), calc(var(--wlt-i, 0) * -7px))
+		rotate(calc(var(--wlt-i, 0) * 0.7deg * var(--wlt-fan-dir)))
+		scale(calc(1 - var(--wlt-i, 0) * 0.026));
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.wlt-deck__wrap:hover .wlt-deck__list > li,
+.wlt-deck__wrap:focus-within .wlt-deck__list > li {
+	transform:
+		translate(calc(var(--wlt-i, 0) * 26px * var(--wlt-fan-dir)), calc(var(--wlt-i, 0) * -20px))
+		rotate(calc(var(--wlt-i, 0) * 3.2deg * var(--wlt-fan-dir)))
+		scale(1);
+	transition-delay: calc(var(--wlt-i, 0) * 40ms);
+}
+
+.wlt-deck__count {
+	margin: 0;
+	font-size: var(--wlt-fs-label);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* The deck's ONLY control: an icon-only disclosure. No text CTA lives in a band body (§12.2). */
+.wlt-deck__expand {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: var(--hairline) solid var(--border-subtle);
+	border-radius: 999px;
+	background: var(--surface-2);
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-deck__expand:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wlt-deck__expand:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* Announcements only — the state change is already visible, so it carries no visual weight. */
+.wlt-deck__live {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	clip-path: inset(50%);
+}
+
+.wlt-deck--empty {
+	padding-block: var(--space-6);
+}
+/* #endregion */
+
+/* #region Deck — the grid overlay */
+/*
+ * Mounted through BodyPortal (RULE O-1): the middle-nav lane is a glass, `overflow: clip` stacking
+ * context, so a fixed layer left in the tree would be re-based onto the lane's box. The portal also
+ * guarantees the height-locked hero band never reflows when the deck opens (§8).
+ */
+.wlt-deck--expanded {
+	position: fixed;
+	inset-block: 0;
+	inset-inline: 0;
+	z-index: var(--wlt-z, var(--z-modal));
+	display: grid;
+	place-items: center;
+	padding: var(--wlt-band-pad);
+	opacity: 1;
+	transition: opacity var(--dur-fast) var(--ease-emphasized);
+}
+
+.wlt-deck--expanded[data-state="closed"] {
+	opacity: 0;
+}
+
+.wlt-deck--expanded .wlt-deck__wrap {
+	inline-size: min(100%, 68rem);
+	max-block-size: 84dvh;
+	overflow-y: auto;
+	padding: var(--space-6);
+	border-radius: var(--radius-container-lg);
+	background: var(--surface-1);
+	box-shadow: var(--elevation-high);
+}
+
+.wlt-deck--expanded .wlt-deck__list {
+	position: static;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+	gap: var(--space-5);
+	max-inline-size: none;
+	aspect-ratio: auto;
+}
+
+.wlt-deck--expanded .wlt-deck__list > li {
+	position: static;
+	inline-size: auto;
+	transform: none;
+	transition: none;
+	animation: wlt-deck-in var(--dur-slow) var(--ease-emphasized) both;
+	animation-delay: calc(var(--wlt-i, 0) * 45ms);
+}
+
+.wlt-deck--expanded .wlt-deck__wrap:hover .wlt-deck__list > li,
+.wlt-deck--expanded .wlt-deck__wrap:focus-within .wlt-deck__list > li {
+	transform: none;
+	transition-delay: 0ms;
+}
+
+@keyframes wlt-deck-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+/* #endregion */
+
+/* #region Responsive (§10) */
+@media (max-width: 1439px) {
+	.wlt-deck__list,
+	.wlt-card--size-deck {
+		max-inline-size: 340px;
+	}
+}
+
+/*
+ * Below the tablet breakpoint the fan becomes a snap rail: a fanned stack is a pointer affordance,
+ * and on touch it hides instruments behind a gesture nobody performs. The disclosure disappears with
+ * it — every card is already reachable — and a card never narrows past legibility.
+ */
+@media (max-width: 767px) {
+	.wlt-deck__wrap {
+		padding-block-start: 0;
+		padding-inline-end: 0;
+	}
+
+	.wlt-deck__list {
+		position: static;
+		display: flex;
+		gap: var(--space-4);
+		max-inline-size: none;
+		aspect-ratio: auto;
+		padding-block-end: var(--space-2);
+		overflow-x: auto;
+		scroll-snap-type: inline mandatory;
+	}
+
+	.wlt-deck__list > li {
+		position: static;
+		flex: 0 0 288px;
+		transform: none;
+		transition: none;
+		scroll-snap-align: start;
+	}
+
+	.wlt-deck__wrap:hover .wlt-deck__list > li,
+	.wlt-deck__wrap:focus-within .wlt-deck__list > li {
+		transform: none;
+	}
+
+	.wlt-deck__expand {
+		display: none;
+	}
+
+	.wlt-card:is(button):hover {
+		transform: none;
+	}
+
+	.wlt-card:is(button):active {
+		box-shadow: var(--elevation-high);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion (RULE M-1) */
+/*
+ * Jump to the final state: no fan on hover (elevation carries the affordance instead), no gloss, no
+ * staggered grid entrance. The resting fan offsets remain — they are a static layout, not motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.wlt-card,
+	.wlt-deck__list > li,
+	.wlt-deck__expand,
+	.wlt-deck--expanded {
+		transition: none;
+	}
+
+	.wlt-card:is(button):hover {
+		transform: none;
+		box-shadow: var(--elevation-high);
+	}
+
+	.wlt-deck__wrap:hover .wlt-deck__list > li,
+	.wlt-deck__wrap:focus-within .wlt-deck__list > li {
+		transform:
+			translate(calc(var(--wlt-i, 0) * 6px * var(--wlt-fan-dir)), calc(var(--wlt-i, 0) * -7px))
+			rotate(calc(var(--wlt-i, 0) * 0.7deg * var(--wlt-fan-dir)))
+			scale(calc(1 - var(--wlt-i, 0) * 0.026));
+		transition-delay: 0ms;
+	}
+
+	.wlt-deck__wrap:hover .wlt-deck__list > li > .wlt-card,
+	.wlt-deck__wrap:focus-within .wlt-deck__list > li > .wlt-card {
+		box-shadow: var(--elevation-high);
+	}
+
+	.wlt-card--size-detail .wlt-card__gloss {
+		display: none;
+	}
+
+	.wlt-deck--expanded .wlt-deck__list > li {
+		animation: none;
+		opacity: 1;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-card,
+:root[data-motion="reduced"] .wlt-deck__list > li,
+:root[data-motion="reduced"] .wlt-deck__expand,
+:root[data-motion="reduced"] .wlt-deck--expanded {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .wlt-card:is(button):hover {
+	transform: none;
+	box-shadow: var(--elevation-high);
+}
+
+:root[data-motion="reduced"] .wlt-deck__wrap:hover .wlt-deck__list > li,
+:root[data-motion="reduced"] .wlt-deck__wrap:focus-within .wlt-deck__list > li {
+	transform:
+		translate(calc(var(--wlt-i, 0) * 6px * var(--wlt-fan-dir)), calc(var(--wlt-i, 0) * -7px))
+		rotate(calc(var(--wlt-i, 0) * 0.7deg * var(--wlt-fan-dir)))
+		scale(calc(1 - var(--wlt-i, 0) * 0.026));
+	transition-delay: 0ms;
+}
+
+:root[data-motion="reduced"] .wlt-deck__wrap:hover .wlt-deck__list > li > .wlt-card,
+:root[data-motion="reduced"] .wlt-deck__wrap:focus-within .wlt-deck__list > li > .wlt-card {
+	box-shadow: var(--elevation-high);
+}
+
+:root[data-motion="reduced"] .wlt-card--size-detail .wlt-card__gloss {
+	display: none;
+}
+
+:root[data-motion="reduced"] .wlt-deck--expanded .wlt-deck__list > li {
+	animation: none;
+	opacity: 1;
+}
+/* #endregion */

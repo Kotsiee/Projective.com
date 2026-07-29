@@ -1,17 +1,22 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { SectionCard } from "../components/wallet-bits.tsx";
-import { WalletIcon } from "../components/wallet-glyphs.tsx";
+import { Grid } from "@projective/ui/layout";
+import { Band, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { PaymentCard } from "../components/PaymentCard.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext, openWalletAction } from "../core/wallet-state.ts";
+import { activeMethodId, currentWalletContext } from "../core/wallet-state.ts";
 import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
-import type { MethodsView, PaymentMethodView } from "../types/wallet-types.ts";
+import type { MethodsView } from "../types/wallet-types.ts";
 
 /**
- * WalletMethodsScreen — `/wallet/methods`: payment methods tagged funding (spend) / payout (earn) / both,
- * with default-spend & default-payout markers. Card entry is Stripe-hosted (the add modal), never a
- * card-number field. THIN: SSR + refetch on dev axis / mutation.
+ * WalletMethodsScreen — the tokenized instruments (`/wallet/methods`).
+ *
+ * A full-bleed grid of card faces, bounded by a column CAP rather than by a container width. The
+ * face shows `•••• •••• •••• 4455` + brand + label + role badges and nothing else: card data is
+ * Stripe-hosted and never touches our servers, so there is no expiry element, no cardholder-name
+ * element, no CVV affordance and no flip-to-reveal-back anywhere in this tree. The absence is the
+ * point — an affordance implying we hold data we do not is worse than an empty zone (§12.6).
  */
 export interface WalletMethodsScreenProps {
 	initial: MethodsView;
@@ -19,82 +24,57 @@ export interface WalletMethodsScreenProps {
 	display: string;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-	funding: "Spend",
-	payout: "Earn",
-	both: "Spend & earn",
-};
-
 export default function WalletMethodsScreen(props: WalletMethodsScreenProps): JSX.Element {
 	const view = useSignal<MethodsView>(props.initial);
-	async function reload(): Promise<void> {
+
+	const refetch = async () => {
 		const res = await WalletService.methods(currentWalletContext());
 		if (res.ok && res.data) view.value = res.data.methods;
-	}
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: reload });
-	useWalletRefresh(reload);
+	};
+	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletRefresh(refetch);
 
-	const m = view.value;
+	const m = view.value.methods;
+
 	return (
-		<div class="wallet-page wallet-methods-page">
-			<header class="wallet-page__head">
-				<h1 class="wallet-page__title">Payment methods</h1>
-				<button
-					type="button"
-					class="wallet-btn wallet-btn--primary"
-					onClick={() => openWalletAction("add_method")}
-				>
-					<WalletIcon name="card" size={16} /> Add method
-				</button>
-			</header>
+		<main class="wlt" aria-label="Payment methods">
+			<div class="wlt__stack">
+				<Band tone="head" index={0} label="Methods">
+					<PageHead title="Payment methods" meta={<span>{m.length} saved</span>} />
+				</Band>
 
-			<SectionCard>
-				{m.methods.length === 0
-					? (
-						<p class="wallet-empty-note">
-							No payment methods. Add a card or bank to fund and get paid.
-						</p>
-					)
-					: (
-						<ul class="wallet-methodcards">
-							{m.methods.map((pm) => <MethodCard key={pm.id} method={pm} />)}
-						</ul>
-					)}
-			</SectionCard>
-
-			<p class="wallet-page__foot-note">
-				<WalletIcon name="access" size={14} />{" "}
-				Card details are held securely by Stripe — Projective never sees or stores them.
-			</p>
-		</div>
-	);
-}
-
-function MethodCard({ method }: { method: PaymentMethodView }): JSX.Element {
-	return (
-		<li class="wallet-methodcard" data-status={method.status}>
-			<span class="wallet-methodcard__brand">
-				<WalletIcon name="card" size={22} />
-			</span>
-			<span class="wallet-methodcard__meta">
-				<span class="wallet-methodcard__name">
-					{method.brand ?? "Card"} ·· {method.last4 ?? "0000"}
-				</span>
-				<span class="wallet-methodcard__sub">{method.label ?? ROLE_LABEL[method.methodRole]}</span>
-			</span>
-			<span class="wallet-methodcard__tags">
-				<span class="wallet-badge" data-tone="neutral">{ROLE_LABEL[method.methodRole]}</span>
-				{method.isDefaultFunding && (
-					<span class="wallet-badge" data-tone="info">
-						Default spend
-					</span>
-				)}
-				{method.isDefaultPayout && (
-					<span class="wallet-badge" data-tone="info">
-						Default payout
-					</span>
-				)}
-			</span>
-		</li>
+				<Band tone="page" index={1} label="Saved methods">
+					{m.length === 0
+						? (
+							<EmptyBand
+								text="No payment methods saved."
+								hint="Add one from the action bar. Card details are collected and held by Stripe."
+							/>
+						)
+						: (
+							<>
+								<Grid minChildWidth="19rem" maxCols={4} gap="var(--space-5)">
+									{m.map((method, i) => (
+										<PaymentCard
+											key={method.id}
+											method={method}
+											size="grid"
+											index={i}
+											interactive
+											onOpen={(id) => {
+												activeMethodId.value = id;
+											}}
+										/>
+									))}
+								</Grid>
+								<p class="wlt-prose wlt-methods__note">
+									Card details are collected and held by Stripe. Projective stores only the brand,
+									the last four digits, your label, and whether the method is active.
+								</p>
+							</>
+						)}
+				</Band>
+			</div>
+		</main>
 	);
 }

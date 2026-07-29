@@ -1,0 +1,441 @@
+/*
+ * wallet-charts — the chart engine's presentation layer (BUILD CONTRACT §2.6 · §4.3 · §6.2 · §8).
+ *
+ * Decision #1 tiers the engine: D3 resolves scales and geometry in `core/{flow,burn,category}-chart`,
+ * and the mark ships as low-density inline SVG hand-rolled in the app. Nothing here is imported from
+ * `packages/ui` — that package's portability contract forbids a dependency, and a chart is an app
+ * concern, not a design-system primitive.
+ *
+ * Token-only, strict BEM. Non-interactive content is separated by spacing, a tonal step and ONE
+ * hairline on ONE edge (§B.4); there is not a four-sided border in this file. There is no
+ * `max-inline-size` on anything: a chart takes the full content region (RULE L-1 / §12.3).
+ *
+ * ── The time axis is NEVER mirrored under RtL ──────────────────────────────────────────────────
+ * A time axis reads left-to-right in every locale — the oldest bucket is always at the inline-start
+ * of the drawing, exactly as a clock face reads the same everywhere (§11 RtL). So the three
+ * time-series charts (`--flow`, `--inout`, `--burn`) are DIRECTION-LOCKED to `ltr`, and every logical
+ * inset inside them therefore resolves to a fixed physical side ON PURPOSE. Only the surrounding
+ * chrome mirrors: the band head, its totals, the bar lists, and the screen-reader table (which is
+ * explicitly handed back to the document direction below).
+ *
+ * Everything else in this file is logical-property-only, so the bar lists mirror cleanly.
+ */
+
+/* #region Block */
+.wlt-chart {
+	position: relative;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/*
+ * The three time-series charts. Their plot geometry is a physical drawing, not text flow — see the
+ * header note. The screen-reader table is prose about that drawing, so it returns to the document
+ * direction.
+ */
+.wlt-chart--flow,
+.wlt-chart--inout,
+.wlt-chart--burn {
+	direction: ltr;
+}
+
+[dir="rtl"] .wlt-chart__table {
+	direction: rtl;
+}
+
+/* §6.2 — the Activity page runs the overview's in/out chart at 1.4× (`--wlt-chart-h` 11rem). */
+.wlt-chart--inout {
+	--wlt-chart-h: 15.4rem;
+}
+/* #endregion */
+
+/* #region The plot
+ *
+ * One stretched SVG carries the geometry; every readable element is a DOM sibling positioned in
+ * PERCENTAGES over it. `preserveAspectRatio: none` lets one resolved path be correct at any height,
+ * and keeping text and dots out of the SVG keeps them free of the horizontal distortion that stretch
+ * introduces. `--wlt-chart-h` is the single source of the plot's block extent, so the SVG and the
+ * overlay can never disagree.
+ */
+.wlt-chart__svg {
+	display: block;
+	inline-size: 100%;
+	block-size: var(--wlt-chart-h);
+	/* A horizontal drag reads the series; a vertical drag still scrolls the page. */
+	touch-action: pan-y;
+}
+
+/*
+ * The zero line — money in above it, money out below it. It is the one mark that survives an empty
+ * series: §9 keeps the band's rhythm and draws a flat baseline rather than a centred illustration.
+ */
+.wlt-chart--flow .wlt-chart__grid,
+.wlt-chart--inout .wlt-chart__grid,
+.wlt-chart--burn .wlt-chart__grid {
+	stroke: var(--outline);
+	stroke-width: 1px;
+	opacity: 0.6;
+	vector-effect: non-scaling-stroke;
+}
+
+/*
+ * In and out are told apart by POSITION first (above or below the zero line) and by hue second, so
+ * the distinction survives every `data-cvd` overlay and a fully desaturated print — colour is never
+ * a sole channel (RULE C-3).
+ */
+.wlt-chart--flow .wlt-chart__area--in,
+.wlt-chart--inout .wlt-chart__area--in {
+	fill: var(--wlt-flow-in);
+}
+
+.wlt-chart--flow .wlt-chart__area--out,
+.wlt-chart--inout .wlt-chart__area--out {
+	fill: var(--wlt-flow-out);
+}
+
+/* The burn-down's only fill is the over-budget divergence, drawn only where it exists (§4.4). */
+.wlt-chart--burn .wlt-chart__area,
+.wlt-chart--burn .wlt-chart__area--out {
+	fill: var(--wlt-overspend);
+}
+
+.wlt-chart--flow .wlt-chart__line,
+.wlt-chart--inout .wlt-chart__line,
+.wlt-chart--burn .wlt-chart__line {
+	fill: none;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	/* The stretch must never thicken the stroke. */
+	vector-effect: non-scaling-stroke;
+}
+
+.wlt-chart__line--net {
+	stroke: var(--wlt-flow-net);
+	stroke-width: 1.5px;
+}
+
+/* Planned is the reference, so it is dashed and recessive; actual is the fact, so it is solid. */
+.wlt-chart__line--planned {
+	stroke: var(--outline);
+	stroke-width: 1.5px;
+	stroke-dasharray: 4 5;
+}
+
+.wlt-chart__line--actual {
+	stroke: var(--primary);
+	stroke-width: 2px;
+}
+
+:root[data-contrast="high"] .wlt-chart--flow .wlt-chart__area--in,
+:root[data-contrast="high"] .wlt-chart--inout .wlt-chart__area--in {
+	fill: color-mix(in srgb, var(--success) 52%, transparent);
+}
+
+:root[data-contrast="high"] .wlt-chart--flow .wlt-chart__area--out,
+:root[data-contrast="high"] .wlt-chart--inout .wlt-chart__area--out {
+	fill: color-mix(in srgb, var(--warning) 50%, transparent);
+}
+
+:root[data-contrast="high"] .wlt-chart--flow .wlt-chart__grid,
+:root[data-contrast="high"] .wlt-chart--inout .wlt-chart__grid,
+:root[data-contrast="high"] .wlt-chart--burn .wlt-chart__grid {
+	opacity: 1;
+}
+/* #endregion */
+
+/* #region Peak + cursor
+ *
+ * The peak dot is permanent, so the largest period is legible without a pointer at all — a readout
+ * that only exists on hover does not exist on touch. The cursor hairline and its label are the
+ * pointer ENHANCEMENT on top of that; the whole series is always available in `__table`.
+ *
+ * Both are centred over their x by a zero-width (peak) or hairline-width (cursor) flex box rather
+ * than a translate, so nothing on this surface depends on a physical axis (§11 RtL).
+ */
+.wlt-chart__peak {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: var(--wlt-peak-x, 50%);
+	inline-size: 0;
+	block-size: var(--wlt-chart-h);
+	pointer-events: none;
+	direction: ltr;
+}
+
+.wlt-chart__peak-dot {
+	position: absolute;
+	inset-block-start: var(--wlt-peak-y, 50%);
+	inset-inline-start: 0;
+	/* Centre the dot on its own coordinate. Fixed lengths, never percentages: a percentage margin
+	   resolves against the containing block's INLINE size, which is zero here. */
+	margin-inline-start: calc(var(--wlt-pip-dot) / -2);
+	margin-block-start: calc(var(--wlt-pip-dot) / -2);
+	inline-size: var(--wlt-pip-dot);
+	block-size: var(--wlt-pip-dot);
+	border-radius: 50%;
+	background: var(--wlt-flow-net);
+	/* A ring, not a border: it separates the dot from the fill it sits on without a contour. */
+	box-shadow: 0 0 0 2px var(--surface);
+}
+
+.wlt-chart__cursor {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: var(--wlt-cursor-x, 50%);
+	inline-size: 1px;
+	block-size: var(--wlt-chart-h);
+	background: var(--hairline-color);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding-block-start: var(--space-2);
+	pointer-events: none;
+	direction: ltr;
+}
+
+/*
+ * The readout. Styled as a tooltip because it IS one — a portal `Tooltip` cannot be used here, since
+ * it anchors to a trigger element and this follows a pointer across a continuous surface. It is
+ * never a native `title`, which is banned surface-wide (§B.6 / §11).
+ * No `max-inline-size`: it carries a money figure (RULE L-1).
+ */
+.wlt-chart__peak-label {
+	inline-size: max-content;
+	padding-block: var(--space-1);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-base);
+	background: var(--surface-3);
+	color: var(--on-surface);
+	font-size: var(--wlt-fs-micro);
+	line-height: 1.4;
+	white-space: nowrap;
+	text-align: center;
+	box-shadow: var(--elevation-low);
+}
+/* #endregion */
+
+/* #region Axis
+ *
+ * Labels are DOM, not SVG `<text>`: the plot is stretched, and stretched text is unreadable. The
+ * first and last labels align flush to the bleed edge so the window's true extent is stated at the
+ * region's own boundary; every other label centres on its tick.
+ */
+.wlt-chart__axis {
+	position: relative;
+	block-size: 1.125rem;
+	margin-block-start: var(--space-2);
+	direction: ltr;
+}
+
+.wlt-chart__tick {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: var(--wlt-tick-x, 0%);
+	inline-size: 0;
+	display: flex;
+	justify-content: center;
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.wlt-chart__tick:first-child {
+	justify-content: flex-start;
+}
+
+.wlt-chart__tick:last-child {
+	justify-content: flex-end;
+}
+/* #endregion */
+
+/* #region The screen-reader series
+ *
+ * Every chart ships its data as a real table. A chart no screen reader can read is not accessible,
+ * and on a surface holding other people's money that is a custody failure, not a polish item (§11).
+ */
+.wlt-chart__table {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+/* #endregion */
+
+/* #region Bar lists (`--category`, `--project`)
+ *
+ * A horizontal bar list, never a donut. A marketplace answers "how much" before "what shape": a
+ * donut pushes every figure through an angle the eye cannot compare, buries the long tail in a
+ * legend, and is the most recognisable neobank tell on a finance surface (§6.2).
+ *
+ * These mirror normally — a ranked list is text, not a time axis.
+ */
+.wlt-chart--category .wlt-chart__legend,
+.wlt-chart--project .wlt-chart__legend {
+	display: flex;
+	flex-direction: column;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	inline-size: 100%;
+}
+
+/* Separation is a single hairline on a single edge — never a box (§B.4). */
+.wlt-chart--category .wlt-chart__legenditem,
+.wlt-chart--project .wlt-chart__legenditem {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: baseline;
+	column-gap: var(--space-4);
+	row-gap: var(--space-2);
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+}
+
+.wlt-chart--category .wlt-chart__legenditem:first-child,
+.wlt-chart--project .wlt-chart__legenditem:first-child {
+	border-block-start: 0;
+}
+
+/*
+ * The amount and the printed share. Both already carry `.wlt-num` by RULE T-1, so the numeric
+ * columns are selected by the class the contract guarantees rather than by position.
+ */
+.wlt-chart--category .wlt-chart__legenditem > .wlt-num,
+.wlt-chart--project .wlt-chart__legenditem > .wlt-num {
+	justify-self: end;
+	text-align: end;
+	color: var(--text-secondary);
+}
+
+/* The bar spans the whole row beneath the figures — a full track, an honest fill. */
+.wlt-chart--category .wlt-chart__grid,
+.wlt-chart--project .wlt-chart__grid {
+	grid-column: 1 / -1;
+	block-size: 6px;
+	inline-size: 100%;
+	border-radius: var(--radius-sm);
+	background: var(--wlt-meter-bg);
+	overflow: clip;
+}
+
+.wlt-chart--category .wlt-chart__area,
+.wlt-chart--project .wlt-chart__area {
+	display: block;
+	block-size: 100%;
+	/* The ABSOLUTE share, never scaled to the largest row: a bar that always ends full would claim
+	   every category is the whole of something. */
+	inline-size: var(--wlt-fill, 0%);
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--primary) 55%, var(--surface-2));
+}
+
+/* A project row navigates, so it earns a hover tint and a focus ring — interactive, per §B.4. */
+.wlt-chart--project .wlt-chart__legenditem:hover,
+.wlt-chart--project .wlt-chart__legenditem:focus-within {
+	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	border-radius: var(--radius-base);
+}
+
+.wlt-chart--project .wlt-chart__legenditem :focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-base);
+}
+/* #endregion */
+
+/* #region Motion (§8)
+ *
+ * Paths draw in on FIRST PAINT ONLY, and the mechanism is pure CSS on purpose: a keyframe animation
+ * runs when the element is created, so it fires without JavaScript, is correct on the very first
+ * SSR byte, and — because Preact patches the `d` attribute rather than replacing the node — does
+ * NOT replay on a refetch. Money must never appear to be re-counting itself (RULE M-3).
+ *
+ * The draw is normalised by the `pathLength="1"` attribute, so no path measurement is needed and SSR
+ * and the hydrated island are identical. The attribute selector is the guard: a path that does not
+ * opt in is simply never dashed.
+ */
+@media (prefers-reduced-motion: no-preference) {
+	.wlt-chart__line[pathLength] {
+		stroke-dasharray: 1;
+		animation: wlt-chart-draw var(--dur-slow) var(--ease-emphasized) both;
+	}
+
+	.wlt-chart--flow .wlt-chart__area,
+	.wlt-chart--inout .wlt-chart__area,
+	.wlt-chart--burn .wlt-chart__area {
+		animation: wlt-chart-fade var(--dur-slow) var(--ease-emphasized) both;
+	}
+
+	.wlt-chart--category .wlt-chart__area,
+	.wlt-chart--project .wlt-chart__area {
+		transition: inline-size var(--dur-slow) var(--spring-standard);
+	}
+}
+
+@keyframes wlt-chart-draw {
+	from {
+		stroke-dashoffset: 1;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+@keyframes wlt-chart-fade {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/*
+ * RULE M-1 — jump to the FINAL state, never to a faster animation. The design-system attribute has
+ * no consumers in `packages/ui` yet, so it is honoured explicitly here alongside the media query.
+ * The cursor never had a transition: a readout that lags the pointer is worse than none.
+ */
+:root[data-motion="reduced"] .wlt-chart__line[pathLength] {
+	stroke-dasharray: none;
+	animation: none;
+}
+
+:root[data-motion="reduced"] .wlt-chart__area {
+	animation: none;
+	transition: none;
+}
+/* #endregion */
+
+/* #region Responsive (§10) */
+@media (max-width: 1023px) {
+	.wlt-chart--flow,
+	.wlt-chart--burn {
+		--wlt-chart-h: var(--wlt-chart-h-sm);
+	}
+
+	.wlt-chart--inout {
+		--wlt-chart-h: calc(var(--wlt-chart-h-sm) * 1.4);
+	}
+}
+
+@media (max-width: 767px) {
+	.wlt-chart__tick {
+		letter-spacing: 0;
+	}
+
+	/* Two columns, so a long project name keeps its own line and the figures stay side by side. */
+	.wlt-chart--category .wlt-chart__legenditem,
+	.wlt-chart--project .wlt-chart__legenditem {
+		grid-template-columns: minmax(0, 1fr) auto;
+		column-gap: var(--space-3);
+	}
+}
+/* #endregion */

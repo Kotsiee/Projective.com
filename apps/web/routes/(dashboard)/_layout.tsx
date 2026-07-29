@@ -19,6 +19,7 @@ import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-sl
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
 import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
 import { walletFooterFor } from "@web/features/wallet/core/wallet-footer-slot.tsx";
+import { walletHeaderFor } from "@web/features/wallet/core/wallet-header-slot.tsx";
 import {
 	resolveConversationList,
 	resolveMessagingSettings,
@@ -89,7 +90,7 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
  */
 function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
 	return channelHeaderFor(url, context) ?? projectHeaderFor(url, context) ??
-		conversationHeaderFor(url, context);
+		conversationHeaderFor(url, context) ?? walletHeaderFor(url, context);
 }
 
 /**

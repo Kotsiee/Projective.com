@@ -1,0 +1,467 @@
+/*
+ * wallet-ledger — money on the way, the recent list, and the full ledger table
+ * (BUILD CONTRACT §2.6 / §4.5 / §6.1).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * The table has NO max-inline-size at any breakpoint. It is read across, and cropping it is the
+ * failure this redesign exists to remove. On mobile it becomes stacked two-line rows rather than a
+ * horizontal scroller, because a sideways-scrolling ledger on a phone is unreadable in a different way.
+ */
+
+/* #region Band 4's two columns */
+.wlt-ledgerrow {
+	display: grid;
+	grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+	gap: var(--space-7);
+	inline-size: 100%;
+}
+
+@media (max-width: 1023px) {
+	.wlt-ledgerrow {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-6);
+	}
+}
+/* #endregion */
+
+/* #region Incoming */
+.wlt-incoming {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.wlt-incoming__item {
+	border-block-start: var(--hairline);
+}
+
+.wlt-incoming__item:first-child {
+	border-block-start: none;
+}
+
+.wlt-incoming__link {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block: var(--space-3);
+	padding-inline: var(--space-2);
+	text-decoration: none;
+	color: inherit;
+	border-radius: var(--radius-base);
+}
+
+a.wlt-incoming__link:hover {
+	background: var(--surface-2);
+}
+
+a.wlt-incoming__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wlt-incoming__glyph {
+	display: inline-flex;
+	align-items: center;
+	color: var(--wlt-pending);
+}
+
+.wlt-incoming__item[data-state="locked"] .wlt-incoming__glyph {
+	color: var(--wlt-locked-hi);
+}
+
+.wlt-incoming__item[data-state="available"] .wlt-incoming__glyph {
+	color: var(--wlt-available);
+}
+
+.wlt-incoming__body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.wlt-incoming__label {
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-incoming__clearing {
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wlt-incoming__amount {
+	justify-self: end;
+}
+/* #endregion */
+
+/* #region Recent */
+.wlt-recent {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wlt-recent__filter {
+	margin: 0 0 var(--space-2);
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wlt-recent__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.wlt-recent__row {
+	border-block-start: var(--hairline);
+}
+
+.wlt-recent__row:first-child {
+	border-block-start: none;
+}
+
+.wlt-recent__link {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wlt-rowh);
+	padding-inline: var(--space-2);
+	text-decoration: none;
+	color: inherit;
+	border-radius: var(--radius-base);
+}
+
+a.wlt-recent__link:hover {
+	background: var(--surface-2);
+}
+
+a.wlt-recent__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* The direction mark is a 2px bar on the row's START edge — one edge, never a box. */
+.wlt-recent__dir {
+	inline-size: 2px;
+	block-size: 1.25rem;
+	border-radius: 999px;
+	background: var(--wlt-debit);
+	opacity: 0.5;
+}
+
+.wlt-recent__dir[data-dir="credit"] {
+	background: var(--wlt-credit);
+	opacity: 1;
+}
+
+.wlt-recent__body {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-inline-size: 0;
+}
+
+.wlt-recent__title {
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-recent__counterparty {
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A dispute is a CHIP. The amount stays legible — the money is not what is wrong. */
+.wlt-recent__chip {
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--wlt-dispute);
+	background: color-mix(in srgb, var(--danger) 16%, transparent);
+	border-radius: var(--radius-xs);
+	padding-inline: var(--space-2);
+	padding-block: 2px;
+	white-space: nowrap;
+}
+
+.wlt-recent__state {
+	display: inline-flex;
+	align-items: center;
+}
+
+.wlt-recent__date {
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	white-space: nowrap;
+	min-inline-size: 4.5rem;
+	text-align: end;
+}
+
+/* A text link, not a button: it navigates within the same dataset (RULE R-1). */
+.wlt-recent__seeall {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+	font-size: var(--wlt-fs-body);
+	color: var(--primary);
+	text-decoration: none;
+	align-self: start;
+}
+
+.wlt-recent__seeall:hover {
+	text-decoration: underline;
+}
+
+.wlt-recent__seeall:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+.wlt-recent__seeall-glyph {
+	display: inline-flex;
+}
+/* #endregion */
+
+/* #region The ledger table */
+.wlt-ledger {
+	inline-size: 100%;
+	min-inline-size: 0;
+	font-variant-numeric: tabular-nums lining-nums;
+}
+
+.wlt-ledger__head {
+	display: grid;
+	grid-template-columns: var(--wlt-ledger-cols);
+	gap: var(--space-3);
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+	background: var(--surface);
+	z-index: var(--z-raised);
+}
+
+.wlt-ledger__headcell {
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	min-inline-size: 0;
+}
+
+.wlt-ledger__headcell[data-align="end"] {
+	text-align: end;
+}
+
+.wlt-ledger__sortbtn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	color: inherit;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: var(--radius-xs);
+	padding-inline: var(--space-1);
+	cursor: pointer;
+}
+
+.wlt-ledger__sortbtn:hover {
+	color: var(--on-surface);
+}
+
+.wlt-ledger__sortbtn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* The mark encodes all three sort states, so "cleared" is visible rather than merely absent. */
+.wlt-ledger__sortmark::after {
+	content: "";
+	display: inline-block;
+	inline-size: 0;
+	block-size: 0;
+	border-inline: 3px solid transparent;
+}
+
+.wlt-ledger__sortbtn[data-sorted="asc"] .wlt-ledger__sortmark::after {
+	border-block-end: 4px solid currentColor;
+}
+
+.wlt-ledger__sortbtn[data-sorted="desc"] .wlt-ledger__sortmark::after {
+	border-block-start: 4px solid currentColor;
+}
+
+.wlt-ledger__grouphead {
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + 2rem);
+	background: var(--surface);
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	padding-block: var(--space-3) var(--space-2);
+	padding-inline: var(--space-2);
+	border-block-start: var(--hairline);
+	z-index: var(--z-base);
+}
+
+.wlt-ledger__row {
+	display: grid;
+	grid-template-columns: var(--wlt-ledger-cols);
+	gap: var(--space-3);
+	align-items: center;
+	min-block-size: var(--wlt-rowh-cur, var(--wlt-rowh));
+	padding-inline: var(--space-2);
+	border-block-start: var(--hairline);
+	cursor: pointer;
+	border-radius: var(--radius-base);
+}
+
+.wlt-ledger__row:hover {
+	background: var(--surface-2);
+}
+
+.wlt-ledger__row:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wlt-ledger__cell {
+	min-inline-size: 0;
+	font-size: var(--wlt-fs-body);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wlt-ledger__cell--date,
+.wlt-ledger__cell--category {
+	color: var(--text-secondary);
+	font-size: var(--wlt-fs-micro);
+}
+
+.wlt-ledger__cell--amount {
+	text-align: end;
+	justify-self: end;
+}
+
+.wlt-ledger__cell--title {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.wlt-ledger__linetitle {
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-ledger__counterparty {
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-ledger__chip {
+	display: inline-block;
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	background: var(--surface-3);
+	border-radius: var(--radius-xs);
+	padding-inline: var(--space-2);
+	padding-block: 2px;
+	white-space: nowrap;
+}
+
+.wlt-ledger__chip[data-dispute="true"] {
+	color: var(--wlt-dispute);
+	background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.wlt-ledger__sentinel {
+	block-size: 1px;
+}
+
+.wlt-ledger__tail {
+	margin: 0;
+	padding-block: var(--space-4);
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	text-align: center;
+}
+/* #endregion */
+
+/* #region Mobile — stacked rows, never a horizontal scroller */
+@media (max-width: 767px) {
+	.wlt-ledger__head {
+		display: none;
+	}
+
+	.wlt-ledger__row {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"title amount"
+			"meta  state";
+		row-gap: 2px;
+		padding-block: var(--space-3);
+	}
+
+	.wlt-ledger__cell--title {
+		grid-area: title;
+	}
+
+	.wlt-ledger__cell--amount {
+		grid-area: amount;
+	}
+
+	.wlt-ledger__cell--date {
+		grid-area: meta;
+	}
+
+	.wlt-ledger__cell--state {
+		grid-area: state;
+		justify-self: end;
+	}
+
+	.wlt-ledger__cell--category {
+		display: none;
+	}
+
+	.wlt-recent__link {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		row-gap: 2px;
+		padding-block: var(--space-2);
+	}
+
+	.wlt-recent__date,
+	.wlt-recent__chip {
+		display: none;
+	}
+}
+/* #endregion */

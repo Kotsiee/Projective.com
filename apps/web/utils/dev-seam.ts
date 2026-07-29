@@ -90,6 +90,13 @@ export type DevWalletSmoother = "ineligible" | "eligible" | "enrolled";
  * clearing · extra `dispute`/on-hold), so every balance state is reachable at runtime.
  */
 export type DevWalletFundMix = "normal" | "locked" | "pending" | "dispute";
+/**
+ * The earned Standing rung the Context Switcher can simulate for `/wallet` — drives the Standing gauge
+ * and its marketplace-commission taper (8% -> 6.5%). `auto` derives the rung from the subject;
+ * `stage_floor` is the honest edge case where the score gate is cleared but the completed-stage volume
+ * floor is not, so the rung has NOT advanced (finance-model.md 16.3).
+ */
+export type DevWalletStanding = "auto" | "l1" | "l2" | "l3" | "l4" | "l5" | "stage_floor";
 /** The display currency the Context Switcher can simulate (drives the server-side conversion + Intl formatting). */
 export type DevDisplayCurrency = "GBP" | "USD" | "EUR";
 /** The document layout direction the Context Switcher can simulate (RtL/LtR verification, independent of language). */
@@ -138,6 +145,8 @@ export interface DevSeamState {
 	walletSmoother: DevWalletSmoother;
 	/** The simulated `/wallet` fund-state mix (which balance states carry a balance). */
 	walletFundMix: DevWalletFundMix;
+	/** The simulated earned Standing rung driving the `/wallet` Standing gauge + commission taper. */
+	walletStanding: DevWalletStanding;
 	/** The simulated display currency (drives the server conversion + Intl formatting). */
 	displayCurrency: DevDisplayCurrency;
 	/** The simulated document layout direction (RtL/LtR). */
@@ -219,6 +228,15 @@ const WALLET_VAULT_ROLES: readonly DevWalletVaultRole[] = ["owner", "admin", "pm
 const WALLET_KYCS: readonly DevWalletKyc[] = ["verified", "unverified", "payout_setup"];
 const WALLET_SMOOTHERS: readonly DevWalletSmoother[] = ["ineligible", "eligible", "enrolled"];
 const WALLET_FUND_MIXES: readonly DevWalletFundMix[] = ["normal", "locked", "pending", "dispute"];
+const WALLET_STANDINGS: readonly DevWalletStanding[] = [
+	"auto",
+	"l1",
+	"l2",
+	"l3",
+	"l4",
+	"l5",
+	"stage_floor",
+];
 const DISPLAY_CURRENCIES: readonly DevDisplayCurrency[] = ["GBP", "USD", "EUR"];
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 
@@ -258,6 +276,7 @@ export function readDevSeam(): DevSeamState | null {
 		walletKyc: coerce(ds.devWalletKyc, WALLET_KYCS, "verified"),
 		walletSmoother: coerce(ds.devWalletSmoother, WALLET_SMOOTHERS, "enrolled"),
 		walletFundMix: coerce(ds.devWalletFundMix, WALLET_FUND_MIXES, "normal"),
+		walletStanding: coerce(ds.devWalletStanding, WALLET_STANDINGS, "auto"),
 		displayCurrency: coerce(ds.devDisplayCurrency, DISPLAY_CURRENCIES, "GBP"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
 	};

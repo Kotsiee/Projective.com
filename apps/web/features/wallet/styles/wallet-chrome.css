@@ -1,0 +1,525 @@
+/*
+ * wallet-chrome — the lane (expanded + collapsed rail), the header band, and the footer rig
+ * (BUILD CONTRACT §5).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * The shared `.ui-lane-*` chrome from `@projective/ui/navigation` is NOT restyled here — the wallet
+ * lane is meant to read as the same control set as `/projects` and `/messages`. Only the wallet's
+ * own additions carry rules.
+ */
+
+/* #region The dual presentation */
+.wlt-lanewrap,
+.wlt-lane {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+	inline-size: 100%;
+}
+
+/*
+ * Both presentations are always in the DOM; the splitter's density decides which paints. No width
+ * observer, so SSR and the hydrated island agree on the first frame.
+ */
+.wlt-rail {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .wlt-lane {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .wlt-rail {
+	display: flex;
+}
+
+/* Scoped with :has so only the WALLET lane takes this width — the feed lanes keep their own. */
+.ui-splitter[data-mode="collapsed"]:has(.wlt-rail) {
+	inline-size: var(--shell-sidebar-w);
+}
+/* #endregion */
+
+/* #region Expanded lane */
+.wlt-lane__head {
+	padding: var(--space-3);
+}
+
+.wlt-lane__switch {
+	display: block;
+	inline-size: 100%;
+	text-align: start;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	padding: 0;
+	cursor: pointer;
+}
+
+.wlt-lane__switch:hover {
+	border-color: var(--border-subtle);
+}
+
+.wlt-lane__switch:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wlt-lane__accounts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 17rem;
+}
+
+.wlt-lane__account {
+	display: block;
+	text-decoration: none;
+	color: inherit;
+	border-radius: var(--radius-lg);
+	padding: var(--space-1);
+}
+
+.wlt-lane__account:hover {
+	background: var(--surface-2);
+}
+
+.wlt-lane__account:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wlt-lane__accounts-sep {
+	block-size: 1px;
+	background: var(--hairline-color);
+	margin-block: var(--space-1);
+}
+
+.wlt-lane__account-note {
+	display: block;
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+	padding-inline: var(--space-2);
+	padding-block-start: var(--space-1);
+}
+
+.wlt-lane__nav {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+/* Ambient, never an alarm: the state is always present, the CTA only when there is one. */
+.wlt-lane__verify {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-block-start: var(--hairline);
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wlt-lane__verify-dot {
+	inline-size: 7px;
+	block-size: 7px;
+	border-radius: 999px;
+	background: var(--wlt-credit);
+	flex: none;
+}
+
+.wlt-lane__verify[data-tone="warn"] .wlt-lane__verify-dot {
+	background: var(--warning);
+}
+
+.wlt-lane__verify-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-lane__verify-link {
+	margin-inline-start: auto;
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.wlt-lane__verify-link:hover {
+	text-decoration: underline;
+}
+/* #endregion */
+
+/* #region Collapsed rail */
+.wlt-rail {
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-3);
+	block-size: 100%;
+	min-block-size: 0;
+}
+
+.wlt-rail__brand {
+	display: flex;
+	justify-content: center;
+	padding-block-end: var(--space-2);
+}
+
+/*
+ * The verification state survives the collapse as a ring on the switcher avatar — plus a tooltip
+ * carrying the words, because a ring colour alone is not a channel.
+ */
+.wlt-rail__switch {
+	display: inline-flex;
+	padding: 2px;
+	border-radius: 999px;
+	box-shadow: 0 0 0 2px var(--wlt-credit);
+}
+
+.wlt-rail__switch[data-verify="warn"] {
+	box-shadow: 0 0 0 2px var(--warning);
+}
+
+.wlt-rail__switch:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 3px;
+}
+
+.wlt-rail__items {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+.wlt-rail__item,
+.wlt-rail__toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.wlt-rail__item:hover,
+.wlt-rail__toggle:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wlt-rail__item[data-active="true"] {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	color: var(--primary);
+}
+
+.wlt-rail__item:focus-visible,
+.wlt-rail__toggle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wlt-rail__bottom {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: auto;
+}
+
+.wlt-rail__verify {
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: 999px;
+	background: var(--wlt-credit);
+}
+
+.wlt-rail__verify[data-tone="warn"] {
+	background: var(--warning);
+}
+/* #endregion */
+
+/* #region Header band */
+.wlt-headerband {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+	background: var(--surface-1);
+	border-block-end: var(--hairline);
+	overflow: clip;
+}
+
+.wlt-headerband__identity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wlt-headerband__name {
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-headerband__badge {
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	background: var(--surface-3);
+	border-radius: var(--radius-xs);
+	padding-inline: var(--space-2);
+	padding-block: 2px;
+	white-space: nowrap;
+}
+
+.wlt-headerband__controls {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+
+.wlt-headerband__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border-radius: var(--radius-base);
+	border: none;
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.wlt-headerband__icon:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wlt-headerband__icon:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wlt-headerband__panel {
+	min-inline-size: 18rem;
+	padding: var(--space-2);
+}
+
+.wlt-headerband__panel-note {
+	margin: 0;
+	font-size: var(--wlt-fs-micro);
+	color: var(--text-secondary);
+}
+
+/* Below 1200px the segmented range yields; the currency select and the entries survive. */
+@media (max-width: 1200px) {
+	.wlt-headerband__badge {
+		display: none;
+	}
+}
+
+@media (max-width: 900px) {
+	.wlt-headerband__range {
+		display: none;
+	}
+}
+/* #endregion */
+
+/* #region Footer rig */
+.wlt-footerrig {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-footer-h);
+	padding-inline: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.wlt-footerrig__actions,
+.wlt-footerrig__menu {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.wlt-footerrig__menu {
+	flex-direction: column;
+	align-items: stretch;
+	min-inline-size: 13rem;
+	padding: var(--space-1);
+}
+
+/* A full contour here is correct: these are interactive controls (§B.4). */
+.wlt-footerrig__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--wlt-fs-body);
+	white-space: nowrap;
+	padding-inline: var(--space-3);
+	padding-block: var(--space-2);
+	border-radius: var(--radius-base);
+	border: 1px solid transparent;
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-footerrig__action:hover {
+	background: var(--surface-3);
+}
+
+.wlt-footerrig__action:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wlt-footerrig__action[data-variant="primary"] {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.wlt-footerrig__action[data-variant="primary"]:hover {
+	background: color-mix(in srgb, var(--primary) 86%, var(--on-surface));
+}
+
+/*
+ * Locked, not removed. The control keeps its place so the path stays discoverable; the lock glyph
+ * and the reduced opacity say "not yet", and activating it explains how.
+ */
+.wlt-footerrig__action[data-locked="true"] {
+	opacity: 0.55;
+	background: none;
+	color: var(--text-secondary);
+}
+
+.wlt-footerrig__glyph {
+	display: inline-flex;
+}
+
+.wlt-footerrig__density {
+	display: flex;
+	align-items: center;
+	min-inline-size: 9rem;
+}
+
+.wlt-footerrig__more {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--wlt-fs-body);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-2);
+	border-radius: var(--radius-base);
+	border: 1px solid var(--border-subtle);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.wlt-footerrig__more:hover {
+	background: var(--surface-3);
+}
+
+.wlt-footerrig__more:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wlt-footerrig__export {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+	font-size: var(--wlt-fs-body);
+	color: var(--text-secondary);
+	text-decoration: none;
+	padding-inline: var(--space-3);
+	padding-block: var(--space-2);
+	border-radius: var(--radius-base);
+	white-space: nowrap;
+}
+
+.wlt-footerrig__export:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wlt-footerrig__export:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wlt-footerrig__note {
+	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wlt-footerrig__nudge {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	max-inline-size: 20rem;
+	padding: var(--space-3);
+}
+
+.wlt-footerrig__nudge-text {
+	margin: 0;
+	font-size: var(--wlt-fs-body);
+	color: var(--on-surface);
+}
+
+/* Mobile: the rig becomes a bottom bar; only the highest-priority actions survive the width. */
+@media (max-width: 767px) {
+	.wlt-footerrig {
+		padding-inline: var(--space-3);
+		padding-block-end: env(safe-area-inset-bottom);
+	}
+
+	.wlt-footerrig__action:nth-child(n + 3) {
+		display: none;
+	}
+
+	.wlt-footerrig__menu .wlt-footerrig__action:nth-child(n + 3) {
+		display: inline-flex;
+	}
+
+	.wlt-footerrig__export {
+		font-size: 0;
+		gap: 0;
+	}
+
+	.wlt-footerrig__more-label {
+		display: none;
+	}
+}
+/* #endregion */
