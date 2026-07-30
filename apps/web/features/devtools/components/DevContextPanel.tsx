@@ -7,9 +7,11 @@ import {
 	DEV_DISPLAY_CURRENCIES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_MEMBER_ROLES,
+	DEV_MEMBERSHIP_STATES,
 	DEV_MESSAGING_ROLES,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
+	DEV_ROSTER_STATES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
 	DEV_STAGE_ASSIGNMENTS,
@@ -19,6 +21,9 @@ import {
 	DEV_WALLET_SMOOTHERS,
 	DEV_WALLET_STANDINGS,
 	DEV_WALLET_VAULT_ROLES,
+	DEV_WORKSPACE_KINDS,
+	DEV_WORKSPACE_ROLES,
+	DEV_WORKSPACE_VERIFICATIONS,
 	type DevOption,
 	devOverrides,
 	patchDevContext,
@@ -335,6 +340,85 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(messagingRole) => patchDevContext({ messagingRole })}
 					/>
+				</Field>
+
+				<div class="dev-ctx__grouphead">Workspaces</div>
+
+				<Field label="Entity kind" hint="team / business">
+					<Segment
+						name="Entity kind"
+						options={DEV_WORKSPACE_KINDS}
+						value={o.workspaceKind}
+						disabled={!o.enabled}
+						onChange={(workspaceKind) => patchDevContext({ workspaceKind })}
+					/>
+				</Field>
+
+				<Field label="Entity role" hint="capability gate">
+					<Segment
+						name="Entity role"
+						options={DEV_WORKSPACE_ROLES}
+						value={o.workspaceRole}
+						disabled={!o.enabled}
+						onChange={(workspaceRole) => patchDevContext({ workspaceRole })}
+					/>
+				</Field>
+
+				<Field label="Membership" hint="active / pending">
+					<Segment
+						name="Membership state"
+						options={DEV_MEMBERSHIP_STATES}
+						value={o.membershipState}
+						disabled={!o.enabled}
+						onChange={(membershipState) => patchDevContext({ membershipState })}
+					/>
+				</Field>
+
+				<Field label="Entity verification" hint="KYC / KYB">
+					<Segment
+						name="Entity verification"
+						options={DEV_WORKSPACE_VERIFICATIONS}
+						value={o.workspaceVerification}
+						disabled={!o.enabled}
+						onChange={(workspaceVerification) => patchDevContext({ workspaceVerification })}
+					/>
+				</Field>
+
+				<Field label="Roster" hint="populated / single / empty">
+					<Segment
+						name="Roster state"
+						options={DEV_ROSTER_STATES}
+						value={o.rosterState}
+						disabled={!o.enabled}
+						onChange={(rosterState) => patchDevContext({ rosterState })}
+					/>
+				</Field>
+
+				<Field label="Acting context" hint="acting as the entity">
+					<div class="dev-ctx__segment" role="radiogroup" aria-label="Acting context">
+						<button
+							type="button"
+							role="radio"
+							aria-checked={o.actingContext}
+							class="dev-ctx__seg"
+							data-active={o.actingContext}
+							disabled={!o.enabled}
+							onClick={() => patchDevContext({ actingContext: true })}
+						>
+							Acting as
+						</button>
+						<button
+							type="button"
+							role="radio"
+							aria-checked={!o.actingContext}
+							class="dev-ctx__seg"
+							data-active={!o.actingContext}
+							disabled={!o.enabled}
+							onClick={() => patchDevContext({ actingContext: false })}
+						>
+							Personal
+						</button>
+					</div>
 				</Field>
 
 				<div class="dev-ctx__grouphead">Wallet / Finance</div>

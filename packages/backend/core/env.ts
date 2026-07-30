@@ -100,6 +100,20 @@ export interface ServerEnv {
 	 * where other backends are live.
 	 */
 	financeBackendLive: boolean;
+	/**
+	 * Master switch for LIVE workspace-backend behaviour. Defaults **off**: {@link WorkspaceBackendService}
+	 * answers the `/teams` + `/businesses` reads from deterministic fixtures and mutates an in-module
+	 * session store (create · invite · roles · membership · payout split · spend governance) until the
+	 * live reads are wired, then flip per environment.
+	 *
+	 * The live path reads the **existing** `org.teams` / `org.business_profiles` / `org.*_members` /
+	 * `org.*_roles` tables — the workspace projections are a read+write view over schema that already
+	 * exists, so **no migration accompanies this surface**. Like the catalogue and finance gates it
+	 * defaults off because the surface writes: it governs money policy (a team's payout split, a
+	 * business's spend envelopes) and authority (roles and per-member permission overrides), so a
+	 * half-wired mutation must not be able to fire against a real project.
+	 */
+	workspaceBackendLive: boolean;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -120,5 +134,6 @@ export function serverEnv(): ServerEnv {
 		catalogueBackendLive: (firstEnv("CATALOGUE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		loggingBackendLive: (firstEnv("LOGGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		financeBackendLive: (firstEnv("FINANCE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		workspaceBackendLive: (firstEnv("WORKSPACE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 	};
 }

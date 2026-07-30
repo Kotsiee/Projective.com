@@ -20,6 +20,9 @@ import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-foote
 import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
 import { walletFooterFor } from "@web/features/wallet/core/wallet-footer-slot.tsx";
 import { walletHeaderFor } from "@web/features/wallet/core/wallet-header-slot.tsx";
+import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
+import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
+import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
 import {
 	resolveConversationList,
 	resolveMessagingSettings,
@@ -80,7 +83,7 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
 	return channelFooterFor(url, context) ?? filesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
 		conversationFooterFor(url, context) ?? catalogueFooterFor(url, context) ??
-		walletFooterFor(url, context);
+		walletFooterFor(url, context) ?? workspaceFooterFor(url, context);
 }
 
 /**
@@ -90,7 +93,8 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
  */
 function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
 	return channelHeaderFor(url, context) ?? projectHeaderFor(url, context) ??
-		conversationHeaderFor(url, context) ?? walletHeaderFor(url, context);
+		conversationHeaderFor(url, context) ?? walletHeaderFor(url, context) ??
+		workspaceHeaderFor(url, context);
 }
 
 /**
@@ -128,6 +132,12 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 
 	// The Wallet (`/wallet`) hosts its finance lane (account switcher + capability-gated sub-nav).
 	if (url.pathname.startsWith("/wallet")) return walletLaneFor(url, context);
+
+	// The multi-member entity console (`/teams`, `/businesses`) hosts either the entity roster or, inside
+	// one entity, that entity's capability-filtered management rail.
+	if (url.pathname.startsWith("/teams") || url.pathname.startsWith("/businesses")) {
+		return workspaceLaneFor(url, context);
+	}
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();
 

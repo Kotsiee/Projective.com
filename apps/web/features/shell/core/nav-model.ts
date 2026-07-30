@@ -162,9 +162,10 @@ export function globalNav(
 			? {
 				key: "business",
 				label: "Businesses",
-				href: "/business",
+				// `/businesses` (plural) is canonical — the singular placeholder is retired.
+				href: "/businesses",
 				icon: "business",
-				active: isActive(path, "/business"),
+				active: isActive(path, "/businesses"),
 				children: workspaceSublinks("business"),
 			}
 			: null,

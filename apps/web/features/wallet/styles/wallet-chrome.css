@@ -253,15 +253,20 @@
 /* #endregion */
 
 /* #region Header band */
+/*
+ * The band contract, shared verbatim with the reference `.chan-header` (`/projects/…/files`,
+ * DESIGN_SYSTEM.md §D.4): exactly `--shell-midnav-header-h` tall, `--space-4` inline padding, and
+ * TRANSPARENT — the tonal surface is the shell band's own flush `--surface-1` glass underlay
+ * (`.ui-middle-nav__header::before`), and the seam beneath it is the canvas frame's single hairline
+ * (`.ui-page-canvas::before`, offset by this band's height). Painting an opaque plate + a second
+ * hairline here doubled both.
+ */
 .wlt-headerband {
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
 	block-size: var(--shell-midnav-header-h);
 	padding-inline: var(--space-4);
-	background: var(--surface-1);
-	border-block-end: var(--hairline);
-	overflow: clip;
 }
 
 .wlt-headerband__identity {
@@ -348,13 +353,20 @@
 /* #endregion */
 
 /* #region Footer rig */
+/*
+ * The band contract, shared verbatim with the reference `.fx-rig` (`/projects/…/files`): a
+ * `--space-2`/`--space-4` inset around a `--wlt-rig-row` control row, transparent, and NO hairline of
+ * its own — the seam is the canvas frame's (`.ui-page-canvas::before` grows a block-end hairline and
+ * rounds its block-end corner whenever a footer band is registered). The previous fixed
+ * `--shell-midnav-footer-h` box overshot that computed corner by `--space-1`, so the frame surface ran
+ * on behind the rig.
+ */
 .wlt-footerrig {
 	display: flex;
 	align-items: center;
+	justify-content: flex-start;
 	gap: var(--space-3);
-	block-size: var(--shell-midnav-footer-h);
-	padding-inline: var(--space-4);
-	border-block-start: var(--hairline);
+	padding: var(--space-2) var(--space-4);
 }
 
 .wlt-footerrig__actions,
@@ -381,8 +393,9 @@
 	font: inherit;
 	font-size: var(--wlt-fs-body);
 	white-space: nowrap;
+	block-size: var(--wlt-rig-row);
 	padding-inline: var(--space-3);
-	padding-block: var(--space-2);
+	padding-block: 0;
 	border-radius: var(--radius-base);
 	border: 1px solid transparent;
 	background: none;
@@ -435,8 +448,9 @@
 	gap: var(--space-2);
 	font: inherit;
 	font-size: var(--wlt-fs-body);
+	block-size: var(--wlt-rig-row);
 	padding-inline: var(--space-3);
-	padding-block: var(--space-2);
+	padding-block: 0;
 	border-radius: var(--radius-base);
 	border: 1px solid var(--border-subtle);
 	background: none;
@@ -461,8 +475,9 @@
 	font-size: var(--wlt-fs-body);
 	color: var(--text-secondary);
 	text-decoration: none;
+	block-size: var(--wlt-rig-row);
 	padding-inline: var(--space-3);
-	padding-block: var(--space-2);
+	padding-block: 0;
 	border-radius: var(--radius-base);
 	white-space: nowrap;
 }
@@ -502,7 +517,7 @@
 @media (max-width: 767px) {
 	.wlt-footerrig {
 		padding-inline: var(--space-3);
-		padding-block-end: env(safe-area-inset-bottom);
+		padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
 	}
 
 	.wlt-footerrig__action:nth-child(n + 3) {

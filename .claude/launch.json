@@ -138,6 +138,12 @@
 			"runtimeExecutable": "deno",
 			"runtimeArgs": ["task", "dev", "--port", "7673", "--strictPort"],
 			"port": 7673
+		},
+		{
+			"name": "web-teams",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": ["task", "dev", "--port", "7773", "--strictPort"],
+			"port": 7773
 		}
 	]
 }

@@ -19,7 +19,8 @@
 		"./profile": "./profile/mod.ts",
 		"./scheduling": "./scheduling/mod.ts",
 		"./logging": "./logging/mod.ts",
-		"./user": "./user/mod.ts"
+		"./user": "./user/mod.ts",
+		"./workspace": "./workspace/mod.ts"
 	},
 	"imports": {
 		"zod": "npm:zod@^4.3.6"

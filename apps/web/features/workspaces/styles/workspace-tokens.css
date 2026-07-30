@@ -1,0 +1,777 @@
+/*
+ * workspace-tokens — the local token layer + the primitives every sheet composes.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY (root CLAUDE.md §3/§5 · DESIGN_SYSTEM.md §B,
+ * §A.6): there is no `left`, `right`, `width`, `height`, `margin-left` or `translateX` anywhere in
+ * this feature, so `/teams` and `/businesses` mirror natively under `dir="rtl"`.
+ *
+ * Declared on `:root`, NOT on the feature root `.wsp`. That is deliberate and load-bearing. Four
+ * parts of this surface render OUTSIDE the page subtree and would resolve none of these values from a
+ * scoped layer: the middle-nav lane, the header band and the footer band are mounted into shell slots
+ * by the layout's resolvers, and every overlay (the member drawer, the create dialog, every kebab
+ * popover and tooltip) is portalled to `document.body` to escape the lane's glass stacking context.
+ * Scoping the equivalent layer to `.wlt` on /wallet left every one of them silently falling back.
+ * Every name here is `--wsp-`-prefixed, so nothing collides with the shell or another feature.
+ *
+ * NO raw hex and no raw radius: every colour is derived from the runtime Material You tokens
+ * (`--primary`, `--secondary`, `--surface-*`, `--success`, `--warning`, `--danger`, …) through
+ * `color-mix()`, so the whole surface recolours with the theme in one simultaneous crossfade and
+ * resolves correctly in light AND dark, under `data-contrast="high"` and under every `data-cvd`
+ * overlay.
+ *
+ * DATA-carrying custom properties (`--wsp-share`, `--wsp-fill`, `--wsp-progress`, `--wsp-i`) are
+ * delivered by `styleVars()` from `@ui/core/style.ts`. That is a value channel, not a style
+ * declaration — no component in this feature writes a CSS property inline.
+ */
+
+:root {
+	/* #region Type scale — the entity console is dense, so it needs its own compact ramp */
+	--wsp-fs-display: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
+	--wsp-fs-figure: clamp(1.25rem, 1.05rem + 0.6vw, 1.625rem);
+	--wsp-fs-key: 1.0625rem;
+	--wsp-fs-body: 0.875rem;
+	--wsp-fs-label: 0.75rem;
+	--wsp-fs-micro: 0.6875rem;
+
+	--wsp-num-track: -0.02em;
+	--wsp-label-track: 0.08em;
+
+	/* Minor currency units are de-emphasised by SIZE and TONE, never by a superscript — a raised
+	minor run breaks tabular alignment down a money column. */
+	--wsp-minor-size: 0.55em;
+	/*
+	 * Unitless on purpose: it feeds `opacity`, and a percentage delivered through `var()` is rejected
+	 * as invalid-at-computed-value-time by engines whose `<alpha-value>` grammar predates CSS Color 4,
+	 * which resets the property to `1` and undoes the de-emphasis entirely.
+	 */
+	--wsp-minor-fade: 0.62;
+	/* #endregion */
+
+	/* #region Kind identity — a team takes the BRAND tint, a business the ACCENT tint */
+	/*
+	 * The two kinds are one architecture parameterised by a discriminator, and that holds in CSS too:
+	 * nothing below reads `--wsp-team` or `--wsp-business` directly. Any element carrying
+	 * `data-kind` re-resolves the `--wsp-kind*` trio for its whole subtree (see the two rules under
+	 * this block), so every descendant reads `var(--wsp-kind)` and the kind difference stays a lookup
+	 * rather than a forked ruleset.
+	 */
+	--wsp-team: var(--primary);
+	--wsp-team-on: var(--on-primary);
+	--wsp-team-tint: color-mix(in srgb, var(--primary) 10%, var(--surface-1));
+	--wsp-team-tint-hi: color-mix(in srgb, var(--primary) 18%, var(--surface-1));
+	--wsp-team-edge: color-mix(in srgb, var(--primary) 40%, transparent);
+
+	--wsp-business: var(--secondary);
+	--wsp-business-on: var(--surface);
+	--wsp-business-tint: color-mix(in srgb, var(--secondary) 10%, var(--surface-1));
+	--wsp-business-tint-hi: color-mix(in srgb, var(--secondary) 18%, var(--surface-1));
+	--wsp-business-edge: color-mix(in srgb, var(--secondary) 40%, transparent);
+
+	/* The resolved trio. Defaults to the seller side so a kind-less fragment still paints. */
+	--wsp-kind: var(--wsp-team);
+	--wsp-kind-on: var(--wsp-team-on);
+	--wsp-kind-tint: var(--wsp-team-tint);
+	--wsp-kind-tint-hi: var(--wsp-team-tint-hi);
+	--wsp-kind-edge: var(--wsp-team-edge);
+	/* #endregion */
+
+	/* #region Acting context — layered, with exactly one loud channel */
+	/*
+	 * Acting as an entity is signalled on four surfaces at once (the roster card, the lane row, the
+	 * header band and a shell-wide line). Only the CHIP is allowed to be loud: it is a filled,
+	 * high-contrast pill. The ring is hairline weight and the tint is a single tonal step, so the
+	 * markers accumulate into one calm reading rather than four competing alarms.
+	 */
+	--wsp-acting: var(--wsp-kind);
+	--wsp-acting-on: var(--wsp-kind-on);
+	--wsp-acting-tint: color-mix(in srgb, var(--wsp-kind) 8%, var(--surface-1));
+	--wsp-acting-ring: color-mix(in srgb, var(--wsp-kind) 55%, transparent);
+	--wsp-acting-line-h: 2px;
+	/* #endregion */
+
+	/* #region Lifecycle + verification semantics */
+	/* `--success` means VERIFIED, SETTLED, DONE. It is never a lifecycle state. */
+	--wsp-verified: var(--success);
+	--wsp-pending: color-mix(in srgb, var(--warning) 70%, var(--on-surface-variant));
+	--wsp-unverified: var(--on-surface-variant);
+
+	/* A draft is not a fault — it is the normal first state of a Draft-First entity, so it is
+	achromatic. An archived entity is dimmed, never struck through in red. */
+	--wsp-draft: var(--on-surface-variant);
+	--wsp-active: var(--wsp-kind);
+	--wsp-archived: var(--outline);
+	--wsp-alert: var(--danger);
+	/* #endregion */
+
+	/* #region Permission semantics — the matrix's tri-state and the override markers */
+	/*
+	 * `conditional` is NOT "half allowed": it means the capability applies only under a written rule
+	 * (a spend ceiling, an approval threshold). It gets its own hue AND its own glyph so a limited
+	 * permission is never drawn as a plain tick, which would over-promise.
+	 */
+	--wsp-allowed: var(--success);
+	--wsp-allowed-tint: color-mix(in srgb, var(--success) 12%, transparent);
+	--wsp-conditional: var(--warning);
+	--wsp-conditional-tint: color-mix(in srgb, var(--warning) 12%, transparent);
+	--wsp-denied: var(--on-surface-variant);
+	--wsp-denied-tint: transparent;
+
+	/* Override markers. A grant reads as an addition to the role baseline, a revocation as a
+	subtraction — never as an error, because a deliberate revocation is correct configuration. */
+	--wsp-grant: var(--wsp-kind);
+	--wsp-revoke: var(--on-surface-variant);
+	--wsp-consequential: var(--warning);
+
+	/* A preset role is read-only by design. The locked look is a hatch plus a lock glyph, so it is
+	legible without colour. */
+	--wsp-locked-tint: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	--wsp-locked-hatch: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	/* #endregion */
+
+	/* #region Money — the split bar, the spend envelopes, the approval ladder */
+	--wsp-track-bg: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
+	--wsp-meter-bg: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
+	--wsp-hatch: color-mix(in srgb, var(--on-surface) 16%, transparent);
+
+	/*
+	 * Six stake tones for the split bar. Derived by walking the three accent roles at descending
+	 * mixes rather than inventing hues, so a split recolours with the theme and no stake can land on
+	 * a colour the palette does not own. Beyond six, `--wsp-stake-n` cycles (the island applies the
+	 * index modulo six) — and every stake carries its member's name and share in the legend, so the
+	 * colour is a locator, never the identity.
+	 */
+	--wsp-stake-1: var(--primary);
+	--wsp-stake-2: var(--secondary);
+	--wsp-stake-3: var(--tertiary);
+	--wsp-stake-4: color-mix(in srgb, var(--primary) 55%, var(--surface-2));
+	--wsp-stake-5: color-mix(in srgb, var(--secondary) 55%, var(--surface-2));
+	--wsp-stake-6: color-mix(in srgb, var(--tertiary) 55%, var(--surface-2));
+	--wsp-stake: var(--wsp-stake-1);
+
+	/* A held stake stays in the vault for a manual decision. It is hatched, not greyed out: the
+	share is still theirs. */
+	--wsp-held-hatch: color-mix(in srgb, var(--on-surface) 22%, transparent);
+
+	--wsp-spent: var(--wsp-kind);
+	--wsp-remaining: var(--wsp-track-bg);
+	--wsp-overspend: var(--warning);
+	/* #endregion */
+
+	/* #region Geometry */
+	--wsp-band-pad: clamp(var(--space-5), 2.6vw, var(--space-7));
+	--wsp-band-pad-b: var(--space-6);
+	--wsp-band-pad-b-lg: var(--space-7);
+	--wsp-band-gap: var(--space-6);
+
+	/* Entity marks — rounded squares. People stay circular; that is `Avatar`, not this. */
+	--wsp-mark-sm: 1.5rem;
+	--wsp-mark-md: 2.25rem;
+	--wsp-mark-lg: 3.5rem;
+	--wsp-mark-xl: 5rem;
+
+	--wsp-rowh: 3rem;
+	--wsp-rowh-dense: 2.25rem;
+	/* Matched to the shared `ZoomSlider`'s compact row so this surface's footer band resolves to the
+	same height the canvas frame computes its block-end corner against. */
+	--wsp-rig-row: 1.75rem;
+
+	--wsp-card-min: 20rem;
+	--wsp-tile-min: 11rem;
+	--wsp-chart-h: 10rem;
+
+	/* Split bar */
+	--wsp-track-h: 18px;
+	--wsp-track-h-hi: 24px;
+	--wsp-seg-gap: 2px;
+	/* Share (percent) below which a stake gains an overhanging pip instead of a dishonest minimum
+	width. The bar never fabricates room for a small share. */
+	--wsp-sliver: 3;
+	--wsp-pip-dot: 7px;
+	--wsp-handle-w: 12px;
+
+	/* Permission matrix */
+	--wsp-matrix-first: 14rem;
+	--wsp-matrix-col: 7.5rem;
+	--wsp-matrix-cellh: 2.5rem;
+
+	/* Org chart connectors */
+	--wsp-connector: var(--space-5);
+	--wsp-connector-color: var(--hairline-color);
+	--wsp-node-w: 13rem;
+	--wsp-tree-indent: var(--space-5);
+
+	/* Progress ring */
+	--wsp-ring-size: 2.75rem;
+	--wsp-ring-w: 4px;
+
+	/* The ONLY two max-widths permitted on this surface: running text and form fields. No card, no
+	table, no matrix, no money figure and no chart may be their descendant. */
+	--wsp-prose: 68ch;
+	--wsp-field: 28rem;
+	--wsp-drawer-w: min(30rem, 92vw);
+	/* #endregion */
+}
+
+/*
+ * The kind switch. Written twice rather than with a single `[data-kind]` selector so that neither
+ * value depends on the other's presence, and so a nested subtree (a business card inside a teams
+ * roster's "also a member of" section) re-resolves correctly.
+ */
+[data-kind="team"] {
+	--wsp-kind: var(--wsp-team);
+	--wsp-kind-on: var(--wsp-team-on);
+	--wsp-kind-tint: var(--wsp-team-tint);
+	--wsp-kind-tint-hi: var(--wsp-team-tint-hi);
+	--wsp-kind-edge: var(--wsp-team-edge);
+}
+
+[data-kind="business"] {
+	--wsp-kind: var(--wsp-business);
+	--wsp-kind-on: var(--wsp-business-on);
+	--wsp-kind-tint: var(--wsp-business-tint);
+	--wsp-kind-tint-hi: var(--wsp-business-tint-hi);
+	--wsp-kind-edge: var(--wsp-business-edge);
+}
+
+/* Stake index → tone. Six rules, because a `nth-child` cycle cannot survive a reordered split. */
+[data-stake="1"] {
+	--wsp-stake: var(--wsp-stake-1);
+}
+
+[data-stake="2"] {
+	--wsp-stake: var(--wsp-stake-2);
+}
+
+[data-stake="3"] {
+	--wsp-stake: var(--wsp-stake-3);
+}
+
+[data-stake="4"] {
+	--wsp-stake: var(--wsp-stake-4);
+}
+
+[data-stake="5"] {
+	--wsp-stake: var(--wsp-stake-5);
+}
+
+[data-stake="6"] {
+	--wsp-stake: var(--wsp-stake-6);
+}
+
+/*
+ * High contrast — the tonal mixes widen so every state clears AAA separation. The attribute is
+ * written by `packages/ui/system` (`applyConfig`).
+ */
+:root[data-contrast="high"] {
+	--wsp-team-tint: color-mix(in srgb, var(--primary) 20%, var(--surface-1));
+	--wsp-team-edge: color-mix(in srgb, var(--primary) 70%, transparent);
+	--wsp-business-tint: color-mix(in srgb, var(--secondary) 20%, var(--surface-1));
+	--wsp-business-edge: color-mix(in srgb, var(--secondary) 70%, transparent);
+	--wsp-acting-ring: color-mix(in srgb, var(--wsp-kind) 85%, transparent);
+	--wsp-allowed-tint: color-mix(in srgb, var(--success) 24%, transparent);
+	--wsp-conditional-tint: color-mix(in srgb, var(--warning) 24%, transparent);
+	--wsp-locked-hatch: color-mix(in srgb, var(--on-surface) 26%, transparent);
+	--wsp-track-bg: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
+	--wsp-hatch: color-mix(in srgb, var(--on-surface) 30%, transparent);
+	--wsp-minor-fade: 0.82;
+}
+
+/*
+ * Colour-vision deficiency. Two adjacent-hue risks exist on this surface: business accent against
+ * brand (the two entity kinds side by side on a mixed roster) and `allowed` against `conditional` in
+ * the matrix. Under any CVD overlay the business side re-anchors to `--tertiary`, and both the matrix
+ * tri-state and the split bar keep their static GLYPH and HATCH-ANGLE channels — so separation
+ * survives on non-colour channels even when hue collapses entirely.
+ */
+:root[data-cvd] {
+	--wsp-business: var(--tertiary);
+	--wsp-business-tint: color-mix(in srgb, var(--tertiary) 12%, var(--surface-1));
+	--wsp-business-tint-hi: color-mix(in srgb, var(--tertiary) 20%, var(--surface-1));
+	--wsp-business-edge: color-mix(in srgb, var(--tertiary) 46%, transparent);
+	--wsp-stake-2: color-mix(in srgb, var(--tertiary) 80%, var(--surface-2));
+	--wsp-stake-5: color-mix(in srgb, var(--primary) 40%, var(--surface-3));
+}
+
+/* #region Shared primitives */
+
+/* Every count, share, basis-point value and money figure is tabular. Applied as a utility so
+ordinary prose keeps proportional figures. */
+.wsp-num {
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wsp-num-track);
+}
+
+/* The one label register on the surface — 11px, tracked, uppercase, secondary. */
+.wsp-label {
+	margin: 0;
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+/* Running text and form fields — the only two elements allowed a max-inline-size. */
+.wsp-prose {
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+.wsp-formfield {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+}
+
+/* A server-formatted money string. Nothing here formats, rounds or composes currency. */
+.wsp-money {
+	display: inline-flex;
+	align-items: baseline;
+	white-space: nowrap;
+	min-inline-size: 0;
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wsp-num-track);
+	color: var(--on-surface);
+}
+
+.wsp-money--figure {
+	font-size: var(--wsp-fs-figure);
+	font-weight: 600;
+}
+
+.wsp-money--key {
+	font-size: var(--wsp-fs-key);
+	font-weight: 600;
+}
+
+.wsp-money--body {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+}
+
+.wsp-money--micro {
+	font-size: var(--wsp-fs-micro);
+	font-weight: 600;
+}
+
+.wsp-money--muted {
+	color: var(--text-secondary);
+}
+
+.wsp-money__symbol {
+	margin-inline-end: 0.06em;
+}
+
+.wsp-money__minor {
+	font-size: var(--wsp-minor-size);
+	letter-spacing: 0;
+	align-self: baseline;
+	/*
+	 * `opacity`, not `color-mix(… currentColor …)`. Resolving `currentColor` inside a `color-mix()`
+	 * that is itself defining `color` is legal per spec but dropped by engines in practice, which
+	 * leaves the minor run at full weight — the de-emphasis simply never happens.
+	 */
+	opacity: var(--wsp-minor-fade);
+}
+
+/* #endregion */
+
+/* #region The entity mark — a rounded-square initial badge */
+/*
+ * Rounded square, always: an entity is an organisation, and the surface's one hard visual rule is
+ * that squares are entities and circles are people. A logo drops in as an `<img>` child; the badge
+ * behind it carries the kind tint so the mark still reads as a team or a business while the image
+ * loads or when there is none.
+ */
+.wsp-mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: var(--wsp-mark-md);
+	block-size: var(--wsp-mark-md);
+	border-radius: var(--radius-base);
+	overflow: clip;
+	background: var(--wsp-kind-tint-hi);
+	color: var(--wsp-kind);
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	line-height: 1;
+	text-transform: uppercase;
+	letter-spacing: 0.01em;
+	user-select: none;
+}
+
+.wsp-mark--sm {
+	inline-size: var(--wsp-mark-sm);
+	block-size: var(--wsp-mark-sm);
+	border-radius: var(--radius-xs);
+	font-size: var(--wsp-fs-micro);
+}
+
+.wsp-mark--lg {
+	inline-size: var(--wsp-mark-lg);
+	block-size: var(--wsp-mark-lg);
+	border-radius: var(--radius-lg);
+	font-size: var(--wsp-fs-key);
+}
+
+.wsp-mark--xl {
+	inline-size: var(--wsp-mark-xl);
+	block-size: var(--wsp-mark-xl);
+	border-radius: var(--radius-xl);
+	font-size: var(--wsp-fs-figure);
+}
+
+/* A solid mark is for the loudest placement only — the header band's identity and the console's
+identity band, where the entity is the subject of the page. */
+.wsp-mark--solid {
+	background: var(--wsp-kind);
+	color: var(--wsp-kind-on);
+}
+
+.wsp-mark__img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.wsp-mark__initial {
+	display: block;
+}
+
+/* #endregion */
+
+/* #region Acting-context markers */
+/*
+ * The chip is the ONE loud element: filled, on-kind, with a live dot. It states plainly which
+ * identity the session is wearing, which is the fact a shared account most often gets wrong.
+ */
+.wsp-actingchip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	padding-inline: var(--space-2);
+	padding-block: 2px;
+	border-radius: var(--radius-xs);
+	background: var(--wsp-acting);
+	color: var(--wsp-acting-on);
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+/* The quiet variant, for a row that already carries the ring + tint and must not shout twice. */
+.wsp-actingchip--quiet {
+	background: var(--wsp-kind-tint-hi);
+	color: var(--wsp-kind);
+}
+
+.wsp-actingchip__dot {
+	flex: none;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+/* The live dot breathes. It is decoration on top of a label that already says "acting as", so a
+frozen animation clock costs nothing. */
+@media (prefers-reduced-motion: no-preference) {
+	.wsp-actingchip__dot {
+		animation: wsp-breathe 2.4s var(--ease-standard) infinite;
+	}
+}
+
+@keyframes wsp-breathe {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+/*
+ * The shell-wide accent line. Hairline-thin and pinned to the block-start edge of the content region
+ * so it frames the whole app without occupying layout — the ambient reminder that actions taken now
+ * are attributed to the entity, not the person.
+ */
+.wsp-acting-line {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+	block-size: var(--wsp-acting-line-h);
+	background: var(--wsp-acting);
+	pointer-events: none;
+	z-index: var(--z-raised);
+}
+
+/* #endregion */
+
+/* #region Status chip + status dot */
+.wsp-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex: none;
+	padding-inline: var(--space-2);
+	padding-block: 2px;
+	border-radius: var(--radius-xs);
+	background: var(--surface-3);
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-micro);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.wsp-chip--kind {
+	background: var(--wsp-kind-tint-hi);
+	color: var(--wsp-kind);
+}
+
+.wsp-chip[data-tone="success"] {
+	background: color-mix(in srgb, var(--success) 14%, transparent);
+	color: var(--success);
+}
+
+.wsp-chip[data-tone="warning"] {
+	background: color-mix(in srgb, var(--warning) 14%, transparent);
+	color: var(--warning);
+}
+
+.wsp-chip[data-tone="danger"] {
+	background: color-mix(in srgb, var(--danger) 14%, transparent);
+	color: var(--danger);
+}
+
+.wsp-chip[data-tone="muted"] {
+	background: transparent;
+	color: var(--text-secondary);
+	box-shadow: inset 0 0 0 1px var(--hairline-color);
+}
+
+.wsp-chip__glyph {
+	display: inline-flex;
+	line-height: 0;
+}
+
+/*
+ * In-row state is a DOT, never inline prose (§B.6) — the words live in the caller's portal Tooltip.
+ * Each state also gets its own silhouette, so the four stay distinguishable under every CVD overlay
+ * and in greyscale.
+ */
+.wsp-statedot {
+	display: inline-block;
+	flex: none;
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: 50%;
+	background: var(--wsp-draft);
+}
+
+.wsp-statedot[data-state="active"] {
+	background: var(--wsp-active);
+}
+
+/* A draft is a hollow ring — present, not yet filled in. */
+.wsp-statedot[data-state="draft"] {
+	background: transparent;
+	box-shadow: inset 0 0 0 2px var(--wsp-draft);
+}
+
+/* Archived is a bar: closed, not deleted. */
+.wsp-statedot[data-state="archived"] {
+	inline-size: 8px;
+	block-size: 3px;
+	border-radius: var(--radius-xs);
+	background: var(--wsp-archived);
+}
+
+.wsp-statedot[data-verify="verified"] {
+	background: var(--wsp-verified);
+}
+
+.wsp-statedot[data-verify="pending"] {
+	background: transparent;
+	box-shadow: inset 0 0 0 2px var(--wsp-pending);
+}
+
+.wsp-statedot[data-verify="unverified"] {
+	background: var(--wsp-unverified);
+}
+
+/*
+ * Unseen activity is a pulsing dot, NEVER a count (§D.1). The pulse is an `opacity`/`transform`
+ * halo on a `::after`, so the dot itself is always fully painted even with the clock frozen.
+ */
+.wsp-pulse {
+	position: relative;
+	display: inline-block;
+	flex: none;
+	inline-size: 7px;
+	block-size: 7px;
+	border-radius: 50%;
+	background: var(--wsp-kind);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.wsp-pulse::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: inherit;
+		animation: wsp-pulse 2s var(--ease-standard) infinite;
+	}
+}
+
+@keyframes wsp-pulse {
+	from {
+		opacity: 0.5;
+		transform: scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: scale(2.4);
+	}
+}
+
+/* #endregion */
+
+/* #region The portalled action menu */
+/*
+ * The kebab menu, shared by the roster card, the compact-view row and any later row that grows one — so
+ * the same entity can never be offered different actions in two presentations.
+ *
+ * `.wsp-menu` is passed to the `Popover` as its PANEL class, which is why it only tightens what the
+ * primitive already draws: the popover owns the elevated surface (a hairline + shadow, permitted on an
+ * interactive overlay, §B.4) and its own `__content` padding is sized for prose, not for a list of rows.
+ * The override is COMPOUND (`0,2,0`) so it beats `.ui-popover__content` regardless of the order the two
+ * stylesheets land in the bundle.
+ */
+.wsp-menu .ui-popover__content {
+	padding: var(--space-1);
+}
+
+.wsp-menu__list {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	min-inline-size: 14rem;
+}
+
+.wsp-menu__item {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border: none;
+	border-radius: var(--radius-xs);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	text-align: start;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.wsp-menu__item:hover:not(:disabled) {
+	background: var(--surface-2);
+}
+
+.wsp-menu__item:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* A refused action stays visible and explains itself through its note, rather than vanishing — a
+control that disappears teaches nothing about why. */
+.wsp-menu__item:disabled {
+	color: var(--text-secondary);
+	cursor: default;
+}
+
+.wsp-menu__icon {
+	display: inline-flex;
+	flex: none;
+	line-height: 0;
+	color: var(--text-secondary);
+	padding-block-start: 2px;
+}
+
+.wsp-menu__item:hover:not(:disabled) .wsp-menu__icon {
+	color: var(--wsp-kind);
+}
+
+.wsp-menu__label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+/* The consequence, not the instruction — a destructive or attributing action says what it will do. */
+.wsp-menu__note {
+	font-size: var(--wsp-fs-micro);
+	line-height: 1.4;
+	color: var(--text-secondary);
+}
+
+.wsp-menu__sep {
+	block-size: 0;
+	margin-block: var(--space-1);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Utilities */
+/* Directional glyphs mirror under RtL; direction-agnostic ones are untouched (§A.6). */
+[dir="rtl"] .wsp-icon--dir {
+	transform: scaleX(-1);
+}
+
+/* Announced, never seen — used for the table captions and the split bar's textual summary. */
+.wsp-sr {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* One truncating row cell. `min-inline-size: 0` is the half everyone forgets in a flex/grid child. */
+.wsp-trunc {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Reduced motion — jump to final, never a faster animation */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-actingchip__dot,
+	.wsp-pulse::after {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-actingchip__dot,
+:root[data-motion="reduced"] .wsp-pulse::after {
+	animation: none;
+}
+/* #endregion */

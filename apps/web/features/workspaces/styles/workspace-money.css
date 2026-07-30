@@ -1,0 +1,1119 @@
+/*
+ * workspace-money — the one place the two entity kinds genuinely diverge rather than relabel.
+ *
+ * A **team's** money moves in and then SPLITS: a released payout divides across the people who did the
+ * work. A **business's** money moves in from its own members and then OUT as purchases, bounded by
+ * per-member envelopes and an approval ladder. So this sheet holds two instruments (the split bar, the
+ * spend envelope), one queue (approvals) and one gate (verification).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * THE RULE THAT SHAPES THE SPLIT BAR: `flex-grow` IS the share. `flex-basis: 0` plus
+ * `min-inline-size: 0` guarantee nothing but the honest proportion decides a stake's width, that width
+ * is NEVER transitioned or keyframed, and no stake is ever given a minimum. A near-zero share gets an
+ * overhanging pip instead — a frozen animation clock or a fabricated 4px floor would both make the bar
+ * lie about somebody's money, and the bar's entire promise is that the dividers ARE the total.
+ *
+ * The client never totals, splits, converts or fee-adjusts: every figure here is a server-computed
+ * `MoneyView.display` string, and every share is integer basis points.
+ */
+
+/* #region Money module frame */
+.wsp-money-mod {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/*
+ * The handoff to `/wallet`. The console shows the SHAPE of the money (who gets what, who may spend);
+ * the wallet remains the single place money is actually held and moved, so this surface never grows a
+ * second finance UI.
+ */
+.wsp-moneyhead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+
+/* The figure beside the hand-off link — the one number worth repeating next to the door. */
+.wsp-moneyhead__figure {
+	display: inline-flex;
+	align-items: baseline;
+	min-inline-size: 0;
+}
+
+.wsp-moneyhead__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	font-size: var(--wsp-fs-body);
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.wsp-moneyhead__link:hover {
+	text-decoration: underline;
+}
+
+.wsp-moneyhead__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+/* #endregion */
+
+/* #region Team — the split bar */
+.wsp-split {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-split__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+}
+
+/* equal · by role · custom — a template choice, so a team changes policy without rewriting shares. */
+.wsp-split__model {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+
+.wsp-split__modelbtn {
+	padding-inline: var(--space-3);
+	padding-block: var(--space-1);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.wsp-split__modelbtn:hover {
+	color: var(--on-surface);
+}
+
+.wsp-split__modelbtn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-split__modelbtn[aria-pressed="true"],
+.wsp-split__modelbtn[data-active="true"] {
+	background: var(--surface);
+	color: var(--on-surface);
+	font-weight: 500;
+}
+
+/* The projected release the shares are priced against — the reason the editor shows consequences
+("Ravi receives £412.50") instead of abstract percentages. */
+.wsp-split__against {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-body);
+	color: var(--text-secondary);
+}
+
+/*
+ * The bar. `overflow` stays visible on purpose: a pip overhangs above the rail and a hovered stake
+ * grows past its block-size rather than pushing its neighbours.
+ */
+.wsp-split__bar {
+	position: relative;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-split__track {
+	display: flex;
+	align-items: center;
+	gap: var(--wsp-seg-gap);
+	block-size: var(--wsp-track-h);
+	min-inline-size: 0;
+	border-radius: var(--radius-sm);
+	background: var(--wsp-track-bg);
+}
+
+/* Room for the overhanging pip labels, reserved only when a sliver actually produced one. */
+.wsp-split__bar:has(.wsp-split__pip) {
+	padding-block-start: calc(var(--space-7) + 20px);
+}
+
+/*
+ * `--wsp-share` (a unitless 0–1 fraction, or the basis points / 100 — the island's choice, delivered by
+ * `styleVars()`) is the ONLY thing that decides a stake's width. There is no transition on this
+ * property and there never may be one.
+ */
+.wsp-split__seg {
+	position: relative;
+	flex: var(--wsp-share, 0) 0 0px;
+	min-inline-size: 0;
+	block-size: var(--wsp-track-h);
+	background-color: var(--wsp-stake);
+	/* Only the emphasis height and the fill tone animate — never the share. */
+	transition:
+		block-size var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-split__track > .wsp-split__seg:first-child {
+	border-start-start-radius: var(--radius-sm);
+	border-end-start-radius: var(--radius-sm);
+}
+
+.wsp-split__track > .wsp-split__seg:last-child {
+	border-start-end-radius: var(--radius-sm);
+	border-end-end-radius: var(--radius-sm);
+}
+
+/*
+ * A held stake is hatched, not greyed: the share is still theirs, it simply will not distribute
+ * automatically. Holding somebody's share never reassigns it, so the segment keeps its full width.
+ */
+.wsp-split__seg[data-held="true"] {
+	background-image: repeating-linear-gradient(
+		135deg,
+		transparent 0 5px,
+		var(--wsp-held-hatch) 5px 6px
+	);
+}
+
+/* An exact zero contributes no width and no chroma. */
+.wsp-split__seg[data-zero="true"] {
+	flex-grow: 0;
+	background-color: transparent;
+	background-image: none;
+}
+
+.wsp-split__seg:hover,
+.wsp-split:has(.wsp-split__key:hover) .wsp-split__seg[data-hover="true"],
+.wsp-split:has(.wsp-split__key:focus-visible) .wsp-split__seg[data-hover="true"] {
+	block-size: var(--wsp-track-h-hi);
+}
+
+/*
+ * The drag handle, sitting ON the boundary between two stakes. Placed with `inset-inline-end` and a
+ * negative half-width so it straddles the seam and mirrors under RtL without a transform. It is a real
+ * focusable control (`role="slider"`), because a split editable only by pointer is a split a keyboard
+ * user cannot audit — so the focus ring is not optional here, it is the only affordance they get.
+ */
+.wsp-split__handle {
+	position: absolute;
+	inset-block: calc(-1 * var(--space-1));
+	inset-inline-end: calc(var(--wsp-handle-w) / -2);
+	inline-size: var(--wsp-handle-w);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-xs);
+	background: none;
+	cursor: ew-resize;
+	touch-action: none;
+	z-index: var(--z-raised);
+}
+
+/* The visible grip: a hairline-thin bar the handle's hit area is twice the width of. */
+.wsp-split__handle::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	margin-inline: auto;
+	inline-size: 2px;
+	border-radius: var(--radius-xs);
+	background: var(--on-surface);
+	opacity: 0.35;
+	transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-fast)
+		var(--ease-standard);
+}
+
+.wsp-split__handle:hover::before {
+	opacity: 0.7;
+	transform: scaleX(1.5);
+}
+
+.wsp-split__handle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-split__handle:focus-visible::before {
+	opacity: 1;
+	transform: scaleX(1.5);
+}
+
+.wsp-split__handle[data-dragging="true"]::before {
+	opacity: 1;
+}
+
+/* A handle whose neighbours are all held cannot move; it says so rather than silently refusing. */
+.wsp-split__handle[data-locked="true"] {
+	cursor: not-allowed;
+}
+
+.wsp-split__handle[data-locked="true"]::before {
+	opacity: 0.2;
+}
+
+/*
+ * The pip — visibility decoupled from width. A stake too small to label inside the rail labels itself
+ * ABOVE the rail with a stem pointing back at its segment, so a 1% share is readable without the bar
+ * inventing 4px of width it does not own. `--wsp-pip-lift` arrives from the island because whether two
+ * pips collide depends on which stakes happen to be slivers in THIS split — no static stagger can know.
+ */
+.wsp-split__pip {
+	position: absolute;
+	inset-block-end: calc(100% + var(--space-2) + var(--wsp-pip-lift, 0px));
+	inset-inline: 0;
+	margin-inline: auto;
+	inline-size: max-content;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline: var(--space-2);
+	padding-block: var(--space-1);
+	font-size: var(--wsp-fs-micro);
+	font-weight: 600;
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.wsp-split__pip-dot {
+	flex: none;
+	inline-size: var(--wsp-pip-dot);
+	block-size: var(--wsp-pip-dot);
+	border-radius: 50%;
+	background: var(--wsp-stake);
+}
+
+.wsp-split__pip-stem {
+	position: absolute;
+	inset-block-start: 100%;
+	inset-inline: 0;
+	margin-inline: auto;
+	inline-size: 1px;
+	block-size: calc(var(--space-2) + var(--wsp-pip-lift, 0px));
+	background: var(--hairline-color);
+}
+/* #endregion */
+
+/* #region Team — the split legend */
+/*
+ * Every stake states five things in five independent channels: the tone swatch, the person, the share,
+ * the money it becomes, and the held mark. The bar is the overview; this is the record.
+ */
+.wsp-split__legend {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-split__key {
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wsp-rowh);
+	padding-inline: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wsp-split__key:first-child {
+	border-block-start: none;
+}
+
+.wsp-split__key-mark {
+	flex: none;
+	inline-size: 10px;
+	block-size: 10px;
+	border-radius: var(--radius-xs);
+	background: var(--wsp-stake);
+}
+
+.wsp-split__key[data-held="true"] .wsp-split__key-mark {
+	background-image: repeating-linear-gradient(
+		135deg,
+		transparent 0 3px,
+		var(--wsp-held-hatch) 3px 4px
+	);
+}
+
+.wsp-split__key-avatar {
+	flex: none;
+	border-radius: 50%;
+}
+
+.wsp-split__key-name {
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-split__key-share {
+	flex: none;
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wsp-num-track);
+	color: var(--on-surface);
+	text-align: end;
+	min-inline-size: 4rem;
+}
+
+.wsp-split__key-amount {
+	flex: none;
+	justify-self: end;
+}
+
+/* The hold toggle. Iconographic, with the words in its Tooltip. */
+.wsp-split__key-hold {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.wsp-split__key-hold:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wsp-split__key-hold:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wsp-split__key[data-held="true"] .wsp-split__key-hold {
+	color: var(--warning);
+}
+
+/*
+ * Drift. The 100% invariant is exact integer arithmetic, so a bar that does not sum to 10 000 bp is a
+ * bug the editor must state, not hide — and it must offer the fix, not just the complaint.
+ */
+.wsp-split__drift {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-container-lg);
+	background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
+}
+
+.wsp-split__drift-text {
+	margin: 0;
+	flex: 1 1 16rem;
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+
+.wsp-split__drift[data-balanced="true"] {
+	background: var(--surface-2);
+}
+
+.wsp-split__balance {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* Named templates. A chip row, because choosing one is a small act with a large consequence. */
+.wsp-split__templates {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+}
+
+.wsp-split__template {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.wsp-split__template:hover {
+	background: var(--surface-2);
+}
+
+.wsp-split__template:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-split__template[data-default="true"] {
+	border-color: var(--wsp-kind-edge);
+	background: var(--wsp-kind-tint);
+	color: var(--wsp-kind);
+}
+
+.wsp-split__auto {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+
+.wsp-split__auto-note {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-split__fee {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Business — spend envelopes */
+.wsp-spend {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/* The approval threshold. One number that changes who may act alone, so it gets its own block. */
+.wsp-spend__threshold {
+	display: flex;
+	align-items: flex-end;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+
+.wsp-spend__threshold-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
+.wsp-spend__threshold-note {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-spend__approvers {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+
+.wsp-spend__limits {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-spend__limit {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wsp-rowh);
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wsp-spend__limit:first-child {
+	border-block-start: none;
+}
+
+.wsp-spend__limit-avatar {
+	flex: none;
+	border-radius: 50%;
+}
+
+.wsp-spend__limit-ident {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	min-inline-size: 0;
+}
+
+.wsp-spend__limit-name {
+	font-size: var(--wsp-fs-body);
+	font-weight: 500;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-spend__limit-sub {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The envelope meter. Its fill encodes how much of the ceiling is gone, so it is never animated. */
+.wsp-spend__meter {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wsp-spend__meter-track {
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 6px;
+	border-radius: var(--radius-xs);
+	background: var(--wsp-meter-bg);
+	overflow: hidden;
+}
+
+.wsp-spend__meter-fill {
+	display: block;
+	block-size: 100%;
+	inline-size: calc(var(--wsp-fill, 0) * 100%);
+	border-radius: inherit;
+	background: var(--wsp-spent);
+}
+
+/*
+ * Near the ceiling the meter warms; at the ceiling it goes amber. It never goes red: spending your
+ * whole allowance is using the tool correctly, and red would frame a member's own budget as a failure.
+ */
+.wsp-spend__meter[data-tone="near"] .wsp-spend__meter-fill {
+	background: color-mix(in srgb, var(--warning) 60%, var(--wsp-spent));
+}
+
+.wsp-spend__meter[data-tone="full"] .wsp-spend__meter-fill {
+	background: var(--wsp-overspend);
+}
+
+.wsp-spend__meter-text {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* Unlimited is a state, not a very large number — an owner's row says so in words. */
+.wsp-spend__unlimited {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	font-style: italic;
+}
+
+/* A member who may not spend at all keeps their row, dimmed — absence would hide the decision. */
+.wsp-spend__limit[data-can="false"] {
+	opacity: 0.68;
+}
+
+.wsp-spend__limit-cap {
+	justify-self: end;
+	flex: none;
+	min-inline-size: 0;
+}
+
+.wsp-spend__limit-edit {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.wsp-spend__limit-edit:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wsp-spend__limit-edit:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+/* #endregion */
+
+/* #region Business — the attributable pool ledger */
+/*
+ * A pooled wallet without attribution is a dispute waiting to happen, so every movement names the
+ * person. `contribution` and `spend` are distinguished by GLYPH first: a debit is an ordinary movement,
+ * never a failure, so it is achromatic — nothing in this list is red.
+ */
+.wsp-pool {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-pool__item {
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wsp-rowh-dense);
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wsp-pool__item:first-child {
+	border-block-start: none;
+}
+
+.wsp-pool__glyph {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+	line-height: 0;
+}
+
+.wsp-pool__item[data-kind="contribution"] .wsp-pool__glyph {
+	color: var(--success);
+}
+
+.wsp-pool__avatar {
+	flex: none;
+	border-radius: 50%;
+}
+
+.wsp-pool__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	min-inline-size: 0;
+}
+
+.wsp-pool__who {
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-pool__reason {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-pool__amount {
+	justify-self: end;
+	flex: none;
+}
+
+.wsp-pool__at {
+	justify-self: end;
+	flex: none;
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.wsp-pool__approved {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Business — the approval queue */
+/*
+ * A blocked purchase always offers the request path, so `needs_approval` is a first-class outcome
+ * rather than a refusal. That is why this queue is a work surface, not a warning list: it is tonal, it
+ * shows the amount at figure weight, and both verdict buttons are equally reachable.
+ */
+.wsp-approvals {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-approvals__item {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-container-lg);
+	background: var(--surface-1);
+}
+
+.wsp-approvals__item[data-state="pending"] {
+	background: color-mix(in srgb, var(--warning) 8%, var(--surface-1));
+}
+
+.wsp-approvals__item[data-state="declined"] {
+	opacity: 0.7;
+}
+
+.wsp-approvals__avatar {
+	flex: none;
+	border-radius: 50%;
+}
+
+.wsp-approvals__body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.wsp-approvals__row {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+
+.wsp-approvals__who {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wsp-approvals__reason {
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-approvals__meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-approvals__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	justify-self: end;
+	flex: none;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.wsp-approvals__decided {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+/*
+ * The pre-flight verdict, shown while a spend is being composed. Three outcomes, three tones — and
+ * `blocked` is the only one that reaches `--danger`, because it is the only one that is genuinely a
+ * dead end for this amount.
+ */
+.wsp-verdict {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-1);
+	border-radius: var(--radius-base);
+	font-size: var(--wsp-fs-body);
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.wsp-verdict[data-outcome="allowed"] {
+	background: color-mix(in srgb, var(--success) 12%, transparent);
+	color: var(--success);
+}
+
+.wsp-verdict[data-outcome="needs_approval"] {
+	background: color-mix(in srgb, var(--warning) 12%, transparent);
+	color: var(--warning);
+}
+
+.wsp-verdict[data-outcome="blocked"] {
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	color: var(--danger);
+}
+
+.wsp-verdict__glyph {
+	display: inline-flex;
+	flex: none;
+	line-height: 0;
+}
+
+.wsp-verdict__reason {
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region The verification gate */
+/*
+ * The two gates behave DIFFERENTLY on purpose:
+ *
+ *   capability   → ABSENCE. A member never sees a control they may never use.
+ *   verification → RENDERED BUT LOCKED. The path stays visible with the one permitted lock glyph and a
+ *                  nudge carrying the prompt, because removing it hides the route to getting paid,
+ *                  whereas locking it teaches that route.
+ *
+ * So this block is the only place on the surface that draws a lock, and the policy editor above it
+ * stays fully usable while the gate is closed — a business can compose its spend rules before KYB
+ * clears, and a team can compose its split before its members' KYC does.
+ */
+.wsp-lock {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-container-lg);
+	background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+}
+
+.wsp-lock--inline {
+	margin-block-start: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-lg);
+}
+
+/* Pending is not a warning — the work is already with us, so it goes achromatic. */
+.wsp-lock[data-state="pending"] {
+	background: var(--surface-2);
+}
+
+.wsp-lock__glyph {
+	display: inline-flex;
+	flex: none;
+	color: var(--warning);
+	line-height: 0;
+}
+
+.wsp-lock[data-state="pending"] .wsp-lock__glyph {
+	color: var(--text-secondary);
+}
+
+.wsp-lock__body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1 1 18rem;
+	min-inline-size: 0;
+}
+
+.wsp-lock__text {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+
+.wsp-lock__prompt {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-lock__link {
+	flex: none;
+	font-size: var(--wsp-fs-body);
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.wsp-lock__link:hover {
+	text-decoration: underline;
+}
+
+.wsp-lock__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+/*
+ * A locked region keeps its content readable and its controls inert. `opacity` alone, never a blur or
+ * an overlay: an admin must be able to read the policy they are about to be allowed to operate.
+ */
+.wsp-lock-region {
+	position: relative;
+}
+
+.wsp-lock-region[data-locked="true"] {
+	opacity: 0.62;
+	pointer-events: none;
+	user-select: none;
+}
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 1100px) {
+	.wsp-split__key {
+		grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+	}
+
+	/* The avatar yields before the name does. */
+	.wsp-split__key-avatar {
+		display: none;
+	}
+
+	.wsp-spend__limit {
+		grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+	}
+}
+
+@media (max-width: 767px) {
+	/*
+	 * The bar stays a bar: it is the instrument, and a stacked list of percentages does not show that
+	 * the shares are one whole. Only the legend reflows.
+	 */
+	.wsp-split__key {
+		grid-template-columns: auto minmax(0, 1fr) auto auto;
+		row-gap: var(--space-1);
+	}
+
+	.wsp-split__key-amount {
+		grid-column: 2 / -1;
+		justify-self: start;
+	}
+
+	/* The handle grows to a comfortable touch target without taking a pixel of rail width. */
+	.wsp-split {
+		--wsp-handle-w: 24px;
+		--wsp-track-h: 22px;
+		--wsp-track-h-hi: 28px;
+	}
+
+	.wsp-spend__limit {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		row-gap: var(--space-2);
+	}
+
+	.wsp-spend__meter {
+		grid-column: 2 / -1;
+	}
+
+	.wsp-pool__item {
+		grid-template-columns: auto auto minmax(0, 1fr) auto;
+	}
+
+	.wsp-pool__at {
+		display: none;
+	}
+
+	.wsp-approvals__item {
+		grid-template-columns: auto minmax(0, 1fr);
+		row-gap: var(--space-3);
+	}
+
+	.wsp-approvals__actions {
+		grid-column: 1 / -1;
+		justify-self: start;
+		justify-content: flex-start;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-split__seg,
+	.wsp-split__handle::before {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-split__seg,
+:root[data-motion="reduced"] .wsp-split__handle::before {
+	transition: none;
+}
+/* #endregion */

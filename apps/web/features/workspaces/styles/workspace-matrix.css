@@ -1,0 +1,651 @@
+/*
+ * workspace-matrix — the Roles module: the capability × role permission matrix and the custom-role
+ * editor.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * Three structural decisions carry the whole component:
+ *
+ *  1. **The wrapper is the only scroller.** `.wsp-matrix` owns `overflow: auto`; the page body must
+ *     never scroll horizontally, and a matrix is the one thing on this surface guaranteed to outgrow
+ *     the region. It is focusable so a keyboard user can pan it.
+ *  2. **Both axes are sticky.** The capability column pins to the inline-start edge and the role
+ *     header row pins to the block-start edge, with the corner cell pinned to both — a matrix read
+ *     across eight roles is useless the moment you lose either label.
+ *  3. **Three cell states, three GLYPHS.** `conditional` is not "half allowed": the capability applies
+ *     only under a written rule, and the rule is the cell's tooltip. Each state has its own mark, so
+ *     the matrix survives every `data-cvd` overlay and greyscale printing — the hue is the fourth
+ *     channel, never the first.
+ *
+ * Preset roles are read-only by definition, and that is drawn: a hatched tonal fill plus a lock glyph,
+ * legible without colour. `Duplicate to a custom role` is the escape hatch, so the locked look is an
+ * explanation rather than a wall.
+ */
+
+/* #region The scroll frame */
+.wsp-matrix {
+	inline-size: 100%;
+	min-inline-size: 0;
+	overflow: auto;
+	/* A sticky child cannot pin against a scroller that has no bounded block size on a long table, so
+	the frame caps its height against the viewport and lets the rows scroll inside it. */
+	max-block-size: min(70vh, 44rem);
+	border-radius: var(--radius-base);
+}
+
+.wsp-matrix:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/*
+ * `max-content` lets each role column take its natural width and lets the whole grid overflow the
+ * frame; `min-inline-size: 100%` keeps a narrow matrix flush with the region instead of shrink-wrapping
+ * to the middle.
+ */
+.wsp-matrix__grid {
+	display: flex;
+	flex-direction: column;
+	inline-size: max-content;
+	min-inline-size: 100%;
+}
+
+/*
+ * Both the head and every row share this template, published once so a column can never drift between
+ * them.
+ *
+ * The role count is NOT declared anywhere: only the frozen capability column is an explicit track, and
+ * every role cell auto-places into an implicit column sized by `grid-auto-columns`. So a role added or
+ * removed needs no `--wsp-matrix-cols` custom property, no recount and no re-render of a template
+ * string — the grid absorbs it, and the head and the rows cannot disagree about how many columns exist.
+ */
+.wsp-matrix__head,
+.wsp-matrix__row {
+	display: grid;
+	grid-template-columns: var(--wsp-matrix-first);
+	grid-auto-flow: column;
+	grid-auto-columns: minmax(var(--wsp-matrix-col), 1fr);
+	align-items: stretch;
+}
+/* #endregion */
+
+/* #region The header row — sticky on the block axis */
+.wsp-matrix__head {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: var(--z-sticky);
+	background: var(--surface);
+	border-block-end: var(--hairline);
+}
+
+/* The corner is sticky on BOTH axes, so it never lets a role name slide under the capability column. */
+.wsp-matrix__corner {
+	position: sticky;
+	inset-inline-start: 0;
+	z-index: var(--z-nav);
+	display: flex;
+	align-items: flex-end;
+	padding-inline: var(--space-3);
+	padding-block: var(--space-3) var(--space-2);
+	background: var(--surface);
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+	/*
+	 * The seam between the frozen column and the scrolling body — one hairline, on one edge. A LOGICAL
+	 * border, not an inset box-shadow: a shadow's offset-x is physical and would stay on the same side
+	 * of the screen under RtL, leaving the frozen column edgeless and drawing a line into the body.
+	 */
+	border-inline-end: var(--hairline);
+}
+
+.wsp-matrix__col {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	align-items: flex-start;
+	justify-content: flex-end;
+	min-inline-size: 0;
+	padding-inline: var(--space-3);
+	padding-block: var(--space-3) var(--space-2);
+	background: var(--surface);
+	border-inline-start: var(--hairline);
+}
+
+.wsp-matrix__col-name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-matrix__col-count {
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+/* The lock is the preset's primary channel: a shape, present at every contrast and in greyscale. */
+.wsp-matrix__lock {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+	line-height: 0;
+}
+
+.wsp-matrix__col-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-block-start: var(--space-1);
+}
+
+.wsp-matrix__colbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-xs);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.wsp-matrix__colbtn:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wsp-matrix__colbtn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+/* #endregion */
+
+/* #region Rows and the frozen capability column */
+.wsp-matrix__row {
+	border-block-end: var(--hairline);
+}
+
+.wsp-matrix__row:last-child {
+	border-block-end: none;
+}
+
+.wsp-matrix__row:hover .wsp-matrix__rowhead {
+	background: var(--surface-1);
+}
+
+/* A capability GROUP heading — Membership, Money, Oversight. Spans the full row width. */
+.wsp-matrix__grouprow {
+	position: sticky;
+	inset-inline-start: 0;
+	padding-inline: var(--space-3);
+	padding-block: var(--space-3) var(--space-1);
+	background: var(--surface);
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.wsp-matrix__rowhead {
+	position: sticky;
+	inset-inline-start: 0;
+	z-index: var(--z-raised);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding-inline: var(--space-3);
+	padding-block: var(--space-2);
+	background: var(--surface);
+	border-inline-end: var(--hairline);
+}
+
+/* The frozen column already owns the seam; the first body cell must not draw a second one. */
+.wsp-matrix__corner + .wsp-matrix__col,
+.wsp-matrix__rowhead + .wsp-matrix__cell {
+	border-inline-start: none;
+}
+
+.wsp-matrix__rowlabel {
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * A consequential capability is weighted and flagged in the row label itself. Burying "may withdraw
+ * funds" among eighteen equal-weight ticks is how a permission matrix stops being read.
+ */
+.wsp-matrix__row[data-consequential="true"] .wsp-matrix__rowlabel {
+	font-weight: 600;
+}
+
+.wsp-matrix__flag {
+	display: inline-flex;
+	flex: none;
+	color: var(--wsp-consequential);
+	line-height: 0;
+}
+
+.wsp-matrix__rownote {
+	flex: none;
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Cells — the tri-state */
+.wsp-matrix__cell {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 0;
+	min-block-size: var(--wsp-matrix-cellh);
+	padding: 0;
+	border: none;
+	border-inline-start: var(--hairline);
+	background: none;
+	color: var(--wsp-denied);
+	font: inherit;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-matrix__cell:hover {
+	background: var(--surface-2);
+}
+
+.wsp-matrix__cell:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wsp-matrix__cell[data-state="allowed"] {
+	background: var(--wsp-allowed-tint);
+	color: var(--wsp-allowed);
+}
+
+/*
+ * Conditional carries a tint AND a hatch, so "allowed under a rule" is never mistaken for a plain tick
+ * even when hue collapses. The rule itself is the cell's portal Tooltip — the cell never spells it out
+ * inline (§B.6).
+ */
+.wsp-matrix__cell[data-state="conditional"] {
+	background: var(--wsp-conditional-tint);
+	color: var(--wsp-conditional);
+	background-image: repeating-linear-gradient(
+		115deg,
+		transparent 0 5px,
+		var(--wsp-hatch) 5px 6px
+	);
+}
+
+.wsp-matrix__cell[data-state="denied"] {
+	background: var(--wsp-denied-tint);
+	color: var(--wsp-denied);
+}
+
+/*
+ * Locked: a preset column, a preset row, or a cell the viewer may not grant because they do not hold
+ * the capability themselves. The hatch plus the lock glyph say read-only without spending a colour, and
+ * the cursor confirms it before the click.
+ */
+.wsp-matrix__cell[data-preset="true"],
+.wsp-matrix__cell[data-locked="true"],
+.wsp-matrix__row[data-preset="true"] .wsp-matrix__cell,
+.wsp-matrix__col[data-preset="true"] {
+	cursor: not-allowed;
+	background-image: repeating-linear-gradient(
+		135deg,
+		transparent 0 4px,
+		var(--wsp-locked-hatch) 4px 5px
+	);
+}
+
+.wsp-matrix__cell[data-preset="true"]:hover,
+.wsp-matrix__cell[data-locked="true"]:hover,
+.wsp-matrix__row[data-preset="true"] .wsp-matrix__cell:hover {
+	background-color: var(--wsp-locked-tint);
+}
+
+.wsp-matrix__row[data-preset="true"] .wsp-matrix__rowhead,
+.wsp-matrix__col[data-preset="true"] .wsp-matrix__col-name {
+	color: var(--text-secondary);
+}
+
+.wsp-matrix__mark {
+	display: inline-flex;
+	line-height: 0;
+}
+
+/* A denied cell is a dash, not an empty square: emptiness reads as "not loaded". */
+.wsp-matrix__mark--denied {
+	inline-size: 10px;
+	block-size: 2px;
+	border-radius: var(--radius-xs);
+	background: currentColor;
+}
+
+/* An override on a specific member surfaces in the cell as a corner marker. */
+.wsp-matrix__ovr {
+	position: absolute;
+	inset-block-start: 2px;
+	inset-inline-end: 2px;
+	font-size: var(--wsp-fs-micro);
+	font-weight: 700;
+	line-height: 1;
+}
+
+.wsp-matrix__cellwrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+.wsp-matrix__ovr[data-override="grant"] {
+	color: var(--wsp-grant);
+}
+
+.wsp-matrix__ovr[data-override="revoke"] {
+	color: var(--wsp-revoke);
+}
+/* #endregion */
+
+/* #region Legend + module actions */
+/*
+ * The legend is not decoration: with three states and two override markers, a first-time reader needs
+ * the key once. It is a plain row on the band's tone — no box.
+ */
+.wsp-matrix__legend {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+	padding-block: var(--space-3);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-matrix__legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wsp-matrix__legend-mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.125rem;
+	block-size: 1.125rem;
+	border-radius: var(--radius-xs);
+	line-height: 0;
+}
+
+.wsp-matrix__legend-mark[data-state="allowed"] {
+	background: var(--wsp-allowed-tint);
+	color: var(--wsp-allowed);
+}
+
+.wsp-matrix__legend-mark[data-state="conditional"] {
+	background: var(--wsp-conditional-tint);
+	color: var(--wsp-conditional);
+}
+
+.wsp-matrix__legend-mark[data-state="denied"] {
+	color: var(--wsp-denied);
+}
+
+.wsp-matrix__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+/* Unsaved matrix edits. Tonal, in the band, and it never floats over the grid. */
+.wsp-matrix__dirty {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-container-lg);
+	background: var(--wsp-kind-tint);
+}
+
+.wsp-matrix__dirty-text {
+	margin: 0;
+	flex: 1 1 16rem;
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Custom-role editor */
+.wsp-roleeditor {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
+
+.wsp-roleeditor__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-roleeditor__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
+.wsp-roleeditor__label {
+	font-size: var(--wsp-fs-label);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wsp-roleeditor__hint {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+/* Capabilities grouped exactly as the matrix groups them, so the two views teach one mental model. */
+.wsp-roleeditor__groups {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+	gap: var(--space-5);
+}
+
+.wsp-roleeditor__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-roleeditor__group-title {
+	margin: 0;
+	padding-block-end: var(--space-2);
+	border-block-end: var(--hairline);
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.wsp-roleeditor__cap {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--wsp-rowh-dense);
+	min-inline-size: 0;
+}
+
+.wsp-roleeditor__cap-label {
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+
+.wsp-roleeditor__cap[data-consequential="true"] .wsp-roleeditor__cap-label {
+	font-weight: 600;
+}
+
+/*
+ * The consequence, in words, on the row itself. This is the ONE place on the surface where a status is
+ * allowed to be prose rather than a glyph: "this lets them move money out of the vault" is the entire
+ * point of the checkbox, and hiding it in a tooltip would make an irreversible grant a guess.
+ */
+.wsp-roleeditor__cap-note {
+	grid-column: 2 / -1;
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--warning);
+}
+
+.wsp-roleeditor__cap-flag {
+	display: inline-flex;
+	flex: none;
+	color: var(--wsp-consequential);
+	line-height: 0;
+}
+
+/* A capability the AUTHOR does not hold cannot be granted — otherwise the editor is an escalation
+ladder. It stays visible and disabled, with the reason in its Tooltip. */
+.wsp-roleeditor__cap[data-blocked="true"] {
+	opacity: 0.55;
+}
+
+.wsp-roleeditor__count {
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-roleeditor__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.wsp-roleeditor__error {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--danger);
+}
+
+/* Deleting a role in use must say how many people it would strand, before the confirm. */
+.wsp-roleeditor__inuse {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+
+/* A capability pill, for the invite preview and the role summary rows. */
+.wsp-capchip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-inline: var(--space-2);
+	padding-block: 1px;
+	border-radius: var(--radius-xs);
+	background: var(--surface-3);
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-micro);
+	white-space: nowrap;
+}
+
+.wsp-capchip[data-level="consequential"] {
+	background: color-mix(in srgb, var(--warning) 14%, transparent);
+	color: var(--warning);
+	font-weight: 600;
+}
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 1100px) {
+	.wsp-matrix {
+		--wsp-matrix-first: 11rem;
+		--wsp-matrix-col: 6.5rem;
+	}
+}
+
+@media (max-width: 767px) {
+	/*
+	 * The matrix stays a matrix on a phone — it is the one component here that genuinely needs two
+	 * axes, and stacking it into per-role lists would destroy the comparison it exists for. The frozen
+	 * capability column narrows so at least two role columns are in view at once, and the frame keeps
+	 * its own horizontal scroll so the page body still never scrolls sideways.
+	 */
+	.wsp-matrix {
+		--wsp-matrix-first: 8.5rem;
+		--wsp-matrix-col: 5.5rem;
+		--wsp-matrix-cellh: 2.75rem;
+		max-block-size: 68vh;
+	}
+
+	.wsp-matrix__col-actions {
+		display: none;
+	}
+
+	.wsp-matrix__rownote {
+		display: none;
+	}
+
+	.wsp-roleeditor__groups {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-matrix__cell {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-matrix__cell {
+	transition: none;
+}
+/* #endregion */

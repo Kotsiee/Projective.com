@@ -1,0 +1,1117 @@
+/*
+ * workspace-roster — the `/teams` and `/businesses` INDEX: the entity cards, the compact table view,
+ * the incoming-invitation strip, the first-run empty state and the Draft-First create dialog.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * The index's job is to answer three questions at a glance: which of these am I acting as, which one
+ * needs me, and how do I make another. So the card carries exactly one loud mark (the acting chip),
+ * iconographic state (a dot, never a status sentence), and the stats the kind actually earns.
+ *
+ * There is not a single four-sided border on a card: an entity card is a LINK, and the whole card is
+ * the hit area, so its interactivity is expressed as a hover tonal step plus the mark's kind tint
+ * (§B.4). The shared surface root (`.wsp`), the band (`.wsp-band`) and `.wsp-pagehead` live in
+ * `workspace-console.css` — the index composes them rather than owning a second layout system.
+ */
+
+/* #region The index page */
+.wsp-roster {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-roster__head {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+}
+
+.wsp-roster__title {
+	margin: 0;
+	font-size: var(--wsp-fs-display);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--on-surface);
+}
+
+.wsp-roster__pitch {
+	margin: var(--space-2) 0 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+.wsp-roster__tools {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	flex-wrap: wrap;
+}
+
+/* `Owned` / `Member of` — a segmented control, so the two partitions read as one choice. */
+.wsp-roster__tabs {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+
+.wsp-roster__tab {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-1);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: none;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.wsp-roster__tab:hover {
+	color: var(--on-surface);
+}
+
+.wsp-roster__tab:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-roster__tab[aria-selected="true"],
+.wsp-roster__tab[data-active="true"] {
+	background: var(--surface);
+	color: var(--on-surface);
+	font-weight: 500;
+}
+
+.wsp-roster__tab-count {
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-roster__count {
+	font-size: var(--wsp-fs-body);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-roster__body {
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-roster__section {
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-roster__section + .wsp-roster__section {
+	margin-block-start: var(--space-6);
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region The invitation strip */
+/*
+ * Somebody is waiting on the viewer, so this sits above the roster and is the one place on the index
+ * allowed a tonal plate. It is dismissible and it never blocks: the roster below it stays fully usable.
+ */
+.wsp-invitestrip {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding: var(--space-3);
+	border-radius: var(--radius-container-lg);
+	background: var(--wsp-kind-tint);
+}
+
+.wsp-invitestrip__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wsp-invitestrip__title {
+	margin: 0;
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--wsp-kind);
+}
+
+.wsp-invitestrip__dismiss {
+	margin-inline-start: auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.wsp-invitestrip__dismiss:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.wsp-invitestrip__dismiss:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wsp-invitestrip__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.wsp-invitestrip__item {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wsp-invitestrip__item:first-child {
+	border-block-start: none;
+}
+
+.wsp-invitestrip__body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.wsp-invitestrip__text {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-invitestrip__name {
+	font-weight: 600;
+}
+
+.wsp-invitestrip__meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	min-inline-size: 0;
+}
+
+.wsp-invitestrip__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+}
+
+.wsp-invitestrip__accept,
+.wsp-invitestrip__decline {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-1);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.wsp-invitestrip__accept {
+	background: var(--wsp-kind);
+	color: var(--wsp-kind-on);
+}
+
+.wsp-invitestrip__accept:hover {
+	background: color-mix(in srgb, var(--wsp-kind) 86%, var(--on-surface));
+}
+
+.wsp-invitestrip__decline {
+	background: none;
+	border-color: var(--border-subtle);
+	color: var(--text-secondary);
+}
+
+.wsp-invitestrip__decline:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.wsp-invitestrip__accept:focus-visible,
+.wsp-invitestrip__decline:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+/* #endregion */
+
+/* #region The card grid */
+/*
+ * The grid element IS the library `Grid` in its column-capped mode (`.ui-grid--capped`), which owns
+ * `grid-template-columns` and `gap` — it reads `--wsp-card-min` through its own `--grid-min` and caps
+ * the auto-fit count so tracks widen on a large display instead of multiplying into an over-narrow
+ * many-column row.
+ *
+ * This class therefore declares NEITHER of those two properties, and must not: `.wsp-grid` and
+ * `.ui-grid--capped` carry equal specificity, so a second `grid-template-columns` here would be
+ * decided by stylesheet order in the bundle and the cap would silently stop applying on the day an
+ * unrelated island pulled `grid.css` in earlier. One owner, no race. The responsive step below tunes
+ * the track floor through the token instead, which flows into the primitive's formula untouched.
+ */
+.wsp-grid {
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region The entity card */
+/*
+ * The whole card is one link. The kebab and the acting chip sit above it in the stacking order via
+ * `position: relative`, so a menu click never navigates.
+ */
+.wsp-card {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding: var(--space-4);
+	border-radius: var(--radius-container-lg);
+	background: var(--surface-1);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-card:hover {
+	background: var(--surface-2);
+}
+
+/*
+ * Acting: a hairline ring plus one tonal step. Both are quiet on purpose — the chip in `__flags` is
+ * the loud channel, and two loud markers on one card cancel each other out.
+ */
+.wsp-card[data-acting="true"] {
+	background: var(--wsp-acting-tint);
+	box-shadow: inset 0 0 0 1px var(--wsp-acting-ring);
+}
+
+/* An archived entity is dimmed and desaturated, never struck through: it is restorable. */
+.wsp-card[data-status="archived"] {
+	opacity: 0.72;
+}
+
+.wsp-card__link {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	z-index: var(--z-base);
+	/* Announced by its own text; the visible label lives in `__name`. */
+	font-size: 0;
+	color: transparent;
+	text-decoration: none;
+}
+
+.wsp-card__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-card__top {
+	position: relative;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--space-3);
+	pointer-events: none;
+}
+
+.wsp-card__ident {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.wsp-card__name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--wsp-fs-key);
+	font-weight: 600;
+	color: var(--on-surface);
+	min-inline-size: 0;
+}
+
+.wsp-card__name-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-card__handle {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-card__tagline {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	line-height: 1.5;
+	color: var(--text-secondary);
+	/* Two lines, then clipped — a tagline is not a description. */
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+/* The flag stack: acting chip, then role, then state dot. At most one of these is loud. */
+.wsp-card__flags {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	justify-self: end;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	pointer-events: auto;
+}
+
+.wsp-card__dot {
+	flex: none;
+}
+
+/* The kebab must beat the stretched link. */
+.wsp-card__kebab {
+	position: relative;
+	z-index: var(--z-raised);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.wsp-card__kebab:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wsp-card__kebab:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* People are circular; the entity mark above is the square. */
+.wsp-card__faces {
+	display: flex;
+	align-items: center;
+	pointer-events: none;
+}
+
+.wsp-card__face {
+	flex: none;
+	border-radius: 50%;
+	box-shadow: 0 0 0 2px var(--surface-1);
+}
+
+.wsp-card__face + .wsp-card__face {
+	margin-inline-start: calc(-1 * var(--space-2));
+}
+
+.wsp-card:hover .wsp-card__face {
+	box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+.wsp-card__more {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: var(--wsp-mark-sm);
+	block-size: var(--wsp-mark-sm);
+	margin-inline-start: calc(-1 * var(--space-2));
+	border-radius: 50%;
+	background: var(--surface-3);
+	color: var(--text-secondary);
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+	box-shadow: 0 0 0 2px var(--surface-1);
+}
+
+.wsp-card__members {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	pointer-events: none;
+}
+
+.wsp-card__membercount {
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* The three stats. A hairline above, because a stat row on the same tone needs one edge. */
+.wsp-card__stats {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+	pointer-events: none;
+}
+
+.wsp-card__stat {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.wsp-card__stat-label {
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-card__stat-value {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--wsp-num-track);
+	color: var(--on-surface);
+}
+
+.wsp-card__stat-delta {
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wsp-card__stat-delta[data-dir="up"] {
+	color: var(--success);
+}
+
+/* A downward delta is not a failure — it is a direction. Amber, never red. */
+.wsp-card__stat-delta[data-dir="down"] {
+	color: var(--warning);
+}
+
+.wsp-card__stat-delta[data-dir="flat"] {
+	color: var(--text-secondary);
+}
+
+/* The Draft-First setup nudge. It appears on the card so the unfinished entity is visible from the
+index, and it disappears at 100% — a completed checklist is noise. */
+.wsp-card__setup {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+
+.wsp-card__setup-bar {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	block-size: 4px;
+	border-radius: var(--radius-xs);
+	background: var(--wsp-track-bg);
+	overflow: hidden;
+}
+
+/*
+ * The fill's inline-size ENCODES the progress, so it is never transitioned or animated: a frozen
+ * animation clock must not be able to render a dishonest zero.
+ */
+.wsp-card__setup-fill {
+	display: block;
+	block-size: 100%;
+	inline-size: calc(var(--wsp-progress, 0) * 100%);
+	border-radius: inherit;
+	background: var(--wsp-kind);
+}
+
+.wsp-card__setup-text {
+	flex: none;
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region The compact table view */
+/*
+ * A dense alternative for somebody who belongs to a dozen entities. The wrapper is the ONLY scroller,
+ * so the page body never scrolls horizontally.
+ */
+.wsp-rtable {
+	inline-size: 100%;
+	min-inline-size: 0;
+	overflow-x: auto;
+}
+
+.wsp-rtable__grid {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 44rem;
+}
+
+.wsp-rtable__head {
+	display: grid;
+	grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+	position: sticky;
+	inset-block-start: 0;
+	z-index: var(--z-raised);
+	background: var(--surface);
+}
+
+.wsp-rtable__th {
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.wsp-rtable__th[data-align="end"] {
+	text-align: end;
+}
+
+.wsp-rtable__row {
+	display: grid;
+	grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wsp-rowh);
+	padding-inline: var(--space-3);
+	border-block-end: var(--hairline);
+	color: inherit;
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-rtable__row:hover {
+	background: var(--surface-1);
+}
+
+.wsp-rtable__row:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wsp-rtable__row[data-acting="true"] {
+	background: var(--wsp-acting-tint);
+	box-shadow: inset var(--wsp-acting-line-h) 0 0 0 var(--wsp-acting);
+}
+
+.wsp-rtable__cell {
+	min-inline-size: 0;
+	font-size: var(--wsp-fs-body);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-rtable__cell[data-align="end"] {
+	text-align: end;
+}
+
+.wsp-rtable__cell--muted {
+	color: var(--text-secondary);
+}
+
+.wsp-rtable__ident {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.wsp-rtable__name {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	min-inline-size: 0;
+}
+
+.wsp-rtable__name-text {
+	font-weight: 500;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-rtable__sub {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * The compact view is rendered BY the library `Table` (sorting, sticky header, `aria-sort`, the shared
+ * column-track model), so the block above supplies only the identity fragments its cell templates
+ * compose. What the primitive brings that this surface cannot keep is its own container: `.ui-table`
+ * draws a four-sided border, a radius and an opaque fill, and a boxed collection floating inside a
+ * full-bleed band is exactly the separation §B.4 forbids on non-interactive content. Depth here is
+ * tonal, so the box is dissolved and the header keeps the band's own step.
+ *
+ * The selectors are COMPOUND (`0,2,0`) on purpose — a bare `.wsp-rtable` would tie with `.ui-table`
+ * and be decided by bundle order, which is the failure the card grid above documents.
+ */
+.wsp-rtable.ui-table {
+	border: none;
+	border-radius: 0;
+	background: transparent;
+}
+
+.wsp-rtable.ui-table .ui-table__thead {
+	background: var(--surface);
+}
+
+/*
+ * Acting: a single tonal step and nothing else. The row already carries the acting CHIP in its
+ * identity cell, and the surface's rule is one loud channel per element — an edge line here would be
+ * the second, and would have to be a physical inline offset that mirrors wrongly under `dir="rtl"`.
+ */
+.wsp-rtable__acting {
+	background: var(--wsp-acting-tint);
+}
+/* #endregion */
+
+/* #region First-run empty state */
+/*
+ * The one place on this surface that sells rather than reports, because a person with no team has no
+ * idea what one would do for them. Left-aligned and in the band's rhythm — no centred cartoon, no
+ * illustration: the layout the user is about to live in is what teaches the surface's shape.
+ */
+.wsp-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding-block: var(--space-6);
+}
+
+.wsp-empty__glyph {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--wsp-mark-lg);
+	block-size: var(--wsp-mark-lg);
+	border-radius: var(--radius-lg);
+	background: var(--wsp-kind-tint);
+	color: var(--wsp-kind);
+}
+
+.wsp-empty__title {
+	margin: 0;
+	font-size: var(--wsp-fs-figure);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wsp-empty__pitch {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+.wsp-empty__points {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	max-inline-size: var(--wsp-prose);
+}
+
+.wsp-empty__point {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-body);
+	color: var(--text-secondary);
+}
+
+.wsp-empty__point-glyph {
+	display: inline-flex;
+	flex: none;
+	color: var(--wsp-kind);
+	line-height: 0;
+	padding-block-start: 2px;
+}
+
+.wsp-empty__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.wsp-empty__hint {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+/* An in-band empty line — a module with nothing in it yet keeps its band. */
+.wsp-blank {
+	padding-block: var(--space-5);
+}
+
+.wsp-blank__text {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface-variant);
+}
+
+.wsp-blank__hint {
+	margin: var(--space-1) 0 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region The Draft-First create dialog */
+/*
+ * Name plus handle is the whole form. Everything else is completed inside the entity, which is why
+ * this dialog has no scroll, no sections and no optional fields beyond the logo.
+ */
+.wsp-create {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.wsp-create__intro {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-body);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+.wsp-create__row {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-4);
+	flex-wrap: wrap;
+}
+
+.wsp-create__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	min-inline-size: 0;
+}
+
+.wsp-create__label {
+	font-size: var(--wsp-fs-label);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.wsp-create__hint {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+/*
+ * The kind chooser — shown only when the modal opens from a neutral surface, because a route that
+ * already committed to a kind has answered this. Two full-bordered buttons: they are interactive, so
+ * §B.4's ban on boxing applies to neither.
+ */
+.wsp-create__kinds {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-2);
+}
+
+.wsp-create__kind {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-container-lg);
+	background: none;
+	text-align: start;
+	font: inherit;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--spring-standard),
+		border-color var(--dur-fast) var(--spring-standard);
+}
+
+.wsp-create__kind:hover {
+	background: var(--surface-1);
+}
+
+.wsp-create__kind:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/*
+ * The selected kind is marked by its own tint, so the chooser previews the mark colour the entity
+ * will carry rather than using one generic accent for both.
+ */
+.wsp-create__kind[data-on="true"][data-kind="team"] {
+	border-color: var(--primary);
+	background: color-mix(in oklab, var(--primary) 10%, transparent);
+}
+
+.wsp-create__kind[data-on="true"][data-kind="business"] {
+	border-color: var(--secondary);
+	background: color-mix(in oklab, var(--secondary) 10%, transparent);
+}
+
+.wsp-create__kind-name {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+}
+
+.wsp-create__kind-note {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wsp-create__kind {
+		transition: none;
+	}
+}
+
+/* The handle probe's verdict — iconographic, with the words beside it because this one IS the
+answer to a question the user just asked. */
+.wsp-create__handle {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-create__handle-prefix {
+	flex: none;
+	font-size: var(--wsp-fs-body);
+	color: var(--text-secondary);
+}
+
+.wsp-create__handle-state {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-create__handle-state[data-available="true"] {
+	color: var(--success);
+}
+
+.wsp-create__handle-state[data-available="false"] {
+	color: var(--warning);
+}
+
+.wsp-create__suggest {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+}
+
+.wsp-create__suggestion {
+	padding-inline: var(--space-2);
+	padding-block: 2px;
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-xs);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--wsp-fs-micro);
+	cursor: pointer;
+}
+
+.wsp-create__suggestion:hover {
+	background: var(--surface-2);
+}
+
+.wsp-create__suggestion:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* A live preview of the mark, so the initial badge is never a surprise. */
+.wsp-create__preview {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-container-lg);
+	background: var(--surface-1);
+	min-inline-size: 0;
+}
+
+.wsp-create__preview-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.wsp-create__preview-name {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-create__preview-handle {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-create__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.wsp-create__error {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 1100px) {
+	.wsp-grid {
+		--wsp-card-min: 17rem;
+	}
+}
+
+@media (max-width: 767px) {
+	/* One card per row — expressed as a full-width track FLOOR so the primitive's own formula
+	(`min(--grid-min, 100%)`) resolves it, rather than a competing template. */
+	.wsp-grid {
+		--wsp-card-min: 100%;
+	}
+
+	.wsp-roster__head {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	/* The invitation strip's actions drop below the text rather than squeezing a name to two words. */
+	.wsp-invitestrip__item {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.wsp-invitestrip__actions {
+		grid-column: 1 / -1;
+		justify-content: flex-start;
+	}
+
+	.wsp-card__stats {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.wsp-create__row {
+		flex-direction: column;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-card,
+	.wsp-rtable__row {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-card,
+:root[data-motion="reduced"] .wsp-rtable__row {
+	transition: none;
+}
+/* #endregion */

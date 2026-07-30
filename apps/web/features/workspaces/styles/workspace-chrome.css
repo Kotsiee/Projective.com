@@ -1,0 +1,898 @@
+/*
+ * workspace-chrome — the four pieces of shell the surface owns: the middle-nav lane, its collapsed
+ * icon rail, the header band and the footer band.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY.
+ *
+ * The shared `.ui-lane-*` chrome from `@projective/ui/navigation` is NOT restyled here. `/teams` and
+ * `/businesses` must read as the same control set as `/projects`, `/messages` and `/wallet`, so the
+ * lane composes `LaneHead` / `LaneSearch` / `LaneSections` / `LaneList` / `LaneFooter` verbatim and
+ * only this feature's own additions carry rules.
+ *
+ * Both bands are mounted into shell slots, which means they EXPORT their intrinsic width to the page:
+ * a band wider than the content region widens the region. Both therefore carry
+ * `max-inline-size: 100%` + `overflow: hidden`, and every band label is wrapped in its own `<span>` so
+ * the mobile rules can drop the words and keep the glyph — a bare text node cannot be targeted.
+ */
+
+/* #region The dual presentation */
+/*
+ * Both presentations are always in the DOM and the splitter's density decides which paints. No client
+ * width observer, so SSR and the hydrated island agree on the very first frame and a toggle is
+ * deterministic.
+ */
+.wsp-lanewrap,
+.wsp-lane {
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	block-size: 100%;
+	min-block-size: 0;
+	min-inline-size: 0;
+}
+
+.wsp-rail {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .wsp-lane {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .wsp-rail {
+	display: flex;
+}
+
+/* Scoped with `:has` so ONLY this lane takes the rail width — the feed lanes keep their own. */
+.ui-splitter[data-mode="collapsed"]:has(.wsp-rail) {
+	inline-size: var(--shell-sidebar-w);
+}
+/* #endregion */
+
+/* #region Lane head — the entity switcher */
+.wsp-lane__head {
+	padding: var(--space-3);
+}
+
+/*
+ * The switcher is a control, so it earns a full contour on hover (§B.4). At rest it is borderless: the
+ * lane head is not a place to spend a box.
+ */
+.wsp-lane__switch {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-2);
+	font: inherit;
+	color: inherit;
+	text-align: start;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-lane__switch:hover {
+	border-color: var(--border-subtle);
+	background: var(--surface-2);
+}
+
+.wsp-lane__switch:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* Acting: hairline ring + one tonal step. The loud channel is the chip in the body, not here. */
+.wsp-lane__switch[data-acting="true"] {
+	background: var(--wsp-acting-tint);
+	border-color: var(--wsp-acting-ring);
+}
+
+.wsp-lane__ident {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.wsp-lane__name {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-lane__meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	min-inline-size: 0;
+}
+
+.wsp-lane__caret {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+	line-height: 0;
+}
+
+/* The switcher popover's list of entities. */
+.wsp-lane__entities {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 17rem;
+	padding: var(--space-1);
+}
+
+.wsp-lane__entity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
+	color: inherit;
+	text-decoration: none;
+	font: inherit;
+	background: none;
+	border: none;
+	cursor: pointer;
+	text-align: start;
+}
+
+.wsp-lane__entity:hover {
+	background: var(--surface-2);
+}
+
+.wsp-lane__entity:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-lane__entity[data-acting="true"] {
+	background: var(--wsp-acting-tint);
+	box-shadow: inset 0 0 0 1px var(--wsp-acting-ring);
+}
+
+.wsp-lane__entity-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.wsp-lane__entity-name {
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-lane__entity-role {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-lane__sep {
+	block-size: 1px;
+	background: var(--hairline-color);
+	margin-block: var(--space-1);
+}
+
+.wsp-lane__note {
+	display: block;
+	padding-inline: var(--space-2);
+	padding-block-start: var(--space-1);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-lane__new {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	padding: var(--space-2);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	color: var(--wsp-kind);
+	background: none;
+	border: none;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	text-align: start;
+}
+
+.wsp-lane__new:hover {
+	background: var(--wsp-kind-tint);
+}
+
+.wsp-lane__new:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-lane__new[data-blocked="true"] {
+	color: var(--text-secondary);
+	cursor: not-allowed;
+}
+/* #endregion */
+
+/* #region Lane nav — the module registry's grouped rows */
+.wsp-lane__nav {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+.wsp-lane__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	text-decoration: none;
+	font-size: var(--wsp-fs-body);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-lane__row:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.wsp-lane__row:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wsp-lane__row[data-active="true"] {
+	background: var(--wsp-kind-tint);
+	color: var(--wsp-kind);
+	font-weight: 500;
+}
+
+.wsp-lane__row-icon {
+	display: inline-flex;
+	flex: none;
+	line-height: 0;
+}
+
+.wsp-lane__row-label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A module that needs attention shows a dot; a module with a queue shows a bare count. Neither is a
+sentence, and the explanation lives in the row's Tooltip (§B.6). */
+.wsp-lane__row-dot {
+	margin-inline-start: auto;
+	flex: none;
+}
+
+.wsp-lane__row-count {
+	margin-inline-start: auto;
+	flex: none;
+	font-size: var(--wsp-fs-micro);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Lane foot — the ambient verification chip */
+.wsp-lane__foot {
+	flex: none;
+}
+
+/*
+ * Ambient, never an alarm. The state is always present so the path to getting verified stays
+ * discoverable; the CTA appears only when there is something to do.
+ */
+.wsp-lane__verify {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-block-start: var(--hairline);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-lane__verify-dot {
+	flex: none;
+}
+
+.wsp-lane__verify-text {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-lane__verify-link {
+	margin-inline-start: auto;
+	flex: none;
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.wsp-lane__verify-link:hover {
+	text-decoration: underline;
+}
+
+.wsp-lane__verify-link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-lane__acting {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-start: var(--hairline);
+	background: var(--wsp-acting-tint);
+}
+/* #endregion */
+
+/* #region Collapsed rail */
+/*
+ * Every rail control mirrors the global sidebar's collapsed `.ui-nav-item` exactly — a
+ * `--shell-nav-block` square, `--radius-base`, the same hover and active tints — and carries a portal
+ * `Tooltip` plus an `aria-label`, never a native `title` (§B.6).
+ */
+.wsp-rail {
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 100%;
+	min-block-size: 0;
+	padding-block: var(--space-3);
+}
+
+.wsp-rail__brand {
+	display: flex;
+	justify-content: center;
+	padding-block-end: var(--space-2);
+}
+
+/* The verification state survives the collapse as a ring on the mark, plus a tooltip carrying the
+words — a ring colour on its own is not a channel. */
+.wsp-rail__switch {
+	display: inline-flex;
+	padding: 2px;
+	border-radius: var(--radius-lg);
+	background: none;
+	border: none;
+	cursor: pointer;
+	box-shadow: 0 0 0 2px var(--wsp-verified);
+}
+
+.wsp-rail__switch[data-verify="pending"] {
+	box-shadow: 0 0 0 2px var(--wsp-pending);
+}
+
+.wsp-rail__switch[data-verify="unverified"] {
+	box-shadow: 0 0 0 2px var(--wsp-unverified);
+}
+
+.wsp-rail__switch[data-acting="true"] {
+	box-shadow: 0 0 0 2px var(--wsp-acting);
+}
+
+.wsp-rail__switch:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 3px;
+}
+
+.wsp-rail__items {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+.wsp-rail__item,
+.wsp-rail__toggle {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.wsp-rail__item:hover,
+.wsp-rail__toggle:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wsp-rail__item[data-active="true"] {
+	background: var(--wsp-kind-tint);
+	color: var(--wsp-kind);
+}
+
+.wsp-rail__item:focus-visible,
+.wsp-rail__toggle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* The module-group boundary, so a 12-icon rail still reads as five groups. */
+.wsp-rail__group-sep {
+	inline-size: 60%;
+	block-size: 1px;
+	background: var(--hairline-color);
+	margin-block: var(--space-1);
+}
+
+/* A signal on a collapsed row pins to the block-start/inline-end corner of its square. */
+.wsp-rail__dot {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+}
+
+.wsp-rail__bottom {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: auto;
+}
+
+.wsp-rail__verify {
+	flex: none;
+}
+/* #endregion */
+
+/* #region Header band */
+/*
+ * The band contract, shared verbatim with the reference `.chan-header`: exactly
+ * `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT. The tonal surface is
+ * the shell band's own flush `--surface-1` underlay and the seam beneath it is the canvas frame's
+ * single hairline — painting an opaque plate and a second hairline here doubles both.
+ */
+.wsp-headerband {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+	inline-size: 100%;
+	max-inline-size: 100%;
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.wsp-headerband__identity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	flex: none;
+	color: inherit;
+	text-decoration: none;
+}
+
+.wsp-headerband__identity:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+.wsp-headerband__name {
+	font-size: var(--wsp-fs-body);
+	font-weight: 600;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-headerband__handle {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.wsp-headerband__badge {
+	flex: none;
+}
+
+/* The band's own hairline divider, between the identity and the tabs. One edge, one line. */
+.wsp-headerband__divider {
+	flex: none;
+	inline-size: 1px;
+	block-size: 1.25rem;
+	background: var(--hairline-color);
+}
+
+.wsp-headerband__controls {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+	flex: none;
+	min-inline-size: 0;
+}
+
+.wsp-headerband__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.wsp-headerband__icon:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.wsp-headerband__icon:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wsp-headerband__panel {
+	min-inline-size: 18rem;
+	padding: var(--space-2);
+}
+
+.wsp-headerband__panel-note {
+	margin: 0;
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Header band tabs — underlined text, never a pill */
+/*
+ * A 2px `--primary` `::after` that scales on the inline axis, pinned `inset-block-end: -1px` so it
+ * lands ON the band's divider hairline rather than floating above it. No box, no background, no
+ * radius: the tab strip is text, and the underline is the only mark.
+ */
+.wsp-headerband__tabs {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-1);
+	block-size: 100%;
+	min-inline-size: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.wsp-headerband__tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.wsp-headerband__tab {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	padding-inline: var(--space-3);
+	border: none;
+	background: none;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.wsp-headerband__tab::after {
+	content: "";
+	position: absolute;
+	inset-block-end: -1px;
+	inset-inline: var(--space-2);
+	block-size: 2px;
+	border-radius: var(--radius-xs);
+	background: var(--primary);
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-headerband__tab:hover {
+	color: var(--on-surface);
+}
+
+.wsp-headerband__tab:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+	border-radius: var(--radius-xs);
+}
+
+.wsp-headerband__tab[aria-selected="true"],
+.wsp-headerband__tab[data-active="true"] {
+	color: var(--on-surface);
+	font-weight: 500;
+}
+
+.wsp-headerband__tab[aria-selected="true"]::after,
+.wsp-headerband__tab[data-active="true"]::after {
+	transform: scaleX(1);
+}
+
+.wsp-headerband__tab-glyph {
+	display: inline-flex;
+	flex: none;
+	line-height: 0;
+}
+
+.wsp-headerband__tab-dot {
+	flex: none;
+}
+/* #endregion */
+
+/* #region Footer band */
+/*
+ * The band contract, shared verbatim with the reference `.fx-rig`: a `--space-2`/`--space-4` inset
+ * around a `--wsp-rig-row` control row, transparent, and NO hairline of its own — the seam is the
+ * canvas frame's, which grows a block-end hairline whenever a footer band is registered.
+ */
+.wsp-footerrig {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	inline-size: 100%;
+	max-inline-size: 100%;
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.wsp-footerrig__actions,
+.wsp-footerrig__group {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.wsp-footerrig__spacer {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+/* A full contour is correct here: these are interactive controls (§B.4). */
+.wsp-footerrig__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	block-size: var(--wsp-rig-row);
+	padding-inline: var(--space-3);
+	padding-block: 0;
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	white-space: nowrap;
+	cursor: pointer;
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-footerrig__action:hover {
+	background: var(--surface-3);
+}
+
+.wsp-footerrig__action:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-footerrig__action[data-variant="primary"] {
+	background: var(--wsp-kind);
+	color: var(--wsp-kind-on);
+}
+
+.wsp-footerrig__action[data-variant="primary"]:hover {
+	background: color-mix(in srgb, var(--wsp-kind) 86%, var(--on-surface));
+}
+
+.wsp-footerrig__action[data-variant="danger"] {
+	color: var(--danger);
+}
+
+/*
+ * Locked, not removed. A verification gate keeps its control in place so the path stays discoverable;
+ * the lock glyph and the reduced opacity say "not yet", and activating it explains how. A CAPABILITY
+ * gate is the opposite — the control is absent entirely, because offering an action a member may never
+ * take is a lie about the roster.
+ */
+.wsp-footerrig__action[data-locked="true"] {
+	background: none;
+	color: var(--text-secondary);
+	opacity: 0.55;
+}
+
+.wsp-footerrig__glyph {
+	display: inline-flex;
+	flex: none;
+	line-height: 0;
+}
+
+/* Wrapped so the mobile rule can drop the words and keep the glyph. */
+.wsp-footerrig__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.wsp-footerrig__density {
+	display: flex;
+	align-items: center;
+	flex: none;
+	min-inline-size: 9rem;
+}
+
+.wsp-footerrig__more {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	block-size: var(--wsp-rig-row);
+	padding-inline: var(--space-3);
+	padding-block: 0;
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--wsp-fs-body);
+	cursor: pointer;
+}
+
+.wsp-footerrig__more:hover {
+	background: var(--surface-3);
+}
+
+.wsp-footerrig__more:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.wsp-footerrig__menu {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--space-1);
+	min-inline-size: 13rem;
+	padding: var(--space-1);
+}
+
+.wsp-footerrig__note {
+	flex: none;
+	font-size: var(--wsp-fs-micro);
+	letter-spacing: var(--wsp-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.wsp-footerrig__nudge {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	max-inline-size: 20rem;
+	padding: var(--space-3);
+}
+
+.wsp-footerrig__nudge-text {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Responsive */
+/* Tablet: the header band drops its secondary identity text before it drops a tab. */
+@media (max-width: 1100px) {
+	.wsp-headerband__handle,
+	.wsp-headerband__badge {
+		display: none;
+	}
+
+	.wsp-footerrig__note {
+		display: none;
+	}
+}
+
+@media (max-width: 767px) {
+	.wsp-headerband {
+		padding-inline: var(--space-3);
+		gap: var(--space-2);
+	}
+
+	.wsp-headerband__divider {
+		display: none;
+	}
+
+	/* Tabs collapse to their leading glyph — the labels are the first thing a narrow band can lose
+	without losing a destination. */
+	.wsp-headerband__tab-label {
+		display: none;
+	}
+
+	.wsp-headerband__tab {
+		padding-inline: var(--space-2);
+	}
+
+	.wsp-footerrig {
+		padding-inline: var(--space-3);
+		padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+	}
+
+	.wsp-footerrig__label,
+	.wsp-footerrig__more-label {
+		display: none;
+	}
+
+	.wsp-footerrig__density {
+		min-inline-size: 6rem;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.wsp-headerband__tab::after,
+	.wsp-lane__row,
+	.wsp-lane__switch,
+	.wsp-footerrig__action {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wsp-headerband__tab::after,
+:root[data-motion="reduced"] .wsp-lane__row,
+:root[data-motion="reduced"] .wsp-lane__switch,
+:root[data-motion="reduced"] .wsp-footerrig__action {
+	transition: none;
+}
+/* #endregion */

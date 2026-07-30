@@ -1,0 +1,29 @@
+/*
+ * workspace.css — the `/teams` and `/businesses` stylesheet BARREL, and nothing else.
+ *
+ * Token-only, strict BEM (root CLAUDE.md §3 · DESIGN_SYSTEM.md §B). Non-interactive content is
+ * separated by spacing → tonal surface tints → type weight → ONE hairline (§B.4); full four-sided
+ * borders are reserved for interactive controls. CSS LOGICAL PROPERTIES ONLY (§A.6), so the whole
+ * surface mirrors natively under `dir="rtl"` — there is no `left`, `right`, `width`, `height`,
+ * `margin-left` or `translateX` in any of the sheets below.
+ *
+ * Import order is load-bearing: the local token layer must resolve before any rule reads a `--wsp-*`
+ * custom property. Everything after it is grouped by what it draws, and no later sheet overrides an
+ * earlier one — each owns a disjoint set of BEM blocks.
+ *
+ * The shared body chrome (`.wsp` · `.wsp__stack` · `.wsp-band` · `.wsp-pagehead`) lives in
+ * `workspace-console.css` and is composed by BOTH pages, so the roster index and the entity console are
+ * one layout system rather than two.
+ *
+ * BEM prefix for the whole feature: `.wsp-*`. Local custom properties: `--wsp-*`, declared on `:root`
+ * (see the note at the top of `workspace-tokens.css` — the lane, both shell bands and every
+ * BodyPortal overlay render outside the page subtree, so a scoped layer silently falls back).
+ */
+
+@import "./workspace-tokens.css";
+@import "./workspace-chrome.css";
+@import "./workspace-roster.css";
+@import "./workspace-console.css";
+@import "./workspace-people.css";
+@import "./workspace-matrix.css";
+@import "./workspace-money.css";

@@ -34,10 +34,10 @@ export function createMenuOptions(context: UserContext): CreateOption[] {
 	const options: Array<CreateOption | null> = [
 		{ key: "project", label: "Create Project", href: "/projects/new", icon: "projects" },
 		contextType !== "organisation"
-			? { key: "team", label: "Create Team", href: "/teams/new", icon: "teams" }
+			? { key: "team", label: "Create Team", href: "/teams/create", icon: "teams" }
 			: null,
 		isFreelancer
-			? { key: "business", label: "Create Business", href: "/business/new", icon: "business" }
+			? { key: "business", label: "Create Business", href: "/businesses/create", icon: "business" }
 			: null,
 		isFreelancer
 			? { key: "service", label: "Create Service", href: "/services/new", icon: "services" }

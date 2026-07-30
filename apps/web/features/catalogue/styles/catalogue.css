@@ -41,17 +41,29 @@
 /* #endregion */
 
 /* #region View control rig (footer band) */
+/*
+ * The rig is the reference File Explorer rig (`.fx-rig`, Decision #32) on a second surface, so it
+ * carries the same box model verbatim: a `--space-2`/`--space-4` inset around the compact ZoomSlider,
+ * left-aligned, with the track allowed to grow to a bounded 18rem. Only the persistence key and the
+ * aria-label differ (`CATALOGUE_ZOOM`, so seller density is independent of file density).
+ */
 .cat-rig {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding-inline: var(--space-2);
-    color: var(--text-secondary);
+    justify-content: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
 }
 
 .cat-rig__mode {
     display: inline-flex;
+    align-items: center;
     color: var(--text-secondary);
+}
+
+.cat-rig .ui-zoom {
+    inline-size: 100%;
+    max-inline-size: 18rem;
 }
 
 /* #endregion */

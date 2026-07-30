@@ -12,30 +12,43 @@
  */
 
 /* #region The surface root */
+/*
+ * The surface root is the direct child of `.ui-page-canvas__body`, so it inherits the frame's
+ * structural curvature: `PageCanvas` publishes `--frame-radius` and paints the rounded
+ * top-inline-start corner as a FIXED underlay behind the content rather than as a border-radius on
+ * the frame box. Every sibling surface (`/catalogue`, `/projects/…/files`) is transparent there, so
+ * the curve shows through; this surface's first band is an OPAQUE `--surface-1` full-bleed plate, and
+ * an opaque child squares the corner off. Clipping the root to the same radius the frame publishes
+ * puts the wallet back on the shared container contract. Only the top-inline-start corner is rounded
+ * — the stack runs past the viewport, so its own block-end corner is never the frame's.
+ */
 .wlt {
-	display: block;
-	inline-size: 100%;
-	min-inline-size: 0;
-	color: var(--on-surface);
-	font-size: var(--wlt-fs-body);
+    display: block;
+    inline-size: 100%;
+    min-inline-size: 0;
+    color: var(--on-surface);
+    font-size: var(--wlt-fs-body);
+    border-start-start-radius: var(--frame-radius, var(--radius-container-xl));
+    overflow: clip;
 }
 
 /* The frame's own rounded corners belong to the shell; the first band tucks under them. */
 .wlt__stack {
-	display: flex;
-	flex-direction: column;
-	inline-size: 100%;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+    min-inline-size: 0;
 }
+
 /* #endregion */
 
 /* #region The band */
 .wlt-band {
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding-inline: var(--wlt-band-pad);
-	padding-block: var(--wlt-band-pad-b);
-	position: relative;
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding-inline: var(--wlt-band-pad);
+    padding-block: var(--wlt-band-pad-b);
+    position: relative;
 }
 
 /*
@@ -43,156 +56,149 @@
  * `max-inline-size` here and there must never be one.
  */
 .wlt-band__inner {
-	inline-size: 100%;
-	min-inline-size: 0;
+    inline-size: 100%;
+    min-inline-size: 0;
 }
 
 /* Charts reach the true region edge by cancelling the band's inline padding. */
 .wlt-band__bleed {
-	margin-inline: calc(-1 * var(--wlt-band-pad));
-	inline-size: calc(100% + 2 * var(--wlt-band-pad));
+    margin-inline: calc(-1 * var(--wlt-band-pad));
+    inline-size: calc(100% + 2 * var(--wlt-band-pad));
 }
 
 /* Band surfaces — the tonal step IS the separator for bands 2 and 3 (§4.1). */
 .wlt-band--hero {
-	background: var(--surface-1);
-	padding-block: var(--wlt-band-pad-b-lg) var(--wlt-band-pad-b);
+    padding-block: var(--wlt-band-pad-b-lg) var(--wlt-band-pad-b);
 }
 
 .wlt-band--flow {
-	background: var(--surface);
-	padding-block: var(--wlt-band-pad-b) var(--space-4);
-}
-
-.wlt-band--intel {
-	background: var(--surface-1);
-}
-
-.wlt-band--accounts {
-	background: var(--surface-1);
+    padding-block: var(--wlt-band-pad-b) var(--space-4);
 }
 
 /* Band 4 is the one place a hairline is needed: it sits on the same tone as band 2. */
 .wlt-band--ledger {
-	background: var(--surface);
-	border-block-start: var(--hairline);
-	padding-block: var(--wlt-band-pad-b) var(--space-8);
+    border-block-start: var(--hairline);
+    padding-block: var(--wlt-band-pad-b) var(--space-8);
 }
 
 /* Deep pages run a single content band under the page head. */
 .wlt-band--page {
-	background: var(--surface);
-	padding-block: var(--space-4) var(--space-8);
+    padding-block: var(--space-4) var(--space-8);
 }
 
 .wlt-band--head {
-	background: var(--surface);
-	padding-block: var(--wlt-band-pad-b) var(--space-3);
+    padding-block: var(--wlt-band-pad-b) var(--space-3);
 }
+
 /* #endregion */
 
 /* #region Band heads */
 .wlt-band__head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-4);
-	margin-block-end: var(--space-4);
-	flex-wrap: wrap;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-block-end: var(--space-4);
+    flex-wrap: wrap;
 }
 
 .wlt-band__title {
-	font-size: var(--wlt-fs-label);
-	letter-spacing: var(--wlt-label-track);
-	text-transform: uppercase;
-	color: var(--text-secondary);
-	font-weight: 600;
-	margin: 0;
+    font-size: var(--wlt-fs-label);
+    letter-spacing: var(--wlt-label-track);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin: 0;
 }
 
 .wlt-band__meta {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-4);
-	font-size: var(--wlt-fs-body);
-	color: var(--text-secondary);
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    font-size: var(--wlt-fs-body);
+    color: var(--text-secondary);
 }
 
 .wlt-band__body {
-	inline-size: 100%;
-	min-inline-size: 0;
+    inline-size: 100%;
+    min-inline-size: 0;
 }
+
 /* #endregion */
 
 /* #region Page head (deep pages) — a title and a count. No tabs, no filters, no CTAs (§4.6). */
 .wlt-pagehead {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-4);
-	flex-wrap: wrap;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
 }
 
 .wlt-pagehead__title {
-	font-size: var(--wlt-fs-figure);
-	font-weight: 600;
-	letter-spacing: -0.01em;
-	margin: 0;
-	color: var(--on-surface);
+    font-size: var(--wlt-fs-figure);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    color: var(--on-surface);
 }
 
 .wlt-pagehead__meta {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-4);
-	color: var(--text-secondary);
-	font-size: var(--wlt-fs-body);
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    color: var(--text-secondary);
+    font-size: var(--wlt-fs-body);
 }
+
 /* #endregion */
 
 /* #region Band entrance — first paint only, over-damped, staggered in band order (§8) */
 @media (prefers-reduced-motion: no-preference) {
-	.wlt-band {
-		animation: wlt-band-in var(--dur-medium) var(--ease-standard) both;
-		animation-delay: calc(var(--wlt-band-i, 0) * 40ms);
-	}
+    .wlt-band {
+        animation: wlt-band-in var(--dur-medium) var(--ease-standard) both;
+        animation-delay: calc(var(--wlt-band-i, 0) * 40ms);
+    }
 }
 
 @keyframes wlt-band-in {
-	from {
-		opacity: 0;
-		transform: translateY(8px);
-	}
-	to {
-		opacity: 1;
-		transform: none;
-	}
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 /* Jump to final: no entrance at all, not a faster one. */
 :root[data-motion="reduced"] .wlt-band {
-	animation: none;
+    animation: none;
 }
+
 /* #endregion */
 
 /* #region Responsive (§10) */
 @media (max-width: 1023px) {
-	.wlt {
-		--wlt-band-pad: var(--space-5);
-	}
+    .wlt {
+        --wlt-band-pad: var(--space-5);
+    }
 }
 
 @media (max-width: 767px) {
-	.wlt {
-		--wlt-band-pad: var(--space-4);
-		--wlt-band-pad-b: var(--space-5);
-		--wlt-band-pad-b-lg: var(--space-5);
-	}
+    .wlt {
+        --wlt-band-pad: var(--space-4);
+        --wlt-band-pad-b: var(--space-5);
+        --wlt-band-pad-b-lg: var(--space-5);
+    }
 
-	.wlt-band--ledger {
-		padding-block-end: calc(var(--space-8) + var(--shell-bottomnav-h));
-	}
+    .wlt-band--ledger {
+        padding-block-end: calc(var(--space-8) + var(--shell-bottomnav-h));
+    }
 }
+
 /* #endregion */
 
 /* #region The hero row — balance identity (2fr) beside the payment-method deck (1fr) */
@@ -202,36 +208,36 @@
  * share: at any width the balance keeps the room, and the deck keeps its card proportions.
  */
 .wlt-herorow {
-	display: grid;
-	grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-	gap: var(--wlt-band-gap);
-	align-items: start;
-	inline-size: 100%;
-	min-inline-size: 0;
-	min-block-size: var(--wlt-hero-min);
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: var(--wlt-band-gap);
+    align-items: start;
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--wlt-hero-min);
 }
 
 /* The read-only rollup has no deck, so the identity column takes the whole band. */
 .wlt-herorow[data-deck="false"] {
-	grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .wlt-herorow__aside {
-	min-inline-size: 0;
-	justify-self: end;
-	inline-size: 100%;
+    min-inline-size: 0;
+    justify-self: end;
+    inline-size: 100%;
 }
 
 /* Tablet: the deck drops below the identity rather than squeezing the balance. */
 @media (max-width: 1023px) {
-	.wlt-herorow {
-		grid-template-columns: minmax(0, 1fr);
-		min-block-size: auto;
-	}
+    .wlt-herorow {
+        grid-template-columns: minmax(0, 1fr);
+        min-block-size: auto;
+    }
 
-	.wlt-herorow__aside {
-		justify-self: start;
-	}
+    .wlt-herorow__aside {
+        justify-self: start;
+    }
 }
 
 /* #endregion */

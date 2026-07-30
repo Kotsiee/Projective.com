@@ -100,18 +100,9 @@
  */
 .ui-middle-nav__lane {
     grid-column: 1;
-    /* Span all three rows so the lane owns the full frame height — its own header rides into the header
-	band's row and its footer into the footer band's row, with the body flowing between. */
     grid-row: 1 / -1;
     position: sticky;
     inset-block-start: var(--shell-topbar-h);
-    /*
-	* Explicit rung on the shared z-scale (styles/index.css): page content (--z-base) < the nav lane
-	* (--z-raised) < the sticky header/footer bands (--z-sticky) < the site header (--z-nav). `sticky`
-	* makes the lane a stacking context whatever its z-index, so leaving it `auto` pinned the whole
-	* subtree at level 0 and let the bands paint over anything inside it. Overlays are unaffected —
-	* they are portalled to `document.body` and never inherit this context.
-	*/
     z-index: var(--z-raised);
     align-self: start;
     block-size: calc(100dvh - var(--shell-topbar-h));

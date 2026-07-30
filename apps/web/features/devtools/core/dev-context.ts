@@ -25,9 +25,11 @@ import {
 	type DevDisplayCurrency,
 	type DevLayoutDirection,
 	type DevMemberRole,
+	type DevMembershipState,
 	type DevMessagingRole,
 	type DevPersona,
 	type DevProjectType,
+	type DevRosterState,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -38,6 +40,9 @@ import {
 	type DevWalletSmoother,
 	type DevWalletStanding,
 	type DevWalletVaultRole,
+	type DevWorkspaceKind,
+	type DevWorkspaceRole,
+	type DevWorkspaceVerification,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
 
@@ -144,6 +149,25 @@ export interface DevOverrides {
 	 * the completed-stage volume floor is not, so the rung has NOT advanced.
 	 */
 	walletStanding: DevWalletStanding;
+	/**
+	 * Simulated entity kind for the `/teams` · `/businesses` console. A Team is a Freelancer with
+	 * several members; a Business is a Client with several members — so this one axis re-parameterises
+	 * the whole surface, including which capability columns and modules exist at all.
+	 */
+	workspaceKind: DevWorkspaceKind;
+	/**
+	 * Simulated role inside the acting entity. `non_member` is deliberately reachable: it is the only
+	 * way to exercise the "does not belong here" path, which must redirect rather than dead-end.
+	 */
+	workspaceRole: DevWorkspaceRole;
+	/** Simulated membership state — `invited` and `requested` route to opposite actions. */
+	membershipState: DevMembershipState;
+	/** Simulated entity verification — drives the locked-but-actionable KYC/KYB gate. */
+	workspaceVerification: DevWorkspaceVerification;
+	/** Whether the session is simulated as ACTING as the entity rather than personally. */
+	actingContext: boolean;
+	/** Simulated roster shape — reaches the selling empty state and the one-person-team pre-state. */
+	rosterState: DevRosterState;
 	/** Simulated display currency — drives the fat service's conversion + `Intl` formatting (RtL-independent). */
 	displayCurrency: DevDisplayCurrency;
 	/** Simulated document layout direction (LtR/RtL) — verifies the whole surface mirrors under `dir="rtl"`. */
@@ -180,6 +204,12 @@ export const DEV_DEFAULTS: DevOverrides = {
 	walletSmoother: "enrolled",
 	walletFundMix: "normal",
 	walletStanding: "auto",
+	workspaceKind: "team",
+	workspaceRole: "admin",
+	membershipState: "active",
+	workspaceVerification: "verified",
+	actingContext: false,
+	rosterState: "populated",
 	displayCurrency: "GBP",
 	layoutDirection: "ltr",
 };
@@ -295,6 +325,42 @@ export const DEV_WALLET_STANDINGS: ReadonlyArray<DevOption<DevWalletStanding>> =
 ];
 
 /** Display-currency options in display order. */
+/** Entity-kind options for the workspace console. */
+export const DEV_WORKSPACE_KINDS: ReadonlyArray<DevOption<DevWorkspaceKind>> = [
+	{ value: "team", label: "Team" },
+	{ value: "business", label: "Business" },
+];
+
+/** Role-inside-the-entity options, most privileged first. */
+export const DEV_WORKSPACE_ROLES: ReadonlyArray<DevOption<DevWorkspaceRole>> = [
+	{ value: "owner", label: "Owner" },
+	{ value: "admin", label: "Admin" },
+	{ value: "lead", label: "Lead" },
+	{ value: "member", label: "Member" },
+	{ value: "non_member", label: "Not a member" },
+];
+
+/** Membership-state options. */
+export const DEV_MEMBERSHIP_STATES: ReadonlyArray<DevOption<DevMembershipState>> = [
+	{ value: "active", label: "Active" },
+	{ value: "invited", label: "Invited" },
+	{ value: "requested", label: "Requested" },
+];
+
+/** Entity verification options (KYC for a team, KYB for a business). */
+export const DEV_WORKSPACE_VERIFICATIONS: ReadonlyArray<DevOption<DevWorkspaceVerification>> = [
+	{ value: "verified", label: "Verified" },
+	{ value: "kyb_pending", label: "Pending" },
+	{ value: "unverified", label: "Unverified" },
+];
+
+/** Roster-shape options. */
+export const DEV_ROSTER_STATES: ReadonlyArray<DevOption<DevRosterState>> = [
+	{ value: "populated", label: "Populated" },
+	{ value: "single", label: "One-person" },
+	{ value: "empty", label: "Empty" },
+];
+
 export const DEV_DISPLAY_CURRENCIES: ReadonlyArray<DevOption<DevDisplayCurrency>> = [
 	{ value: "GBP", label: "GBP £" },
 	{ value: "USD", label: "USD $" },
@@ -361,6 +427,12 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devWalletSmoother = next.walletSmoother;
 		root.dataset.devWalletFundMix = next.walletFundMix;
 		root.dataset.devWalletStanding = next.walletStanding;
+		root.dataset.devWorkspaceKind = next.workspaceKind;
+		root.dataset.devWorkspaceRole = next.workspaceRole;
+		root.dataset.devMembershipState = next.membershipState;
+		root.dataset.devWorkspaceVerification = next.workspaceVerification;
+		root.dataset.devActingContext = String(next.actingContext);
+		root.dataset.devRosterState = next.rosterState;
 		root.dataset.devDisplayCurrency = next.displayCurrency;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
@@ -388,6 +460,12 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devWalletSmoother;
 		delete root.dataset.devWalletFundMix;
 		delete root.dataset.devWalletStanding;
+		delete root.dataset.devWorkspaceKind;
+		delete root.dataset.devWorkspaceRole;
+		delete root.dataset.devMembershipState;
+		delete root.dataset.devWorkspaceVerification;
+		delete root.dataset.devActingContext;
+		delete root.dataset.devRosterState;
 		delete root.dataset.devDisplayCurrency;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).

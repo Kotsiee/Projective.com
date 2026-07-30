@@ -201,7 +201,7 @@ export default function UserActions(
 	): void {
 		writeStored("local", LocalKeys.LAST_ACTIVE_CONTEXT, entry.handle);
 		onNavigate();
-		const base = kind === "team" ? "/teams" : "/business";
+		const base = kind === "team" ? "/teams" : "/businesses";
 		globalThis.location.href = `${base}/${entry.id}`;
 	}
 
@@ -362,8 +362,8 @@ export default function UserActions(
 		const tab = ctxTab.value;
 		const kind = tab === "teams" ? "team" : "business";
 		const memberships = tab === "teams" ? getTeamMemberships() : getBusinessMemberships();
-		const manageHref = tab === "teams" ? "/teams" : "/business";
-		const createHref = tab === "teams" ? "/teams/new" : "/business/new";
+		const manageHref = tab === "teams" ? "/teams" : "/businesses";
+		const createHref = tab === "teams" ? "/teams/create" : "/businesses/create";
 		const createLabel = tab === "teams" ? "Create New Team" : "Create New Business";
 		const manageLabel = tab === "teams" ? "Manage Teams" : "Manage Businesses";
 		const activeType = effCtx.contextType;

@@ -95,6 +95,12 @@
 	--wlt-pip-dot: 7px;
 	--wlt-rowh: 3rem;
 	--wlt-rowh-dense: 2.25rem;
+	/*
+	 * The middle-nav footer rig's control row. Matched to the shared `ZoomSlider`'s compact `--zoom-h`
+	 * so this surface's rig resolves to the same band height as the reference File Explorer rig — the
+	 * height the canvas frame's block-end corner is computed against.
+	 */
+	--wlt-rig-row: 1.75rem;
 	--wlt-chart-h: 11rem;
 	--wlt-chart-h-sm: 9rem;
 	/* The ONLY two max-widths permitted on this surface (RULE L-1): running text and form fields. */
