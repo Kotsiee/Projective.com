@@ -152,6 +152,11 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
   Rounding") · `--radius-lg 12px` · `--radius-xl 16px` · `--radius-2xl 24px` · `--radius-3xl 32px`,
   each multiplied by `--radius-scale`. The `2xl`/`3xl` steps are the **luxury container curvatures**
   reserved for large panel intersections (Part D shell frames).
+  - **`--radius-md` is an alias of `--radius-base`**, not a seventh step. The ramp's third step is
+    named `base`, but a ramp reading `xs / sm / … / lg / xl` reads as if position three were `md`, so
+    authors reached for `var(--radius-md)` — which resolved to nothing and computed `border-radius`
+    back to its initial `0`, rendering square. The alias is emitted so the trap cannot fire again;
+    prefer `--radius-base` in new code, and never give `md` a distinct value.
 - **Fluid container radii (Part D):**
   `--radius-container-lg: clamp(--radius-lg, 0.6vw + 8px,
   --radius-2xl)` (nested-frame exposed

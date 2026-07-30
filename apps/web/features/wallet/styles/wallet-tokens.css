@@ -133,8 +133,17 @@
  * adjacent-hue risk on the surface; under any CVD overlay Pending re-anchors to `--tertiary` while
  * the two hatch ANGLES stay distinct (135deg locked / 115deg pending) — so separation survives on
  * two static, non-colour channels even when hue collapses entirely.
+ *
+ * VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan | tritan` and
+ * `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
+ * `data-cvd="none"` — which an attribute-PRESENCE selector matches. Bare `[data-cvd]` therefore held
+ * this overlay permanently on for every user, and because SSR emits no attribute it also produced a
+ * visible hue shift the moment the theme bound to `<html>`. Enumerate the real deficiencies, exactly
+ * as the sibling `[data-contrast="high"]` block does; a fourth mode must be added here explicitly.
  */
-:root[data-cvd] {
+:root[data-cvd="protan"],
+:root[data-cvd="deutan"],
+:root[data-cvd="tritan"] {
 	--wlt-pending: color-mix(in srgb, var(--tertiary) 62%, var(--surface-2));
 	--wlt-pending-hi: color-mix(in srgb, var(--tertiary) 74%, var(--surface-2));
 	--wlt-hatch: color-mix(in srgb, var(--on-surface) 24%, transparent);

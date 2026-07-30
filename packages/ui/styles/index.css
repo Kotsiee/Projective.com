@@ -18,6 +18,12 @@
 	--radius-xs: calc(4px * var(--radius-scale));
 	--radius-sm: calc(6px * var(--radius-scale));
 	--radius-base: calc(8px * var(--radius-scale));
+	/* `md` is the third step's ALIAS, not a step of its own. The ramp reads xs/sm/base/lg/xl, so an
+	author scanning it reads position three as "md" and writes `var(--radius-md)` — which resolved to
+	nothing and computed `border-radius` back to 0 (square corners) at 11 call sites. The alias closes
+	the naming trap at the contract rather than at each call site. Do NOT give it its own value: it
+	must stay indistinguishable from --radius-base, including under --radius-scale. */
+	--radius-md: var(--radius-base);
 	--radius-lg: calc(12px * var(--radius-scale));
 	--radius-xl: calc(16px * var(--radius-scale));
 	/* Luxury container curvatures — the enlarged end of the ramp for large panel intersections

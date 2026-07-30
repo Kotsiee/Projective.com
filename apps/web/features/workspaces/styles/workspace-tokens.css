@@ -282,8 +282,18 @@
  * the matrix. Under any CVD overlay the business side re-anchors to `--tertiary`, and both the matrix
  * tri-state and the split bar keep their static GLYPH and HATCH-ANGLE channels — so separation
  * survives on non-colour channels even when hue collapses entirely.
+ *
+ * VALUE-scoped, never `:root[data-cvd]`. `CvdMode` is `none | protan | deutan | tritan` and
+ * `applyConfig` writes the attribute UNCONDITIONALLY, so every hydrated page carries
+ * `data-cvd="none"` — which an attribute-PRESENCE selector matches. Bare `[data-cvd]` therefore held
+ * this overlay permanently on for every user: a Business rendered `--tertiary` on every load and the
+ * documented kind-identity rule above ("a team takes the BRAND tint, a business the ACCENT tint")
+ * never shipped. Enumerate the real deficiencies, exactly as the sibling `[data-contrast="high"]`
+ * block does; a fourth mode must be added here explicitly.
  */
-:root[data-cvd] {
+:root[data-cvd="protan"],
+:root[data-cvd="deutan"],
+:root[data-cvd="tritan"] {
 	--wsp-business: var(--tertiary);
 	--wsp-business-tint: color-mix(in srgb, var(--tertiary) 12%, var(--surface-1));
 	--wsp-business-tint-hi: color-mix(in srgb, var(--tertiary) 20%, var(--surface-1));
