@@ -261,7 +261,7 @@
 
 .wsp-lane__row[data-active="true"] {
 	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 	font-weight: 500;
 }
 
@@ -438,7 +438,7 @@ words — a ring colour on its own is not a channel. */
 
 .wsp-rail__item[data-active="true"] {
 	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 }
 
 .wsp-rail__item:focus-visible,

@@ -51,7 +51,7 @@
 	padding: var(--sw-pad);
 	background: var(--surface-3);
 	border: 1px solid var(--outline);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: inherit;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -60,7 +60,7 @@
 }
 .ui-switch__track:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-switch__track[aria-checked="true"] {
 	background: var(--primary);

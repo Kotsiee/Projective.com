@@ -49,11 +49,11 @@
 }
 .ui-panelmenu__header:hover,
 .ui-panelmenu__leaf:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-panelmenu__header:focus-visible,
 .ui-panelmenu__leaf:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-panelmenu__header--disabled,
 .ui-panelmenu__leaf--disabled {
@@ -96,7 +96,7 @@
 	text-align: center;
 	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-panelmenu__separator {
 	block-size: 1px;

@@ -353,7 +353,7 @@
 }
 
 .wsp-override[data-override="grant"] {
-	background: color-mix(in srgb, var(--wsp-grant) 14%, transparent);
+	background: color-mix(in srgb, var(--wsp-grant) var(--tint), transparent);
 	color: var(--wsp-grant);
 }
 
@@ -571,7 +571,7 @@
 	margin-inline: auto;
 	inline-size: 1px;
 	block-size: var(--wsp-connector);
-	background: var(--wsp-connector-color);
+	background: var(--hairline-color);
 }
 
 .wsp-chart__node {
@@ -591,7 +591,7 @@
 	margin-inline: auto;
 	inline-size: 1px;
 	block-size: var(--wsp-connector);
-	background: var(--wsp-connector-color);
+	background: var(--hairline-color);
 }
 
 /* The sibling bar. A first child spans from its own centre outward; a last child spans inward. */
@@ -601,7 +601,7 @@
 	inset-block-end: calc(100% + var(--wsp-connector));
 	inset-inline: 0;
 	block-size: 1px;
-	background: var(--wsp-connector-color);
+	background: var(--hairline-color);
 }
 
 .wsp-chart__level:not(.wsp-chart__level--root) > .wsp-chart__node:first-child::after {
@@ -916,7 +916,7 @@ does anything (§B.4 — the fill is the separator). */
 	gap: var(--space-3);
 	padding: var(--space-3) var(--space-4);
 	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--danger) 10%, var(--surface-1));
+	background: color-mix(in srgb, var(--danger) var(--tint-soft), var(--surface-1));
 }
 
 .wsp-mdrawer__danger-text {
@@ -1200,7 +1200,7 @@ does anything (§B.4 — the fill is the separator). */
 	.wsp-chart__level:not(.wsp-chart__level--root) {
 		padding-block-start: var(--space-2);
 		padding-inline-start: var(--wsp-tree-indent);
-		border-inline-start: 1px solid var(--wsp-connector-color);
+		border-inline-start: 1px solid var(--hairline-color);
 	}
 
 	.wsp-chart__level:not(.wsp-chart__level--root)::before,

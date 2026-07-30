@@ -230,7 +230,7 @@ export function FlowBand(props: FlowBandProps): JSX.Element {
 					</div>
 				)}
 
-				<table class="wlt-chart__table">
+				<table class="wlt-chart__table ui-visually-hidden">
 					<caption>Money in versus money out, {RANGE_LABEL[range]}</caption>
 					<thead>
 						<tr>

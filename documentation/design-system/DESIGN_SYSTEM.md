@@ -40,6 +40,7 @@ values, expressed here as the token contract components consume.
 | `--success`             | `#268C66`   | tonal                                           | "Complete" / approved                  |
 | `--warning`             | `#D98216`   | tonal                                           | "In Progress" / time-sensitive         |
 | `--danger`              | `#D94141`   | tonal                                           | "Incomplete" / error / no-show         |
+| `--info`                | `#3D7BD9`   | tonal                                           | Neutral-informational state (Ready / To do / advisory) |
 | `--bg`                  | `#FAFAFA`   | `#1A1A1A`                                       | Primary canvas                         |
 | `--surface`             | `#FFFFFF`   | `#212121`                                       | Elevated cards/headers/sidebar         |
 | `--text-main`           | `#1A1A1A`   | `#FFFFFF`                                       | Body & headings                        |
@@ -80,11 +81,19 @@ Material exists.
    upgrade path when a scheme flavor becomes user-selectable.)
 3. **Tone selection = the light/dark switch.** A **tone** is picked per role per mode. Because tone
    correlates with contrast, the pairs are engineered, not eyeballed:
-   - Light: `primary = P.tone(40)`, `on-primary = P.tone(100)`, `surface = N.tone(98)`,
+   - Light: `primary = P.tone(45)`, `on-primary = P.tone(98)`, `surface = N.tone(100)`,
      `on-surface = N.tone(10)`, `outline = NV.tone(50)`.
    - Dark: `primary = P.tone(80)`, `on-primary = P.tone(20)`, `surface = N.tone(6)`,
-     `on-surface = N.tone(90)`, `outline = NV.tone(60)`. The **±40-tone** delta between a color and
-     its `on-` pair guarantees ≥ 4.5:1 by construction.
+     `on-surface = N.tone(90)`, `outline = NV.tone(60)`.
+
+   **The invariant is straddling mid-tone, not the size of the gap.** A pair must sit on opposite
+   sides of tone 50 with a gap of ~60 tones. This is stated precisely because the looser reading —
+   "any wide delta guarantees ≥4.5:1" — is false and the engine once shipped against it: dark
+   `primary = P.tone(60)` with `on-primary = P.tone(98)` is a 38-tone gap that is still
+   light-on-light, and computes to **3.02:1**, below AA, on every filled button, badge and chip in
+   dark mode. The documented pair above computes to **7.74:1** (AAA). Any change to a tone selection
+   is verified by reproducing `buildScheme()` against the real seed and printing WCAG ratios for
+   every `on-`/base pair in all four modes — never by eye.
 4. **Emit CSS variables.** The engine serializes selected tones to `--primary`, `--on-primary`,
    `--surface-1…5`, `--outline`, etc., and sets them on `:root` (and on any nested
    `<DesignSystemProvider>` scope, §D.3).
@@ -95,23 +104,23 @@ import { argbFromHex, CorePalette, hexFromArgb } from "@material/material-color-
 
 /** Generate the token map for one seed + mode, ready to write to CSS custom properties. */
 export function buildScheme(
-	{ seed, dark }: { seed: string; dark: boolean },
+	{ seed, dark, highContrast = false }: ThemeInput,
 ): Record<string, string> {
 	const core = CorePalette.of(argbFromHex(seed)); // a1 P · a2 · a3 · n1 N · n2 NV
 	const hx = (argb: number) => hexFromArgb(argb);
 	return dark
 		? {
-			"--primary": hx(core.a1.tone(80)),
+			"--primary": hx(core.a1.tone(80)), // straddles mid against on-primary tone(20)
 			"--on-primary": hx(core.a1.tone(20)),
 			"--surface": hx(core.n1.tone(6)),
 			"--surface-1": hx(core.n1.tone(10)),
 			"--on-surface": hx(core.n1.tone(90)),
 			"--outline": hx(core.n2.tone(60)),
-			// …secondary/tertiary + fixed-hue success/warning/danger seeded from their own hues.
+			// …secondary/tertiary + fixed-hue success/warning/danger/info from their own seeds.
 		}
 		: {
-			"--primary": hx(core.a1.tone(40)),
-			"--on-primary": hx(core.a1.tone(100)),
+			"--primary": hx(core.a1.tone(45)),
+			"--on-primary": hx(core.a1.tone(98)),
 			"--surface": hx(core.n1.tone(100)),
 			"--surface-1": hx(core.n1.tone(96)),
 			"--on-surface": hx(core.n1.tone(10)),
@@ -120,9 +129,25 @@ export function buildScheme(
 }
 ```
 
-**High-contrast (§A.5)** widens the tonal separation: foreground tones (`on-*`, `outline`) are
-pushed further from mid-tone (50) toward the extremes, re-deriving every pair at a wider gap with
-**zero component changes**. The full implementation (semantic ramps, focus-ring alpha, the
+**High-contrast (§A.5)** widens the tonal separation on **both sides of every pair**, re-deriving
+them at a wider gap with **zero component changes**. Two rules make it work:
+
+- **Direction comes from the mode, not from the tone's own position.** A foreground widens toward
+  the end opposite its background — up in dark, down in light. Keying off the tone instead
+  (`t < 50 ? t - 8 : t + 8`) is mode-blind, and light-mode `--outline` sits at exactly tone 50: it
+  took the "lighter" branch and dropped from 4.27:1 to **3.24:1**, so the accessibility overlay
+  degraded the token it was meant to rescue. An `on-` role's background is the filled role it sits
+  on, so it widens the other way.
+- **The widening reaches every foreground role**, including the semantic ramps — `--success` /
+  `--warning` / `--danger` / `--info` were previously byte-identical in high contrast, so a third of
+  the palette opted out of the overlay. `--border-subtle` is promoted to the `--outline` tone here,
+  as this section's table promises. **Surfaces are deliberately left alone:** widening a light ramp
+  of 100/96/94/92 clamps its top steps to the same white and destroys the elevation ramp, which is
+  itself a §B.4 separation tier.
+
+The step is **12 tones** — the smallest value that lifts every text pair in both modes to the ≥7:1
+this section promises (at 8, the light primary link lands at 6.88:1 and 6.19:1 on tinted surfaces).
+The full implementation (semantic ramps, focus-ring alpha, the
 `applyConfig`/`bindRootTheme`/`schemeToCss` surface, and the `<DesignSystemProvider>` mount) lives
 in `packages/ui/system/`.
 
@@ -157,6 +182,11 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
     authors reached for `var(--radius-md)` — which resolved to nothing and computed `border-radius`
     back to its initial `0`, rendering square. The alias is emitted so the trap cannot fire again;
     prefer `--radius-base` in new code, and never give `md` a distinct value.
+  - **`--radius-full 999px`** is the terminal **pill** step and the only one **not** multiplied by
+    `--radius-scale`. Every other step is a curvature _amount_ and the knob is right to scale it; a
+    pill is a _shape_, and `--radius-scale: 0` would square every chip, switch and avatar frame while
+    the `border-radius: 50%` circles beside them stayed round. **`50%` is a separate idiom** — the
+    circle, tied to the element's own box — and is deliberately not tokenised into the radius ramp.
 - **Fluid container radii (Part D):**
   `--radius-container-lg: clamp(--radius-lg, 0.6vw + 8px,
   --radius-2xl)` (nested-frame exposed
@@ -168,22 +198,83 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
   (default `--radius-container-lg`; `PageCanvas` sets `--radius-container-xl`).
 - **Hairline separator:** `--hairline: 1px solid var(--hairline-color)`
   (`--hairline-color =
-  color-mix(in srgb, var(--outline) 40%, transparent)`) — a razor-thin,
+  color-mix(in srgb, var(--outline) 20%, transparent)`) — a razor-thin,
   low-contrast **single-edge** seam (§B.4). Applied on ONE edge only (header↔body, sidebar↔body
-  region seams), never as a four-sided box on non-interactive content.
+  region seams), never as a four-sided box on non-interactive content. **20%, not 40%** — this
+  section documented 40% while the code shipped 20%, a 2× discrepancy on §B.4's most-used separation
+  tier, and 19 consumers then re-derived the mix by hand at 16/18/20/22/24% so the seam had no single
+  visual weight anywhere in the app. Reconciled to the code; every consumer now reads the token.
+  - **`--hairline-strong` (`--outline` at 40%)** is the visible sibling, for a real border on an
+    **interactive** element — the only place §B.4 permits a full box. It exists because two features
+    had independently re-derived exactly that value (`--lp-hair-strong`, `--ex-hair-strong`). A raw
+    `color-mix` against `--outline` in a PR is now a finding: one of these two tokens is meant.
 - **Elevation ramp:** Low `0 2px 4px /.05` · Medium `0 4px 12px /.1` · High `0 8px 24px /.15`, each
   scaled by `--shadow-intensity`. Reserved: Low = cards, Medium = hover/sidebar header, High =
   modals/popovers.
 - **Sizing:** header `48px`, sidebar `64px` collapsed / `224px` expanded (`--shell-nav-block 48px`
   collapsed-rail square hit-target), input height `40px`. All spacing/type in **`rem`** for zoom &
-  user font-scaling (per spec §Accessibility).
+  user font-scaling (per spec §Accessibility) — with the single documented exception of
+  `--space-px`, below.
+- **Spacing ramp:** `--space-0 0` · **`--space-px 2px`** · `--space-1 0.25rem` · `--space-2 0.5rem` ·
+  `--space-3 0.75rem` · `--space-4 1rem` · `--space-5 1.5rem` · `--space-6 2rem` · `--space-7 3rem` ·
+  `--space-8 4rem`. Applied asymmetrically per §B.4 (more space above a heading than below it).
+  - **`--space-px` is the sub-ramp step and the one value deliberately in `px`.** The ramp started at
+    4px, so dense chrome — segmented meters, chip rows, calendar cells, icon rails — had nowhere to go
+    and reached for a literal, 134 times. It is a graphical **seam** between adjacent marks, not
+    content rhythm: content spacing should grow when a reader scales their type, a seam should not, or
+    at 200% zoom a 2px hairline becomes a 4px hole in a bar meant to read as one object. Both feature
+    token layers had independently invented the identical token (`--wlt-seg-gap`, `--wsp-seg-gap`),
+    which is what earned it a place in the global contract.
+- **Surface structure (promoted from the feature layers).** `--track-recessed` · `--track-meter` ·
+  `--hatch-color` · `--track-h 18px` / `--track-h-hi 24px` · `--pip-dot 7px` · `--band-gap` ·
+  `--band-pad-block-end`(`-lg`) · `--row-h 3rem` / `--row-h-dense 2.25rem` · `--rig-row-h 1.75rem` ·
+  `--chart-h 11rem` / `--chart-h-sm 9rem` · `--drawer-w min(30rem, 92vw)` · `--field-max 28rem` ·
+  `--minor-size 0.55em` / `--minor-fade 0.62`. The **promotion rule** is the point: a value moves to
+  this layer only when two feature layers written independently arrived at it **without knowing about
+  each other**. That agreement is the evidence it is global; a value used once, however sensible,
+  stays feature-local. `--hatch-color`, `--track-recessed` and `--minor-fade` carry their
+  `data-contrast="high"` widening with them. Deliberately **not** promoted: the two sliver thresholds
+  and the two overspend tints, which disagree for real reasons.
 
 ### A.4 Typography
 
-Scale defined in `rem` on a modular ramp; families via `--font-sans` (UI), `--font-mono`
-(code/`Kbd`), and the **accessibility-swappable** `--font-reading` (see §A.5). Weight/size/tracking
-are the primary hierarchy tools — this is load-bearing for the border-avoidance strategy in Part
-B.4.
+Families via `--font-sans` (UI), `--font-mono` (code/`Kbd`), and the **accessibility-swappable**
+`--font-reading` (see §A.5). Weight/size/tracking are the primary hierarchy tools — this is
+load-bearing for the border-avoidance strategy in Part B.4, which means every one of those three
+channels has to actually render.
+
+- **Size — `--text-2xs … --text-3xl`**, all in `rem`. It is deliberately **two ramps end to end**,
+  and the contract says so rather than claiming a single ratio: `2xs 0.6875` · `xs 0.75` ·
+  `sm 0.8125` · `md 0.875` step by one pixel because the product is a dense console whose registers
+  are separated by tracking, weight and case as much as by size; `base 1` · `lg 1.125` · `xl 1.375` ·
+  `2xl 1.75` · `3xl 2.25` then run on a ~1.25 modular ramp, where size does the work again. A single
+  1.2 ratio through the dense band would jump 11 → 13 → 16 and leave label-vs-body nowhere to sit.
+  `--text-base` is `1rem` so the name keeps meaning what `rem` means; the product's dense body is
+  `--text-md`, and a reading surface uses `--text-base`.
+- **THE label register is `--text-xs` (0.75rem)**, uppercase, `--tracking-wide`, `--fw-semibold`.
+  `--text-2xs` is micro (timestamps, counts, unit suffixes) and never a label — uppercase strips the
+  ascender/descender cues a reader identifies a word by, so an all-caps label needs more size than
+  lowercase at the same role, not less.
+- **Leading — `--leading-tight/snug/normal/relaxed` (1.2 / 1.35 / 1.5 / 1.7)**, unitless so it
+  inherits as a ratio and re-multiplies per descendant. `--leading-normal` is set on `<body>`
+  alongside `--text-base`; a surface that declares neither inherits a real leading rather than the
+  UA's `normal` (≈1.2), which is what wrapping empty-state copy used to get.
+- **Tracking — `--tracking-tight/normal/wide` (-0.02 / 0 / 0.08em)**, floor -0.04em.
+- **Weight — FIVE masters and no intermediates: `--fw-light 300` · `normal 400` · `medium 500` ·
+  `semibold 600` · `bold 700`.** This is a decision. The repo ships **no webfonts at all** — no
+  `@font-face`, no font asset — so `--font-sans` resolves to variable SF Pro on macOS but to static
+  Segoe UI / Roboto on Windows and Android, where an intermediate snaps to the nearest installed
+  master. A ramp once carrying 18 numeric weights (520/550/560/580/620/640/650/680/750…) therefore
+  rendered its middle steps on one platform in three, while B.4 leaned on weight as the tier that
+  replaces borders. Intermediates are not permitted; if a self-hosted variable face is ever adopted,
+  these tokens are the single place a sixth step is added. `300` survives because it is a genuine
+  master on all three platforms and marketing/editorial surfaces use it for display text.
+- **Measure — `--measure 68ch` / `--measure-narrow 52ch`**, in `ch` so it tracks the reader's own
+  font size instead of freezing at a pixel width. Every prose container reads one of these two.
+- **Fluid type uses `rem + vw`, never bare `vw`.** `clamp(2.6rem, 11vw, 11rem)` ignores the reader's
+  font size entirely between its bounds; `clamp(2.6rem, 1.9rem + 4vw, 6rem)` does not. A surface may
+  keep genuinely local fluid display steps, but the fixed steps alias `--text-*` — that aliasing is
+  what stops two feature ramps from independently reinventing the same scale and drifting.
 
 ### A.5 Accessibility themes (design tokens)
 
@@ -192,7 +283,7 @@ attribute on `:root` or a `<DesignSystemProvider>` scope), never per-component p
 
 | Theme                        | Trigger                                                         | Token effect                                                                                                                                                                                                |
 | :--------------------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Open-dyslexic typography** | `data-font="dyslexic"`                                          | Remaps `--font-sans`/`--font-reading` → OpenDyslexic; widens `--tracking`, raises `--line-height`, disables italic synthesis.                                                                               |
+| **Open-dyslexic typography** | `data-font="dyslexic"`                                          | Remaps `--font-sans`/`--font-reading`/`--font-mono` → OpenDyslexic (`local()` first, so an already-installed copy costs zero bytes); widens all three `--tracking-*`, raises all four `--leading-*`, shortens `--measure` to 55ch, collapses `--fw-*` to the face's only two masters, turns ligatures off, and replaces synthesised italics with a weight step. **The woff2 is the one asset the repo cannot ship** — see the `@font-face` snippet in `packages/ui/styles/index.css`; every other effect works without it. |
 | **Color-blindness shifts**   | `data-cvd="protan\|deutan\|tritan"`                             | Swaps status hues for a CVD-safe set and **adds a non-color channel** (icon/shape/label) to every status token so meaning never rides on hue alone — success gets a check glyph token, danger a cross, etc. |
 | **High contrast**            | `data-contrast="high"`                                          | Drives the Material `contrast` param (§A.2) to a wider tone separation; promotes `--border-subtle` to a visible `--outline`; forces `≥ 7:1` (AAA) text.                                                     |
 | **Reduced motion**           | `prefers-reduced-motion: reduce` **or** `data-motion="reduced"` | Every transition/spring collapses to `0ms` **jump-to-final** (per spec §Motion Reduction); ripples and theme-crossfades disabled; only opacity/position _end states_ apply. See §B.5.                       |

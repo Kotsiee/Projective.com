@@ -6,8 +6,9 @@
  */
 
 .ui-message {
-	--msg-accent: var(--secondary);
-	--msg-on: var(--on-primary);
+	/* Matches the component's own `severity = "info"` default. */
+	--msg-accent: var(--info);
+	--msg-on: var(--on-info);
 
 	position: relative;
 	display: flex;
@@ -29,15 +30,15 @@
 }
 .ui-message--secondary {
 	--msg-accent: var(--secondary);
-	--msg-on: var(--on-surface);
+	--msg-on: var(--on-secondary);
 }
 .ui-message--success {
 	--msg-accent: var(--success);
 	--msg-on: var(--on-success);
 }
 .ui-message--info {
-	--msg-accent: var(--secondary);
-	--msg-on: var(--on-primary);
+	--msg-accent: var(--info);
+	--msg-on: var(--on-info);
 }
 .ui-message--warning {
 	--msg-accent: var(--warning);
@@ -45,7 +46,7 @@
 }
 .ui-message--help {
 	--msg-accent: var(--tertiary);
-	--msg-on: var(--on-primary);
+	--msg-on: var(--on-tertiary);
 }
 .ui-message--danger {
 	--msg-accent: var(--danger);
@@ -55,7 +56,7 @@
 
 /* #region Variants */
 .ui-message--subtle {
-	background: color-mix(in srgb, var(--msg-accent) 12%, transparent);
+	background: color-mix(in srgb, var(--msg-accent) var(--tint), transparent);
 	border-inline-start: 3px solid var(--msg-accent);
 }
 .ui-message--filled {
@@ -140,7 +141,7 @@
 }
 .ui-message__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	opacity: 1;
 }
 /* #endregion */

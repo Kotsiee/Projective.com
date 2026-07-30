@@ -76,8 +76,9 @@
 
 /* #region Item card */
 .ui-toast__item {
-	--toast-accent: var(--secondary);
-	--toast-on: var(--on-primary);
+	/* Matches the island's own `item.severity ?? "info"` default. */
+	--toast-accent: var(--info);
+	--toast-on: var(--on-info);
 
 	position: relative;
 	display: flex;
@@ -115,15 +116,15 @@
 }
 .ui-toast__item--secondary {
 	--toast-accent: var(--secondary);
-	--toast-on: var(--on-surface);
+	--toast-on: var(--on-secondary);
 }
 .ui-toast__item--success {
 	--toast-accent: var(--success);
 	--toast-on: var(--on-success);
 }
 .ui-toast__item--info {
-	--toast-accent: var(--secondary);
-	--toast-on: var(--on-primary);
+	--toast-accent: var(--info);
+	--toast-on: var(--on-info);
 }
 .ui-toast__item--warning {
 	--toast-accent: var(--warning);
@@ -131,7 +132,7 @@
 }
 .ui-toast__item--help {
 	--toast-accent: var(--tertiary);
-	--toast-on: var(--on-primary);
+	--toast-on: var(--on-tertiary);
 }
 .ui-toast__item--danger {
 	--toast-accent: var(--danger);
@@ -198,7 +199,7 @@
 }
 .ui-toast__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 

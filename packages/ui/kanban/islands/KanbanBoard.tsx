@@ -323,7 +323,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 
 			<DragOverlay>{overlay}</DragOverlay>
 
-			<div class="ui-kanban__live" role="status" aria-live="assertive" aria-atomic="true">
+			<div class="ui-visually-hidden" role="status" aria-live="assertive" aria-atomic="true">
 				{announce.value}
 			</div>
 		</div>

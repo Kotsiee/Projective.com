@@ -51,10 +51,10 @@
 }
 .ui-menubar__top:hover,
 .ui-menubar__top--open {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menubar__top:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-menubar__top--current {
 	color: var(--primary);
@@ -124,10 +124,10 @@
 .ui-menubar__menuitem:hover,
 .ui-menubar__menuitem:focus-visible,
 .ui-menubar__menuitem--open {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menubar__menuitem:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-menubar__menuitem--disabled {
 	opacity: 0.45;
@@ -165,7 +165,7 @@
 	text-align: center;
 	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-menubar__arrow {
 	flex: 0 0 auto;
@@ -195,7 +195,7 @@
 }
 .ui-menubar__hamburger:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-menubar__mobile {
 	position: fixed;
@@ -228,7 +228,7 @@
 	cursor: pointer;
 }
 .ui-menubar__mobile-item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menubar__mobile-item--child {
 	padding-inline-start: var(--space-6);

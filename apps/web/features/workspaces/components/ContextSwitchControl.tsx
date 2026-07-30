@@ -144,7 +144,7 @@ export function ContextSwitchControl(props: ContextSwitchControlProps): JSX.Elem
 						</span>
 					</button>
 				</Tooltip>
-				{error.value && <span class="wsp-sr" role="alert">{error.value}</span>}
+				{error.value && <span class="ui-visually-hidden" role="alert">{error.value}</span>}
 			</span>
 		);
 	}

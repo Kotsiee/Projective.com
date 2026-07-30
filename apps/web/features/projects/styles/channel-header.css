@@ -70,7 +70,7 @@
 .chan-header__title {
 	margin: 0;
 	font-size: 0.95rem;
-	font-weight: 650;
+	font-weight: 600;
 	line-height: 1.25;
 	letter-spacing: -0.01em;
 	color: var(--on-surface);
@@ -107,7 +107,7 @@
 
 .chan-header__typing {
 	color: var(--primary);
-	font-weight: 550;
+	font-weight: 600;
 }
 
 .chan-header__typing-dots {
@@ -154,7 +154,7 @@
 	flex: none;
 	padding-inline: 0.15rem;
 	font-size: 0.82rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--text-secondary);
 	text-decoration: none;
 	background: transparent;
@@ -185,7 +185,7 @@
 
 .chan-tab[data-active="true"] {
 	color: var(--primary);
-	font-weight: 650;
+	font-weight: 600;
 }
 
 .chan-tab[data-active="true"]::after {
@@ -196,7 +196,7 @@
 .chan-tab:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* Desktop reads as clean text items; the leading glyph is reserved for the compact mobile row. */
@@ -228,7 +228,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
@@ -243,17 +243,17 @@
 
 .chan-action:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* The dynamic primary create action — a filled accent pill so it reads as the room's main affordance. */
 .chan-action--primary {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
 .chan-action--primary:hover {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: color-mix(in srgb, var(--primary) 88%, black);
 }
 
@@ -307,7 +307,7 @@
 
 .chan-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .chan-menu__icon {
@@ -327,7 +327,7 @@
 }
 
 .chan-menu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 
 /* #endregion */
@@ -383,7 +383,7 @@
 .chan-body__title {
 	margin: 0;
 	font-size: 1.1rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 
@@ -404,7 +404,7 @@
 .chan-body__line {
 	block-size: 3.5rem;
 	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 /* #endregion */

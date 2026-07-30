@@ -35,7 +35,7 @@
 }
 .subm-actions__btn:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .subm-actions__btn--primary {
@@ -48,12 +48,12 @@
 }
 
 .subm-actions__btn--soft {
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	border-color: transparent;
 	color: var(--on-surface);
 }
 .subm-actions__btn--soft:hover {
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .subm-actions__btn--danger {
@@ -62,13 +62,13 @@
 	color: var(--danger);
 }
 .subm-actions__btn--danger:hover {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 
 .subm-actions__btn--danger-solid {
 	border-color: transparent;
 	background: var(--danger);
-	color: var(--on-primary, #fff);
+	color: var(--on-danger);
 }
 .subm-actions__btn--danger-solid:hover {
 	background: color-mix(in srgb, var(--danger) 88%, black);
@@ -85,7 +85,7 @@
 	align-items: center;
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-3);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	font-size: 0.8125rem;
 	font-weight: 600;
 	background: color-mix(in srgb, currentColor 12%, transparent);
@@ -128,7 +128,7 @@
 	align-items: center;
 	justify-content: center;
 	padding: var(--space-4);
-	background: color-mix(in srgb, var(--on-surface) 38%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-heavy), transparent);
 	backdrop-filter: blur(4px);
 	-webkit-backdrop-filter: blur(4px);
 }
@@ -190,11 +190,11 @@
 	align-items: center;
 	align-self: flex-start;
 	padding: 2px 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	font-size: 0.6875rem;
 	font-weight: 600;
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .subm-modal__actions {
 	display: flex;
@@ -224,7 +224,7 @@
 .subm-upload__drop:focus-visible {
 	outline: none;
 	border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-	background: color-mix(in srgb, var(--primary) 6%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
 }
 .subm-upload__icon {
 	color: var(--text-secondary);
@@ -248,7 +248,7 @@
 	align-items: center;
 	justify-content: center;
 	padding: var(--space-4);
-	background: color-mix(in srgb, var(--on-surface) 38%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-heavy), transparent);
 	backdrop-filter: blur(4px);
 	-webkit-backdrop-filter: blur(4px);
 }
@@ -270,11 +270,11 @@
 	justify-content: center;
 	inline-size: 3rem;
 	block-size: 3rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .subm-confirm__icon[data-tone="danger"] {
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .subm-confirm__title {
 	margin: 0;
@@ -345,12 +345,12 @@
 		var(--ease-standard);
 }
 .subm-tasks__close:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 .subm-tasks__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-tasks__body {
 	flex: 1 1 auto;

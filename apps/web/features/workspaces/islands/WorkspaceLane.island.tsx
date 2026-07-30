@@ -413,7 +413,7 @@ function EntityRow(
 					</span>
 				)
 				: <span class="wsp-chip">{roleLabel(entity.role)}</span>}
-			<span class="wsp-sr">{copy.Noun}</span>
+			<span class="ui-visually-hidden">{copy.Noun}</span>
 		</a>
 	);
 }
@@ -633,7 +633,7 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 										? (
 											<span class="wsp-lane__row-count wsp-num">
 												{signal.count}
-												<span class="wsp-sr">waiting</span>
+												<span class="ui-visually-hidden">waiting</span>
 											</span>
 										)
 										: signal?.dot

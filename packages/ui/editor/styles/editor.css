@@ -28,19 +28,19 @@
 }
 .ui-rte:focus-within {
 	border-color: var(--rte-accent);
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* Two-tier creation gate, mirroring the fields' `required` (RED) / `gate` (AMBER) statuses. */
 .ui-rte--required {
 	--rte-accent: var(--danger);
 	border-color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+	background: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
 }
 .ui-rte--gate {
 	--rte-accent: var(--warning);
 	border-color: var(--warning);
-	background: color-mix(in srgb, var(--warning) 6%, var(--surface));
+	background: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
 }
 .ui-rte--invalid {
 	--rte-accent: var(--danger);
@@ -61,7 +61,7 @@
 .ui-rte__group {
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 }
 .ui-rte__sep {
 	inline-size: 1px;
@@ -87,16 +87,16 @@
 }
 .ui-rte__btn:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .ui-rte__btn:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* Quill toggles `.ql-active` on the bound button when the format is on at the caret. */
 .ui-rte__btn.ql-active {
 	color: var(--rte-accent);
-	background: color-mix(in srgb, var(--rte-accent) 12%, transparent);
+	background: color-mix(in srgb, var(--rte-accent) var(--tint), transparent);
 }
 
 .ui-rte__glyph {
@@ -106,7 +106,7 @@
 	line-height: 1;
 }
 .ui-rte__glyph--bold {
-	font-weight: 800;
+	font-weight: 700;
 }
 .ui-rte__glyph--italic {
 	font-style: italic;

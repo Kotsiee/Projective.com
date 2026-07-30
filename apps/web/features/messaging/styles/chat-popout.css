@@ -24,12 +24,12 @@
 	font-weight: 600;
 	color: var(--primary);
 	text-decoration: none;
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
-	border-radius: 999px;
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-radius: var(--radius-full);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .chat-popout__return:hover {
-	background: color-mix(in srgb, var(--primary) 20%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 .chat-popout__return svg {
 	inline-size: 14px;
@@ -68,7 +68,7 @@
 	color: var(--primary);
 	background: var(--surface-2);
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 }
 .pop-chat__composer {
@@ -85,7 +85,7 @@
 	justify-content: center;
 	border: 2px dashed var(--primary);
 	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface-1));
 	z-index: 2;
 	pointer-events: none;
 }

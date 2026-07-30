@@ -34,12 +34,12 @@
 		color var(--dur-fast) var(--ease-standard);
 }
 .ui-zoom__btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--on-surface);
 }
 .ui-zoom__btn:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* The draggable track. A minimum width keeps the segments legible; it may grow to fill. */
@@ -57,14 +57,14 @@
 	outline: none;
 }
 .ui-zoom__track:focus-visible .ui-zoom__handle {
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-zoom__rail {
 	position: absolute;
 	inset-inline: 0;
 	block-size: var(--zoom-track-h);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--outline) 30%, transparent);
 }
 .ui-zoom__fill {
@@ -72,7 +72,7 @@
 	inset-inline-start: 0;
 	inline-size: var(--zoom-pct, 50%);
 	block-size: var(--zoom-track-h);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--primary) 70%, transparent);
 }
 
@@ -89,7 +89,7 @@
 	transform: translate(-50%, -50%);
 	inline-size: 2px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--outline) 55%, transparent);
 }
 
@@ -101,7 +101,7 @@
 	transform: translate(-50%, -50%);
 	inline-size: 2px;
 	block-size: 14px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) 55%, transparent);
 }
 
@@ -112,7 +112,7 @@
 	transform: translate(-50%, -50%);
 	inline-size: var(--zoom-handle);
 	block-size: var(--zoom-handle);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	border: 2px solid var(--surface);
 	box-shadow: var(--elevation-low);

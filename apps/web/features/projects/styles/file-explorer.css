@@ -88,16 +88,16 @@
 }
 
 .fx-tree__node:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .fx-tree__node:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .fx-tree__node[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 	font-weight: 600;
 }

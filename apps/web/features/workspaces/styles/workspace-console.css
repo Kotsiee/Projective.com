@@ -700,7 +700,7 @@ here and there must never be one. */
 }
 
 .wsp-tile__spark-area {
-    fill: color-mix(in srgb, var(--wsp-kind) 14%, transparent);
+    fill: color-mix(in srgb, var(--wsp-kind) var(--tint), transparent);
     stroke: none;
 }
 
@@ -921,7 +921,7 @@ a.wsp-activity__row:hover {
 
 .wsp-activity__item[data-kind="money"] .wsp-activity__glyph {
     background: var(--wsp-kind-tint-hi);
-    color: var(--wsp-kind);
+    color: var(--wsp-kind-ink);
 }
 
 .wsp-activity__item[data-kind="system"] .wsp-activity__glyph {
@@ -1000,7 +1000,7 @@ a.wsp-activity__row:hover {
     flex-wrap: wrap;
     padding: var(--space-4);
     border-radius: var(--radius-container-lg);
-    background: color-mix(in srgb, var(--danger) 12%, var(--surface-1));
+    background: color-mix(in srgb, var(--danger) var(--tint), var(--surface-1));
 }
 
 .wsp-error__alert {
@@ -1117,7 +1117,7 @@ a.wsp-activity__row:hover {
         inset: 0;
         background: linear-gradient(90deg,
                 transparent,
-                color-mix(in srgb, var(--on-surface) 6%, transparent),
+                color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent),
                 transparent);
         animation: wsp-shimmer var(--dur-slow) linear infinite;
     }

@@ -20,7 +20,7 @@
 }
 
 .ui-badge--rounded {
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 
 /* #region Severities */
@@ -30,15 +30,15 @@
 }
 .ui-badge--secondary {
 	--badge-accent: var(--secondary);
-	--badge-on: var(--on-surface);
+	--badge-on: var(--on-secondary);
 }
 .ui-badge--success {
 	--badge-accent: var(--success);
 	--badge-on: var(--on-success);
 }
 .ui-badge--info {
-	--badge-accent: var(--secondary);
-	--badge-on: var(--on-primary);
+	--badge-accent: var(--info);
+	--badge-on: var(--on-info);
 }
 .ui-badge--warning {
 	--badge-accent: var(--warning);
@@ -46,7 +46,7 @@
 }
 .ui-badge--help {
 	--badge-accent: var(--tertiary);
-	--badge-on: var(--on-primary);
+	--badge-on: var(--on-tertiary);
 }
 .ui-badge--danger {
 	--badge-accent: var(--danger);
@@ -74,7 +74,7 @@
 	inline-size: 0.5rem;
 	block-size: 0.5rem;
 	padding: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 
 /* #region OverlayBadge */

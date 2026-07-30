@@ -474,7 +474,7 @@ export function WorkloadMeter(props: { workload: number; label?: string }): JSX.
 	const clamped = Math.max(0, Math.min(100, Math.round(workload)));
 	return (
 		<div class="wsp-mcard__load" data-tone={clamped >= 90 ? "full" : undefined}>
-			<span class="wsp-sr">{`${label} ${clamped}%`}</span>
+			<span class="ui-visually-hidden">{`${label} ${clamped}%`}</span>
 			<span class="wsp-mcard__load-track" aria-hidden="true">
 				<span class="wsp-mcard__load-fill" style={styleVars({ "--wsp-fill": clamped / 100 })} />
 			</span>
@@ -553,7 +553,7 @@ export function MembershipDot(props: { state: WorkspaceMember["state"] }): JSX.E
 				class="wsp-statedot"
 				data-state={state === "active" ? "active" : state === "left" ? "archived" : "draft"}
 			>
-				<span class="wsp-sr">{membershipLabel(state)}</span>
+				<span class="ui-visually-hidden">{membershipLabel(state)}</span>
 			</span>
 		</Tooltip>
 	);

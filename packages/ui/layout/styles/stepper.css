@@ -81,7 +81,7 @@
 }
 
 .ui-stepper__step--done .ui-stepper__marker {
-	background: color-mix(in srgb, var(--primary) 20%, var(--surface-2));
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), var(--surface-2));
 	color: var(--primary);
 }
 

@@ -36,7 +36,7 @@
 }
 .ui-button:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-button:hover:not(:disabled) {
 	filter: brightness(0.94);
@@ -56,15 +56,15 @@
 }
 .ui-button--secondary {
 	--btn-accent: var(--secondary);
-	--btn-on: var(--on-surface);
+	--btn-on: var(--on-secondary);
 }
 .ui-button--success {
 	--btn-accent: var(--success);
 	--btn-on: var(--on-success);
 }
 .ui-button--info {
-	--btn-accent: var(--secondary);
-	--btn-on: var(--on-primary);
+	--btn-accent: var(--info);
+	--btn-on: var(--on-info);
 }
 .ui-button--warning {
 	--btn-accent: var(--warning);
@@ -72,7 +72,7 @@
 }
 .ui-button--help {
 	--btn-accent: var(--tertiary);
-	--btn-on: var(--on-primary);
+	--btn-on: var(--on-tertiary);
 }
 .ui-button--danger {
 	--btn-accent: var(--danger);
@@ -87,7 +87,7 @@
 	border-color: var(--btn-accent);
 }
 .ui-button--outlined:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--btn-accent) 10%, transparent);
+	background: color-mix(in srgb, var(--btn-accent) var(--tint-soft), transparent);
 	filter: none;
 }
 .ui-button--text {
@@ -96,7 +96,7 @@
 	border-color: transparent;
 }
 .ui-button--text:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--btn-accent) 12%, transparent);
+	background: color-mix(in srgb, var(--btn-accent) var(--tint), transparent);
 	filter: none;
 }
 .ui-button--link {
@@ -121,7 +121,7 @@
 	box-shadow: var(--elevation-medium);
 }
 .ui-button--rounded {
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-button--fluid {
 	display: flex;
@@ -178,7 +178,7 @@
 	font-weight: 700;
 	color: var(--on-danger);
 	background: var(--danger);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 @keyframes ui-button-spin {
 	to {

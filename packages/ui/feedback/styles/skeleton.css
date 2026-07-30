@@ -44,7 +44,7 @@
 	background: linear-gradient(
 		90deg,
 		transparent,
-		color-mix(in srgb, var(--on-surface) 8%, transparent),
+		color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent),
 		transparent
 	);
 	animation: ui-skeleton-wave 1.6s linear infinite;

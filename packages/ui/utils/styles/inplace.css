@@ -30,7 +30,7 @@
 }
 .ui-inplace__display:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-inplace--disabled .ui-inplace__display {
 	opacity: 0.55;
@@ -70,6 +70,6 @@
 }
 .ui-inplace__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */

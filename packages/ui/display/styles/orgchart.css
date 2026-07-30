@@ -116,11 +116,11 @@
 }
 .ui-orgchart__card:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-orgchart__card--selected {
 	border-color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface-1));
 }
 .ui-orgchart__toggle {
 	position: absolute;
@@ -144,6 +144,6 @@
 }
 .ui-orgchart__toggle:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */

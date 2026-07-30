@@ -13,21 +13,37 @@
 body {
 	margin: 0;
 	font-family: var(--font-sans, system-ui, sans-serif);
-	color: var(--on-surface, #1a1a1a);
-	background: var(--bg, #fafafa);
+	/*
+	 * The document's base size and leading. Both were previously unset, so every element that did not
+	 * declare its own inherited the UA defaults — and critically `line-height: normal`, which is about
+	 * 1.2 on a system sans. 1,080 of the repo's 1,372 font-size declarations (78.8%) have no sibling
+	 * line-height, so 1.2 was the *only* leading in the cascade for all of them. It shows worst on
+	 * wrapping empty-state copy — .cat-empty__note, .msg-empty__note, .fx-empty__note,
+	 * .brd-empty__note, .pf-notfound__note — which is precisely where a stuck reader lands.
+	 *
+	 * Setting them here makes the ~22 downstream line-height declarations deliberate overrides rather
+	 * than the only leading anyone gets.
+	 */
+	font-size: var(--text-base);
+	line-height: var(--leading-normal);
+	letter-spacing: var(--tracking-normal);
+	color: var(--on-surface);
+	background: var(--bg);
+	/* Long words, URLs and CJK strings wrap instead of forcing a horizontal scrollbar. */
+	overflow-wrap: break-word;
 }
 
 /* Signature corner-curve app frame (DESIGN_SYSTEM.md Part D.1). */
 .app-frame {
-	min-height: 100dvh;
+	min-block-size: 100dvh;
 	padding: clamp(0px, 1vw, 12px);
 	box-sizing: border-box;
 }
 
 .app-frame__canvas {
-	min-height: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
-	border-radius: var(--radius-xl, 16px);
-	background: var(--surface, #fff);
+	min-block-size: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
+	border-radius: var(--radius-xl);
+	background: var(--surface);
 	overflow: clip;
 }
 
@@ -37,31 +53,39 @@ body {
 }
 
 .page__title {
-	margin: 0 0 0.25rem;
-	font-size: clamp(1.5rem, 3vw, 2rem);
+	margin: 0 0 var(--space-1);
+	/* `rem + vw`, never bare `vw`: a pure-viewport slope ignores the reader's font size everywhere
+	   between the two bounds, so zooming or raising the browser's base size moves nothing. */
+	font-size: clamp(var(--text-2xl), 1.15rem + 1.6vw, 2rem);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
 }
 
 .page__path {
-	margin: 0 0 1rem;
-	color: var(--text-secondary, #666);
+	margin: 0 0 var(--space-4);
+	color: var(--text-secondary);
+	font-size: var(--text-md);
 }
 
 .page__note {
-	color: var(--text-secondary, #666);
-	max-width: 60ch;
+	color: var(--text-secondary);
+	/* Logical property: `max-width` is physical and §A.6 prohibits it. Harmless in a horizontal
+	   writing mode, but this is the global sheet authors copy the house pattern from. */
+	max-inline-size: var(--measure);
 }
 
 /* Shell brand slot + middle-nav lane (app-side chrome around @projective/ui/navigation). */
 .brand {
-	font-weight: 700;
-	letter-spacing: -0.01em;
+	font-weight: var(--fw-bold);
+	letter-spacing: var(--tracking-tight);
 }
 
 .lane-nav {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1, 0.25rem);
-	padding: var(--space-2, 0.5rem) 0;
+	gap: var(--space-1);
+	padding-block: var(--space-2);
 }
 
 /* Nested-theme scope wrapper (DesignSystemProvider, non-root). */
@@ -73,25 +97,34 @@ body {
 .app-frame__topbar {
 	display: flex;
 	justify-content: flex-end;
-	padding: 0.5rem clamp(1rem, 4vw, 3rem);
+	padding-block: var(--space-2);
+	padding-inline: clamp(1rem, 4vw, 3rem);
 }
 
+/*
+ * No hex fallbacks inside var(). The theme engine injects every color token into a first-paint
+ * <style> before this sheet applies, so a fallback can never fire — but it does encode a wrong
+ * answer if it ever did, and it normalises raw hex in a token-only layer. A missing token should
+ * fail loudly, not quietly render last year's palette.
+ */
 .theme-toggle {
-	border: 1px solid var(--outline, #ccc);
-	background: var(--surface-1, #f2f2f2);
-	color: var(--on-surface, #1a1a1a);
-	border-radius: var(--radius-base, 8px);
-	padding: 0.375rem 0.75rem;
+	border: 1px solid var(--outline);
+	background: var(--surface-1);
+	color: var(--on-surface);
+	border-radius: var(--radius-base);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-3);
 	font: inherit;
+	font-weight: var(--fw-medium);
 	cursor: pointer;
-	transition: background-color var(--dur-fast, 150ms) var(--ease-standard, ease);
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .theme-toggle:hover {
-	background: var(--surface-2, #e9e9e9);
+	background: var(--surface-2);
 }
 
 .theme-toggle:focus-visible {
-	outline: 3px solid var(--focus-ring, rgba(40, 134, 144, 0.4));
+	outline: 3px solid var(--focus-ring);
 	outline-offset: 2px;
 }

@@ -68,11 +68,11 @@
 .ui-select-button__option:hover:not(:disabled):not([aria-pressed="true"]):not(
 	[aria-checked="true"]
 ) {
-	background: color-mix(in srgb, var(--primary) 8%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .ui-select-button__option:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-select-button__option:disabled {
 	opacity: 0.5;

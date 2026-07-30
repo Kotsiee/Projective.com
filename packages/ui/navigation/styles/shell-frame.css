@@ -32,11 +32,25 @@
     inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
     block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
     inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
-    border-start-start-radius: var(--frame-radius);
-    border-end-start-radius: var(--frame-bl-radius);
+    /*
+	 * `--frame-radius` is declared by `.ui-shell-frame` (a DESCENDANT) and by `.ui-shell-topbar` (a
+	 * SIBLING) — never on `.ui-app-shell__content` itself, so an un-defaulted `var()` here is invalid
+	 * at computed-value time and collapses the corner to 0. That painted this `--surface-1` track as a
+	 * SQUARE slab poking outside the rounded seam drawn over it: a hard tonal notch at the top-inline-
+	 * start corner of every frame. The fallback must therefore match whichever frame draws the seam at
+	 * THIS origin — the Blue middle-nav frame by default (below, when there is none, the Green canvas).
+	 */
+    border-start-start-radius: var(--frame-radius, var(--radius-container-lg));
+    border-end-start-radius: var(--frame-bl-radius, 0);
     z-index: 0;
     pointer-events: none;
     background: var(--surface-1);
+}
+
+/* No middle-nav (a bare canvas): the seam at this origin is the Green body panel's own, larger curve,
+   so the track beneath it must round to the SAME radius or it reappears as a sliver in the corner. */
+.ui-app-shell:not(:has(.ui-middle-nav)) .ui-app-shell__content::before {
+    border-start-start-radius: var(--radius-container-xl);
 }
 
 /*

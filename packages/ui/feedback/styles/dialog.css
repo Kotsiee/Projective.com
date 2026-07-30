@@ -135,11 +135,11 @@
 }
 .ui-dialog__action:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-dialog__action:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-dialog__close {
 	font-size: 1.25rem;

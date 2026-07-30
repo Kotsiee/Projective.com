@@ -134,12 +134,12 @@
 	gap: 0.35rem;
 	padding: 0.15rem 0.55rem;
 	font-size: 0.72rem;
-	font-weight: 650;
+	font-weight: 600;
 	line-height: 1.4;
 	letter-spacing: 0.01em;
 	color: var(--entity-accent, var(--on-surface));
 	background: color-mix(in srgb, var(--entity-accent, var(--primary)) 12%, transparent);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: default;
 	white-space: nowrap;
 }
@@ -205,7 +205,7 @@
 	color: var(--on-surface);
 	background: var(--surface-2);
 	border: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	text-decoration: none;
 	transition:
@@ -229,7 +229,7 @@
 }
 
 .pf-btn--primary {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
@@ -238,7 +238,7 @@
 }
 
 .pf-btn--follow[data-on="true"] {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
@@ -313,7 +313,7 @@
 	align-items: center;
 	gap: 0.35rem;
 	font-size: 0.9rem;
-	font-weight: 650;
+	font-weight: 600;
 	white-space: nowrap;
 }
 
@@ -388,7 +388,7 @@
 	gap: var(--space-2);
 	padding: 0.6rem 0.75rem;
 	font-size: 0.85rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--text-secondary);
 	text-decoration: none;
 	white-space: nowrap;
@@ -414,7 +414,7 @@
 
 .pf-tab[data-active="true"] {
 	color: var(--on-surface);
-	font-weight: 650;
+	font-weight: 600;
 }
 
 .pf-tab[data-active="true"]::after {
@@ -438,7 +438,7 @@
 .pf-tab--more {
 	font: inherit;
 	font-size: 0.85rem;
-	font-weight: 550;
+	font-weight: 600;
 	background: transparent;
 	border: none;
 	cursor: pointer;
@@ -485,7 +485,7 @@
 }
 
 .pf-tabs__menu-item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-tabs__menu-item:focus-visible {
@@ -495,8 +495,8 @@
 
 .pf-tabs__menu-item[data-active="true"] {
 	color: var(--on-surface);
-	font-weight: 650;
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	font-weight: 600;
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .pf-tabs__menu-icon {
@@ -588,7 +588,7 @@
 .pf-meta__rowtext {
 	min-inline-size: 0;
 	font-size: 0.9rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 
@@ -679,7 +679,7 @@
 .pf-meta__heading {
 	margin: 0 0 var(--space-1);
 	font-size: 0.72rem;
-	font-weight: 650;
+	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--text-secondary);
@@ -699,7 +699,7 @@
 
 .pf-rep__role {
 	font-size: 0.75rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--text-secondary);
 }
 
@@ -754,8 +754,8 @@
 	font-size: 0.74rem;
 	font-weight: 600;
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
-	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	border-radius: var(--radius-full);
 	cursor: default;
 }
 
@@ -767,12 +767,12 @@
 }
 
 .pf-tier[data-tier="architect"] {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
 .pf-tier[data-tier="architect"] .pf-tier__mark {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 }
 
 .pf-tiers[data-size="sm"] .pf-tier {
@@ -792,7 +792,7 @@
 .pf-about__heading {
 	margin: 0 0 var(--space-2);
 	font-size: 0.78rem;
-	font-weight: 650;
+	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--text-secondary);
@@ -824,7 +824,7 @@
 }
 
 .pf-story__editable:hover {
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .pf-story__editable:focus-visible {
@@ -870,7 +870,7 @@
 .pf-skill {
 	display: inline-flex;
 	text-decoration: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
@@ -910,7 +910,7 @@
 	display: inline-flex;
 	align-items: stretch;
 	font-size: 0.8rem;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	overflow: hidden;
 	background: var(--surface-2);
 }
@@ -924,7 +924,7 @@
 .pf-langpill__level {
 	padding: 0.3rem 0.65rem;
 	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	border-inline-start: var(--hairline);
 }
 
@@ -936,7 +936,7 @@
  * pill picks up a faint wash so the two halves stay a unit.
  */
 .pf-langpill[data-level="native"] {
-	--lang-accent: var(--success, #2e7d32);
+	--lang-accent: var(--success);
 }
 
 .pf-langpill[data-level="fluent"] {
@@ -945,14 +945,14 @@
 
 .pf-langpill[data-level="conversational"],
 .pf-langpill[data-level="basic"] {
-	--lang-accent: var(--warning, #b26a00);
+	--lang-accent: var(--warning);
 }
 
 .pf-langpill[data-level="native"],
 .pf-langpill[data-level="fluent"],
 .pf-langpill[data-level="conversational"],
 .pf-langpill[data-level="basic"] {
-	background: color-mix(in srgb, var(--lang-accent) 8%, var(--surface-2));
+	background: color-mix(in srgb, var(--lang-accent) var(--tint-soft), var(--surface-2));
 }
 
 .pf-langpill[data-level="native"] .pf-langpill__level,
@@ -960,7 +960,7 @@
 .pf-langpill[data-level="conversational"] .pf-langpill__level,
 .pf-langpill[data-level="basic"] .pf-langpill__level {
 	color: color-mix(in srgb, var(--lang-accent) 82%, var(--on-surface));
-	background: color-mix(in srgb, var(--lang-accent) 20%, transparent);
+	background: color-mix(in srgb, var(--lang-accent) var(--tint-strong), transparent);
 	border-inline-start-color: color-mix(in srgb, var(--lang-accent) 30%, transparent);
 	font-weight: 600;
 }
@@ -1059,9 +1059,9 @@
 	font-size: 0.8rem;
 	font-weight: 600;
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 	border: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
@@ -1102,7 +1102,7 @@
 .pf-projects__sub {
 	margin: 0 0 var(--space-3);
 	font-size: 0.8rem;
-	font-weight: 650;
+	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--text-secondary);
@@ -1139,7 +1139,7 @@
 
 .pf-tl__title {
 	font-size: 0.95rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 
@@ -1210,8 +1210,8 @@
 	font-size: 0.66rem;
 	font-weight: 600;
 	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
-	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	border-radius: var(--radius-full);
 }
 
 /* Department-grouped members (Organisation) — one section per department, set off by spacing + type
@@ -1253,10 +1253,10 @@
 	min-inline-size: 1.4rem;
 	padding: 0.05rem 0.4rem;
 	font-size: 0.72rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	border-radius: var(--radius-full);
 }
 
 /* Departments overview (Departments tab) — tonal cards (§B.4: tint, no four-sided border). */
@@ -1293,7 +1293,7 @@
 
 .pf-deptcard__name {
 	font-size: 1rem;
-	font-weight: 650;
+	font-weight: 700;
 	color: var(--on-surface);
 }
 
@@ -1390,7 +1390,7 @@
 
 .pf-review__author {
 	font-size: 0.9rem;
-	font-weight: 650;
+	font-weight: 700;
 	color: var(--on-surface);
 	text-decoration: none;
 }
@@ -1404,14 +1404,14 @@
 	font-size: 0.7rem;
 	font-weight: 600;
 	padding: 0.1rem 0.45rem;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-review__role[data-role="client"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .pf-review__meta {
@@ -1480,7 +1480,7 @@
 	color: var(--text-secondary);
 	text-decoration: none;
 	background: transparent;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	transition:
 		color var(--dur-fast) var(--ease-standard),
 		background-color var(--dur-fast) var(--ease-standard);
@@ -1513,7 +1513,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	text-decoration: none;
 	transition:
@@ -1571,7 +1571,7 @@
 }
 
 .pf-lane__menu-item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-lane__menu-item:focus-visible {
@@ -1580,7 +1580,7 @@
 }
 
 .pf-lane__menu-item[data-danger="true"] {
-	color: var(--danger, #d9534f);
+	color: var(--danger);
 }
 
 .pf-lane__menu-item svg {
@@ -1626,7 +1626,7 @@
 }
 
 .pf-lanebtn:hover {
-	background: color-mix(in srgb, var(--on-surface) 12%, var(--surface-2));
+	background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface-2));
 }
 
 .pf-lanebtn:focus-visible {
@@ -1636,7 +1636,7 @@
 
 .pf-lanebtn--follow[data-on="true"],
 .pf-lanebtn--primary {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
@@ -1660,7 +1660,7 @@
 	min-block-size: 44px;
 	font: inherit;
 	font-size: 0.9rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 	background: var(--surface-2);
 	border: none;
@@ -1673,7 +1673,7 @@
 }
 
 .pf-lanecta--primary {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
@@ -1691,7 +1691,7 @@
 	display: flex;
 	padding: 3px;
 	background: var(--surface-2);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 }
 
 .pf-availtoggle__opt {
@@ -1705,7 +1705,7 @@
 	font-weight: 600;
 	color: var(--text-secondary);
 	text-decoration: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
@@ -1767,7 +1767,7 @@
 }
 
 .pf-laneitem:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-laneitem:focus-visible {
@@ -1778,11 +1778,11 @@
 .pf-laneitem.ui-nav-item--active,
 .pf-laneitem[data-on="true"] {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .pf-laneitem--primary {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
 }
 
@@ -1915,14 +1915,14 @@
 }
 
 .pf-railbtn:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
 .pf-railbtn--active,
 .pf-railbtn[data-active="true"],
 .pf-railbtn[data-on="true"] {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--on-surface);
 }
 

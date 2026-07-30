@@ -5,8 +5,9 @@
  */
 
 .ui-alert {
-	--alert-accent: var(--secondary);
-	--alert-on: var(--on-primary);
+	/* Matches the component's own `severity = "info"` default. */
+	--alert-accent: var(--info);
+	--alert-on: var(--on-info);
 
 	position: relative;
 	display: flex;
@@ -25,15 +26,15 @@
 }
 .ui-alert--secondary {
 	--alert-accent: var(--secondary);
-	--alert-on: var(--on-surface);
+	--alert-on: var(--on-secondary);
 }
 .ui-alert--success {
 	--alert-accent: var(--success);
 	--alert-on: var(--on-success);
 }
 .ui-alert--info {
-	--alert-accent: var(--secondary);
-	--alert-on: var(--on-primary);
+	--alert-accent: var(--info);
+	--alert-on: var(--on-info);
 }
 .ui-alert--warning {
 	--alert-accent: var(--warning);
@@ -41,7 +42,7 @@
 }
 .ui-alert--help {
 	--alert-accent: var(--tertiary);
-	--alert-on: var(--on-primary);
+	--alert-on: var(--on-tertiary);
 }
 .ui-alert--danger {
 	--alert-accent: var(--danger);
@@ -51,7 +52,7 @@
 
 /* #region Variants */
 .ui-alert--subtle {
-	background: color-mix(in srgb, var(--alert-accent) 10%, transparent);
+	background: color-mix(in srgb, var(--alert-accent) var(--tint-soft), transparent);
 	border-inline-start: 4px solid var(--alert-accent);
 }
 .ui-alert--filled {
@@ -144,7 +145,7 @@
 }
 .ui-alert__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	opacity: 1;
 }
 /* #endregion */

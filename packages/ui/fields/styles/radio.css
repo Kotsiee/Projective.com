@@ -85,7 +85,7 @@
 	transform: scale(1);
 }
 .ui-radio__input:focus-visible + .ui-radio__box {
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 

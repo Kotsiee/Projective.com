@@ -45,7 +45,7 @@
 }
 .ui-dataview__sort:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-dataview__toggle {
 	display: inline-flex;
@@ -72,7 +72,7 @@
 }
 .ui-dataview__toggle-btn:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-dataview__toggle-btn[aria-pressed="true"] {
 	color: var(--on-surface);
@@ -132,11 +132,11 @@
 	cursor: pointer;
 }
 .ui-dataview__page:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-dataview__page:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-dataview__page[aria-current="true"] {
 	color: var(--on-primary);

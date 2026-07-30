@@ -57,7 +57,7 @@
 	flex: 1 1 auto;
 	margin: 0;
 	font-size: 1.05rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 .pcm__close {
@@ -69,7 +69,7 @@
 	block-size: 2rem;
 	padding: 0;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	font-size: 1.1rem;
@@ -77,7 +77,7 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .pcm__close:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 .pcm__close:focus-visible {
@@ -185,16 +185,16 @@
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	padding: 1px 0.4rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	line-height: 1.5;
 }
 .pcm__req {
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .pcm__gate {
 	color: var(--warning);
-	background: color-mix(in srgb, var(--warning) 14%, transparent);
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
 }
 /* #endregion */
 
@@ -224,10 +224,10 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .pcm-stage[data-over="true"] {
-	background: color-mix(in srgb, var(--primary) 8%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .pcm-stage[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .pcm-stage[data-dragging="true"] {
 	opacity: 0.5;
@@ -275,7 +275,7 @@
 	padding-inline-start: var(--space-3);
 }
 .pcm-stage__main:hover {
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .pcm-stage__index {
 	flex: none;
@@ -284,8 +284,8 @@
 	justify-content: center;
 	inline-size: 1.35rem;
 	block-size: 1.35rem;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 	font-size: 0.72rem;
 	font-weight: 700;
@@ -323,7 +323,7 @@
 }
 .pcm-stage__remove:hover {
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
 .pcm-stage__remove:focus-visible {
 	outline: 2px solid var(--focus-ring);
@@ -350,7 +350,7 @@
 }
 .pcm__add:hover {
 	border-color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 6%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
 }
 .pcm__add:focus-visible {
 	outline: 2px solid var(--focus-ring);
@@ -384,7 +384,7 @@
 .pcm__stagetitle {
 	margin: 0;
 	font-size: 0.98rem;
-	font-weight: 620;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 /* #endregion */
@@ -404,8 +404,8 @@
 	align-items: center;
 	gap: 2px;
 	padding: 2px 0.25rem 2px 0.55rem;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	font-size: 0.74rem;
 	color: var(--on-surface);
 }
@@ -415,7 +415,7 @@
 	justify-content: center;
 	padding: 1px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	font-size: 0.85rem;

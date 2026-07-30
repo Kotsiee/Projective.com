@@ -13,7 +13,7 @@
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 13rem;
-	padding-block: 2px;
+	padding-block: var(--space-px);
 }
 
 .ui-audioviz--bare {
@@ -29,7 +29,7 @@
 	block-size: 2rem;
 	font-size: 1.05rem;
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border: none;
 	border-radius: 50%;
 	cursor: pointer;
@@ -42,7 +42,7 @@
 
 .ui-audioviz__toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-audioviz__wave {
@@ -55,7 +55,7 @@
 
 .ui-audioviz__wave:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-sm);
 }
 
@@ -69,7 +69,7 @@
 .ui-audioviz__speed {
 	flex: none;
 	min-inline-size: 2.5rem;
-	padding: 2px var(--space-2);
+	padding: var(--space-px) var(--space-2);
 	font-size: 0.72rem;
 	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
@@ -83,10 +83,10 @@
 
 .ui-audioviz__speed:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-audioviz__speed:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }

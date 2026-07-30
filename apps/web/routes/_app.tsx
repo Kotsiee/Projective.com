@@ -8,9 +8,45 @@ import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 // first paint is correctly themed for either mode with no flash; the DesignSystemRoot island then
 // takes over any runtime change. (DESIGN_SYSTEM.md §A.2/§B.5)
 const SEED = "#288690";
+
+/**
+ * The four schemes, not two.
+ *
+ * The high-contrast overlay was previously UNREACHABLE, which is a stronger version of the bug than
+ * "it barely changes anything". Only the two normal-contrast schemes were emitted here, so
+ * `data-contrast="high"` had no rule to match; the widened tones existed solely if the client re-ran
+ * `applyConfig` with `highContrast: true` — and nothing ever set that flag, since `dsConfig` defaults
+ * it to `false`, nothing persists it, and no control or media query flips it. §A.5's promise of
+ * "≥7:1 (AAA) text" could not fire for any user.
+ *
+ * Emitting all four as static rules fixes both halves at once: the attribute now has something to
+ * match for the in-app toggle, AND the `prefers-contrast: more` block below honours the reader's OS
+ * setting with zero JavaScript and no flash — the same first-paint discipline `data-theme` already
+ * gets. The attribute is written last, so an explicit in-app choice still overrides the OS.
+ */
 const TOKENS_CSS = [
 	schemeToCss(buildScheme({ seed: SEED, dark: false }), ":root"),
 	schemeToCss(buildScheme({ seed: SEED, dark: true }), ':root[data-theme="dark"]'),
+	// OS-level preference — applies to anyone who has asked their system for more contrast.
+	`@media (prefers-contrast: more){`,
+	schemeToCss(
+		buildScheme({ seed: SEED, dark: false, highContrast: true }),
+		':root:not([data-contrast="normal"])',
+	),
+	schemeToCss(
+		buildScheme({ seed: SEED, dark: true, highContrast: true }),
+		':root[data-theme="dark"]:not([data-contrast="normal"])',
+	),
+	`}`,
+	// Explicit in-app choice — last, so it wins over the media query in both directions.
+	schemeToCss(
+		buildScheme({ seed: SEED, dark: false, highContrast: true }),
+		':root[data-contrast="high"]',
+	),
+	schemeToCss(
+		buildScheme({ seed: SEED, dark: true, highContrast: true }),
+		':root[data-theme="dark"][data-contrast="high"]',
+	),
 ].join("\n");
 
 /**

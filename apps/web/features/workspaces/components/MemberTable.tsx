@@ -141,7 +141,7 @@ export function MemberTable(props: MemberTableProps): JSX.Element {
 					<div class="wsp-mtable__th" role="columnheader">Permissions</div>
 					<div class="wsp-mtable__th" role="columnheader">Workload</div>
 					<div class="wsp-mtable__th" role="columnheader" data-align="end">
-						<span class="wsp-sr">Actions</span>
+						<span class="ui-visually-hidden">Actions</span>
 					</div>
 				</div>
 

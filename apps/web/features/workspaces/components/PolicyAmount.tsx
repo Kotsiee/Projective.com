@@ -105,7 +105,7 @@ export function PolicyAmount(props: PolicyAmountProps): JSX.Element {
 				{parts.minor && <span class="wsp-money__minor">{parts.minor}</span>}
 				{parts.suffix && <span class="wsp-money__symbol">{parts.suffix}</span>}
 			</span>
-			{spoken && <span class="wsp-sr">{spoken}</span>}
+			{spoken && <span class="ui-visually-hidden">{spoken}</span>}
 		</span>
 	);
 }

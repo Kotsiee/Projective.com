@@ -72,7 +72,7 @@
 	inset-inline-end: -2px;
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	box-shadow: 0 0 0 2px var(--surface-2);
 	animation: ui-bottom-nav-pulse 2.4s var(--ease-standard) infinite;

@@ -98,11 +98,11 @@
 }
 .ui-drawer__close:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-drawer__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-drawer__body {
 	flex: 1 1 auto;

@@ -15,7 +15,7 @@
 	gap: 2px;
 	padding: 2px;
 	border-radius: var(--radius-base);
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .brd-rig__icon {
@@ -66,8 +66,8 @@
 	gap: var(--space-1);
 	padding: 0.35rem 0.75rem;
 	border: none;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--on-surface);
 	font: inherit;
 	font-size: 0.78rem;
@@ -77,7 +77,7 @@
 }
 
 .brd-rig__action:hover {
-	background: color-mix(in srgb, var(--on-surface) 11%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 
 .brd-rig__action:focus-visible {
@@ -87,7 +87,7 @@
 
 .brd-rig__action--primary {
 	background: var(--primary);
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 }
 
 .brd-rig__action--primary:hover {

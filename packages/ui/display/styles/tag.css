@@ -17,7 +17,7 @@
 }
 
 .ui-tag--rounded {
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 
 /* #region Severities — set the accent pair only */
@@ -27,15 +27,15 @@
 }
 .ui-tag--secondary {
 	--tag-accent: var(--secondary);
-	--tag-on: var(--on-surface);
+	--tag-on: var(--on-secondary);
 }
 .ui-tag--success {
 	--tag-accent: var(--success);
 	--tag-on: var(--on-success);
 }
 .ui-tag--info {
-	--tag-accent: var(--secondary);
-	--tag-on: var(--on-primary);
+	--tag-accent: var(--info);
+	--tag-on: var(--on-info);
 }
 .ui-tag--warning {
 	--tag-accent: var(--warning);
@@ -43,7 +43,7 @@
 }
 .ui-tag--help {
 	--tag-accent: var(--tertiary);
-	--tag-on: var(--on-primary);
+	--tag-on: var(--on-tertiary);
 }
 .ui-tag--danger {
 	--tag-accent: var(--danger);

@@ -70,7 +70,7 @@
 	align-items: center;
 	gap: 4px;
 	padding: 2px 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	font-size: 0.75rem;
 	font-weight: 600;
 	background: color-mix(in srgb, currentColor 12%, transparent);
@@ -95,19 +95,19 @@
 	inline-size: 2.25rem;
 	block-size: 2.25rem;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .subm-review__close:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 .subm-review__close:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -205,16 +205,16 @@ a.subm-ctx__who:hover .subm-ctx__name {
 		color var(--dur-fast) var(--ease-standard);
 }
 .subm-ctx__tab:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--on-surface);
 }
 .subm-ctx__tab:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-ctx__tab[data-active="true"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .subm-ctx__tabicon {
 	display: inline-flex;
@@ -225,7 +225,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	inset-inline-end: 6px;
 	min-inline-size: 1rem;
 	padding: 0 4px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	color: var(--on-primary);
 	font-size: 0.625rem;
@@ -288,12 +288,12 @@ a.subm-ctx__who:hover .subm-ctx__name {
 		color var(--dur-fast) var(--ease-standard);
 }
 .subm-work__tool:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 .subm-work__tool:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-work__tool[aria-pressed="true"] {
 	color: var(--primary);
@@ -323,7 +323,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	border: 2px solid transparent;
 	border-radius: var(--radius-sm);
 	overflow: hidden;
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--text-secondary);
 	cursor: pointer;
 	display: inline-flex;
@@ -342,7 +342,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-work__railitem:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-work__railglyph {
 	display: inline-flex;
@@ -354,7 +354,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	align-items: center;
 	justify-content: center;
 	padding: var(--space-4);
-	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .subm-work__empty {
 	color: var(--text-secondary);
@@ -419,7 +419,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 .subm-work__notefield:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-work__noteactions {
 	display: flex;
@@ -453,8 +453,8 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-detail__tag {
 	padding: 2px 8px;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--text-secondary);
 	font-size: 0.6875rem;
 	font-weight: 600;
@@ -560,26 +560,26 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-btn:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
 .subm-btn--soft {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 .subm-btn--soft:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 .subm-btn--danger {
-	border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+	border-color: color-mix(in srgb, var(--danger) var(--tint-heavy), transparent);
 	background: transparent;
 	color: var(--danger);
 }
 .subm-btn--danger:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
 .subm-btn--primary {
 	background: var(--primary);

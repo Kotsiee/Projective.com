@@ -9,7 +9,7 @@
 	position: relative;
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 	block-size: var(--sort-h);
 }
 .ui-sort--size-md {
@@ -46,7 +46,7 @@
 }
 .ui-sort__trigger:hover,
 .ui-sort__dir:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .ui-sort__dir:hover {
 	color: var(--on-surface);
@@ -54,10 +54,10 @@
 .ui-sort__trigger:focus-visible,
 .ui-sort__dir:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-sort__trigger[aria-expanded="true"] {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-sort__label {
@@ -113,7 +113,7 @@
 .ui-sort__option:hover,
 .ui-sort__option:focus-visible {
 	outline: none;
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .ui-sort__option[data-selected="true"] {
 	color: var(--primary);

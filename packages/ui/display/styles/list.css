@@ -72,7 +72,7 @@
 .ui-list__control:focus-visible {
 	outline: none;
 	border-color: var(--focus-ring);
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-list__item--disabled .ui-list__control {
 	cursor: not-allowed;

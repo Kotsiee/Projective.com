@@ -163,7 +163,7 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 				/* A draft entity is fully usable, so the state is stated once, quietly, and never as a
 			warning — see `StateDots` for the tooltip that explains it. */
 			}
-			<span class="wsp-sr">
+			<span class="ui-visually-hidden">
 				{copy.Noun}, {summary.status}
 				{summary.isActing ? ", currently acting as this " + copy.noun : ""}
 			</span>

@@ -17,8 +17,15 @@
 	color: var(--on-surface);
 }
 
+/*
+ * The article PAGE column — it carries the cover figure, the media gallery and the comments as well
+ * as the prose, so it is deliberately wider than the reading measure. It is expressed in `ch` all
+ * the same: at 900px it froze at a pixel width, so a reader who raised their base font size got more
+ * text in the same box and a longer line, which is backwards. `--measure-wide` resolves to ~880px at
+ * a default 16px root, so today's composition is preserved and now scales with the reader.
+ */
 .vw-article {
-	max-inline-size: 900px;
+	max-inline-size: var(--measure-wide);
 }
 
 /* #region Editorial header + cover */
@@ -57,7 +64,7 @@
 	text-decoration: none;
 	color: var(--on-surface);
 	padding: 0.15rem 0.5rem 0.15rem 0.15rem;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .art-author:hover {
@@ -68,12 +75,12 @@
 	align-items: center;
 	gap: 0.3rem;
 	font-size: 0.9rem;
-	font-weight: 650;
+	font-weight: 600;
 }
 .art-header__sep {
 	inline-size: 3px;
 	block-size: 3px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) 35%, transparent);
 }
 .art-meta {
@@ -101,16 +108,30 @@
 /* #endregion */
 
 /* #region Prose body */
+/*
+ * THE reading measure. This is the one surface in the product built for sustained reading, and it
+ * was the worst offender: 760px of 1.05rem text is roughly 90–95 characters a line — well past the
+ * 45–75 comfort band, and the eye loses its place returning to the left edge. Worse, `px` froze it:
+ * a reader who scaled their type up got MORE characters per line, not fewer.
+ *
+ * `--measure` is 68ch. The reading size moves up to the container so that `ch` — which is the width
+ * of "0" in the element's OWN font — resolves against the size the prose is actually set in, rather
+ * than against the 16px inherited from <body>. Get that wrong and the measure silently computes for
+ * the wrong font. 68ch at 1.125rem lands near 673px and about 70 characters.
+ *
+ * 1.7 leading is right for a measure this wide and is kept, now named.
+ */
 .art-layout {
-	max-inline-size: 760px;
+	max-inline-size: var(--measure);
 	margin-inline: auto;
+	font-size: var(--text-lg);
 }
 .art-body {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
-	font-size: 1.05rem;
-	line-height: 1.7;
+	font-size: inherit;
+	line-height: var(--leading-relaxed);
 	color: var(--on-surface);
 }
 .art-h2,
@@ -128,7 +149,7 @@
 .art-h3 {
 	margin: var(--space-2) 0 0;
 	font-size: 1.2rem;
-	font-weight: 650;
+	font-weight: 600;
 	line-height: 1.3;
 	color: var(--text-secondary);
 }
@@ -223,9 +244,9 @@
 	block-size: 4rem;
 	display: grid;
 	place-items: center;
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: color-mix(in srgb, var(--primary) 88%, black);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	box-shadow: var(--elevation-medium, var(--elevation-low));
 	transition: transform var(--dur-fast) var(--spring-standard);
 }
@@ -317,7 +338,7 @@
 	display: grid;
 	place-items: center;
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 10%, var(--surface-2));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-2));
 }
 .art-mediacard__play {
 	position: absolute;
@@ -330,7 +351,7 @@
 	place-items: center;
 	color: #fff;
 	background: color-mix(in srgb, #000 45%, transparent);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 }
 .art-mediacard__dur {
 	position: absolute;
@@ -371,7 +392,7 @@
 	align-items: center;
 	gap: 0.4rem;
 	font-size: 0.85rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 .art-toclane__read {
@@ -438,7 +459,7 @@
 .art-tocdot__mark {
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) 30%, transparent);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -551,7 +572,7 @@
 }
 .art-cmt__author {
 	font-size: 0.9rem;
-	font-weight: 650;
+	font-weight: 700;
 	color: var(--on-surface);
 	text-decoration: none;
 }
@@ -585,7 +606,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),

@@ -33,11 +33,11 @@
 }
 
 .ui-nav-item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-nav-item--active {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--on-surface);
 }
 
@@ -82,7 +82,7 @@
 	inset-inline-end: -1px;
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	box-shadow: 0 0 0 2px var(--surface-2); /* ring against the sidebar surface */
 	animation: ui-nav-dot-pulse 2.4s var(--ease-standard) infinite;

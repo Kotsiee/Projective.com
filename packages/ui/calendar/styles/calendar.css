@@ -63,7 +63,7 @@
 	padding-inline: var(--space-2);
 	block-size: 1.7rem;
 	border: 1px solid var(--border-subtle);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	font-size: 0.72rem;
@@ -79,21 +79,24 @@
 }
 .cal__filterchip:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .cal__filterdot {
 	inline-size: 0.55rem;
 	block-size: 0.55rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--outline);
 }
 .cal__filterchip--deadline .cal__filterdot { background: var(--danger); }
 .cal__filterchip--milestone .cal__filterdot { background: var(--tertiary); }
 .cal__filterchip--sync .cal__filterdot { background: var(--primary); }
 .cal__filterchip--session .cal__filterdot { background: var(--secondary); }
-.cal__filterchip--booking .cal__filterdot,
-.cal__filterchip--availability .cal__filterdot { background: var(--success); }
+.cal__filterchip--booking .cal__filterdot { background: var(--success); }
+/* Was --success too, so the legend showed two identical dots for two different kinds. Tracks
+   `accentFor()` in EventBlock.tsx — the legend and the blocks must never disagree. */
+.cal__filterchip--availability .cal__filterdot { background: var(--info); }
 .cal__filterchip--holiday .cal__filterdot { background: var(--warning); }
+.cal__filterchip--busy .cal__filterdot { background: var(--on-surface-variant); }
 /* #endregion */
 
 /* #region Header */
@@ -115,7 +118,7 @@
 .cal-header__nav {
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 }
 .cal-header__today,
 .cal-header__navbtn,
@@ -128,25 +131,25 @@
 	border: none;
 	background: transparent;
 	color: var(--on-surface);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .cal-header__today:hover,
 .cal-header__navbtn:hover,
 .cal-header__iconbtn:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .cal-header__today:focus-visible,
 .cal-header__navbtn:focus-visible,
 .cal-header__iconbtn:focus-visible,
 .cal-header__view:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .cal-header__iconbtn { border-radius: var(--radius-base); }
 .cal-header__iconbtn--on {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 }
 .cal-header__titles {
@@ -207,7 +210,7 @@
 	gap: var(--space-1);
 	block-size: 1.6rem;
 	padding-inline: var(--space-2);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
 	font-size: 0.68rem;
@@ -217,7 +220,7 @@
 .cal-header__int-dot {
 	inline-size: 0.45rem;
 	block-size: 0.45rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--outline);
 }
 .cal-header__int--on .cal-header__int-dot { background: var(--cal-int, var(--success)); }
@@ -225,7 +228,7 @@
 	display: inline-flex;
 	background: var(--surface-2);
 	border-radius: var(--radius-base);
-	padding: 2px;
+	padding: var(--space-px);
 }
 .cal-header__view {
 	display: inline-flex;
@@ -252,7 +255,7 @@
 .cal-mini { display: flex; flex-direction: column; gap: var(--space-2); }
 .cal-mini__head { display: flex; align-items: center; justify-content: space-between; }
 .cal-mini__title { font-size: 0.82rem; font-weight: 600; color: var(--on-surface); }
-.cal-mini__nav { display: flex; gap: 2px; }
+.cal-mini__nav { display: flex; gap: var(--space-px); }
 .cal-mini__navbtn {
 	display: inline-flex;
 	align-items: center;
@@ -266,9 +269,9 @@
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
-.cal-mini__navbtn:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.cal-mini__navbtn:hover { background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent); }
 .cal-mini__weekdays { display: grid; grid-template-columns: repeat(7, 1fr); }
-.cal-mini__wd { text-align: center; font-size: 0.6rem; color: var(--text-secondary); padding-block: 2px; }
+.cal-mini__wd { text-align: center; font-size: 0.6rem; color: var(--text-secondary); padding-block: var(--space-px); }
 .cal-mini__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .cal-mini__day {
 	display: inline-flex;
@@ -289,7 +292,7 @@
 .cal-mini__day--outside { color: var(--text-secondary); opacity: 0.5; }
 .cal-mini__day--today { font-weight: 700; box-shadow: inset 0 0 0 1px var(--outline); }
 .cal-mini__day--selected { background: var(--primary); color: var(--on-primary); font-weight: 600; }
-.cal-mini__day:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.cal-mini__day:focus-visible { outline: none; box-shadow: var(--focus-ring-shadow); }
 /* #endregion */
 
 /* #region Availability panel */
@@ -300,7 +303,7 @@
 .cal-avail__tz-time {
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
 	flex: none;
@@ -327,7 +330,7 @@
 .cal-avail__windows { display: flex; flex-direction: column; text-align: end; font-variant-numeric: tabular-nums; }
 .cal-avail__closed { font-style: italic; opacity: 0.7; }
 .cal-avail__blackout { display: flex; gap: var(--space-2); align-items: flex-start; }
-.cal-avail__blackout-dot { inline-size: 0.5rem; block-size: 0.5rem; border-radius: 999px; background: var(--warning); margin-block-start: 0.25rem; flex: none; }
+.cal-avail__blackout-dot { inline-size: 0.5rem; block-size: 0.5rem; border-radius: var(--radius-full); background: var(--warning); margin-block-start: 0.25rem; flex: none; }
 .cal-avail__blackout-body { display: flex; flex-direction: column; }
 .cal-avail__blackout-label { font-weight: 600; }
 .cal-avail__blackout-when { font-size: 0.68rem; color: var(--text-secondary); }
@@ -346,7 +349,7 @@
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 	padding-block: var(--space-2);
 	border-inline-start: var(--hairline);
 }
@@ -360,7 +363,7 @@
 	font-size: 1.05rem;
 	font-weight: 600;
 	color: var(--on-surface);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .cal-tg__daycell--today .cal-tg__daynum { background: var(--primary); color: var(--on-primary); }
 .cal-tg__allday {
@@ -370,7 +373,7 @@
 	min-block-size: 1.75rem;
 }
 .cal-tg__allday-label { font-size: 0.62rem; color: var(--text-secondary); padding: var(--space-1); text-align: end; }
-.cal-tg__allday-col { display: flex; flex-direction: column; gap: 2px; padding: 2px; border-inline-start: var(--hairline); }
+.cal-tg__allday-col { display: flex; flex-direction: column; gap: var(--space-px); padding: var(--space-px); border-inline-start: var(--hairline); }
 
 .cal-tg__scroll {
 	position: relative;
@@ -408,7 +411,7 @@
 	inset-inline: 1% 2%;
 	inset-block-start: var(--cal-top);
 	block-size: var(--cal-h);
-	background: color-mix(in srgb, var(--primary) 22%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	border: 1px solid var(--primary);
 	border-radius: var(--radius-sm);
 	pointer-events: none;
@@ -426,7 +429,7 @@
 	padding-inline: var(--space-3);
 	background: var(--surface-1);
 	border: 1px solid var(--border-subtle);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	box-shadow: var(--elevation-medium);
 	color: var(--primary);
 	font-size: 0.78rem;
@@ -434,7 +437,7 @@
 	cursor: pointer;
 	z-index: var(--z-raised);
 }
-.cal-tg__present:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring), var(--elevation-medium); }
+.cal-tg__present:focus-visible { outline: none; box-shadow: var(--focus-ring-shadow), var(--elevation-medium); }
 
 /* Infinite Day timeline — a single continuous column of stacked days with inline date markers. */
 .cal-tg--timeline .cal-tg__col { border-inline-start: none; }
@@ -464,8 +467,8 @@
 	z-index: 0;
 	background: repeating-linear-gradient(
 		45deg,
-		color-mix(in srgb, var(--warning) 7%, transparent),
-		color-mix(in srgb, var(--warning) 7%, transparent) 6px,
+		color-mix(in srgb, var(--warning) var(--tint-soft), transparent),
+		color-mix(in srgb, var(--warning) var(--tint-soft), transparent) 6px,
 		transparent 6px,
 		transparent 12px
 	);
@@ -476,7 +479,7 @@
 	inset-block-start: var(--cal-top);
 	block-size: var(--cal-h);
 	z-index: 0;
-	background: color-mix(in srgb, var(--primary) 6%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
 	border-inline-start: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
 }
 .cal-daycol__event {
@@ -489,7 +492,7 @@
 	z-index: 1;
 }
 .cal-daycol__now { position: absolute; inset-inline: 0; inset-block-start: var(--cal-top); border-block-start: 2px solid var(--danger); z-index: 3; pointer-events: none; }
-.cal-daycol__now-dot { position: absolute; inline-size: 0.55rem; block-size: 0.55rem; border-radius: 999px; background: var(--danger); inset-inline-start: -0.28rem; inset-block-start: -0.32rem; }
+.cal-daycol__now-dot { position: absolute; inline-size: 0.55rem; block-size: 0.55rem; border-radius: var(--radius-full); background: var(--danger); inset-inline-start: -0.28rem; inset-block-start: -0.32rem; }
 /* #endregion */
 
 /* #region Event block */
@@ -498,7 +501,7 @@
 	gap: 4px;
 	inline-size: 100%;
 	block-size: 100%;
-	padding: 2px 4px;
+	padding: var(--space-px) 4px;
 	border: none;
 	border-radius: var(--radius-sm);
 	background: color-mix(in srgb, var(--cal-accent) 16%, var(--surface));
@@ -514,17 +517,70 @@ button.cal-event:hover {
 	background: color-mix(in srgb, var(--cal-accent) 26%, var(--surface));
 	box-shadow: var(--elevation-low);
 }
-button.cal-event:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus-ring); }
+button.cal-event:focus-visible { outline: none; box-shadow: var(--focus-ring-shadow); }
+/*
+ * The KIND channel. Nine event kinds shared seven hues, two of them outright (a booking and an open
+ * slot were both --success), and no per-kind rule existed at all — only --compact/--masked/
+ * --cancelled — so two kinds rendered pixel-identical and deadline-vs-holiday came down to
+ * red-against-amber, the hardest pair to tell apart under protanopia.
+ *
+ * Kind now rides THREE channels: hue, a glyph (drawn in EventBlock.tsx), and the bar treatment
+ * below. `.cal-event--cancelled` already proved the pattern — opacity plus a line-through is two
+ * non-colour channels for one state — this extends it to the kind axis.
+ *
+ * The four treatments are grouped by meaning, not decoration: a solid bar is time you have
+ * committed, a tapered notch is a moment rather than a span, a dashed bar is bookable and not yet
+ * committed, and a hatch is time that is not yours to act on.
+ */
 .cal-event__bar { inline-size: 3px; border-radius: 3px; background: var(--cal-accent); flex: none; align-self: stretch; }
+
+/* point — a deadline or milestone is an instant; the bar narrows to a notch at both ends. */
+.cal-event[data-bar="point"] .cal-event__bar {
+	background: linear-gradient(
+		to bottom,
+		transparent 0,
+		var(--cal-accent) 22%,
+		var(--cal-accent) 78%,
+		transparent 100%
+	);
+	inline-size: 4px;
+}
+
+/* open — bookable, nothing committed. A dashed rule reads as "not filled in yet". */
+.cal-event[data-bar="open"] .cal-event__bar {
+	background: repeating-linear-gradient(
+		to bottom,
+		var(--cal-accent) 0 4px,
+		transparent 4px 7px
+	);
+}
+
+/* hatched — not yours to act on. The diagonal is the universal "unavailable" texture. */
+.cal-event[data-bar="hatched"] .cal-event__bar {
+	inline-size: 5px;
+	border-radius: 2px;
+	background: repeating-linear-gradient(
+		135deg,
+		var(--cal-accent) 0 2px,
+		transparent 2px 4px
+	);
+}
+
+.cal-event__kind { flex: none; color: var(--cal-accent); }
+.cal-event__titletext { overflow: hidden; text-overflow: ellipsis; }
 .cal-event__body { display: flex; flex-direction: column; gap: 1px; min-inline-size: 0; overflow: hidden; }
-.cal-event__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-event__title { display: flex; align-items: center; gap: 4px; font-weight: 600; white-space: nowrap; overflow: hidden; }
 .cal-event__meta { display: flex; align-items: center; gap: 4px; font-size: 0.64rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; }
-.cal-event__source { inline-size: 0.4rem; block-size: 0.4rem; border-radius: 999px; background: var(--cal-accent); flex: none; }
+.cal-event__source { inline-size: 0.4rem; block-size: 0.4rem; border-radius: var(--radius-full); background: var(--cal-accent); flex: none; }
 .cal-event__loc { overflow: hidden; text-overflow: ellipsis; }
 .cal-event__attendees { display: inline-flex; align-items: center; gap: 3px; font-size: 0.64rem; color: var(--text-secondary); }
 .cal-event--compact { padding: 1px 4px; font-size: 0.68rem; }
 .cal-event--compact .cal-event__bar { inline-size: 2px; }
-.cal-event--masked { background: color-mix(in srgb, var(--cal-accent) 12%, var(--surface)); }
+/* A month chip is too small for both a bar texture and a glyph; the glyph is the clearer of the two
+   at that size, so the hatch/notch/dash collapse back to a plain rule and the glyph carries kind. */
+.cal-event--compact[data-bar="hatched"] .cal-event__bar,
+.cal-event--compact[data-bar="point"] .cal-event__bar { inline-size: 2px; background: var(--cal-accent); }
+.cal-event--masked { background: color-mix(in srgb, var(--cal-accent) var(--tint), var(--surface)); }
 .cal-event--masked .cal-event__title { font-weight: 500; color: var(--on-surface-variant); }
 .cal-event--cancelled { opacity: 0.6; }
 .cal-event--cancelled .cal-event__title { text-decoration: line-through; }
@@ -539,7 +595,7 @@ button.cal-event:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focu
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-block-size: 0;
 	padding: 3px;
 	overflow: hidden;
@@ -549,7 +605,7 @@ button.cal-event:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focu
 .cal-month__cell:nth-child(7n + 1) { border-inline-start: none; }
 .cal-month__cell--outside { background: color-mix(in srgb, var(--surface-1) 45%, transparent); }
 .cal-month__cell--outside .cal-month__daynum { color: var(--text-secondary); opacity: 0.6; }
-.cal-month__cell--blackout { background: color-mix(in srgb, var(--warning) 7%, transparent); }
+.cal-month__cell--blackout { background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent); }
 .cal-month__cellhead { display: flex; justify-content: flex-end; }
 .cal-month__daynum {
 	display: inline-flex;
@@ -562,15 +618,15 @@ button.cal-event:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focu
 	border: none;
 	background: transparent;
 	color: var(--on-surface);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
-.cal-month__daynum:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
-.cal-month__daynum:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.cal-month__daynum:hover { background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent); }
+.cal-month__daynum:focus-visible { outline: none; box-shadow: var(--focus-ring-shadow); }
 .cal-month__cell--today .cal-month__daynum { background: var(--primary); color: var(--on-primary); }
-.cal-month__events { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
-.cal-month__more { font-size: 0.66rem; color: var(--text-secondary); background: none; border: none; text-align: start; cursor: pointer; padding: 0 2px; }
+.cal-month__events { display: flex; flex-direction: column; gap: var(--space-px); overflow: hidden; }
+.cal-month__more { font-size: 0.66rem; color: var(--text-secondary); background: none; border: none; text-align: start; cursor: pointer; padding: 0 var(--space-px); }
 .cal-month__more:hover { color: var(--on-surface); }
 /* #endregion */
 

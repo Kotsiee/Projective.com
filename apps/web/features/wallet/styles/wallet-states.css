@@ -37,7 +37,7 @@
 	flex-wrap: wrap;
 	padding: var(--space-4);
 	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--danger) 12%, var(--surface-1));
+	background: color-mix(in srgb, var(--danger) var(--tint), var(--surface-1));
 }
 
 .wlt-error__alert {
@@ -69,7 +69,7 @@
 	flex-wrap: wrap;
 	padding: var(--space-3) var(--space-4);
 	border-block-start: var(--hairline);
-	background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
 	border-radius: var(--radius-lg);
 }
 
@@ -210,7 +210,7 @@
 		background: linear-gradient(
 			90deg,
 			transparent,
-			color-mix(in srgb, var(--on-surface) 6%, transparent),
+			color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent),
 			transparent
 		);
 		animation: wlt-shimmer var(--dur-slow) linear infinite;

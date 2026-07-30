@@ -49,7 +49,7 @@
 	padding: 0.1rem 0.15rem;
 	font: inherit;
 	font-size: 0.78rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 	background: none;
 	border: none;
@@ -74,7 +74,7 @@
 
 .proj-modifier__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-xs);
 }
 
@@ -124,7 +124,7 @@
 
 .proj-modifier__item[data-on="true"] {
 	color: var(--primary);
-	font-weight: 550;
+	font-weight: 600;
 }
 
 .proj-modifier__check {
@@ -135,7 +135,7 @@
 
 .proj-modifier__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -157,7 +157,7 @@
 	gap: 2px;
 	padding: 2px;
 	background: var(--surface-2);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 }
 
 /* Icon-only segments (§B.6) — a compact square hit-target so the row stays within the narrow lane. */
@@ -173,7 +173,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
@@ -192,12 +192,12 @@
 .proj-roletoggle__seg[data-on="true"] {
 	color: var(--on-surface);
 	background: var(--surface);
-	box-shadow: var(--elevation-low, 0 1px 2px rgb(0 0 0 / 0.08));
+	box-shadow: var(--elevation-low);
 }
 
 .proj-roletoggle__seg:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* #region Popovers (create menu + glass filter panel) */
@@ -248,7 +248,7 @@
 
 .proj-cardmenu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .proj-cardmenu__icon {
@@ -271,7 +271,7 @@
 }
 
 .proj-cardmenu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 
 /* Glassmorphic Smart Filter surface. */
@@ -299,7 +299,7 @@
 .proj-create__head {
 	padding: var(--space-1) var(--space-2) var(--space-2);
 	font-size: 0.6875rem;
-	font-weight: 650;
+	font-weight: 600;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: var(--text-secondary);
@@ -331,7 +331,7 @@
 	block-size: 2rem;
 	font-size: 1.05rem;
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 	border-radius: var(--radius-base);
 }
 
@@ -343,7 +343,7 @@
 
 .proj-create__label {
 	font-size: 0.85rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 
@@ -354,7 +354,7 @@
 
 .proj-create__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -391,9 +391,9 @@
 	padding: 0 0.3rem;
 	font-size: 0.68rem;
 	font-weight: 600;
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 
 .proj-filter__reset {
@@ -416,7 +416,7 @@
 
 .proj-filter__reset:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-xs);
 }
 
@@ -471,7 +471,7 @@
 
 .proj-textmatrix__opt:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-xs);
 }
 /* #endregion */
@@ -506,13 +506,13 @@
 
 .proj-matrix__btn[data-on="true"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
-	border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
 
 .proj-matrix__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -545,7 +545,7 @@
 	padding: 0.1rem 0.15rem 0.1rem 0.45rem;
 	font-size: 0.75rem;
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 	border-radius: var(--radius-sm);
 }
 
@@ -559,7 +559,7 @@
 	color: var(--text-secondary);
 	background: none;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard);
 }
@@ -633,7 +633,7 @@
 
 .proj-combo__option:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -687,7 +687,7 @@
 
 .proj-card__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* Row 1 — header: avatar | (title + status dot / owner) | actions. */
@@ -723,7 +723,7 @@
 .proj-card__title {
 	min-inline-size: 0;
 	font-size: 0.9375rem;
-	font-weight: 550;
+	font-weight: 600;
 	letter-spacing: -0.01em;
 	color: var(--on-surface);
 	white-space: nowrap;
@@ -824,7 +824,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
@@ -840,7 +840,7 @@
 .proj-card__star:focus-visible,
 .proj-card__menu:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .proj-card__star[data-on="true"] {
@@ -863,8 +863,8 @@
 	inline-size: 100%;
 	max-inline-size: 9rem;
 	margin-inline-start: calc(40px + var(--space-3));
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
-	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	border-radius: var(--radius-full);
 	overflow: hidden;
 	pointer-events: none;
 }
@@ -901,7 +901,7 @@
 }
 
 .proj-card__session-value {
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 
@@ -951,39 +951,39 @@
 	block-size: 1.5rem;
 	font-size: 0.95rem;
 	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
-	border-radius: 999px;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	border-radius: var(--radius-full);
 	cursor: default;
 }
 
 .proj-statusicon:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .proj-statusicon[data-tone="ticket"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .proj-statusicon[data-tone="revision"] {
 	color: var(--warning);
-	background: color-mix(in srgb, var(--warning) 14%, transparent);
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
 }
 
 .proj-statusicon[data-tone="pending"] {
-	color: var(--info, var(--primary));
-	background: color-mix(in srgb, var(--info, var(--primary)) 12%, transparent);
+	color: var(--info);
+	background: color-mix(in srgb, var(--info) var(--tint), transparent);
 }
 
 .proj-statusicon[data-tone="invite"] {
 	color: var(--success);
-	background: color-mix(in srgb, var(--success) 14%, transparent);
+	background: color-mix(in srgb, var(--success) var(--tint), transparent);
 }
 
 .proj-statusicon[data-tone="request"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 /* #endregion */
 
@@ -999,7 +999,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
@@ -1013,12 +1013,12 @@
 
 .proj-incoming[data-on="true"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .proj-incoming:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .proj-incoming__icon {
@@ -1039,9 +1039,9 @@
 	font-size: 0.62rem;
 	font-weight: 700;
 	line-height: 1;
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	box-shadow: 0 0 0 2px var(--surface-1);
 	font-variant-numeric: tabular-nums;
 }
@@ -1054,11 +1054,11 @@
 	padding: 0.4rem 0.7rem;
 	font: inherit;
 	font-size: 0.8rem;
-	font-weight: 550;
-	color: var(--on-primary, #fff);
+	font-weight: 600;
+	color: var(--on-primary);
 	background: var(--primary);
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -1071,7 +1071,7 @@
 
 .proj-lane__create:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .proj-lane__create-icon {

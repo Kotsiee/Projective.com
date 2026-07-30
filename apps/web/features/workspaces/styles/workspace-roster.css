@@ -764,7 +764,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	block-size: var(--wsp-mark-lg);
 	border-radius: var(--radius-lg);
 	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 }
 
 .wsp-empty__title {

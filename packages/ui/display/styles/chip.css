@@ -7,7 +7,7 @@
 	padding-inline: var(--space-3);
 	background: var(--surface-2);
 	color: var(--on-surface);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	font-family: var(--font-sans);
 	font-size: 0.8125rem;
 	line-height: 1.4;
@@ -18,13 +18,13 @@
 }
 .ui-chip--removable:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-chip__image {
 	inline-size: 1.25rem;
 	block-size: 1.25rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	object-fit: cover;
 }
 .ui-chip__icon {
@@ -49,15 +49,15 @@
 	color: inherit;
 	background: transparent;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	font-size: 0.9375rem;
 	line-height: 1;
 }
 .ui-chip__remove:hover {
-	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 .ui-chip__remove:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }

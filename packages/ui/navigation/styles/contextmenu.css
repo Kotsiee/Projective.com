@@ -63,11 +63,11 @@
 }
 .ui-contextmenu__item:hover,
 .ui-contextmenu__item--open {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-contextmenu__item:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-contextmenu__item--current {
 	color: var(--primary);
@@ -112,7 +112,7 @@
 	text-align: center;
 	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-contextmenu__arrow {
 	flex: 0 0 auto;

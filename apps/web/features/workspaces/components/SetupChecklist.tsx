@@ -174,13 +174,13 @@ function StepRow({ step }: { step: SetupStep }): JSX.Element {
 				? (
 					<a class="wsp-checklist__link" href={step.href}>
 						{body}
-						<span class="wsp-sr">{step.done ? "Done." : "Not done yet."}</span>
+						<span class="ui-visually-hidden">{step.done ? "Done." : "Not done yet."}</span>
 					</a>
 				)
 				: (
 					<div class="wsp-checklist__link">
 						{body}
-						<span class="wsp-sr">{step.done ? "Done." : "Not done yet."}</span>
+						<span class="ui-visually-hidden">{step.done ? "Done." : "Not done yet."}</span>
 					</div>
 				)}
 		</li>

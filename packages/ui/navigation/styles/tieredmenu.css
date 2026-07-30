@@ -29,11 +29,11 @@
 	cursor: pointer;
 }
 .ui-tieredmenu__trigger:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-tieredmenu__trigger:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -92,10 +92,10 @@
 .ui-tieredmenu__item:hover,
 .ui-tieredmenu__item:focus-visible,
 .ui-tieredmenu__item--open {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-tieredmenu__item:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-tieredmenu__item--current {
 	color: var(--primary);
@@ -134,7 +134,7 @@
 	text-align: center;
 	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-tieredmenu__arrow {
 	flex: 0 0 auto;

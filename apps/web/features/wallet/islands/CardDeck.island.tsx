@@ -229,7 +229,7 @@ export default function CardDeck(props: CardDeckProps): JSX.Element {
 				 * reveals instruments the resting fan does not show.
 				 */
 			}
-			<div class="wlt-deck__live" role="status" aria-live="polite">
+			<div class="ui-visually-hidden" role="status" aria-live="polite">
 				{open ? `Payment methods expanded, ${countLabel}` : ""}
 			</div>
 

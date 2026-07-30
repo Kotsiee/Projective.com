@@ -55,7 +55,7 @@
 	padding: 0.1rem 0 0.35rem;
 	font: inherit;
 	font-size: 1rem;
-	font-weight: 450;
+	font-weight: 500;
 	letter-spacing: -0.01em;
 	color: var(--text-secondary);
 	background: none;
@@ -85,7 +85,7 @@
 
 .ui-lane-tabs__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-xs);
 }
 /* #endregion */
@@ -116,13 +116,18 @@
 
 .ui-lane-search__input {
 	inline-size: 100%;
-	padding: 0.5rem 0.7rem 0.5rem 2.1rem;
+	/* The leading clearance must follow the icon, which is placed logically
+	   (`.ui-lane-search__icon` → `inset-inline-start`). A physical `padding-left` strands it on the
+	   wrong edge under `dir="rtl"`: the icon flips to the trailing edge while the clearance stays put,
+	   so typed text runs straight into the glyph with zero gap. */
+	padding-block: 0.5rem;
+	padding-inline: 2.1rem 0.7rem;
 	font: inherit;
 	font-size: 0.8125rem;
 	color: var(--on-surface);
 	background: var(--surface-2);
 	border: 1px solid transparent;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	transition:
 		border-color var(--dur-fast) var(--ease-standard),
 		background-color var(--dur-fast) var(--ease-standard);
@@ -136,7 +141,7 @@
 	outline: none;
 	background: var(--surface);
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -153,7 +158,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
@@ -171,7 +176,7 @@
 
 .ui-lane-iconbtn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-lane-iconbtn--accent {
@@ -180,7 +185,7 @@
 
 .ui-lane-iconbtn--accent:hover {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .ui-lane-iconbtn__dot {
@@ -225,7 +230,7 @@
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
@@ -247,7 +252,7 @@
 
 .ui-lane-toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -272,7 +277,7 @@
 	padding: 0.35rem 0.4rem;
 	font: inherit;
 	font-size: 0.72rem;
-	font-weight: 650;
+	font-weight: 600;
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
 	color: var(--text-secondary);
@@ -289,7 +294,7 @@
 
 .ui-lane-section__toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-lane-section__chevron {
@@ -381,7 +386,7 @@
 
 .ui-lane-collapse:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-lane-collapse .shell-toggle {
@@ -417,7 +422,12 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
-	padding: var(--space-3) var(--space-2) var(--space-5);
+	/* The list shares the head's and footer's inline inset so a row's leading edge lands on the same
+	   axis as the search field above it and the collapse toggle below it — one continuous column edge
+	   down the lane, not three. The block padding stays asymmetric (a longer tail so the last row can
+	   clear the footer band). */
+	padding-block: var(--space-3) var(--space-5);
+	padding-inline: var(--space-4);
 }
 
 .ui-lane-empty {

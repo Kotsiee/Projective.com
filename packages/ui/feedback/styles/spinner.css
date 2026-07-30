@@ -44,7 +44,7 @@
 	transform-origin: center;
 }
 .ui-spinner__track {
-	stroke: color-mix(in srgb, var(--spin-accent) 18%, transparent);
+	stroke: color-mix(in srgb, var(--spin-accent) var(--tint-strong), transparent);
 }
 .ui-spinner__arc {
 	stroke: var(--spin-accent);

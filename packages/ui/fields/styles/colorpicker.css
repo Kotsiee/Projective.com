@@ -42,12 +42,12 @@
 }
 .ui-colorpicker__trigger:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-colorpicker__swatch {
 	flex: 1 1 auto;
 	border-radius: var(--radius-xs);
-	background: var(--cp-solid, #ff0000);
+	background: var(--cp-solid);
 }
 /* #endregion */
 
@@ -93,13 +93,13 @@
 	inline-size: 100%;
 	block-size: 9rem;
 	border-radius: var(--radius-sm);
-	background: var(--cp-hue, #ff0000);
+	background: var(--cp-hue);
 	cursor: crosshair;
 	touch-action: none;
 }
 .ui-colorpicker__area:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-colorpicker__area-white,
 .ui-colorpicker__area-black {
@@ -141,13 +141,13 @@
 	block-size: 2rem;
 	border-radius: 50%;
 	border: 1px solid var(--outline);
-	background: var(--cp-solid, #ff0000);
+	background: var(--cp-solid);
 }
 .ui-colorpicker__hue {
 	position: relative;
 	flex: 1 1 auto;
 	block-size: 0.85rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	touch-action: none;
 	background: linear-gradient(
@@ -163,7 +163,7 @@
 }
 .ui-colorpicker__hue:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-colorpicker__hue-thumb {
 	position: absolute;
@@ -197,6 +197,6 @@
 .ui-colorpicker__hex:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */

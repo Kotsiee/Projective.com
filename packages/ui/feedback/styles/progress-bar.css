@@ -81,7 +81,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
 	.ui-progressbar--indeterminate .ui-progressbar__track {
-		background: color-mix(in srgb, var(--pb-accent) 22%, var(--surface-2));
+		background: color-mix(in srgb, var(--pb-accent) var(--tint-strong), var(--surface-2));
 	}
 	.ui-progressbar__indicator {
 		animation: none;

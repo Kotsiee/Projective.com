@@ -30,13 +30,13 @@
 	font-size: 0.75rem;
 	font-weight: 700;
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
-	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-radius: var(--radius-full);
 	white-space: nowrap;
 }
 .vw-projhead__class[data-class="one-off"] {
 	color: var(--secondary);
-	background: color-mix(in srgb, var(--secondary) 14%, transparent);
+	background: color-mix(in srgb, var(--secondary) var(--tint), transparent);
 }
 .vw-projhead__class svg {
 	flex: none;
@@ -53,7 +53,7 @@
 	font-size: 0.9rem;
 	font-weight: 600;
 	padding: 0.1rem 0.35rem 0.1rem 0.1rem;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .vw-projhead__owner:hover {
@@ -67,7 +67,7 @@
 .vw-projhead__dot {
 	inline-size: 3px;
 	block-size: 3px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) 35%, transparent);
 }
 .vw-projhead__badge {
@@ -76,12 +76,12 @@
 	padding: 0.15rem 0.55rem;
 	font-size: 0.74rem;
 	font-weight: 600;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
 }
 .vw-projhead__badge[data-tone="type"] {
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 }
 .vw-projhead__summary {
@@ -156,7 +156,7 @@
 	padding: 0.25rem 0.6rem;
 	font-size: 0.78rem;
 	font-weight: 600;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--on-surface);
 }
@@ -165,7 +165,7 @@
 	color: var(--text-secondary);
 }
 .vw-chip--skill {
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 	color: var(--primary);
 }
 .vw-chip--skill svg {
@@ -202,7 +202,7 @@
 .vw-role__name {
 	grid-area: name;
 	font-size: 0.88rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -244,7 +244,7 @@
 }
 .vw-seatpool__count {
 	font-size: 0.8rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 .vw-seatpool__price {
@@ -303,8 +303,8 @@
 	flex: none;
 	display: grid;
 	place-items: center;
-	border-radius: var(--radius-full, 999px);
-	border: 2px solid color-mix(in srgb, var(--on-surface) 22%, transparent);
+	border-radius: var(--radius-full);
+	border: 2px solid color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
 	background: var(--surface);
 	color: var(--text-secondary);
 }
@@ -315,11 +315,11 @@
 .vw-stage[data-status="completed"] .vw-stage__node {
 	border-color: var(--success);
 	background: var(--success);
-	color: var(--on-primary, #fff);
+	color: var(--on-success);
 }
 .vw-stage[data-status="active"] .vw-stage__node {
 	border-color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	color: var(--primary);
 }
 
@@ -340,7 +340,7 @@
 	border-inline-start-color: var(--primary);
 }
 .vw-stage[data-status="upcoming"] .vw-stage__card {
-	border-inline-start-color: color-mix(in srgb, var(--on-surface) 20%, transparent);
+	border-inline-start-color: color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
 }
 .vw-stage[data-open="true"] .vw-stage__card {
 	background: var(--surface-2);
@@ -377,7 +377,7 @@
 	align-items: center;
 	gap: var(--space-2);
 	font-size: 0.95rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 .vw-stage__flag {
@@ -387,8 +387,8 @@
 	text-transform: uppercase;
 	letter-spacing: 0.03em;
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
-	border-radius: var(--radius-full, 999px);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-radius: var(--radius-full);
 }
 .vw-stage__sub {
 	font-size: 0.78rem;
@@ -485,7 +485,7 @@
 }
 .vw-stage__fact strong {
 	color: var(--on-surface);
-	font-weight: 650;
+	font-weight: 600;
 }
 .vw-stage__group {
 	display: flex;
@@ -597,7 +597,7 @@
 }
 .vw-metric__value {
 	font-size: 0.82rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 
@@ -649,16 +649,16 @@
 	place-items: center;
 	font-size: 0.7rem;
 	font-weight: 700;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
 }
 .vw-jump[data-status="completed"] .vw-jump__idx {
-	background: color-mix(in srgb, var(--success) 18%, transparent);
+	background: color-mix(in srgb, var(--success) var(--tint-strong), transparent);
 	color: var(--success);
 }
 .vw-jump[data-status="active"] .vw-jump__idx {
-	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	color: var(--primary);
 }
 .vw-jump__text {

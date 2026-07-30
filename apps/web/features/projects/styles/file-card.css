@@ -20,11 +20,11 @@
 }
 .fx-card:hover,
 .fx-card:focus-visible {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	outline: none;
 }
 .fx-card:focus-visible {
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .fx-card__thumb {
@@ -34,7 +34,7 @@
 	aspect-ratio: 1 / 1;
 	border-radius: var(--radius-lg);
 	overflow: hidden;
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -55,7 +55,7 @@
 	transform: translate(-50%, -50%);
 	inline-size: 2.25rem;
 	block-size: 2.25rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) 52%, transparent);
 	color: var(--surface);
 	display: flex;

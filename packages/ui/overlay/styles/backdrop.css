@@ -9,7 +9,7 @@
 	inset: 0;
 	/* Theme-aware scrim: `--on-surface` darkens over light themes and lightens over dark ones, so the
 	tint reads correctly in both. Paired with a soft backdrop blur for a luxurious glass dim. */
-	background: color-mix(in srgb, var(--surface) 38%, transparent);
+	background: color-mix(in srgb, var(--surface) var(--tint-heavy), transparent);
 	opacity: 0;
 	backdrop-filter: blur(4px);
 	-webkit-backdrop-filter: blur(4px);

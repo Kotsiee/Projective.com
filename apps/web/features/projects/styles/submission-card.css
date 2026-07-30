@@ -20,11 +20,11 @@
 }
 .subm-card:hover,
 .subm-card:focus-visible {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	outline: none;
 }
 .subm-card:focus-visible {
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .subm-card__thumb {
@@ -34,14 +34,14 @@
 	aspect-ratio: 1 / 1;
 	border-radius: var(--radius-lg);
 	overflow: hidden;
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 /* A freelancer's avatar sits centered in the square frame (a fixed size, like FileCard's glyph). */
 .subm-card__thumb--avatar {
-	background: color-mix(in srgb, var(--primary) 8%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .subm-card__glyph {
 	color: var(--text-secondary);
@@ -54,7 +54,7 @@
 	align-items: center;
 	justify-content: center;
 	padding: 3px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
 }
@@ -124,11 +124,11 @@
 }
 .subm-noderow:hover,
 .subm-noderow:focus-visible {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	outline: none;
 }
 .subm-noderow:focus-visible {
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .subm-noderow__lead {
 	flex: none;

@@ -22,7 +22,7 @@
 	block-size: calc(var(--field-height) - var(--space-3));
 	font-size: 0.85em;
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border-radius: var(--radius-sm);
 }
 .ui-chips__token-remove {
@@ -42,11 +42,11 @@
 }
 .ui-chips__token-remove:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 .ui-chips__token-remove:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 

@@ -35,11 +35,11 @@
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
 .ui-toggle-button:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--tb-accent) 10%, transparent);
+	background: color-mix(in srgb, var(--tb-accent) var(--tint-soft), transparent);
 }
 .ui-toggle-button:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-toggle-button:active:not(:disabled) {
 	transform: translateY(0.5px);

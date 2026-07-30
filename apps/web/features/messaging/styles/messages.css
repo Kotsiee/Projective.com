@@ -54,7 +54,7 @@
 	background: var(--surface-2);
 }
 .msg-conv[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 .msg-conv__link {
 	flex: 1;
@@ -76,7 +76,7 @@
 	inset-inline-end: -2px;
 	display: inline-flex;
 	padding: 2px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface-1);
 	color: var(--text-secondary);
 }
@@ -136,7 +136,7 @@
 	flex: none;
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 }
 .msg-conv__kebab {
@@ -149,7 +149,7 @@
 	margin-inline-end: var(--space-1);
 	padding: 0;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
@@ -200,7 +200,7 @@
 	color: var(--danger);
 }
 .conv-menu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .conv-menu__icon {
 	display: inline-flex;
@@ -272,7 +272,7 @@
 	inset-inline-start: 2px;
 	inset-block: 10px;
 	inline-size: 3px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 }
 .msg-rail__btn--avatar[data-unread="true"]::before {
@@ -282,7 +282,7 @@
 	inset-inline-end: 8px;
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	border: 2px solid var(--surface-1);
 	z-index: 1;
@@ -319,9 +319,9 @@
 	padding: 0 var(--space-1);
 	font-size: 0.75rem;
 	font-weight: 600;
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .msg-filter__reset {
 	margin-inline-start: auto;
@@ -356,7 +356,7 @@
 	color: var(--text-secondary);
 	background: var(--surface-2);
 	border: 1px solid transparent;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -365,8 +365,8 @@
 }
 .msg-matrix__opt[data-on="true"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
-	border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
 /* #endregion */
 
@@ -407,7 +407,7 @@
 .msg-btn--primary {
 	background: var(--primary);
 	border-color: var(--primary);
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 }
 .msg-btn--primary:hover {
 	background: color-mix(in srgb, var(--primary) 88%, #000);
@@ -434,7 +434,7 @@
 	gap: var(--space-1);
 	padding: 2px var(--space-1) 2px 2px;
 	background: var(--surface-2);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .msg-picker__chip-name {
 	font-size: 0.8125rem;
@@ -444,7 +444,7 @@
 	display: inline-flex;
 	padding: 2px;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
@@ -516,7 +516,7 @@
 	background: var(--surface-2);
 }
 .msg-picker__row[data-on="true"] {
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .msg-picker__row-text {
 	flex: 1;
@@ -697,7 +697,7 @@
 }
 .msg-ar__remove:hover {
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
 .msg-ar__remove svg {
 	inline-size: 16px;
@@ -714,13 +714,13 @@
 	color: var(--text-secondary);
 	background: var(--surface-1);
 	border: 1px solid transparent;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	cursor: pointer;
 }
 .msg-ar__trigger[data-on="true"] {
 	color: var(--primary);
-	border-color: color-mix(in srgb, var(--primary) 40%, transparent);
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .msg-ar__cond,
 .msg-ar__message {
@@ -766,7 +766,7 @@
 	text-transform: uppercase;
 	color: var(--secondary, var(--primary));
 	background: color-mix(in srgb, var(--secondary, var(--primary)) 14%, transparent);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .msg-ar__add {
 	display: inline-flex;
@@ -778,7 +778,7 @@
 	font-size: 0.875rem;
 	color: var(--primary);
 	background: transparent;
-	border: 1px dashed color-mix(in srgb, var(--primary) 40%, transparent);
+	border: 1px dashed color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 	border-radius: var(--radius-lg);
 	cursor: pointer;
 }
@@ -802,7 +802,7 @@
 .msg-empty__glyph {
 	display: inline-flex;
 	padding: var(--space-4);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
 }

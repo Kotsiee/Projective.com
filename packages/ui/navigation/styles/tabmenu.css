@@ -72,7 +72,7 @@
 
 .ui-tabmenu__tab:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 	border-radius: var(--radius-sm);
 }
 
@@ -91,7 +91,7 @@
 	text-align: center;
 	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 
 .ui-tabmenu__ink {
@@ -120,12 +120,12 @@
 }
 
 .ui-tabmenu__chevron:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-tabmenu__chevron:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -70,7 +70,7 @@
  * by colour alone; `aria-current` is the caller's to set on the control that wraps the card.
  */
 .wlt-idcard--active {
-	background: color-mix(in srgb, var(--primary) 10%, var(--surface-2));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-2));
 }
 
 .wlt-idcard--active .wlt-idcard__name {
@@ -95,7 +95,7 @@
 	justify-content: center;
 	inline-size: 36px;
 	block-size: 36px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	color: var(--on-surface-variant);
 	background: color-mix(in srgb, currentColor 12%, var(--surface-3));
 }
@@ -208,7 +208,7 @@
 	text-transform: uppercase;
 	font-weight: 600;
 	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 /* #endregion */
 

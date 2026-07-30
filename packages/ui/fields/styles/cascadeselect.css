@@ -91,7 +91,7 @@
 }
 .ui-cascadeselect__item--active,
 .ui-cascadeselect__item--expanded {
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .ui-cascadeselect__item[aria-selected="true"] {
 	color: var(--primary);

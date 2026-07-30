@@ -50,7 +50,7 @@
 	transform-origin: center;
 }
 .ui-progress-spinner__track {
-	stroke: color-mix(in srgb, var(--spin-accent) 18%, transparent);
+	stroke: color-mix(in srgb, var(--spin-accent) var(--tint-strong), transparent);
 }
 .ui-progress-spinner__arc {
 	stroke: var(--spin-accent);

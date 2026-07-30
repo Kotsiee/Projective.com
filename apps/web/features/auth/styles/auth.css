@@ -79,7 +79,7 @@ body:has(.auth) {
 	block-size: 36px;
 	padding: 0;
 	border-radius: 50%;
-	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border: 1px solid var(--hairline-color);
 	background: color-mix(in srgb, var(--surface-2) 45%, transparent);
 	color: var(--on-surface);
 	cursor: pointer;
@@ -237,7 +237,7 @@ body:has(.auth) {
 	background: color-mix(in srgb, var(--surface) 62%, transparent);
 	backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
-	border: 1px solid color-mix(in srgb, var(--on-surface) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 	box-shadow: var(--elevation-high);
 	overflow: hidden;
 }
@@ -315,10 +315,10 @@ body:has(.auth) {
 .passport__badge {
 	align-self: flex-start;
 	font-size: 0.72rem;
-	font-weight: 650;
+	font-weight: 600;
 	padding: 2px var(--space-2);
 	border-radius: var(--radius-xl);
-	background: color-mix(in srgb, var(--primary) 20%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	color: var(--primary);
 	text-transform: capitalize;
 }
@@ -358,7 +358,7 @@ body:has(.auth) {
 .passport__divider {
 	height: 1px;
 	margin: var(--space-4) 0;
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .passport__chips {
@@ -370,10 +370,10 @@ body:has(.auth) {
 
 .passport__chip {
 	font-size: 0.72rem;
-	font-weight: 550;
+	font-weight: 600;
 	padding: 3px var(--space-2);
 	border-radius: var(--radius-xl);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -392,7 +392,7 @@ body:has(.auth) {
 
 .passport__meta strong {
 	color: var(--on-surface);
-	font-weight: 650;
+	font-weight: 600;
 }
 
 /* Elastic pop when a value fills in. Keyed remount replays this. */
@@ -415,7 +415,7 @@ body:has(.auth) {
 	flex: 1;
 	max-inline-size: 2.5rem;
 	border-radius: var(--radius-xl);
-	background: color-mix(in srgb, var(--on-surface) 14%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 	transition: background-color var(--dur-medium) var(--ease-standard);
 }
 
@@ -570,7 +570,7 @@ body:has(.auth) {
 
 .auth-skip:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .auth-alt {
@@ -628,13 +628,13 @@ body:has(.auth) {
 }
 
 .auth-choice.is-active {
-	background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface));
 	box-shadow: 0 0 0 2px var(--primary), var(--elevation-medium);
 	transform: translateY(-3px);
 }
 
 .auth-choice:has(.auth-choice__native:focus-visible) {
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .auth-choice__native {
@@ -781,17 +781,17 @@ body:has(.auth) {
 }
 
 .auth-banner--error {
-	background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+	background: color-mix(in srgb, var(--danger) var(--tint), var(--surface));
 	color: var(--on-surface);
 }
 
 .auth-banner--success {
-	background: color-mix(in srgb, var(--success) 14%, var(--surface));
+	background: color-mix(in srgb, var(--success) var(--tint), var(--surface));
 	color: var(--on-surface);
 }
 
 .auth-banner--info {
-	background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
 	color: var(--on-surface);
 }
 
@@ -822,7 +822,7 @@ body:has(.auth) {
 }
 
 .auth-agenote--blocked {
-	background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+	background: color-mix(in srgb, var(--danger) var(--tint), var(--surface));
 }
 
 .auth-agenote__icon {
@@ -869,7 +869,7 @@ body:has(.auth) {
 
 .auth-oauth__btn:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .auth-oauth__glyph {
@@ -894,7 +894,7 @@ body:has(.auth) {
 	content: "";
 	flex: 1;
 	height: 1px;
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 /* SSO reveal panel */
@@ -920,7 +920,7 @@ body:has(.auth) {
 	gap: var(--space-3);
 	margin-bottom: var(--space-4);
 	padding: var(--space-3);
-	background: color-mix(in srgb, var(--primary) 8%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-1));
 	border-radius: var(--radius-lg);
 }
 
@@ -1281,14 +1281,14 @@ body:has(.auth) {
 
 .join-aside__title-lead {
 	display: block;
-	font-weight: 200;
+	font-weight: 300;
 	font-style: italic;
 	opacity: 0.82;
 }
 
 .join-aside__title-strong {
 	display: block;
-	font-weight: 750;
+	font-weight: 700;
 }
 
 .join-aside__lede {
@@ -1315,7 +1315,7 @@ body:has(.auth) {
 	flex: 1;
 	max-inline-size: 3rem;
 	border-radius: var(--radius-xl);
-	background: color-mix(in srgb, var(--on-primary) 22%, transparent);
+	background: color-mix(in srgb, var(--on-primary) var(--tint-strong), transparent);
 	transition:
 		background-color var(--dur-slow) var(--ease-standard),
 		flex-grow var(--dur-slow) var(--spring-standard);
@@ -1351,7 +1351,7 @@ body:has(.auth) {
 	height: 4px;
 	inline-size: 1.5rem;
 	border-radius: var(--radius-xl);
-	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 	transition:
 		background-color var(--dur-medium) var(--ease-standard),
 		inline-size var(--dur-medium) var(--spring-standard);
@@ -1383,7 +1383,7 @@ body:has(.auth) {
 	margin-top: var(--space-4);
 	padding: var(--space-3) var(--space-4);
 	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-1));
 	color: var(--text-secondary);
 	font-size: 0.85rem;
 	line-height: 1.35;
@@ -1392,13 +1392,13 @@ body:has(.auth) {
 }
 
 .auth-oauth-inline:hover {
-	background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface-1));
 	color: var(--on-surface);
 }
 
 .auth-oauth-inline:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .auth-oauth-inline__glyph {
@@ -1447,7 +1447,7 @@ body:has(.auth) {
 
 .tagselect__pill:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .tagselect__pill:disabled {
@@ -1460,7 +1460,7 @@ body:has(.auth) {
 	inline-size: 0.5rem;
 	block-size: 0.5rem;
 	border-radius: 50%;
-	background: color-mix(in srgb, var(--on-surface) 22%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
@@ -1499,7 +1499,7 @@ body:has(.auth) {
 	block-size: 1.15rem;
 	border: 0;
 	border-radius: 50%;
-	background: color-mix(in srgb, var(--on-primary) 20%, transparent);
+	background: color-mix(in srgb, var(--on-primary) var(--tint-strong), transparent);
 	color: var(--on-primary);
 	font-size: 0.9rem;
 	line-height: 1;
@@ -1585,7 +1585,7 @@ body:has(.auth) {
 }
 
 .tagselect__opt.is-active {
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 }
 
@@ -1595,7 +1595,7 @@ body:has(.auth) {
 	inline-size: 1.1rem;
 	block-size: 1.1rem;
 	border-radius: 50%;
-	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	color: var(--primary);
 	font-weight: 700;
 	line-height: 1;
@@ -1625,7 +1625,7 @@ body:has(.auth) {
 	inline-size: 3.5rem;
 	block-size: 3.5rem;
 	border-radius: 50%;
-	color: var(--on-primary, white);
+	color: var(--on-primary);
 	background: var(--success, var(--primary));
 	box-shadow: var(--elevation-medium);
 }
@@ -1680,7 +1680,7 @@ body:has(.auth) {
 
 	.join-aside__title {
 		margin-bottom: var(--space-2);
-		font-size: clamp(1.45rem, 6.5vw, 2.1rem);
+		font-size: clamp(1.45rem, 0.8rem + 2.167vw, 2.1rem);
 	}
 
 	.join-aside__lede {

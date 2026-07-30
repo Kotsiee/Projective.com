@@ -58,7 +58,7 @@
 .ui-file-upload__zone:focus-visible,
 .ui-file-upload__remove:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-file-upload__action--ghost {
 	color: var(--on-surface);
@@ -107,7 +107,7 @@
 }
 .ui-file-upload__zone--drag {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 10%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-1));
 	border-color: var(--primary);
 }
 .ui-file-upload__zone-icon {
@@ -199,7 +199,7 @@
 	block-size: 0.375rem;
 	inline-size: 100%;
 	background: var(--surface-3);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	overflow: hidden;
 }
 .ui-file-upload__progress-bar {
@@ -230,7 +230,7 @@
 }
 .ui-file-upload__remove:hover:not(:disabled) {
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 /* #endregion */
 

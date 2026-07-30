@@ -42,7 +42,7 @@
 
 .ui-paginator__nav-btn:hover:not(:disabled),
 .ui-paginator__page:hover:not(.ui-paginator__page--active) {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-paginator__nav-btn:disabled {
@@ -53,7 +53,7 @@
 .ui-paginator__nav-btn:focus-visible,
 .ui-paginator__page:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-paginator__page--active {
@@ -91,7 +91,7 @@
 
 .ui-paginator__rows-select:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-paginator__report {

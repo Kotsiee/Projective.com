@@ -20,7 +20,7 @@
 }
 
 .ui-avatar--circle {
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-avatar--square {
 	border-radius: var(--radius-sm);

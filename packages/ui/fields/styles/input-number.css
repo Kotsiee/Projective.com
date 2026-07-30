@@ -65,11 +65,11 @@
 }
 .ui-input-number__button:hover:not(:disabled) {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-input-number__button:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-input-number__button:disabled {
 	opacity: 0.4;

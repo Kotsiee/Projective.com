@@ -49,14 +49,14 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .ui-treenav__row:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .ui-treenav__row:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-treenav__row--active {
-	background: color-mix(in srgb, var(--primary) 12%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 	font-weight: 600;
 }
@@ -112,7 +112,7 @@
 .ui-treenav__avatar {
 	inline-size: 1.25rem;
 	block-size: 1.25rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	object-fit: cover;
 	display: block;
 }
@@ -120,7 +120,7 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	color: var(--primary);
 	font-size: 0.5625rem;
 	font-weight: 700;

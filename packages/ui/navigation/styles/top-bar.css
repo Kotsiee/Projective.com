@@ -42,6 +42,11 @@
     margin-inline-start: auto;
 }
 
+/*
+ * This tracer draws the OUTER L — the exposed top + inline-start edge of the frame nested directly in
+ * the shell. It is load-bearing whenever a middle-nav is present: `.ui-middle-nav::after` is
+ * deliberately suppressed (middle-nav.css) because THIS element already traces the Blue frame's seam.
+ */
 .ui-shell-topbar__border {
     display: block;
     position: fixed;
@@ -55,6 +60,20 @@
     border-end-start-radius: var(--frame-bl-radius);
     z-index: 0;
     pointer-events: none;
+}
+
+/*
+ * Without a middle-nav the Green canvas nests DIRECTLY in the shell, so `.ui-page-canvas` inherits the
+ * same `--shell-frame-inset-*` accumulators and its own `::before` traces an identical L at an
+ * identical origin. Both would then paint: two 1px `--hairline` strokes compositing to ~0.36 alpha
+ * against the token's intended 0.20 — nearly double the contrast — and, because the two frames carry
+ * different curvatures (--radius-container-lg vs -xl), two arcs that diverge by ~4px through the corner
+ * before re-merging. The seam would read visibly heavier on a lane-less route than the same seam one
+ * navigation away. One seam gets one line: yield to the canvas, which owns both the hairline and the
+ * surface fill at that origin (§B.4).
+ */
+.ui-app-shell:not(:has(.ui-middle-nav)) .ui-shell-topbar__border {
+    display: none;
 }
 
 /* Glass: transparent + backdrop blur, with a single hairline instead of a heavy boxed border. The

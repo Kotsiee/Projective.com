@@ -49,7 +49,7 @@
 	block-size: calc(var(--space-7) + var(--space-2) - var(--space-4));
 	border-radius: var(--radius-lg);
 	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border: 1px solid var(--hairline-color);
 }
 
 /* Scope/entity selector segment */
@@ -66,7 +66,7 @@
 	block-size: 100%;
 	padding-inline: var(--space-3);
 	border: 0;
-	border-inline-end: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border-inline-end: 1px solid var(--hairline-color);
 	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
@@ -78,7 +78,7 @@
 }
 
 .shell-search__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .shell-search__chevron {
@@ -101,7 +101,7 @@
 	padding: var(--space-1);
 	list-style: none;
 	background: var(--surface-2);
-	border: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	border: 1px solid var(--hairline-color);
 	border-radius: var(--radius-lg);
 	box-shadow: var(--elevation-high);
 }
@@ -111,13 +111,13 @@
 	border-radius: var(--radius-base);
 	cursor: pointer;
 	font-size: 0.875rem;
-	font-weight: 450;
+	font-weight: 500;
 }
 
 /* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
 .shell-search__entity-option:hover,
 .shell-search__entity-option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -178,7 +178,7 @@
 	block-size: 40px;
 	/* Soft circular highlight (not a rounded square). */
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--on-surface-variant, var(--text-secondary));
 	text-decoration: none;
@@ -194,12 +194,12 @@
 }
 
 .shell-util__btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
 .shell-util__btn[aria-expanded="true"] {
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -216,7 +216,7 @@
 	inset-inline-end: 8px;
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 	box-shadow: 0 0 0 2px var(--surface-2);
 	animation: shell-dot-pulse 2.4s var(--ease-standard) infinite;
@@ -245,13 +245,13 @@
 	margin-inline-start: var(--space-1);
 	padding: 0;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	cursor: pointer;
 }
 
 .shell-util__profile:hover {
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--on-surface) 14%, transparent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 /* #endregion */
 
@@ -286,7 +286,7 @@
 }
 
 .shell-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-menu__item:disabled {
@@ -341,7 +341,7 @@
 	inline-size: 34px;
 	block-size: 34px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	text-decoration: none;
@@ -357,7 +357,7 @@
 }
 
 .shell-icon-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -383,7 +383,7 @@
 }
 
 .shell-account__id:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-account__id:focus-visible {
@@ -426,11 +426,11 @@
 	display: inline-flex;
 	align-items: center;
 	padding: 1px var(--space-2);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	font-size: 0.7rem;
 	font-weight: 600;
 	letter-spacing: 0.02em;
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 }
 
@@ -445,7 +445,7 @@
 .shell-account__status-dot {
 	inline-size: 6px;
 	block-size: 6px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--success);
 }
 
@@ -462,7 +462,7 @@
 	margin: 2px var(--space-1) 0;
 	padding: var(--space-1) var(--space-3);
 	border-radius: var(--radius-sm);
-	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .shell-account__workspace-label {
@@ -527,7 +527,7 @@
 	inline-size: 34px;
 	block-size: 34px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
@@ -542,7 +542,7 @@
 }
 
 .shell-account__switch:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -559,7 +559,7 @@
 	margin: var(--space-1) var(--space-1) 0;
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-base);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 	font-size: 0.88rem;
 	font-weight: 600;
@@ -568,7 +568,7 @@
 }
 
 .shell-account__cta:hover {
-	background: color-mix(in srgb, var(--primary) 22%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
 .shell-account__cta:focus-visible {
@@ -601,7 +601,7 @@
 }
 
 .shell-status:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-status:focus-visible {
@@ -626,7 +626,7 @@
 	flex: 0 0 auto;
 	inline-size: 9px;
 	block-size: 9px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--text-secondary);
 }
 
@@ -659,8 +659,8 @@
 	inline-size: 34px;
 	block-size: 34px;
 	border: 0;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--on-surface);
 	cursor: pointer;
 	transition:
@@ -674,7 +674,7 @@
 }
 
 .shell-theme-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 12%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 
 .shell-theme-btn:focus-visible {
@@ -702,7 +702,7 @@
 	inline-size: 30px;
 	block-size: 30px;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
@@ -717,7 +717,7 @@
 }
 
 .shell-subview__back:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -755,7 +755,7 @@
 }
 
 .shell-picker__item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-picker__item:focus-visible {
@@ -858,11 +858,11 @@
 }
 
 .shell-ctx__item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-ctx__item[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 
 .shell-ctx__item:focus-visible {
@@ -935,7 +935,7 @@
 }
 
 .shell-feed__item--unread {
-	background: color-mix(in srgb, var(--primary) 8%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 
 .shell-feed__lead {
@@ -971,7 +971,7 @@
 	inset-inline-end: var(--space-3);
 	inline-size: 8px;
 	block-size: 8px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 }
 

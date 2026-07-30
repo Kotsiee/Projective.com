@@ -103,7 +103,7 @@
 	letter-spacing: 0.01em;
 	color: var(--text-secondary);
 	background: var(--surface-1);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 }
 
 /* #endregion */
@@ -206,7 +206,7 @@
 .chat-pinned__nav:focus-visible,
 .chat-pinned__body:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-sm);
 }
 
@@ -248,7 +248,7 @@
 
 .msg-row__avatar-link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .msg-row__gutter-time {
@@ -307,7 +307,7 @@
 
 .msg-meta__name {
 	font-size: 0.8rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 	text-decoration: none;
 	overflow: hidden;
@@ -355,10 +355,10 @@
 }
 
 .msg-bubble[data-own="true"] {
-	color: var(--on-primary, #fff);
+	color: var(--on-primary);
 	background: var(--primary);
-	--wave-played: var(--on-primary, #fff);
-	--wave-rest: color-mix(in srgb, var(--on-primary, #fff) 45%, transparent);
+	--wave-played: var(--on-primary);
+	--wave-rest: color-mix(in srgb, var(--on-primary) 45%, transparent);
 }
 
 /* A media/audio-only bubble drops the text padding so tiles sit tight to the radius. */
@@ -408,7 +408,7 @@
 	inset-block-start: -0.4rem;
 	inset-inline-start: -0.4rem;
 	font-size: 1.05rem;
-	color: var(--warning, #e6b325);
+	color: var(--warning);
 	filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
 	transform: rotate(-12deg);
 }
@@ -438,7 +438,7 @@
 	color: var(--on-surface);
 	background: var(--surface-2);
 	border: var(--hairline);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
@@ -447,8 +447,8 @@
 
 .msg-reaction[data-mine="true"] {
 	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
-	border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
 
 .msg-reaction__count {
@@ -513,7 +513,7 @@
 
 .msg-actions__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* React quick-picker */
@@ -580,7 +580,7 @@
 
 .msg-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .msg-menu__icon {
@@ -596,7 +596,7 @@
 }
 
 .msg-menu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 
 /* #endregion */
@@ -618,7 +618,7 @@
 	font-size: 0.74rem;
 	color: var(--text-secondary);
 	background: var(--surface-1);
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--radius-full);
 }
 
 .msg-system__pill--link {
@@ -636,7 +636,7 @@
 
 .msg-system__pill--link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .msg-system__icon {
@@ -782,7 +782,7 @@
 
 .msg-media__ext {
 	font-size: 0.55rem;
-	font-weight: 650;
+	font-weight: 600;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 }
@@ -818,11 +818,11 @@
  */
 .msg-bubble[data-own="true"] .ui-audioviz__toggle {
 	color: var(--primary);
-	background: var(--on-primary, #fff);
+	background: var(--on-primary);
 }
 
 .msg-bubble[data-own="true"] .ui-audioviz__toggle:hover {
-	background: color-mix(in srgb, var(--on-primary, #fff) 82%, var(--primary));
+	background: color-mix(in srgb, var(--on-primary) 82%, var(--primary));
 }
 
 /* #endregion */
@@ -841,13 +841,13 @@
 .chat-empty__icon {
 	display: inline-flex;
 	font-size: 3.6rem;
-	color: color-mix(in srgb, var(--on-surface) 20%, transparent);
+	color: color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
 }
 
 .chat-empty__title {
 	margin: 0;
 	font-size: 1.05rem;
-	font-weight: 650;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 

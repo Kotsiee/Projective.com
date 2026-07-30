@@ -92,7 +92,7 @@
 
 .ui-carousel__nav:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-carousel__nav:disabled {
@@ -113,7 +113,7 @@
 	block-size: 0.5rem;
 	padding: 0;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--outline);
 	cursor: pointer;
 	transition:
@@ -132,7 +132,7 @@
 
 .ui-carousel__indicator:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-carousel__live {

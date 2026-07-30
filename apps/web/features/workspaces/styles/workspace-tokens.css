@@ -25,26 +25,30 @@
  */
 
 :root {
-	/* #region Type scale — the entity console is dense, so it needs its own compact ramp */
+	/*
+	 * #region Type scale — the entity console is dense, so its steps stay at the compact end of the
+	 * shared ramp. The fixed steps ALIAS `@projective/ui/styles`'s `--text-*` rather than restate a
+	 * value: that global ramp was derived from what this file and wallet-tokens.css had already
+	 * agreed on independently (body 0.875 / label 0.75 / micro 0.6875), and aliasing is what stops
+	 * the two from drifting a third time. `--wsp-fs-key` moves 1.0625 → 1.125rem to land on a real
+	 * step; the fluid display/figure steps stay local because density is genuinely per-surface.
+	 */
 	--wsp-fs-display: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
 	--wsp-fs-figure: clamp(1.25rem, 1.05rem + 0.6vw, 1.625rem);
-	--wsp-fs-key: 1.0625rem;
-	--wsp-fs-body: 0.875rem;
-	--wsp-fs-label: 0.75rem;
-	--wsp-fs-micro: 0.6875rem;
+	--wsp-fs-key: var(--text-lg);
+	--wsp-fs-body: var(--text-md);
+	--wsp-fs-label: var(--text-xs);
+	--wsp-fs-micro: var(--text-2xs);
 
-	--wsp-num-track: -0.02em;
-	--wsp-label-track: 0.08em;
+	--wsp-num-track: var(--tracking-tight);
+	--wsp-label-track: var(--tracking-wide);
 
 	/* Minor currency units are de-emphasised by SIZE and TONE, never by a superscript — a raised
-	minor run breaks tabular alignment down a money column. */
-	--wsp-minor-size: 0.55em;
-	/*
-	 * Unitless on purpose: it feeds `opacity`, and a percentage delivered through `var()` is rejected
-	 * as invalid-at-computed-value-time by engines whose `<alpha-value>` grammar predates CSS Color 4,
-	 * which resets the property to `1` and undoes the de-emphasis entirely.
-	 */
-	--wsp-minor-fade: 0.62;
+	minor run breaks tabular alignment down a money column. The pair is global now (`--minor-size` /
+	`--minor-fade`); this file's 0.55em is the value that won over the wallet's 0.52em, and the
+	reasoning — including why the fade must stay unitless — lives with the tokens. */
+	--wsp-minor-size: var(--minor-size);
+	--wsp-minor-fade: var(--minor-fade);
 	/* #endregion */
 
 	/* #region Kind identity — a team takes the BRAND tint, a business the ACCENT tint */
@@ -60,12 +64,28 @@
 	--wsp-team-tint: color-mix(in srgb, var(--primary) 10%, var(--surface-1));
 	--wsp-team-tint-hi: color-mix(in srgb, var(--primary) 18%, var(--surface-1));
 	--wsp-team-edge: color-mix(in srgb, var(--primary) 40%, transparent);
+	/*
+	 * `-ink` is the accent as TEXT on one of its own tints, and it exists because the accent itself
+	 * was not readable there. `.wsp-mark` — the entity identity badge, the single most repeated mark
+	 * on /teams — set `--wsp-kind` on `--wsp-kind-tint-hi` at 14px/600, which is normal text and so
+	 * owes 4.5:1. Measured: 3.79:1 on tint-hi and 4.25:1 on tint in light mode. Both fail.
+	 *
+	 * Mixing 20% of `--on-surface` into the accent fixes it in BOTH modes from one declaration,
+	 * because `--on-surface` is by definition the opposite polarity to the surface: in light it pulls
+	 * the ink down, in dark it lifts it up. Deepening the tint instead would have worked in light and
+	 * made dark worse. Measured after: light team 4.86:1 on tint-hi / 5.44 on tint / 6.25 on
+	 * surface-1; light business 5.59 / 6.28 / 7.16; dark 6.96–10.65 across the board.
+	 *
+	 * The accent hue survives at 80% — this reads as the same brand teal, one step deeper.
+	 */
+	--wsp-team-ink: color-mix(in srgb, var(--primary) 80%, var(--on-surface));
 
 	--wsp-business: var(--secondary);
 	--wsp-business-on: var(--surface);
 	--wsp-business-tint: color-mix(in srgb, var(--secondary) 10%, var(--surface-1));
 	--wsp-business-tint-hi: color-mix(in srgb, var(--secondary) 18%, var(--surface-1));
 	--wsp-business-edge: color-mix(in srgb, var(--secondary) 40%, transparent);
+	--wsp-business-ink: color-mix(in srgb, var(--secondary) 80%, var(--on-surface));
 
 	/* The resolved trio. Defaults to the seller side so a kind-less fragment still paints. */
 	--wsp-kind: var(--wsp-team);
@@ -73,6 +93,7 @@
 	--wsp-kind-tint: var(--wsp-team-tint);
 	--wsp-kind-tint-hi: var(--wsp-team-tint-hi);
 	--wsp-kind-edge: var(--wsp-team-edge);
+	--wsp-kind-ink: var(--wsp-team-ink);
 	/* #endregion */
 
 	/* #region Acting context — layered, with exactly one loud channel */
@@ -129,9 +150,11 @@
 	/* #endregion */
 
 	/* #region Money — the split bar, the spend envelopes, the approval ladder */
-	--wsp-track-bg: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
-	--wsp-meter-bg: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
-	--wsp-hatch: color-mix(in srgb, var(--on-surface) 16%, transparent);
+	/* The recessed track, the meter well and the hatch are global now — wallet-tokens.css had
+	independently arrived at the same three mixes, including the same high-contrast widening. */
+	--wsp-track-bg: var(--track-recessed);
+	--wsp-meter-bg: var(--track-meter);
+	--wsp-hatch: var(--hatch-color);
 
 	/*
 	 * Six stake tones for the split bar. Derived by walking the three accent roles at descending
@@ -157,11 +180,21 @@
 	--wsp-overspend: var(--warning);
 	/* #endregion */
 
-	/* #region Geometry */
+	/*
+	 * #region Geometry
+	 *
+	 * The shared rhythm aliases the global structure block rather than restating it: band gap and
+	 * block-end padding, both row heights, the rig row, the track heights, the seam, the pip, the
+	 * chart height and the drawer width were all values this file and wallet-tokens.css reached
+	 * independently. The split bar's 18/24px geometry is the one that won the promotion, so it is
+	 * unchanged here. What stays local
+	 * is what only this surface has: the entity marks, the matrix columns, the org-chart connectors,
+	 * the ring, and the sliver threshold tuned for N stakes rather than four.
+	 */
 	--wsp-band-pad: clamp(var(--space-5), 2.6vw, var(--space-7));
-	--wsp-band-pad-b: var(--space-6);
-	--wsp-band-pad-b-lg: var(--space-7);
-	--wsp-band-gap: var(--space-6);
+	--wsp-band-pad-b: var(--band-pad-block-end);
+	--wsp-band-pad-b-lg: var(--band-pad-block-end-lg);
+	--wsp-band-gap: var(--band-gap);
 
 	/* Entity marks — rounded squares. People stay circular; that is `Avatar`, not this. */
 	--wsp-mark-sm: 1.5rem;
@@ -169,24 +202,26 @@
 	--wsp-mark-lg: 3.5rem;
 	--wsp-mark-xl: 5rem;
 
-	--wsp-rowh: 3rem;
-	--wsp-rowh-dense: 2.25rem;
-	/* Matched to the shared `ZoomSlider`'s compact row so this surface's footer band resolves to the
-	same height the canvas frame computes its block-end corner against. */
-	--wsp-rig-row: 1.75rem;
+	--wsp-rowh: var(--row-h);
+	--wsp-rowh-dense: var(--row-h-dense);
+	--wsp-rig-row: var(--rig-row-h);
 
 	--wsp-card-min: 20rem;
 	--wsp-tile-min: 11rem;
-	--wsp-chart-h: 10rem;
+	/* Orphan: nothing in this feature reads it yet (it predates the promotion). Aliased rather than
+	deleted so the first chart that lands here is already on the shared height; flagged for the
+	orphan sweep. No `-sm` companion is declared, because an unread token does not need two. */
+	--wsp-chart-h: var(--chart-h);
 
 	/* Split bar */
-	--wsp-track-h: 18px;
-	--wsp-track-h-hi: 24px;
-	--wsp-seg-gap: 2px;
+	--wsp-track-h: var(--track-h);
+	--wsp-track-h-hi: var(--track-h-hi);
+	--wsp-seg-gap: var(--space-px);
 	/* Share (percent) below which a stake gains an overhanging pip instead of a dishonest minimum
-	width. The bar never fabricates room for a small share. */
+	width. The bar never fabricates room for a small share. Deliberately NOT promoted: the wallet
+	uses 1.75 for a four-segment meter, a genuinely different data density. */
 	--wsp-sliver: 3;
-	--wsp-pip-dot: 7px;
+	--wsp-pip-dot: var(--pip-dot);
 	--wsp-handle-w: 12px;
 
 	/* Permission matrix */
@@ -194,9 +229,9 @@
 	--wsp-matrix-col: 7.5rem;
 	--wsp-matrix-cellh: 2.5rem;
 
-	/* Org chart connectors */
+	/* Org chart connectors. There is no `--wsp-connector-color`: it was an exact re-export of
+	`--hairline-color`, so the call sites read that directly. */
 	--wsp-connector: var(--space-5);
-	--wsp-connector-color: var(--hairline-color);
 	--wsp-node-w: 13rem;
 	--wsp-tree-indent: var(--space-5);
 
@@ -206,9 +241,9 @@
 
 	/* The ONLY two max-widths permitted on this surface: running text and form fields. No card, no
 	table, no matrix, no money figure and no chart may be their descendant. */
-	--wsp-prose: 68ch;
-	--wsp-field: 28rem;
-	--wsp-drawer-w: min(30rem, 92vw);
+	--wsp-prose: var(--measure);
+	--wsp-field: var(--field-max);
+	--wsp-drawer-w: var(--drawer-w);
 	/* #endregion */
 }
 
@@ -223,6 +258,7 @@
 	--wsp-kind-tint: var(--wsp-team-tint);
 	--wsp-kind-tint-hi: var(--wsp-team-tint-hi);
 	--wsp-kind-edge: var(--wsp-team-edge);
+	--wsp-kind-ink: var(--wsp-team-ink);
 }
 
 [data-kind="business"] {
@@ -231,6 +267,7 @@
 	--wsp-kind-tint: var(--wsp-business-tint);
 	--wsp-kind-tint-hi: var(--wsp-business-tint-hi);
 	--wsp-kind-edge: var(--wsp-business-edge);
+	--wsp-kind-ink: var(--wsp-business-ink);
 }
 
 /* Stake index → tone. Six rules, because a `nth-child` cycle cannot survive a reordered split. */
@@ -271,9 +308,10 @@
 	--wsp-allowed-tint: color-mix(in srgb, var(--success) 24%, transparent);
 	--wsp-conditional-tint: color-mix(in srgb, var(--warning) 24%, transparent);
 	--wsp-locked-hatch: color-mix(in srgb, var(--on-surface) 26%, transparent);
-	--wsp-track-bg: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
-	--wsp-hatch: color-mix(in srgb, var(--on-surface) 30%, transparent);
-	--wsp-minor-fade: 0.82;
+	/* The recessed track, the hatch and the minor-unit fade widened here too, by exactly the amounts
+	wallet-tokens.css used; all three moved to the global layer with their tokens, so re-declaring
+	them would pin the alias to a frozen copy and reintroduce the drift the promotion removed. They
+	widen through `--track-recessed` / `--hatch-color` / `--minor-fade` on their own. */
 }
 
 /*
@@ -312,12 +350,25 @@ ordinary prose keeps proportional figures. */
 }
 
 /* The one label register on the surface — 11px, tracked, uppercase, secondary. */
+/*
+ * THE label register — one value, settled. This rule and `.wlt-label` are byte-identical except for
+ * size, and both files claimed to hold the canonical label style: 0.75rem here, 0.6875rem there.
+ * 0.75rem (`--text-xs`) wins, for three reasons:
+ *   1. Uppercase strips the ascender/descender cues a reader uses to identify a word, so an
+ *      all-caps label needs MORE size than lowercase at the same role, not less. At 11px with
+ *      0.08em tracking on a system sans, it is under the comfortable floor.
+ *   2. It leaves `--text-2xs` a real, distinct job — micro: timestamps, counts, unit suffixes —
+ *      which both files already use it for. Letting one value be label AND micro collapses two
+ *      registers into one and costs a hierarchy step §B.4 depends on.
+ *   3. Wider agreement across the repo: 241 declarations at 0.75rem against 111 at 0.6875rem.
+ */
 .wsp-label {
 	margin: 0;
-	font-size: var(--wsp-fs-micro);
+	font-size: var(--wsp-fs-label);
 	letter-spacing: var(--wsp-label-track);
+	line-height: var(--leading-snug);
 	text-transform: uppercase;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 
@@ -404,7 +455,7 @@ ordinary prose keeps proportional figures. */
 	border-radius: var(--radius-base);
 	overflow: clip;
 	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 	font-size: var(--wsp-fs-body);
 	font-weight: 600;
 	line-height: 1;
@@ -478,7 +529,7 @@ identity band, where the entity is the subject of the page. */
 /* The quiet variant, for a row that already carries the ring + tint and must not shout twice. */
 .wsp-actingchip--quiet {
 	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 }
 
 .wsp-actingchip__dot {
@@ -542,7 +593,7 @@ frozen animation clock costs nothing. */
 
 .wsp-chip--kind {
 	background: var(--wsp-kind-tint-hi);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 }
 
 .wsp-chip[data-tone="success"] {
@@ -750,18 +801,9 @@ control that disappears teaches nothing about why. */
 	transform: scaleX(-1);
 }
 
-/* Announced, never seen — used for the table captions and the split bar's textual summary. */
-.wsp-sr {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	padding: 0;
-	margin: -1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-	border: 0;
-}
+/* Announced, never seen - the table captions and the split bar's textual summary. 
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+   (this rule was a byte-for-byte reimplementation of it). */
 
 /* One truncating row cell. `min-inline-size: 0` is the half everyone forgets in a flex/grid child. */
 .wsp-trunc {

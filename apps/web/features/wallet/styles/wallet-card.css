@@ -78,7 +78,7 @@
  */
 :root[data-contrast="high"] .wlt-card {
 	--wlt-key-mix: 14%;
-	--wlt-sheen: color-mix(in srgb, var(--on-primary) 8%, transparent);
+	--wlt-sheen: color-mix(in srgb, var(--on-primary) var(--tint-soft), transparent);
 }
 /* #endregion */
 
@@ -199,7 +199,7 @@
 	background-image: linear-gradient(
 		150deg,
 		color-mix(in srgb, var(--on-surface) 26%, var(--surface-3)),
-		color-mix(in srgb, var(--on-surface) 8%, var(--surface-3))
+		color-mix(in srgb, var(--on-surface) var(--tint-soft), var(--surface-3))
 	);
 }
 
@@ -243,15 +243,15 @@
 	font-weight: 600;
 	white-space: nowrap;
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .wlt-card__badge--funding {
-	background: color-mix(in srgb, var(--primary) 20%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
 .wlt-card__badge--payout {
-	background: color-mix(in srgb, var(--secondary) 22%, transparent);
+	background: color-mix(in srgb, var(--secondary) var(--tint-strong), transparent);
 }
 
 .wlt-card__badge--expired {
@@ -278,7 +278,18 @@
 }
 
 .wlt-card__pan-group--masked {
-	color: color-mix(in srgb, currentColor 58%, transparent);
+	/*
+	 * `opacity`, not `color-mix(… currentColor …)`. This declaration used to resolve `currentColor`
+	 * inside a `color-mix()` that was itself defining `color` — legal per spec, dropped by engines in
+	 * practice, so the three masked groups rendered at FULL weight and competed with the one group
+	 * that actually carries a fact. Exactly the trap wallet-money.css and workspace-tokens.css each
+	 * document in a comment; it recurred in a sibling file anyway, which is why the value below is
+	 * the shared token rather than a fourth local literal.
+	 *
+	 * The other eight `color-mix(… currentColor …)` sites in the repo are on `background`/`fill`,
+	 * where nothing is circular. Those are correct.
+	 */
+	opacity: var(--wlt-minor-fade);
 	letter-spacing: 0.06em;
 }
 
@@ -440,7 +451,7 @@
 	block-size: 2rem;
 	padding: 0;
 	border: var(--hairline) solid var(--border-subtle);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--on-surface-variant);
 	cursor: pointer;
@@ -459,17 +470,9 @@
 	outline-offset: 2px;
 }
 
-/* Announcements only — the state change is already visible, so it carries no visual weight. */
-.wlt-deck__live {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	margin: -1px;
-	padding: 0;
-	overflow: hidden;
-	white-space: nowrap;
-	clip-path: inset(50%);
-}
+/* Announcements only - the state change is already visible, so it carries no visual weight. 
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+   (this rule was a byte-for-byte reimplementation of it). */
 
 .wlt-deck--empty {
 	padding-block: var(--space-6);

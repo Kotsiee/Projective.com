@@ -434,7 +434,7 @@
 	flex-wrap: wrap;
 	padding: var(--space-3) var(--space-4);
 	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--warning) 12%, var(--surface-1));
+	background: color-mix(in srgb, var(--warning) var(--tint), var(--surface-1));
 }
 
 .wsp-split__drift-text {
@@ -494,7 +494,7 @@
 .wsp-split__template[data-default="true"] {
 	border-color: var(--wsp-kind-edge);
 	background: var(--wsp-kind-tint);
-	color: var(--wsp-kind);
+	color: var(--wsp-kind-ink);
 }
 
 .wsp-split__auto {
@@ -824,7 +824,7 @@
 }
 
 .wsp-approvals__item[data-state="pending"] {
-	background: color-mix(in srgb, var(--warning) 8%, var(--surface-1));
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
 }
 
 .wsp-approvals__item[data-state="declined"] {
@@ -910,17 +910,17 @@
 }
 
 .wsp-verdict[data-outcome="allowed"] {
-	background: color-mix(in srgb, var(--success) 12%, transparent);
+	background: color-mix(in srgb, var(--success) var(--tint), transparent);
 	color: var(--success);
 }
 
 .wsp-verdict[data-outcome="needs_approval"] {
-	background: color-mix(in srgb, var(--warning) 12%, transparent);
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
 	color: var(--warning);
 }
 
 .wsp-verdict[data-outcome="blocked"] {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 	color: var(--danger);
 }
 
@@ -957,7 +957,7 @@
 	min-inline-size: 0;
 	padding: var(--space-3) var(--space-4);
 	border-radius: var(--radius-container-lg);
-	background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
 }
 
 .wsp-lock--inline {

@@ -101,7 +101,7 @@
 .cal-dlg__select:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 .cal-dlg__when {
 	display: flex;

@@ -50,7 +50,7 @@
 	gap: var(--space-2);
 	margin: 0;
 	font-size: 1.15rem;
-	font-weight: 680;
+	font-weight: 700;
 	color: var(--on-surface);
 }
 .mem-head__count {
@@ -60,11 +60,11 @@
 	min-inline-size: 1.5rem;
 	padding: 0 var(--space-2);
 	block-size: 1.35rem;
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--primary);
 	font-size: 0.75rem;
-	font-weight: 640;
+	font-weight: 600;
 }
 .mem-head__sub {
 	margin: 0;
@@ -114,7 +114,7 @@
 	block-size: 2rem;
 	padding: 0;
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	font-size: 1.05rem;
@@ -124,7 +124,7 @@
 		color var(--dur-fast) var(--ease-standard);
 }
 .mem-iconbtn:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 .mem-iconbtn[data-on="true"] {
@@ -133,7 +133,7 @@
 	box-shadow: var(--elevation-low);
 }
 .mem-iconbtn--danger:hover {
-	background: color-mix(in srgb, var(--danger) 14%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 	color: var(--danger);
 }
 .mem-iconbtn:focus-visible {
@@ -166,7 +166,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-weight: 580;
+	font-weight: 600;
 	color: var(--on-surface);
 	white-space: nowrap;
 	overflow: hidden;
@@ -176,11 +176,11 @@
 	display: inline-flex;
 	align-items: center;
 	padding: 1px var(--space-2);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--primary) 16%, transparent);
 	color: var(--primary);
 	font-size: 0.6rem;
-	font-weight: 680;
+	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
@@ -197,7 +197,7 @@
 	inset-inline-end: -1px;
 	inline-size: 0.7rem;
 	block-size: 0.7rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	border: 2px solid var(--surface);
 	background: var(--text-secondary);
 }
@@ -215,7 +215,7 @@
 /* #region Badges + cells */
 .mem-rolebadge {
 	font-size: 0.72rem;
-	font-weight: 620;
+	font-weight: 600;
 }
 .mem-assigntag {
 	font-size: 0.72rem;
@@ -233,7 +233,7 @@
 	background: var(--surface-2);
 	color: var(--text-secondary);
 	font-size: 0.72rem;
-	font-weight: 520;
+	font-weight: 500;
 	white-space: nowrap;
 }
 .mem-dash {
@@ -258,7 +258,7 @@
 }
 .mem-tickets[data-has="true"] {
 	color: var(--on-surface);
-	font-weight: 560;
+	font-weight: 600;
 }
 .mem-joined {
 	font-size: 0.8rem;
@@ -283,7 +283,7 @@
 	padding: var(--space-2) var(--space-3);
 	text-align: start;
 	font-size: 0.7rem;
-	font-weight: 640;
+	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--text-secondary);
@@ -335,7 +335,7 @@
 	background: color-mix(in srgb, var(--on-surface) 3.5%, transparent);
 }
 .mem-row[data-viewer="true"] td {
-	background: color-mix(in srgb, var(--primary) 5%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
 }
 .mem-col--actions {
 	inline-size: 3rem;
@@ -375,7 +375,7 @@
 	box-shadow: var(--elevation-medium, var(--elevation-low));
 }
 .mem-card[data-viewer="true"] {
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), var(--elevation-low);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) var(--tint-heavy), transparent), var(--elevation-low);
 }
 .mem-card__head {
 	display: grid;
@@ -470,13 +470,13 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .mem-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) 7%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .mem-menu__item[data-danger="true"] {
 	color: var(--danger);
 }
 .mem-menu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .mem-menu__icon {
 	display: inline-flex;
@@ -553,7 +553,7 @@
 	color: var(--text-secondary);
 	font: inherit;
 	font-size: 0.88rem;
-	font-weight: 560;
+	font-weight: 600;
 	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard);
 }
@@ -563,7 +563,7 @@
 	inset-inline: 0;
 	inset-block-end: -1px;
 	block-size: 2px;
-	border-radius: 999px 999px 0 0;
+	border-radius: var(--radius-full) 999px 0 0;
 	background: var(--primary);
 	transform: scaleX(0);
 	transition: transform var(--dur-fast) var(--spring-standard);
@@ -622,7 +622,7 @@
 	min-inline-size: 0;
 }
 .mem-pending__email {
-	font-weight: 560;
+	font-weight: 600;
 	color: var(--on-surface);
 	font-size: 0.85rem;
 	overflow: hidden;
@@ -658,7 +658,7 @@
 .mem-empty__title {
 	margin: 0;
 	font-size: 0.95rem;
-	font-weight: 620;
+	font-weight: 600;
 	color: var(--on-surface);
 }
 .mem-empty__note {

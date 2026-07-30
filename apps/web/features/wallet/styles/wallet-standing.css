@@ -263,7 +263,7 @@
 	justify-content: center;
 	inline-size: 1.75rem;
 	block-size: 1.75rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	color: var(--text-secondary);
 	text-decoration: none;
 }

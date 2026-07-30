@@ -74,13 +74,24 @@
 		backdrop-filter var(--dur-medium) var(--ease-standard);
 }
 
-/* Scrolled state: condense into a floating, rounded, glass shell with a hairline border. */
+/*
+ * Scrolled state: condense into a floating, rounded, glass shell with a hairline border.
+ *
+ * The veil is 85%, not 62%. This bar floats over the landing hero's full-bleed photograph, so its
+ * backdrop is content rather than a theme surface, and 62% left `--on-surface` at 4.02:1 against a
+ * bright image in dark mode — under AA on the site's own wordmark and nav. 85% measures 9.28:1 dark
+ * and 12.11:1 light against the worst-case photo, and still reads unmistakably as glass: the blur
+ * and the saturate are doing the visual work here, not the transparency.
+ *
+ * The accent-coloured items in this header (`__mega-all`, the `:hover` states) all live inside the
+ * megamenu, which paints its own opaque panel, so they are not on this composite.
+ */
 .site-header--scrolled .site-header__bar {
 	max-inline-size: var(--container-xl);
-	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	background: color-mix(in srgb, var(--surface) 85%, transparent);
 	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-	border-color: color-mix(in srgb, var(--outline) 24%, transparent);
+	border-color: var(--hairline-color);
 	border-radius: calc(var(--radius-xl) * 1.5);
 	box-shadow: var(--elevation-medium);
 }
@@ -200,7 +211,7 @@
 	background: color-mix(in srgb, var(--surface) 80%, transparent);
 	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-	border: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	border: 1px solid var(--hairline-color);
 	border-radius: calc(var(--radius-xl) * 1.25);
 	box-shadow: var(--elevation-high);
 }
@@ -208,7 +219,7 @@
 .site-header__mega-tagline {
 	margin: 0 0 var(--space-4);
 	font-size: 0.85rem;
-	font-weight: 450;
+	font-weight: 500;
 	color: var(--on-surface-variant);
 }
 
@@ -270,7 +281,7 @@
 	gap: var(--space-2);
 	margin-block-start: var(--space-4);
 	padding-block-start: var(--space-4);
-	border-block-start: 1px solid color-mix(in srgb, var(--outline) 16%, transparent);
+	border-block-start: 1px solid var(--hairline-color);
 	inline-size: 100%;
 	font-size: 0.9rem;
 	font-weight: 600;
@@ -306,7 +317,7 @@
 	block-size: calc(var(--site-bar-h) - var(--space-4));
 	border-radius: var(--radius-lg);
 	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border: 1px solid var(--hairline-color);
 }
 
 .site-header__entity {
@@ -322,7 +333,7 @@
 	block-size: 100%;
 	padding-inline: var(--space-3);
 	border: 0;
-	border-inline-end: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border-inline-end: 1px solid var(--hairline-color);
 	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
@@ -334,7 +345,7 @@
 }
 
 .site-header__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .site-header__chevron {
@@ -356,7 +367,7 @@
 	list-style: none;
 	z-index: 5;
 	background: var(--surface-2);
-	border: 1px solid color-mix(in srgb, var(--outline) 20%, transparent);
+	border: 1px solid var(--hairline-color);
 	border-radius: var(--radius-lg);
 	box-shadow: var(--elevation-high);
 }
@@ -366,13 +377,13 @@
 	border-radius: var(--radius-base);
 	cursor: pointer;
 	font-size: 0.875rem;
-	font-weight: 450;
+	font-weight: 500;
 }
 
 /* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
 .site-header__entity-option:hover,
 .site-header__entity-option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
 }
 
@@ -427,7 +438,7 @@
 
 .site-header__signin {
 	font-size: 0.9rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 	text-decoration: none;
 }
@@ -441,7 +452,7 @@
 	align-items: center;
 	padding: 0.5rem 1rem;
 	font-size: 0.9rem;
-	font-weight: 550;
+	font-weight: 600;
 	line-height: 1;
 	color: var(--on-primary);
 	background: var(--primary);
@@ -467,7 +478,7 @@
 	color: var(--on-surface);
 	text-decoration: none;
 	background: color-mix(in srgb, var(--surface-2) 50%, transparent);
-	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border: 1px solid var(--hairline-color);
 }
 
 /* Minimal, icon-only theme toggle (overrides the base .theme-toggle chrome; higher specificity). */
@@ -479,7 +490,7 @@
 	block-size: 36px;
 	padding: 0;
 	border-radius: 50%;
-	border: 1px solid color-mix(in srgb, var(--outline) 18%, transparent);
+	border: 1px solid var(--hairline-color);
 	background: color-mix(in srgb, var(--surface-2) 45%, transparent);
 	color: var(--on-surface);
 	cursor: pointer;
@@ -517,7 +528,7 @@
 	padding: 0 10px;
 	border-radius: var(--radius-lg);
 	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-	border: 1px solid color-mix(in srgb, var(--outline) 22%, transparent);
+	border: 1px solid var(--hairline-color);
 	cursor: pointer;
 }
 
@@ -550,7 +561,7 @@
 	position: fixed;
 	inset: 0;
 	z-index: var(--z-backdrop, 1000);
-	background: color-mix(in srgb, var(--surface) 20%, rgba(0, 0, 0, 0.45));
+	background: color-mix(in srgb, var(--surface) var(--tint-strong), rgba(0, 0, 0, 0.45));
 	backdrop-filter: blur(2px);
 	-webkit-backdrop-filter: blur(2px);
 	opacity: 0;
@@ -578,7 +589,7 @@
 	background: color-mix(in srgb, var(--surface) 94%, transparent);
 	backdrop-filter: blur(var(--glass-blur));
 	-webkit-backdrop-filter: blur(var(--glass-blur));
-	border-inline-start: 1px solid color-mix(in srgb, var(--outline) 22%, transparent);
+	border-inline-start: 1px solid var(--hairline-color);
 	box-shadow: var(--elevation-high);
 	transform: translateX(100%);
 	transition: transform var(--dur-medium) var(--spring-standard);
@@ -609,7 +620,7 @@
 .site-header__drawer-link {
 	padding: var(--space-3) var(--space-2);
 	font-size: 1.05rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 	text-decoration: none;
 	border-radius: var(--radius-base);
@@ -617,7 +628,7 @@
 }
 
 .site-header__drawer-link:hover {
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .site-header__drawer-link:focus-visible {
@@ -641,7 +652,7 @@
 	background: transparent;
 	font: inherit;
 	font-size: 1.05rem;
-	font-weight: 550;
+	font-weight: 600;
 	color: var(--on-surface);
 	cursor: pointer;
 	text-align: start;
@@ -710,7 +721,7 @@
 	display: block;
 	padding: 0.5rem var(--space-2);
 	font-size: 0.95rem;
-	font-weight: 450;
+	font-weight: 500;
 	color: var(--on-surface-variant);
 	text-decoration: none;
 	border-radius: var(--radius-base);
@@ -718,7 +729,7 @@
 
 .site-header__acc-link:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .site-header__acc-link:focus-visible {
@@ -757,7 +768,7 @@
 	align-items: center;
 	gap: var(--space-3);
 	padding-block: var(--space-3);
-	border-block: 1px solid color-mix(in srgb, var(--outline) 16%, transparent);
+	border-block: 1px solid var(--hairline-color);
 }
 
 .site-header__drawer-theme-label {

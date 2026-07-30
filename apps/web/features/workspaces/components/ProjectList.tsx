@@ -100,7 +100,7 @@ function ProjectRow({
 					 * repeating it here would double the link's accessible name for no gain.
 					 */
 				}
-				<span class="wsp-sr">Status: {project.statusLabel}.</span>
+				<span class="ui-visually-hidden">Status: {project.statusLabel}.</span>
 			</a>
 		</li>
 	);

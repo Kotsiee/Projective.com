@@ -54,7 +54,7 @@
 	inline-size: 2.25rem;
 	block-size: 1.25rem;
 	padding: 2px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface-3);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
@@ -64,7 +64,7 @@
 .dev-ctx__switch-thumb {
 	inline-size: 1rem;
 	block-size: 1rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
 	transition: transform var(--dur-fast) var(--spring-standard);

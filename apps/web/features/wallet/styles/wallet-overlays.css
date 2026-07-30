@@ -144,7 +144,7 @@
 .wlt-modal__check {
 	inline-size: 2.5rem;
 	block-size: 2.5rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;

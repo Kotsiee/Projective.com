@@ -13,7 +13,7 @@
 	color: var(--on-primary);
 	background: var(--primary);
 	border: none;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	box-shadow: var(--elevation-medium);
 	cursor: pointer;
 	opacity: 0;
@@ -48,9 +48,7 @@
 }
 .ui-scroll-top:focus-visible {
 	outline: none;
-	box-shadow:
-		var(--elevation-medium),
-		0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow), var(--elevation-medium);
 }
 
 .ui-scroll-top__icon {

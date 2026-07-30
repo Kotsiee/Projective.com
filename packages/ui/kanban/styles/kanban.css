@@ -42,7 +42,7 @@
 }
 
 .ui-kanban__column[data-over="true"] {
-	background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-1));
 }
 
 .ui-kanban__column[data-dragging="true"] {
@@ -192,14 +192,14 @@
 /* #region Drop indicators */
 .ui-kanban__drop-indicator {
 	block-size: 3px;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 }
 
 .ui-kanban__col-indicator {
 	flex: 0 0 3px;
 	align-self: stretch;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--primary);
 }
 /* #endregion */
@@ -214,18 +214,9 @@
 }
 /* #endregion */
 
-/* Visually-hidden live region for keyboard drag announcements. */
-.ui-kanban__live {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	margin: -1px;
-	padding: 0;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-	border: 0;
-}
+/* Live region for keyboard drag announcements. 
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+   (this rule was a byte-for-byte reimplementation of it). */
 
 @media (prefers-reduced-motion: reduce) {
 	.ui-kanban__card,

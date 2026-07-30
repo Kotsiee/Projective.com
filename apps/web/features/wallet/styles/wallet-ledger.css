@@ -153,7 +153,7 @@ a.wlt-recent__link:focus-visible {
 .wlt-recent__dir {
 	inline-size: 2px;
 	block-size: 1.25rem;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	background: var(--wlt-debit);
 	opacity: 0.5;
 }

@@ -595,7 +595,7 @@ ladder. It stays visible and disabled, with the reason in its Tooltip. */
 }
 
 .wsp-capchip[data-level="consequential"] {
-	background: color-mix(in srgb, var(--warning) 14%, transparent);
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
 	color: var(--warning);
 	font-weight: 600;
 }

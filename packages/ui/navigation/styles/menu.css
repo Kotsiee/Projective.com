@@ -31,11 +31,11 @@
 	cursor: pointer;
 }
 .ui-menu__trigger:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menu__trigger:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -97,7 +97,7 @@
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .ui-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menu__item--active {
 	background: color-mix(in srgb, var(--primary) 16%, transparent);
@@ -142,7 +142,7 @@
 	text-align: center;
 	color: var(--on-primary);
 	background: var(--primary);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 /* #endregion */
 

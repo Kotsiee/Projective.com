@@ -292,7 +292,7 @@ export default function CapitalMeter(props: CapitalMeterProps): JSX.Element {
 				</div>
 			</div>
 
-			<span class="wlt-hero__sr" role="status" aria-live="polite">{liveMessage.value}</span>
+			<span class="ui-visually-hidden" role="status" aria-live="polite">{liveMessage.value}</span>
 
 			<div class={cx("wlt-hero__meter", meterEmpty && "wlt-hero__meter--empty")}>
 				{/* RULE H-1 — decorative: the rail proposes, the legend states. Hidden from AT entirely. */}

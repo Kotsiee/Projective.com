@@ -30,6 +30,21 @@
 	(page body, nested frames, middle-nav columns). Both still ride --radius-scale. */
 	--radius-2xl: calc(24px * var(--radius-scale));
 	--radius-3xl: calc(32px * var(--radius-scale));
+	/*
+	 * The terminal PILL step. One design decision the repo had been spelling three ways: 148 literal
+	 * pill declarations, 67 references to a `--radius-full` that was never defined (each carrying its
+	 * own literal fallback, which is what kept them working), and 73 `border-radius: 50%`. The first
+	 * two are the same shape and are now this token; the third is deliberately left alone, because
+	 * `50%` is the CIRCLE idiom (an avatar, a status dot) and a circle is not a pill — it is the one
+	 * shape that must stay tied to the element's own box rather than to a fixed corner budget.
+	 *
+	 * Deliberately NOT multiplied by --radius-scale. Every other step is a curvature AMOUNT, and the
+	 * knob is right to scale those; a pill is a SHAPE, and `--radius-scale: 0` would square every
+	 * chip, switch and avatar frame while the `50%` circles beside them stayed round — an incoherent
+	 * half-sharp result nobody asked the knob for. The pill family and the circle family stay
+	 * together.
+	 */
+	--radius-full: 999px;
 
 	/* --- Elevation ramp (§A.3) --- */
 	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
@@ -86,6 +101,21 @@
 
 	/* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
 	--space-0: 0;
+	/*
+	 * The sub-ramp step, and the one value here that is deliberately NOT in `rem`.
+	 *
+	 * The ramp started at 4px, so dense chrome — segmented meters, chip rows, calendar cells, icon
+	 * rails — had nowhere to go and reached for a literal: 134 `gap`/`padding`/`margin` declarations
+	 * at 2px. The proof it belongs global is that both feature layers independently invented the
+	 * identical token for it (`--wlt-seg-gap: 2px`, `--wsp-seg-gap: 2px`) without either knowing.
+	 *
+	 * `px`, not `rem`, because this is a graphical SEAM between adjacent marks — the gap that keeps
+	 * two meter segments from fusing — not content rhythm. Content spacing should grow when a reader
+	 * scales their type; a seam should not, or at 200% zoom a 2px hairline becomes a 4px hole in the
+	 * middle of a bar that is supposed to read as one continuous object. Named `px` for that reason:
+	 * it is the pixel-grid step, the place where the ramp stops being typographic.
+	 */
+	--space-px: 2px;
 	--space-1: 0.25rem;
 	--space-2: 0.5rem;
 	--space-3: 0.75rem;
@@ -99,6 +129,110 @@
 	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
 	--font-reading: var(--font-sans);
+
+	/*
+	 * Type scale. §A.4 has always declared "scale defined in rem on a modular ramp"; until now this
+	 * file shipped three family names and no ramp, so 1,372 font-size declarations across 196
+	 * stylesheets settled on 107 distinct values — 45 of them used once or twice, with consecutive
+	 * steps 0.32px apart that cannot signal hierarchy to anyone.
+	 *
+	 * The steps below are DERIVED from the shipped agreement, not invented: wallet-tokens.css and
+	 * workspace-tokens.css were written independently, most recently, and most deliberately, and they
+	 * agree exactly on body 0.875 / label 0.75 / micro 0.6875rem and on 0.08em label tracking. That
+	 * agreement is stronger evidence than a modular formula.
+	 *
+	 * It is two ramps end to end, and saying so is more honest than pretending one ratio covers both:
+	 *   - 11 → 14px steps by a single pixel. This is a DENSE CONSOLE. Its registers are separated by
+	 *     tracking, weight and case as much as by size, and a 1.2 ratio here would jump 11 → 13 → 16
+	 *     and leave the label/body distinction with nowhere to sit.
+	 *   - 16px and up on a ~1.25 modular ramp, where size is doing the work again.
+	 * --text-base is 1rem so the name keeps meaning what `rem` means. The product's dense body is
+	 * --text-md; a reading surface uses --text-base.
+	 */
+	--text-2xs: 0.6875rem; /* 11px — micro: timestamps, counts, unit suffixes */
+	--text-xs: 0.75rem; /* 12px — THE label register (see the note on --tracking-wide) */
+	--text-sm: 0.8125rem; /* 13px — dense UI: table cells, lane rows, chips */
+	--text-md: 0.875rem; /* 14px — product body */
+	--text-base: 1rem; /* 16px — reading body, and the document base */
+	--text-lg: 1.125rem; /* 18px — card and panel titles */
+	--text-xl: 1.375rem; /* 22px — section titles */
+	--text-2xl: 1.75rem; /* 28px — page titles */
+	--text-3xl: 2.25rem; /* 36px — display */
+
+	/*
+	 * Line height. Unitless on purpose: a unitless value inherits as a RATIO and re-multiplies
+	 * against each descendant's own size, so a 0.75rem label nested in 1rem prose gets its own
+	 * leading. A `24px` or `1.5rem` line-height inherits as a fixed distance and crushes any child
+	 * that is larger than its parent.
+	 */
+	--leading-tight: 1.2; /* display and headings — set solid, they need no air */
+	--leading-snug: 1.35; /* wrapping UI labels, dense two-line rows */
+	--leading-normal: 1.5; /* body — the document default, set on <body> */
+	--leading-relaxed: 1.7; /* sustained prose at a 68ch measure */
+
+	/*
+	 * Tracking. Tighten as size grows (large text needs less), open up as it shrinks — and open up a
+	 * lot for the small-caps label register, where 0.08em is the value both feature ramps arrived at
+	 * independently. The floor is -0.04em; below that a system sans starts colliding.
+	 */
+	--tracking-tight: -0.02em; /* display, and tabular figures */
+	--tracking-normal: 0em;
+	--tracking-wide: 0.08em; /* uppercase labels — never applied to sentence-case body */
+
+	/*
+	 * Weight. FIVE masters, and no intermediates — this is a decision, not an omission.
+	 *
+	 * The repo shipped 18 numeric weights, 13 of them between 500 and 800 (520, 550, 560, 580, 620,
+	 * 640, 650, 680, 750…), against ZERO webfonts: no @font-face, no font asset, nothing. On
+	 * system-ui that resolves to SF Pro on macOS, where a variable axis renders every step, and to
+	 * static Segoe UI / Roboto on Windows and Android, where they snap to the nearest installed
+	 * master. §B.4 leans on weight as the third separation tier — the mechanism that replaces
+	 * borders — so that tier was load-bearing on a channel two of three platforms cannot draw.
+	 *
+	 * The alternative was to self-host a variable face. That is a brand, licensing, performance and
+	 * asset decision, and the binary is not ours to choose; these tokens are the one place a sixth
+	 * step would be added if it ever is. Collapsing costs nothing today and keeps the door open.
+	 *
+	 * 300 survives the collapse because it is a genuine master everywhere (Segoe UI Light, SF Light,
+	 * Roboto Light) and marketing/editorial surfaces use it for large display text. 200/350 do not,
+	 * and were folded into it.
+	 */
+	--fw-light: 300; /* large display type on marketing surfaces only */
+	--fw-normal: 400;
+	--fw-medium: 500; /* the quiet emphasis step */
+	--fw-semibold: 600; /* the workhorse: labels, values, active states */
+	--fw-bold: 700; /* titles and strong emphasis */
+
+	/*
+	 * Reading measure, in `ch` so it tracks the reader's own font size instead of freezing at a
+	 * pixel width. 68ch sits inside the 45–75 character comfort band; both feature token layers had
+	 * already arrived at exactly this value and unit, which is why it is hoisted here rather than
+	 * redecided.
+	 */
+	--measure: 68ch;
+	--measure-narrow: 52ch; /* form fields, callouts, single-column notes */
+	--measure-wide: 90ch; /* editorial page columns that hold media alongside the prose */
+	/* A form field's own ceiling, in `rem` rather than `ch` because a field's comfortable width is a
+	   function of the control, not of the text a user might type into it. Both feature layers had
+	   independently landed on 28rem. */
+	--field-max: 28rem;
+
+	/*
+	 * The MINOR-UNIT pair — the pence/cents run inside a money figure, de-emphasised by size and
+	 * tone but never raised: a superscript breaks tabular alignment and reads as a retail price tag
+	 * on a balance.
+	 *
+	 * Size settles a drift: the wallet said 0.52em, workspaces 0.55em. 0.55 wins, because the token's
+	 * job is de-emphasis WITHOUT illegibility and legibility is the harder of the two constraints —
+	 * at the dense --text-md body, 0.52em resolves to 7.3px against 7.7px, and the extra half-pixel
+	 * costs the de-emphasis nothing a reader can perceive.
+	 *
+	 * Fade is unitless on purpose: it feeds `opacity`, and a percentage delivered through `var()` is
+	 * rejected as invalid-at-computed-value-time by engines whose `<alpha-value>` grammar predates
+	 * CSS Color 4 — which silently resets the property to `1` and undoes the de-emphasis entirely.
+	 */
+	--minor-size: 0.55em;
+	--minor-fade: 0.62;
 
 	/* --- Container max-widths (§C.3) --- */
 	--container-sm: 40rem;
@@ -119,8 +253,42 @@
 	/* backdrop-filter blur for guest/mobile glass header */
 	/* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
 	edge only (header/nav/body region seams) — never as a four-sided box on non-interactive content. */
+	/*
+	 * --- The tint ramp ---
+	 *
+	 * `color-mix()` had quietly become the app's second colour system: 744 calls carrying 32 distinct
+	 * percentages against --primary alone, 30 against --on-surface, 22 against --warning. The
+	 * frequency distribution showed the system converging on about four steps by hand while carrying
+	 * ninety variants of them — on-surface at 8/9/10/11%, primary at 45/46%. Nobody can see those
+	 * differences and nobody could defend them in review.
+	 *
+	 * These five steps are the ones that already dominated. 385 call sites now read them; every one
+	 * of those was within 2 percentage points of its new step, which is below the discrimination
+	 * threshold, so the migration is invisible by construction rather than by hope.
+	 *
+	 * A raw percentage in a color-mix is now a review finding. The exceptions are real and narrow:
+	 *   - a VEIL is not a tint. `color-mix(… var(--surface) 85%, transparent)` is an opacity on a
+	 *     glass layer, and it belongs to the surface it is veiling, not to this ramp.
+	 *   - the two feature token layers (wallet, workspaces) keep their own measured semantic mixes —
+	 *     fund states and entity tints whose exact values back a computed contrast figure.
+	 *
+	 * Percentages through var() are safe here: verified in-browser that
+	 * `color-mix(in srgb, red var(--t), blue)` computes byte-identically to the literal. That is NOT
+	 * true of a percentage delivered into `opacity`, which is why --minor-fade is unitless.
+	 */
+	--tint-subtle: 6%; /* barely-there wash: hover on a quiet row */
+	--tint-soft: 8%; /* the workhorse: resting tonal separation (§B.4's second tier) */
+	--tint: 12%; /* a state worth noticing: selected, active, current */
+	--tint-strong: 20%; /* a state that must be unmistakable at a glance */
+	--tint-heavy: 40%; /* structural: a filled meter track, a strong edge */
+
 	--hairline-color: color-mix(in srgb, var(--outline) 20%, transparent);
 	--hairline: 1px solid var(--hairline-color);
+	/* The visible sibling: a real border on an INTERACTIVE element (§B.4 permits full borders only
+	   there). Two features had independently re-derived exactly this as --lp-hair-strong and
+	   --ex-hair-strong, which is what earns it a name here. */
+	--hairline-strong-color: color-mix(in srgb, var(--outline) 40%, transparent);
+	--hairline-strong: 1px solid var(--hairline-strong-color);
 	--shell-gutter: var(--space-2);
 	/* parent-track thickness revealed between nested frames */
 	--shell-topbar-h: 48px;
@@ -139,8 +307,156 @@
 	--shell-bottomnav-h: 56px;
 	/* mobile thumb-nav bar height (Part D.3) */
 
+	/*
+	 * --- Surface structure (§A.3) ---
+	 *
+	 * Promoted from the wallet and workspaces token layers, and promoted for one reason only: those
+	 * two files were written months apart by people not reading each other, and they still landed on
+	 * the SAME value. Independent agreement is the evidence that a decision is global; a value that
+	 * appears once, however sensible, stays feature-local.
+	 *
+	 * What deliberately did NOT come up: `--wlt-sliver: 1.75` vs `--wsp-sliver: 3` (the share below
+	 * which a meter segment gets a pip instead of a dishonest minimum width — genuinely different
+	 * data densities), and the two `--*-overspend` tints (a wash in one surface, a solid in the
+	 * other). Those disagree for reasons, and flattening them would be a regression dressed as
+	 * consolidation.
+	 */
+
+	/* Recessed track behind a meter or a share bar, and the lighter meter well inside it. */
+	--track-recessed: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
+	--track-meter: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
+	/* Diagonal hatch — the non-colour channel that keeps a state legible when hue collapses. */
+	--hatch-color: color-mix(in srgb, var(--on-surface) 16%, transparent);
+	/*
+	 * Track heights. Settles a drift: 16/22px (wallet) vs 18/24px (workspaces). 18/24 wins because
+	 * the workspaces split bar's dividers are real draggable controls with `role="slider"`, and two
+	 * extra pixels of pointer target is a functional gain, while the wallet's capital meter is
+	 * decorative (`aria-hidden`, every fact carried by its legend) and loses nothing at 18. `-hi` is
+	 * the taller hero variant, not the high-contrast one — contrast widens tone, never geometry.
+	 */
+	--track-h: 18px;
+	--track-h-hi: 24px;
+	/* The overhanging dot a sub-sliver segment gets instead of a minimum width that would lie. */
+	--pip-dot: 7px;
+
+	/* Full-bleed band rhythm — the vertical grid a stacked surface is built on. */
+	--band-gap: var(--space-6);
+	--band-pad-block-end: var(--space-6);
+	--band-pad-block-end-lg: var(--space-7);
+
+	/* Row heights: the comfortable default, the dense variant, and the footer rig's control row
+	   (matched to the shared ZoomSlider's compact height so every rig band lines up). */
+	--row-h: 3rem;
+	--row-h-dense: 2.25rem;
+	--rig-row-h: 1.75rem;
+
+	/*
+	 * Chart heights. Settles a drift: 11rem/9rem (wallet) vs a single 10rem (workspaces). The PAIR
+	 * wins rather than the midpoint — a lone height has no answer for a narrow viewport, so adopting
+	 * it would have meant re-inventing the small step the first time a chart got cramped.
+	 */
+	--chart-h: 11rem;
+	--chart-h-sm: 9rem;
+
+	/* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
+	   on a phone. */
+	--drawer-w: min(30rem, 92vw);
+
 	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
+}
+
+/*
+ * High-contrast widening for the promoted structural tokens (§A.5, `data-contrast="high"`). Both
+ * feature layers already widened these three by exactly the same amounts; hoisting the overrides
+ * with the tokens is what stops the pair drifting apart again the first time one is retuned.
+ * Geometry is untouched — contrast is a tonal overlay, and a taller track is not more contrast.
+ */
+:root[data-contrast="high"] {
+	--track-recessed: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
+	--hatch-color: color-mix(in srgb, var(--on-surface) 30%, transparent);
+	--minor-fade: 0.82;
+}
+
+/*
+ * Open-dyslexic overlay (§A.5) — `data-font="dyslexic"`.
+ *
+ * `applyConfig` in packages/ui/system/core/context.ts has written this attribute since the theming
+ * engine landed and NOTHING has ever read it, so the toggle has always been inert. It could not have
+ * worked: §A.5 describes the overlay as remapping the family and widening `--tracking` / raising
+ * `--line-height`, and neither token existed until the block above.
+ *
+ * Every rule here is a documented dyslexia reading aid, not a stylistic preference:
+ *   - a weighted-bottom face, which is what OpenDyslexic is for — the asymmetry gives each letter a
+ *     unique silhouette so b/d/p/q stop rotating into one another;
+ *   - more tracking and more leading, so a line is easier to track and re-find;
+ *   - ligatures OFF, because a fused `fi`/`ffl` destroys the letter shapes the face just fixed;
+ *   - synthesised italics OFF (obliquing a weighted-bottom face cancels the asymmetry), replaced by
+ *     a weight step so emphasis survives;
+ *   - text-wrap: pretty, so no line ends on an orphan word.
+ *
+ * ASSET NOTE — this is the one thing the repo cannot ship for you. `local()` is listed FIRST, so a
+ * reader who already has OpenDyslexic installed system-wide (many do; it is the common case for
+ * people who need it) gets the real face immediately with zero bytes over the network. Everything
+ * else in the overlay works regardless. To serve it to the rest, drop the woff2 into
+ * `apps/web/static/fonts/` and add:
+ *
+ *   @font-face {
+ *     font-family: "OpenDyslexic";
+ *     src: local("OpenDyslexic"), url("/fonts/OpenDyslexic-Regular.woff2") format("woff2");
+ *     font-weight: 400; font-display: swap;
+ *   }
+ *
+ * Comic Sans is the fallback and that is not a joke: it is metrically irregular in the same way that
+ * helps, and it is the one such face installed nearly everywhere.
+ */
+:root[data-font="dyslexic"] {
+	--font-sans:
+		"OpenDyslexic", "OpenDyslexicAlta", "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
+	--font-reading: var(--font-sans);
+	--font-mono: "OpenDyslexicMono", ui-monospace, "Cascadia Code", monospace;
+
+	/* Wider tracking at every register; the label register opens furthest. */
+	--tracking-tight: 0em;
+	--tracking-normal: 0.03em;
+	--tracking-wide: 0.11em;
+
+	/* More air between lines so the eye can find the next one. */
+	--leading-tight: 1.4;
+	--leading-snug: 1.55;
+	--leading-normal: 1.7;
+	--leading-relaxed: 1.9;
+
+	/* OpenDyslexic ships Regular and Bold only. Collapsing the five masters to those two prevents a
+	   synthesised faux-weight, which smears the very stroke asymmetry the face exists to provide. */
+	--fw-light: 400;
+	--fw-normal: 400;
+	--fw-medium: 400;
+	--fw-semibold: 700;
+	--fw-bold: 700;
+
+	/* A shorter measure: fewer characters per line means fewer chances to lose your place. */
+	--measure: 55ch;
+	--measure-narrow: 45ch;
+}
+
+:root[data-font="dyslexic"] body,
+:root[data-font="dyslexic"] .ds-scope {
+	letter-spacing: var(--tracking-normal);
+	word-spacing: 0.16em;
+	line-height: var(--leading-normal);
+	font-variant-ligatures: none;
+	text-wrap: pretty;
+}
+
+/* Emphasis moves from slant to weight — an obliqued weighted-bottom face loses its asymmetry. */
+:root[data-font="dyslexic"] i,
+:root[data-font="dyslexic"] em,
+:root[data-font="dyslexic"] cite,
+:root[data-font="dyslexic"] address {
+	font-style: normal;
+	font-synthesis-style: none;
+	font-weight: var(--fw-bold);
 }
 
 /* Universal border-box reset — foundational layout contract (DESIGN_SYSTEM.md Part A). Padding and
@@ -227,7 +543,7 @@
 	background-color: transparent;
 	background-clip: padding-box;
 	border: 2px solid transparent;
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 

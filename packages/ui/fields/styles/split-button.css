@@ -102,11 +102,11 @@
 }
 .ui-split-button__item:hover:not(.ui-split-button__item--disabled),
 .ui-split-button__item:focus-visible {
-	background: color-mix(in srgb, var(--primary) 10%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .ui-split-button__item:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 2px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-split-button__item--disabled {
 	color: var(--text-secondary);

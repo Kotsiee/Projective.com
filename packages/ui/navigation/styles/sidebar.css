@@ -75,7 +75,7 @@
 }
 
 .ui-shell-sidebar__toggle:hover {
-    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-shell-sidebar__toggle:focus-visible {
@@ -204,7 +204,7 @@
 }
 
 .ui-sidebar-sublink:hover {
-    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
     color: var(--on-surface);
 }
 

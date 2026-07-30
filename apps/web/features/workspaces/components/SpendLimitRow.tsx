@@ -132,7 +132,7 @@ export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 			<span class="wsp-spend__limit-ident">
 				<span class="wsp-spend__limit-name">
 					<a href={`/@${limit.handle}`}>{limit.name}</a>
-					{isSelf && <span class="wsp-sr">(you)</span>}
+					{isSelf && <span class="ui-visually-hidden">(you)</span>}
 				</span>
 				<span class="wsp-spend__limit-sub">
 					{limit.canSpend ? `@${limit.handle}` : "Cannot spend from this wallet"}

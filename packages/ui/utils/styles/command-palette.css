@@ -104,7 +104,7 @@
 	user-select: none;
 }
 .ui-cmdk__option--active {
-	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 .ui-cmdk__option--disabled {
 	opacity: 0.5;
@@ -126,7 +126,7 @@
 	font-size: 0.75rem;
 	color: var(--on-surface-variant);
 	background: var(--surface-3);
-	border-radius: 999px;
+	border-radius: var(--radius-full);
 }
 .ui-cmdk__option-shortcut {
 	font-family: var(--font-mono);

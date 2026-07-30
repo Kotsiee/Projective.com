@@ -20,32 +20,34 @@
  * whole surface recolours with the theme in one simultaneous crossfade (§B.5) and resolves correctly
  * in light AND dark, under `data-contrast="high"`, and under every `data-cvd` overlay.
  *
- * The system deliberately ships NO type-scale tokens (DESIGN_SYSTEM.md §A.4 names only the three
- * family tokens), so the display-numeric ramp is introduced HERE, scoped to this surface only.
+ * TYPE. When this file was written the system shipped no type-scale tokens, so the ramp below was
+ * introduced locally. It no longer is: `@projective/ui/styles` now owns `--text-*` / `--leading-*` /
+ * `--tracking-*` / `--fw-*` — derived, in fact, from the values THIS file and workspace-tokens.css
+ * independently agreed on. The fixed steps therefore alias the global scale rather than restate it,
+ * so the two surfaces cannot drift apart again. What stays local is the genuinely surface-specific
+ * part: the FLUID display-numeric steps, because on a money surface the figure is the primary
+ * typography and has to grow with the viewport in a way a console figure must not.
  */
 
 :root {
 	/* #region Display-numeric type scale (§1.1) — money is the surface's primary typography */
 	--wlt-fs-hero: clamp(2.75rem, 1.35rem + 3.6vw, 4.5rem);
 	--wlt-fs-figure: clamp(1.5rem, 1.25rem + 0.7vw, 2rem);
-	--wlt-fs-key: clamp(1.125rem, 0.95rem + 0.5vw, 1.5rem);
+	--wlt-fs-key: clamp(var(--text-lg), 0.95rem + 0.5vw, 1.5rem);
 	--wlt-fs-rate: clamp(1.75rem, 1.4rem + 1.1vw, 2.25rem);
 	--wlt-fs-score: clamp(2.5rem, 2.1rem + 1.2vw, 3.25rem);
-	--wlt-fs-body: 0.875rem;
-	--wlt-fs-label: 0.75rem;
-	--wlt-fs-micro: 0.6875rem;
+	--wlt-fs-body: var(--text-md);
+	--wlt-fs-label: var(--text-xs);
+	--wlt-fs-micro: var(--text-2xs);
 
 	/* Pence are de-emphasised but BASELINE-ALIGNED — a superscript breaks tabular alignment and
-	reads as retail price-tag typography on a balance. */
-	--wlt-minor-size: 0.52em;
-	/*
-	 * Unitless on purpose: it feeds `opacity`, and a percentage delivered through `var()` is rejected
-	 * as invalid-at-computed-value-time by engines whose `<alpha-value>` grammar predates CSS Color 4,
-	 * which silently resets the property to `1` and undoes the de-emphasis entirely.
-	 */
-	--wlt-minor-fade: 0.62;
-	--wlt-num-track: -0.022em;
-	--wlt-label-track: 0.08em;
+	reads as retail price-tag typography on a balance. The pair is global now (`--minor-size` /
+	`--minor-fade`): this file said 0.52em and workspace-tokens.css 0.55em, and 0.55 won on the
+	legibility floor — the reasoning, including why the fade is unitless, lives with the tokens. */
+	--wlt-minor-size: var(--minor-size);
+	--wlt-minor-fade: var(--minor-fade);
+	--wlt-num-track: var(--tracking-tight);
+	--wlt-label-track: var(--tracking-wide);
 	/* #endregion */
 
 	/* #region Money semantics (§1.2) */
@@ -59,7 +61,6 @@
 	--wlt-pending-hi: color-mix(in srgb, var(--secondary) 70%, var(--surface-2));
 	--wlt-hold: color-mix(in srgb, var(--warning) 55%, var(--surface-2));
 	--wlt-hold-hi: color-mix(in srgb, var(--warning) 68%, var(--surface-2));
-	--wlt-zero: var(--hairline-color);
 
 	/* Ledger semantics. `--success` means REALISED, CREDITED, IN THE PAST — it is never a fund
 	state. Debits are never red: a debit is an ordinary movement, not a failure. */
@@ -72,48 +73,60 @@
 	--wlt-flow-net: var(--primary);
 	--wlt-overspend: color-mix(in srgb, var(--warning) 22%, transparent);
 
-	/* Structure */
-	--wlt-track-bg: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
-	--wlt-meter-bg: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
+	/* Structure. The recessed track, the meter well and the hatch are global now — workspace-tokens.css
+	had independently arrived at the same three mixes, including the same high-contrast widening. */
+	--wlt-track-bg: var(--track-recessed);
+	--wlt-meter-bg: var(--track-meter);
 	--wlt-plate: var(--surface-2);
 	--wlt-plate-inner: var(--surface-3);
-	--wlt-hatch: color-mix(in srgb, var(--on-surface) 16%, transparent);
+	--wlt-hatch: var(--hatch-color);
 	--wlt-hatch-warn: color-mix(in srgb, var(--warning) 40%, transparent);
 	/* #endregion */
 
-	/* #region Band rhythm + geometry (§1.5) */
-	--wlt-band-pad: clamp(var(--space-5), 3.2vw, var(--space-8));
-	--wlt-band-gap: var(--space-6);
-	--wlt-band-pad-b: var(--space-6);
-	--wlt-band-pad-b-lg: var(--space-7);
-	--wlt-hero-min: clamp(18rem, 34vh, 26rem);
-	--wlt-track-h: 16px;
-	--wlt-track-h-hi: 22px;
-	--wlt-seg-gap: 2px;
-	/* Share % below which a segment gains an overhanging pip instead of a dishonest minimum width. */
-	--wlt-sliver: 1.75;
-	--wlt-pip-dot: 7px;
-	--wlt-rowh: 3rem;
-	--wlt-rowh-dense: 2.25rem;
 	/*
-	 * The middle-nav footer rig's control row. Matched to the shared `ZoomSlider`'s compact `--zoom-h`
-	 * so this surface's rig resolves to the same band height as the reference File Explorer rig — the
-	 * height the canvas frame's block-end corner is computed against.
+	 * #region Band rhythm + geometry (§1.5)
+	 *
+	 * The shared rhythm now aliases the global structure block rather than restating it: band gap and
+	 * block-end padding, both row heights, the rig row, the track heights, the pip, the chart pair and
+	 * the drawer width were all values this file and workspace-tokens.css reached independently.
+	 * `--wlt-track-h` moves 16 → 18px (and 22 → 24) so the two surfaces share one bar geometry; the
+	 * responsive overrides further down wallet-hero.css still set this token directly and are
+	 * unaffected. What stays local is what is genuinely wallet-only: the fluid band padding, the hero
+	 * minimum, and the sliver threshold this surface tuned for four segments rather than N.
 	 */
-	--wlt-rig-row: 1.75rem;
-	--wlt-chart-h: 11rem;
-	--wlt-chart-h-sm: 9rem;
+	--wlt-band-pad: clamp(var(--space-5), 3.2vw, var(--space-8));
+	--wlt-band-gap: var(--band-gap);
+	--wlt-band-pad-b: var(--band-pad-block-end);
+	--wlt-band-pad-b-lg: var(--band-pad-block-end-lg);
+	--wlt-hero-min: clamp(18rem, 34vh, 26rem);
+	--wlt-track-h: var(--track-h);
+	--wlt-track-h-hi: var(--track-h-hi);
+	--wlt-seg-gap: var(--space-px);
+	/* Share % below which a segment gains an overhanging pip instead of a dishonest minimum width.
+	Deliberately NOT promoted: workspaces uses 3 for a bar with a different data density. */
+	--wlt-sliver: 1.75;
+	--wlt-pip-dot: var(--pip-dot);
+	--wlt-rowh: var(--row-h);
+	--wlt-rowh-dense: var(--row-h-dense);
+	--wlt-rig-row: var(--rig-row-h);
+	--wlt-chart-h: var(--chart-h);
+	--wlt-chart-h-sm: var(--chart-h-sm);
 	/* The ONLY two max-widths permitted on this surface (RULE L-1): running text and form fields. */
-	--wlt-prose: 68ch;
-	--wlt-field: 28rem;
-	--wlt-drawer-w: min(30rem, 92vw);
+	--wlt-prose: var(--measure);
+	--wlt-field: var(--field-max);
+	--wlt-drawer-w: var(--drawer-w);
 	/* #endregion */
 }
 
 /*
  * High contrast (§1.3) — the tonal mixes widen so every state clears AAA separation. The attribute
- * is written by `packages/ui/system` (`applyConfig`), and the wallet is the first surface to read
- * it; nothing in packages/ui consumes it yet, so the overlay is honoured here explicitly.
+ * is written by `packages/ui/system` (`applyConfig`).
+ *
+ * Only the fund-state mixes are listed. Hatch, the recessed track and the minor-unit fade widened
+ * here too, by exactly the amounts workspace-tokens.css used; those three moved to the global layer
+ * with the tokens, so re-declaring them here would pin the alias to a frozen copy and reintroduce
+ * the drift the promotion removed. They now widen through `--hatch-color` / `--track-recessed` /
+ * `--minor-fade` on their own.
  */
 :root[data-contrast="high"] {
 	--wlt-locked: color-mix(in srgb, var(--primary) 52%, var(--surface-2));
@@ -122,10 +135,7 @@
 	--wlt-pending-hi: color-mix(in srgb, var(--secondary) 86%, var(--surface-2));
 	--wlt-hold: color-mix(in srgb, var(--warning) 74%, var(--surface-2));
 	--wlt-hold-hi: color-mix(in srgb, var(--warning) 86%, var(--surface-2));
-	--wlt-hatch: color-mix(in srgb, var(--on-surface) 30%, transparent);
 	--wlt-hatch-warn: color-mix(in srgb, var(--warning) 62%, transparent);
-	--wlt-track-bg: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
-	--wlt-minor-fade: 0.82;
 }
 
 /*
@@ -161,12 +171,15 @@
 }
 
 /* RULE T-2 — the one label register on the surface. */
+/* THE label register, 0.75rem — the decision and its reasoning live on `.wsp-label` in
+   workspace-tokens.css, which was the file that had to move. These two must stay identical. */
 .wlt-label {
 	font-size: var(--wlt-fs-label);
 	letter-spacing: var(--wlt-label-track);
+	line-height: var(--leading-snug);
 	text-transform: uppercase;
 	color: var(--text-secondary);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	margin: 0;
 }
 

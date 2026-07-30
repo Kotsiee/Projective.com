@@ -69,7 +69,7 @@ export function BurnDownPanel(props: BurnDownPanelProps): JSX.Element {
 			</div>
 
 			{/* The series, for anyone who cannot read the chart. */}
-			<table class="ui-visually-hidden">
+			<table class="wlt-chart__table ui-visually-hidden">
 				<caption>Planned versus actual cumulative spend</caption>
 				<thead>
 					<tr>

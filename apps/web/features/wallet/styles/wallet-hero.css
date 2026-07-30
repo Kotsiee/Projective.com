@@ -111,18 +111,9 @@
 	color: var(--text-secondary);
 }
 
-/* The live region for a currency or account change. Never a persistent `aria-live` on the balance. */
-.wlt-hero__sr {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	padding: 0;
-	margin: -1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
-	border: 0;
-}
+/* The live region for a currency or account change. Never a persistent `aria-live` on the balance. 
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+   (this rule was a byte-for-byte reimplementation of it). */
 
 /* #endregion */
 
@@ -413,7 +404,7 @@
 	inset-block-start: -1px;
 	inset-inline: -1px;
 	block-size: 3px;
-	background: var(--wlt-key-tone, var(--wlt-zero));
+	background: var(--wlt-key-tone, var(--hairline-color));
 	border-start-start-radius: var(--radius-base);
 	border-start-end-radius: var(--radius-base);
 }
@@ -492,7 +483,7 @@
 
 /* Declared after hover so a selected cell keeps its tint while the pointer is over it. */
 .wlt-hero__key--active {
-	background: color-mix(in srgb, var(--wlt-key-tone) 12%, var(--surface-1));
+	background: color-mix(in srgb, var(--wlt-key-tone) var(--tint), var(--surface-1));
 }
 
 .wlt-hero__key--active:hover {
@@ -504,12 +495,12 @@
 }
 
 /*
- * RULE H-4 — the zero cell. The rail reverts to the achromatic `--wlt-zero`, the figures recede, the
+ * RULE H-4 — the zero cell. The rail reverts to the achromatic `--hairline-color`, the figures recede, the
  * note is omitted by the island, and the mark hollows out. Nothing about a state at zero is allowed
  * to place its colour on the instrument.
  */
 .wlt-hero__key--zero {
-	--wlt-key-tone: var(--wlt-zero);
+	--wlt-key-tone: var(--hairline-color);
 	cursor: default;
 }
 
@@ -535,7 +526,7 @@
 	padding-inline: var(--space-4);
 	border-block-start: var(--hairline);
 	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--warning) 10%, var(--surface-1));
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), var(--surface-1));
 }
 
 /*

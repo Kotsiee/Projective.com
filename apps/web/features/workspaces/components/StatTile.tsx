@@ -212,7 +212,7 @@ export function StatTile(props: StatTileProps): JSX.Element {
 					{icon && <span class="wsp-tile__vicon">{icon}</span>}
 					{value}
 				</span>
-				{srValue && <span class="wsp-sr">{srValue}</span>}
+				{srValue && <span class="ui-visually-hidden">{srValue}</span>}
 				{delta && <span class="wsp-tile__delta" data-dir={dir}>{delta}</span>}
 			</div>
 			{spark

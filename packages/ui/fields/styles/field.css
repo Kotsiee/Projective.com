@@ -76,13 +76,13 @@
 }
 .ui-field--bare:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
 	--field-border: transparent;
-	--field-bg: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .ui-field--bare.ui-field--focused,
 .ui-field--bare:focus-within {
 	--field-border: transparent;
-	background: color-mix(in srgb, var(--on-surface) 4%, transparent);
-	box-shadow: 0 0 0 2px var(--focus-ring);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	box-shadow: var(--focus-ring-shadow);
 }
 .ui-field--fluid {
 	display: flex;
@@ -97,7 +97,7 @@
 .ui-field--focused,
 .ui-field:focus-within {
 	--field-border: var(--field-accent);
-	box-shadow: 0 0 0 3px var(--focus-ring);
+	box-shadow: var(--focus-ring-shadow);
 	outline: none;
 }
 .ui-field--disabled {
@@ -132,12 +132,12 @@
 .ui-field--required {
 	--field-border: var(--danger);
 	--field-accent: var(--danger);
-	--field-bg: color-mix(in srgb, var(--danger) 5%, var(--surface));
+	--field-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
 }
 .ui-field--gate {
 	--field-border: var(--warning);
 	--field-accent: var(--warning);
-	--field-bg: color-mix(in srgb, var(--warning) 6%, var(--surface));
+	--field-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
 }
 /* #endregion */
 
