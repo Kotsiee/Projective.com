@@ -2,7 +2,9 @@
  * SplitButton — a primary Button seamed to a chevron toggle Button under one outline. The segments
  * keep their severity/variant colouring; only the touching corners are squared and a single interior
  * hairline seam divides them (§B.4: full borders stay on the interactive whole, not each part). The
- * dropdown reuses the shared floating-panel geometry (`--float-*`) of Select/MultiSelect.
+ * dropdown reuses the shared floating-panel geometry (`--float-*`) of Select/MultiSelect and is
+ * projected into `document.body`, so every menu rule must stand alone (a descendant selector rooted
+ * at `.ui-split-button` would no longer reach it).
  */
 
 .ui-split-button {
@@ -51,7 +53,7 @@
 	position: fixed;
 	inset-block-start: var(--float-top, -9999px);
 	inset-inline-start: var(--float-left, -9999px);
-	z-index: 1000;
+	z-index: var(--z-portal, var(--z-popover));
 	min-inline-size: 12rem;
 	display: flex;
 	flex-direction: column;
@@ -88,10 +90,11 @@
 	align-items: center;
 	gap: var(--space-2);
 	inline-size: 100%;
+	min-block-size: var(--fld-opt-h);
 	padding-block: var(--space-2);
-	padding-inline: var(--space-3);
+	padding-inline: var(--fld-opt-px);
 	font-family: var(--font-sans);
-	font-size: 0.9375rem;
+	font-size: var(--fld-opt-fs);
 	color: var(--on-surface);
 	text-align: start;
 	text-decoration: none;

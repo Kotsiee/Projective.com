@@ -108,8 +108,18 @@ export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 			footer={
 				<div class="wsp-inviteform__actions">
 					<Button variant="text" label="Cancel" onClick={props.onClose} />
+					{
+						/*
+						 * Destructive severity, deliberately. This hands the last owner's control of the
+						 * workspace to someone else and cannot be undone by the person clicking it — styling
+						 * it identically to "Publish listing" made the most consequential action on the
+						 * surface look like the safest. The vocabulary already existed and was simply not
+						 * reached for here.
+						 */
+					}
 					<Button
 						variant="filled"
+						severity="danger"
 						label={working.value ? "Transferring…" : "Transfer ownership"}
 						disabled={working.value || !successorId.value}
 						onClick={transfer}

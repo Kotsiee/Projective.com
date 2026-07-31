@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
 import { useMediaQuery } from "../../hooks/useMediaQuery.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Types
 /** A single breakpoint entry in {@link CarouselProps.responsiveOptions}. */
@@ -319,7 +320,7 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 						disabled={!circular && currentPage <= 0}
 						onClick={prev}
 					>
-						{vertical ? "▲" : "‹"}
+						<Icon name={vertical ? "chevron-up" : "chevron-left"} />
 					</button>
 				)}
 
@@ -370,7 +371,7 @@ export function Carousel<T>(props: CarouselProps<T>): JSX.Element {
 						disabled={!circular && currentPage >= totalIndicators - 1}
 						onClick={next}
 					>
-						{vertical ? "▼" : "›"}
+						<Icon name={vertical ? "chevron-down" : "chevron-right"} />
 					</button>
 				)}
 			</div>

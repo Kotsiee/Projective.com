@@ -223,12 +223,12 @@
 .mem-stages {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px;
+	gap: var(--space-1);
 }
 .mem-stagechip {
 	display: inline-flex;
 	align-items: center;
-	padding: 2px var(--space-2);
+	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-sm);
 	background: var(--surface-2);
 	color: var(--text-secondary);
@@ -505,9 +505,6 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
-	padding: var(--space-3);
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
 }
 .mem-editform__whotext {
 	display: flex;
@@ -601,7 +598,6 @@
 .mem-pending__list {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -611,9 +607,10 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--space-3);
-	padding: var(--space-3);
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
+	padding-block: var(--space-3);
+}
+.mem-pending__item + .mem-pending__item {
+	border-block-start: var(--hairline);
 }
 .mem-pending__main {
 	display: flex;

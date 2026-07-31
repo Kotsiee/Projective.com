@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * dev-glyphs.tsx — the icon set for the Developer Tools suite.
@@ -10,22 +11,7 @@ import type { JSX } from "preact";
 
 /** Shared SVG frame for a 20×20 stroked glyph. */
 function Svg(props: { children: JSX.Element | JSX.Element[]; size?: number }): JSX.Element {
-	const s = props.size ?? 20;
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width={s}
-			height={s}
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.7"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
-			{props.children}
-		</svg>
-	);
+	return <IconShell size={props.size ?? 20}>{props.children}</IconShell>;
 }
 
 // #region Speed-dial actions

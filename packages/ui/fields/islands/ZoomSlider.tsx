@@ -29,6 +29,15 @@ export interface ZoomSliderProps {
 	/** Position of the distinct centre "transition" marker (default the midpoint). */
 	center?: number;
 	size?: FieldSize;
+	/** Block interaction; removes the track and both buttons from the tab order. */
+	disabled?: boolean;
+	/** Show the value, refuse the edit — still focusable and announced, unlike `disabled`. */
+	readOnly?: boolean;
+	/**
+	 * Formats the spoken value for `aria-valuetext`. A zoom slider announcing "0.62" tells a listener
+	 * nothing; give it the unit the surface actually means (`(v) => \`\${Math.round(v * 200)}%\``).
+	 */
+	formatValue?: (value: number) => string;
 	"aria-label"?: string;
 	class?: string;
 }
@@ -56,9 +65,15 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 		segments = 8,
 		center = (min + max) / 2,
 		size = "sm",
+		disabled,
+		readOnly,
+		formatValue,
 		"aria-label": ariaLabel = "Zoom",
 		class: className,
 	} = props;
+
+	/** Disabled blocks everything; read-only blocks the write but keeps focus and announcement. */
+	const locked = Boolean(disabled || readOnly);
 
 	const ctrl = useControllable<number>(value, clamp((min + max) / 2, min, max), onValueChange);
 	const trackRef = useRef<HTMLDivElement>(null);
@@ -77,6 +92,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	};
 
 	const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		if (locked) return;
 		dragging.current = true;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		setFromClientX(e.clientX);
@@ -92,6 +108,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	};
 
 	const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+		if (locked) return;
 		let next: number | null = null;
 		if (e.key === "ArrowRight" || e.key === "ArrowUp") next = v + step;
 		else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = v - step;
@@ -107,11 +124,20 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	const ticks = Array.from({ length: segments + 1 }, (_, i) => (i / segments) * 100);
 
 	return (
-		<div class={cx("ui-zoom", `ui-zoom--size-${size}`, className)}>
+		<div
+			class={cx(
+				"ui-zoom",
+				`ui-zoom--size-${size}`,
+				disabled && "ui-zoom--disabled",
+				readOnly && "ui-zoom--readonly",
+				className,
+			)}
+		>
 			<button
 				type="button"
-				class="ui-zoom__btn"
+				class="ui-zoom__btn ui-hit"
 				aria-label="Zoom out"
+				disabled={locked}
 				onClick={() => ctrl.set(clamp(v - step, min, max))}
 			>
 				{MinusGlyph}
@@ -119,14 +145,17 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 
 			<div
 				ref={trackRef}
-				class="ui-zoom__track"
+				class="ui-zoom__track ui-hit"
 				role="slider"
-				tabIndex={0}
+				tabIndex={disabled ? -1 : 0}
 				aria-label={ariaLabel}
 				aria-orientation="horizontal"
 				aria-valuemin={min}
 				aria-valuemax={max}
 				aria-valuenow={Math.round(v * 100) / 100}
+				aria-valuetext={formatValue ? formatValue(v) : undefined}
+				aria-disabled={disabled || undefined}
+				aria-readonly={readOnly || undefined}
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerUp={onPointerUp}
@@ -157,8 +186,9 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 
 			<button
 				type="button"
-				class="ui-zoom__btn"
+				class="ui-zoom__btn ui-hit"
 				aria-label="Zoom in"
+				disabled={locked}
 				onClick={() => ctrl.set(clamp(v + step, min, max))}
 			>
 				{PlusGlyph}

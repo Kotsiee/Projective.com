@@ -188,6 +188,90 @@
 	margin-block: var(--space-1);
 }
 
+/*
+ * Lane Filter popover — the panel behind the `ui-lane-bar` Filter button, matching the `/projects` and
+ * `/catalogue` lane filter panels. The popover itself supplies the surface, hairline, radius and
+ * shadow; this only lays out the one facet inside it.
+ */
+.wsp-lane__filter {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 13rem;
+	max-inline-size: 100%;
+}
+
+.wsp-lane__filter-label {
+	margin: 0;
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wsp-lane__filter-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+}
+
+.wsp-lane__filter-pill {
+	padding: 0.15rem var(--space-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.74rem;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-lane__filter-pill:hover {
+	color: var(--on-surface);
+	border-color: var(--on-surface-variant);
+}
+
+.wsp-lane__filter-pill[data-on="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-color: var(--primary);
+	color: var(--primary);
+}
+
+.wsp-lane__filter-pill:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.wsp-lane__filter-reset {
+	align-self: flex-start;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.wsp-lane__filter-reset:hover {
+	color: var(--on-surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wsp-lane__filter-pill,
+	.wsp-lane__filter-reset {
+		transition: none;
+	}
+}
+
 .wsp-lane__note {
 	display: block;
 	padding-inline: var(--space-2);
@@ -764,10 +848,15 @@ words — a ring colour on its own is not a channel. */
 	text-overflow: ellipsis;
 }
 
-.wsp-footerrig__density {
-	display: flex;
-	align-items: center;
+/*
+ * The view control is the SHARED `.ui-viewrig` (layout, mode glyph and slider cap live in
+ * `features/shell/styles/view-zoom-rig.css`), so this only strips the padding it would otherwise add
+ * inside a band that already pads itself, and holds a floor so the track never collapses. The Org
+ * chart toggle rides along inside it as a trailing child.
+ */
+.wsp-footerrig .wsp-footerrig__density {
 	flex: none;
+	padding: 0;
 	min-inline-size: 9rem;
 }
 

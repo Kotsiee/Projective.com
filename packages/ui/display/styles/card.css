@@ -6,7 +6,7 @@
 .ui-card {
 	display: flex;
 	flex-direction: column;
-	border-radius: var(--radius-lg);
+	border-radius: var(--card-radius);
 	overflow: hidden;
 	color: var(--on-surface);
 }
@@ -39,7 +39,7 @@
 }
 
 .ui-card__header {
-	padding: var(--space-4) var(--space-4) 0;
+	padding: var(--card-pad) var(--card-pad) 0;
 }
 .ui-card__title {
 	font-size: 1.0625rem;
@@ -53,23 +53,23 @@
 }
 
 .ui-card__body {
-	padding: var(--space-4);
+	padding: var(--card-pad);
 	color: var(--text-secondary);
 	flex: 1 1 auto;
 }
 .ui-card__header + .ui-card__body {
-	padding-block-start: var(--space-3);
+	padding-block-start: var(--card-gap);
 }
 
 .ui-card__actions {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: 0 var(--space-4) var(--space-4);
+	padding: 0 var(--card-pad) var(--card-pad);
 }
 
 .ui-card__footer {
-	padding: var(--space-3) var(--space-4);
+	padding: var(--card-gap) var(--card-pad);
 	border-block-start: 1px solid var(--border-subtle);
 	font-size: 0.875rem;
 	color: var(--on-surface-variant);

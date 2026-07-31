@@ -9,11 +9,12 @@
 	--sw-track-h: 1.5rem;
 	--sw-knob: 1.125rem;
 	--sw-pad: 0.1875rem;
-	--sw-font: 0.9375rem;
+	--sw-font: var(--fld-fs-md);
 
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
+	min-block-size: var(--fld-hit);
 	font-family: var(--font-sans);
 	font-size: var(--sw-font);
 	color: var(--on-surface);
@@ -25,19 +26,41 @@
 	--sw-track-w: 2rem;
 	--sw-track-h: 1.25rem;
 	--sw-knob: 0.875rem;
-	--sw-font: 0.8125rem;
+	--sw-font: var(--fld-fs-sm);
 }
 .ui-switch--size-lg {
 	--sw-track-w: 3.25rem;
 	--sw-track-h: 1.875rem;
 	--sw-knob: 1.5rem;
-	--sw-font: 1.0625rem;
+	--sw-font: var(--fld-fs-lg);
 }
 
+/* Same disabled contract as Checkbox/Radio: fade the ink, keep pointer events so the cursor paints,
+   let the native `disabled` on the track button do the blocking. */
 .ui-switch--disabled {
-	opacity: 0.55;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
-	pointer-events: none;
+}
+.ui-switch--disabled .ui-switch__track {
+	background: var(--surface-1);
+	border-color: color-mix(in srgb, var(--outline) var(--fld-disabled-mix), var(--surface));
+}
+
+/* Read-only — the state stands, the toggle does not invite. */
+.ui-switch--readonly {
+	cursor: default;
+}
+
+.ui-switch--invalid .ui-switch__track,
+.ui-switch--required .ui-switch__track {
+	border-color: var(--fld-invalid-bd);
+}
+.ui-switch--gate .ui-switch__track,
+.ui-switch--warning .ui-switch__track {
+	border-color: var(--fld-gate-bd);
+}
+.ui-switch--success .ui-switch__track {
+	border-color: var(--fld-valid-bd);
 }
 
 /* #region Track (the button element) */

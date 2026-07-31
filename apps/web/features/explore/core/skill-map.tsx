@@ -1,5 +1,6 @@
 import type { VNode } from "preact";
 import type { SkillCategoryId } from "../types/explore-types.ts";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * Skill visual-category presentation — the glyph + label for a resolved {@link SkillCategoryId}.
@@ -15,19 +16,7 @@ import type { SkillCategoryId } from "../types/explore-types.ts";
  * `aria-hidden` because the adjacent label already names the skill.
  */
 function svg(children: VNode | VNode[]): VNode {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.9"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
-			{children}
-		</svg>
-	);
+	return <IconShell>{children}</IconShell>;
 }
 
 const ICONS: Record<SkillCategoryId, () => VNode> = {

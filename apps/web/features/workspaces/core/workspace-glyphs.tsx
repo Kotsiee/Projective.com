@@ -1,4 +1,5 @@
 import { cloneElement, type JSX, type VNode } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * workspace-glyphs — the icon register for the multi-member entity console (`/teams`, `/businesses`).
@@ -22,21 +23,7 @@ import { cloneElement, type JSX, type VNode } from "preact";
 
 // #region Base
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): VNode {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="1em"
-			height="1em"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			focusable="false"
-			{...props}
-		/>
-	);
+	return <IconShell focusable="false" {...props} />;
 }
 
 /**
@@ -252,6 +239,31 @@ export const ArchiveGlyph: VNode = (
 	<Svg>
 		<path d="M4 7.5h16V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z" />
 		<path d="M3 4h18v3.5H3zM10 11.5h4" />
+	</Svg>
+);
+
+/**
+ * A draft — a page still being written, for the lane quick-filter that surfaces entities whose
+ * Draft-First setup is unfinished. Deliberately NOT a warning triangle: an unfinished entity is a task
+ * outstanding, not a fault.
+ */
+export const DraftGlyph: VNode = (
+	<Svg>
+		<path d="M6 3.5h7l5 5V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1-1.5z" />
+		<path d="M13 3.5V9h5M9 13.5h6M9 17h4" />
+	</Svg>
+);
+
+/**
+ * Sliders — the lane's Filter trigger. Drawn stroke-for-stroke with the `/projects` lane's
+ * `SlidersIcon` so the two Filter buttons are one control across the surfaces, not two that resemble
+ * each other (§B.6).
+ */
+export const SlidersGlyph: VNode = (
+	<Svg>
+		<path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+		<circle cx="16" cy="7" r="2.2" />
+		<circle cx="8" cy="17" r="2.2" />
 	</Svg>
 );
 

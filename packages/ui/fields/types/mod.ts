@@ -6,6 +6,9 @@
  * across the taxonomy belongs here. See DESIGN_SYSTEM.md §C.1 (fields roster) and §A (tokens).
  */
 import type { Signal } from "@preact/signals";
+import type { BoundarySource, Side } from "../../hooks/useFloating.ts";
+
+export type { BoundarySource, Side };
 
 // #region Value binding
 /**
@@ -81,6 +84,11 @@ export interface BaseFieldProps {
 	disabled?: boolean;
 	/** Read-only: value shown, not editable (still focusable, unlike disabled). */
 	readOnly?: boolean;
+	/**
+	 * The control is awaiting its own data (suggestions fetching, options hydrating). Stays focusable
+	 * and keyboard-operable — only its content reads as provisional — and sets `aria-busy`.
+	 */
+	loading?: boolean;
 	/** Marks the field required for validation + `aria-required`. */
 	required?: boolean;
 	/** Validation status → invalid outline + `aria-invalid`. */
@@ -93,6 +101,30 @@ export interface BaseFieldProps {
 	"aria-label"?: string;
 	/** Id(s) of describing text (hint/error) for `aria-describedby`. */
 	"aria-describedby"?: string;
+}
+
+/**
+ * Props shared by every control that opens an anchored panel (Select, MultiSelect, AutoComplete,
+ * CascadeSelect, TreeSelect, DatePicker, ColorPicker, SplitButton, SortControl).
+ *
+ * Each of those panels renders through `BodyPortal` into `document.body`, because a `position: fixed`
+ * layer that stays in the tree is re-based onto any ancestor carrying `transform` / `filter` /
+ * `backdrop-filter` — and the app's glass chrome carries exactly that. Measured before the fix: a
+ * Select under a `backdrop-filter: blur(12px)` ancestor placed its panel 324px below and 101px
+ * beside its trigger.
+ *
+ * Because the panel is genuinely detached, the caller — not the package — names the layout zones it
+ * must keep clear. The package cannot know an app's sidebar selector and must not learn one.
+ */
+export interface OverlayFieldProps {
+	/**
+	 * Layout zones the panel must never intersect, as live CSS selectors, refs or rects (e.g.
+	 * `[".ui-app-shell__sidebar"]`). Re-measured on every reposition, so a rail that collapses or a
+	 * lane that is dragged wider keeps constraining the panel.
+	 */
+	avoid?: readonly BoundarySource[];
+	/** Viewport edges the panel MAY spill past into a lower-level region, relaxing the clamp there. */
+	allowOverflow?: readonly Side[];
 }
 
 /** A `{ label, value }` option, the lingua franca for Select/MultiSelect/Listbox/etc. */

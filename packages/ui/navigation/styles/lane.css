@@ -170,8 +170,19 @@
 	background: var(--surface-2);
 }
 
+/*
+ * Engaged had been hue-only while :hover carried a full `--surface-2` fill — so an ACTIVE filter sat
+ * visually QUIETER than one the pointer merely passed over, which inverts what the two states mean.
+ * The tint puts engaged above hover in weight, and the glyph fill adds the non-colour channel
+ * (`.ui-lane-toggle` below already uses exactly this fill).
+ */
 .ui-lane-iconbtn[data-on="true"] {
 	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+
+.ui-lane-iconbtn[data-on="true"] svg {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .ui-lane-iconbtn:focus-visible {

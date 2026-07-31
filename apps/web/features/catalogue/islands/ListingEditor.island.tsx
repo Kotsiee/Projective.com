@@ -37,6 +37,7 @@ import {
 	type ServiceType,
 	type UpdateListingInput,
 } from "../types/catalogue-types.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * ListingEditor — the deep manage page (`/catalogue/[id]`), a two-panel surface: the rich editor form
@@ -346,7 +347,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 										aria-label="Remove image"
 										onClick={() => removeMedia(m)}
 									>
-										×
+										<Icon name="close" />
 									</button>
 								</div>
 							))}

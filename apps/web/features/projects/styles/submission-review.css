@@ -15,12 +15,12 @@
 }
 .subm-review__panel {
 	position: relative;
-	inline-size: min(1440px, 96vw);
-	block-size: min(1000px, 94vh);
+	inline-size: var(--overlay-w-full);
+	block-size: var(--overlay-h-lg);
 	display: flex;
 	flex-direction: column;
 	background: var(--surface);
-	border-radius: var(--radius-xl);
+	border-radius: var(--overlay-radius-lg);
 	box-shadow: var(--elevation-high);
 	overflow: hidden;
 	opacity: 0;
@@ -60,8 +60,8 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 0.9375rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .subm-review__statuschip {
@@ -71,9 +71,9 @@
 	gap: 4px;
 	padding: 2px 8px;
 	border-radius: var(--radius-full);
-	font-size: 0.75rem;
-	font-weight: 600;
-	background: color-mix(in srgb, currentColor 12%, transparent);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	background: color-mix(in srgb, currentColor var(--tint), transparent);
 }
 .subm-review__statuschip[data-tone="warning"] {
 	color: var(--warning);
@@ -92,8 +92,8 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2.25rem;
-	block-size: 2.25rem;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
 	border: none;
 	border-radius: var(--radius-full);
 	background: transparent;
@@ -120,7 +120,7 @@
 	min-inline-size: 0;
 	display: flex;
 	flex-direction: column;
-	background: color-mix(in srgb, var(--on-surface) 3%, transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	border-inline-end: var(--hairline);
 }
 .subm-review__work {
@@ -158,8 +158,8 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	min-inline-size: 0;
 }
 .subm-ctx__name {
-	font-size: 0.875rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -167,7 +167,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	transition: color var(--dur-fast) var(--ease-standard);
 }
 .subm-ctx__role {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -175,7 +175,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-ctx__meta {
 	margin-block-start: var(--space-2);
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .subm-ctx__tabs {
@@ -197,7 +197,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	background: transparent;
 	color: var(--text-secondary);
 	font-family: var(--font-sans);
-	font-size: 0.6875rem;
+	font-size: var(--text-2xs);
 	cursor: pointer;
 	position: relative;
 	transition:
@@ -228,8 +228,8 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	border-radius: var(--radius-full);
 	background: var(--primary);
 	color: var(--on-primary);
-	font-size: 0.625rem;
-	font-weight: 700;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
 	line-height: 1rem;
 	text-align: center;
 }
@@ -262,8 +262,8 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 0.8125rem;
-	font-weight: 500;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 .subm-work__tools {
@@ -358,7 +358,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-work__empty {
 	color: var(--text-secondary);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 }
 
 /* Metadata + client feedback */
@@ -385,12 +385,12 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	gap: var(--space-3);
 }
 .subm-work__fact dt {
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .subm-work__fact dd {
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--on-surface);
 	text-align: end;
 }
@@ -401,19 +401,19 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	min-inline-size: 0;
 }
 .subm-work__notelabel {
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 .subm-work__notefield {
 	inline-size: 100%;
 	padding: var(--space-2);
-	border: 1px solid var(--outline);
+	border: var(--hairline-strong);
 	border-radius: var(--radius-sm);
 	background: var(--surface);
 	color: var(--on-surface);
 	font-family: var(--font-sans);
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	resize: vertical;
 }
 .subm-work__notefield:focus-visible {
@@ -431,7 +431,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--on-surface);
 }
 
@@ -447,8 +447,8 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: 1rem;
-	font-weight: 600;
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .subm-detail__tag {
@@ -456,16 +456,16 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--text-secondary);
-	font-size: 0.6875rem;
-	font-weight: 600;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
 	text-transform: capitalize;
 }
 .subm-detail__body {
 	margin: 0;
-	font-size: 0.875rem;
-	line-height: 1.6;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
-	max-inline-size: 46rem;
+	max-inline-size: var(--measure);
 }
 .subm-detail__body--empty {
 	color: var(--text-secondary);
@@ -504,26 +504,29 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	min-inline-size: 0;
 }
 .subm-note__meta {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .subm-note__text {
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
-	line-height: 1.5;
+	line-height: var(--leading-normal);
 }
 .subm-notes__empty {
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--text-secondary);
 	font-style: italic;
 }
 /* #endregion */
 
 /* #region Footer — review enforcement */
+/* The actions own the end of the row explicitly, so the layout survives the hint being
+   conditionally rendered away — it must not depend on a sibling acting as a spacer. */
 .subm-review__foot {
 	flex: none;
 	display: flex;
 	align-items: center;
+	justify-content: flex-end;
 	gap: var(--space-3);
 	padding: var(--space-3);
 	border-block-start: var(--hairline);
@@ -532,7 +535,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	flex: 1 1 auto;
 	min-inline-size: 0;
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .subm-review__actions {
@@ -551,8 +554,8 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	border: 1px solid transparent;
 	border-radius: var(--radius-base);
 	font-family: var(--font-sans);
-	font-size: 0.8125rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),

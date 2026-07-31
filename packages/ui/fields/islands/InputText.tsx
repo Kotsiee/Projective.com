@@ -6,6 +6,7 @@ import { styleVars } from "../../core/style.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
+import { BusyMark, FieldMark } from "../components/field-marks.tsx";
 import type { BaseFieldProps, Bindable, FieldVariant, ValueChange } from "../types/mod.ts";
 
 export interface InputTextProps extends BaseFieldProps {
@@ -29,6 +30,14 @@ export interface InputTextProps extends BaseFieldProps {
 	maxLength?: number;
 	/** Autocomplete hint for the browser. */
 	autoComplete?: string;
+	/**
+	 * Blur handler. Declared explicitly rather than left to the rest spread because "has this field
+	 * been touched yet" is the standard way a form avoids showing a required error before the user
+	 * has had a turn, and a prop that only works by accident is not a contract.
+	 */
+	onBlur?: JSX.FocusEventHandler<HTMLInputElement>;
+	/** Focus handler (see {@link InputTextProps.onBlur}). */
+	onFocus?: JSX.FocusEventHandler<HTMLInputElement>;
 	class?: string;
 	style?: CSSProperties;
 }
@@ -56,6 +65,7 @@ export function InputText(props: InputTextProps): JSX.Element {
 		name,
 		disabled,
 		readOnly,
+		loading,
 		required,
 		maxLength,
 		autoComplete,
@@ -84,6 +94,7 @@ export function InputText(props: InputTextProps): JSX.Element {
 					fluid: isFluid,
 					disabled,
 					readOnly,
+					loading,
 				}),
 				block && "ui-input--block",
 				className,
@@ -107,10 +118,22 @@ export function InputText(props: InputTextProps): JSX.Element {
 				autoComplete={autoComplete}
 				aria-invalid={ariaInvalid(status)}
 				aria-required={required || undefined}
+				aria-busy={loading || undefined}
 				onInput={onInput}
 				{...aria}
 			/>
 			{end !== undefined && <span class="ui-input__adornment ui-input__adornment--end">{end}</span>}
+			{
+				/*
+				 * The status channel (§A.5). A validation state must never ride on hue alone, and the
+				 * coloured border was the only signal the taxonomy had. The slot collapses to zero width at
+				 * rest, so a neutral field is byte-identical to before; `aria-hidden` because the state is
+				 * already carried programmatically by `aria-invalid` and the described error text.
+				 */
+			}
+			<span class="ui-field__mark" aria-hidden="true">
+				{loading ? <BusyMark /> : <FieldMark status={status} />}
+			</span>
 		</span>
 	);
 }

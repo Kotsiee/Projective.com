@@ -18,7 +18,7 @@
 	/* Extra-large organic curvatures, derived from the radius ramp (24 / 32 / 48px @ scale 1). */
 	--lp-r-sm: var(--radius-lg);
 	--lp-r-md: var(--radius-xl);
-	--lp-r-lg: calc(var(--radius-xl) * 1.5);
+	--lp-r-lg: var(--card-radius-media);
 	--lp-r-xl: calc(var(--radius-xl) * 2);
 	--lp-r-2xl: calc(var(--radius-xl) * 3);
 
@@ -659,7 +659,6 @@
 	gap: var(--space-3);
 	margin-block-start: var(--space-4);
 	padding-block-start: var(--space-4);
-	border-block-start: 1px solid var(--lp-hair);
 }
 
 .lp-profile__rating {
@@ -730,7 +729,6 @@
 	gap: var(--space-3);
 	margin-block-start: var(--space-5);
 	padding-block-start: var(--space-4);
-	border-block-start: 1px solid var(--lp-hair);
 }
 
 .lp-service__price {
@@ -818,7 +816,6 @@
 	justify-content: space-between;
 	gap: var(--space-3);
 	padding-block-start: var(--space-4);
-	border-block-start: 1px solid var(--lp-hair);
 }
 
 .lp-project__budget {
@@ -874,12 +871,11 @@
 	position: absolute;
 	inset-block-start: var(--space-3);
 	inset-inline-end: var(--space-3);
-	padding: 0.3rem 0.7rem;
+	padding: var(--space-1) var(--space-3);
 	font-size: 0.85rem;
 	font-weight: 600;
 	color: var(--on-surface);
 	background: var(--lp-glass);
-	border: 1px solid var(--lp-hair-strong);
 	border-radius: var(--radius-xl);
 	backdrop-filter: blur(var(--glass-blur));
 	-webkit-backdrop-filter: blur(var(--glass-blur));
@@ -1033,8 +1029,14 @@
 	align-items: flex-start;
 	gap: var(--space-3);
 	padding: var(--space-6);
-	background: var(--surface-2);
-	border: 1px solid var(--lp-hair);
+	/*
+	 * `--surface-3`, not `--surface-2`, because `.lp-how` is itself `--surface-1`: the tonal step a
+	 * step tile needs is measured against ITS PARENT, not against the page. `--surface-2` here is a
+	 * 1.05:1 step — no boundary at all — which is why this tile had reached for a four-sided border
+	 * instead (§B.4 tier 5 on non-interactive content). One tier up the ladder is the fix; a contour
+	 * is not.
+	 */
+	background: var(--surface-3);
 	border-radius: var(--lp-r-lg);
 }
 
@@ -1101,10 +1103,10 @@
 	flex-wrap: wrap;
 	gap: var(--space-5);
 	margin-block-start: var(--space-7);
-	padding: clamp(1.75rem, 4vw, 3rem);
+	padding: clamp(var(--space-6), 4vw, var(--space-7));
 	border-radius: var(--lp-r-xl);
-	background: var(--surface-2);
-	border: 1px solid var(--lp-hair);
+	/* Same parent-relative reasoning as `.lp-how__step` — this banner also sits on `--surface-1`. */
+	background: var(--surface-3);
 }
 
 .lp-how__banner-line {
@@ -1178,7 +1180,6 @@
 	gap: var(--space-4);
 	padding: var(--space-5);
 	background: var(--surface-2);
-	border: 1px solid var(--lp-hair);
 	border-radius: var(--lp-r-lg);
 }
 

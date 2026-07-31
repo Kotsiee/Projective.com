@@ -22,8 +22,6 @@ export interface OverlayProps {
 	dismissable?: boolean;
 	/** Close on Escape when top-most (default `true`). */
 	closeOnEscape?: boolean;
-	/** Blur the content behind the backdrop. */
-	blur?: boolean;
 	/** Lock body scroll while open. Defaults to `modal`. */
 	lockScroll?: boolean;
 	/** Fired whenever the open state changes (open or close). */
@@ -48,7 +46,6 @@ export function Overlay(props: OverlayProps): JSX.Element | null {
 		modal = true,
 		dismissable = true,
 		closeOnEscape = true,
-		blur,
 		lockScroll,
 		onOpenChange,
 		class: className,
@@ -60,32 +57,33 @@ export function Overlay(props: OverlayProps): JSX.Element | null {
 	const { mounted, state } = usePresence(isOpen);
 
 	const contentRef = useRef<HTMLDivElement>(null);
-	const stack = useOverlayStack({ active: mounted, lockScroll: lockScroll ?? modal });
+	// A modal Overlay draws a backdrop, locks scroll and traps focus, so it belongs to the modal band —
+	// defaulting to `popover` let it allocate from 1100 and lose to any Dialog.
+	const stack = useOverlayStack({
+		active: mounted,
+		lockScroll: lockScroll ?? modal,
+		layer: modal ? "modal" : "popover",
+	});
 
 	const close = () => ctrl.set(false);
 
-	useFocusTrap({ active: mounted && modal, containerRef: contentRef });
+	useFocusTrap({ active: mounted && modal, containerRef: contentRef, inertBackground: modal });
 	useDismiss({
 		open: mounted,
-		onDismiss: () => {
-			if (stack.isTop) close();
-		},
+		enabled: stack.isTop,
+		onDismiss: close,
 		panelRef: contentRef,
 		closeOnEscape,
-		closeOnOutside: dismissable,
+		// A modal Overlay dismisses through the backdrop's own click, exactly like Dialog and Drawer.
+		// Wiring outside-pointerdown as well fired the same close twice for one press.
+		closeOnOutside: dismissable && !modal,
 	});
 
 	if (!mounted) return null;
 
 	return (
 		<Portal zIndex={stack.zIndex}>
-			{modal && (
-				<Backdrop
-					visible={state === "open"}
-					blur={blur}
-					onClick={dismissable ? close : undefined}
-				/>
-			)}
+			{modal && <Backdrop visible={state === "open"} onClick={dismissable ? close : undefined} />}
 			<div
 				ref={contentRef}
 				class={cx("ui-overlay__content", className)}

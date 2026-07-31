@@ -22,6 +22,7 @@ import {
 	toText,
 } from "../core/collection.ts";
 import type { TableColumn } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 export type { TableColumn };
 
@@ -476,7 +477,7 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 								toggleExpand(row, index);
 							}}
 						>
-							<span class="ui-table__toggle-icon" aria-hidden="true">▸</span>
+							<Icon name="caret-right" class="ui-table__toggle-icon" />
 						</button>
 					</div>
 				)}
@@ -630,13 +631,14 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 											{col.headerTemplate ? col.headerTemplate(col) : (col.header ?? col.field)}
 										</span>
 										{col.sortable && (
-											<span class="ui-table__sort-icon" aria-hidden="true">
-												{ariaSortFor(col.field) === "ascending"
-													? "▲"
+											<Icon
+												class="ui-table__sort-icon"
+												name={ariaSortFor(col.field) === "ascending"
+													? "sort-asc"
 													: ariaSortFor(col.field) === "descending"
-													? "▼"
-													: "⇅"}
-											</span>
+													? "sort-desc"
+													: "sort"}
+											/>
 										)}
 									</button>
 									{col.resizable && (
@@ -779,7 +781,7 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 							disabled={currentPage === 0}
 							onClick={() => goToPage(currentPage - 1)}
 						>
-							‹
+							<Icon name="chevron-left" />
 						</button>
 						<span class="ui-table__page-status" aria-current="page">
 							{currentPage + 1} / {pageCount}
@@ -791,7 +793,7 @@ export function Table<T>(props: TableProps<T>): JSX.Element {
 							disabled={currentPage >= pageCount - 1}
 							onClick={() => goToPage(currentPage + 1)}
 						>
-							›
+							<Icon name="chevron-right" />
 						</button>
 						<button
 							type="button"

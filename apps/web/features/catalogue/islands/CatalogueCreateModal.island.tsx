@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/catalogue.css";
 import { Dialog } from "@projective/ui/feedback";
-import { Button, InputText, Select, SelectButton } from "@projective/ui/fields";
+import { Button, FieldLegend, InputText, Select, SelectButton } from "@projective/ui/fields";
 import { CatalogueService } from "../core/CatalogueService.ts";
 import { createModalOpen, createSeedKind, createSeedModel } from "../core/catalogue-state.ts";
 import { listingHref, MODEL_OPTIONS } from "../core/catalogue-model.ts";
@@ -24,10 +24,19 @@ const KIND_OPTIONS = [
 	{ label: "Service", value: "service" },
 ];
 
+/* Stable ids so each visible label owns its control. The modal is a singleton, so literals are safe
+   and keep the label↔control binding readable at the call site. */
+const TITLE_ID = "cat-create-title";
+const KIND_LABEL_ID = "cat-create-kind-label";
+const KIND_HINT_ID = "cat-create-kind-hint";
+const MODEL_ID = "cat-create-model";
+
 export default function CatalogueCreateModal(): JSX.Element {
 	const kind = useSignal<CatalogueKind>(createSeedKind.value);
 	const model = useSignal<ServiceType>(createSeedModel.value);
 	const title = useSignal("");
+	/** Flips on the title's first blur, so the required gate never fires before the user has typed. */
+	const touched = useSignal(false);
 	const submitting = useSignal(false);
 	const error = useSignal<string | null>(null);
 
@@ -35,6 +44,7 @@ export default function CatalogueCreateModal(): JSX.Element {
 	useSignalEffect(() => {
 		if (createModalOpen.value) {
 			title.value = "";
+			touched.value = false;
 			kind.value = createSeedKind.value;
 			model.value = createSeedModel.value;
 			error.value = null;
@@ -94,27 +104,49 @@ export default function CatalogueCreateModal(): JSX.Element {
 			}
 		>
 			<div class="cat-create__body">
-				<label class="cat-field">
-					<span class="cat-field__label">Title</span>
+				{
+					/*
+					 * Every field here binds its VISIBLE label to its control by id. The previous markup
+					 * carried an `aria-label` on each one — "Listing title" over a visible "Title" — which
+					 * overrides the label a sighted user reads and a voice-control user says (WCAG 2.5.3).
+					 * Two of the three were not associated at all: a `<span>` inside a `<div>` labels
+					 * nothing, and a `<label>` wrapping a Select cannot associate implicitly because the
+					 * Select's trigger is a `<button>`, which is not a labelable element.
+					 */
+				}
+				<div class="cat-field">
+					<label class="cat-field__label" for={TITLE_ID}>Title</label>
 					<InputText
+						id={TITLE_ID}
 						value={title}
 						placeholder={isService ? "Name your service" : "Name your product"}
 						block
 						maxLength={200}
-						status={title.value.trim() ? "default" : "required"}
-						aria-label="Listing title"
+						required
+						/*
+						 * Neutral until the user has had a turn. Deriving the status straight from
+						 * emptiness painted the field red and set `aria-invalid` the instant the modal
+						 * opened — an error about something nobody had done yet. `touched` flips on the
+						 * first blur, so the gate still shows before submit, just not before typing.
+						 */
+						status={touched.value && !title.value.trim() ? "required" : "default"}
+						onBlur={() => (touched.value = true)}
 					/>
-				</label>
+				</div>
 
-				<div class="cat-field">
-					<span class="cat-field__label">Type</span>
+				<div
+					class="cat-field"
+					role="group"
+					aria-labelledby={KIND_LABEL_ID}
+					aria-describedby={KIND_HINT_ID}
+				>
+					<span class="cat-field__label" id={KIND_LABEL_ID}>Type</span>
 					<SelectButton
 						options={KIND_OPTIONS}
 						value={kind.value}
 						onValueChange={(v) => (kind.value = v as CatalogueKind)}
-						aria-label="Listing type"
 					/>
-					<p class="cat-field__hint">
+					<p class="cat-field__hint" id={KIND_HINT_ID}>
 						{isService
 							? (
 								<>
@@ -132,17 +164,19 @@ export default function CatalogueCreateModal(): JSX.Element {
 				</div>
 
 				{isService && (
-					<label class="cat-field">
-						<span class="cat-field__label">Delivery model</span>
+					<div class="cat-field">
+						<label class="cat-field__label" for={MODEL_ID}>Delivery model</label>
 						<Select
+							id={MODEL_ID}
 							options={[...MODEL_OPTIONS]}
 							value={model.value}
 							onValueChange={(v) => (model.value = v as ServiceType)}
 							fluid
-							aria-label="Service delivery model"
 						/>
-					</label>
+					</div>
 				)}
+
+				<FieldLegend text="Required to create the draft" />
 
 				{error.value && <p class="cat-create__error" role="alert">{error.value}</p>}
 			</div>

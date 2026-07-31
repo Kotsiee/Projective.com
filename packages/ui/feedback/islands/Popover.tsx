@@ -40,6 +40,12 @@ export interface PopoverProps {
 	trigger?: (api: PopoverTriggerApi) => VNode;
 	/** Anchor an external element instead of a render-prop trigger; clicking it toggles the panel. */
 	targetRef?: RefObject<HTMLElement>;
+	/**
+	 * Accessible name for the panel. Supplying one promotes it to `role="dialog"`; without it the panel
+	 * stays an unlabelled generic container, because an unnamed `dialog` announces worse than no role
+	 * at all — and most popovers hold a menu or a form whose own semantics already describe them.
+	 */
+	label?: string;
 	/** Preferred side/alignment; flips on overflow (default `bottom-start`). */
 	placement?: Placement;
 	/**
@@ -89,6 +95,7 @@ export function Popover(props: PopoverProps): JSX.Element {
 		open,
 		trigger,
 		targetRef,
+		label,
 		placement = "bottom-start",
 		avoid,
 		allowOverflow,
@@ -125,12 +132,14 @@ export function Popover(props: PopoverProps): JSX.Element {
 	const closeFn = () => ctrl.set(false);
 	const toggle = () => ctrl.set(!ctrl.get());
 
-	useFocusTrap({ active: mounted, containerRef: panelRef });
+	// A popover is non-modal — the page beneath stays scrollable and clickable — so focus is confined
+	// for keyboard convenience only and the background is NOT marked inert. Hiding a live page from
+	// assistive tech would misdescribe what is actually interactive.
+	useFocusTrap({ active: mounted, containerRef: panelRef, inertBackground: false });
 	useDismiss({
 		open: mounted,
-		onDismiss: () => {
-			if (stack.isTop) closeFn();
-		},
+		enabled: stack.isTop,
+		onDismiss: closeFn,
 		panelRef,
 		triggerRef: anchorRef,
 		closeOnEscape,
@@ -170,7 +179,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 					<div
 						ref={panelRef}
 						id={panelId}
-						role="dialog"
+						role={label ? "dialog" : undefined}
+						aria-label={label}
 						data-state={state}
 						class={cx(
 							"ui-popover",

@@ -1,17 +1,28 @@
 /*
  * MultiSelect (ui-multiselect) — multi-select dropdown on the shared listbox pattern. Trigger
  * composes `.ui-field`; selected values render as comma text or removable chips. The popup mirrors
- * `select.css` (checkbox-per-row, optional select-all + filter header). Token-only; full outlines
- * only on the interactive trigger/chips/checkboxes (§B.4).
+ * `select.css` (checkbox-per-row, optional select-all + filter header) and is projected into
+ * `document.body`, so every panel rule must stand alone (a descendant selector rooted at
+ * `.ui-multiselect` would no longer reach it). Token-only; full outlines only on the interactive
+ * trigger/chips/checkboxes (§B.4).
  */
 
 /* #region Trigger */
+/*
+ * Grows with its chips, but starts exactly as tall as every other control.
+ *
+ * `flex-wrap: wrap` used to sit on the ROOT, which made the clear button and the chevron wrappable
+ * flex items: below roughly 90px of trigger width they dropped onto a second line and an EMPTY
+ * MultiSelect measured 60px beside a 40px Select — 20px taller with nothing in it. The wrapping
+ * belongs to the chip area alone (`__value` already wraps); the affordances stay on the first row
+ * where they are always reachable.
+ */
 .ui-multiselect {
 	cursor: pointer;
 	user-select: none;
 	min-block-size: var(--field-height);
 	block-size: auto;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 }
 .ui-multiselect__trigger {
 	display: inline-flex;
@@ -131,10 +142,11 @@
 	inset-block-start: var(--float-top, -9999px);
 	inset-inline-start: var(--float-left, -9999px);
 	inline-size: var(--float-width, auto);
-	z-index: 1000;
+	z-index: var(--z-portal, var(--z-popover));
 	display: flex;
 	flex-direction: column;
-	max-block-size: 18rem;
+	max-block-size: var(--fld-panel-maxh);
+	min-inline-size: var(--fld-panel-minw);
 	background: var(--surface);
 	border: 1px solid var(--border-subtle);
 	border-radius: var(--radius-base);
@@ -244,8 +256,10 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-2) var(--space-3);
-	font-size: 0.9375rem;
+	min-block-size: var(--fld-opt-h);
+	padding-block: var(--space-2);
+	padding-inline: var(--fld-opt-px);
+	font-size: var(--fld-opt-fs);
 	color: var(--on-surface);
 	border-radius: var(--radius-sm);
 	cursor: pointer;

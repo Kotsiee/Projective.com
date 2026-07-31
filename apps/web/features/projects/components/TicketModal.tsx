@@ -9,6 +9,7 @@ import { DndContext, useSortable } from "@projective/ui/dnd";
 import type { BoardCard, BoardStageRef, TicketPriority } from "../types/projects-types.ts";
 import { PRIORITY_OPTIONS } from "../core/board-model.ts";
 import { CloseIcon } from "./file-glyphs.tsx";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * TicketModal — the 2-panel ticket create/edit surface (task Part 4). LEFT: the Title (the only hard
@@ -91,7 +92,7 @@ function StageRowItem(props: {
 				onPointerDown={sortable.listeners.onPointerDown}
 				onKeyDown={sortable.listeners.onKeyDown}
 			>
-				<span aria-hidden="true">⠿</span>
+				<Icon name="grip" />
 			</button>
 			<label class="tkm-stage__check">
 				<input type="checkbox" checked={props.row.checked} onChange={props.onToggle} />
@@ -205,7 +206,7 @@ export function TicketModal(props: TicketModalProps): JSX.Element | null {
 	return (
 		<BodyPortal>
 			<div class="tkm" data-state={state} style={`z-index:${stack.zIndex}`}>
-				<Backdrop visible={state === "open"} blur onClick={onClose} />
+				<Backdrop visible={state === "open"} onClick={onClose} />
 				<div
 					ref={panelRef}
 					class="tkm__panel"
@@ -278,7 +279,7 @@ export function TicketModal(props: TicketModalProps): JSX.Element | null {
 													class="tkm__back"
 													onClick={() => (activeStageId.value = null)}
 												>
-													‹ Ticket details
+													<Icon name="chevron-left" /> Ticket details
 												</button>
 												<h3 class="tkm__stagetitle">{active.name}</h3>
 											</div>

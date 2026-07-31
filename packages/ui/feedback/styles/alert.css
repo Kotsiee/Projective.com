@@ -14,7 +14,7 @@
 	align-items: flex-start;
 	gap: var(--space-4);
 	padding: var(--space-5);
-	border-radius: var(--radius-lg);
+	border-radius: var(--overlay-radius-sm);
 	font-family: var(--font-sans);
 	color: var(--on-surface);
 }
@@ -51,9 +51,11 @@
 /* #endregion */
 
 /* #region Variants */
+/* Tint step and rail thickness are held identical to `.ui-message--subtle`: the two are the same
+   signal at two scales, so a difference here would read as a difference in severity. */
 .ui-alert--subtle {
-	background: color-mix(in srgb, var(--alert-accent) var(--tint-soft), transparent);
-	border-inline-start: 4px solid var(--alert-accent);
+	background: color-mix(in srgb, var(--alert-accent) var(--tint), transparent);
+	border-inline-start: 3px solid var(--alert-accent);
 }
 .ui-alert--filled {
 	background: var(--alert-accent);
@@ -97,14 +99,14 @@
 	min-inline-size: 0;
 }
 .ui-alert__title {
-	font-size: 1rem;
-	font-weight: 700;
-	line-height: 1.35;
+	font-size: var(--text-base);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-snug);
 }
 .ui-alert__description {
 	margin-block-start: var(--space-1);
-	font-size: 0.9375rem;
-	line-height: 1.5;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	opacity: 0.92;
 }
 .ui-alert__title + .ui-alert__description {
@@ -122,13 +124,13 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
 	padding: 0;
 	color: inherit;
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-sm);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 	opacity: 0.75;
 	transition:
@@ -136,12 +138,12 @@
 		opacity var(--dur-fast) var(--ease-standard);
 }
 .ui-alert__close svg {
-	inline-size: 1.125rem;
-	block-size: 1.125rem;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 .ui-alert__close:hover {
 	opacity: 1;
-	background: color-mix(in srgb, currentColor 12%, transparent);
+	background: color-mix(in srgb, currentColor var(--tint), transparent);
 }
 .ui-alert__close:focus-visible {
 	outline: none;
@@ -158,3 +160,9 @@
 	}
 }
 /* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-alert__close {
+		transition-duration: 0ms;
+	}
+}

@@ -49,6 +49,8 @@ export function useToast(): ToastApi {
 
 // #region Row
 const SWIPE_DISMISS_PX = 80;
+/** Fallback delay for the enter flip when `requestAnimationFrame` is not being serviced. */
+const ENTER_WATCHDOG_MS = 120;
 
 interface RowProps {
 	item: ToastMessage;
@@ -86,12 +88,17 @@ function ToastRow({ item }: RowProps): JSX.Element {
 
 	useEffect(() => {
 		arm();
-		const raf = requestAnimationFrame(() => {
-			mounted.value = true;
-		});
+		// The enter class is statically `opacity: 0`, so a toast is invisible until this flips. rAF is
+		// never serviced in a hidden or throttled tab, which left an announced toast unpainted while its
+		// dismissal timer ran out — visible only to a screen reader, and gone before the tab came back.
+		// The timer fallback force-shows it; whichever lands first wins.
+		const show = () => (mounted.value = true);
+		const raf = requestAnimationFrame(show);
+		const watchdog = setTimeout(show, ENTER_WATCHDOG_MS);
 		return () => {
 			clearTimer();
 			cancelAnimationFrame(raf);
+			clearTimeout(watchdog);
 		};
 	}, []);
 
@@ -160,7 +167,6 @@ function ToastRow({ item }: RowProps): JSX.Element {
 				"--toast-life": `${item.sticky ? 0 : item.life ?? 3000}ms`,
 			})}
 			role={assertive ? "alert" : "status"}
-			aria-live={assertive ? "assertive" : "polite"}
 			onPointerEnter={onPointerEnter}
 			onPointerLeave={onPointerLeave}
 			onPointerDown={onPointerDown}
@@ -206,11 +212,14 @@ export function Toast(props: ToastProps): JSX.Element {
 	const { position = "top-right", id, class: className } = props;
 
 	return (
+		// The stack is a landmark, NOT a live region. Each row already carries its own `role="alert"` or
+		// `role="status"` — nesting a polite region around them made every toast announce twice, and
+		// forced an assertive danger toast down to the container's politeness.
 		<div
 			id={id}
 			class={cx("ui-toast", `ui-toast--${position}`, className)}
-			aria-live="polite"
-			aria-atomic="false"
+			role="region"
+			aria-label="Notifications"
 		>
 			{toasts.value.map((item) => <ToastRow key={item.id} item={item} />)}
 		</div>

@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * Chat-feed glyphs — the icons unique to the message feed (hover toolbar, audio transport, pinned
@@ -11,20 +12,7 @@ import type { JSX } from "preact";
 
 // #region Base
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="1em"
-			height="1em"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			{...props}
-		/>
-	);
+	return <IconShell {...props} />;
 }
 // #endregion
 
@@ -158,8 +146,8 @@ export const EmptyChatIcon = (
  * badge rather than the tidy `StarIcon` used for channel/engagement starring.
  */
 export const WonkyStarIcon = (
-	<svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" aria-hidden="true">
+	<IconShell filled>
 		<path d="M12.4 2.1c.4-.2.8 0 .95.42l1.7 4.3c.08.2.26.34.47.37l4.9.5c.5.05.68.63.32.95l-3.5 3.05a.5.5 0 0 0-.16.5l1.02 4.8c.1.47-.4.82-.8.57l-4.2-2.42a.5.5 0 0 0-.53.02l-4.5 2.9c-.42.27-.95-.12-.83-.6l1.3-4.9a.5.5 0 0 0-.14-.5L4.2 11.4c-.37-.34-.16-.94.34-.97l4.6-.3a.5.5 0 0 0 .43-.3l2.05-4.5.02-.04c-.05.5-.02.6.06.35z" />
-	</svg>
+	</IconShell>
 );
 // #endregion

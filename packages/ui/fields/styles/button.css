@@ -7,9 +7,12 @@
 .ui-button {
 	--btn-accent: var(--primary);
 	--btn-on: var(--on-primary);
-	--btn-height: 2.5rem;
+	--btn-height: var(--fld-h-md);
 	--btn-px: var(--space-4);
-	--btn-font: 0.9375rem;
+	--btn-font: var(--fld-fs-md);
+	/* Ramped, not fixed. This was a literal `--radius-base` that never re-declared per size, so a
+	   small Button sat 2px rounder than the small input beside it and a large one 4px squarer. */
+	--btn-radius: var(--fld-r-md);
 
 	position: relative;
 	display: inline-flex;
@@ -24,8 +27,8 @@
 	line-height: 1;
 	color: var(--btn-on);
 	background: var(--btn-accent);
-	border: 1px solid transparent;
-	border-radius: var(--radius-base);
+	border: var(--fld-bw) solid transparent;
+	border-radius: var(--btn-radius);
 	cursor: pointer;
 	user-select: none;
 	transition:
@@ -128,14 +131,16 @@
 	inline-size: 100%;
 }
 .ui-button--size-sm {
-	--btn-height: 2rem;
+	--btn-height: var(--fld-h-sm);
 	--btn-px: var(--space-3);
-	--btn-font: 0.8125rem;
+	--btn-font: var(--fld-fs-sm);
+	--btn-radius: var(--fld-r-sm);
 }
 .ui-button--size-lg {
-	--btn-height: 3rem;
+	--btn-height: var(--fld-h-lg);
 	--btn-px: var(--space-5);
-	--btn-font: 1.0625rem;
+	--btn-font: var(--fld-fs-lg);
+	--btn-radius: var(--fld-r-lg);
 }
 .ui-button--icon-only {
 	--btn-px: 0;

@@ -27,10 +27,30 @@ const LAYER_BASE: Record<OverlayLayer, number> = {
 };
 
 const Z_STEP = 10;
-let topZ: number = LAYER_BASE.popover;
+
+/** One live overlay's claim on the stack. */
+interface StackEntry {
+	z: number;
+	setIsTop: (v: boolean) => void;
+}
+
+/** Currently-active overlays in claim order, top-most last. */
+const stack: StackEntry[] = [];
 let lockCount = 0;
 let savedOverflow = "";
-let savedPaddingRight = "";
+let savedPaddingInlineEnd = "";
+
+/** The current ceiling — derived from live claims, never a running total that can drift. */
+function currentTop(): number {
+	let max = LAYER_BASE.popover;
+	for (const e of stack) if (e.z > max) max = e.z;
+	return max;
+}
+
+/** Push `isTop` to every live overlay so Escape ownership follows the real top, not mount order. */
+function syncTop(): void {
+	for (let i = 0; i < stack.length; i++) stack[i].setIsTop(i === stack.length - 1);
+}
 
 /** Reference-counted body scroll lock — compensates for the scrollbar to avoid layout shift. */
 function lockBodyScroll(): void {
@@ -39,9 +59,11 @@ function lockBodyScroll(): void {
 		const body = document.body;
 		const scrollbar = globalThis.innerWidth - document.documentElement.clientWidth;
 		savedOverflow = body.style.overflow;
-		savedPaddingRight = body.style.paddingRight;
+		savedPaddingInlineEnd = body.style.paddingInlineEnd;
 		body.style.overflow = "hidden";
-		if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+		// Logical, not `paddingRight`: under `dir="rtl"` the scrollbar sits on the left, and physical
+		// compensation would shift the layout it is supposed to hold still.
+		if (scrollbar > 0) body.style.paddingInlineEnd = `${scrollbar}px`;
 	}
 	lockCount++;
 }
@@ -51,7 +73,7 @@ function unlockBodyScroll(): void {
 	lockCount = Math.max(0, lockCount - 1);
 	if (lockCount === 0) {
 		document.body.style.overflow = savedOverflow;
-		document.body.style.paddingRight = savedPaddingRight;
+		document.body.style.paddingInlineEnd = savedPaddingInlineEnd;
 	}
 }
 // #endregion
@@ -81,17 +103,23 @@ export function useOverlayStack(opts: OverlayStackOptions): OverlayStackState {
 		if (!active) return;
 		// Start from the class base, but never below an overlay that is already open — so a dropdown
 		// inside a modal steps ABOVE it instead of falling back to the popover band.
-		const mine = Math.max(base, topZ + Z_STEP);
-		topZ = mine;
+		const mine = Math.max(base, currentTop() + Z_STEP);
+		const entry: StackEntry = { z: mine, setIsTop };
+		stack.push(entry);
 		setZIndex(mine);
-		setIsTop(true);
+		syncTop();
 		if (lockScroll) lockBodyScroll();
 
 		return () => {
 			if (lockScroll) unlockBodyScroll();
-			// Release the ceiling only if we were the top overlay.
-			if (topZ === mine) topZ = Math.max(LAYER_BASE.popover, mine - Z_STEP);
+			// Drop this claim and let the ceiling fall out of what is still open. A running counter that
+			// released only when it happened to be top leaked a step on every out-of-order teardown, and
+			// in a shell that never full-page-navigates that drift eventually lifts a plain popover above
+			// the draggable, toast and tooltip bands — inverting the class hierarchy this module promises.
+			const i = stack.indexOf(entry);
+			if (i >= 0) stack.splice(i, 1);
 			setIsTop(false);
+			syncTop();
 		};
 	}, [active, lockScroll, base]);
 

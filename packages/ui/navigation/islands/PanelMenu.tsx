@@ -8,6 +8,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link PanelMenu}. */
@@ -97,7 +98,10 @@ function PanelSection(props: SectionProps): VNode {
 									onKeyDown={onRowKeyDown}
 									onClick={() => !item.disabled && toggle(key)}
 								>
-									<span class="ui-panelmenu__toggle" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
+									<Icon
+										class="ui-panelmenu__toggle"
+										name={isOpen ? "chevron-down" : "caret-right"}
+									/>
 									{content(item)}
 								</button>
 							)

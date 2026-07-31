@@ -15,15 +15,24 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 1.25rem;
+	font-size: var(--text-lg);
 	line-height: 1;
 	color: var(--on-surface-variant);
 }
 .ui-confirm__message {
 	flex: 1 1 auto;
 	min-inline-size: 0;
+	max-inline-size: var(--measure-narrow);
 	color: var(--on-surface);
-	line-height: 1.5;
+	line-height: var(--leading-normal);
+}
+/*
+ * The dialog's action pair. Grouping them is not cosmetic: it gives the focus trap a scope to open on,
+ * so initial focus lands on the REJECT button rather than the header's × — which is otherwise the
+ * first tabbable in DOM order on every confirmation in the system.
+ */
+.ui-confirm__actions {
+	display: contents;
 }
 /* #endregion */
 
@@ -38,8 +47,8 @@
 	padding: var(--space-4);
 	color: var(--on-surface);
 	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
 	box-shadow: var(--elevation-high);
 	outline: none;
 	opacity: 0;

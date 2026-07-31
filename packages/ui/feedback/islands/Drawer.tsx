@@ -13,6 +13,7 @@ import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Edge } from "../../types/mod.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link Drawer} (aliased as {@link Sidebar}). */
@@ -82,12 +83,11 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 	});
 	const close = () => ctrl.set(false);
 
-	useFocusTrap({ active: mounted && modal, containerRef: panelRef });
+	useFocusTrap({ active: mounted && modal, containerRef: panelRef, inertBackground: modal });
 	useDismiss({
 		open: mounted,
-		onDismiss: () => {
-			if (stack.isTop) close();
-		},
+		enabled: stack.isTop,
+		onDismiss: close,
 		panelRef,
 		closeOnEscape,
 		closeOnOutside: false,
@@ -123,7 +123,7 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 								aria-label="Close"
 								onClick={close}
 							>
-								×
+								<Icon name="close" />
 							</button>
 						)}
 					</div>

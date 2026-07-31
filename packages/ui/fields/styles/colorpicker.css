@@ -5,6 +5,10 @@
  * component: the saturation square, hue rail and preview backgrounds are genuine colour values
  * (white/black overlays, the hue spectrum, and the live `--cp-*` colours computed in TS) because a
  * colour picker's whole purpose is to render arbitrary colour — those cannot be tokenized.
+ *
+ * The popup panel is projected into `document.body`, so every panel rule must stand alone (a
+ * descendant selector rooted at `.ui-colorpicker` would no longer reach it). The inline panel stays
+ * in the tree.
  */
 
 .ui-colorpicker {
@@ -56,7 +60,7 @@
 	position: fixed;
 	inset-block-start: var(--float-top, 0);
 	inset-inline-start: var(--float-left, 0);
-	z-index: 1000;
+	z-index: var(--z-portal, var(--z-popover));
 	inline-size: 15rem;
 	padding: var(--space-3);
 	background: var(--surface-1);
@@ -69,6 +73,11 @@
 	position: static;
 	box-shadow: none;
 	animation: none;
+}
+/* The popup panel is portalled out of `.ui-colorpicker--disabled`, so it restates that treatment. */
+.ui-colorpicker__panel--disabled {
+	opacity: 0.55;
+	pointer-events: none;
 }
 @keyframes ui-colorpicker-in {
 	from {

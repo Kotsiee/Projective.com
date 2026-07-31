@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * VerifiedBadge — the premium identity-verification mark shown beside a verified owner's name. Not a
@@ -14,7 +15,7 @@ export function VerifiedBadge(
 	return (
 		<Tooltip content={label} placement="top">
 			<span class={`ex-verified ex-verified--${size}`} role="img" aria-label={label}>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
+				<IconShell>
 					{/* Faceted twelve-lobe seal — the crest silhouette. */}
 					<path
 						class="ex-verified__seal"
@@ -23,15 +24,8 @@ export function VerifiedBadge(
 					{/* Concentric inner ring — the "double ring" read. */}
 					<circle class="ex-verified__ring" cx="12" cy="12" r="7.1" />
 					{/* The tick. */}
-					<path
-						class="ex-verified__tick"
-						d="m8.6 12.3 2.3 2.3 4.6-4.9"
-						fill="none"
-						stroke-width="1.9"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-				</svg>
+					<path class="ex-verified__tick" d="m8.6 12.3 2.3 2.3 4.6-4.9" />
+				</IconShell>
 			</span>
 		</Tooltip>
 	);

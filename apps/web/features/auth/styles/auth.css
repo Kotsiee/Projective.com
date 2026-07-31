@@ -678,14 +678,17 @@ body:has(.auth) {
 }
 /* #endregion */
 
-/* #region Field softening — scoped overrides so @projective/ui controls read as filled + soft */
-.auth .ui-field__label,
-.auth .ui-field-label {
-	font-size: 0.85rem;
-	font-weight: 600;
-	color: var(--on-surface);
-}
-
+/*
+ * #region Field softening
+ *
+ * These are SURFACE overrides only — a filled, softer, larger-radius treatment for the low-contrast
+ * auth palette. What they must never restate is the STATE language: focus, invalid and disabled all
+ * come from the package, so `/join` and `/catalogue` agree about what "focused" looks like.
+ *
+ * The label override is gone entirely. It set `0.85rem`, a value on no ramp, purely to differ from
+ * the package's `--fld-label-fs`; and it also targeted `.ui-field__label`, a class that has never
+ * existed (the package's is `.ui-field-label`), so half of it was dead the day it was written.
+ */
 .auth .ui-input,
 .auth .ui-password__control,
 .auth .ui-select__trigger,
@@ -711,6 +714,13 @@ body:has(.auth) {
 	background: color-mix(in srgb, var(--surface-3) 80%, var(--surface-2));
 }
 
+/*
+ * Focus lifts the fill; the RING itself is the package's.
+ *
+ * This used to be `box-shadow: 0 0 0 2px var(--primary)` — a single accent-coloured ring, which is
+ * precisely what `--focus-ring-shadow` exists to replace: one colour cannot clear 3:1 against both
+ * the control fill and the page behind it, and against a primary-tinted surface it measured 1.00:1.
+ */
 .auth .ui-input:focus-within,
 .auth .ui-password__control:focus-within,
 .auth .ui-select__trigger:focus-visible,
@@ -721,15 +731,22 @@ body:has(.auth) {
 .auth .ui-autocomplete__control:focus-within {
 	background: var(--surface);
 	border-color: transparent;
-	box-shadow: 0 0 0 2px var(--primary), var(--elevation-low);
+	box-shadow: var(--focus-ring-shadow);
 }
 
-/* Invalid state: soft danger ring, not a hard outline. */
+/*
+ * Invalid paints the BORDER, not the box-shadow.
+ *
+ * Both states used to write `box-shadow` at equal specificity, and this rule came second — so a
+ * focused invalid field lost its focus ring entirely, on the one surface where a user is most likely
+ * to be tabbing through errors. Border and ring are different channels; now they compose.
+ */
 .auth .ui-form-control--invalid .ui-input,
 .auth .ui-form-control--invalid .ui-password__control,
 .auth .ui-form-control--invalid .ui-select__trigger,
 .auth .ui-form-control--invalid .ui-datepicker__trigger {
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 60%, transparent);
+	border-color: var(--fld-invalid-bd);
+	background: var(--fld-invalid-bg);
 }
 
 .auth .ui-form-control {
@@ -764,7 +781,8 @@ body:has(.auth) {
 }
 
 .auth .ui-button--fluid {
-	width: 100%;
+	/* Logical, not physical — this surface mirrors under `dir="rtl"` (§A.6). */
+	inline-size: 100%;
 }
 /* #endregion */
 
@@ -797,8 +815,8 @@ body:has(.auth) {
 
 .auth-banner__icon {
 	flex: none;
-	inline-size: 1.2rem;
-	block-size: 1.2rem;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
 	margin-top: 0.1rem;
 }
 
@@ -827,8 +845,8 @@ body:has(.auth) {
 
 .auth-agenote__icon {
 	flex: none;
-	inline-size: 1.15rem;
-	block-size: 1.15rem;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
 }
 
 .auth-agenote__icon svg {
@@ -873,8 +891,8 @@ body:has(.auth) {
 }
 
 .auth-oauth__glyph {
-	inline-size: 1.15rem;
-	block-size: 1.15rem;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
 	flex: none;
 }
 
@@ -1402,8 +1420,8 @@ body:has(.auth) {
 }
 
 .auth-oauth-inline__glyph {
-	inline-size: 1.1rem;
-	block-size: 1.1rem;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 	flex: none;
 }
 /* #endregion */

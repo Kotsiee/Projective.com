@@ -17,7 +17,30 @@
 	--zoom-h: 2rem;
 }
 
+.ui-zoom--size-lg {
+	--zoom-h: var(--fld-h-md);
+	--zoom-handle: 0.875rem;
+}
+
+/*
+ * Disabled / read-only. The control had neither, so a rig that could not zoom had no way to say so.
+ * Fades ink and border only (never the box), per the shared field disabled contract.
+ */
+.ui-zoom--disabled {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+.ui-zoom--disabled .ui-zoom__track,
+.ui-zoom--readonly .ui-zoom__track {
+	cursor: default;
+}
+.ui-zoom--disabled .ui-zoom__fill,
+.ui-zoom--disabled .ui-zoom__handle {
+	background: color-mix(in srgb, var(--primary) var(--fld-disabled-mix), var(--surface));
+}
+
 .ui-zoom__btn {
+	position: relative;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -33,7 +56,11 @@
 		background-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
 }
-.ui-zoom__btn:hover {
+.ui-zoom__btn:disabled {
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+.ui-zoom__btn:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--on-surface);
 }

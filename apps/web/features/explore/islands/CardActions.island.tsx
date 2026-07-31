@@ -1,5 +1,8 @@
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import { Icon } from "@projective/ui/icons";
+import { BodyPortal } from "@projective/ui/overlay";
+import { useEdgeDetection } from "@projective/ui/hooks";
 
 /**
  * CardActions — the per-card utility cluster: a kebab (`⋯`) menu holding Share, Bookmark, and Report,
@@ -27,12 +30,27 @@ export default function CardActions(
 	const status = useSignal(""); // polite aria-live confirmation
 	const rootRef = useRef<HTMLDivElement>(null);
 
-	// Close the menu on outside click / Escape.
+	/*
+	 * The panel is body-portalled, not absolutely positioned inside the card. `.ex-card` is
+	 * `overflow: clip`, so an in-tree menu was clipped by the card box whenever it opened near the
+	 * lower edge — the same trap Decision #50 portalled every shared overlay out of. `bottom-end`
+	 * keeps it under the kebab; `useEdgeDetection` flips and clamps it at the viewport.
+	 */
+	const menu = useEdgeDetection<HTMLButtonElement, HTMLDivElement>({
+		open: open.value,
+		placement: "bottom-end",
+		offset: 8,
+	});
+
+	// Close the menu on outside click / Escape. The panel lives outside `rootRef` now that it is
+	// portalled, so it needs its own containment test or a click inside the menu would dismiss it.
 	useEffect(() => {
 		const onDoc = (e: MouseEvent) => {
-			if (open.value && rootRef.current && !rootRef.current.contains(e.target as Node)) {
-				open.value = false;
-			}
+			if (!open.value) return;
+			const t = e.target as Node;
+			const inRoot = rootRef.current?.contains(t) ?? false;
+			const inPanel = menu.ref.current?.contains(t) ?? false;
+			if (!inRoot && !inPanel) open.value = false;
 		};
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key === "Escape") open.value = false;
@@ -104,21 +122,26 @@ export default function CardActions(
 			<div class="ex-actions__menu-wrap">
 				<button
 					type="button"
+					ref={menu.triggerRef}
 					class="ex-actions__kebab"
 					aria-haspopup="menu"
 					aria-expanded={open.value}
 					aria-label="More actions"
 					onClick={() => (open.value = !open.value)}
 				>
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<circle cx="12" cy="5" r="1.7" fill="currentColor" />
-						<circle cx="12" cy="12" r="1.7" fill="currentColor" />
-						<circle cx="12" cy="19" r="1.7" fill="currentColor" />
-					</svg>
+					<Icon name="kebab" />
 				</button>
 
 				{open.value && (
-					<div class="ex-actions__menu" role="menu" aria-label="Card actions">
+					<BodyPortal>
+						<div
+							ref={menu.ref}
+							class="ui-anchored ex-actions__menu"
+							style={menu.style}
+							data-placement={menu.placement}
+							role="menu"
+							aria-label="Card actions"
+						>
 						<button type="button" class="ex-actions__item" role="menuitem" onClick={share}>
 							<ShareIcon />
 							<span>Share</span>
@@ -153,7 +176,8 @@ export default function CardActions(
 							<FlagIcon />
 							<span>Report</span>
 						</button>
-					</div>
+						</div>
+					</BodyPortal>
 				)}
 			</div>
 
@@ -163,66 +187,14 @@ export default function CardActions(
 }
 
 // #region Icons
-function PlusIcon() {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			aria-hidden="true"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-		>
-			<path d="M12 5v14M5 12h14" />
-		</svg>
-	);
-}
-function ShareIcon() {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			aria-hidden="true"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-		>
-			<circle cx="18" cy="5" r="2.4" />
-			<circle cx="6" cy="12" r="2.4" />
-			<circle cx="18" cy="19" r="2.4" />
-			<path d="m8.1 10.8 7.8-4.6M8.1 13.2l7.8 4.6" />
-		</svg>
-	);
-}
-function BookmarkIcon({ filled }: { filled: boolean }) {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			aria-hidden="true"
-			fill={filled ? "currentColor" : "none"}
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-		>
-			<path d="M6 4.5h12v15l-6-4-6 4z" />
-		</svg>
-	);
-}
-function FlagIcon() {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			aria-hidden="true"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-		>
-			<path d="M5 21V4h9l-1.2 3.2L14 10H5" />
-		</svg>
-	);
-}
+/**
+ * Thin adapters onto the shared registry (§B.7). These were four hand-authored `<svg>` roots, and
+ * the file was its own smallest proof that per-call-site authoring cannot hold a set together: the
+ * plus was drawn at `stroke-width: 2` while its three neighbours sat at 1.8, in the same row of the
+ * same card.
+ */
+const PlusIcon = () => <Icon name="plus" />;
+const ShareIcon = () => <Icon name="share" />;
+const FlagIcon = () => <Icon name="flag" />;
+const BookmarkIcon = ({ filled }: { filled: boolean }) => <Icon name="bookmark" filled={filled} />;
 // #endregion

@@ -50,6 +50,11 @@
 	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
 	--elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
 	--elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
+	/* The upward-casting counterpart of --elevation-low, for chrome pinned to the BOTTOM edge (the
+	middle-nav footer band, the mobile bottom nav). Same weight, mirrored offset — a light source does
+	not move when a surface does, so a footer that overlays scrolling content has to cast toward it
+	rather than away. Without this the only honest option at the bottom edge is no shadow at all. */
+	--elevation-low-up: 0 -2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
 
 	/* --- Motion (§B.5) --- */
 	--dur-fast: 150ms;
@@ -251,6 +256,65 @@
 	/* main body panel */
 	--glass-blur: 18px;
 	/* backdrop-filter blur for guest/mobile glass header */
+	/* The ONE blur every modal scrim uses. Lighter than --glass-blur because the scrim also carries a
+	real tonal tint, and because it filters the whole viewport rather than a chrome strip. Unifying it
+	here is what stops the same Backdrop component dimming at two different strengths depending on
+	which surface opened it. */
+	--scrim-blur: 8px;
+	/* Pre-hydration defaults for the modal scrim; the theme engine overwrites both per theme (dark
+	carries the heavier tint). Declared here so the first SSR paint of a scrim is never colourless. */
+	--scrim: #000;
+	--scrim-tint: 42%;
+	--on-scrim: #fff;
+
+	/*
+	 * --- The glass veil scale ---
+	 *
+	 * The tint ramp above explicitly excludes veils ("a VEIL is not a tint … it belongs to the surface
+	 * it is veiling"). That is right, and it is also why the veils drifted: with no home, every glass
+	 * surface hand-authored its own opacity. The shipped set carried 62 / 68 / 72 / 82 / 92 / 94% over
+	 * three different base surfaces, with saturate() present on three surfaces and absent from the rest
+	 * — so the authenticated header, the product's signature glass, was its FLATTEST glass.
+	 *
+	 * These steps name the ROLE of the glass, and each surface still mixes them into its OWN base
+	 * surface, which is what the doctrine above requires. The blur stays one value: a second radius is
+	 * the same drift in another dimension.
+	 *
+	 * `chrome` is a computed floor, not a preference. A veil is composited in sRGB against an UNKNOWN
+	 * backdrop, so the worst case is the maximum-contrast one — a white media tile scrolling under a
+	 * dark-theme band. At the shipped 62%, dark --surface-1 (#191c1d) composites to L≈0.168 and
+	 * --on-surface (#e0e3e3) lands at 3.73:1 — a fail on the band's own title. Solving for 4.5:1 gives
+	 * 76%, which also carries --on-surface-variant (4.5:1) and still passes 24% of the backdrop through
+	 * at the full 18px blur. It does NOT rescue --text-secondary (that needs 84%, at which point the
+	 * effect is gone) — so the rule is the other half of this fix: secondary text does not go on glass.
+	 */
+	--glass-veil-chrome: 76%; /* header bars, frame bands, bottom nav — text-bearing chrome */
+	--glass-veil-panel: 80%; /* floating asides, megamenus, anchored panels over live content */
+	--glass-veil-sheet: 92%; /* drawers and sheets — near-opaque, they own the viewport */
+	/* Colour bleeding through the blur is the optical signature of glass; without it the surface reads
+	as fog. 1.3 is the value the guest aside already shipped, so this consolidates rather than invents. */
+	--glass-saturate: 1.3;
+
+	/*
+	 * --- Overlay geometry ---
+	 * Two named scales, so a panel's corner is a decision about its ROLE, not about who authored it.
+	 * `sm` is the anchored/system tier (popover, tooltip surface, confirm popup, toast, message); `lg`
+	 * is the workspace tier (dialog, drawer sheet, draggable window, full-canvas app modals). Widths
+	 * come from the same small set so a confirm and a create-flow never disagree by 1rem.
+	 */
+	--overlay-radius-sm: var(--radius-base);
+	--overlay-radius-lg: var(--radius-xl);
+	--overlay-w-sm: min(26rem, calc(100vw - var(--space-6)));
+	--overlay-w-md: min(34rem, calc(100vw - var(--space-6)));
+	--overlay-w-lg: min(48rem, calc(100vw - var(--space-6)));
+	--overlay-w-xl: min(68rem, 96vw);
+	--overlay-w-full: min(90rem, 96vw);
+	/* Block sizes always carry a viewport term, so a panel can never exceed the window it sits in. */
+	--overlay-h-md: min(48rem, 92vh);
+	--overlay-h-lg: min(60rem, 94vh);
+	/* One hit target for every overlay close/action glyph. The family had shipped four sizes, the
+	smallest of which (24px) fails WCAG 2.5.8; 36px clears it with room for a comfortable icon. */
+	--overlay-action-size: 2.25rem;
 	/* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
 	edge only (header/nav/body region seams) — never as a four-sided box on non-interactive content. */
 	/*
@@ -289,6 +353,46 @@
 	   --ex-hair-strong, which is what earns it a name here. */
 	--hairline-strong-color: color-mix(in srgb, var(--outline) 40%, transparent);
 	--hairline-strong: 1px solid var(--hairline-strong-color);
+
+	/*
+	 * --- Iconography (§B.7) ---
+	 *
+	 * An icon's box is `1em` of the text beside it. On the 24-unit authoring grid with the artwork
+	 * inset ~2 units per side, `1em` puts ~0.83em of live artwork against a system-sans cap height of
+	 * ~0.72em — the icon reads a touch larger than the caps, which is the optical overshoot a glyph
+	 * needs so it does not look starved next to its label. That relationship is why a paired icon
+	 * takes NO size from this ramp: it inherits, and it stays correct at every type step for free.
+	 *
+	 * The ramp below therefore exists only for an icon with NO adjacent text — an icon-only control,
+	 * a rail square, an empty-state mark. Every step is an integer pixel at a 16px root, because a
+	 * half-pixel box on a stroked icon guarantees a half-pixel stroke, and that is the mush.
+	 *
+	 * The audit that produced this ramp found 47 distinct rendered icon sizes, nine of them landing
+	 * on fractional pixels (0.85rem → 13.6px, 1.05rem → 16.8px, 2.1rem → 33.6px …).
+	 */
+	--icon-2xs: 0.75rem; /* 12px — inline status pips, dense table marks (pairs --text-2xs/xs) */
+	--icon-xs: 0.875rem; /* 14px — lane rows, chips, table cells (pairs --text-sm) */
+	--icon-sm: 1rem; /* 16px — THE default: buttons, menu items, toolbars (pairs --text-md/base) */
+	--icon-md: 1.25rem; /* 20px — icon-only controls, tabs, header rigs (pairs --text-lg) */
+	--icon-lg: 1.5rem; /* 24px — nav rail, bottom nav, file-kind glyphs (pairs --text-xl) */
+	--icon-xl: 2rem; /* 32px — section and empty-state marks (pairs --text-2xl) */
+
+	/*
+	 * Rendered stroke, in device pixels, CONSTANT at every step above.
+	 *
+	 * A fixed `stroke-width` on a fixed viewBox cannot hold a weight, because the stroke scales with
+	 * the box: the shipped set measured 0.93px at its lightest and 1.80px at its heaviest — a 1.93x
+	 * spread from ten declared weights, which is exactly what "assembled from different families"
+	 * looks like. `vector-effect: non-scaling-stroke` (applied in icon.css) exempts the stroke from
+	 * the viewBox→viewport transform, so ONE number renders identically from 12px to 32px.
+	 *
+	 * 1.5 rather than the 1.8 authoring precedent: 1.8 was a DECLARED number whose rendered result
+	 * was that whole spread, so it never actually named a weight. 1.5px is the median of the shipped
+	 * distribution, the value packages/ui/feedback already renders at its native scale, and it lands
+	 * on a whole device pixel at 1x and a clean 3 at 2x — so it stays crisp instead of straddling.
+	 */
+	--icon-stroke: 1.5;
+
 	--shell-gutter: var(--space-2);
 	/* parent-track thickness revealed between nested frames */
 	--shell-topbar-h: 48px;
@@ -344,6 +448,36 @@
 	--band-pad-block-end: var(--space-6);
 	--band-pad-block-end-lg: var(--space-7);
 
+	/*
+	 * --- The card contract (§A.3 / §B.4) ---
+	 *
+	 * Card rhythm lives here rather than in `display/styles/card.css` because component CSS reaches a
+	 * page only through an island bundle, while this sheet is imported unconditionally by
+	 * `apps/web/client.ts`. A server-rendered card family can therefore consume the contract even
+	 * though it cannot consume the component — which is why every family had re-derived its own
+	 * padding, gap and radius, and why no two of them agreed.
+	 *
+	 * Two densities, because the product genuinely has two kinds of card and collapsing them would be
+	 * a regression dressed as consolidation: a CONSOLE card is text-led and scanned in bulk (roster
+	 * rows, file tiles, listing cells), a MEDIA card is image-led and scanned one at a time (explore,
+	 * marketing). The media card gets the larger corner because a 12px radius on a 16:10 photograph
+	 * reads as a clipped rectangle rather than a rounded one.
+	 *
+	 * `--card-radius-media` settles a drift with no defensible origin: explore shipped
+	 * `calc(var(--radius-xl) * 1.4)` (22.4px) and marketing `calc(var(--radius-xl) * 1.5)` (24px) —
+	 * two hand-tuned multipliers of the same token, 1.6px apart, neither reachable from the ramp.
+	 * `--radius-2xl` is 24px, so marketing was already on it by accident.
+	 */
+	--card-pad: var(--space-4);
+	--card-pad-media: var(--space-5);
+	--card-pad-tight: var(--space-3);
+	--card-gap: var(--space-3);
+	--card-gap-tight: var(--space-1);
+	--card-radius: var(--radius-lg);
+	--card-radius-media: var(--radius-2xl);
+	--card-media-ratio: 16 / 10;
+	--card-media-ratio-square: 1 / 1;
+
 	/* Row heights: the comfortable default, the dense variant, and the footer rig's control row
 	   (matched to the shared ZoomSlider's compact height so every rig band lines up). */
 	--row-h: 3rem;
@@ -359,8 +493,130 @@
 	--chart-h-sm: 9rem;
 
 	/* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
-	   on a phone. */
+	   on a phone. The Drawer component consumes this directly, so the package default and the
+	   feature-layer aliases (--wlt-drawer-w, --wsp-drawer-w) are finally one number. */
 	--drawer-w: min(30rem, 92vw);
+	/* Top/bottom-docked drawer along the block axis — the counterpart the contract was missing, which
+	   left drawer.css carrying a literal for the sheet case. */
+	--drawer-h: min(18rem, 80vh);
+
+	/*
+	 * --- The field contract (§C.1 fields) ---
+	 *
+	 * One state language and one geometry for every control in `@projective/ui/fields`.
+	 *
+	 * These live on `:root`, not on `.ui-field`, and that is load-bearing rather than lazy. A field's
+	 * label sits above it, its hint below it, its footer rig in another shell band, and — since every
+	 * dropdown now leaves the subtree through BodyPortal — its PANEL is a child of `document.body`.
+	 * A token scoped to the control would silently fall back for four of those five surfaces. The
+	 * wallet layer learned this the expensive way (its `--wlt-*` set was scoped to `.wlt` while the
+	 * lane, header band and portalled overlays all rendered outside it); the fix there was the same
+	 * as the design here.
+	 *
+	 * Every state declares the same four channels — BORDER, SURFACE, INK, RING — plus a MARK for the
+	 * icon/shape channel that §A.5 requires so a status never rides on hue alone. Four values, no
+	 * exceptions: that uniformity is what lets a control which cannot compose `.ui-field` (a
+	 * Checkbox, a Slider, a Rating) keep its own shape and still speak the same states.
+	 */
+
+	/* Geometry ramp. One source for control shells, panels and every hand-rolled sibling. */
+	--fld-h-sm: 2rem;
+	--fld-h-md: 2.5rem;
+	--fld-h-lg: 3rem;
+	--fld-px-sm: var(--space-2);
+	--fld-px-md: var(--space-3);
+	--fld-px-lg: var(--space-4);
+	/*
+	 * Field type. `sm` is the scale's dense step exactly; `md`/`lg` sit a half-step above their
+	 * neighbours and stay that way deliberately — a value the user TYPED is read under different
+	 * conditions than a table cell they scan, and the taxonomy has been consistent about it at every
+	 * call site. What was drift is now a stated position.
+	 */
+	--fld-fs-sm: var(--text-sm);
+	--fld-fs-md: 0.9375rem;
+	--fld-fs-lg: 1.0625rem;
+	--fld-r-sm: var(--radius-sm);
+	--fld-r-md: var(--radius-base);
+	--fld-r-lg: var(--radius-lg);
+	--fld-bw: 1px;
+	/*
+	 * Minimum pointer target (WCAG 2.2 AA 2.5.8). Controls smaller than this — a 6px slider track, a
+	 * 12px zoom handle, a 20px checkbox — grow an invisible `::before` to this size rather than
+	 * inflating their artwork, so the visual density survives the accessibility floor.
+	 */
+	--fld-hit: 24px;
+
+	/* Label / hint / error. Replaces five parallel app-side label typographies. */
+	--fld-label-fs: 0.875rem;
+	--fld-label-fw: 600;
+	--fld-label-fg: var(--on-surface);
+	--fld-hint-fs: 0.8125rem;
+	--fld-hint-fg: var(--text-secondary);
+	/* Reserved, always: an error that appears must not shove the rest of the form down. */
+	--fld-hint-min-h: 1.25rem;
+
+	/* Panel + option. One dropdown geometry for Select/MultiSelect/AutoComplete/Cascade/Tree/Sort. */
+	--fld-panel-maxh: 18rem;
+	/* The rule the panels were missing: a panel MAY exceed its trigger. Matching a 71px trigger
+	   ellipsised every option label to nothing. */
+	--fld-panel-minw: 12rem;
+	--fld-panel-radius: var(--radius-base);
+	--fld-panel-border: var(--border-subtle);
+	--fld-opt-h: 2.25rem;
+	--fld-opt-px: var(--space-3);
+	--fld-opt-fs: var(--fld-fs-md);
+	--fld-opt-radius: var(--radius-sm);
+
+	/* Rest / hover / focus. */
+	--fld-rest-bd: var(--outline);
+	--fld-rest-bg: var(--surface);
+	--fld-rest-fg: var(--on-surface);
+	--fld-hover-bd: var(--on-surface-variant);
+	--fld-focus-bd: var(--primary);
+	--fld-placeholder-fg: var(--text-secondary);
+
+	/*
+	 * Disabled — ONE alpha, everywhere. The taxonomy had five (0.40/0.45/0.50/0.55 plus a bare
+	 * colour swap), which measured 2.30:1 on a disabled calendar day and 3.26:1 on a disabled
+	 * placeholder. 0.55 measures 5.04:1 against --surface: legible enough to read, plainly inert.
+	 * It applies to the INK and the BORDER, never to the whole element — fading the box also fades
+	 * the focus ring, and pairing it with `pointer-events: none` means `not-allowed` can never paint.
+	 *
+	 * Two spellings of one decision, and the split is not redundancy. A percentage delivered through
+	 * `var()` into `color-mix()` is verified safe; a percentage produced by `calc(var(…) * 100%)` is
+	 * NOT — this engine drops the whole `color-mix` and the fade silently became invisible (measured
+	 * 1.13:1, worse than the bug it replaced). So the MIX carries a literal percentage token and the
+	 * ALPHA stays unitless for the rare `opacity` consumer. Change them together.
+	 */
+	--fld-disabled-mix: 55%;
+	--fld-disabled-alpha: 0.55;
+
+	/* Read-only is not disabled: the value is authoritative and still selectable, so it keeps full
+	   ink and loses only the invitation to edit. */
+	--fld-readonly-bg: var(--surface-1);
+	--fld-readonly-bd: var(--outline);
+
+	/* Validation. `mark` is the icon/shape channel, never a second colour. */
+	--fld-invalid-bd: var(--danger);
+	--fld-invalid-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+	--fld-invalid-mark: var(--danger);
+	--fld-valid-bd: var(--success);
+	--fld-valid-mark: var(--success);
+	--fld-warning-bd: var(--warning);
+	--fld-warning-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+	--fld-warning-mark: var(--warning);
+
+	/* The two-tier creation gate (root CLAUDE.md): RED = needed to create, AMBER = needed to
+	   publish. Promoted out of `.ui-field` so a gated Checkbox or Rating is expressible. */
+	--fld-required-bd: var(--danger);
+	--fld-required-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+	--fld-gate-bd: var(--warning);
+	--fld-gate-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+
+	/* Loading — the state the taxonomy never had. An AutoComplete fetching suggestions had no way
+	   to say so. Unitless (a percentage through var() into `opacity` is invalid). */
+	--fld-loading-alpha: 0.7;
+	--fld-loading-fg: var(--text-secondary);
 
 	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
@@ -376,6 +632,11 @@
 	--track-recessed: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
 	--hatch-color: color-mix(in srgb, var(--on-surface) 30%, transparent);
 	--minor-fade: 0.82;
+	/* Disabled still has to read as disabled, so this widens rather than disappearing: 0.55 → 0.78
+	   lifts a disabled value from 5.04:1 to ~9:1 while the border and cursor keep carrying "inert". */
+	--fld-disabled-mix: 78%;
+	--fld-disabled-alpha: 0.78;
+	--fld-loading-alpha: 0.85;
 }
 
 /*
@@ -467,6 +728,38 @@
 *::before,
 *::after {
 	box-sizing: border-box;
+}
+
+/*
+ * Hit-target floor (WCAG 2.2 AA 2.5.8 Target Size).
+ *
+ * Applied to any interactive part whose ARTWORK is deliberately smaller than `--fld-hit`: a 6px
+ * slider track, a 12px zoom handle, a 20px checkbox box, a 15px stepper. The pseudo-element grows
+ * the TARGET without inflating the drawing, so the density a dense console depends on survives the
+ * accessibility floor instead of being traded against it.
+ *
+ * `max(100%, …)` so it never shrinks a part that is already large enough, and it is transparent
+ * rather than absent because it has to actually receive the pointer. It sits under the element's
+ * real children (a pseudo paints before them), so a handle inside a track stays hittable.
+ *
+ * The `position: relative` is load-bearing and belongs HERE rather than at each call site: without a
+ * positioning context on the host, the pseudo's `100%` resolves against some ancestor instead, and a
+ * measured 18px rating star grew a 176 × 4688px invisible target that swallowed the page. A host
+ * that must be `absolute` (a slider handle) declares that in its own sheet, which loads after this
+ * one and wins.
+ */
+.ui-hit {
+	position: relative;
+}
+.ui-hit::before {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	inline-size: max(100%, var(--fld-hit));
+	block-size: max(100%, var(--fld-hit));
+	transform: translate(-50%, -50%);
+	background: transparent;
 }
 
 /* Visually-hidden utility — removes an element from the visual layout while keeping it in the

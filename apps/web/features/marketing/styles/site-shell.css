@@ -89,8 +89,8 @@
 .site-header--scrolled .site-header__bar {
 	max-inline-size: var(--container-xl);
 	background: color-mix(in srgb, var(--surface) 85%, transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	border-color: var(--hairline-color);
 	border-radius: calc(var(--radius-xl) * 1.5);
 	box-shadow: var(--elevation-medium);
@@ -208,9 +208,9 @@
    surface, backdrop blur, hairline outline, generous radius, deep elevation. */
 .site-header__mega-inner {
 	padding: var(--space-5) var(--space-6);
-	background: color-mix(in srgb, var(--surface) 80%, transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	border: 1px solid var(--hairline-color);
 	border-radius: calc(var(--radius-xl) * 1.25);
 	box-shadow: var(--elevation-high);
@@ -562,8 +562,8 @@
 	inset: 0;
 	z-index: var(--z-backdrop, 1000);
 	background: color-mix(in srgb, var(--surface) var(--tint-strong), rgba(0, 0, 0, 0.45));
-	backdrop-filter: blur(2px);
-	-webkit-backdrop-filter: blur(2px);
+	backdrop-filter: blur(var(--scrim-blur));
+	-webkit-backdrop-filter: blur(var(--scrim-blur));
 	opacity: 0;
 	transition: opacity var(--dur-medium) var(--ease-standard);
 }
@@ -586,9 +586,9 @@
 	flex-direction: column;
 	gap: var(--space-5);
 	padding: calc(var(--site-bar-h) + var(--space-6)) var(--space-5) var(--space-6);
-	background: color-mix(in srgb, var(--surface) 94%, transparent);
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	border-inline-start: 1px solid var(--hairline-color);
 	box-shadow: var(--elevation-high);
 	transform: translateX(100%);

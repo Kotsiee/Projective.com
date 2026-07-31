@@ -1,8 +1,10 @@
 /*
  * Select (ui-select) — single-select dropdown built on the shared listbox pattern. The trigger
  * composes `.ui-field` geometry; the popup is a fixed-positioned `role="listbox"` panel placed by
- * `useFloating`. Token-only; a full outline is allowed on the trigger because it is interactive
- * (§B.4). Non-interactive group headers separate by weight + tint, never by borders.
+ * `useFloating` and projected into `document.body`, so every panel rule must stand alone (a
+ * descendant selector rooted at `.ui-select` would no longer reach it). Token-only; a full outline is
+ * allowed on the trigger because it is interactive (§B.4). Non-interactive group headers separate by
+ * weight + tint, never by borders.
  */
 
 /* #region Trigger */
@@ -77,13 +79,16 @@
 	inset-block-start: var(--float-top, -9999px);
 	inset-inline-start: var(--float-left, -9999px);
 	inline-size: var(--float-width, auto);
-	z-index: 1000;
+	z-index: var(--z-portal, var(--z-popover));
 	display: flex;
 	flex-direction: column;
-	max-block-size: 16rem;
+	max-block-size: var(--fld-panel-maxh);
+	/* A panel may exceed its trigger. Matching width alone made a 71px Select produce a 71px menu
+	   with every label ellipsised away. */
+	min-inline-size: var(--fld-panel-minw);
 	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
+	border: var(--fld-bw) solid var(--fld-panel-border);
+	border-radius: var(--fld-panel-radius);
 	box-shadow: var(--elevation-high);
 	overflow: hidden;
 	animation: ui-select-pop var(--dur-fast) var(--ease-standard);
@@ -176,11 +181,18 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: var(--space-3) var(--space-4);
-	font-size: 0.875rem;
+	/*
+	 * The shared option row. Four sibling dropdowns had measured at 43.6 / 38.5 / 37.0 / 30.5px with
+	 * three different paddings and two font sizes — this one was the outlier on both. A user who
+	 * opens a Select and a TreeSelect in the same form should not be reading two different lists.
+	 */
+	min-block-size: var(--fld-opt-h);
+	padding-block: var(--space-2);
+	padding-inline: var(--fld-opt-px);
+	font-size: var(--fld-opt-fs);
 	font-weight: 400;
 	color: var(--on-surface);
-	border-radius: var(--radius-sm);
+	border-radius: var(--fld-opt-radius);
 	cursor: pointer;
 }
 .ui-select__option--virtual {
@@ -202,7 +214,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 .ui-select__option--disabled {
-	opacity: 0.45;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
 }
 .ui-select__option-check {

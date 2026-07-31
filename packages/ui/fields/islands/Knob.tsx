@@ -189,6 +189,13 @@ export function Knob(props: KnobProps): JSX.Element {
 	// #endregion
 
 	const label = valueTemplate.replace("{value}", String(v));
+	/*
+	 * Only announce `aria-valuetext` when the template actually adds a fact. With the default
+	 * `"{value}"` it would repeat `aria-valuenow` verbatim — and worse, override the number
+	 * formatting a screen reader would otherwise apply. Give the knob a template with a unit
+	 * ("{value}%", "{value} dB") and it speaks that instead.
+	 */
+	const valueText = label === String(v) ? undefined : label;
 
 	return (
 		<div
@@ -210,16 +217,28 @@ export function Knob(props: KnobProps): JSX.Element {
 			)}
 		>
 			{name !== undefined && <input type="hidden" name={name} value={String(v)} />}
+			{
+				/*
+				 * `tabindex` is LOWERCASE deliberately. SVG attribute names are case-sensitive, and JSX
+				 * serialises `tabIndex` onto an SVG element as the literal camelCase attribute, which the
+				 * browser does not recognise: the knob shipped reporting `svg.tabIndex === -1` and could not
+				 * be reached by keyboard at all, despite carrying a complete `role="slider"` contract.
+				 *
+				 * `aria-valuetext` is likewise unconditional. `showValue` decides whether the number is
+				 * PAINTED; a screen-reader user needs the spoken value either way, and gating an assistive
+				 * affordance behind a visual one is how a control ends up announcing a bare "47".
+				 */
+			}
 			<svg
 				ref={svgRef}
 				class="ui-knob__svg"
 				viewBox="0 0 100 100"
 				role="slider"
-				tabIndex={disabled ? -1 : 0}
+				tabindex={disabled ? -1 : 0}
 				aria-valuemin={min}
 				aria-valuemax={max}
 				aria-valuenow={v}
-				aria-valuetext={showValue ? label : undefined}
+				aria-valuetext={valueText}
 				aria-label={ariaLabel}
 				aria-describedby={describedBy}
 				aria-disabled={disabled || undefined}

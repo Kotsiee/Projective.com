@@ -15,6 +15,7 @@ import {
 	LaneSearch,
 	LaneSection,
 	LaneSections,
+	LaneTabs,
 	type LaneToggleOption,
 	LaneToggleRow,
 } from "@projective/ui/navigation";
@@ -25,7 +26,7 @@ import { CatalogueFilterPanel } from "../components/CatalogueFilterPanel.tsx";
 import { ListingLaneRow } from "../components/ListingLaneRow.tsx";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
 import { openCreate } from "../core/catalogue-state.ts";
-import { listingHref, STATUS_SECTIONS } from "../core/catalogue-model.ts";
+import { listingHref, segmentHref, STATUS_SECTIONS, TYPE_TABS } from "../core/catalogue-model.ts";
 import {
 	AlertIcon,
 	BoxIcon,
@@ -43,6 +44,7 @@ import type {
 	ListingSummary,
 	ServiceType,
 } from "../types/catalogue-types.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * CatalogueLane — the `/catalogue` navigation lane. Like `ProjectSidebar`/`MessagesSidebar` it renders
@@ -159,6 +161,13 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 		models.value = [...set];
 	}
 
+	/** The type switch is a real navigation — the console body is scoped by the same `?type=`. */
+	function onSelectType(type: CatalogueTypeFilter): void {
+		try {
+			globalThis.location.assign(segmentHref(type));
+		} catch { /* SSR / no window — non-fatal */ }
+	}
+
 	function setLaneCollapsed(next: boolean): void {
 		collapsed.value = next;
 		try {
@@ -183,6 +192,20 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 			{/* Expanded stack. */}
 			<div class="cat-lane__full">
 				<LaneHead>
+					{
+						/*
+						 * The type switch at the very peak of the lane, the position `/projects` gives its
+						 * Projects | Services strip. It NAVIGATES rather than filtering in place: `?type=` also
+						 * scopes the console body, and the two roots can only agree on the address.
+						 */
+					}
+					<LaneTabs<CatalogueTypeFilter>
+						label="Catalogue type"
+						value={props.type}
+						options={TYPE_TABS}
+						onSelect={onSelectType}
+					/>
+
 					<LaneBar>
 						<LaneSearch
 							value={query.value}
@@ -301,7 +324,7 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 										<PlusIcon size={18} />
 									</span>
 									<span class="cat-lane__newlabel">New listing</span>
-									<span class="cat-lane__newcaret" aria-hidden="true">▾</span>
+									<Icon name="chevron-down" class="cat-lane__newcaret" />
 								</button>
 							)}
 						>

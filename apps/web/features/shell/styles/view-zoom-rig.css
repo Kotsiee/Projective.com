@@ -1,0 +1,29 @@
+/*
+ * ViewZoomRig — the shared zoom rig mounted in the middle-nav footer band, left-aligned. A
+ * non-interactive current-view glyph precedes the reusable ZoomSlider (− · segmented track + centre
+ * marker · +). The band reads as a slim footer bar via the frame surface + its single top hairline
+ * (§B.4) — the rig itself draws no box. Token-only.
+ *
+ * Feature rigs add their own class alongside `.ui-viewrig` for scoped overrides only; the layout and
+ * the slider width cap live here so all four surfaces measure the same.
+ */
+.ui-viewrig {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	min-inline-size: 0;
+}
+
+.ui-viewrig__mode {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.ui-viewrig .ui-zoom {
+	inline-size: 100%;
+	max-inline-size: 18rem;
+}

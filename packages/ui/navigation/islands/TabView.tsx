@@ -7,6 +7,7 @@ import { useControllable } from "../../hooks/useControllable.ts";
 import { useListNavigation } from "../../hooks/useListNavigation.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Bindable, ValueChange } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region TabPanel
 /** Props for {@link TabPanel} — a declarative config slot consumed by {@link TabView}. */
@@ -218,7 +219,7 @@ export function TabView(props: TabViewProps): JSX.Element {
 										}
 									}}
 								>
-									×
+									<Icon name="close" />
 								</span>
 							)}
 						</button>

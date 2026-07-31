@@ -61,33 +61,42 @@
 	inline-size: var(--dlg-w, auto);
 	block-size: var(--dlg-h, auto);
 	min-inline-size: min(20rem, 100%);
-	max-inline-size: min(var(--container-md), calc(100vw - var(--space-6)));
+	max-inline-size: var(--overlay-w-lg);
 	max-block-size: calc(100vh - var(--space-6));
 	color: var(--on-surface);
 	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-lg);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-lg);
 	box-shadow: var(--elevation-high);
 	overflow: hidden;
-	transform: translate(var(--dlg-x, 0), var(--dlg-y, 0)) scale(0.96);
+	transform: scale(0.96);
 	opacity: 0;
 	transition:
 		opacity var(--dur-medium) var(--ease-standard),
 		transform var(--dur-medium) var(--spring-standard);
 }
+/*
+ * The settled panel clears its transform entirely. A resting `scale(1)` is still a transform, which
+ * makes the panel a containing block for `position: fixed` descendants and a stacking context — so
+ * every field dropdown opened inside a dialog re-based to the panel's box and was then clipped by the
+ * `overflow: hidden` above. Only a DRAGGED panel keeps one, because that is how it is positioned.
+ */
 .ui-dialog__panel[data-state="open"] {
 	opacity: 1;
-	transform: translate(var(--dlg-x, 0), var(--dlg-y, 0)) scale(1);
+	transform: none;
 }
 .ui-dialog__panel--free {
 	transition: opacity var(--dur-medium) var(--ease-standard);
+	transform: translate(var(--dlg-x, 0), var(--dlg-y, 0)) scale(0.96);
+}
+.ui-dialog__panel--free[data-state="open"] {
+	transform: translate(var(--dlg-x, 0), var(--dlg-y, 0));
 }
 .ui-dialog--maximized .ui-dialog__panel {
 	inline-size: 100%;
 	block-size: 100%;
 	max-inline-size: none;
 	max-block-size: none;
-	border-radius: var(--radius-base);
 }
 /* #endregion */
 
@@ -97,7 +106,7 @@
 	align-items: center;
 	gap: var(--space-3);
 	padding: var(--space-4) var(--space-5);
-	border-block-end: 1px solid var(--border-subtle);
+	border-block-end: var(--hairline);
 }
 .ui-dialog__header--draggable {
 	cursor: grab;
@@ -107,9 +116,9 @@
 	flex: 1 1 auto;
 	margin: 0;
 	min-inline-size: 0;
-	font-size: 1.0625rem;
-	font-weight: 600;
-	line-height: 1.3;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }
 .ui-dialog__actions {
@@ -122,15 +131,15 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
 	padding: 0;
-	font-size: 1rem;
+	font-size: var(--text-base);
 	line-height: 1;
 	color: var(--on-surface-variant);
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-sm);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 }
 .ui-dialog__action:hover {
@@ -142,7 +151,7 @@
 	box-shadow: var(--focus-ring-shadow);
 }
 .ui-dialog__close {
-	font-size: 1.25rem;
+	font-size: var(--text-lg);
 }
 .ui-dialog__body {
 	flex: 1 1 auto;
@@ -151,13 +160,23 @@
 	overscroll-behavior: contain;
 	color: var(--on-surface);
 }
+/*
+ * Running text inside a dialog is held to a readable measure. A wide dialog is legitimate — it may
+ * carry a table, a media stage or a two-pane editor — but its PROSE should not stretch to 76ch just
+ * because the panel can. Scoped to the text children so a figure, chart or table is never boxed in.
+ */
+.ui-dialog__body > p,
+.ui-dialog__body > ul,
+.ui-dialog__body > ol {
+	max-inline-size: var(--measure);
+}
 .ui-dialog__footer {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
 	gap: var(--space-2);
 	padding: var(--space-4) var(--space-5);
-	border-block-start: 1px solid var(--border-subtle);
+	border-block-start: var(--hairline);
 }
 .ui-dialog__grip {
 	position: absolute;
@@ -190,7 +209,7 @@
 .ui-dialog--sheet .ui-dialog__panel {
 	inline-size: 100%;
 	max-inline-size: none;
-	border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+	border-radius: var(--overlay-radius-lg) var(--overlay-radius-lg) 0 0;
 	transform: translateY(100%);
 }
 .ui-dialog--sheet .ui-dialog__panel[data-state="open"] {

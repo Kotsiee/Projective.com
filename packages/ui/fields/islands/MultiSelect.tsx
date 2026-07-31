@@ -9,8 +9,11 @@ import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
 import { useListNavigation } from "../hooks/useListNavigation.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, Option, OptionGroup, ValueChange } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** How selected values are represented on the trigger. */
@@ -112,6 +115,11 @@ function CheckGlyph(): VNode {
  * a checkbox and toggle without closing; selection renders on the trigger as comma text or removable
  * chips. Optional in-panel filter + select-all header, grouped rendering, and windowed
  * (`virtualScroll`) rendering. Keyboard mirrors {@link Select} but Enter/Space toggles.
+ *
+ * The PANEL is projected into `document.body` via {@link BodyPortal} and claims a live stacking index
+ * from {@link useOverlayStack}, so it escapes any ancestor that would clip it (`overflow: hidden`) or
+ * re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) — the trap a Dialog panel
+ * sets. The trigger stays in place and the id-based ARIA wiring survives the move.
  */
 export function MultiSelect(props: MultiSelectProps): JSX.Element {
 	const {
@@ -171,6 +179,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 	const selectedOptions = allFlat.filter((o) => isSelected(o.value));
 
 	const nav = useListNavigation(() => flat.length, (i) => !!flat[i]?.disabled);
+	const stack = useOverlayStack({ active: open, layer: "popover" });
 	const floating = useFloating({ open, triggerRef, panelRef, placement: "bottom-start" });
 	useDismiss({ open, onDismiss: () => close(), panelRef, triggerRef });
 
@@ -304,7 +313,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 								aria-label={`Remove ${o.label}`}
 								onClick={(e) => removeChip(e, o.value)}
 							>
-								×
+								<Icon name="close" />
 							</button>
 						)}
 					</span>
@@ -392,95 +401,100 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 					aria-label="Clear selection"
 					onClick={clearAll}
 				>
-					×
+					<Icon name="close" />
 				</button>
 			)}
-			<span class="ui-multiselect__chevron" aria-hidden="true">▾</span>
+			<Icon name="chevron-down" class="ui-multiselect__chevron" />
 
 			{open && (
-				<div
-					ref={panelRef}
-					class="ui-multiselect__panel"
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-							"--float-width": `${floating.width}px`,
-						})
-						: undefined}
-				>
-					{(filter || selectAll) && (
-						<div class="ui-multiselect__header">
-							{selectAll && (
-								<button type="button" class="ui-multiselect__select-all" onClick={toggleSelectAll}>
-									<span
-										class="ui-multiselect__checkbox"
-										role="checkbox"
-										aria-checked={allSelected ? true : someSelected ? "mixed" : false}
-										aria-hidden="true"
-									>
-										{(allSelected || someSelected) && <CheckGlyph />}
-									</span>
-									<span>Select all</span>
-								</button>
-							)}
-							{filter && (
-								<input
-									ref={filterRef}
-									type="text"
-									class="ui-multiselect__filter-input"
-									placeholder={filterPlaceholder}
-									value={query}
-									aria-label={filterPlaceholder}
-									aria-controls={listId}
-									aria-activedescendant={activeDescendant}
-									onInput={(e) => {
-										setQuery(e.currentTarget.value);
-										nav.reset(-1);
-									}}
-									onKeyDown={onKeyDown}
-								/>
-							)}
-						</div>
-					)}
-					<ul
-						ref={listRef}
-						id={listId}
-						role="listbox"
-						aria-multiselectable="true"
-						class={cx("ui-multiselect__list", useVirtual && "ui-multiselect__list--virtual")}
-						aria-label={ariaLabel ?? placeholder}
-						onScroll={useVirtual ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined}
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						class="ui-multiselect__panel"
+						style={styleVars({
+							"--float-top": floating ? `${floating.top}px` : undefined,
+							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--float-width": floating ? `${floating.width}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
 					>
-						{flat.length === 0 && (
-							<li class="ui-multiselect__empty" role="presentation">No results</li>
+						{(filter || selectAll) && (
+							<div class="ui-multiselect__header">
+								{selectAll && (
+									<button
+										type="button"
+										class="ui-multiselect__select-all"
+										onClick={toggleSelectAll}
+									>
+										<span
+											class="ui-multiselect__checkbox"
+											role="checkbox"
+											aria-checked={allSelected ? true : someSelected ? "mixed" : false}
+											aria-hidden="true"
+										>
+											{(allSelected || someSelected) && <CheckGlyph />}
+										</span>
+										<span>Select all</span>
+									</button>
+								)}
+								{filter && (
+									<input
+										ref={filterRef}
+										type="text"
+										class="ui-multiselect__filter-input"
+										placeholder={filterPlaceholder}
+										value={query}
+										aria-label={filterPlaceholder}
+										aria-controls={listId}
+										aria-activedescendant={activeDescendant}
+										onInput={(e) => {
+											setQuery(e.currentTarget.value);
+											nav.reset(-1);
+										}}
+										onKeyDown={onKeyDown}
+									/>
+								)}
+							</div>
 						)}
-						{useVirtual
-							? (
-								<div
-									class="ui-multiselect__sizer"
-									style={styleVars({ "--v-total": `${flat.length * virtualItemSize}px` })}
-								>
-									{flat.slice(winStart, winEnd).map((opt, k) =>
-										renderOption(opt, winStart + k, true)
-									)}
-								</div>
-							)
-							: groups.map((g, gi) => {
-								const base = groups.slice(0, gi).reduce((n, gg) => n + gg.items.length, 0);
-								return (
-									<li key={g.label ?? gi} role="presentation">
-										{grouping && g.label && (
-											<div class="ui-multiselect__group-label" role="presentation">{g.label}</div>
+						<ul
+							ref={listRef}
+							id={listId}
+							role="listbox"
+							aria-multiselectable="true"
+							class={cx("ui-multiselect__list", useVirtual && "ui-multiselect__list--virtual")}
+							aria-label={ariaLabel ?? placeholder}
+							onScroll={useVirtual ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined}
+						>
+							{flat.length === 0 && (
+								<li class="ui-multiselect__empty" role="presentation">No results</li>
+							)}
+							{useVirtual
+								? (
+									<div
+										class="ui-multiselect__sizer"
+										style={styleVars({ "--v-total": `${flat.length * virtualItemSize}px` })}
+									>
+										{flat.slice(winStart, winEnd).map((opt, k) =>
+											renderOption(opt, winStart + k, true)
 										)}
-										<ul role="presentation" class="ui-multiselect__group-items">
-											{g.items.map((opt, oi) => renderOption(opt, base + oi, false))}
-										</ul>
-									</li>
-								);
-							})}
-					</ul>
-				</div>
+									</div>
+								)
+								: groups.map((g, gi) => {
+									const base = groups.slice(0, gi).reduce((n, gg) => n + gg.items.length, 0);
+									return (
+										<li key={g.label ?? gi} role="presentation">
+											{grouping && g.label && (
+												<div class="ui-multiselect__group-label" role="presentation">{g.label}</div>
+											)}
+											<ul role="presentation" class="ui-multiselect__group-items">
+												{g.items.map((opt, oi) => renderOption(opt, base + oi, false))}
+											</ul>
+										</li>
+									);
+								})}
+						</ul>
+					</div>
+				</BodyPortal>
 			)}
 		</span>
 	);

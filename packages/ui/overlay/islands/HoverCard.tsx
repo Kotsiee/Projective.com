@@ -1,11 +1,12 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import "../styles/hover-card.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { usePresence } from "../core/usePresence.ts";
 import { BodyPortal } from "../components/BodyPortal.tsx";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Placement } from "../../types/mod.ts";
 
@@ -60,6 +61,9 @@ export function HoverCard(props: HoverCardProps): JSX.Element {
 	const [open, setOpen] = useState(false);
 	const floating = useFloating({ open, triggerRef, panelRef, placement, offset });
 	const { mounted, state } = usePresence(open, 150);
+	// Joins the managed stack rather than pinning a static `--z-overlay`, which sat at the popover base
+	// and therefore rendered BEHIND any open Dialog.
+	const stack = useOverlayStack({ active: mounted, layer: "popover" });
 
 	// #region Open / close scheduling
 	const clearTimer = () => {
@@ -73,6 +77,19 @@ export function HoverCard(props: HoverCardProps): JSX.Element {
 	const scheduleOpen = () => schedule(true, openDelay);
 	const scheduleClose = () => schedule(false, closeDelay);
 	// #endregion
+
+	// WCAG 2.1 SC 1.4.13 (Content on Hover or Focus) requires hover-revealed content to be dismissable
+	// without moving the pointer. Escape closes it immediately.
+	useEffect(() => {
+		if (!mounted) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape") return;
+			clearTimer();
+			setOpen(false);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [mounted]);
 
 	return (
 		<span
@@ -90,20 +107,20 @@ export function HoverCard(props: HoverCardProps): JSX.Element {
 					<div
 						ref={panelRef}
 						id={cardId}
-						role="tooltip"
-						aria-hidden="true"
 						data-state={state}
 						class={cx(
 							"ui-hovercard__panel",
 							floating?.placement.startsWith("top") && "ui-hovercard__panel--top",
 							className,
 						)}
-						style={floating
-							? styleVars({
-								"--float-top": `${floating.top}px`,
-								"--float-left": `${floating.left}px`,
-							})
-							: undefined}
+						// No `role="tooltip"` and no `aria-hidden`. The card holds a rich, pointer-reachable
+						// preview, which a tooltip role misdescribes — and marking it hidden while the anchor
+						// pointed `aria-describedby` at it meant the description resolved to nothing at all.
+						style={styleVars({
+							"--float-top": floating ? `${floating.top}px` : undefined,
+							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
 						onPointerEnter={clearTimer}
 						onPointerLeave={scheduleClose}
 					>

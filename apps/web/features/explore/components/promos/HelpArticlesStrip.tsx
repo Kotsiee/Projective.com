@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import type { HelpArticle } from "../../types/explore-types.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * HelpArticlesStrip — a reserved informative section pointing to help/support articles. Non-interactive
@@ -18,14 +19,7 @@ export function HelpArticlesStrip({ articles }: { articles: HelpArticle[] }): JS
 					<li key={a.id}>
 						<a class="ex-help__link" href={a.href}>
 							<span class="ex-help__glyph" aria-hidden="true">
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
-									<circle cx="12" cy="12" r="9" />
-									<path
-										d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .8-1 1.7"
-										stroke-linecap="round"
-									/>
-									<circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" />
-								</svg>
+								<Icon name="help" />
 							</span>
 							<span class="ex-help__text">{a.title}</span>
 							<span class="ex-help__meta">{a.minutes} min</span>

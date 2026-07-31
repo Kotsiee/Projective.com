@@ -7,6 +7,7 @@ import { useListNavigation } from "../../hooks/useListNavigation.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Bindable, ValueChange } from "../../fields/types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link TabMenu}. */
@@ -143,7 +144,7 @@ export function TabMenu(props: TabMenuProps): JSX.Element {
 					aria-label="Scroll tabs backward"
 					onClick={() => scrollByPx(-160)}
 				>
-					‹
+					<Icon name="chevron-left" />
 				</button>
 			)}
 			<div ref={scrollRef} class="ui-tabmenu__scroll">
@@ -222,7 +223,7 @@ export function TabMenu(props: TabMenuProps): JSX.Element {
 					aria-label="Scroll tabs forward"
 					onClick={() => scrollByPx(160)}
 				>
-					›
+					<Icon name="chevron-right" />
 				</button>
 			)}
 		</div>

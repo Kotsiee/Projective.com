@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useMemo, useRef } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
 import type { Option } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * TagSelect — the tactile tag / skill picker used by the onboarding "purpose" and "skills" steps.
@@ -150,7 +151,7 @@ export function TagSelect(
 									onClick={() =>
 										remove(v)}
 								>
-									<span aria-hidden="true">×</span>
+									<Icon name="close" />
 								</button>
 							</span>
 						))}

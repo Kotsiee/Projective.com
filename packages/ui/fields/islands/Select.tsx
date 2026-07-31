@@ -9,8 +9,11 @@ import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
 import { useListNavigation } from "../hooks/useListNavigation.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, Option, OptionGroup, ValueChange } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link Select} (aliased as {@link Dropdown}). */
@@ -88,6 +91,13 @@ function toRenderGroups(
  * optional in-panel filter, clearable selection, grouped rendering, and windowed (`virtualScroll`)
  * rendering for large lists. Keyboard: Enter/Space/ArrowDown open; typeahead or filter narrows;
  * Arrow/Home/End move the active option; Enter selects; Escape closes. Exported also as `Dropdown`.
+ *
+ * The PANEL is projected into `document.body` via {@link BodyPortal} while the trigger stays in place,
+ * and claims a live stacking index from {@link useOverlayStack}. A `position: fixed` panel that stays
+ * in the tree is not safe: an ancestor with `overflow: hidden` clips it and one with
+ * `transform`/`filter`/`backdrop-filter` re-bases it onto that ancestor's box — which is exactly what
+ * a Dialog panel is, so a Select opened inside one was clipped to the dialog. The ARIA wiring is
+ * id-based (`aria-controls`/`aria-activedescendant`), so it survives the move intact.
  */
 export function Select(props: SelectProps): JSX.Element {
 	const {
@@ -146,6 +156,7 @@ export function Select(props: SelectProps): JSX.Element {
 
 	const nav = useListNavigation(() => flat.length, (i) => !!flat[i]?.disabled);
 
+	const stack = useOverlayStack({ active: open, layer: "popover" });
 	const floating = useFloating({ open, triggerRef, panelRef, placement: "bottom-start" });
 
 	useDismiss({ open, onDismiss: () => close(), panelRef, triggerRef });
@@ -278,7 +289,7 @@ export function Select(props: SelectProps): JSX.Element {
 			onPointerMove={() => nav.reset(index)}
 		>
 			<span class="ui-select__option-check" aria-hidden="true">
-				{opt.value === selected ? "✓" : ""}
+				{opt.value === selected && <Icon name="check" />}
 			</span>
 			<span class="ui-select__option-label">{opt.label}</span>
 		</li>
@@ -320,80 +331,83 @@ export function Select(props: SelectProps): JSX.Element {
 			{name && <input type="hidden" name={name} value={selected} />}
 			{showClear && selectedOption && !disabled && !readOnly && (
 				<button type="button" class="ui-select__clear" aria-label="Clear selection" onClick={clear}>
-					×
+					<Icon name="close" />
 				</button>
 			)}
-			<span class="ui-select__chevron" aria-hidden="true">▾</span>
+			<Icon name="chevron-down" class="ui-select__chevron" />
 
 			{open && (
-				<div
-					ref={panelRef}
-					class={cx(
-						"ui-select__panel",
-						floating?.placement.startsWith("top") && "ui-select__panel--top",
-					)}
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-							"--float-width": `${floating.width}px`,
-						})
-						: undefined}
-				>
-					{filter && (
-						<div class="ui-select__filter">
-							<input
-								ref={filterRef}
-								type="text"
-								class="ui-select__filter-input"
-								placeholder={filterPlaceholder}
-								value={query}
-								aria-label={filterPlaceholder}
-								aria-controls={listId}
-								aria-activedescendant={activeDescendant}
-								onInput={(e) => {
-									setQuery(e.currentTarget.value);
-									nav.reset(-1);
-								}}
-								onKeyDown={onKeyDown}
-							/>
-						</div>
-					)}
-					<ul
-						ref={listRef}
-						id={listId}
-						role="listbox"
-						class={cx("ui-select__list", useVirtual && "ui-select__list--virtual")}
-						aria-label={ariaLabel ?? placeholder}
-						onScroll={useVirtual ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined}
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						class={cx(
+							"ui-select__panel",
+							floating?.placement.startsWith("top") && "ui-select__panel--top",
+						)}
+						style={styleVars({
+							"--float-top": floating ? `${floating.top}px` : undefined,
+							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--float-width": floating ? `${floating.width}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
 					>
-						{flat.length === 0 && <li class="ui-select__empty" role="presentation">No results</li>}
-						{useVirtual
-							? (
-								<div
-									class="ui-select__sizer"
-									style={styleVars({ "--v-total": `${flat.length * virtualItemSize}px` })}
-								>
-									{flat.slice(winStart, winEnd).map((opt, k) =>
-										renderOption(opt, winStart + k, true)
-									)}
-								</div>
-							)
-							: groups.map((g, gi) => {
-								const base = groups.slice(0, gi).reduce((n, gg) => n + gg.items.length, 0);
-								return (
-									<li key={g.label ?? gi} role="presentation">
-										{grouping && g.label && (
-											<div class="ui-select__group-label" role="presentation">{g.label}</div>
+						{filter && (
+							<div class="ui-select__filter">
+								<input
+									ref={filterRef}
+									type="text"
+									class="ui-select__filter-input"
+									placeholder={filterPlaceholder}
+									value={query}
+									aria-label={filterPlaceholder}
+									aria-controls={listId}
+									aria-activedescendant={activeDescendant}
+									onInput={(e) => {
+										setQuery(e.currentTarget.value);
+										nav.reset(-1);
+									}}
+									onKeyDown={onKeyDown}
+								/>
+							</div>
+						)}
+						<ul
+							ref={listRef}
+							id={listId}
+							role="listbox"
+							class={cx("ui-select__list", useVirtual && "ui-select__list--virtual")}
+							aria-label={ariaLabel ?? placeholder}
+							onScroll={useVirtual ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined}
+						>
+							{flat.length === 0 && (
+								<li class="ui-select__empty" role="presentation">No results</li>
+							)}
+							{useVirtual
+								? (
+									<div
+										class="ui-select__sizer"
+										style={styleVars({ "--v-total": `${flat.length * virtualItemSize}px` })}
+									>
+										{flat.slice(winStart, winEnd).map((opt, k) =>
+											renderOption(opt, winStart + k, true)
 										)}
-										<ul role="presentation" class="ui-select__group-items">
-											{g.items.map((opt, oi) => renderOption(opt, base + oi, false))}
-										</ul>
-									</li>
-								);
-							})}
-					</ul>
-				</div>
+									</div>
+								)
+								: groups.map((g, gi) => {
+									const base = groups.slice(0, gi).reduce((n, gg) => n + gg.items.length, 0);
+									return (
+										<li key={g.label ?? gi} role="presentation">
+											{grouping && g.label && (
+												<div class="ui-select__group-label" role="presentation">{g.label}</div>
+											)}
+											<ul role="presentation" class="ui-select__group-items">
+												{g.items.map((opt, oi) => renderOption(opt, base + oi, false))}
+											</ul>
+										</li>
+									);
+								})}
+						</ul>
+					</div>
+				</BodyPortal>
 			)}
 		</span>
 	);

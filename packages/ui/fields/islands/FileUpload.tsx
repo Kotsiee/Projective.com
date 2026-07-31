@@ -7,6 +7,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useId } from "../hooks/useId.ts";
 import type { FieldSize } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Types
 /** Lifecycle state of a queued file. */
@@ -272,7 +273,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 					aria-label={ariaLabel}
 					onClick={choose}
 				>
-					<span class="ui-file-upload__choose-icon" aria-hidden="true">⭱</span>
+					<Icon name="upload" class="ui-file-upload__choose-icon" />
 					<span>{files.length > 0 ? files[0].file.name : chooseLabel}</span>
 				</button>
 				{nativeInput}
@@ -301,7 +302,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 						disabled={disabled}
 						onClick={choose}
 					>
-						<span class="ui-file-upload__choose-icon" aria-hidden="true">⭱</span>
+						<Icon name="upload" class="ui-file-upload__choose-icon" />
 						<span>{chooseLabel}</span>
 					</button>
 					<button
@@ -341,7 +342,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 				{files.length === 0 &&
 					(emptyTemplate ? emptyTemplate() : (
 						<span class="ui-file-upload__zone-hint">
-							<span class="ui-file-upload__zone-icon" aria-hidden="true">⭳</span>
+							<Icon name="download" class="ui-file-upload__zone-icon" />
 							Drag and drop files here, or browse
 						</span>
 					))}
@@ -402,7 +403,7 @@ export function FileUpload(props: FileUploadProps): JSX.Element {
 									disabled={disabled}
 									onClick={() => remove(f.id)}
 								>
-									×
+									<Icon name="close" />
 								</button>
 							</li>
 						)

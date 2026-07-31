@@ -11,13 +11,15 @@
 	position: fixed;
 	inset-block-start: var(--float-top, -9999px);
 	inset-inline-start: var(--float-left, -9999px);
-	z-index: var(--z-overlay);
-	max-inline-size: var(--container-sm);
+	/* Allocated by `useOverlayStack`, not pinned. A static `--z-overlay` sat at the popover base, so a
+	HoverCard opened from inside a Dialog rendered behind the dialog panel every time. */
+	z-index: var(--z-portal, var(--z-popover));
+	max-inline-size: var(--overlay-w-sm);
 	padding: var(--space-4);
 	color: var(--on-surface);
 	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-lg);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
 	box-shadow: var(--elevation-high);
 	opacity: 0;
 	transform: translateY(calc(-1 * var(--space-1)));

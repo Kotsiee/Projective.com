@@ -516,14 +516,18 @@
 	letter-spacing: -0.02em;
 }
 
+/*
+ * The fact grid is a `<dl>` inside a drawer that is already a surface — a tinted panel here would be
+ * a box inside a box. The uppercase tracked `dt` labels are the grouping (§B.4 tier 3), and one
+ * hairline sets the block off from the head above it (tier 4). No fill, no contour.
+ */
 .ex-detail__meta {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
 	gap: var(--space-4);
 	margin: 0;
-	padding: var(--space-4);
-	background: var(--surface-1);
-	border-radius: var(--ex-r-md);
+	padding-block: var(--space-4);
+	border-block-start: var(--hairline);
 }
 
 .ex-detail__fact dt {

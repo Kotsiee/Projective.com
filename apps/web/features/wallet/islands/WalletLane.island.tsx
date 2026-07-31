@@ -3,10 +3,15 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/wallet.css";
 import {
+	LaneBar,
 	LaneCollapseButton,
+	LaneEmpty,
 	LaneFooter,
 	LaneHead,
 	LaneList,
+	LaneSearch,
+	type LaneToggleOption,
+	LaneToggleRow,
 	NavItem,
 } from "@projective/ui/navigation";
 import { Popover, Tooltip } from "@projective/ui/feedback";
@@ -22,11 +27,14 @@ import {
 	MethodsGlyph,
 	OverviewGlyph,
 	PayoutsGlyph,
+	SearchGlyph,
 	TransactionsGlyph,
 } from "../core/glyphs.tsx";
+import { FundStateMark } from "../components/FundStateMark.tsx";
 import { laneItemsFor, viewHref, viewOf, type WalletView } from "../core/capability.ts";
-import { seedWalletContext } from "../core/wallet-state.ts";
+import { fundFilter, notifyWalletChanged, seedWalletContext } from "../core/wallet-state.ts";
 import type {
+	FundState,
 	VaultCapability,
 	WalletRef,
 	WalletSwitcher,
@@ -69,6 +77,27 @@ const VIEW_GLYPH: Record<WalletView, JSX.Element> = {
 };
 
 /**
+ * The lane's icon-ONLY quick filters — the same permanent tag row `/projects` and `/catalogue` carry,
+ * here narrowing the ledger by fund state.
+ *
+ * Each glyph is the state's canonical SILHOUETTE ({@link FundStateMark}, RULE C-3) rather than a
+ * generic tag icon, so the row agrees shape-for-shape with the capital meter that also writes this
+ * filter — one fact, two entry points, never two vocabularies. The row is deliberately single-select
+ * (`fundFilter` holds one state or none, and the meter toggles it the same way), so pressing an
+ * engaged toggle clears it.
+ */
+const FUND_TOGGLES: readonly LaneToggleOption<FundState>[] = [
+	{ key: "available", label: "Available", icon: <FundStateMark state="available" /> },
+	{ key: "locked", label: "Locked", icon: <FundStateMark state="locked" /> },
+	{
+		key: "pending",
+		label: "Pending",
+		icon: <FundStateMark state="pending" clearingFraction={0.6} />,
+	},
+	{ key: "on_hold", label: "On hold", icon: <FundStateMark state="on_hold" /> },
+];
+
+/**
  * The verification signal. Each state carries its own WORDS as well as its tone, so the meaning
  * survives a colour-blind palette and a greyscale print (RULE C-3).
  */
@@ -81,11 +110,30 @@ function verificationTone(v: WalletVerification): { tone: string; text: string }
 export default function WalletLane(props: WalletLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
 	const switcherOpen = useSignal(false);
+	const query = useSignal("");
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	const items = laneItemsFor(props.variant, props.capabilities, props.switcher.active.scope);
 	const active = viewOf(props.path);
 	const verify = verificationTone(props.verification);
+
+	// Find-in-lane, exactly like the `/projects` feed: it narrows the rows this lane already holds and
+	// changes nothing about the page, so it costs no navigation and no round trip.
+	const q = query.value.trim().toLowerCase();
+	const visible = q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
+
+	/**
+	 * Single-select, mirroring the capital meter: pressing the engaged state clears the filter.
+	 *
+	 * The pulse is not optional. The Overview's recent ledger reads `fundFilter` reactively and needs
+	 * nothing, but the Transactions page fetches its rows from the server with the fund state in the
+	 * query — so without {@link notifyWalletChanged} the toggle would light up and the table under it
+	 * would not move, which reads as a broken filter rather than an unfetched one.
+	 */
+	const onFundToggle = (state: FundState) => {
+		fundFilter.value = fundFilter.value === state ? null : state;
+		notifyWalletChanged();
+	};
 
 	useEffect(() => {
 		seedWalletContext(props.activeWallet, props.display);
@@ -220,18 +268,43 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 							</a>
 						</div>
 					</Popover>
+
+					{/* The shared lane chrome: one search bar and one icon-only tag row, as on `/projects`. */}
+					<LaneBar>
+						<LaneSearch
+							value={query.value}
+							placeholder="Search this wallet"
+							label="Search wallet sections"
+							icon={SearchGlyph}
+							onInput={(v) => (query.value = v)}
+						/>
+					</LaneBar>
+
+					<LaneToggleRow
+						label="Fund state"
+						options={FUND_TOGGLES}
+						active={fundFilter.value ? [fundFilter.value] : []}
+						onToggle={onFundToggle}
+					/>
 				</LaneHead>
 
 				<LaneList label="Wallet sections" class="wlt-lane__nav">
-					{items.map((item) => (
-						<NavItem
-							key={item.view}
-							href={viewHref(item.view, props.activeWallet, props.display)}
-							label={item.label}
-							icon={VIEW_GLYPH[item.view]}
-							active={item.view === active}
-						/>
-					))}
+					{visible.length === 0
+						? (
+							<LaneEmpty
+								title="No section matches"
+								note="Try a shorter term, or clear the search."
+							/>
+						)
+						: visible.map((item) => (
+							<NavItem
+								key={item.view}
+								href={viewHref(item.view, props.activeWallet, props.display)}
+								label={item.label}
+								icon={VIEW_GLYPH[item.view]}
+								active={item.view === active}
+							/>
+						))}
 				</LaneList>
 
 				{/* Ambient, not an alert: the state is always shown, the CTA only when there is one. */}

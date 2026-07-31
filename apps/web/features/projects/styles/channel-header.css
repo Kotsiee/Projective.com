@@ -235,10 +235,24 @@
 		background-color var(--dur-fast) var(--ease-standard);
 }
 
-.chan-action:hover,
-.chan-action[data-on="true"] {
+.chan-action:hover {
 	color: var(--on-surface);
 	background: var(--surface-2);
+}
+
+/*
+ * Engaged and :hover had shared this declaration block, so a toggled-ON action and a merely hovered
+ * one were pixel-identical — the pointer could not tell you what was actually on. A state is not a
+ * pointer echo: it reads in hue AND in glyph fill, the same two channels `.chan-action--star` and
+ * `.ui-lane-toggle` already use, so it survives greyscale and a CVD overlay.
+ */
+.chan-action[data-on="true"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+
+.chan-action[data-on="true"] :is(svg, path) {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .chan-action:focus-visible {

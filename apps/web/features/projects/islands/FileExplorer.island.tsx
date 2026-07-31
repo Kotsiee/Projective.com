@@ -24,14 +24,8 @@ import {
 	groupIndexOf,
 	messageGroup,
 } from "../core/file-model.ts";
-import {
-	gridColWidth,
-	nudgeZoom,
-	restoreZoom,
-	viewMode,
-	zoom,
-	ZOOM_WHEEL_STEP,
-} from "../core/view-state.ts";
+import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
+import { filesZoom, gridColWidth, viewMode, zoom } from "../core/view-state.ts";
 import { FileCard } from "../components/FileCard.tsx";
 import { FileTable } from "../components/FileTable.tsx";
 import { FileChannelTree } from "../components/FileChannelTree.tsx";
@@ -250,18 +244,7 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	// #endregion
 
 	// #region Mount effects — restore zoom + Ctrl+wheel over the workspace
-	useEffect(() => {
-		restoreZoom();
-		const el = workspaceRef.current;
-		if (!el) return;
-		const onWheel = (e: WheelEvent) => {
-			if (!e.ctrlKey) return;
-			e.preventDefault();
-			nudgeZoom(e.deltaY < 0 ? ZOOM_WHEEL_STEP : -ZOOM_WHEEL_STEP);
-		};
-		el.addEventListener("wheel", onWheel, { passive: false });
-		return () => el.removeEventListener("wheel", onWheel);
-	}, []);
+	useCtrlWheelZoom(workspaceRef, filesZoom);
 	// #endregion
 
 	const isEmpty = items.value.length === 0 && !loading.value;

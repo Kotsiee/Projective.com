@@ -100,7 +100,9 @@ export function Messages(props: MessagesProps): JSX.Element {
 	};
 
 	return (
-		<div id={id} class={cx("ui-messages", className)} aria-live="polite" aria-atomic="false">
+		// A landmark, not a live region — each row is its own `alert`/`status`, and wrapping them in a
+		// second polite region announced every message twice.
+		<div id={id} class={cx("ui-messages", className)} role="region" aria-label="Messages">
 			{ctrl.signal.value.map((item) => (
 				<MessagesRow
 					key={item.id}

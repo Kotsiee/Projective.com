@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import { useVirtualScroll } from "../../hooks/useVirtualScroll.ts";
 import type { TreeNode } from "../../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Tree selection strategy. `null` disables selection. */
@@ -480,7 +481,7 @@ export function Tree<T>(props: TreeProps<T>): JSX.Element {
 						>
 							{togglerTemplate
 								? togglerTemplate(fn.node, fn.expanded)
-								: <span class="ui-tree__toggle-icon" aria-hidden="true">▸</span>}
+								: <Icon name="caret-right" class="ui-tree__toggle-icon" />}
 						</button>
 					)
 					: <span class="ui-tree__toggle ui-tree__toggle--placeholder" aria-hidden="true" />}

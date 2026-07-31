@@ -60,14 +60,8 @@ import {
 	type TaskChecklist,
 	toggleChecklistItem,
 } from "../core/submission-tasks.ts";
-import {
-	gridColWidth,
-	nudgeZoom,
-	restoreZoom,
-	viewMode,
-	zoom,
-	ZOOM_WHEEL_STEP,
-} from "../core/view-state.ts";
+import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
+import { filesZoom, gridColWidth, viewMode, zoom } from "../core/view-state.ts";
 import { FileCard } from "../components/FileCard.tsx";
 import { FileTable } from "../components/FileTable.tsx";
 import { FreelancerCard } from "../components/FreelancerCard.tsx";
@@ -450,18 +444,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	// #region Effects
 	// Restore zoom + Ctrl+wheel over the workspace.
-	useEffect(() => {
-		restoreZoom();
-		const el = workspaceRef.current;
-		if (!el) return;
-		const onWheel = (e: WheelEvent) => {
-			if (!e.ctrlKey) return;
-			e.preventDefault();
-			nudgeZoom(e.deltaY < 0 ? ZOOM_WHEEL_STEP : -ZOOM_WHEEL_STEP);
-		};
-		el.addEventListener("wheel", onWheel, { passive: false });
-		return () => el.removeEventListener("wheel", onWheel);
-	}, []);
+	useCtrlWheelZoom(workspaceRef, filesZoom);
 
 	// Back/forward — re-scope to the URL's path without pushing a new entry.
 	useEffect(() => {

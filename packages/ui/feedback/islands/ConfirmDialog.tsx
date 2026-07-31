@@ -1,4 +1,5 @@
 import type { JSX, VNode } from "preact";
+import { useRef } from "preact/hooks";
 import "../styles/confirm.css";
 import { Dialog } from "./Dialog.tsx";
 import { Button } from "../../fields/components/Button.tsx";
@@ -37,8 +38,13 @@ export interface ConfirmDialogProps {
 /**
  * ConfirmDialog — a modal confirmation built on {@link Dialog}. Renders the message (with an optional
  * icon) and a reject/accept action pair; accepting or rejecting closes the dialog and fires the
- * matching callback. Inherits the Dialog focus trap, Escape handling, and `role="dialog"` semantics;
- * the accept button takes initial focus intent via DOM order after the (secondary) reject button.
+ * matching callback. Inherits the Dialog focus trap and Escape handling, and raises the role to
+ * `alertdialog` so the prompt is announced with the urgency its consequence warrants.
+ *
+ * **Dismissal is rejection.** Escape, the backdrop and the × all route through `onVisibleChange` to
+ * `onReject`, never `onAccept` — there is no path where dismissing a destructive prompt could be
+ * mistaken for confirming it. Initial focus is placed on the action group, whose first control is the
+ * REJECT button, so a stray Enter takes the safe branch rather than the header's × or the accept.
  */
 export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
 	const {
@@ -56,6 +62,7 @@ export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
 	} = props;
 
 	const ctrl = useControllable<boolean>(visible, false, onVisibleChange);
+	const actionsRef = useRef<HTMLDivElement>(null);
 
 	const accept = () => {
 		ctrl.set(false);
@@ -70,16 +77,18 @@ export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
 		<Dialog
 			visible={ctrl.signal}
 			header={header}
+			role="alertdialog"
 			class={className}
+			initialFocusRef={actionsRef}
 			onVisibleChange={(v) => {
 				onVisibleChange?.(v);
 				if (!v) onReject?.();
 			}}
 			footer={
-				<>
+				<div ref={actionsRef} class="ui-confirm__actions">
 					<Button label={rejectLabel} severity="secondary" variant="text" onClick={reject} />
 					<Button label={acceptLabel} severity={acceptSeverity} onClick={accept} />
-				</>
+				</div>
 			}
 		>
 			<div class="ui-confirm__body">

@@ -1,4 +1,5 @@
 import type { JSX, VNode } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * policy-glyphs — the icons the money-policy editors need and the shared workspace register does not
@@ -23,21 +24,7 @@ import type { JSX, VNode } from "preact";
 
 // #region Base
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): VNode {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="1em"
-			height="1em"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			focusable="false"
-			{...props}
-		/>
-	);
+	return <IconShell focusable="false" {...props} />;
 }
 // #endregion
 

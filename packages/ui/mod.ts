@@ -5,7 +5,7 @@
  * only pull what they use. This barrel re-exports every taxonomy for convenience and portability.
  *
  * Taxonomies (see documentation/design-system/DESIGN_SYSTEM.md §C.1):
- *   layout · navigation · fields · display · feedback · overlay · utils
+ *   layout · navigation · fields · display · feedback · overlay · icons · utils
  *
  * Styling contract: Pure CSS + strict BEM, token-only (`var(--*)`). No framework CSS, no CSS-in-JS.
  * The sole permitted third-party UI dependency is `@material/material-color-utilities`, used ONLY
@@ -13,6 +13,7 @@
  */
 
 export * from "./layout/mod.ts";
+export * from "./icons/mod.ts";
 export * from "./navigation/mod.ts";
 export * from "./fields/mod.ts";
 export * from "./display/mod.ts";

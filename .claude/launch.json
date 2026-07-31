@@ -291,7 +291,19 @@
 			"port": 7773
 		},
 		{
-			"name": "web-fields",
+			"name": "web-tokens",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"7873",
+				"--strictPort"
+			],
+			"port": 7873
+		},
+		{
+			"name": "web-overlays",
 			"runtimeExecutable": "deno",
 			"runtimeArgs": [
 				"task",
@@ -303,16 +315,16 @@
 			"port": 7973
 		},
 		{
-			"name": "web-tokens",
+			"name": "web-uistd",
 			"runtimeExecutable": "deno",
 			"runtimeArgs": [
 				"task",
 				"dev",
 				"--port",
-				"7873",
+				"8073",
 				"--strictPort"
 			],
-			"port": 7873
+			"port": 8073
 		}
 	]
 }

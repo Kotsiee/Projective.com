@@ -158,8 +158,14 @@ export {
 
 // #region Field wrapper
 export {
+	FieldLegend,
 	FormControl,
 	type FormControlProps,
 	type FormControlRenderArgs,
 } from "./wrappers/FormControl.tsx";
+// #endregion
+
+// #region Status marks (the §A.5 icon channel — a state never rides on hue alone)
+export { AlertMark, BusyMark, CheckMark, FieldMark, GateMark } from "./components/field-marks.tsx";
+export { statusMark } from "./core/field.ts";
 // #endregion

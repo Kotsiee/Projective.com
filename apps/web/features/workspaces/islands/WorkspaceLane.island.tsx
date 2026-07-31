@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
@@ -15,6 +15,8 @@ import {
 	LaneSections,
 	type LaneTabOption,
 	LaneTabs,
+	type LaneToggleOption,
+	LaneToggleRow,
 } from "@projective/ui/navigation";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
@@ -28,6 +30,7 @@ import {
 	type WorkspaceDetail,
 	workspaceHref,
 	type WorkspaceKind,
+	type WorkspaceRole,
 	type WorkspaceRoster,
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
@@ -39,18 +42,22 @@ import {
 } from "../core/module-registry.tsx";
 import {
 	activeModuleOf,
+	applyRosterFilters,
 	countLabel,
 	filterRoster,
 	pendingMembers,
 	ROSTER_TABS,
+	type RosterQuickFilter,
 	type RosterTab,
 	rosterTabCounts,
 } from "../core/workspace-model.ts";
 import { liveDetail, openCreate, openInvite } from "../core/workspace-state.ts";
 import {
 	BackGlyph,
+	BellGlyph,
 	ChartGlyph,
 	cloneGlyph,
+	DraftGlyph,
 	FinanceGlyph,
 	InviteGlyph,
 	KebabGlyph,
@@ -60,6 +67,8 @@ import {
 	SearchGlyph,
 	SettingsGlyph,
 	ShieldGlyph,
+	SlidersGlyph,
+	SwitchGlyph,
 	WalletGlyph,
 } from "../core/workspace-glyphs.tsx";
 import { EntityMark } from "../components/EntityMark.tsx";
@@ -104,6 +113,25 @@ import { type ModuleSignals, WorkspaceRail } from "../components/WorkspaceRail.t
  * {@link liveDetail}, but only when the published detail is **this** entity: a stale projection from
  * the previous workspace would briefly paint one entity's permissions under another's name.
  */
+
+// #region Lane filter vocabulary
+/**
+ * The roster lane's icon-ONLY quick filters — the same permanent tag row `/projects` carries, in the
+ * same position, built from the same shared {@link LaneToggleRow}. Each toggle is described by a
+ * portal Tooltip and an `aria-label`; none carries a text label (§B.6 icon-first).
+ */
+const ROSTER_QUICK_TOGGLES: readonly LaneToggleOption<RosterQuickFilter>[] = [
+	{ key: "acting", label: "Acting as", icon: cloneGlyph(SwitchGlyph) },
+	{ key: "updates", label: "Unseen activity", icon: cloneGlyph(BellGlyph) },
+	{ key: "draft", label: "Unfinished setup", icon: cloneGlyph(DraftGlyph) },
+];
+
+/**
+ * The Filter popover's one facet. `lead` is omitted deliberately: it is a Team rank a Business never
+ * issues, and a facet that is empty on half the surface teaches nothing.
+ */
+const ROLE_FACETS: readonly WorkspaceRole[] = ["owner", "admin", "member"];
+// #endregion
 
 // #region Props
 export interface WorkspaceLaneProps {
@@ -231,13 +259,35 @@ function IndexLane(props: IndexLaneProps): JSX.Element {
 	const search = useSignal("");
 	// Optimistic: the strip must respond to the press, not to the round-trip that follows it.
 	const tab = useSignal<RosterTab>(props.tab);
+	const quick = useSignal<RosterQuickFilter[]>([]);
+	const roles = useSignal<WorkspaceRole[]>([]);
+	const filterOpen = useSignal(false);
 
 	const items = props.roster?.items ?? [];
 	const invitations = props.roster?.invitations ?? [];
 	const actingId = props.roster ? resolveActingId(props.roster) : null;
 	const counts = rosterTabCounts(items, invitations);
-	const rows = filterRoster(items, tab.value, search.value);
+	// Tab → search → quick/role, in that order: the tab is the partition, the search is find-in-lane and
+	// the row narrows what is left, so a reader never sees a filter act on rows the tab excluded.
+	const rows = applyRosterFilters(
+		filterRoster(items, tab.value, search.value),
+		quick.value,
+		roles.value,
+	);
 	const canCreate = props.roster?.canCreate ?? true;
+	const filterCount = roles.value.length;
+
+	const onQuick = (key: RosterQuickFilter) => {
+		quick.value = quick.value.includes(key)
+			? quick.value.filter((k) => k !== key)
+			: [...quick.value, key];
+	};
+
+	const onRole = (role: WorkspaceRole) => {
+		roles.value = roles.value.includes(role)
+			? roles.value.filter((r) => r !== role)
+			: [...roles.value, role];
+	};
 
 	const options: LaneTabOption<RosterTab>[] = ROSTER_TABS.map((t) => ({
 		value: t.value,
@@ -290,7 +340,64 @@ function IndexLane(props: IndexLaneProps): JSX.Element {
 							search.value = v;
 						}}
 					/>
+
+					<Popover
+						open={filterOpen}
+						placement="bottom-end"
+						avoid={[".ui-app-shell__sidebar"]}
+						allowOverflow={["bottom"]}
+						trigger={(api) => (
+							<LaneIconButton
+								triggerRef={api.ref as RefObject<HTMLElement>}
+								icon={cloneGlyph(SlidersGlyph)}
+								label={filterCount > 0 ? `Filters (${filterCount} active)` : "Filters"}
+								tooltip="Filters"
+								active={filterCount > 0}
+								dot={filterCount > 0}
+								ariaHasPopup="dialog"
+								ariaExpanded={api.expanded}
+								ariaControls={api.panelId}
+								onClick={api.toggle}
+							/>
+						)}
+					>
+						<div class="wsp-lane__filter">
+							<p class="wsp-lane__filter-label">Your rank</p>
+							<div class="wsp-lane__filter-pills">
+								{ROLE_FACETS.map((r) => (
+									<button
+										key={r}
+										type="button"
+										class="wsp-lane__filter-pill"
+										data-on={roles.value.includes(r) ? "true" : undefined}
+										aria-pressed={roles.value.includes(r)}
+										onClick={() => onRole(r)}
+									>
+										{roleLabel(r)}
+									</button>
+								))}
+							</div>
+							{filterCount > 0 && (
+								<button
+									type="button"
+									class="wsp-lane__filter-reset"
+									onClick={() => {
+										roles.value = [];
+									}}
+								>
+									Clear
+								</button>
+							)}
+						</div>
+					</Popover>
 				</LaneBar>
+
+				<LaneToggleRow
+					label="Quick filters"
+					options={ROSTER_QUICK_TOGGLES}
+					active={quick.value}
+					onToggle={onQuick}
+				/>
 
 				{/* Five partitions never fit a lane's inline size, so the strip scrolls rather than clipping. */}
 				<div class="wsp-lane__tabs">

@@ -8,6 +8,7 @@ import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
 
 // #region Props
@@ -172,7 +173,7 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 			<span class="ui-megamenu__label">{item.label}</span>
 			{item.badge != null && <span class="ui-megamenu__badge">{item.badge}</span>}
 			{hasChildren(item) && (
-				<span class="ui-megamenu__arrow" aria-hidden="true">{horizontal ? "▾" : "▸"}</span>
+				<Icon class="ui-megamenu__arrow" name={horizontal ? "chevron-down" : "caret-right"} />
 			)}
 		</>
 	);

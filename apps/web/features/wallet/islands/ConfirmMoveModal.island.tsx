@@ -11,6 +11,7 @@ import {
 } from "../core/wallet-state.ts";
 import { displayCurrency } from "../core/wallet-state.ts";
 import type { WalletScope } from "../types/wallet-types.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * ConfirmMoveModal — the last step before money moves, and the only modal on this surface.
@@ -89,89 +90,94 @@ export default function ConfirmMoveModal(): JSX.Element | null {
 		? `Top up ${flow.amountDisplay}`
 		: `Transfer ${flow.amountDisplay}`;
 
+	// The action row goes through Dialog's `footer` slot, NOT children. As a child it landed inside the
+	// scrolling body, so on a short viewport the irreversible commit — "Withdraw £X" — scrolled out of
+	// sight while the amount above it stayed visible. The slot is a sibling of the scroll region.
+	const foot = flow.step === "done"
+		? (
+			<>
+				<a class="wlt-btn wlt-btn--ghost" href="/wallet/transactions">View transaction</a>
+				<button type="button" class="wlt-btn wlt-btn--primary" onClick={close}>Done</button>
+			</>
+		)
+		: (
+			<>
+				<button
+					type="button"
+					class="wlt-btn"
+					disabled={flow.step === "pending"}
+					onClick={() => {
+						moveFlow.value = null;
+					}}
+				>
+					Back
+				</button>
+				<button
+					type="button"
+					class="wlt-btn wlt-btn--primary"
+					disabled={flow.step === "pending"}
+					aria-disabled={flow.step === "pending" ? "true" : undefined}
+					onClick={() => void commit()}
+				>
+					{flow.step === "pending" ? "Sending…" : flow.step === "error" ? "Try again" : verb}
+				</button>
+			</>
+		);
+
 	return (
 		<Dialog
 			visible
 			modal
 			class="wlt-modal"
 			header="Confirm"
+			footer={<div class="wlt-modal__foot">{foot}</div>}
 			onVisibleChange={(v) => {
 				if (!v) close();
 			}}
 		>
 			{flow.step === "done"
 				? (
-					<>
-						<div class="wlt-modal__body">
-							<div class="wlt-modal__done" role="status" aria-live="polite">
-								<span class="wlt-modal__check" aria-hidden="true">✓</span>
-								<p class="wlt-modal__figure">{flow.amountDisplay}</p>
-								<p class="wlt-modal__warn">
-									{flow.message ?? `Sent to ${flow.toLabel}.`}
-								</p>
-							</div>
+					<div class="wlt-modal__body">
+						<div class="wlt-modal__done" role="status" aria-live="polite">
+							<Icon name="check" class="wlt-modal__check" />
+							<p class="wlt-modal__figure">{flow.amountDisplay}</p>
+							<p class="wlt-modal__warn">
+								{flow.message ?? `Sent to ${flow.toLabel}.`}
+							</p>
 						</div>
-						<footer class="wlt-modal__foot">
-							<a class="wlt-btn wlt-btn--ghost" href="/wallet/transactions">View transaction</a>
-							<button type="button" class="wlt-btn wlt-btn--primary" onClick={close}>Done</button>
-						</footer>
-					</>
+					</div>
 				)
 				: (
-					<>
-						<div class="wlt-modal__body">
-							<p class="wlt-modal__figure wlt-num">{flow.amountDisplay}</p>
+					<div class="wlt-modal__body">
+						<p class="wlt-modal__figure wlt-num">{flow.amountDisplay}</p>
 
-							<dl class="wlt-modal__breakdown">
+						<dl class="wlt-modal__breakdown">
+							<div class="wlt-modal__row">
+								<dt class="wlt-modal__label">From</dt>
+								<dd class="wlt-modal__value">{flow.fromLabel}</dd>
+							</div>
+							<div class="wlt-modal__row">
+								<dt class="wlt-modal__label">To</dt>
+								<dd class="wlt-modal__value">{flow.toLabel}</dd>
+							</div>
+							{flow.note && (
 								<div class="wlt-modal__row">
-									<dt class="wlt-modal__label">From</dt>
-									<dd class="wlt-modal__value">{flow.fromLabel}</dd>
+									<dt class="wlt-modal__label">Note</dt>
+									<dd class="wlt-modal__value">{flow.note}</dd>
 								</div>
-								<div class="wlt-modal__row">
-									<dt class="wlt-modal__label">To</dt>
-									<dd class="wlt-modal__value">{flow.toLabel}</dd>
-								</div>
-								{flow.note && (
-									<div class="wlt-modal__row">
-										<dt class="wlt-modal__label">Note</dt>
-										<dd class="wlt-modal__value">{flow.note}</dd>
-									</div>
-								)}
-							</dl>
-
-							<p class="wlt-modal__warn">
-								{flow.kind === "distribute"
-									? "Distributions cannot be reversed. Recipients are credited immediately and clear after 7 days."
-									: "This cannot be reversed once confirmed."}
-							</p>
-
-							{flow.step === "error" && flow.message && (
-								<Alert severity="danger">{flow.message}</Alert>
 							)}
-						</div>
+						</dl>
 
-						<footer class="wlt-modal__foot">
-							<button
-								type="button"
-								class="wlt-btn"
-								disabled={flow.step === "pending"}
-								onClick={() => {
-									moveFlow.value = null;
-								}}
-							>
-								Back
-							</button>
-							<button
-								type="button"
-								class="wlt-btn wlt-btn--primary"
-								disabled={flow.step === "pending"}
-								aria-disabled={flow.step === "pending" ? "true" : undefined}
-								onClick={() => void commit()}
-							>
-								{flow.step === "pending" ? "Sending…" : flow.step === "error" ? "Try again" : verb}
-							</button>
-						</footer>
-					</>
+						<p class="wlt-modal__warn">
+							{flow.kind === "distribute"
+								? "Distributions cannot be reversed. Recipients are credited immediately and clear after 7 days."
+								: "This cannot be reversed once confirmed."}
+						</p>
+
+						{flow.step === "error" && flow.message && (
+							<Alert severity="danger">{flow.message}</Alert>
+						)}
+					</div>
 				)}
 		</Dialog>
 	);

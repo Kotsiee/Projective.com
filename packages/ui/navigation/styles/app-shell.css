@@ -19,31 +19,31 @@
  * container, so every sticky descendant resolves against the window — one scrollbar, no nested traps.
  */
 .ui-app-shell {
-    /* Base of the nested-frame seam accumulator (see shell-frame.css `::after`): a frame nested
-	   directly in the shell sits below the top bar and to the inline-start-side of the global rail.
-	   `.ui-middle-nav` augments these for the Green canvas it wraps (middle-nav.css). */
-    --shell-frame-inset-inline: var(--shell-sidebar-cur-w);
-    --shell-frame-inset-block: var(--shell-topbar-h);
-    display: grid;
-    grid-template-rows: var(--shell-topbar-h) 1fr;
-    grid-template-columns: auto 1fr;
-    grid-template-areas:
-        "topbar topbar"
-        "sidebar content";
-    /* Grow past the viewport and let the document scroll natively, while short pages still fill the
-	   viewport. Every profile shares this — the chrome is pinned via sticky, not by a viewport lock. */
-    min-block-size: 100dvh;
-    background: var(--surface-2);
-    color: var(--on-surface);
+	/* Base of the nested-frame seam accumulator (see shell-frame.css `::after`): a frame nested
+	directly in the shell sits below the top bar and to the inline-start-side of the global rail.
+	`.ui-middle-nav` augments these for the Green canvas it wraps (middle-nav.css). */
+	--shell-frame-inset-inline: var(--shell-sidebar-cur-w);
+	--shell-frame-inset-block: var(--shell-topbar-h);
+	display: grid;
+	grid-template-rows: var(--shell-topbar-h) 1fr;
+	grid-template-columns: auto 1fr;
+	grid-template-areas:
+		"topbar topbar"
+		"sidebar content";
+	/* Grow past the viewport and let the document scroll natively, while short pages still fill the
+	viewport. Every profile shares this — the chrome is pinned via sticky, not by a viewport lock. */
+	min-block-size: 100dvh;
+	background: var(--surface-2);
+	color: var(--on-surface);
 }
 
 .ui-app-shell--no-sidebar {
-    /* No global rail (guest / sidebar-less) — the nested frame reaches the viewport inline-start edge. */
-    --shell-frame-inset-inline: 0px;
-    grid-template-columns: 1fr;
-    grid-template-areas:
-        "topbar"
-        "content";
+	/* No global rail (guest / sidebar-less) — the nested frame reaches the viewport inline-start edge. */
+	--shell-frame-inset-inline: 0px;
+	grid-template-columns: 1fr;
+	grid-template-areas:
+		"topbar"
+		"content";
 }
 
 /*
@@ -61,13 +61,13 @@
  * tooltip intentionally tops for its brief hover.
  */
 .ui-app-shell__sidebar {
-    grid-area: sidebar;
-    position: sticky;
-    inset-block-start: var(--shell-topbar-h);
-    align-self: start;
-    block-size: calc(100dvh - var(--shell-topbar-h));
-    min-block-size: 0;
-    z-index: var(--z-sticky);
+	grid-area: sidebar;
+	position: sticky;
+	inset-block-start: var(--shell-topbar-h);
+	align-self: start;
+	block-size: calc(100dvh - var(--shell-topbar-h));
+	min-block-size: 0;
+	z-index: var(--z-sticky);
 }
 
 /*
@@ -86,30 +86,42 @@
  * CLAUDE.md Decisions #8/#9). The header's `position: sticky` + `--z-nav` z-index already form the
  * stacking context that keeps the `z-index: -1` underlay above the page yet behind the header content.
  */
+/*
+ * The authenticated glass carried elevation TINT and cast nothing, while the guest shell's glass
+ * carried both tint and `--elevation-medium` — two different physical languages in one product, and
+ * the flatter one was the surface users live in. Blur alone is a weak occlusion cue: it says "this
+ * region is frosted", not "this region is in front". `--elevation-low` (0 2px 4px at 5%) is the
+ * lightest rung there is, so the plate reads as a plate without adding weight to a resting page.
+ *
+ * The shadow goes on the ELEMENT, never on the `::before` glass underlay: that underlay is
+ * `z-index: -1; inset: 0`, so a shadow drawn there is occluded by its own parent and renders weaker
+ * than the same token does elsewhere (the defect `.guest-shell__subheader` already demonstrates).
+ */
 .ui-app-shell--user .ui-shell-topbar {
-    background: transparent;
+	background: transparent;
+	box-shadow: var(--elevation-low);
 }
 
 .ui-app-shell--user .ui-shell-topbar::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface-2) 72%, transparent);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    pointer-events: none;
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	pointer-events: none;
 }
 
 .ui-app-shell__content {
-    grid-area: content;
-    display: flex;
-    min-inline-size: 0;
-    min-block-size: 0;
+	grid-area: content;
+	display: flex;
+	min-inline-size: 0;
+	min-block-size: 0;
 }
 
 .ui-app-shell__mobile-menu {
-    display: none;
+	display: none;
 }
 
 /* Mobile viewport isolation (≤ --bp-md): drop the desktop sidebar entirely and strip the gutter that
@@ -117,23 +129,23 @@
    window-scroll model is shared with desktop — the body scrolls with the native window scrollbar
    beneath the sticky glass header; only the pinned rail is dropped here. */
 @media (max-width: 767px) {
-    .ui-app-shell {
-        grid-template-columns: 1fr;
-        grid-template-areas:
-            "topbar"
-            "content";
-    }
+	.ui-app-shell {
+		grid-template-columns: 1fr;
+		grid-template-areas:
+			"topbar"
+			"content";
+	}
 
-    .ui-app-shell__sidebar {
-        display: none;
-    }
+	.ui-app-shell__sidebar {
+		display: none;
+	}
 
-    .ui-app-shell--user .ui-app-shell__mobile-menu {
-        display: inline-flex;
-    }
+	.ui-app-shell--user .ui-app-shell__mobile-menu {
+		display: inline-flex;
+	}
 
-    .ui-app-shell__content {
-        padding-block-start: 0;
-        padding-inline-start: 0;
-    }
+	.ui-app-shell__content {
+		padding-block-start: 0;
+		padding-inline-start: 0;
+	}
 }

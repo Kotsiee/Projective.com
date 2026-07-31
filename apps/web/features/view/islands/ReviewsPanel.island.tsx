@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { Avatar, RatingStars } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { profileHref } from "@features/explore/core/routing.ts";
 import type { EntityReview, ReviewSummary } from "@projective/types/explore";
@@ -92,7 +93,10 @@ export default function ReviewsPanel({ summary, list }: ReviewsPanelProps): JSX.
 									aria-label={`${star} star, ${count} reviews${on ? " (filter active)" : ""}`}
 									onClick={() => (starFilter.value = on ? null : star)}
 								>
-									<span class="vw-revbar__star">{star}★</span>
+									<span class="vw-revbar__star">
+										{star}
+										<Icon name="star" filled />
+									</span>
 									<span class="vw-revbar__track">
 										<span class="vw-revbar__fill" style={`inline-size:${pct}%`} />
 									</span>
@@ -114,7 +118,8 @@ export default function ReviewsPanel({ summary, list }: ReviewsPanelProps): JSX.
 										class="vw-revlist__clear"
 										onClick={() => (starFilter.value = null)}
 									>
-										{shown.length} · {starFilter.value}★ — clear filter
+										{shown.length} · {starFilter.value}
+										<Icon name="star" filled /> — clear filter
 									</button>
 								)
 								: <span>{shown.length} reviews</span>}
@@ -189,10 +194,18 @@ function ReviewCard({ review }: { review: EntityReview }): JSX.Element {
 			</div>
 			<div class="vw-review__badges">
 				{review.verifiedEngagement
-					? <span class="vw-review__badge" data-kind="verified">✓ Verified engagement</span>
+					? (
+						<span class="vw-review__badge" data-kind="verified">
+							<Icon name="check" /> Verified engagement
+						</span>
+					)
 					: null}
 				{review.reciprocal
-					? <span class="vw-review__badge" data-kind="reciprocal">⇄ Reciprocal review</span>
+					? (
+						<span class="vw-review__badge" data-kind="reciprocal">
+							<Icon name="switch" /> Reciprocal review
+						</span>
+					)
 					: null}
 				<span class="vw-review__badge" data-kind="track">
 					{review.track === "helper" ? "Rated as helper" : "Rated as client"}

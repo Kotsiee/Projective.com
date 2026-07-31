@@ -6,6 +6,7 @@ import { listingHref, statusMeta } from "../core/catalogue-model.ts";
 import { listRowHeight, zoom } from "../core/view-state.ts";
 import { KindIcon, StarGlyph } from "./catalogue-glyphs.tsx";
 import type { CatalogueSort, CatalogueSortDir, ListingSummary } from "../types/catalogue-types.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * ListingTable — the console's dense LIST presentation (below the zoom centre marker), window-
@@ -84,9 +85,12 @@ export function ListingTable(props: ListingTableProps): JSX.Element {
 								? (
 									<button type="button" class="cat-th__btn" onClick={() => props.onSort(col.sort!)}>
 										<span>{col.label}</span>
-										<span class="cat-th__ind" aria-hidden="true">
-											{activeSort ? (props.dir.value === "asc" ? "↑" : "↓") : "⇅"}
-										</span>
+										<Icon
+											class="cat-th__ind"
+											name={activeSort
+												? (props.dir.value === "asc" ? "sort-asc" : "sort-desc")
+												: "sort"}
+										/>
 									</button>
 								)
 								: <span class="cat-th__label">{col.label}</span>}

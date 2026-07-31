@@ -7,18 +7,16 @@
 .ui-backdrop {
 	position: absolute;
 	inset: 0;
-	/* Theme-aware scrim: `--on-surface` darkens over light themes and lightens over dark ones, so the
-	tint reads correctly in both. Paired with a soft backdrop blur for a luxurious glass dim. */
-	background: color-mix(in srgb, var(--surface) var(--tint-heavy), transparent);
+	/* `--scrim` is the darkest neutral in BOTH themes and `--scrim-tint` carries the per-theme strength
+	(the theme engine owns both). Mixing from `--surface` instead resolved to white-over-white in light
+	mode — the scrim brightened the page and matched the hue of the panel it was meant to separate. */
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint), transparent);
 	opacity: 0;
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
+	/* One blur for every scrim in the system. It used to be an opt-in prop, so the same component dimmed
+	at 4px behind a Dialog and 18px behind a project modal depending on the call site. */
+	backdrop-filter: blur(var(--scrim-blur));
+	-webkit-backdrop-filter: blur(var(--scrim-blur));
 	transition: opacity var(--dur-medium) var(--ease-standard);
-}
-
-.ui-backdrop--blur {
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .ui-backdrop[data-state="open"] {

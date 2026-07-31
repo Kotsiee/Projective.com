@@ -1,4 +1,5 @@
 import type { JSX, VNode } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * nav-icons — the shell's inline SVG glyph set. `@projective/ui` is deliberately icon-library
@@ -170,20 +171,7 @@ const PATHS: Record<IconName, VNode> = {
 export function NavIcon(
 	{ name, ...svg }: { name: IconName } & JSX.SVGAttributes<SVGSVGElement>,
 ): VNode {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.6"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			{...svg}
-		>
-			{PATHS[name]}
-		</svg>
-	);
+	return <IconShell {...svg}>{PATHS[name]}</IconShell>;
 }
 
 /**
@@ -194,18 +182,9 @@ export function NavIcon(
  */
 export function SidebarToggleIcon(): VNode {
 	return (
-		<svg
-			class="shell-toggle"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.6"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
+		<IconShell class="shell-toggle">
 			<rect x="3" y="4" width="18" height="16" rx="3.5" />
 			<line class="shell-toggle__bar" x1="9" y1="7.5" x2="9" y2="16.5" stroke-dasharray="0.1 3" />
-		</svg>
+		</IconShell>
 	);
 }

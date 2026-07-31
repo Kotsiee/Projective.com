@@ -423,7 +423,7 @@
 .vw-creator__id {
 	display: flex;
 	flex-direction: column;
-	gap: 0.1rem;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 .vw-creator__name {
@@ -607,8 +607,8 @@
 	background: var(--surface-3, var(--surface-2));
 }
 .vw-cta__glyph {
-	inline-size: 1.1rem;
-	block-size: 1.1rem;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 .vw-ctas__status {
 	margin: 0;
@@ -684,7 +684,7 @@
 .vw-showcase__switch {
 	display: inline-flex;
 	align-self: flex-start;
-	gap: 0.15rem;
+	gap: var(--space-px);
 	padding: 0.2rem;
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
@@ -730,7 +730,7 @@
 .pf-availtoggle {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
-	gap: 0.15rem;
+	gap: var(--space-px);
 	padding: 0.2rem;
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
@@ -803,7 +803,7 @@
 .vw-teamrole__body {
 	display: flex;
 	flex-direction: column;
-	gap: 0.25rem;
+	gap: var(--space-1);
 	min-inline-size: 0;
 }
 .vw-teamrole__name {
@@ -986,7 +986,7 @@
 .vw-revagg__track {
 	display: flex;
 	flex-direction: column;
-	gap: 0.15rem;
+	gap: var(--space-px);
 }
 .vw-revagg__tracklabel {
 	font-size: 0.72rem;
@@ -1005,7 +1005,7 @@
 	grid-template-columns: 2.2rem 1fr 2.4rem;
 	align-items: center;
 	gap: var(--space-2);
-	padding: 0.25rem 0.35rem;
+	padding: var(--space-1) var(--space-2);
 	border: none;
 	border-radius: var(--radius-sm);
 	background: transparent;
@@ -1071,7 +1071,7 @@
 }
 .vw-sort {
 	display: inline-flex;
-	gap: 0.15rem;
+	gap: var(--space-px);
 	padding: 0.2rem;
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
@@ -1141,7 +1141,7 @@
 .vw-review__name {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.25rem;
+	gap: var(--space-1);
 	font-size: 0.9rem;
 	font-weight: 600;
 }

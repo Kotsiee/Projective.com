@@ -1,36 +1,30 @@
 /*
- * wallet-overlays — the drawer, the confirmation modal, and the parked mini-wallet
+ * wallet-overlays — the money-movement drawer and the confirmation modal
  * (BUILD CONTRACT §2.7 / §7).
  *
  * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY. Every overlay mounts through `BodyPortal`
  * (the shared components already do): the middle-nav lane is a glass, `overflow: clip` stacking
  * context, which re-bases `position: fixed` descendants — the documented trap on this shell.
+ *
+ * Region ownership: the shared `Drawer`/`Dialog` own the panel box — its size, its padding, and its
+ * single scroll axis. This sheet only styles what the wallet puts INSIDE those regions, so a
+ * consumer class never nests a second padded scroller inside the component's own.
  */
 
-/* #region Drawer — header + scrolling body + sticky confirm footer */
+/* #region Drawer — the wallet's content inside the shared panel */
+
+/* Size is expressed as the component's own custom property, never as `inline-size` on the shared
+   class: a consumer rule at the same specificity as `.ui-drawer--right` would race its closed-state
+   `translateX(100%)` on source order and could leave a dismissed drawer resting on screen. */
 .wlt-drawer {
-	inline-size: var(--wlt-drawer-w);
-	max-inline-size: 100vw;
+	--drawer-size: var(--wlt-drawer-w);
 }
 
-.wlt-drawer__head {
-	padding: var(--space-5);
-	border-block-end: var(--hairline);
-}
-
-.wlt-drawer__title {
-	margin: 0;
-	font-size: var(--wlt-fs-key);
-	font-weight: 600;
-	color: var(--on-surface);
-}
-
+/* `.ui-drawer__body` already owns the padding and the scroll axis — this is only the stack. */
 .wlt-drawer__body {
-	padding: var(--space-5);
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-6);
-	overflow-y: auto;
 }
 
 .wlt-drawer__figure {
@@ -53,31 +47,26 @@
 	gap: var(--space-2);
 }
 
-/* Sticky, so the commit is reachable without scrolling back — and always the last thing read. */
+/* A sibling of the body inside the component's scroller, so it flows as a normal block — sticking it
+   would pin it to that scroller's PADDING box, floating it clear of the panel's true bottom edge
+   with content still visible underneath. One hairline separates it (§B.4). */
 .wlt-drawer__foot {
-	position: sticky;
-	inset-block-end: 0;
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
 	gap: var(--space-3);
-	padding: var(--space-4) var(--space-5);
-	background: var(--surface-2);
+	padding-block: var(--space-4);
 	border-block-start: var(--hairline);
 }
 /* #endregion */
 
 /* #region Confirmation modal — the grammar of "you cannot take this back" */
 .wlt-modal {
-	inline-size: min(28rem, 92vw);
+	--dlg-w: var(--overlay-w-sm);
 }
 
-.wlt-modal__head {
-	padding: var(--space-5) var(--space-5) var(--space-3);
-}
-
+/* `.ui-dialog__body` already owns the padding — this is only the stack. */
 .wlt-modal__body {
-	padding-inline: var(--space-5);
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
@@ -124,12 +113,12 @@
 	max-inline-size: var(--wlt-prose);
 }
 
+/* Nested in `.ui-dialog__footer`, which already pads and end-aligns the row. */
 .wlt-modal__foot {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
 	gap: var(--space-3);
-	padding: var(--space-5);
 }
 
 .wlt-modal__done {
@@ -149,59 +138,17 @@
 	align-items: center;
 	justify-content: center;
 	color: var(--wlt-credit);
-	background: color-mix(in srgb, var(--success) 16%, transparent);
+	background: color-mix(in srgb, var(--success) var(--tint-strong), transparent);
 	font-size: var(--wlt-fs-key);
 }
 /* #endregion */
 
-/* #region The parked mini-wallet */
-.wlt-float {
-	inline-size: 20rem;
-}
-
-.wlt-float__head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-4);
-	border-block-end: var(--hairline);
-}
-
-.wlt-float__balance {
-	padding: var(--space-4);
-}
-
-.wlt-float__spark {
-	block-size: 3rem;
-	padding-inline: var(--space-4);
-}
-
-.wlt-float__rows {
-	list-style: none;
-	margin: 0;
-	padding: var(--space-2) var(--space-4) var(--space-4);
-}
-
-.wlt-float__row {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-3);
-	padding-block: var(--space-2);
-	border-block-start: var(--hairline);
-	font-size: var(--wlt-fs-micro);
-}
-
-.wlt-float__row:first-child {
-	border-block-start: none;
-}
-/* #endregion */
-
+/* The shared panels already collapse their own transition duration under reduced motion; this only
+   covers the wallet's declared surfaces. It must not re-declare `transform`, which would fight the
+   component's closed-state offset. */
 @media (prefers-reduced-motion: reduce) {
 	.wlt-drawer,
 	.wlt-modal {
-		transition: opacity var(--dur-fast) var(--ease-standard);
-		transform: none;
+		transition-duration: 0ms;
 	}
 }

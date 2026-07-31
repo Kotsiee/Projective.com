@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { InputText } from "@projective/ui/fields";
@@ -18,6 +18,8 @@ import {
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
 import { openCreate, rosterView } from "../core/workspace-state.ts";
+import { gridColWidth, workspaceZoom, zoom } from "../core/view-state.ts";
+import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
 	countLabel,
 	filterRoster,
@@ -238,6 +240,11 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #endregion
 
 	const bodyId = "wsp-roster-body";
+	const bodyRef = useRef<HTMLDivElement>(null);
+
+	// `Ctrl`+wheel / pinch over the collection scales it, the same gesture the File Explorer answers —
+	// so the reader reaches the density without travelling to the footer band at all.
+	useCtrlWheelZoom(bodyRef, workspaceZoom);
 
 	return (
 		<div class="wsp" data-kind={props.kind}>
@@ -335,6 +342,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 						)}
 
 						<div
+							ref={bodyRef}
 							id={bodyId}
 							class="wsp-roster__body"
 							role="tabpanel"
@@ -456,11 +464,13 @@ function RosterBody(
 	}
 
 	return (
+		/* The card size is the zoom's grid half, so the slider scales the cards themselves rather than
+		   merely choosing between two fixed presentations. */
 		<Grid
 			class="wsp-grid"
 			role="list"
 			aria-label={label}
-			minChildWidth="var(--wsp-card-min)"
+			minChildWidth={`${gridColWidth(zoom.value)}px`}
 			maxCols={4}
 			gap={4}
 		>

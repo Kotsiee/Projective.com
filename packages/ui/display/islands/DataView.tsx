@@ -9,6 +9,7 @@ import { getFieldValue, sortRows } from "../core/collection.ts";
 import { VirtualScroller } from "./VirtualScroller.tsx";
 import type { Bindable } from "../../fields/types/mod.ts";
 import type { LazyLoadEvent, SortDir, SortState } from "../../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Types
 /** Item layout mode. */
@@ -231,7 +232,7 @@ export function DataView<T>(props: DataViewProps<T>): JSX.Element {
 					aria-label="Previous page"
 					onClick={() => goToPage(currentPage - 1)}
 				>
-					‹
+					<Icon name="chevron-left" />
 				</button>
 				{pages.map((p) => (
 					<button
@@ -252,7 +253,7 @@ export function DataView<T>(props: DataViewProps<T>): JSX.Element {
 					aria-label="Next page"
 					onClick={() => goToPage(currentPage + 1)}
 				>
-					›
+					<Icon name="chevron-right" />
 				</button>
 				<span class="ui-dataview__page-info">{total} items</span>
 			</nav>
@@ -296,7 +297,7 @@ export function DataView<T>(props: DataViewProps<T>): JSX.Element {
 							aria-label="List layout"
 							onClick={() => setLayout("list")}
 						>
-							☰
+							<Icon name="list" />
 						</button>
 						<button
 							type="button"

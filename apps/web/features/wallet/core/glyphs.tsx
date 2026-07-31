@@ -1,4 +1,5 @@
 import type { JSX, VNode } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * glyphs — the Wallet surface's icon register.
@@ -19,22 +20,7 @@ import type { JSX, VNode } from "preact";
  */
 
 function svg(path: JSX.Element, size = 20): VNode {
-	return (
-		<svg
-			width={size}
-			height={size}
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width={1.8}
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			focusable="false"
-		>
-			{path}
-		</svg>
-	);
+	return <IconShell size={size} focusable="false">{path}</IconShell>;
 }
 
 // #region Fund-state marks (the four states, as static shape channels)
@@ -54,21 +40,11 @@ export const AvailableMarkZero: VNode = (
 
 /** In escrow — a strongbox. Stored value with a handle, NOT a padlock. */
 export const EscrowMark: VNode = (
-	<svg
-		width="13"
-		height="13"
-		viewBox="0 0 14 14"
-		fill="none"
-		stroke="currentColor"
-		stroke-width="1.5"
-		stroke-linejoin="round"
-		aria-hidden="true"
-		focusable="false"
-	>
+	<IconShell size={13} viewBox="0 0 14 14" focusable="false">
 		<rect x="1.4" y="3.2" width="11.2" height="8.4" rx="1.4" />
 		<path d="M1.4 6.2h11.2" />
-		<path d="M5.6 9h2.8" stroke-linecap="round" />
-	</svg>
+		<path d="M5.6 9h2.8" />
+	</IconShell>
 );
 
 /** On hold — two pause bars. Held, resumable, under review. NOT a warning triangle. */
@@ -229,6 +205,23 @@ export const SmootherGlyph: VNode = svg(<path d="M3 15c3.5 0 3.5-6 7-6s3.5 6 7 6
 // #endregion
 
 // #region Utility
+/**
+ * The ledger's density read-out, the pair the shared `ViewZoomRig` shows either side of its centre
+ * marker. They are DENSITY marks, not a list/grid pair: the ledger has one presentation — a table —
+ * and the zoom scales its row height, so a grid glyph above the marker would promise a card view that
+ * does not exist. Compact is four tight rules; comfortable is three loose ones.
+ */
+export const CompactRowsGlyph: VNode = svg(
+	<path d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
+	18,
+);
+
+/** The comfortable half of the ledger density pair. See {@link CompactRowsGlyph}. */
+export const ComfortableRowsGlyph: VNode = svg(
+	<path d="M4 6.5h16M4 12h16M4 17.5h16" />,
+	18,
+);
+
 export const ExportGlyph: VNode = svg(
 	<>
 		<path d="M12 3v11" />
@@ -297,39 +290,17 @@ export const GateGlyph: VNode = svg(
 
 /** A stretched chevron for "see all" style links; mirrors under RtL via `.wlt-icon--dir`. */
 export const ForwardGlyph: VNode = (
-	<svg
-		width="14"
-		height="14"
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		stroke-width={1.8}
-		stroke-linecap="round"
-		stroke-linejoin="round"
-		aria-hidden="true"
-		focusable="false"
-		class="wlt-icon--dir"
-	>
+	<IconShell size={14} class="wlt-icon--dir" focusable="false">
 		<path d="M5 12h13" />
 		<path d="m13 6 6 6-6 6" />
-	</svg>
+	</IconShell>
 );
 
 /** The lane collapse/expand toggle, reusing the global rail's morphing-divider language. */
 export const CollapseGlyph: VNode = (
-	<svg
-		width="20"
-		height="20"
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		stroke-width={1.6}
-		stroke-linecap="round"
-		aria-hidden="true"
-		focusable="false"
-	>
+	<IconShell size={20} focusable="false">
 		<rect x="3.2" y="4.2" width="17.6" height="15.6" rx="3" />
 		<path d="M9.6 6.6v10.8" stroke-dasharray="2.2 2.4" />
-	</svg>
+	</IconShell>
 );
 // #endregion

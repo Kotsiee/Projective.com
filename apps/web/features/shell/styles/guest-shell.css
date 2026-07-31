@@ -74,7 +74,13 @@
 	min-block-size: 0;
 	/* The lane content owns its OWN internal scroll (`.pf-lane__scroll`); the panel just clips + rounds. */
 	overflow: hidden;
-	border: var(--hairline);
+	/*
+	 * Glass veil + elevation, and NO four-sided contour. This panel genuinely floats over the scrolling
+	 * body, so a shadow is the honest device (§B.4: elevation means above, and here it is literally
+	 * true). The hairline that used to ring it was a third device on a non-interactive container, and
+	 * because everything the lane renders is a descendant, it made every guest surface start one box
+	 * deep. The shadow already draws the edge the border was drawing.
+	 */
 	border-radius: var(--radius-container-lg);
 	box-shadow: var(--elevation-medium);
 	transition: inline-size var(--dur-medium) var(--spring-standard);
@@ -94,9 +100,9 @@
 	inset: 0;
 	z-index: -1;
 	border-radius: inherit;
-	background: color-mix(in srgb, var(--surface) 72%, transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	pointer-events: none;
 }
 /* #endregion */
@@ -125,9 +131,9 @@
 	inset: 0;
 	z-index: -1;
 	border-radius: inherit;
-	background: color-mix(in srgb, var(--surface-1) 68%, transparent);
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
+	background: color-mix(in srgb, var(--surface-1) var(--glass-veil-chrome), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	pointer-events: none;
 	/* Reveal the glass slab only while the header is condensed (no empty band at rest). */
 	opacity: 0;
@@ -136,8 +142,18 @@
 
 .guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])::before {
 	opacity: 1;
-	box-shadow: var(--elevation-medium);
 	border: var(--hairline);
+}
+
+/*
+ * The shadow moves to the ELEMENT. On the `::before` underlay (`z-index: -1; inset: 0`) it is drawn
+ * behind its own parent and partially occluded, so this panel and `.ui-guest-aside` — which asks for
+ * the identical `--elevation-medium` on its element — rendered at visibly different depths while
+ * declaring the same one.
+ */
+.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"]) {
+	box-shadow: var(--elevation-medium);
+	border-radius: var(--radius-container-lg);
 }
 /* #endregion */
 

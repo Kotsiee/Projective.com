@@ -9,6 +9,7 @@
 		"./fields": "./fields/mod.ts",
 		"./editor": "./editor/mod.ts",
 		"./display": "./display/mod.ts",
+		"./icons": "./icons/mod.ts",
 		"./feedback": "./feedback/mod.ts",
 		"./overlay": "./overlay/mod.ts",
 		"./dnd": "./dnd/mod.ts",

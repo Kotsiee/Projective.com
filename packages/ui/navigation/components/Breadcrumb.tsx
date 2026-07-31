@@ -2,6 +2,7 @@ import type { JSX, VNode } from "preact";
 import "../styles/breadcrumb.css";
 import { cx } from "../../core/cx.ts";
 import type { MenuItem } from "../../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link Breadcrumb}. */
@@ -26,7 +27,7 @@ export interface BreadcrumbProps {
 function defaultSeparator(kind: "slash" | "chevron"): VNode {
 	return (
 		<span class="ui-breadcrumb__sep-glyph" aria-hidden="true">
-			{kind === "slash" ? "/" : "›"}
+			{kind === "slash" ? "/" : <Icon name="chevron-right" />}
 		</span>
 	);
 }

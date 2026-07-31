@@ -6,6 +6,7 @@ import { cx } from "../../core/cx.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Bindable, ValueChange } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region AccordionTab
 export interface AccordionTabProps {
@@ -159,7 +160,7 @@ export function Accordion(props: AccordionProps): JSX.Element {
 								onKeyDown={(e) => onHeaderKeyDown(e, i)}
 							>
 								<span class="ui-accordion__header-label">{tab.header}</span>
-								<span class="ui-accordion__chevron" aria-hidden="true">▾</span>
+								<Icon name="chevron-down" class="ui-accordion__chevron" />
 							</button>
 						</h3>
 						<div

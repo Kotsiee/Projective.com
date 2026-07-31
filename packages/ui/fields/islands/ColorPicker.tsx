@@ -8,6 +8,8 @@ import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
 
 // #region Types
@@ -138,6 +140,13 @@ function parseColor(input: string): Hsb | null {
  * implemented in-file. The saturation area and hue slider are ARIA `slider`s with arrow-key control;
  * the trigger advertises `aria-haspopup`/`aria-expanded`. The gradient and swatch backgrounds are
  * genuine colour values (the sanctioned exception to the token-only rule for this component).
+ *
+ * In popup mode the PANEL is projected into `document.body` via {@link BodyPortal} and claims a live
+ * stacking index from {@link useOverlayStack}, so it escapes any ancestor that would clip it
+ * (`overflow: hidden`) or re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) —
+ * the trap a Dialog panel sets. Because it no longer inherits the root's disabled treatment, the
+ * portalled panel carries its own `--disabled` modifier. The `inline` presentation is not portalled:
+ * it is ordinary in-flow content, not an overlay.
  */
 export function ColorPicker(props: ColorPickerProps): JSX.Element {
 	const {
@@ -182,6 +191,7 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 	// #endregion
 
 	// #region Overlay wiring
+	const stack = useOverlayStack({ active: open.value && !inline, layer: "popover" });
 	const floating = useFloating({
 		open: open.value && !inline,
 		triggerRef: triggerRef as RefObject<HTMLElement>,
@@ -330,12 +340,17 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 			<div
 				ref={panelRef}
 				id={inline ? undefined : panelId}
-				class={cx("ui-colorpicker__panel", inline && "ui-colorpicker__panel--inline")}
+				class={cx(
+					"ui-colorpicker__panel",
+					inline && "ui-colorpicker__panel--inline",
+					!inline && disabled && "ui-colorpicker__panel--disabled",
+				)}
 				role={inline ? undefined : "dialog"}
 				aria-label={inline ? undefined : (ariaLabel ?? "Choose colour")}
 				style={inline ? undefined : styleVars({
 					"--float-top": floating ? `${floating.top}px` : undefined,
 					"--float-left": floating ? `${floating.left}px` : undefined,
+					"--z-portal": String(stack.zIndex),
 				})}
 			>
 				<div
@@ -454,7 +469,7 @@ export function ColorPicker(props: ColorPickerProps): JSX.Element {
 			>
 				<span class="ui-colorpicker__swatch" aria-hidden="true" />
 			</button>
-			{open.value && renderPanel()}
+			{open.value && <BodyPortal>{renderPanel()}</BodyPortal>}
 		</div>
 	);
 	// #endregion

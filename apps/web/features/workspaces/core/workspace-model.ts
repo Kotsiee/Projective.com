@@ -7,6 +7,7 @@ import {
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceProject,
+	type WorkspaceRole,
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import { isModuleKey, type ModuleKey } from "./module-registry.tsx";
@@ -109,6 +110,48 @@ export function filterRoster(
 			item.tagline.toLowerCase().includes(needle);
 	});
 }
+
+// #region Lane quick filters
+/**
+ * The roster lane's icon-only quick filters — the same permanent tag row `/projects` carries.
+ *
+ * They are ADDITIVE narrowings of whatever tab is selected, OR-combined within the row exactly as the
+ * projects feed's are, so engaging two shows the union rather than the (usually empty) intersection.
+ */
+export type RosterQuickFilter = "acting" | "updates" | "draft";
+
+/** Whether one summary satisfies a single quick filter. Pure. */
+function matchesQuick(item: WorkspaceSummary, key: RosterQuickFilter): boolean {
+	switch (key) {
+		case "acting":
+			return item.isActing;
+		case "updates":
+			return item.hasUpdate;
+		case "draft":
+			return item.status === "draft" || item.setupProgress < 1;
+	}
+}
+
+/**
+ * Narrow a roster by the engaged quick filters and an optional role facet.
+ *
+ * An empty `quick` is the identity, so the row costs nothing until a reader presses something; the
+ * role facet is intersected with the row (it answers a different question — "which of my ranks" — so
+ * OR-ing it into the same union would make the two controls fight).
+ */
+export function applyRosterFilters(
+	items: readonly WorkspaceSummary[],
+	quick: readonly RosterQuickFilter[],
+	roles: readonly WorkspaceRole[] = [],
+): WorkspaceSummary[] {
+	const roleSet = new Set(roles);
+	return items.filter((item) => {
+		if (roleSet.size > 0 && !roleSet.has(item.role)) return false;
+		if (quick.length === 0) return true;
+		return quick.some((k) => matchesQuick(item, k));
+	});
+}
+// #endregion
 
 /** How many rows each roster tab would show — the strip's counts, computed once from one pass. */
 export function rosterTabCounts(

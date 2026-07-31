@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * Board glyphs — minimal `currentColor` stroke icons for the Kanban board + footer rig (view switchers,
@@ -15,22 +16,7 @@ interface GlyphProps {
 function Svg(
 	{ size = 18, class: c, children }: GlyphProps & { children: JSX.Element | JSX.Element[] },
 ) {
-	return (
-		<svg
-			width={size}
-			height={size}
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			class={c}
-		>
-			{children}
-		</svg>
-	);
+	return <IconShell size={size} class={c}>{children}</IconShell>;
 }
 
 /** Kanban / board columns. */

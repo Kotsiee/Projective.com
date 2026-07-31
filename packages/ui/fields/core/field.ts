@@ -15,6 +15,7 @@ export function fieldModifiers(
 		fluid?: boolean;
 		disabled?: boolean;
 		readOnly?: boolean;
+		loading?: boolean;
 		focused?: boolean;
 		open?: boolean;
 	},
@@ -26,6 +27,7 @@ export function fieldModifiers(
 		fluid,
 		disabled,
 		readOnly,
+		loading,
 		focused,
 		open,
 	} = opts;
@@ -36,9 +38,32 @@ export function fieldModifiers(
 		fluid && `${block}--fluid`,
 		disabled && `${block}--disabled`,
 		readOnly && `${block}--readonly`,
+		loading && `${block}--loading`,
 		focused && `${block}--focused`,
 		open && `${block}--open`,
 	].filter(Boolean) as string[];
+}
+
+/**
+ * The status glyph for the `.ui-field__mark` slot — the icon/shape channel that keeps a validation
+ * state off hue alone (§A.5). Returns `null` for the neutral default so the slot stays collapsed.
+ *
+ * The shapes are deliberately distinct at a glance and under every CVD simulation: a bang for "this
+ * is wrong", a tick for "this is right", a chevron-bang for the softer publishing gate.
+ */
+export function statusMark(status: FieldStatus | undefined): "alert" | "check" | "gate" | null {
+	switch (status) {
+		case "invalid":
+		case "required":
+			return "alert";
+		case "success":
+			return "check";
+		case "warning":
+		case "gate":
+			return "gate";
+		default:
+			return null;
+	}
 }
 
 /** Map a Severity to the token root it drives (`--{severity}` / `--on-{severity}`). */

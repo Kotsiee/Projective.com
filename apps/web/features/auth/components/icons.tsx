@@ -4,24 +4,12 @@ import type { JSX } from "preact";
  * Inline stroke icons for the auth surface — dependency-free (no icon package in the island bundle),
  * `currentColor`-driven so they inherit token colours. 24×24 viewBox, 2px stroke.
  */
+import { IconShell } from "@projective/ui/icons";
+
 type IconProps = { class?: string };
 
 function svg(path: JSX.Element, extra?: IconProps): JSX.Element {
-	return (
-		<svg
-			class={extra?.class}
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			focusable="false"
-		>
-			{path}
-		</svg>
-	);
+	return <IconShell class={extra?.class} focusable="false">{path}</IconShell>;
 }
 
 export const MailIcon = (p?: IconProps) =>

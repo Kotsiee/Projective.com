@@ -10,23 +10,14 @@
 	padding: var(--space-2) var(--space-4);
 }
 
-.subm-rig__zoom {
+/*
+ * The zoom half is the shared `.ui-viewrig` (layout + mode glyph + slider cap live in
+ * `features/shell/styles/view-zoom-rig.css`); this only strips the padding it would otherwise add
+ * INSIDE the band that already pads itself.
+ */
+.subm-rig .subm-rig__zoom {
 	flex: 0 1 auto;
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	min-inline-size: 0;
-}
-
-.subm-rig__mode {
-	display: inline-flex;
-	align-items: center;
-	color: var(--text-secondary);
-}
-
-.subm-rig__zoom .ui-zoom {
-	inline-size: 100%;
-	max-inline-size: 18rem;
+	padding: 0;
 }
 
 .subm-rig__spacer {

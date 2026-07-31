@@ -3,6 +3,7 @@ import "../styles/paginator.css";
 import { cx } from "../../core/cx.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
 import type { Bindable, ValueChange } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Emitted whenever the page (or the row count driving it) changes. */
@@ -168,7 +169,7 @@ export function Paginator(props: PaginatorProps): JSX.Element {
 				disabled={page === 0}
 				onClick={() => goToPage(page - 1)}
 			>
-				‹
+				<Icon name="chevron-left" />
 			</button>
 
 			<ul class="ui-paginator__pages">
@@ -202,7 +203,7 @@ export function Paginator(props: PaginatorProps): JSX.Element {
 				disabled={page >= pageCount - 1}
 				onClick={() => goToPage(page + 1)}
 			>
-				›
+				<Icon name="chevron-right" />
 			</button>
 			<button
 				type="button"

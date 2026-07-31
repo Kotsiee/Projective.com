@@ -5,6 +5,7 @@ import { cx } from "../../core/cx.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link Inplace}. */
@@ -135,7 +136,7 @@ export function Inplace(props: InplaceProps): JSX.Element {
 							aria-label="Close editor"
 							onClick={close}
 						>
-							×
+							<Icon name="close" />
 						</button>
 					)}
 				</div>

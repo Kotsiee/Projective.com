@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { type AnalyticsPeriod, analyticsPeriod } from "../core/catalogue-state.ts";
 import { ChartIcon, StarGlyph } from "./catalogue-glyphs.tsx";
 import type { CatalogueStats } from "../types/catalogue-types.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * AnalyticsStrip — the console's light KPI row: 5 stat tiles (Active listings · Views · Orders ·
@@ -107,7 +108,8 @@ function StatTile({ label, value, caption, delta, trend, icon }: StatTileProps):
 				</span>
 				{delta != null && (
 					<span class="cat-tile__delta" data-dir={dir > 0 ? "up" : dir < 0 ? "down" : "flat"}>
-						{dir > 0 ? "▲" : dir < 0 ? "▼" : "•"} {Math.abs(delta)}%
+						<Icon name={dir > 0 ? "arrow-up" : dir < 0 ? "arrow-down" : "minus"} />{" "}
+						{Math.abs(delta)}%
 					</span>
 				)}
 			</div>

@@ -3,6 +3,7 @@ import "../styles/form-control.css";
 import { cx } from "../../core/cx.ts";
 import { useId } from "../hooks/useId.ts";
 import { describedBy, fieldIds } from "../core/ids.ts";
+import { AlertMark } from "../components/field-marks.tsx";
 import type { FieldStatus } from "../types/mod.ts";
 
 export interface FormControlRenderArgs {
@@ -27,6 +28,12 @@ export interface FormControlProps {
 	status?: FieldStatus;
 	/** Marks the control required (adds the required asterisk + forwards the flag). */
 	required?: boolean;
+	/**
+	 * Collapse the reserved hint row when this field has neither hint nor error. Off by default: the
+	 * row holds its height so a validation message appearing mid-form cannot shove the fields below
+	 * it down the page. Set it only for a one-field form where nothing can shift.
+	 */
+	collapseHint?: boolean;
 	class?: string;
 	/**
 	 * Either a render function that receives the wired ids/status, or plain children (for which you
@@ -50,12 +57,25 @@ export interface FormControlProps {
  * ```
  */
 export function FormControl(props: FormControlProps): JSX.Element {
-	const { label, hint, error, status = "default", required, class: className, children } = props;
+	const {
+		label,
+		hint,
+		error,
+		status = "default",
+		required,
+		collapseHint,
+		class: className,
+		children,
+	} = props;
 	const rootId = useId(undefined, "field");
 	const ids = fieldIds(rootId);
-	const showError = status === "invalid" && !!error;
+	// `required` is a real invalid state (the RED creation gate), so its message surfaces as an
+	// error too — otherwise the one status that most needs explaining is the one that stays silent.
+	const showError = (status === "invalid" || status === "required") && !!error;
 	const description = showError ? error : hint;
 	const descId = showError ? ids.error : hint ? ids.hint : undefined;
+	// The row is rendered even when empty so its height is already accounted for.
+	const reserveHint = !collapseHint;
 
 	const rendered = typeof children === "function"
 		? (children as (a: FormControlRenderArgs) => VNode)({
@@ -77,15 +97,34 @@ export function FormControl(props: FormControlProps): JSX.Element {
 				</label>
 			)}
 			<div class="ui-form-control__control">{rendered}</div>
-			{description && (
+			{(description || reserveHint) && (
 				<p
 					id={descId}
 					class={cx("ui-field-hint", showError && "ui-field-hint--error")}
 					role={showError ? "alert" : undefined}
 				>
+					{showError && (
+						<span class="ui-field-hint__icon" aria-hidden="true">
+							<AlertMark />
+						</span>
+					)}
 					{description}
 				</p>
 			)}
 		</div>
+	);
+}
+
+/**
+ * FieldLegend — the one-line explanation an asterisk needs. A form that marks any control `required`
+ * renders this once, near its submit action: a lone `*` with nothing to decode it is exactly the
+ * anti-pattern the marker is supposed to solve.
+ */
+export function FieldLegend(props: { text?: string; class?: string }): JSX.Element {
+	return (
+		<p class={cx("ui-field-legend", props.class)}>
+			<span class="ui-field-legend__mark" aria-hidden="true">*</span>{" "}
+			{props.text ?? "Required to continue"}
+		</p>
 	);
 }

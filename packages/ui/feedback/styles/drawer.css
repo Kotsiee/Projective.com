@@ -5,8 +5,12 @@
  */
 
 .ui-drawer {
-	--drawer-size: min(22rem, 92vw);
-	--drawer-size-block: min(18rem, 80vh);
+	/* The inline default is the contract's `--drawer-w`, so the reading column is decided once for
+	   every side-docked panel in the product rather than per component. `--drawer-h` has no
+	   counterpart in the contract yet; naming it here means defining it upstream retunes the
+	   block-docked default without editing this file. Drawer.tsx overrides either per instance. */
+	--drawer-size: var(--drawer-w);
+	--drawer-size-block: var(--drawer-h);
 
 	position: absolute;
 	display: flex;
@@ -26,12 +30,12 @@
 }
 .ui-drawer--left {
 	inset-inline-start: 0;
-	border-inline-end: 1px solid var(--border-subtle);
+	border-inline-end: var(--hairline);
 	transform: translateX(-100%);
 }
 .ui-drawer--right {
 	inset-inline-end: 0;
-	border-inline-start: 1px solid var(--border-subtle);
+	border-inline-start: var(--hairline);
 	transform: translateX(100%);
 }
 .ui-drawer--top,
@@ -42,12 +46,12 @@
 }
 .ui-drawer--top {
 	inset-block-start: 0;
-	border-block-end: 1px solid var(--border-subtle);
+	border-block-end: var(--hairline);
 	transform: translateY(-100%);
 }
 .ui-drawer--bottom {
 	inset-block-end: 0;
-	border-block-start: 1px solid var(--border-subtle);
+	border-block-start: var(--hairline);
 	transform: translateY(100%);
 }
 .ui-drawer--full {
@@ -70,30 +74,30 @@
 	align-items: center;
 	gap: var(--space-3);
 	padding: var(--space-4) var(--space-5);
-	border-block-end: 1px solid var(--border-subtle);
+	border-block-end: var(--hairline);
 }
 .ui-drawer__title {
 	flex: 1 1 auto;
 	margin: 0;
 	min-inline-size: 0;
-	font-size: 1.0625rem;
-	font-weight: 600;
-	line-height: 1.3;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
 }
 .ui-drawer__close {
 	flex: 0 0 auto;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
 	padding: 0;
-	font-size: 1.25rem;
-	line-height: 1;
+	font-size: var(--text-lg);
+	line-height: var(--leading-tight);
 	color: var(--on-surface-variant);
 	background: transparent;
 	border: none;
-	border-radius: var(--radius-sm);
+	border-radius: var(--radius-full);
 	cursor: pointer;
 }
 .ui-drawer__close:hover {

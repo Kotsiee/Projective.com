@@ -10,6 +10,7 @@ import { useDismiss } from "../../hooks/useDismiss.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link ContextMenu}. */
@@ -122,7 +123,7 @@ function CtxLevel(props: LevelProps): VNode {
 					<span class="ui-contextmenu__shortcut" aria-hidden="true">{item.shortcut}</span>
 				)}
 				{item.badge != null && <span class="ui-contextmenu__badge">{item.badge}</span>}
-				{hasChildren(item) && <span class="ui-contextmenu__arrow" aria-hidden="true">▸</span>}
+				{hasChildren(item) && <Icon name="caret-right" class="ui-contextmenu__arrow" />}
 			</>
 		);
 

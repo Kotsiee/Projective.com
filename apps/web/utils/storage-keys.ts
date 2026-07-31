@@ -140,6 +140,13 @@ export const LocalKeys = {
 	/** The Wallet lane's last-selected wallet param (`personal` | `team:{id}` | …) — restored across reloads. */
 	WALLET_ACTIVE: "pj.local.wallet.active",
 	/**
+	 * The workspace console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
+	 * the File Explorer, shared cross-island (the footer rig ↔ the roster / people body). One key across
+	 * `/teams` and `/businesses`: they are one surface parameterised by kind, so a reader who set a
+	 * comfortable density on their teams expects the same on their businesses.
+	 */
+	WORKSPACE_ZOOM: "pj.local.workspace.zoom",
+	/**
 	 * The Kanban board's view mode (`kanban` | `list`) — shared cross-island (the footer View Control
 	 * Rig ↔ the board body), so the board reopens in the last-used surface.
 	 */

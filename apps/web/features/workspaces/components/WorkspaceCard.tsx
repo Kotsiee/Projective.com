@@ -98,16 +98,30 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 					<span class="wsp-card__handle">@{summary.handle}</span>
 				</div>
 
+				{
+					/*
+					 * Acting is folded INTO the role chip rather than sitting beside it. The two were
+					 * separate chips of identical shape, differing only in fill, and both answered the same
+					 * question — what is my relationship to this workspace — so they read as two competing
+					 * marks where there is one fact. As a dot on the role chip the state is iconographic
+					 * with its words in the tooltip, which is what §B.6 asks of an in-row status.
+					 */
+				}
 				<div class="wsp-card__flags">
-					{summary.isActing && (
-						<span class="wsp-actingchip">
-							<span class="wsp-actingchip__dot" aria-hidden="true" />
-							Acting
-						</span>
-					)}
-					<span class="wsp-chip" data-tone={summary.isOwner ? undefined : "muted"}>
-						{roleLabel(summary.role)}
-					</span>
+					{summary.isActing
+						? (
+							<Tooltip content="You are acting as this workspace" placement="top">
+								<span class="wsp-chip wsp-chip--acting">
+									<span class="wsp-actingchip__dot" aria-hidden="true" />
+									{roleLabel(summary.role)}
+								</span>
+							</Tooltip>
+						)
+						: (
+							<span class="wsp-chip" data-tone={summary.isOwner ? undefined : "muted"}>
+								{roleLabel(summary.role)}
+							</span>
+						)}
 					<StateDots summary={summary} />
 					<WorkspaceKebab summary={summary} href={href} busy={busy} onAction={onAction} />
 				</div>

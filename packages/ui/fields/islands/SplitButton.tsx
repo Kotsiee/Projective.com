@@ -9,6 +9,8 @@ import { useFloating } from "../hooks/useFloating.ts";
 import type { Placement } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
 import { useId } from "../hooks/useId.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import type { FieldSize, Severity } from "../types/mod.ts";
 
 // #region Types
@@ -83,6 +85,11 @@ function ChevronDown(): JSX.Element {
  * Keyboard: the toggle opens on ArrowDown/Enter/Space (ArrowUp opens to the last item); inside the
  * menu, ArrowUp/Down + Home/End rove the `menuitem`s, Enter/Space activate, and Escape closes and
  * returns focus to the toggle. Disabled/loading blocks both segments.
+ *
+ * The MENU is projected into `document.body` via {@link BodyPortal} and claims a live stacking index
+ * from {@link useOverlayStack}, so it escapes any ancestor that would clip it (`overflow: hidden`) or
+ * re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) — the trap a Dialog panel
+ * sets. The segments stay in place and the id-based ARIA wiring survives the move.
  */
 export function SplitButton(props: SplitButtonProps): JSX.Element {
 	const {
@@ -113,6 +120,7 @@ export function SplitButton(props: SplitButtonProps): JSX.Element {
 	const activeIndex = active.value;
 	const blocked = Boolean(disabled || loading);
 
+	const stack = useOverlayStack({ active: isOpen, layer: "popover" });
 	const floating = useFloating({
 		open: isOpen,
 		triggerRef: rootRef,
@@ -211,12 +219,11 @@ export function SplitButton(props: SplitButtonProps): JSX.Element {
 	};
 	// #endregion
 
-	const panelStyle = floating
-		? styleVars({
-			"--float-top": `${floating.top}px`,
-			"--float-left": `${floating.left}px`,
-		})
-		: styleVars({ "--float-top": "-9999px", "--float-left": "-9999px" });
+	const panelStyle = styleVars({
+		"--float-top": floating ? `${floating.top}px` : "-9999px",
+		"--float-left": floating ? `${floating.left}px` : "-9999px",
+		"--z-portal": String(stack.zIndex),
+	});
 
 	return (
 		<div
@@ -256,62 +263,64 @@ export function SplitButton(props: SplitButtonProps): JSX.Element {
 				onKeyDown={onToggleKeyDown}
 			/>
 			{isOpen && (
-				<div
-					ref={panelRef}
-					id={menuId}
-					role="menu"
-					aria-label={menuLabel}
-					class={cx(
-						"ui-split-button__menu",
-						floating?.placement.startsWith("top") && "ui-split-button__menu--top",
-					)}
-					style={panelStyle}
-					onKeyDown={onMenuKeyDown}
-				>
-					{model.map((item, i) => {
-						const cls = cx(
-							"ui-split-button__item",
-							item.disabled && "ui-split-button__item--disabled",
-						);
-						const tabIndex = i === activeIndex ? 0 : -1;
-						const setRef = (el: HTMLElement | null) => {
-							itemRefs.current[i] = el;
-						};
-						const inner = (
-							<>
-								{item.icon && <span class="ui-split-button__item-icon">{item.icon}</span>}
-								<span class="ui-split-button__item-label">{item.label}</span>
-							</>
-						);
-						return item.href && !item.disabled
-							? (
-								<a
-									ref={setRef}
-									role="menuitem"
-									class={cls}
-									href={item.href}
-									tabIndex={tabIndex}
-									onClick={() => activate(i)}
-								>
-									{inner}
-								</a>
-							)
-							: (
-								<button
-									ref={setRef}
-									type="button"
-									role="menuitem"
-									class={cls}
-									tabIndex={tabIndex}
-									disabled={item.disabled}
-									aria-disabled={item.disabled || undefined}
-									onClick={() => activate(i)}
-								>
-									{inner}
-								</button>
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						id={menuId}
+						role="menu"
+						aria-label={menuLabel}
+						class={cx(
+							"ui-split-button__menu",
+							floating?.placement.startsWith("top") && "ui-split-button__menu--top",
+						)}
+						style={panelStyle}
+						onKeyDown={onMenuKeyDown}
+					>
+						{model.map((item, i) => {
+							const cls = cx(
+								"ui-split-button__item",
+								item.disabled && "ui-split-button__item--disabled",
 							);
-					})}
-				</div>
+							const tabIndex = i === activeIndex ? 0 : -1;
+							const setRef = (el: HTMLElement | null) => {
+								itemRefs.current[i] = el;
+							};
+							const inner = (
+								<>
+									{item.icon && <span class="ui-split-button__item-icon">{item.icon}</span>}
+									<span class="ui-split-button__item-label">{item.label}</span>
+								</>
+							);
+							return item.href && !item.disabled
+								? (
+									<a
+										ref={setRef}
+										role="menuitem"
+										class={cls}
+										href={item.href}
+										tabIndex={tabIndex}
+										onClick={() => activate(i)}
+									>
+										{inner}
+									</a>
+								)
+								: (
+									<button
+										ref={setRef}
+										type="button"
+										role="menuitem"
+										class={cls}
+										tabIndex={tabIndex}
+										disabled={item.disabled}
+										aria-disabled={item.disabled || undefined}
+										onClick={() => activate(i)}
+									>
+										{inner}
+									</button>
+								);
+						})}
+					</div>
+				</BodyPortal>
 			)}
 		</div>
 	);

@@ -7,12 +7,18 @@
 
 .ui-checkbox {
 	--cb-size: 1.25rem;
-	--cb-radius: var(--radius-sm);
-	--cb-font: 0.9375rem;
+	--cb-radius: var(--fld-r-sm);
+	--cb-font: var(--fld-fs-md);
 
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
+	/*
+	 * The whole label row is the target, so the floor goes here rather than on the 20px box: a
+	 * checkbox is clicked by its words at least as often as by its square, and inflating the square
+	 * to 24px would coarsen the artwork for no gain.
+	 */
+	min-block-size: var(--fld-hit);
 	font-family: var(--font-sans);
 	font-size: var(--cb-font);
 	color: var(--on-surface);
@@ -23,18 +29,50 @@
 .ui-checkbox--size-sm {
 	--cb-size: 1rem;
 	--cb-radius: var(--radius-xs);
-	--cb-font: 0.8125rem;
+	--cb-font: var(--fld-fs-sm);
 }
 .ui-checkbox--size-lg {
 	--cb-size: 1.5rem;
-	--cb-radius: var(--radius-base);
-	--cb-font: 1.0625rem;
+	--cb-radius: var(--fld-r-md);
+	--cb-font: var(--fld-fs-lg);
 }
 
+/*
+ * Disabled fades ink + border, never the box, and keeps pointer events so `not-allowed` can actually
+ * paint — `pointer-events: none` silently cancels the cursor it is paired with. The native `disabled`
+ * attribute on the inner input is what really blocks activation.
+ */
 .ui-checkbox--disabled {
-	opacity: 0.55;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
-	pointer-events: none;
+}
+.ui-checkbox--disabled .ui-checkbox__box {
+	border-color: color-mix(in srgb, var(--outline) var(--fld-disabled-mix), var(--surface));
+	background: var(--surface-1);
+}
+.ui-checkbox--disabled .ui-checkbox__input:checked + .ui-checkbox__box {
+	background: color-mix(in srgb, var(--primary) var(--fld-disabled-mix), var(--surface));
+}
+
+/* Read-only: the value is authoritative and still announced; only the invitation to toggle goes. */
+.ui-checkbox--readonly {
+	cursor: default;
+}
+.ui-checkbox--readonly .ui-checkbox__box {
+	background: var(--fld-readonly-bg);
+}
+
+/* Validation — colour PLUS the box border, and the consumer pairs it with the shared status mark. */
+.ui-checkbox--invalid .ui-checkbox__box,
+.ui-checkbox--required .ui-checkbox__box {
+	border-color: var(--fld-invalid-bd);
+}
+.ui-checkbox--gate .ui-checkbox__box,
+.ui-checkbox--warning .ui-checkbox__box {
+	border-color: var(--fld-gate-bd);
+}
+.ui-checkbox--success .ui-checkbox__box {
+	border-color: var(--fld-valid-bd);
 }
 
 /* #region Visually-hidden native control (kept focusable for keyboard + form submit) */
@@ -69,8 +107,8 @@
 		border-color var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
-.ui-checkbox:hover .ui-checkbox__box {
-	border-color: var(--on-surface-variant);
+.ui-checkbox:hover:not(.ui-checkbox--disabled):not(.ui-checkbox--readonly) .ui-checkbox__box {
+	border-color: var(--fld-hover-bd);
 }
 
 /* Checked / indeterminate fills — driven by native pseudos so visuals need zero JS. */

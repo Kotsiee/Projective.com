@@ -3,15 +3,16 @@ import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { kindCopy, workspaceHref, type WorkspaceKind } from "@projective/types/workspace";
 import { type ModuleKey } from "../core/module-registry.tsx";
+import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import {
-	membersView,
+	membersChart,
 	openCreate,
 	openInvite,
 	policyDirty,
 	requestSave,
-	rosterView,
 	saveState,
 } from "../core/workspace-state.ts";
+import { workspaceZoom } from "../core/view-state.ts";
 import { CardsViewIcon, ChartViewIcon, TableViewIcon } from "../components/MemberCard.tsx";
 import { cloneGlyph, InviteGlyph, PlusGlyph } from "../core/workspace-glyphs.tsx";
 
@@ -85,59 +86,36 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 		<div class="wsp-footerrig" data-kind={props.kind}>
 			{/* #region Leading — view switching */}
 			<div class="wsp-footerrig__group" role="group" aria-label="View">
-				{onRoster && (
-					<div class="wsp-footerrig__density">
-						<RigButton
-							label="Cards"
-							glyph={<CardsViewIcon />}
-							active={rosterView.value === "grid"}
-							pressed={rosterView.value === "grid"}
-							onClick={() => {
-								rosterView.value = "grid";
-							}}
-						/>
-						<RigButton
-							label="Table"
-							glyph={<TableViewIcon />}
-							active={rosterView.value === "table"}
-							pressed={rosterView.value === "table"}
-							onClick={() => {
-								rosterView.value = "table";
-							}}
-						/>
-					</div>
-				)}
-
-				{module === "members" && (
-					<div class="wsp-footerrig__density">
-						<RigButton
-							label="Cards"
-							glyph={<CardsViewIcon />}
-							active={membersView.value === "cards"}
-							pressed={membersView.value === "cards"}
-							onClick={() => {
-								membersView.value = "cards";
-							}}
-						/>
-						<RigButton
-							label="Table"
-							glyph={<TableViewIcon />}
-							active={membersView.value === "table"}
-							pressed={membersView.value === "table"}
-							onClick={() => {
-								membersView.value = "table";
-							}}
-						/>
-						<RigButton
-							label="Org chart"
-							glyph={<ChartViewIcon />}
-							active={membersView.value === "chart"}
-							pressed={membersView.value === "chart"}
-							onClick={() => {
-								membersView.value = "chart";
-							}}
-						/>
-					</div>
+				{
+					/*
+					 * The persistent zoom rig, the same control the File Explorer, Submissions, Catalogue and
+					 * Wallet carry: crossing its centre marker IS the table⇄cards switch, so there is no separate
+					 * presentation toggle to disagree with it. The org chart sits BESIDE it rather than on it,
+					 * because a chart is a different reading of the people, not a different density.
+					 */
+				}
+				{(onRoster || module === "members") && (
+					<ViewZoomRig
+						store={workspaceZoom}
+						label={onRoster ? `${copy.Plural} view zoom` : "People view zoom"}
+						class="wsp-footerrig__density"
+						listIcon={<TableViewIcon />}
+						gridIcon={<CardsViewIcon />}
+					>
+						{module === "members"
+							? (
+								<RigButton
+									label="Org chart"
+									glyph={<ChartViewIcon />}
+									active={membersChart.value}
+									pressed={membersChart.value}
+									onClick={() => {
+										membersChart.value = !membersChart.value;
+									}}
+								/>
+							)
+							: null}
+					</ViewZoomRig>
 				)}
 			</div>
 			{/* #endregion */}

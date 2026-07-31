@@ -1,5 +1,6 @@
 import type { JSX, VNode } from "preact";
 import type { ProfileKind, ProfileTab, VerificationTier } from "../types/profile-types.ts";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * profile-glyphs — the profile shell's inline SVG glyph set + the tab/tier icon resolvers. Mirrors the
@@ -253,20 +254,7 @@ const PATHS: Record<ProfileGlyph, VNode> = {
 export function ProfileIcon(
 	{ name, ...svg }: { name: ProfileGlyph } & JSX.SVGAttributes<SVGSVGElement>,
 ): VNode {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.6"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			{...svg}
-		>
-			{PATHS[name]}
-		</svg>
-	);
+	return <IconShell {...svg}>{PATHS[name]}</IconShell>;
 }
 
 /** The glyph name for a profile tab. Most tab names map 1:1 to a glyph; a few are aliased. */

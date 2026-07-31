@@ -11,9 +11,11 @@
 	z-index: var(--z-nav);
 	block-size: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
 	padding-block-end: env(safe-area-inset-bottom, 0px);
-	background: color-mix(in srgb, var(--surface-2) 82%, transparent);
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
+	background: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	/* Pinned to the bottom edge, so it casts up onto the content passing beneath it. */
+	box-shadow: var(--elevation-low-up);
 	border-block-start: var(--hairline);
 }
 
@@ -35,8 +37,21 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * This is the whole wayfinding system on mobile, and "you are here" was a hue shift and nothing else
+ * — invisible in greyscale, under a CVD overlay, and in bright sun. Weight and glyph fill are the two
+ * channels the rest of the nav chrome uses for the same job.
+ */
 .ui-bottom-nav__item--active {
 	color: var(--primary);
+}
+
+.ui-bottom-nav__item--active .ui-bottom-nav__label {
+	font-weight: 700;
+}
+
+.ui-bottom-nav__item--active .ui-bottom-nav__icon svg {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .ui-bottom-nav__item:focus-visible {

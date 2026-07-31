@@ -10,6 +10,7 @@ import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useFocusTrap } from "../../hooks/useFocusTrap.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useId } from "../../hooks/useId.ts";
+import { Icon } from "../../icons/mod.ts";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
@@ -176,7 +177,7 @@ export function Image(props: ImageProps): JSX.Element {
 								aria-label="Close preview"
 								onClick={close}
 							>
-								×
+								<Icon name="close" />
 							</button>
 						</div>
 						<div

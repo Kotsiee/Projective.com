@@ -3,7 +3,19 @@ import "../styles/card.css";
 import { cx } from "../../core/cx.ts";
 
 // #region Types
-/** Surface treatment for {@link Card}'s own tonal separation (§B.4 — no four-sided border). */
+/**
+ * Surface treatment for {@link Card}'s own tonal separation (§B.4 — no four-sided border).
+ *
+ * Elevation means the surface is genuinely ABOVE its neighbours, not that the author wanted
+ * definition:
+ * - `flat` (`--surface`) — the card sits on a neutral page and cards are the page's content.
+ * - `filled` (`--surface-2`) — the default. One tonal step off a tinted region.
+ * - `elevated` (`--surface-1` + a resting shadow) — the card genuinely floats: it overlaps content,
+ *   is draggable, or is lifted out of flow.
+ *
+ * A tonal step is measured against the card's actual PARENT, not against the page: `filled` on a
+ * `--surface-1` region is a ~1.05:1 step and reads as no boundary at all. Re-parent it or step up.
+ */
 export type CardVariant = "elevated" | "filled" | "flat";
 
 export interface CardProps extends Omit<JSX.HTMLAttributes<HTMLElement>, "children" | "title"> {
@@ -19,9 +31,12 @@ export interface CardProps extends Omit<JSX.HTMLAttributes<HTMLElement>, "childr
 	media?: VNode;
 	/** Trailing action row (buttons/menu), rendered under the body. */
 	actions?: ComponentChildren;
-	/** Tonal treatment (default `elevated`). */
+	/** Tonal treatment (default `filled`). */
 	variant?: CardVariant;
-	/** Adds a resting shadow on top of the variant's base elevation. */
+	/**
+	 * Adds a shadow on top of the variant's base elevation. TRANSIENT only — a hover, drag or focus
+	 * response. A permanently `raised` card is claiming to float while sitting still.
+	 */
 	raised?: boolean;
 	/** Render as a different element (default `div`). */
 	as?: keyof JSX.IntrinsicElements;
@@ -45,7 +60,7 @@ export function Card(props: CardProps): JSX.Element {
 		footer,
 		media,
 		actions,
-		variant = "elevated",
+		variant = "filled",
 		raised,
 		as = "div",
 		class: className,

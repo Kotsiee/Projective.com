@@ -9,6 +9,7 @@ import {
 } from "../core/landing-data.ts";
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { MEGA_MENUS, SECONDARY_LINKS } from "../core/megamenu-data.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * SiteHeader — the public navigation. Full-width and **completely transparent/borderless at the top
@@ -277,7 +278,7 @@ export default function SiteHeader({ authenticated = false }: { authenticated?: 
 						? (
 							<>
 								<a class="site-header__icon-btn" href="/messages" aria-label="Messages">
-									<span aria-hidden="true">✉</span>
+									<Icon name="mail" />
 								</a>
 								<a class="site-header__icon-btn" href="/wallet" aria-label="Wallet">
 									<span aria-hidden="true">◈</span>

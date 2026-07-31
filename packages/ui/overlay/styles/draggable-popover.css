@@ -19,8 +19,8 @@
 	max-block-size: calc(100dvh - var(--shell-topbar-h) - var(--space-6));
 	overflow: hidden;
 	background: var(--surface-1);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-xl);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-lg);
 	box-shadow: var(--elevation-high);
 	/* Enter/exit — transform is `none` at rest so it never re-bases fixed descendants. */
 	opacity: 0;
@@ -64,8 +64,8 @@
 	color: var(--on-surface);
 }
 .ui-draggable-popover__resize:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 	opacity: 1;
 }
 
@@ -98,8 +98,8 @@
 	cursor: grabbing;
 }
 .ui-draggable-popover__handle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .ui-draggable-popover__icon {
@@ -108,14 +108,14 @@
 	flex: none;
 }
 .ui-draggable-popover__icon svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 
 .ui-draggable-popover__title {
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	white-space: nowrap;
 	overflow: hidden;
@@ -133,8 +133,8 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
 	padding: 0;
 	border: none;
 	border-radius: var(--radius-full);
@@ -150,8 +150,8 @@
 	color: var(--danger);
 }
 .ui-draggable-popover__close:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* --- Body --- */
@@ -160,4 +160,14 @@
 	min-block-size: 0;
 	overflow: auto;
 	padding: var(--space-3);
+}
+
+/* The window opens with a slide; a reader who has asked for stillness gets the resting state on the
+   first frame, which is already this element's static state (transform: none, opacity: 1). */
+@media (prefers-reduced-motion: reduce) {
+	.ui-draggable-popover,
+	.ui-draggable-popover__resize,
+	.ui-draggable-popover__close {
+		transition-duration: 0ms;
+	}
 }

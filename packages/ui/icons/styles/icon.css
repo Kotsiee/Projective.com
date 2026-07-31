@@ -1,0 +1,90 @@
+/*
+ * @projective/ui/icons — the single icon contract (DESIGN_SYSTEM.md §B.7).
+ *
+ * This stylesheet is the enforcement layer. `.ui-icon` is not decoration: it is the class that makes
+ * a glyph part of the set, and it does three things no per-glyph authoring can do reliably.
+ *
+ * 1. ONE WEIGHT, EVERY SIZE. A CSS declaration outranks an SVG presentation attribute, so the
+ *    `stroke-width` rule below overrides whatever number a glyph was authored with — root or child.
+ *    That is deliberate: it normalises the whole set from one place instead of asking 23 feature
+ *    modules to agree. `vector-effect: non-scaling-stroke` then exempts the stroke from the
+ *    viewBox→viewport transform, so the rendered weight is --icon-stroke device pixels whether the
+ *    box is 12px or 32px, and whether the glyph was drawn on a 24, 20, 16, 14 or 12 unit grid.
+ *    (That last part matters: it decouples stroke weight from grid, which is what lets legacy
+ *    off-grid glyphs join the set before they are redrawn.)
+ *
+ * 2. IT NEVER SQUASHES. `flex: none` on the icon itself, so a long label wraps or truncates and the
+ *    glyph holds its box. The audit found 101 sized icon rules with no such guard.
+ *
+ * 3. IT INHERITS BY DEFAULT. `1em` unless a ramp step is asked for — see the §B.7 note in
+ *    styles/index.css for why that is the correct relationship to the adjacent type.
+ *
+ * Artwork — illustrations, hero scenes, charts, gauges — deliberately does NOT take this class. It
+ * is not part of the icon set and must not be normalised to the icon weight.
+ */
+
+.ui-icon {
+	display: inline-block;
+	flex: none;
+	inline-size: var(--ui-icon-size, 1em);
+	block-size: var(--ui-icon-size, 1em);
+	/* Nudges the optical centre onto the text's centre rather than its baseline box. */
+	vertical-align: -0.125em;
+}
+
+/*
+ * Both the root and every descendant, because a child's own `stroke-width` presentation attribute
+ * beats a value inherited from the root — only a CSS rule matched against the child itself wins.
+ */
+.ui-icon,
+.ui-icon * {
+	stroke-width: var(--icon-stroke);
+	vector-effect: non-scaling-stroke;
+}
+
+/* Ramp — for an icon with NO adjacent text. A paired icon inherits and needs none of these. */
+.ui-icon[data-size="2xs"] {
+	--ui-icon-size: var(--icon-2xs);
+}
+
+.ui-icon[data-size="xs"] {
+	--ui-icon-size: var(--icon-xs);
+}
+
+.ui-icon[data-size="sm"] {
+	--ui-icon-size: var(--icon-sm);
+}
+
+.ui-icon[data-size="md"] {
+	--ui-icon-size: var(--icon-md);
+}
+
+.ui-icon[data-size="lg"] {
+	--ui-icon-size: var(--icon-lg);
+}
+
+.ui-icon[data-size="xl"] {
+	--ui-icon-size: var(--icon-xl);
+}
+
+/*
+ * Optical corrections. A glyph whose visual mass sits off its geometric centre is corrected here,
+ * once, rather than by nudging its box at each call site. Directional marks read as centred when
+ * their solid mass is centred, which is not the same as centring the artboard.
+ */
+.ui-icon[data-optical="left"] {
+	transform: translateX(-0.03em);
+}
+
+.ui-icon[data-optical="right"] {
+	transform: translateX(0.03em);
+}
+
+/*
+ * A glyph that carries a filled counterpart (favourite, rating, pin) switches by attribute rather
+ * than by swapping components, so the two states cannot drift apart geometrically.
+ */
+.ui-icon[data-filled="true"] {
+	fill: currentColor;
+	stroke: none;
+}

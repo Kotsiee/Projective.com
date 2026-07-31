@@ -94,6 +94,14 @@
 	 * unaffected. What stays local is what is genuinely wallet-only: the fluid band padding, the hero
 	 * minimum, and the sliver threshold this surface tuned for four segments rather than N.
 	 */
+	/*
+	 * The payment instrument's proportion is ISO/IEC 7810 ID-1 — 85.60mm × 53.98mm, the physical
+	 * bank-card format. It is a real-world constant, not a design value, so it is named rather than
+	 * rounded onto a ramp: a card face at any other ratio stops reading as a card. Both the deck face
+	 * and the methods-grid face resolve it from here so they cannot drift apart.
+	 */
+	--wlt-card-ratio: 1.586;
+
 	--wlt-band-pad: clamp(var(--space-5), 3.2vw, var(--space-8));
 	--wlt-band-gap: var(--band-gap);
 	--wlt-band-pad-b: var(--band-pad-block-end);

@@ -10,6 +10,7 @@ import { useDismiss } from "../../hooks/useDismiss.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link TieredMenu}. */
@@ -133,7 +134,7 @@ function TieredLevel(props: LevelProps): VNode {
 					<span class="ui-tieredmenu__shortcut" aria-hidden="true">{item.shortcut}</span>
 				)}
 				{item.badge != null && <span class="ui-tieredmenu__badge">{item.badge}</span>}
-				{hasChildren(item) && <span class="ui-tieredmenu__arrow" aria-hidden="true">▸</span>}
+				{hasChildren(item) && <Icon name="caret-right" class="ui-tieredmenu__arrow" />}
 			</>
 		);
 
@@ -308,7 +309,7 @@ export function TieredMenu(props: TieredMenuProps): JSX.Element {
 				aria-label={triggerLabel}
 				onClick={() => (open.value ? close() : openPanel())}
 			>
-				{trigger ?? <span aria-hidden="true">☰</span>}
+				{trigger ?? <Icon name="menu" />}
 			</button>
 			{open.value && (
 				<div

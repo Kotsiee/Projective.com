@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import type { TrustFact } from "@projective/types/explore";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * view-glyphs — the Entity View page's inline SVG glyph set (24×24 line icons, `currentColor`,
@@ -106,22 +107,7 @@ export function ViewIcon(
 		& { name: ViewGlyph; size?: number }
 		& JSX.SVGAttributes<SVGSVGElement>,
 ): JSX.Element {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width={size}
-			height={size}
-			fill="none"
-			stroke="currentColor"
-			stroke-width={1.7}
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			{...rest}
-		>
-			{P[name]}
-		</svg>
-	);
+	return <IconShell size={size} {...rest}>{P[name]}</IconShell>;
 }
 
 /** Map a trust fact's iconographic key to its glyph. */

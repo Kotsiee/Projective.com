@@ -1,5 +1,6 @@
 import { computed, signal } from "@preact/signals";
 import type { WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
+import { viewMode } from "./view-state.ts";
 
 /**
  * workspace-state — the cross-island signal bridge for the `/teams` and `/businesses` surface.
@@ -98,24 +99,48 @@ export function closeInvite(): void {
 }
 // #endregion
 
-// #region View modes (footer band density controls → body)
+// #region View modes (footer band density control → body)
 /**
  * How the Members module presents its roster.
  *
- * `chart` is the org chart — a genuinely different reading of the same people, not a third density. It
- * lives beside `cards`/`table` because the control that switches all three is one segmented control in
- * the footer band, and splitting it would put two navigations where the reader expects one.
+ * `chart` is the org chart — a genuinely different READING of the same people, not a third density,
+ * which is why it alone survives as an explicit mode while `cards`/`table` became two halves of the
+ * shared zoom (see {@link membersChart}).
  */
 export type MembersView = "cards" | "table" | "chart";
 
-/** The Members module's current presentation. */
-export const membersView = signal<MembersView>("cards");
+/**
+ * The org-chart override.
+ *
+ * The zoom axis runs table → cards; an org chart is not a denser or looser version of either, so it
+ * cannot live on that axis. It stays a plain toggle in the footer band, and while it is engaged it
+ * wins over whatever the zoom currently selects — releasing it drops the reader back exactly where
+ * their density was, rather than to a remembered default they never chose.
+ */
+export const membersChart = signal<boolean>(false);
+
+/**
+ * The Members module's current presentation — DERIVED, never written.
+ *
+ * Deriving it is what keeps the footer's slider and the body's grid from disagreeing: there is one
+ * value (`zoom`) and one override (`membersChart`), so no code path can set a presentation the
+ * control does not show.
+ */
+export const membersView = computed<MembersView>(() =>
+	membersChart.value ? "chart" : viewMode.value === "grid" ? "cards" : "table"
+);
 
 /** How the roster index presents its entities. */
 export type RosterView = "grid" | "table";
 
-/** The roster index's current presentation. */
-export const rosterView = signal<RosterView>("grid");
+/**
+ * The roster index's current presentation — DERIVED from the shared zoom, never written.
+ *
+ * The zoom's own vocabulary is `list`/`grid`; the roster's list half is a TABLE, so the two names are
+ * mapped here rather than either side being renamed — the zoom store is shared with four other
+ * surfaces whose list half really is a list.
+ */
+export const rosterView = computed<RosterView>(() => viewMode.value === "grid" ? "grid" : "table");
 // #endregion
 
 // #region Policy editor save bridge (footer band → body)

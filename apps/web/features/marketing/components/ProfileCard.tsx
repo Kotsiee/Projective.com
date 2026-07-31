@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Avatar, Badge, Tag } from "@projective/ui/display";
 import { type ProfileShowcase, routes } from "../core/landing-data.ts";
 import { vars } from "../core/style.ts";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * ProfileCard — a direct-action discovery card for a freelancer or team. The whole card is the route
@@ -38,7 +39,7 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 				</div>
 				<div class="lp-profile__foot">
 					<span class="lp-profile__rating" aria-label={`Rated ${profile.rating} out of 5`}>
-						★ {profile.rating.toFixed(1)}
+						<Icon name="star" filled /> {profile.rating.toFixed(1)}
 						<span class="lp-profile__delivered">· {profile.delivered} delivered</span>
 					</span>
 					<span class="lp-profile__rate">{profile.rate}</span>

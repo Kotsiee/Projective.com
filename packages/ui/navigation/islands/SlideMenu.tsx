@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link SlideMenu}. */
@@ -141,7 +142,7 @@ export function SlideMenu(props: SlideMenuProps): JSX.Element {
 				{item.icon && <span class="ui-slidemenu__icon" aria-hidden="true">{item.icon}</span>}
 				<span class="ui-slidemenu__label">{item.label}</span>
 				{item.badge != null && <span class="ui-slidemenu__badge">{item.badge}</span>}
-				{hasChildren(item) && <span class="ui-slidemenu__arrow" aria-hidden="true">▸</span>}
+				{hasChildren(item) && <Icon name="caret-right" class="ui-slidemenu__arrow" />}
 			</>
 		);
 
@@ -213,7 +214,7 @@ export function SlideMenu(props: SlideMenuProps): JSX.Element {
 					disabled={depth.value === 0}
 					onClick={pop}
 				>
-					<span aria-hidden="true">‹</span>
+					<Icon name="chevron-left" />
 				</button>
 				<span class="ui-slidemenu__title" aria-live="polite">{current.label}</span>
 			</div>

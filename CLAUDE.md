@@ -2211,6 +2211,94 @@ root CLAUDE.md §2/§3/§5 · `packages/types/workspace/*` · `packages/backend/
 `apps/web/features/shell/islands/UserActions.island.tsx` · `apps/web/utils/dev-seam.ts` ·
 `apps/web/features/devtools/*` · Decisions #3 / #10 / #16 / #17 / #18 / #53 / #55 |
 
+| 62 | **Iconography unified — the `@projective/ui/icons` contract (2026-07-31).** An icon audit found the
+product had **no** icon system: 134 hand-authored `<svg>` roots across 75 files, ~376 named glyphs in 23
+independent per-feature modules, **10** declared `stroke-width` values, **7** viewBoxes, **3** sizing
+models, **47** rendered sizes (9 of them landing on fractional pixels), and a **second complete icon
+family made of Unicode characters** (`▾ ▸ ▲ ▼ ‹ › × ✓ ☰ ⠿ ★ 👤 🗗`, ~85 sites) living inside
+`packages/ui` itself. Measured end to end the same set rendered its lightest glyph at **0.93px** and its
+heaviest at **1.80px** — a 1.93× spread. **NEW 14th sub-path `@projective/ui/icons`**: a canonical
+`ICON_PATHS` registry (95 glyphs, values are **thunks** not VNode constants — closing the Preact
+VNode-reuse hazard at the source rather than at call sites), the `Icon` primitive, and **`IconShell`**,
+the base every feature-owned glyph module now renders through. **The mechanism is CSS, deliberately:**
+`icon.css` sets `stroke-width` from `--icon-stroke` against `.ui-icon` and pairs it with
+`vector-effect: non-scaling-stroke`, and because a CSS declaration outranks an SVG presentation
+attribute, ONE stylesheet normalises all ~376 glyphs without editing a single path — and a per-glyph
+override becomes impossible by construction. `non-scaling-stroke` also **decouples stroke weight from
+grid**, which is what demotes the 11 off-grid (20/16/14/12-unit) glyphs from blocking to cosmetic. New
+tokens `--icon-2xs…--icon-xl` (12·14·16·20·24·32, every step an integer pixel) + `--icon-stroke: 1.5`.
+**Weight is 1.5, not the 1.8 authoring precedent** — 1.8 was a *declared* number whose rendered result
+was that whole spread, so it never named a weight; 1.5px is the shipped median, the value
+`packages/ui/feedback` already rendered at native scale, and it lands on a whole device pixel at 1× and a
+clean 3 at 2×. **Semantic collisions resolved:** `/projects` had TWO glyphs split by form factor (desktop
+rail = briefcase, mobile bottom nav = an architectural arch labelled "Workspace") — the briefcase is now
+canonical; `PinIcon` meant a map pin in auth AND a push-pin in projects → `pin-location`/`pin-fixed`;
+`XIcon` meant the X brand mark AND a close cross → `close` (brand marks stay quarantined in
+`footer-icons.tsx`); `Archive` meant a compressed-file KIND and an archive ACTION → `archive-box` for the
+action. Also fixed: `packages/ui/feedback/core/icons.tsx` was the only glyph module shipping **without
+`aria-hidden`**, so every Alert announced its decorative mark before its own text; and a pre-existing
+`TS2322` in `fields/components/field-marks.tsx` (an `as const` base object widening `aria-hidden` to
+`string`) that the migration resolved. **Flagged (surface, do not silently resolve):** (a)
+**`@tabler/icons-preact` is declared in the root import map and imported nowhere** — a dead dependency
+and a fourth icon family waiting to happen; remove it or justify it. (b) The wallet's four 12×12
+**fund-state marks are data shape channels, not icons** (Decision #60's CVD requirement) and deliberately
+stay off `.ui-icon`. (c) Integer-but-off-ramp sizes (18px, 22px) and the fractional `font-size` driving
+`.ui-lane-iconbtn` remain; a control's hit-target is governed by touch-target rules, not the icon ramp.
+(d) `nav-icons`/`profile-glyphs`/`view-glyphs` still export **VNode constants** from their `PATHS` maps —
+the same reuse hazard the registry now avoids; migrate them to thunks when next touched. |
+`DESIGN_SYSTEM.md` **§B.7** (new, merge-gated) + §C.1 roster · `packages/ui/icons/` ·
+`packages/ui/styles/index.css` · `packages/ui/deno.json` · `packages/ui/feedback/core/icons.tsx` ·
+`packages/ui/fields/components/field-marks.tsx` · 23 feature `*-glyphs.tsx` modules · Decisions #22 /
+#25 / #60 |
+
+| 62 | **Fields — one state language, one geometry (`--fld-*`) (2026-07-31).** An audit of all 27 controls
+in `@projective/ui/fields` (measured in-browser, not read) found a good spine reaching only the text-input
+family: the 10 controls composing `.ui-field` were already pixel-identical, while 15 re-declared their own
+geometry and state vocabulary in parallel. Resolved by promoting a single **`--fld-*` token layer to
+`:root`** in `styles/index.css` — geometry ramp, label/hint register, panel + option-row contract, and a
+state model where every state declares the same four channels (**border · surface · ink · ring**) plus a
+**mark**. On `:root` rather than `.ui-field` deliberately: a field's label, hint, footer rig and — since
+the panels now leave the subtree — its PORTALLED dropdown all render outside the control, so a scoped
+token would silently fall back for four of five surfaces (the `--wlt-*` lesson, Decision #60). **Fixed,
+each verified by measurement:** the **Knob was unreachable by keyboard** (JSX serialises `tabIndex` onto an
+`<svg>` as a camelCase attribute; SVG attribute names are case-sensitive, so `svg.tabIndex === -1` —
+now lowercase `tabindex`); **SortControl's menu had no focus ring** (`:hover` and `:focus-visible` shared
+one rule with `outline: none`); `aria-valuetext` added to Slider/ZoomSlider via a `formatValue` hook and
+made unconditional on Knob (it was gated on the VISUAL `showValue`, and now omits itself when it would
+merely repeat `aria-valuenow`); a **24px hit-target floor** (`.ui-hit`, WCAG 2.2 AA 2.5.8) for the 6px
+slider track, 18px handle, 12px zoom handle, 20px checkbox/radio and 15px stepper; **MultiSelect was 20px
+taller than every sibling** when EMPTY (`flex-wrap: wrap` on the root let the clear button and chevron drop
+to a second line — wrapping belongs to the chip area alone); **Button + ToggleButton radius never ramped**
+(fixed `--radius-base` at all three sizes); **four sibling dropdowns had four option-row heights**
+(43.6/38.5/37.0/30.5px, three paddings, two type sizes) plus divergent panel surface/elevation/max-height
+and NO `min-inline-size`, so a 71px trigger produced a 71px menu with every label ellipsised away; **five
+disabled opacities** (0.40–0.55, measuring 2.30–5.04:1) collapsed to one that measures **5.04:1**
+everywhere, applied to ink and border rather than the box and no longer paired with `pointer-events: none`
+(which cancels the `not-allowed` cursor it sits beside); the **status icon channel** (§A.5) went from
+documented-but-absent to a real `.ui-field__mark` slot; `loading` became a field state at all
+(`AutoComplete` fetches suggestions and had no way to say so). **App forms:** `auth.css` had replaced the
+canonical two-tone focus ring with a single `0 0 0 2px var(--primary)` and, worse, its invalid rule wrote
+the SAME `box-shadow` property later in the cascade, so **a focused invalid auth field showed no focus
+indicator at all** — invalid now paints the border and the two compose; the dead `.auth .ui-field__label`
+selector (a class that never existed) and the `0.85rem` label override are gone. `CatalogueCreateModal`
+bound each visible label to its control by id (an `aria-label` on each one had been overriding the visible
+text, WCAG 2.5.3; two of three were not associated at all) and stopped painting `required` + `aria-invalid`
+the instant the modal opened. **`OwnershipTransfer`'s irreversible "Transfer ownership" was styled
+identically to a safe primary** — now `severity="danger"`, a vocabulary the codebase already had and had
+simply not reached for. Five label typographies collapsed to `--fld-label-fs`. **Deliberate positions
+(not drift):** `--fld-fs-md`/`-lg` stay a half-step above their neighbours on the type scale because a
+value the user TYPED is read under different conditions than a table cell they scan; a 16px floor applies
+on coarse-pointer viewports because iOS Safari zooms a sub-16px field on focus and does not zoom back.
+**Gotchas worth keeping:** this engine drops `min()`/nested-`calc()` in `min-inline-size` (use a plain
+`var()`), and drops a `color-mix` whose percentage comes from `calc(var(…) * 100%)` — hence the paired
+`--fld-disabled-mix` (literal `%`, for mixes) and `--fld-disabled-alpha` (unitless, for `opacity`).
+**Concurrency note:** the BodyPortal/z-scale migration for the eight field overlays landed in a
+CONCURRENT session working the same tree during this pass; this row records the audit that specified it
+alongside the rest of the work. | `DESIGN_SYSTEM.md` §C.1 + the field-contract and labelling-model notes ·
+`packages/ui/styles/index.css` (`--fld-*`, `.ui-hit`) · `packages/ui/fields/**` ·
+`apps/web/features/auth/styles/auth.css` · `apps/web/features/catalogue/**` ·
+`apps/web/features/workspaces/**` · Decisions #19 / #50 / #60 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

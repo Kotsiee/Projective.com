@@ -3,8 +3,10 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/wallet.css";
 import { Popover, Tooltip } from "@projective/ui/feedback";
-import { ZoomSlider } from "@projective/ui/fields";
+import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import {
+	ComfortableRowsGlyph,
+	CompactRowsGlyph,
 	DistributeGlyph,
 	ExportGlyph,
 	FundEscrowGlyph,
@@ -19,7 +21,7 @@ import {
 } from "../core/glyphs.tsx";
 import { actionsFor, type ResolvedAction, type WalletView } from "../core/capability.ts";
 import { openWalletAction } from "../core/wallet-state.ts";
-import { restoreZoom, setZoom, zoom, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "../core/view-state.ts";
+import { walletZoom } from "../core/view-state.ts";
 import type {
 	VaultCapability,
 	WalletAction,
@@ -78,7 +80,7 @@ export default function WalletFooterRig(props: WalletFooterRigProps): JSX.Elemen
 	const menuRef = useRef<HTMLButtonElement>(null);
 	const nudgeRef = useRef<HTMLButtonElement>(null);
 
-	useEffect(() => restoreZoom(), []);
+	useEffect(() => walletZoom.restoreZoom(), []);
 
 	const actions = actionsFor(
 		props.quickActions,
@@ -119,16 +121,13 @@ export default function WalletFooterRig(props: WalletFooterRigProps): JSX.Elemen
 	return (
 		<div class="wlt-footerrig" data-mode={isTable ? "table" : "overview"}>
 			{isTable && (
-				<div class="wlt-footerrig__density">
-					<ZoomSlider
-						value={zoom.value}
-						min={ZOOM_MIN}
-						max={ZOOM_MAX}
-						step={ZOOM_STEP}
-						aria-label="Row density"
-						onValueChange={(v) => setZoom(typeof v === "number" ? v : zoom.value)}
-					/>
-				</div>
+				<ViewZoomRig
+					store={walletZoom}
+					label="Row density"
+					class="wlt-footerrig__density"
+					listIcon={CompactRowsGlyph}
+					gridIcon={ComfortableRowsGlyph}
+				/>
 			)}
 
 			{readOnly ? <span class="wlt-footerrig__note">Read-only rollup</span> : isTable

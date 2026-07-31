@@ -11,6 +11,7 @@ import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { AspectRatio } from "../../layout/components/AspectRatio.tsx";
 import type { Bindable } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Types
 /** A single Galleria slide: a full-resolution image, its thumbnail, and optional caption content. */
@@ -232,7 +233,7 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 					disabled={!circular && active <= 0}
 					onClick={prev}
 				>
-					‹
+					<Icon name="chevron-left" />
 				</button>
 			)}
 
@@ -259,7 +260,7 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 					disabled={!circular && active >= total - 1}
 					onClick={next}
 				>
-					›
+					<Icon name="chevron-right" />
 				</button>
 			)}
 
@@ -319,7 +320,7 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 				aria-label={thumbAxis === "vertical" ? "Scroll thumbnails up" : "Scroll thumbnails left"}
 				onClick={() => scrollThumbs(-1)}
 			>
-				{thumbAxis === "vertical" ? "▲" : "‹"}
+				<Icon name={thumbAxis === "vertical" ? "chevron-up" : "chevron-left"} />
 			</button>
 
 			<div
@@ -358,7 +359,7 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 				aria-label={thumbAxis === "vertical" ? "Scroll thumbnails down" : "Scroll thumbnails right"}
 				onClick={() => scrollThumbs(1)}
 			>
-				{thumbAxis === "vertical" ? "▼" : "›"}
+				<Icon name={thumbAxis === "vertical" ? "chevron-down" : "chevron-right"} />
 			</button>
 		</div>
 	);

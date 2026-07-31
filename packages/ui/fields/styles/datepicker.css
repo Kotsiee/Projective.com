@@ -1,7 +1,9 @@
 /*
  * DatePicker — calendar popup / inline grid on the token contract. Composes `.ui-field` for the
- * popup trigger. Token-only (no hardcoded hex/radius/duration/shadow); the panel is an interactive
- * surface so a full border/elevation is allowed (§B.4).
+ * popup trigger. The popup panel is projected into `document.body`, so every panel rule must stand
+ * alone (a descendant selector rooted at `.ui-datepicker` would no longer reach it). Token-only (no
+ * hardcoded hex/radius/duration/shadow); the panel is an interactive surface so a full
+ * border/elevation is allowed (§B.4).
  */
 
 .ui-datepicker {
@@ -44,7 +46,7 @@
 	position: fixed;
 	inset-block-start: var(--float-top, 0);
 	inset-inline-start: var(--float-left, 0);
-	z-index: 1000;
+	z-index: var(--z-portal, var(--z-popover));
 	padding: var(--space-3);
 	background: var(--surface-1);
 	border: 1px solid var(--border-subtle);
@@ -214,9 +216,10 @@
 	color: var(--on-primary);
 	font-weight: 600;
 }
+/* Was `--text-secondary` at `opacity: 0.4` — 2.30:1, the least legible thing in the taxonomy, on the
+   one control where reading the greyed-out dates is how you understand the booking window. */
 .ui-datepicker__day--disabled {
-	color: var(--text-secondary);
-	opacity: 0.4;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
 }
 /* #endregion */

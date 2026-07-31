@@ -8,6 +8,8 @@ import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
 
@@ -59,6 +61,11 @@ interface VisibleRow {
  * WAI-ARIA tree pattern (`role="tree"`/`treeitem`, `aria-level`, `aria-expanded`,
  * `aria-selected`/`aria-checked`) with arrow-key traversal, expand/collapse, an optional label
  * filter, and outside/Escape dismissal.
+ *
+ * The PANEL is projected into `document.body` via {@link BodyPortal} and claims a live stacking index
+ * from {@link useOverlayStack}, so it escapes any ancestor that would clip it (`overflow: hidden`) or
+ * re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) — the trap a Dialog panel
+ * sets. The trigger stays in place and the id-based ARIA wiring survives the move.
  */
 export function TreeSelect(props: TreeSelectProps): JSX.Element {
 	const {
@@ -122,6 +129,7 @@ export function TreeSelect(props: TreeSelectProps): JSX.Element {
 	): string[] => [node.key, ...(node.children?.length ? node.children.flatMap(subtreeKeys) : [])];
 	// #endregion
 
+	const stack = useOverlayStack({ active: open.value, layer: "popover" });
 	const float = useFloating({ open: open.value, triggerRef, panelRef, placement: "bottom-start" });
 	useDismiss({ open: open.value, onDismiss: () => close(), panelRef, triggerRef });
 
@@ -406,44 +414,47 @@ export function TreeSelect(props: TreeSelectProps): JSX.Element {
 			</button>
 
 			{open.value && (
-				<div
-					ref={panelRef}
-					id={panelId}
-					class="ui-treeselect__panel"
-					data-placement={float?.placement}
-					style={styleVars({
-						"--ts-top": float ? `${float.top}px` : undefined,
-						"--ts-left": float ? `${float.left}px` : undefined,
-						"--ts-width": float ? `${float.width}px` : undefined,
-					})}
-				>
-					{filter && (
-						<div class="ui-treeselect__filter">
-							<input
-								type="text"
-								class="ui-treeselect__filter-input"
-								placeholder="Filter"
-								value={filterText.value}
-								aria-label="Filter nodes"
-								onInput={(e) => (filterText.value = e.currentTarget.value)}
-							/>
-						</div>
-					)}
+				<BodyPortal>
 					<div
-						ref={treeRef}
-						id={treeId}
-						role="tree"
-						tabIndex={0}
-						aria-multiselectable={mode !== "single" || undefined}
-						aria-activedescendant={activeDescId}
-						class="ui-treeselect__tree"
-						onKeyDown={onTreeKeyDown}
+						ref={panelRef}
+						id={panelId}
+						class="ui-treeselect__panel"
+						data-placement={float?.placement}
+						style={styleVars({
+							"--ts-top": float ? `${float.top}px` : undefined,
+							"--ts-left": float ? `${float.left}px` : undefined,
+							"--ts-width": float ? `${float.width}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
 					>
-						{visibleRows.length === 0
-							? <div class="ui-treeselect__empty">No results</div>
-							: visibleRows.map(renderRow)}
+						{filter && (
+							<div class="ui-treeselect__filter">
+								<input
+									type="text"
+									class="ui-treeselect__filter-input"
+									placeholder="Filter"
+									value={filterText.value}
+									aria-label="Filter nodes"
+									onInput={(e) => (filterText.value = e.currentTarget.value)}
+								/>
+							</div>
+						)}
+						<div
+							ref={treeRef}
+							id={treeId}
+							role="tree"
+							tabIndex={0}
+							aria-multiselectable={mode !== "single" || undefined}
+							aria-activedescendant={activeDescId}
+							class="ui-treeselect__tree"
+							onKeyDown={onTreeKeyDown}
+						>
+							{visibleRows.length === 0
+								? <div class="ui-treeselect__empty">No results</div>
+								: visibleRows.map(renderRow)}
+						</div>
 					</div>
-				</div>
+				</BodyPortal>
 			)}
 		</div>
 	);

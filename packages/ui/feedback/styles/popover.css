@@ -14,8 +14,8 @@
 	max-inline-size: min(var(--container-sm), calc(100vw - var(--space-6)));
 	color: var(--on-surface);
 	background: var(--surface);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
 	box-shadow: var(--elevation-high);
 	outline: none;
 	opacity: 0;
@@ -46,7 +46,7 @@
 	inline-size: 0.625rem;
 	block-size: 0.625rem;
 	background: var(--surface);
-	border: 1px solid var(--border-subtle);
+	border: var(--hairline);
 	transform: rotate(45deg);
 }
 .ui-popover--bottom .ui-popover__arrow,

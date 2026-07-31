@@ -1,5 +1,5 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import "../styles/draggable-popover.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
@@ -65,8 +65,21 @@ const MIN_W = 256;
 const MIN_H = 128;
 /** Gap kept between a resized edge and the viewport edge so the panel never spills off-screen. */
 const RESIZE_MARGIN = 12;
-/** Module-level "top" z so the most-recently-touched window floats above its siblings. */
+/**
+ * Highest offset currently claimed by an open window, so the most-recently-touched one floats above
+ * its siblings. Bounded on purpose: an unreleased running counter climbs one step per interaction, and
+ * since `--z-draggable` (1500) sits only 100 below `--z-toast` and 200 below `--z-tooltip`, a couple of
+ * hundred clicks in a long-lived panel used to lift the window above both.
+ */
 let zTop = 0;
+/** Offsets held by currently-mounted windows — `zTop` is derived from these, never accumulated. */
+const liveZ = new Set<number>();
+
+/** Recompute the ceiling from live windows; resets to 0 once the last one closes. */
+function releaseZ(mine: number): void {
+	liveZ.delete(mine);
+	zTop = liveZ.size === 0 ? 0 : Math.max(...liveZ);
+}
 
 /**
  * DraggablePopover — a **non-modal**, freely draggable floating window. Deliberately unlike
@@ -152,7 +165,21 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 		};
 	};
 
-	const lift = () => setZ(++zTop);
+	const lift = () => {
+		setZ((prev) => {
+			if (prev !== 0 && prev === zTop) return prev; // already on top — don't burn a step
+			liveZ.delete(prev);
+			const next = ++zTop;
+			liveZ.add(next);
+			return next;
+		});
+	};
+
+	// Release this window's claim on unmount so the ceiling falls back with it (and resets to 0 once
+	// the last window closes) instead of ratcheting up for the life of the session.
+	const zRef = useRef(z);
+	zRef.current = z;
+	useEffect(() => () => releaseZ(zRef.current), []);
 	const close = () => ctrl.set(false);
 
 	// #region Drag (Pointer Events on the handle)

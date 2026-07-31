@@ -38,6 +38,11 @@ export interface ConfirmPopupProps {
 	targetRef?: RefObject<HTMLElement>;
 	/** The confirmation prompt. */
 	message: string | VNode;
+	/**
+	 * Accessible name (default `"Confirmation"`). `alertdialog` requires a name distinct from its
+	 * description, and the message is already wired as the description.
+	 */
+	label?: string;
 	/** Optional leading icon/glyph node. */
 	icon?: VNode;
 	/** Accept button label (default `"Yes"`). */
@@ -77,6 +82,7 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 		trigger,
 		targetRef,
 		message,
+		label = "Confirmation",
 		icon,
 		acceptLabel = "Yes",
 		rejectLabel = "No",
@@ -112,12 +118,12 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 		onReject?.();
 	};
 
-	useFocusTrap({ active: mounted, containerRef: panelRef });
+	useFocusTrap({ active: mounted, containerRef: panelRef, inertBackground: false });
 	useDismiss({
 		open: mounted,
-		onDismiss: () => {
-			if (stack.isTop) reject();
-		},
+		enabled: stack.isTop,
+		// Dismissal is unambiguously a rejection — never the accept path.
+		onDismiss: reject,
 		panelRef,
 		triggerRef: anchorRef,
 	});
@@ -149,6 +155,7 @@ export function ConfirmPopup(props: ConfirmPopupProps): JSX.Element {
 						ref={panelRef}
 						id={panelId}
 						role="alertdialog"
+						aria-label={label}
 						aria-describedby={msgId}
 						data-state={state}
 						class={cx("ui-confirm-popup", className)}

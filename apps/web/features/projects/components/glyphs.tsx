@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import type { ProjectFormat } from "../types/projects-types.ts";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * Feed glyphs — minimal 1em `currentColor` stroke icons for the projects lane. Co-located inline SVG
@@ -9,20 +10,7 @@ import type { ProjectFormat } from "../types/projects-types.ts";
 
 // #region Base
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="1em"
-			height="1em"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			{...props}
-		/>
-	);
+	return <IconShell {...props} />;
 }
 // #endregion
 

@@ -1,45 +1,45 @@
 /* ShellTopBar (Red zone) — top horizontal utility bar. Sticky to the viewport top over the native
    window scroll (Part D window-scroll model). Glass on guest + mobile (no boxed lines). */
 .ui-shell-topbar {
-    grid-area: topbar;
-    position: sticky;
-    inset-block-start: 0;
-    z-index: var(--z-nav);
-    block-size: var(--shell-topbar-h);
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding-inline: var(--space-3);
-    background: var(--surface-2);
-    color: var(--on-surface);
+	grid-area: topbar;
+	position: sticky;
+	inset-block-start: 0;
+	z-index: var(--z-nav);
+	block-size: var(--shell-topbar-h);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding-inline: var(--space-3);
+	background: var(--surface-2);
+	color: var(--on-surface);
 
-    --frame-radius: var(--radius-container-lg);
-    --frame-bl-radius: 0;
+	--frame-radius: var(--radius-container-lg);
+	--frame-bl-radius: 0;
 }
 
 .ui-shell-topbar__lead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
 }
 
 /* User shell (Part D.1): the lead block fuses brand + integrated search and grows to fill the row so
    the search stretches, while the trailing action tray stays pinned right. */
 .ui-app-shell--user .ui-shell-topbar__lead {
-    flex: 1 1 auto;
-    min-inline-size: 0;
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
 .ui-shell-topbar__center {
-    flex: 0 1 min(420px, 100%);
-    margin-inline: auto;
+	flex: 0 1 min(420px, 100%);
+	margin-inline: auto;
 }
 
 .ui-shell-topbar__actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-inline-start: auto;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
 }
 
 /*
@@ -48,18 +48,18 @@
  * deliberately suppressed (middle-nav.css) because THIS element already traces the Blue frame's seam.
  */
 .ui-shell-topbar__border {
-    display: block;
-    position: fixed;
-    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
-    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
-    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
-    border-block-start: var(--hairline);
-    border-inline-start: var(--hairline);
-    border-start-start-radius: var(--frame-radius);
-    border-end-start-radius: var(--frame-bl-radius);
-    z-index: 0;
-    pointer-events: none;
+	display: block;
+	position: fixed;
+	inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+	inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+	block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+	inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+	border-block-start: var(--hairline);
+	border-inline-start: var(--hairline);
+	border-start-start-radius: var(--frame-radius);
+	border-end-start-radius: var(--frame-bl-radius);
+	z-index: 0;
+	pointer-events: none;
 }
 
 /*
@@ -73,7 +73,7 @@
  * surface fill at that origin (§B.4).
  */
 .ui-app-shell:not(:has(.ui-middle-nav)) .ui-shell-topbar__border {
-    display: none;
+	display: none;
 }
 
 /* Glass: transparent + backdrop blur, with a single hairline instead of a heavy boxed border. The
@@ -81,37 +81,40 @@
    block for the `position: fixed` overlay Portals nested in the trailing actions (which would clip
    Drawers/Popovers to the header height). See app-shell.css for the full rationale. */
 .ui-shell-topbar--glass {
-    background: transparent;
-    border-block-end: 1px solid color-mix(in srgb, var(--outline) 30%, transparent);
+	background: transparent;
+	/* Was a hand-written `--outline 30%` — the token is 20%, and this seam sat beside frame contours
+	   drawn at the token value, so one region edge read heavier than its neighbours for no reason. */
+	border-block-end: var(--hairline);
+	box-shadow: var(--elevation-low);
 }
 
 .ui-shell-topbar--glass::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface) 62%, transparent);
-    backdrop-filter: blur(var(--glass-blur, 18px));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-    pointer-events: none;
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-chrome), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	pointer-events: none;
 }
 
 @media (max-width: 767px) {
-    .ui-shell-topbar {
-        position: sticky;
-        inset-block-start: 0;
-        z-index: var(--z-nav, 200);
-        background: transparent;
-    }
+	.ui-shell-topbar {
+		position: sticky;
+		inset-block-start: 0;
+		z-index: var(--z-nav, 200);
+		background: transparent;
+	}
 
-    .ui-shell-topbar::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        z-index: -1;
-        background: color-mix(in srgb, var(--surface) 62%, transparent);
-        backdrop-filter: blur(var(--glass-blur, 18px));
-        -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-        pointer-events: none;
-    }
+	.ui-shell-topbar::before {
+		content: "";
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		background: color-mix(in srgb, var(--surface) var(--glass-veil-chrome), transparent);
+		backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+		-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+		pointer-events: none;
+	}
 }

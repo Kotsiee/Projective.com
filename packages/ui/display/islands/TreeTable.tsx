@@ -9,6 +9,7 @@ import { useVirtualScroll } from "../../hooks/useVirtualScroll.ts";
 import type { SortState, TreeNode } from "../../types/mod.ts";
 import { compareValues, getFieldValue, nextSortDir, toText } from "../core/collection.ts";
 import type { TableColumn } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Tree-table selection strategy. `null` disables selection. */
@@ -354,7 +355,7 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 											toggleExpand(fn);
 										}}
 									>
-										<span class="ui-treetable__toggle-icon" aria-hidden="true">▸</span>
+										<Icon name="caret-right" class="ui-treetable__toggle-icon" />
 									</button>
 								)
 								: (
@@ -475,13 +476,14 @@ export function TreeTable<T>(props: TreeTableProps<T>): JSX.Element {
 									{col.headerTemplate ? col.headerTemplate(col) : (col.header ?? col.field)}
 								</span>
 								{col.sortable && (
-									<span class="ui-treetable__sort-icon" aria-hidden="true">
-										{ariaSortFor(col.field) === "ascending"
-											? "▲"
+									<Icon
+										class="ui-treetable__sort-icon"
+										name={ariaSortFor(col.field) === "ascending"
+											? "sort-asc"
 											: ariaSortFor(col.field) === "descending"
-											? "▼"
-											: "⇅"}
-									</span>
+											? "sort-desc"
+											: "sort"}
+									/>
 								)}
 							</button>
 						</div>

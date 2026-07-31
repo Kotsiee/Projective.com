@@ -24,9 +24,9 @@ function previewOf(m: ChatMessage): string {
 	const who = m.isOwn ? "You" : m.sender?.name ?? "";
 	let body = m.text.trim();
 	if (!body) {
-		if (m.audio) body = "🎤 Voice message";
+		if (m.audio) body = "Voice message";
 		else if (m.attachments.length > 0) {
-			body = `📎 ${m.attachments.length} attachment${m.attachments.length > 1 ? "s" : ""}`;
+			body = `${m.attachments.length} attachment${m.attachments.length > 1 ? "s" : ""}`;
 		} else body = "Message";
 	}
 	return who ? `${who}: ${body}` : body;

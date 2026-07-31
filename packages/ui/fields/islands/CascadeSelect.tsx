@@ -8,6 +8,8 @@ import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
 
@@ -46,6 +48,11 @@ interface ActivePos {
  * commits its value and closes. Branch items expose `aria-haspopup`/`aria-expanded`; keyboard
  * traversal is ArrowUp/Down within a column, ArrowRight to enter a submenu, ArrowLeft to exit, and
  * Enter/Space to open a branch or select a leaf.
+ *
+ * The PANEL is projected into `document.body` via {@link BodyPortal} and claims a live stacking index
+ * from {@link useOverlayStack}, so it escapes any ancestor that would clip it (`overflow: hidden`) or
+ * re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) — the trap a Dialog panel
+ * sets. The trigger stays in place and the id-based ARIA wiring survives the move.
  */
 export function CascadeSelect(props: CascadeSelectProps): JSX.Element {
 	const {
@@ -88,6 +95,7 @@ export function CascadeSelect(props: CascadeSelectProps): JSX.Element {
 		return map;
 	}, [options]);
 
+	const stack = useOverlayStack({ active: open.value, layer: "popover" });
 	const float = useFloating({
 		open: open.value,
 		triggerRef,
@@ -245,59 +253,62 @@ export function CascadeSelect(props: CascadeSelectProps): JSX.Element {
 			</button>
 
 			{open.value && (
-				<div
-					ref={panelRef}
-					id={panelId}
-					role="tree"
-					tabIndex={0}
-					aria-activedescendant={activeDescId}
-					class="ui-cascadeselect__panel"
-					data-placement={float?.placement}
-					style={styleVars({
-						"--cs-top": float ? `${float.top}px` : undefined,
-						"--cs-left": float ? `${float.left}px` : undefined,
-					})}
-					onKeyDown={onKeyDown}
-				>
-					{columns.map((column, col) => (
-						<div key={col} role="group" class="ui-cascadeselect__column">
-							{column.map((opt, idx) => {
-								const branch = isBranch(opt);
-								const isActive = activePos.col === col && activePos.idx === idx;
-								const expanded = branch && path.value[col] === opt;
-								return (
-									<div
-										key={valueOf(opt)}
-										id={`${panelId}-c${col}-i${idx}`}
-										role="treeitem"
-										aria-level={col + 1}
-										aria-haspopup={branch || undefined}
-										aria-expanded={branch ? expanded : undefined}
-										aria-selected={!branch && ctrl.signal.value === valueOf(opt)}
-										class={cx(
-											"ui-cascadeselect__item",
-											branch && "ui-cascadeselect__item--branch",
-											isActive && "ui-cascadeselect__item--active",
-											expanded && "ui-cascadeselect__item--expanded",
-										)}
-										onPointerEnter={() => {
-											active.value = { col, idx };
-											if (branch) enterBranch(col, opt);
-											else truncateTo(col);
-										}}
-										onClick={() => {
-											active.value = { col, idx };
-											activateItem(col, opt);
-										}}
-									>
-										<span class="ui-cascadeselect__item-label">{opt.label}</span>
-										{branch && <span class="ui-cascadeselect__item-caret" aria-hidden="true" />}
-									</div>
-								);
-							})}
-						</div>
-					))}
-				</div>
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						id={panelId}
+						role="tree"
+						tabIndex={0}
+						aria-activedescendant={activeDescId}
+						class="ui-cascadeselect__panel"
+						data-placement={float?.placement}
+						style={styleVars({
+							"--cs-top": float ? `${float.top}px` : undefined,
+							"--cs-left": float ? `${float.left}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
+						onKeyDown={onKeyDown}
+					>
+						{columns.map((column, col) => (
+							<div key={col} role="group" class="ui-cascadeselect__column">
+								{column.map((opt, idx) => {
+									const branch = isBranch(opt);
+									const isActive = activePos.col === col && activePos.idx === idx;
+									const expanded = branch && path.value[col] === opt;
+									return (
+										<div
+											key={valueOf(opt)}
+											id={`${panelId}-c${col}-i${idx}`}
+											role="treeitem"
+											aria-level={col + 1}
+											aria-haspopup={branch || undefined}
+											aria-expanded={branch ? expanded : undefined}
+											aria-selected={!branch && ctrl.signal.value === valueOf(opt)}
+											class={cx(
+												"ui-cascadeselect__item",
+												branch && "ui-cascadeselect__item--branch",
+												isActive && "ui-cascadeselect__item--active",
+												expanded && "ui-cascadeselect__item--expanded",
+											)}
+											onPointerEnter={() => {
+												active.value = { col, idx };
+												if (branch) enterBranch(col, opt);
+												else truncateTo(col);
+											}}
+											onClick={() => {
+												active.value = { col, idx };
+												activateItem(col, opt);
+											}}
+										>
+											<span class="ui-cascadeselect__item-label">{opt.label}</span>
+											{branch && <span class="ui-cascadeselect__item-caret" aria-hidden="true" />}
+										</div>
+									);
+								})}
+							</div>
+						))}
+					</div>
+				</BodyPortal>
 			)}
 		</div>
 	);

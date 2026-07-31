@@ -397,15 +397,12 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-1);
-	padding: var(--space-2);
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
 }
 .proj-etags__chip {
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
-	padding: 2px 0.25rem 2px 0.55rem;
+	gap: var(--space-px);
+	padding: var(--space-px) var(--space-1) var(--space-px) var(--space-2);
 	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	font-size: 0.74rem;
@@ -423,8 +420,8 @@
 	cursor: pointer;
 }
 .proj-etags__x svg {
-	inline-size: 0.8rem;
-	block-size: 0.8rem;
+	inline-size: var(--icon-2xs);
+	block-size: var(--icon-2xs);
 }
 .proj-etags__x:hover {
 	color: var(--on-surface);

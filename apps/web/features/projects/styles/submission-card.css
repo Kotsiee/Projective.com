@@ -11,7 +11,7 @@
 	block-size: 100%;
 	padding: 0;
 	border: none;
-	border-radius: var(--radius-lg);
+	border-radius: var(--card-radius);
 	background: transparent;
 	color: inherit;
 	text-align: start;
@@ -31,10 +31,12 @@
 	position: relative;
 	flex: 0 0 auto;
 	inline-size: 100%;
-	aspect-ratio: 1 / 1;
-	border-radius: var(--radius-lg);
+	aspect-ratio: var(--card-media-ratio-square);
+	border-radius: var(--card-radius);
 	overflow: hidden;
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	/* Resting tonal separation (`--tint-soft`), one step above the card's `--tint-subtle` hover wash —
+	   at equal tints the frame and the card merged into one rounded rect on hover. Matches FileCard. */
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -48,12 +50,12 @@
 }
 .subm-card__status {
 	position: absolute;
-	inset-block-start: 6px;
-	inset-inline-end: 6px;
+	inset-block-start: var(--space-1);
+	inset-inline-end: var(--space-1);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	padding: 3px;
+	padding: 0.1875rem;
 	border-radius: var(--radius-full);
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
@@ -73,12 +75,12 @@
 
 .subm-card__meta {
 	flex: 0 0 auto;
-	block-size: 62px;
+	block-size: 3.875rem;
 	min-inline-size: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	padding: 6px 4px 0;
+	gap: var(--space-px);
+	padding: var(--space-2) var(--space-1) 0;
 }
 .subm-card__name {
 	font-size: 0.8125rem;

@@ -23,6 +23,12 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
+ * Fallback delay for the enter flip. `requestAnimationFrame` is never serviced while a tab is hidden
+ * or throttled, so the frame alone cannot be trusted to produce the settled state.
+ */
+const ENTER_WATCHDOG_MS = 120;
+
+/**
  * @param open Whether the owner wants the node present.
  * @param exitMs Exit-transition duration before unmount (default 250ms, matches `--dur-medium`).
  */
@@ -33,9 +39,23 @@ export function usePresence(open: boolean, exitMs = 250): Presence {
 	useEffect(() => {
 		if (open) {
 			setMounted(true);
-			// Flip to "open" on the next frame so the mount→open transition actually runs.
+			// Reduced motion wants no enter transition at all, so open in the same commit — this also
+			// removes the frame dependency entirely for those users.
+			if (prefersReducedMotion()) {
+				setState("open");
+				return;
+			}
+			// Flip to "open" on the next frame so the mount→open transition actually runs. Every panel's
+			// resting CSS is `opacity: 0`, corrected only by `[data-state="open"]`, so the settled state
+			// must never depend on a frame that may not arrive: a hidden or backgrounded tab never
+			// services rAF and would leave a mounted, scroll-locked, focus-trapped, invisible overlay.
+			// The timer is throttled there but still fires, so it force-opens instead.
 			const raf = requestAnimationFrame(() => setState("open"));
-			return () => cancelAnimationFrame(raf);
+			const watchdog = setTimeout(() => setState("open"), ENTER_WATCHDOG_MS);
+			return () => {
+				cancelAnimationFrame(raf);
+				clearTimeout(watchdog);
+			};
 		}
 		setState("closed");
 		const wait = prefersReducedMotion() ? 0 : exitMs;

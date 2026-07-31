@@ -436,9 +436,13 @@
 	display: inline-flex;
 }
 
-.wlt-footerrig__density {
-	display: flex;
-	align-items: center;
+/*
+ * The density control is the SHARED `.ui-viewrig` (layout, mode glyph and slider cap live in
+ * `features/shell/styles/view-zoom-rig.css`), so this only strips the padding it would otherwise add
+ * inside a band that already pads itself, and holds a floor so the track never collapses.
+ */
+.wlt-footerrig .wlt-footerrig__density {
+	padding: 0;
 	min-inline-size: 9rem;
 }
 

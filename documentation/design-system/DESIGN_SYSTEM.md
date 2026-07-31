@@ -34,20 +34,20 @@ values, expressed here as the token contract components consume.
 
 #### Brand & semantic seeds
 
-| Token                   | Light       | Dark                                            | Role                                   |
-| :---------------------- | :---------- | :---------------------------------------------- | :------------------------------------- |
-| `--brand` / `--primary` | `#288690`   | `#288690` (tonal-lifted for contrast, see §A.2) | Primary action, active state           |
-| `--success`             | `#268C66`   | tonal                                           | "Complete" / approved                  |
-| `--warning`             | `#D98216`   | tonal                                           | "In Progress" / time-sensitive         |
-| `--danger`              | `#D94141`   | tonal                                           | "Incomplete" / error / no-show         |
+| Token                   | Light       | Dark                                            | Role                                                   |
+| :---------------------- | :---------- | :---------------------------------------------- | :----------------------------------------------------- |
+| `--brand` / `--primary` | `#288690`   | `#288690` (tonal-lifted for contrast, see §A.2) | Primary action, active state                           |
+| `--success`             | `#268C66`   | tonal                                           | "Complete" / approved                                  |
+| `--warning`             | `#D98216`   | tonal                                           | "In Progress" / time-sensitive                         |
+| `--danger`              | `#D94141`   | tonal                                           | "Incomplete" / error / no-show                         |
 | `--info`                | `#3D7BD9`   | tonal                                           | Neutral-informational state (Ready / To do / advisory) |
-| `--bg`                  | `#FAFAFA`   | `#1A1A1A`                                       | Primary canvas                         |
-| `--surface`             | `#FFFFFF`   | `#212121`                                       | Elevated cards/headers/sidebar         |
-| `--text-main`           | `#1A1A1A`   | `#FFFFFF`                                       | Body & headings                        |
-| `--text-secondary`      | `#666666`   | `#B3B3B3`                                       | Labels, muted info                     |
-| `--text-disabled`       | `#B3B3B3`   | tonal                                           | Non-interactive                        |
-| `--border-subtle`       | `#E6E6E6`   | tonal                                           | Razor-thin indicators only (§B.4)      |
-| `--focus-ring`          | `#28869066` | `#28869066`                                     | 3px focus glow, all focusable elements |
+| `--bg`                  | `#FAFAFA`   | `#1A1A1A`                                       | Primary canvas                                         |
+| `--surface`             | `#FFFFFF`   | `#212121`                                       | Elevated cards/headers/sidebar                         |
+| `--text-main`           | `#1A1A1A`   | `#FFFFFF`                                       | Body & headings                                        |
+| `--text-secondary`      | `#666666`   | `#B3B3B3`                                       | Labels, muted info                                     |
+| `--text-disabled`       | `#B3B3B3`   | tonal                                           | Non-interactive                                        |
+| `--border-subtle`       | `#E6E6E6`   | tonal                                           | Razor-thin indicators only (§B.4)                      |
+| `--focus-ring`          | `#28869066` | `#28869066`                                     | 3px focus glow, all focusable elements                 |
 
 #### Contrast engineering (light **and** dark)
 
@@ -178,15 +178,16 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
   each multiplied by `--radius-scale`. The `2xl`/`3xl` steps are the **luxury container curvatures**
   reserved for large panel intersections (Part D shell frames).
   - **`--radius-md` is an alias of `--radius-base`**, not a seventh step. The ramp's third step is
-    named `base`, but a ramp reading `xs / sm / … / lg / xl` reads as if position three were `md`, so
-    authors reached for `var(--radius-md)` — which resolved to nothing and computed `border-radius`
-    back to its initial `0`, rendering square. The alias is emitted so the trap cannot fire again;
-    prefer `--radius-base` in new code, and never give `md` a distinct value.
+    named `base`, but a ramp reading `xs / sm / … / lg / xl` reads as if position three were `md`,
+    so authors reached for `var(--radius-md)` — which resolved to nothing and computed
+    `border-radius` back to its initial `0`, rendering square. The alias is emitted so the trap
+    cannot fire again; prefer `--radius-base` in new code, and never give `md` a distinct value.
   - **`--radius-full 999px`** is the terminal **pill** step and the only one **not** multiplied by
     `--radius-scale`. Every other step is a curvature _amount_ and the knob is right to scale it; a
-    pill is a _shape_, and `--radius-scale: 0` would square every chip, switch and avatar frame while
-    the `border-radius: 50%` circles beside them stayed round. **`50%` is a separate idiom** — the
-    circle, tied to the element's own box — and is deliberately not tokenised into the radius ramp.
+    pill is a _shape_, and `--radius-scale: 0` would square every chip, switch and avatar frame
+    while the `border-radius: 50%` circles beside them stayed round. **`50%` is a separate idiom** —
+    the circle, tied to the element's own box — and is deliberately not tokenised into the radius
+    ramp.
 - **Fluid container radii (Part D):**
   `--radius-container-lg: clamp(--radius-lg, 0.6vw + 8px,
   --radius-2xl)` (nested-frame exposed
@@ -202,8 +203,9 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
   low-contrast **single-edge** seam (§B.4). Applied on ONE edge only (header↔body, sidebar↔body
   region seams), never as a four-sided box on non-interactive content. **20%, not 40%** — this
   section documented 40% while the code shipped 20%, a 2× discrepancy on §B.4's most-used separation
-  tier, and 19 consumers then re-derived the mix by hand at 16/18/20/22/24% so the seam had no single
-  visual weight anywhere in the app. Reconciled to the code; every consumer now reads the token.
+  tier, and 19 consumers then re-derived the mix by hand at 16/18/20/22/24% so the seam had no
+  single visual weight anywhere in the app. Reconciled to the code; every consumer now reads the
+  token.
   - **`--hairline-strong` (`--outline` at 40%)** is the visible sibling, for a real border on an
     **interactive** element — the only place §B.4 permits a full box. It exists because two features
     had independently re-derived exactly that value (`--lp-hair-strong`, `--ex-hair-strong`). A raw
@@ -211,30 +213,47 @@ everywhere. Adjusting them re-themes the whole app; **components never special-c
 - **Elevation ramp:** Low `0 2px 4px /.05` · Medium `0 4px 12px /.1` · High `0 8px 24px /.15`, each
   scaled by `--shadow-intensity`. Reserved: Low = cards, Medium = hover/sidebar header, High =
   modals/popovers.
+- **Card rhythm — `--card-pad` / `-media` / `-tight`, `--card-gap` / `-tight`, `--card-radius` /
+  `-media`, `--card-media-ratio` / `-square`.** The padding, gap, corner and media proportion every
+  card family reads. It lives in `packages/ui/styles/index.css` rather than in `display/card.css`
+  because component CSS reaches a page **only through an island bundle**, while the token sheet is
+  imported unconditionally by `apps/web/client.ts` — so a server-rendered card family can consume
+  the contract even where it cannot consume the component. That gap is why every family had
+  re-derived its own values and why no two agreed: five body paddings, seven radii and three media
+  ratios across eight families. **Two densities, deliberately not one:** a CONSOLE card is text-led
+  and scanned in bulk (roster rows, file tiles, listing cells); a MEDIA card is image-led and
+  scanned one at a time (explore, marketing), and takes the larger corner because `--radius-lg` on a
+  16:10 photograph reads as a clipped rectangle rather than a rounded one. `--card-radius-media`
+  settles a drift with no defensible origin — explore shipped `calc(var(--radius-xl) * 1.4)`
+  (22.4px) and marketing `calc(var(--radius-xl) * 1.5)` (24px), two hand-tuned multipliers of the
+  same token 1.6px apart, neither reachable from the ramp; `--radius-2xl` is 24px, so marketing was
+  already on it by accident. A card family declaring its own radius, media ratio or body padding is
+  a finding.
 - **Sizing:** header `48px`, sidebar `64px` collapsed / `224px` expanded (`--shell-nav-block 48px`
   collapsed-rail square hit-target), input height `40px`. All spacing/type in **`rem`** for zoom &
   user font-scaling (per spec §Accessibility) — with the single documented exception of
   `--space-px`, below.
-- **Spacing ramp:** `--space-0 0` · **`--space-px 2px`** · `--space-1 0.25rem` · `--space-2 0.5rem` ·
-  `--space-3 0.75rem` · `--space-4 1rem` · `--space-5 1.5rem` · `--space-6 2rem` · `--space-7 3rem` ·
-  `--space-8 4rem`. Applied asymmetrically per §B.4 (more space above a heading than below it).
-  - **`--space-px` is the sub-ramp step and the one value deliberately in `px`.** The ramp started at
-    4px, so dense chrome — segmented meters, chip rows, calendar cells, icon rails — had nowhere to go
-    and reached for a literal, 134 times. It is a graphical **seam** between adjacent marks, not
-    content rhythm: content spacing should grow when a reader scales their type, a seam should not, or
-    at 200% zoom a 2px hairline becomes a 4px hole in a bar meant to read as one object. Both feature
-    token layers had independently invented the identical token (`--wlt-seg-gap`, `--wsp-seg-gap`),
-    which is what earned it a place in the global contract.
+- **Spacing ramp:** `--space-0 0` · **`--space-px 2px`** · `--space-1 0.25rem` · `--space-2 0.5rem`
+  · `--space-3 0.75rem` · `--space-4 1rem` · `--space-5 1.5rem` · `--space-6 2rem` ·
+  `--space-7 3rem` · `--space-8 4rem`. Applied asymmetrically per §B.4 (more space above a heading
+  than below it).
+  - **`--space-px` is the sub-ramp step and the one value deliberately in `px`.** The ramp started
+    at 4px, so dense chrome — segmented meters, chip rows, calendar cells, icon rails — had nowhere
+    to go and reached for a literal, 134 times. It is a graphical **seam** between adjacent marks,
+    not content rhythm: content spacing should grow when a reader scales their type, a seam should
+    not, or at 200% zoom a 2px hairline becomes a 4px hole in a bar meant to read as one object.
+    Both feature token layers had independently invented the identical token (`--wlt-seg-gap`,
+    `--wsp-seg-gap`), which is what earned it a place in the global contract.
 - **Surface structure (promoted from the feature layers).** `--track-recessed` · `--track-meter` ·
   `--hatch-color` · `--track-h 18px` / `--track-h-hi 24px` · `--pip-dot 7px` · `--band-gap` ·
   `--band-pad-block-end`(`-lg`) · `--row-h 3rem` / `--row-h-dense 2.25rem` · `--rig-row-h 1.75rem` ·
   `--chart-h 11rem` / `--chart-h-sm 9rem` · `--drawer-w min(30rem, 92vw)` · `--field-max 28rem` ·
   `--minor-size 0.55em` / `--minor-fade 0.62`. The **promotion rule** is the point: a value moves to
-  this layer only when two feature layers written independently arrived at it **without knowing about
-  each other**. That agreement is the evidence it is global; a value used once, however sensible,
-  stays feature-local. `--hatch-color`, `--track-recessed` and `--minor-fade` carry their
-  `data-contrast="high"` widening with them. Deliberately **not** promoted: the two sliver thresholds
-  and the two overspend tints, which disagree for real reasons.
+  this layer only when two feature layers written independently arrived at it **without knowing
+  about each other**. That agreement is the evidence it is global; a value used once, however
+  sensible, stays feature-local. `--hatch-color`, `--track-recessed` and `--minor-fade` carry their
+  `data-contrast="high"` widening with them. Deliberately **not** promoted: the two sliver
+  thresholds and the two overspend tints, which disagree for real reasons.
 
 ### A.4 Typography
 
@@ -246,11 +265,11 @@ channels has to actually render.
 - **Size — `--text-2xs … --text-3xl`**, all in `rem`. It is deliberately **two ramps end to end**,
   and the contract says so rather than claiming a single ratio: `2xs 0.6875` · `xs 0.75` ·
   `sm 0.8125` · `md 0.875` step by one pixel because the product is a dense console whose registers
-  are separated by tracking, weight and case as much as by size; `base 1` · `lg 1.125` · `xl 1.375` ·
-  `2xl 1.75` · `3xl 2.25` then run on a ~1.25 modular ramp, where size does the work again. A single
-  1.2 ratio through the dense band would jump 11 → 13 → 16 and leave label-vs-body nowhere to sit.
-  `--text-base` is `1rem` so the name keeps meaning what `rem` means; the product's dense body is
-  `--text-md`, and a reading surface uses `--text-base`.
+  are separated by tracking, weight and case as much as by size; `base 1` · `lg 1.125` · `xl 1.375`
+  · `2xl 1.75` · `3xl 2.25` then run on a ~1.25 modular ramp, where size does the work again. A
+  single 1.2 ratio through the dense band would jump 11 → 13 → 16 and leave label-vs-body nowhere to
+  sit. `--text-base` is `1rem` so the name keeps meaning what `rem` means; the product's dense body
+  is `--text-md`, and a reading surface uses `--text-base`.
 - **THE label register is `--text-xs` (0.75rem)**, uppercase, `--tracking-wide`, `--fw-semibold`.
   `--text-2xs` is micro (timestamps, counts, unit suffixes) and never a label — uppercase strips the
   ascender/descender cues a reader identifies a word by, so an all-caps label needs more size than
@@ -281,12 +300,12 @@ channels has to actually render.
 Accessibility is a set of **token overlays** toggled at the framework level (a `data-a11y-*`
 attribute on `:root` or a `<DesignSystemProvider>` scope), never per-component patches.
 
-| Theme                        | Trigger                                                         | Token effect                                                                                                                                                                                                |
-| :--------------------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Theme                        | Trigger                                                         | Token effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| :--------------------------- | :-------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Open-dyslexic typography** | `data-font="dyslexic"`                                          | Remaps `--font-sans`/`--font-reading`/`--font-mono` → OpenDyslexic (`local()` first, so an already-installed copy costs zero bytes); widens all three `--tracking-*`, raises all four `--leading-*`, shortens `--measure` to 55ch, collapses `--fw-*` to the face's only two masters, turns ligatures off, and replaces synthesised italics with a weight step. **The woff2 is the one asset the repo cannot ship** — see the `@font-face` snippet in `packages/ui/styles/index.css`; every other effect works without it. |
-| **Color-blindness shifts**   | `data-cvd="protan\|deutan\|tritan"`                             | Swaps status hues for a CVD-safe set and **adds a non-color channel** (icon/shape/label) to every status token so meaning never rides on hue alone — success gets a check glyph token, danger a cross, etc. |
-| **High contrast**            | `data-contrast="high"`                                          | Drives the Material `contrast` param (§A.2) to a wider tone separation; promotes `--border-subtle` to a visible `--outline`; forces `≥ 7:1` (AAA) text.                                                     |
-| **Reduced motion**           | `prefers-reduced-motion: reduce` **or** `data-motion="reduced"` | Every transition/spring collapses to `0ms` **jump-to-final** (per spec §Motion Reduction); ripples and theme-crossfades disabled; only opacity/position _end states_ apply. See §B.5.                       |
+| **Color-blindness shifts**   | `data-cvd="protan\|deutan\|tritan"`                             | Swaps status hues for a CVD-safe set and **adds a non-color channel** (icon/shape/label) to every status token so meaning never rides on hue alone — success gets a check glyph token, danger a cross, etc.                                                                                                                                                                                                                                                                                                                |
+| **High contrast**            | `data-contrast="high"`                                          | Drives the Material `contrast` param (§A.2) to a wider tone separation; promotes `--border-subtle` to a visible `--outline`; forces `≥ 7:1` (AAA) text.                                                                                                                                                                                                                                                                                                                                                                    |
+| **Reduced motion**           | `prefers-reduced-motion: reduce` **or** `data-motion="reduced"` | Every transition/spring collapses to `0ms` **jump-to-final** (per spec §Motion Reduction); ripples and theme-crossfades disabled; only opacity/position _end states_ apply. See §B.5.                                                                                                                                                                                                                                                                                                                                      |
 
 ```css
 @media (prefers-reduced-motion: reduce) {
@@ -326,6 +345,101 @@ independently of language, and the component layer is expected to mirror **for f
 > `SYSTEM_ARCHITECTURE.md` §Internationalization, Currency & Localization. Currency/number/date
 > **formatting** follows `locale`; money is stored in origin currency and displayed converted
 > (presentational only).
+
+---
+
+### A.7 The field token layer (`--fld-*`) and the state contract (merge gate)
+
+The `fields` sub-path ships 27 controls. An audit measured them rather than read them and found a
+good spine reaching only one family: the 10 controls that compose `.ui-field` were already
+pixel-identical, while the other 15 re-declared their own geometry and their own state vocabulary in
+parallel — **five** disabled opacities (0.40–0.55, measuring 2.30–5.04:1), **four** option-row
+heights across four sibling dropdowns (43.6 / 38.5 / 37.0 / 30.5px), **five** label typographies, and
+a `MultiSelect` that stood 20px taller than every sibling when empty. This section is the single
+token layer that ends that, and the state matrix every control must satisfy to ship.
+
+**A.7.1 The layer lives on `:root`, not on `.ui-field`.** A control's label, hint, footer rig and —
+since the panels now render through `BodyPortal` — its dropdown all paint **outside** the control's
+subtree. A token scoped to `.ui-field` therefore falls back silently for four of five surfaces. This
+is the same defect the wallet layer shipped and fixed (`--wlt-*` scoped to `.wlt` while the lane,
+header band, footer rig and every portalled overlay rendered outside it); the fields layer is
+`:root`-scoped from the start, and every name carries the `--fld-` prefix so a global scope costs
+nothing in collisions.
+
+**A.7.2 Geometry is shared, not coincidental.** A `Select` and an `InputText` at the same size are
+pixel-identical: **32 / 40 / 48px** tall, **8 / 12 / 16px** inline padding, **6 / 8 / 12px** radius,
+**13 / 15 / 17px** type. `--fld-fs-md`/`-lg` sit a half-step above their neighbours on the §A.4 ramp
+**deliberately** — a value the user *typed* is read under different conditions than a table cell they
+scan. A **16px floor applies on coarse-pointer viewports** because iOS Safari zooms a sub-16px field
+on focus and does not zoom back out.
+
+**A.7.3 The canonical state matrix.** Every state declares the same **four channels — border ·
+surface · ink · ring — plus a mark.** A control that cannot compose `.ui-field` (Checkbox, Slider,
+Rating, Knob, ZoomSlider, ToggleSwitch…) keeps its own **shape** but reads the same channels, so a
+state reaches all 27 rather than only the input family.
+
+| State      | Border               | Surface              | Ink                  | Ring                    | Mark (`.ui-field__mark`)      | `aria-`                           |
+| :--------- | :------------------- | :------------------- | :------------------- | :---------------------- | :---------------------------- | :-------------------------------- |
+| `default`  | `--fld-rest-bd`      | `--fld-rest-bg`      | `--fld-rest-fg`      | —                       | none                          | —                                 |
+| `hover`    | `--fld-hover-bd`     | `--fld-rest-bg`      | `--fld-rest-fg`      | —                       | none                          | —                                 |
+| `focus`    | `--fld-focus-bd`     | `--fld-rest-bg`      | `--fld-rest-fg`      | `--focus-ring-shadow`   | none                          | —                                 |
+| `invalid`  | `--fld-invalid-bd`   | `--fld-invalid-bg`   | `--fld-rest-fg`      | composes with focus     | `--fld-invalid-mark` · AlertMark | `aria-invalid="true"`          |
+| `required` | `--fld-required-bd`  | `--fld-required-bg`  | `--fld-rest-fg`      | composes with focus     | `--fld-invalid-mark` · AlertMark | `aria-invalid` **on submit only** |
+| `gate`     | `--fld-gate-bd`      | `--fld-gate-bg`      | `--fld-rest-fg`      | composes with focus     | `--fld-warning-mark` · GateMark  | **not** `aria-invalid`         |
+| `success`  | `--fld-valid-bd`     | `--fld-rest-bg`      | `--fld-rest-fg`      | composes with focus     | `--fld-valid-mark` · CheckMark   | —                              |
+| `warning`  | `--fld-warning-bd`   | `--fld-warning-bg`   | `--fld-rest-fg`      | composes with focus     | `--fld-warning-mark` · AlertMark | —                              |
+| `loading`  | `--fld-rest-bd`      | `--fld-rest-bg`      | `--fld-loading-fg`   | —                       | BusyMark (`--fld-loading-alpha`) | `aria-busy="true"`             |
+| `readonly` | `--fld-readonly-bd`  | `--fld-readonly-bg`  | `--fld-rest-fg`      | `--focus-ring-shadow`   | none                          | `readonly` (**still focusable**)  |
+| `disabled` | faded by `--fld-disabled-mix` | **unchanged** | faded by `--fld-disabled-mix` | none        | none                          | `disabled`                        |
+
+`required`/`gate` are the two-tier creation gate (see the §C.1 note): `required` is needed **now** to
+create the base record and drives the danger ramp; `gate` is optional to draft but needed to
+**publish**, drives the warning ramp, and is deliberately **not** `aria-invalid` — a soft-informative
+state announced as an error is a lie to a screen reader.
+
+Four consequences a reviewer can check without opening a browser:
+
+- **One focus treatment.** `--focus-ring-shadow` on **every** control, custom ones included.
+  `--focus-ring-shadow-inset` is the only permitted variant, and only where an outset ring would be
+  clipped by a segmented group's own overflow. `--focus-ring` is a **colour**, not a shadow —
+  `box-shadow: var(--focus-ring)` is invalid CSS and paints **nothing**, which is how 56 controls
+  once shipped with no focus indicator at all. A single accent-derived colour cannot clear 3:1
+  against both the control fill and the page (the old ring measured **1.00:1** on `--primary` in
+  dark), which is why the canonical value is a two-tone halo+ink composite emitted by
+  `theme-engine.ts`.
+- **One disabled value.** `--fld-disabled-mix` (55%, widening to 78% under `data-contrast="high"`)
+  fades **ink and border, never the box**, measures **5.04:1**, and is **never** paired with
+  `pointer-events: none` — which silently cancels the `not-allowed` cursor sitting beside it. It
+  replaced five divergent opacities that measured 2.30–5.04:1. A state you cannot read is not a
+  state.
+- **Status never rides on hue** (§A.5). Each validation state paints its own
+  `--fld-{invalid,valid,warning}-mark`, and the control renders it into the `.ui-field__mark` slot
+  (`packages/ui/fields/styles/field.css:202`), which is **zero-width at rest** so an appearing mark
+  cannot reflow the row.
+- **A hit-target floor.** `.ui-hit` grows any part below `--fld-hit` (24px, WCAG 2.2 AA 2.5.8) via a
+  transparent pseudo-element — the 6px slider track, 18px handle, 12px zoom handle, 20px
+  checkbox/radio, 15px stepper. Density survives the floor instead of trading against it.
+
+**A.7.4 Panels are one object.** Every dropdown shares one option-row contract — `--fld-opt-h`
+(2.25rem), `--fld-opt-px`, `--fld-opt-fs`, `--fld-opt-radius` — over one panel contract:
+`--fld-panel-maxh` (18rem), `--fld-panel-minw` (**12rem**), `--fld-panel-radius`,
+`--fld-panel-border`. Four sibling dropdowns previously shipped four row heights (43.6 / 38.5 / 37.0
+/ 30.5px), three paddings and two type sizes. The min-width is load-bearing on its own: without it a
+71px trigger produced a 71px menu with every label ellipsised away. Every panel renders through
+`BodyPortal` with a `useOverlayStack` index — a `position: fixed` panel that merely stays in the tree
+is re-based by the glass chrome (measured: **324px** off) and clipped by the Dialog's own
+`overflow: hidden` (§B.10.4).
+
+> **Merge gate.** A `fields` PR that declares a control-local height, radius, inline padding, label
+> type, disabled opacity or focus treatment instead of reading `--fld-*` is not mergeable. Nor is a
+> control that implements fewer than the matrix's states, or ships an interactive part under
+> `--fld-hit` without `.ui-hit`.
+
+> **Two engine traps this layer has already hit** — both fail **silently**, so they are review items,
+> not runtime errors. This engine drops `min()` and nested `calc()` inside `min-inline-size` (use a
+> plain `var()`), and drops a `color-mix()` whose percentage arrives as `calc(var(…) * 100%)`. Hence
+> the deliberate pair: **`--fld-disabled-mix`** (a literal `%`, for mixes) and
+> **`--fld-disabled-alpha`** (unitless, for `opacity`). They are not duplicates.
 
 ---
 
@@ -452,6 +566,365 @@ sidebar (global rail, middle-nav lane, Project Details channel tree) and any den
 
 ---
 
+### B.7 Iconography (merge gate)
+
+§B.6 made the product icon-first. This section is what makes those icons **one set** rather than
+twenty-three lookalikes, and it exists because an audit found exactly that: 134 hand-authored
+`<svg>` roots across 75 files, **ten** declared `stroke-width` values, **seven** viewBoxes,
+**three** sizing models, **47** distinct rendered sizes, and a second complete icon family made of
+Unicode characters (`▾ ▸ ▲ ▼ ‹ › × ✓ ☰ ★ 👤 🗗`) living inside `packages/ui` itself. Measured end to
+end, the same set rendered its lightest glyph at **0.93px** and its heaviest at **1.80px** — a 1.93×
+spread, which is precisely what "assembled from different families" looks like.
+
+**B.7.1 One registry, one primitive.** Shared vocabulary lives in `@projective/ui/icons` and is
+imported by canonical name through `<Icon name="…" />`. A feature that owns genuine domain
+vocabulary (file kinds, fund states, session archetypes) keeps those glyphs in the feature, but
+renders them through `<IconShell>` so it inherits the contract rather than re-declaring one. No
+feature may hand-author a bare `<svg>` icon root.
+
+**B.7.2 One grid, one weight.** `viewBox="0 0 24 24"`, artwork inset ≥2 units per side,
+`fill="none"`, `stroke="currentColor"`, round cap and join. `stroke-width` is **not** authored on
+the glyph: `icon.css` sets it from `--icon-stroke` (1.5) against `.ui-icon` and pairs it with
+`vector-effect: non-scaling-stroke`, so ONE number renders identically from 12px to 32px. A CSS
+declaration outranks an SVG presentation attribute, which is what lets one stylesheet normalise the
+whole set — and what makes a per-glyph override impossible by construction. Because the stroke is
+decoupled from the grid, a legacy 20/16/14-unit glyph can join the set before it is redrawn; 24
+remains the target for proportion.
+
+**B.7.3 Size is inherited, not chosen.** An icon beside text takes `1em` and inherits the line's
+font-size. On the 24-unit grid that puts ~0.83em of live artwork against a system-sans cap height of
+~0.72em — the icon reads a touch larger than the caps, which is the optical overshoot a glyph needs
+so it does not look starved. **That is the relationship, and it stays correct at every type step for
+free.** Only an icon with NO adjacent text takes an explicit size, and only from the ramp:
+
+| Token        | px | Pairs with       | Use                                             |
+| :----------- | :- | :--------------- | :---------------------------------------------- |
+| `--icon-2xs` | 12 | `--text-2xs/xs`  | inline status pips, dense table marks           |
+| `--icon-xs`  | 14 | `--text-sm`      | lane rows, chips, table cells                   |
+| `--icon-sm`  | 16 | `--text-md/base` | **the default** — buttons, menu items, toolbars |
+| `--icon-md`  | 20 | `--text-lg`      | icon-only controls, tabs, header rigs           |
+| `--icon-lg`  | 24 | `--text-xl`      | nav rail, bottom nav, file-kind glyphs          |
+| `--icon-xl`  | 32 | `--text-2xl`     | section and empty-state marks                   |
+
+Every step is an integer pixel at a 16px root. **A fractional icon box is a defect**, not a rounding
+detail: it half-pixels the stroke, and a half-pixel stroke on a 14px glyph is the mush. A control's
+hit-target is NOT an icon size — it is governed by touch-target rules and keeps its own value.
+
+**B.7.4 Optical alignment.** Icon rows are `inline-flex; align-items: center` with `flex: none` on
+the icon, so a long label wraps or truncates and the glyph holds its box. The icon-to-label gap is
+`var(--space-2)` at `--icon-sm` and below, `var(--space-3)` above. A glyph whose visual mass sits
+off the artboard centre (arrows, carets, play marks) corrects once in `icon.css` via `data-optical`,
+never by nudging the box at a call site. Icon-only squares centre on the `--shell-nav-block` box,
+not on padding, so they stay centred at every rail width.
+
+**B.7.5 Functional vs decorative — and what it costs when it slips.** Every `<svg>` is
+`aria-hidden="true"`. A functional icon's accessible name lives on the **control** (`aria-label`),
+plus a portal `Tooltip` when icon-only (§B.6). An icon is never the sole carrier of a status — pair
+it with text, a tooltip, or a labelled container. `<Icon title="…">` promotes a glyph to
+`role="img"` and exists only for the rare icon that IS the whole control and has no labelled
+ancestor.
+
+**The consequence is not theoretical.** `packages/ui/feedback/core/icons.tsx` was the one glyph
+module shipping **without** `aria-hidden`, so every `Alert` announced its decorative severity mark
+*before* its own text — a screen-reader user heard the ornament first and the message second, on the
+component whose entire job is to deliver a message. The rule is stated as "every `<svg>`", with no
+per-module discretion, precisely because a single module opting out is invisible to sighted review.
+The mirror-image defect is a **decorative** icon given a name: an `aria-label` on a glyph that sits
+beside its own visible label makes the control announce twice, and an `aria-label` on the *control*
+that differs from the visible text breaks WCAG 2.5.3 (Label in Name) — three fields in
+`apps/web/features/catalogue/islands/CatalogueCreateModal.island.tsx` carried `aria-label`s that
+overrode the visible label they sat under, and two of the three were not associated with their
+control at all.
+
+**B.7.6 currentColor only.** No `fill`/`stroke` literal and no token reference inside a glyph;
+colour comes from the inherited `color`. The sole exception is a third-party **brand** mark (social
+logos), quarantined in its own module and never reused as UI iconography.
+
+**B.7.7 Banned.**
+
+- **Emoji and Unicode characters as iconography.** They render in the user's system font at the
+  wrong weight and metrics, and become full-colour glyphs on some platforms. Every one is a registry
+  glyph.
+- **Two glyphs for one concept**, including across form factors — desktop and mobile navigation to
+  the same destination use the same mark.
+- **One name for two concepts.** Disambiguate at the name (`pin-location` vs `pin-fixed`), never by
+  import path.
+- **Icon inflation** — a decorative icon beside every label. An icon earns its place by aiding
+  scanning; a full column of them aids nothing.
+- **Icons that duplicate their label.** An icon replaces a word or reinforces a scan target; it does
+  not restate the text beside it.
+
+> Merge gate: a PR that hand-authors an `<svg>` icon root outside `@projective/ui/icons`, authors a
+> `stroke-width` on a glyph, introduces a second glyph for an existing concept, reuses a registry
+> name for a new meaning, or reaches for a Unicode character in place of a glyph, is not mergeable.
+
+---
+
+### B.8 Button Usage Policy (merge gate)
+
+`Button` ships **four variants** (`filled` · `outlined` · `text` · `link`) × **seven severities**
+(`primary` · `secondary` · `success` · `info` · `warning` · `help` · `danger`) × three sizes, plus
+`raised` / `rounded` / `iconOnly` / `fluid`. That is a large surface, and a large surface without a
+policy is how a screen ends up with four equally-loud buttons and no answer to "what do I do here."
+The policy is that **the variant is not a taste choice — it is a declaration of interaction weight**,
+and weight is a property of the action, not of the designer's mood.
+
+**B.8.1 Variant by interaction weight.**
+
+| Variant    | Weight                | Use for                                                                 |
+| :--------- | :-------------------- | :---------------------------------------------------------------------- |
+| `filled`   | The commitment        | The **one** action the view exists to complete — Publish, Sign in, Send |
+| `outlined` | A real alternative    | A second path a user genuinely picks between (Cancel-with-consequence, a secondary create) |
+| `text`     | Repeated / in-context | Row actions, list affordances, toolbar verbs, the escape hatch (Cancel) |
+| `link`     | Navigation            | Goes somewhere; never mutates                                            |
+
+**B.8.2 One filled action per view — and per overlay.** A view's primary action is singular by
+definition; the moment there are two, neither is primary and the user reads a fork. The cap counts
+**per rendered region a user is deciding within** — a page body, a modal, a drawer, a footer rig
+each get one. It does **not** count a `filled` button that is mutually exclusive with another by
+render condition (a Publish that swaps to a Pause is one button in two states, not two buttons).
+
+**Right** — `apps/web/features/catalogue/islands/ListingEditor.island.tsx:245-271`: a status rig of
+three actions where exactly one is `filled` (Publish, and it is `disabled` until
+`publishReadiness` clears), Pause is `outlined`, Archive is `text`. The hierarchy is legible at a
+glance and survives translation, because it is carried by weight rather than by word length.
+
+**Right** — `apps/web/features/workspaces/components/InviteQueue.tsx:147-236`: four repeated row
+actions all `text` (severity distinguishing accept from the rest), and the one utility action
+`outlined`. A repeated action is **never** `filled` — a column of filled buttons is a column of
+noise, and it makes the row's *content* the least prominent thing in the row.
+
+**B.8.3 Severity is meaning, never decoration.** Severity encodes what the action *is* — it is not a
+palette. Two rules follow:
+
+- **An irreversible or destructive action takes `severity="danger"`, always.**
+  `apps/web/features/workspaces/components/OwnershipTransfer.tsx:120` shipped "Transfer ownership" —
+  an irreversible transfer of an entity — styled **identically to a safe primary**. The user's last
+  chance to notice was the word "Transfer"; the interface said "this is the normal thing to do
+  here." Now `variant="filled" severity="danger"`, a vocabulary the codebase already had and had
+  simply not reached for. Read that as the general failure mode: the wrong severity is almost never
+  a *misuse* of the API, it is a *non-use* of it.
+- **Do not invent a severity by re-tinting.** The accent-pair block (`--x-accent` / `--x-on`) is
+  hand-copied across `Button` · `Badge` · `Tag` · `Alert` · `Message` · `Toast`, so a wrong pair
+  appears **six times, not once**. `secondary` once paired with `--on-surface` and measured
+  **2.67:1 light / 1.32:1 dark**; `info` was aliased to `--secondary`, so the generated blue ramp
+  rendered nowhere and two severities were visual duplicates. When a severity or ramp changes, all
+  six components are in scope for that PR.
+
+**B.8.4 Shape.** `rounded` is the **pill** (`--radius-full`) and is a *shape*, reserved for
+chip-like and floating controls; it is deliberately not multiplied by `--radius-scale` (§A.3). Every
+other button reads the radius ramp **at its own size** — a `sm` button is not a `lg` button's corner
+on a smaller box. `Button` and `ToggleButton` shipped a fixed `--radius-base` at all three sizes,
+which is why an `sm` control read visibly rounder than its neighbours. `raised` is a **response**
+(hover / drag / active), never a resting state — the same rule §B.9 applies to `Card`.
+
+**B.8.5 Icon-only buttons.** An icon-only button is a control with its label removed, not a control
+without one. It must carry **all three**: an `aria-label`, a portal `Tooltip` (§B.6 — never a native
+`title`), and a hit target of at least `--fld-hit` (24px, WCAG 2.2 AA 2.5.8) via `.ui-hit` where the
+glyph box is smaller. The overlay family shipped close buttons in **four sizes and two shapes**
+(24 / 28 / 32 / 36px; `--radius-sm` vs `--radius-full`), the 24px one failing 2.5.8 outright — which
+is why the single `--overlay-action-size` now exists (§B.10). The glyph is **not** the hit target
+(§B.7.3).
+
+**B.8.6 Action order is fixed.** Secondary and destructive actions lead; the primary is **last in
+the inline direction** (rightmost under LtR, and it mirrors for free under `dir="rtl"` because the
+row uses logical properties, §A.6). Order is set with `justify-content`, **not** with a spacer —
+three modal footers achieve `flex-end` only via an unconditional `flex: 1 1 auto` spacer
+(`apps/web/features/projects/styles/ticket-modal.css:331`,
+`project-create-modal.css:442`, `submission-review.css:523`), so they are one conditional render
+away from silently left-aligning their actions.
+
+> **Merge gate.** A PR is not mergeable if it renders more than one `filled` button in a single
+> decision region, styles an irreversible action without `severity="danger"`, ships an icon-only
+> button lacking `aria-label` + `Tooltip` + a ≥24px target, uses `raised` as a resting state, or
+> orders a footer's actions with a spacer instead of `justify-content`.
+
+---
+
+### B.9 Card Usage Policy (merge gate)
+
+§B.4 says do not box non-interactive content. The card is the component most likely to break that
+rule, because reaching for a card *feels* like structure while actually being the absence of it — it
+is the tool you use when you have not decided what the hierarchy is. This section is §B.4 applied to
+the one component that most tempts you out of it.
+
+**B.9.1 A card is warranted only when the content is a discrete, addressable object.** The test is
+whether the content would still make sense **lifted out of the page** — a listing, a file, a member,
+a message, a workspace. If it would not, it is a *section of this page*, and a section gets **§B.4
+tier 1 + 3: spacing and a heading**, not a box.
+
+**Wrong** — grouped, non-interactive content in a four-sided border, because the group needed a
+name. **Right** — give the group a `--text-xs` uppercase label (§A.4's label register), a `--space-6`
+gap above it and `--space-3` below, and let the type do the structural work. If that still does not
+read, escalate to a **tonal step** (`--surface-1`/`-2`), and only then to a **single hairline**.
+Reaching straight for the box skips three tiers that cost no ink.
+
+**B.9.2 Cards do not nest.** A card inside a card means one of the two is not an object. The nesting
+that actually ships is subtler and just as banned — **a card inside an already-elevated surface**:
+`apps/web/features/projects/styles/attachment-modal.css:548,601,646` gives `.fx-audio`, `.fx-code`
+and `.fx-doc` each `background: var(--surface)` + `box-shadow: var(--elevation-low)`, inside
+`.fx-modal__media` (tinted), inside `.fx-modal__panel` (`--surface`). **Three nested surface layers,
+two of them the same colour, separated by shadow alone** — which is exactly the "wall of equal-weight
+bordered boxes" §B.4 was written against, just built from shadows instead of borders. A panel is
+already a surface; content inside it separates by spacing and tint, and the innermost thing is not
+a card.
+
+**B.9.3 One separation device per boundary — the budget.** A boundary gets **one** of: a tonal step,
+a hairline, a shadow, or a radius+border. Not two, and never all four. The audit's clearest symptom
+of an exhausted budget is a boundary carrying a tint *and* a hairline *and* an elevation, which
+reads as three competing claims about how far apart the two things are.
+
+**B.9.4 The variants, and why `filled` is the default.** `Card` ships `elevated` · `filled` · `flat`
+and **defaults to `filled`** (`packages/ui/display/components/Card.tsx:63`). The default was once
+`elevated` — the *most* restricted variant — so every future consumer would have inherited a resting
+shadow it never asked for. **Elevation means the surface is genuinely above its neighbours**: it
+overlaps content, it drags, or it is lifted out of flow. `raised` is a hover/drag/focus **response**
+and never a resting state. A tonal step is measured against the card's actual **parent**, not
+against the page — `filled` on a tinted region needs a different step than `filled` on `--bg`.
+
+**B.9.5 Interactivity is what licenses the border.** Per §B.4 tier 5, a full contour declares "you
+can act on this." The `kanban` sub-path is the reference implementation of the pair: **columns are
+non-interactive containers** (tonal tint + a single hairline, no box) while **cards are interactive**
+(surface + radius + resting elevation). If a card family carries a full border, a reviewer is
+entitled to ask what happens when it is clicked; "nothing" is a finding.
+
+**B.9.6 A card family declares no geometry.** Padding, gap, corner and media proportion come from
+the §A.3 card rhythm tokens (`--card-pad`/`-media`/`-tight`, `--card-gap`/`-tight`,
+`--card-radius`/`-media`, `--card-media-ratio`/`-square`). This is stated as law because the
+alternative is measured: **`ui-card` currently has zero consumers in `apps/web` source** — all eight
+feature card families hand-rolled their own container, and no two agreed (five body paddings, seven
+radii, three media ratios). The token layer lives in `packages/ui/styles/index.css`, not in
+`display/card.css`, specifically so a **server-rendered** card family can consume the contract even
+where it cannot consume the component (component CSS reaches a page only through an island bundle).
+A family that declares its own padding, radius or media ratio is a finding regardless of whether it
+imports `Card`.
+
+> **Merge gate.** A PR is not mergeable if it boxes non-interactive grouped content where spacing +
+> a heading would read, nests a card inside a card or inside an elevated panel, spends more than one
+> separation device on a boundary, uses `elevated`/`raised` as a resting state without genuine
+> overlap, or declares card padding / radius / media ratio locally instead of reading §A.3.
+
+---
+
+### B.10 Overlay Family Contract (merge gate)
+
+A consistency audit of the twelve overlay siblings scored the family **21/40** and found it was not
+a family: **five radii**, **two separator token families**, **six scrim recipes**, **seven ad-hoc
+dialog widths**, **six right-drawer widths**, **five header-density systems** (bar heights running
+~40→64px within one behavioural class), and **zero adoption of the type ramp** — `grep` for
+`--text-*`/`--fw-*`/`--leading-*` across all fourteen sheets returned nothing. Border presence was
+*inverted by layer*: every package panel had a full four-sided border, every app modal panel had
+none, so the same role read bordered or borderless depending on who built it. This section makes the
+family one object.
+
+**B.10.1 Two tiers, two geometries.** Every overlay resolves to one of two tiers, and the tier
+fixes the geometry:
+
+| Tier          | Members                                                              | Radius                | Seam        |
+| :------------ | :------------------------------------------------------------------- | :-------------------- | :---------- |
+| **Anchored / system** | Popover, Tooltip, ConfirmPopup, Toast, Message, Alert, HoverCard | `--overlay-radius-sm` | `--hairline`|
+| **Workspace** | Dialog, Drawer sheet, DraggablePopover, the app modals               | `--overlay-radius-lg` | `--hairline`|
+
+Size comes from `--overlay-w-sm/md/lg/xl/full` and `--overlay-h-md/lg`, **each carrying a viewport
+term** so a panel can never exceed the window — `attachment-modal.css:20` shipped
+`block-size: min(860px, 100%)` with no viewport term and stood taller than an 800px laptop window.
+`--drawer-w`/`--drawer-h` are the drawer's, and the Drawer now actually consumes them (it hardcoded
+`min(22rem, 92vw)` while orphaning the defined token). **Seams are `--hairline` everywhere** — the
+package layer drew them with opaque `--border-subtle` and the app layer with `--hairline` (20%
+alpha) for the same job; `draggable-popover.css` used **both, in one component**. `.ui-dialog__body`
+reads `--measure` (§A.4); without it a 48rem dialog rendered body prose at ~76ch.
+
+**B.10.2 The scrim is one recipe, and it is not the caller's choice.** `--scrim` (the darkest
+neutral in **both** themes) at a per-theme `--scrim-tint`, `--on-scrim` for anything drawn on top,
+blurred by the single `--scrim-blur`. `Backdrop` **no longer takes a `blur` prop** — how hard the
+page dims is a property of "a modal is open", not of which component opened it, and while it was a
+prop the package modals shipped 4px and all four app modals shipped 18px. The shared recipe was also
+simply **wrong**: `backdrop.css:12` mixed `--surface` (≈ white in light mode) where the comment two
+lines above prescribed `--on-surface`, so every modal dimmed the page with **white at 40%** — the
+same hue as the panel above it, leaving separation to a shadow and a 4px blur. A scrim built from a
+literal `#000` (`mobile-menu.css:36`, `site-shell.css:564`) is a finding for the same reason: it
+does not exist in either theme's ramp.
+
+**B.10.3 The z-class scale is a hierarchy, not a suggestion.** Page content `--z-base` < nav lane
+`--z-raised` < sticky bands `--z-sticky` < site header `--z-nav` < popovers `--z-popover`/
+`--z-overlay` (1100) < modals/drawers `--z-modal` (1300) < draggable windows `--z-draggable` (1500)
+< toasts < tooltips. `useOverlayStack(layer)` allocates from the class base, stepping above anything
+already open, so an independent modal always outranks an independent popover **and** a dropdown
+opened *inside* a modal still stacks above it. Two rules keep it true:
+
+- **No static `z-index` on an overlay.** `tooltip.css:14`, `toast.css:10` and `hover-card.css:14`
+  (at **1100 — behind any Dialog**) opted out of the manager, and eight `fields/styles/*.css` sheets
+  carried a literal `z-index: 1000` **with no portal at all**.
+- **The counter must be bounded.** `useOverlayStack` releases only when the top claim is its own, so
+  out-of-order teardown leaked 10 permanently and nothing reset when the last overlay unmounted;
+  `DraggablePopover` incremented a module-global on every `pointerdown` and never released. In a
+  shell that never full-page-navigates, both climb monotonically until **the documented hierarchy
+  inverts** — a plain Popover outranking `--z-draggable`, then `--z-toast`, then `--z-tooltip`. The
+  ceiling is derived from live claims, not accumulated.
+
+**B.10.4 Every panel must render through `BodyPortal`.** A `position: fixed` panel that merely stays
+in the tree is not safe: the sticky middle-nav lane is a **stacking context** that caps its subtree's
+paint order, it is `overflow: clip`, and any glass ancestor's `backdrop-filter` **re-bases `fixed`
+onto that ancestor's box**. All three at once. The Dialog is the trap in its purest form —
+`dialog.css:71-72,80` settles its enter transform to `scale(1)` and never to `none`, and **a
+transform at rest is still a containing block for `fixed` descendants and a stacking context**,
+alongside `overflow: hidden` — so every field dropdown opened inside a Dialog was simultaneously
+re-based and clipped. `apps/web/features/projects/styles/attachment-modal.css:151` is the last
+hand-rolled holdout: a `position: absolute; z-index: 2` menu inside an `overflow: hidden` panel.
+
+**B.10.5 Motion may decorate, never encode.** Every panel transitions off `[data-state]`, animates
+only `transform`/`opacity`, and settles with the enter transform cleared — which is why reduced
+motion snaps to a **real static rule** in all twelve rather than freezing a half-drawn frame. That
+architecture is the family's best decision and is not up for renegotiation. Its one failure mode is
+the rule: **presence must never depend on a frame.** Resting CSS is `opacity: 0`, corrected only by
+`[data-state="open"]`, while scroll-lock and focus-trap key off `mounted` — so a hidden or throttled
+tab, which never services `requestAnimationFrame`, left a mounted, scroll-locked, focus-trapped,
+**invisible** modal that never repaired itself. Every rAF flip therefore carries a **timer
+watchdog**, and reduced motion opens in the same commit and skips the frame entirely. The same rule
+governs CSS: the Toast countdown animates `transform: scaleX()` on a statically full-width bar, never
+`inline-size` — a frozen clock previously parked the bar at 100%, claiming an infinite timer while
+the toast expired on schedule.
+
+**B.10.6 Focus-management checklist.** Every modal-behaving overlay satisfies **all seven**:
+
+1. **Focus enters the panel** — and lands on the first meaningful control, not the close ×. Where
+   the safe choice is a specific control, `initialFocusRef` names it (`ConfirmDialog` opens on
+   **reject**).
+2. **Focus is trapped on `document`, not the container.** A container-scoped `keydown` listener
+   stops firing the moment focus escapes — which silently un-traps the overlay, and with
+   `closeOnOutside: false` and no background `inert`, one background click was enough.
+3. **The background is `inert` + `aria-hidden`.** Scroll-lock is not containment.
+4. **Escape dismisses exactly one layer.** Every instance listens on `document` in the capture
+   phase, so dismissal is gated on `useOverlayStack().isTop` and Escape uses
+   **`stopImmediatePropagation`** — with `stopPropagation` and an `isTop` that was never demoted,
+   one Escape closed the confirmation *and* the dialog beneath it.
+5. **Focus returns** to the trigger on close.
+6. **The overlay is named.** `role="dialog"` without an accessible name announces *worse* than no
+   role; `Popover` and `ConfirmPopup` shipped unnamed. A confirmation is `role="alertdialog"`.
+7. **Dismissal resolves to the safe outcome.** Escape and backdrop **reject**, never accept — the
+   one thing the family already got right, and the one thing it can never regress.
+
+**B.10.7 Non-modal overlays are held to the parts that apply.** A `Tooltip` takes no focus (correct);
+a `HoverCard` still needs **Escape** (WCAG 1.4.13) and must not point `aria-describedby` at a node it
+also marks `aria-hidden="true"`. A `Toast` that carries an action needs a keyboard path to it before
+auto-dismissal — see the deferred list, Part F.
+
+**B.10.8 Density and the irreversible-action rule.** A panel already supplies its own padding and its
+own scroll region; content inside it supplies neither again. `wallet-overlays.css:28` re-declares
+`padding: var(--space-5)` **and** `overflow-y: auto` inside `.ui-drawer__body`, which already has
+both — 3rem of inline padding and **two nested scrollers on one axis**. And an irreversible action
+must never be able to scroll out of view: `ConfirmMoveModal.island.tsx:114` passes its footer as
+**children**, so the "Confirm / Withdraw £X" commit lands inside the scrolling `.ui-dialog__body`
+rather than the footer slot and drops below the fold on a short viewport. Footers go in the `footer`
+prop.
+
+> **Merge gate.** An overlay PR is not mergeable if it introduces a radius, width, seam token or
+> scrim recipe outside this section, sets a static `z-index` instead of `useOverlayStack`, renders a
+> panel without `BodyPortal`, encodes state in an animated property, fails any of B.10.6's seven
+> focus items, or places a destructive/irreversible action anywhere it can scroll out of view.
+
+---
+
 ## Part C — Component Library Architecture (`@projective/ui`)
 
 A single, decoupled, **copy-paste-portable** umbrella package (`packages/ui/`) with **multi-export
@@ -464,14 +937,15 @@ verbatim because every component depends only on the token contract (Part A) —
 | :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                                                                     |
 | **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, **Lane chrome** (LaneHead, LaneFooter(+Actions), LaneList, LaneBar, LaneTabs, LaneSearch, LaneIconButton, LaneToggleRow, LaneSection(+LaneSections), LaneCollapseButton, LaneEmpty — the shared middle-nav lane control set every lane surface composes), Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination) |
-| **`@projective/ui/fields`**     | Button, SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl                                                                                |
-| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, Card, Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                                                     |
-| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog, DynamicDialog, ConfirmDialog, ConfirmPopup, Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                                                                                                                         |
-| **`@projective/ui/overlay`**    | Backdrop, Overlay, HoverCard, Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window) (+ `usePresence`)                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **`@projective/ui/fields`**     | **Button** (4 variants `filled`/`outlined`/`text`/`link` × 7 severities × 3 sizes, plus the `raised`/`rounded`/`iconOnly`/`fluid` modifiers — governed by §B.8, which is what decides *which* of those 84 combinations is correct), SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl, **FieldLegend** (the one-line explanation an asterisk needs), **status marks** (AlertMark/CheckMark/GateMark/BusyMark + `FieldMark`/`statusMark` — the §A.5 icon channel rendered into every `.ui-field__mark` slot). All geometry and every state read the `--fld-*` contract (§A.7)                                                                |
+| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, **Card** (`elevated`/`filled`/`flat`, default **`filled`**; a **non-interactive** container — `raised` is a transient hover/drag/focus response, never a resting state; all geometry from the §A.3 card rhythm tokens, governed by §B.9), Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                                                     |
+| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog (`role`, `initialFocusRef`), DynamicDialog, ConfirmDialog (`role="alertdialog"`, opens on the reject action), ConfirmPopup (`label`), Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel; `label` promotes it to `role="dialog"` — an unnamed dialog announces worse than no role), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                       |
+| **`@projective/ui/overlay`**    | Backdrop (tint/blur fixed by `--scrim`/`--scrim-tint`/`--scrim-blur`, no `blur` prop), Overlay (modal band + `inert` background), HoverCard (stack-managed, Escape-dismissable per WCAG 1.4.13), Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window, bounded z counter) (+ `usePresence`, watchdogged enter)                                                                                                                                                                                                                      |
 | **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                                                                                                                               |
 | **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                                                                                                                              |
+| **`@projective/ui/icons`**      | Icon (registry glyph by canonical name), IconShell (the base every feature-owned glyph module renders through), `ICON_PATHS` registry + `IconName` union — the single icon contract (§B.7). Token-driven via `--icon-2xs…--icon-xl` + `--icon-stroke`; one 24-unit grid; `vector-effect: non-scaling-stroke` holds one rendered weight at every size                                                                                                                                                                                                      |
 | **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                                                                                                                                 |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
@@ -485,6 +959,41 @@ verbatim because every component depends only on the token contract (Part A) —
 > optional to draft but needed to _publish_ to Explore / open for hiring (e.g. Description, Budget,
 > Stage details; drives the warning ramp, soft-informative so NOT `aria-invalid`). Both carry a
 > faint tonal fill so an unmet gate reads at a glance in a dense form.
+
+> **The field contract — one state language, one geometry (§A.7 `--fld-*`).** Every control in
+> `fields` resolves its size, surface and state from a single token layer on `:root`, and every state
+> declares the same four channels: **border · surface · ink · ring**, plus a **mark**. Consequences a
+> reviewer can check:
+>
+> - **Geometry is shared, not coincidental.** A Select and an InputText at the same size are
+>   pixel-identical — 32/40/48px tall, 8/12/16px inline padding, 6/8/12px radius, 13/15/17px type.
+>   Controls that cannot compose `.ui-field` (Checkbox, Slider, Rating, ZoomSlider…) keep their own
+>   SHAPE but read the same state channels, so `disabled`/`readonly`/`invalid`/`gate`/`loading` reach
+>   all of them rather than only the input family.
+> - **One focus treatment.** `--focus-ring-shadow` (two-tone) on every control, including the custom
+>   ones. `--focus-ring-shadow-inset` is the only permitted variant, and only where an outset ring
+>   would be clipped by a segmented group's own overflow.
+> - **One disabled value.** `--fld-disabled-mix` fades INK and BORDER, never the box, and never with
+>   `pointer-events: none` — that silently cancels the `not-allowed` cursor it is paired with. It
+>   measures 4.5:1 or better; a state you cannot read is not a state.
+> - **Status never rides on hue.** Each validation state paints `--field-mark` and the control renders
+>   it into a `.ui-field__mark` slot that is zero-width at rest (§A.5).
+> - **A hit target floor.** `.ui-hit` grows any part smaller than `--fld-hit` (24px, WCAG 2.2 AA
+>   2.5.8) via a transparent pseudo-element, so density survives the floor instead of trading against
+>   it.
+> - **Panels are one object.** Every dropdown shares option-row height, padding, type, panel
+>   max-height, min-width, radius, border and surface — and renders through `BodyPortal` with a
+>   managed z-index, because a `position: fixed` layer that stays in the tree is re-based by the glass
+>   chrome (measured: 324px off).
+
+> **Which labelling model.** `FormControl` is the default for every form field — it is the only one
+> that wires `for` + `aria-describedby` + required + error together, and it reserves the hint row's
+> height so an appearing error cannot shove the form down. `IconField` adds an affordance glyph inside
+> an already-labelled control. `InputGroup` joins two controls that form ONE value (amount+currency).
+> `IftaLabel` suits dense data-entry tables where a stacked label costs a row. `FloatLabel` suits
+> marketing/auth surfaces only, and never a form carrying hints or validation — a floated label
+> collides with its own described-by text. Do not mix models within one form. A form that marks any
+> field `required` renders `FieldLegend` once near its submit.
 
 **Implementation status:** `layout` is built and consumed by the app — Box, Container, Grid, Row,
 Column, Stack, AspectRatio, Divider, Separator (`packages/ui/layout/`, zero-JS server components;
@@ -559,7 +1068,12 @@ PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
   content atoms (Card, Avatar/AvatarGroup, Badge/OverlayBadge, RatingStars — a zero-JS read-only
   star meter (a `compact` prop renders a single primary star + score for dense card bylines, in
   place of the full five-star meter), the display counterpart to the interactive `fields` Rating —
-  Chip, Tag, List/ListItem, Accordion).
+  Chip, Tag, List/ListItem, Accordion). **`Card` defaults to `filled`, not `elevated`** — the
+  default was the most RESTRICTED variant, so every future consumer would have inherited a resting
+  shadow it never asked for. Elevation means the surface is genuinely above its neighbours (it
+  overlaps content, drags, or is lifted out of flow); `raised` is a hover/drag/focus response and
+  never a resting state. All four card variants and every feature card family read the §A.3 card
+  rhythm tokens; none declares its own padding, radius or media ratio.
 - **`feedback`** — Message/Messages/Alert/Banner, Toast (+`useToast`), the Dialog family
   (Dialog/DynamicDialog + `useDialog`/ConfirmDialog/ConfirmPopup), Drawer (alias Sidebar,
   bottom-sheet under `--bp-md`), Tooltip, Popover (alias OverlayPanel), and the progress/placeholder
@@ -678,6 +1192,40 @@ a live index from its class base, stepping above any overlay already open, so an
 independently-opened modal always outranks an independent popover AND a dropdown opened _inside_ a
 modal still stacks above it. The lane itself carries `z-index: var(--z-raised)` so its sticky bands
 can never paint over its own content.
+
+**The overlay family contract (2026-07-31).** A consistency audit found the family had drifted into
+twelve panels with five radii, two seam tokens, six scrim recipes and seven ad-hoc dialog widths.
+Geometry is now named once in `styles/index.css` and consumed everywhere: `--overlay-radius-sm`
+(anchored/system tier — Popover, Tooltip, ConfirmPopup, Toast, Message, Alert, HoverCard) and
+`--overlay-radius-lg` (workspace tier — Dialog, Drawer sheet, DraggablePopover, the app modals);
+`--overlay-w-sm/md/lg/xl/full` and `--overlay-h-md/lg`, **each carrying a viewport term** so a panel
+can never exceed the window; `--overlay-action-size` as the single close/action hit target (the four
+shipped sizes included a 24px one that failed WCAG 2.5.8); and `--drawer-w`/`--drawer-h`, which the
+Drawer now actually consumes. Seams are `--hairline` throughout — the package layer had used opaque
+`--border-subtle` for the same job the app layer did with `--hairline`. **The scrim is one recipe:**
+`--scrim` (the darkest neutral in BOTH themes) at a per-theme `--scrim-tint`, plus `--on-scrim` for
+anything drawn on top of it, blurred by the single `--scrim-blur`. `Backdrop` no longer takes a
+`blur` prop — how hard the page dims is a property of "a modal is open", not of the caller.
+
+**Modal focus + dismissal contract.** `useFocusTrap` binds Tab to `document` (a container-scoped
+listener stops firing the moment focus escapes, silently un-trapping the overlay), keeps a stack so
+nested traps do not fight, resolves an `initialFocusRef` that points at a non-focusable scope to its
+first tabbable (`ConfirmDialog` uses this to open on the REJECT button rather than the header ×),
+and marks every sibling of the trapped subtree `inert` + `aria-hidden`. `useDismiss` takes `enabled`
+— pass `useOverlayStack().isTop` — because every instance listens on `document` in the capture
+phase, so gating only inside the callback let an outer overlay consume an Escape it then ignored.
+Escape now uses `stopImmediatePropagation`. `useOverlayStack` derives its ceiling from live claims
+and pushes `isTop` to every open overlay, so the class hierarchy cannot drift upward across a
+session, and it compensates the scrollbar with `padding-inline-end` so `dir="rtl"` is not shifted.
+
+**Presence must never depend on a frame.** Every panel's resting CSS is `opacity: 0`, corrected only
+by `[data-state="open"]` — so the enter flip in `usePresence` (and the initial focus move, and the
+Toast enter class) carries a timer watchdog beside its `requestAnimationFrame`. A hidden or
+throttled tab never services rAF, which previously left a mounted, scroll-locked, focus-trapped,
+**invisible** modal that never repaired itself. Reduced motion opens in the same commit and skips
+the frame entirely. The same rule governs CSS: the Toast countdown animates `transform: scaleX()` on
+a statically full-width bar, never `inline-size`, so a frozen animation clock cannot leave the bar
+claiming a timer that has already expired.
 
 **Collision + boundary model (`useFloating` / `useEdgeDetection`).** Anchored overlays resolve in
 three layers: (1) **viewport flip/clamp** — flip to the opposite side when the preferred one lacks
@@ -1070,6 +1618,88 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 4. Reduced-motion + the four a11y overlays (§A.5) honored; comprehensive ARIA.
 5. Responsive at Desktop/Tablet/Mobile without app-side overrides.
 6. New/changed component ⇒ its entry in the §C.1 roster + this spec updated **in the same change.**
+7. **The five component laws** — §A.7 field state contract, §B.8 buttons, §B.9 cards, §B.7
+   iconography, §B.10 overlays. Each carries its own gate paragraph; they are listed here so a
+   reviewer has one place to check rather than five.
+
+---
+
+## Part F — Deferred / conflicted (awaiting a ruling)
+
+Recommendations surfaced by the Button, Card, Iconography, Form-primitive and Overlay audits that
+were **not** encoded above, because each conflicts with a standing house rule. Per the root
+`CLAUDE.md` §8 rule, they are logged rather than silently resolved. Both positions are stated; none
+is currently in force.
+
+**F.1 — Focus ring: `box-shadow` composite vs. native `outline`.**
+_Audit position:_ the focus indicator should be an `outline` with `outline-offset`. `outline` is
+never clipped by an ancestor's `overflow`, and — decisively — **Windows High Contrast / forced-colors
+mode discards `box-shadow` entirely**, so today's ring vanishes for exactly the users most dependent
+on it. _House position (§A.7.1, in force):_ `--focus-ring-shadow` is a two-tone halo+ink composite
+because **no single colour clears 3:1 against both the control fill and the page** — the previous
+single-colour ring measured 1.00:1 on `--primary` in dark. An `outline` is one colour. _Possible
+resolution not yet taken:_ ship both — the composite as the default, plus a
+`@media (forced-colors: active)` block that swaps to `outline: 2px solid Highlight`. Needs a ruling
+because it makes every control carry two focus implementations.
+
+**F.2 — Seven severities is more than this product means.**
+_Audit position:_ `help` (mapped to `--tertiary`) carries no meaning anywhere in Projective, and
+`info` vs `secondary` were literal visual duplicates until 2026-07-30 — evidence that the set is
+wider than the vocabulary. A smaller set is harder to misuse, and §B.8.3's whole problem is misuse.
+_House position:_ the roster is committed to **PrimeNG feature-parity** (§C.1 roster-rename note); a
+severity is part of that surface, and removing one is a breaking change to a copy-paste-portable
+package. _Ruling needed:_ keep all seven for parity and forbid `help` by policy, or drop it from the
+`Severity` union.
+
+**F.3 — The `filled`-per-view cap vs. genuinely two-primary surfaces.**
+_Audit position (encoded as §B.8.2):_ one `filled` per decision region. _Unresolved case:_ the
+wallet footer rig legitimately offers **Top up** and **Withdraw** as co-equal primaries — neither is
+subordinate, and demoting one to `outlined` would misrepresent the surface. §B.8.2's "mutually
+exclusive by render condition" escape does not cover them. _Options:_ (a) accept the cap and pick a
+winner per rig; (b) formalise a "co-primary pair" exception limited to a footer action rig; (c)
+treat each as its own decision region. Currently the cap is written as absolute, so the wallet rig
+is technically in violation.
+
+**F.4 — §B.6 icon-first density vs. §B.7.7's ban on icon inflation.**
+_These two sections point opposite ways and the boundary is undrawn._ §B.6 mandates a glyph on every
+lane row and every dense list item; §B.7.7 bans "a decorative icon beside every label" and "icons
+that duplicate their label." A lane row reading `[folder glyph] Files` satisfies the first and
+arguably violates the second. _Ruling needed:_ state where the density mandate stops — e.g. "a glyph
+is required where it is the row's **only** distinguishing mark at a glance, and banned where the
+label alone is already unique within its list."
+
+**F.5 — Card nesting vs. the shipped split-pane modals.**
+_Audit position (encoded as §B.9.2):_ no card inside a card, and no card inside an elevated panel.
+_Conflict:_ four app modals (attachment preview, ticket, project-create, submission review) are
+`Splitter`-based two-pane workspaces where the panes are, structurally, containers inside an elevated
+panel. §B.9.2 as written condemns the pattern; what it *means* to condemn is a nested **surface +
+shadow**, not a nested **region**. _Ruling needed:_ an explicit carve-out for a layout region that
+carries tint and spacing but no shadow and no border, so the rule is enforceable without flagging
+four legitimate modals.
+
+**F.6 — Toast auto-dismiss vs. WCAG 2.2.1.**
+_Audit position:_ a Toast carrying an action auto-dismisses at 3000ms with **no keyboard path to
+reach it** — a keyboard or screen-reader user cannot act on it at all, which is a Timing Adjustable
+failure, not a polish item. _House position:_ toasts are transient by design and a persistent toast
+becomes an `Alert`. _Options:_ (a) actionable toasts never auto-dismiss; (b) any focus or hover
+within the region pauses every timer; (c) actions are banned from `Toast` outright and promoted to
+`Alert`. Not encoded because all three change shipped behaviour.
+
+**F.7 — `--scrim-blur` vs. the glass identity.**
+_Audit position:_ the scrim's `backdrop-filter` stacks on top of the shell chrome's own
+`--glass-blur`, and two composited blur layers over a full viewport is the most expensive thing the
+app draws — on low-end hardware it is the modal-open jank. Drop blur from the scrim; the corrected
+`--scrim` tint (F/B.10.2) now provides the separation the blur was compensating for. _House
+position:_ glass is a stated part of the visual identity (§D.1, §D.5), and the scrim is where it
+reads most. _Ruling needed:_ keep, drop, or gate behind a measured device signal.
+
+**F.8 — The type ramp has zero adoption in the overlay family.**
+Not a conflict so much as an unbudgeted migration: `grep var(--text-*)|var(--fw-*)|var(--leading-*)`
+across all fourteen overlay sheets returns **nothing**, and the off-ramp literals (`1.0625rem`,
+`1.05rem`, `0.74rem`, `0.72rem`) are what produce five header-density systems and bar heights running
+40→64px within one class. Encoding it as a gate would make the next overlay PR responsible for a
+family-wide refactor. _Ruling needed:_ ship it as a gate now, or as a tracked migration with a
+deadline.
 
 ---
 

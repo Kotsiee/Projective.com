@@ -240,7 +240,7 @@ export default function CardDeck(props: CardDeckProps): JSX.Element {
 						data-state={presence.state}
 						style={styleVars({ "--wlt-z": stack.zIndex })}
 					>
-						<Backdrop visible={presence.state === "open"} blur onClick={collapse} />
+						<Backdrop visible={presence.state === "open"} onClick={collapse} />
 						<div
 							class="wlt-deck__wrap"
 							ref={panelRef}

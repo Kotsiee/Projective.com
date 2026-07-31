@@ -14,7 +14,8 @@ import {
 } from "../core/ledger-model.ts";
 import { WalletService } from "../core/WalletService.ts";
 import { currentWalletContext, drawerLine } from "../core/wallet-state.ts";
-import { listRowHeight, zoom } from "../core/view-state.ts";
+import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
+import { listRowHeight, walletZoom, zoom } from "../core/view-state.ts";
 import type { LedgerLine, TransactionPage, TxnSort } from "../types/wallet-types.ts";
 
 /**
@@ -47,6 +48,11 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 	const sortKey = useSignal<TxnSort | "">("");
 	const sortDir = useSignal<"asc" | "desc">("desc");
 	const sentinel = useRef<HTMLDivElement>(null);
+	const rootRef = useRef<HTMLDivElement>(null);
+
+	// `Ctrl`+wheel / pinch over the ledger scales its density, exactly as it does over the File
+	// Explorer's workspace — the footer rig's slider and this gesture drive the one shared signal.
+	useCtrlWheelZoom(rootRef, walletZoom);
 
 	// A fresh SSR page (a wallet or currency switch) replaces the accumulated list wholesale.
 	useEffect(() => {
@@ -113,6 +119,7 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 
 	return (
 		<div
+			ref={rootRef}
 			class="wlt-ledger"
 			style={styleVars({ "--wlt-ledger-cols": cols, "--wlt-rowh-cur": `${rowh}px` })}
 		>

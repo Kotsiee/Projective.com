@@ -3,6 +3,7 @@ import "../styles/avatar.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import type { Severity } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Local types
 /**
@@ -84,7 +85,7 @@ export function Avatar(props: AvatarProps): JSX.Element {
 	} else {
 		content = (
 			<span class="ui-avatar__icon" aria-hidden="true">
-				👤
+				<Icon name="user" />
 			</span>
 		);
 	}

@@ -25,6 +25,15 @@ export interface SliderProps extends Omit<BaseFieldProps, "fluid"> {
 	range?: boolean;
 	/** Track axis (default `horizontal`). */
 	orientation?: "horizontal" | "vertical";
+	/**
+	 * Formats the spoken value for `aria-valuetext`. A bare number is rarely the fact a listener
+	 * needs — "70" could be percent, pounds or minutes — so give this the unit whenever the slider
+	 * carries one (`(v) => \`£\${v}\``, `(v) => \`\${v} minutes\``). Defaults to the raw number.
+	 *
+	 * In `range` mode it receives each handle's own value; the handle's `aria-label` already says
+	 * which end it is.
+	 */
+	formatValue?: (value: number) => string;
 	class?: string;
 	style?: CSSProperties;
 }
@@ -51,6 +60,7 @@ export function Slider(props: SliderProps): JSX.Element {
 		step = 1,
 		range = false,
 		orientation = "horizontal",
+		formatValue,
 		size = "md",
 		status = "default",
 		id,
@@ -204,7 +214,7 @@ export function Slider(props: SliderProps): JSX.Element {
 			{name !== undefined && (
 				<input type="hidden" name={name} value={String(range ? values.join(",") : values[0])} />
 			)}
-			<div ref={trackRef} class="ui-slider__track" onPointerDown={onTrackDown}>
+			<div ref={trackRef} class="ui-slider__track ui-hit" onPointerDown={onTrackDown}>
 				<div
 					class="ui-slider__range"
 					style={styleVars({
@@ -215,12 +225,13 @@ export function Slider(props: SliderProps): JSX.Element {
 				{values.map((v, index) => (
 					<div
 						key={index}
-						class="ui-slider__handle"
+						class="ui-slider__handle ui-hit"
 						role="slider"
 						tabIndex={disabled ? -1 : 0}
 						aria-valuemin={range && index === 1 ? values[0] : min}
 						aria-valuemax={range && index === 0 ? values[1] : max}
 						aria-valuenow={v}
+						aria-valuetext={formatValue ? formatValue(v) : undefined}
 						aria-orientation={orientation}
 						aria-disabled={disabled || undefined}
 						aria-readonly={readOnly || undefined}

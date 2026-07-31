@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
+import { useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { InputText } from "@projective/ui/fields";
@@ -17,6 +18,8 @@ import {
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { membersView, openInvite, publishDetail } from "../core/workspace-state.ts";
+import { gridColWidth, workspaceZoom, zoom } from "../core/view-state.ts";
+import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
 	filterMembers,
 	MEMBER_SORTS,
@@ -78,6 +81,11 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const openMember = useSignal<WorkspaceMember | null>(null);
 	/** The member whose removal/demotion needs an ownership transfer first. */
 	const transferFor = useSignal<WorkspaceMember | null>(null);
+	const peopleRef = useRef<HTMLDivElement>(null);
+
+	// `Ctrl`+wheel / pinch over the people collection scales it, the same gesture the roster and the
+	// File Explorer answer. The org-chart override is off this axis, so the gesture never fights it.
+	useCtrlWheelZoom(peopleRef, workspaceZoom);
 
 	const ws = detail.value;
 	const copy = kindCopy(ws.kind);
@@ -286,7 +294,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 										</p>
 									)}
 
-									<div class="wsp-people__body">
+									<div class="wsp-people__body" ref={peopleRef}>
 										{visible.value.length === 0
 											? (
 												<p class="wsp-pagehead__meta">
@@ -303,7 +311,11 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 											)
 											: membersView.value === "cards"
 											? (
-												<Grid minChildWidth="17rem" maxCols={4} gap="var(--space-4)">
+												<Grid
+													minChildWidth={`${gridColWidth(zoom.value)}px`}
+													maxCols={4}
+													gap="var(--space-4)"
+												>
 													{visible.value.map((m) => (
 														<MemberCard
 															key={m.id}

@@ -5,6 +5,7 @@ import { ArrowIcon } from "../components/footer-icons.tsx";
 // island in the page's client bundle (the same delivery pattern site-shell.css uses via SiteHeader).
 // This island renders inside the footer on every public surface, so it is the reliable carrier.
 import "../styles/footer.css";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * NewsletterForm — the footer "stay updated" capture. A DUMB island (no DB, no logic): it holds the
@@ -29,7 +30,8 @@ export default function NewsletterForm() {
 		submitting.value = false;
 
 		if (!result.ok) {
-			error.value = result.errors?.email ?? result.message ?? "Something went wrong. Please try again.";
+			error.value = result.errors?.email ?? result.message ??
+				"Something went wrong. Please try again.";
 			return;
 		}
 		done.value = true;
@@ -39,7 +41,7 @@ export default function NewsletterForm() {
 	if (done.value) {
 		return (
 			<p class="lp-footer__news-done" role="status">
-				<span class="lp-footer__news-check" aria-hidden="true">✓</span>
+				<Icon name="check" class="lp-footer__news-check" />
 				You're on the list — thanks for subscribing.
 			</p>
 		);

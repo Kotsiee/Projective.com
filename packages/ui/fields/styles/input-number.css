@@ -71,8 +71,10 @@
 	outline: none;
 	box-shadow: var(--focus-ring-shadow);
 }
+/* One disabled alpha, like every other control. At 0.4 this measured 2.30:1 — a stepper you could
+   not read well enough to know it was a stepper. */
 .ui-input-number__button:disabled {
-	opacity: 0.4;
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
 }
 .ui-input-number__button-icon {

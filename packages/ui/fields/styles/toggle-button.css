@@ -7,9 +7,12 @@
 .ui-toggle-button {
 	--tb-accent: var(--primary);
 	--tb-on: var(--on-primary);
-	--tb-height: 2.5rem;
+	--tb-height: var(--fld-h-md);
 	--tb-px: var(--space-4);
-	--tb-font: 0.9375rem;
+	--tb-font: var(--fld-fs-md);
+	/* Same fixed-radius bug the Button carried — ramped now, so a segmented toggle and the input
+	   beside it share a corner at every size. */
+	--tb-radius: var(--fld-r-md);
 
 	position: relative;
 	display: inline-flex;
@@ -24,8 +27,8 @@
 	line-height: 1;
 	color: var(--tb-accent);
 	background: transparent;
-	border: 1px solid var(--outline);
-	border-radius: var(--radius-base);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--tb-radius);
 	cursor: pointer;
 	user-select: none;
 	transition:
@@ -62,14 +65,16 @@
 
 /* #region Sizes */
 .ui-toggle-button--size-sm {
-	--tb-height: 2rem;
+	--tb-height: var(--fld-h-sm);
 	--tb-px: var(--space-3);
-	--tb-font: 0.8125rem;
+	--tb-font: var(--fld-fs-sm);
+	--tb-radius: var(--fld-r-sm);
 }
 .ui-toggle-button--size-lg {
-	--tb-height: 3rem;
+	--tb-height: var(--fld-h-lg);
 	--tb-px: var(--space-5);
-	--tb-font: 1.0625rem;
+	--tb-font: var(--fld-fs-lg);
+	--tb-radius: var(--fld-r-lg);
 }
 .ui-toggle-button--fluid {
 	display: flex;

@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import type { CatalogueKind } from "../types/catalogue-types.ts";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * catalogue-glyphs — the Catalogue surface's inline-SVG icon set. Every glyph is a COMPONENT returning
@@ -15,22 +16,7 @@ interface GlyphProps {
 }
 
 function svg(size: number, className: string | undefined, children: JSX.Element): JSX.Element {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width={size}
-			height={size}
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.7"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			class={className}
-			aria-hidden="true"
-		>
-			{children}
-		</svg>
-	);
+	return <IconShell size={size} class={className}>{children}</IconShell>;
 }
 
 // #region Kind / surface
@@ -216,20 +202,9 @@ export function StarGlyph(
 	{ size = 18, class: c, filled }: GlyphProps & { filled?: boolean },
 ): JSX.Element {
 	return (
-		<svg
-			viewBox="0 0 24 24"
-			width={size}
-			height={size}
-			fill={filled ? "currentColor" : "none"}
-			stroke="currentColor"
-			stroke-width="1.7"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			class={c}
-			aria-hidden="true"
-		>
+		<IconShell size={size} class={c} filled={filled}>
 			<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
-		</svg>
+		</IconShell>
 	);
 }
 export function TrendIcon({ size = 18, class: c }: GlyphProps): JSX.Element {

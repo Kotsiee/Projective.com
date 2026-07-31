@@ -19,14 +19,29 @@ export interface DismissOptions {
 	closeOnEscape?: boolean;
 	/** Close on outside pointer (default true). */
 	closeOnOutside?: boolean;
+	/**
+	 * Whether this overlay currently owns dismissal — pass `useOverlayStack().isTop` (default true).
+	 *
+	 * This must gate the listener itself, not just the callback. Every instance registers on `document`
+	 * in the capture phase, so listeners run in registration order: an outer dialog that merely no-ops
+	 * inside its own callback would still consume the Escape press and starve the inner overlay.
+	 */
+	enabled?: boolean;
 }
 
 export function useDismiss(opts: DismissOptions): void {
-	const { open, onDismiss, panelRef, triggerRef, closeOnEscape = true, closeOnOutside = true } =
-		opts;
+	const {
+		open,
+		onDismiss,
+		panelRef,
+		triggerRef,
+		closeOnEscape = true,
+		closeOnOutside = true,
+		enabled = true,
+	} = opts;
 
 	useEffect(() => {
-		if (!open || typeof document === "undefined") return;
+		if (!open || !enabled || typeof document === "undefined") return;
 
 		const onPointer = (e: PointerEvent) => {
 			if (!closeOnOutside) return;
@@ -36,10 +51,12 @@ export function useDismiss(opts: DismissOptions): void {
 			onDismiss();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (closeOnEscape && e.key === "Escape") {
-				e.stopPropagation();
-				onDismiss();
-			}
+			if (!closeOnEscape || e.key !== "Escape") return;
+			// `stopImmediatePropagation`, not `stopPropagation`: sibling listeners on `document` itself
+			// are unaffected by the latter, so one press used to close the whole stack at once.
+			e.stopImmediatePropagation();
+			e.preventDefault();
+			onDismiss();
 		};
 
 		document.addEventListener("pointerdown", onPointer, true);
@@ -48,5 +65,5 @@ export function useDismiss(opts: DismissOptions): void {
 			document.removeEventListener("pointerdown", onPointer, true);
 			document.removeEventListener("keydown", onKey, true);
 		};
-	}, [open, onDismiss, panelRef, triggerRef, closeOnEscape, closeOnOutside]);
+	}, [open, enabled, onDismiss, panelRef, triggerRef, closeOnEscape, closeOnOutside]);
 }

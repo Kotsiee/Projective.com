@@ -90,7 +90,7 @@
 	grid-template-rows: auto minmax(0, 1fr) auto;
 	gap: var(--space-3);
 	inline-size: 100%;
-	aspect-ratio: 1.586;
+	aspect-ratio: var(--wlt-card-ratio);
 	margin: 0;
 	padding: var(--space-5);
 	/*
@@ -399,7 +399,7 @@
 	grid-column: 1 / -1;
 	inline-size: 100%;
 	max-inline-size: 400px;
-	aspect-ratio: 1.586;
+	aspect-ratio: var(--wlt-card-ratio);
 	margin: 0;
 	padding: 0;
 	list-style: none;

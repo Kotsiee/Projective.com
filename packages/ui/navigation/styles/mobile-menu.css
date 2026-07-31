@@ -34,8 +34,8 @@
 	inset: 0;
 	border: 0;
 	background: color-mix(in srgb, #000 40%, transparent);
-	backdrop-filter: blur(calc(var(--glass-blur, 18px) / 3));
-	-webkit-backdrop-filter: blur(calc(var(--glass-blur, 18px) / 3));
+	backdrop-filter: blur(var(--scrim-blur));
+	-webkit-backdrop-filter: blur(var(--scrim-blur));
 }
 
 .ui-mobile-menu__drawer {
@@ -44,9 +44,9 @@
 	block-size: 100%;
 	padding: var(--space-4) var(--space-2);
 	overflow: auto;
-	background: color-mix(in srgb, var(--surface) 92%, transparent);
-	backdrop-filter: blur(var(--glass-blur, 18px));
-	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	border-start-end-radius: var(--radius-container-lg);
 	border-end-end-radius: var(--radius-container-lg);
 	box-shadow: var(--elevation-high);

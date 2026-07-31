@@ -11,6 +11,7 @@ import { useIsMobile } from "../../hooks/useMediaQuery.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link Menubar}. */
@@ -131,7 +132,7 @@ function MenubarSub(props: SubProps): VNode {
 					<span class="ui-menubar__shortcut" aria-hidden="true">{item.shortcut}</span>
 				)}
 				{item.badge != null && <span class="ui-menubar__badge">{item.badge}</span>}
-				{hasChildren(item) && <span class="ui-menubar__arrow" aria-hidden="true">▸</span>}
+				{hasChildren(item) && <Icon name="caret-right" class="ui-menubar__arrow" />}
 			</>
 		);
 
@@ -352,7 +353,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 								>
 									{topContent(item)}
 									{sub && (
-										<span class="ui-menubar__arrow" aria-hidden="true">{isExp ? "▾" : "▸"}</span>
+										<Icon class="ui-menubar__arrow" name={isExp ? "chevron-down" : "caret-right"} />
 									)}
 								</button>
 							)}
@@ -400,7 +401,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 							aria-label={ariaLabel}
 							onClick={() => (mobileOpen.value = !mobileOpen.value)}
 						>
-							<span aria-hidden="true">☰</span>
+							<Icon name="menu" />
 						</button>
 						{mobileOpen.value && mobilePanel}
 					</>
@@ -450,7 +451,7 @@ export function Menubar(props: MenubarProps): JSX.Element {
 												}}
 											>
 												{topContent(item)}
-												{sub && <span class="ui-menubar__arrow" aria-hidden="true">▾</span>}
+												{sub && <Icon name="chevron-down" class="ui-menubar__arrow" />}
 											</div>
 										)}
 									{sub && isOpen && (

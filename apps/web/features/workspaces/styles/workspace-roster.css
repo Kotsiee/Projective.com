@@ -877,10 +877,11 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	min-inline-size: 0;
 }
 
+/* A form label takes the package field register; `--wsp-fs-label` is the console's eyebrow step. */
 .wsp-create__label {
-	font-size: var(--wsp-fs-label);
-	font-weight: 600;
-	color: var(--on-surface);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
 }
 
 .wsp-create__hint {
@@ -1021,9 +1022,6 @@ answer to a question the user just asked. */
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
-	padding: var(--space-3);
-	border-radius: var(--radius-container-lg);
-	background: var(--surface-1);
 	min-inline-size: 0;
 }
 

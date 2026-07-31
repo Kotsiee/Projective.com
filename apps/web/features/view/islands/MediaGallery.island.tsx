@@ -176,7 +176,7 @@ function Lightbox(
 	return (
 		<BodyPortal>
 			<div class="fx-modal vw-lightbox" data-state={state} style={`z-index:${stack.zIndex}`}>
-				<Backdrop visible={state === "open"} blur onClick={onClose} />
+				<Backdrop visible={state === "open"} onClick={onClose} />
 				<div
 					ref={panelRef}
 					class="fx-modal__panel vw-lightbox__panel"

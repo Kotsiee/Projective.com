@@ -7,6 +7,7 @@ import { useId } from "../hooks/useId.ts";
 import { useListNavigation } from "../hooks/useListNavigation.ts";
 import { ariaInvalid } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, Option, OptionGroup, ValueChange } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Props for {@link Listbox} — an always-open inline listbox (no popup). */
@@ -201,7 +202,11 @@ export function Listbox(props: ListboxProps): JSX.Element {
 							{checked && <CheckGlyph />}
 						</span>
 					)
-					: <span class="ui-listbox__option-check" aria-hidden="true">{checked ? "✓" : ""}</span>}
+					: (
+						<span class="ui-listbox__option-check" aria-hidden="true">
+							{checked && <Icon name="check" />}
+						</span>
+					)}
 				<span class="ui-listbox__option-label">{opt.label}</span>
 			</li>
 		);

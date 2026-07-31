@@ -9,8 +9,11 @@ import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
 import { useListNavigation } from "../hooks/useListNavigation.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, Option, ValueChange } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Types
 /** A single suggestion — either a bare string or a rich {@link Option}. */
@@ -60,6 +63,11 @@ export interface AutoCompleteProps extends BaseFieldProps {
  * `forceSelection`, a `minLength` threshold and a debounced query. Implements the WAI-ARIA combobox
  * pattern (`role="combobox"` + active-descendant over a `role="listbox"` panel) with full keyboard
  * operation and outside/Escape dismissal.
+ *
+ * The PANEL is projected into `document.body` via {@link BodyPortal} and claims a live stacking index
+ * from {@link useOverlayStack}, so it escapes any ancestor that would clip it (`overflow: hidden`) or
+ * re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) — the trap a Dialog panel
+ * sets. The control stays in place and the id-based ARIA wiring survives the move.
  */
 export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 	const {
@@ -119,6 +127,7 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 		},
 	);
 
+	const stack = useOverlayStack({ active: open.value, layer: "popover" });
 	const float = useFloating({
 		open: open.value,
 		triggerRef: controlRef,
@@ -288,7 +297,7 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 							disabled={disabled}
 							onClick={() => removeToken(i)}
 						>
-							<span aria-hidden="true">×</span>
+							<Icon name="close" />
 						</button>
 					</span>
 				))}
@@ -336,45 +345,48 @@ export function AutoComplete(props: AutoCompleteProps): JSX.Element {
 			</div>
 
 			{open.value && (
-				<div
-					ref={panelRef}
-					id={listId}
-					role="listbox"
-					class="ui-autocomplete__panel"
-					data-placement={float?.placement}
-					style={styleVars({
-						"--ac-top": float ? `${float.top}px` : undefined,
-						"--ac-left": float ? `${float.left}px` : undefined,
-						"--ac-width": float ? `${float.width}px` : undefined,
-					})}
-				>
-					{suggestions.length === 0
-						? <div class="ui-autocomplete__empty" role="presentation">No results</div>
-						: suggestions.map((s, i) => {
-							const opt: Option = typeof s === "string" ? { label: s, value: s } : s;
-							return (
-								<div
-									key={keyOf(s)}
-									id={`${listId}-opt-${i}`}
-									role="option"
-									aria-selected={i === activeIndex}
-									aria-disabled={opt.disabled || undefined}
-									class={cx(
-										"ui-autocomplete__option",
-										i === activeIndex && "ui-autocomplete__option--active",
-										opt.disabled && "ui-autocomplete__option--disabled",
-									)}
-									onPointerDown={(e) => {
-										e.preventDefault();
-										if (!opt.disabled) selectSuggestion(s);
-									}}
-									onPointerEnter={() => nav.reset(i)}
-								>
-									{itemTemplate ? itemTemplate(opt) : labelOf(s)}
-								</div>
-							);
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						id={listId}
+						role="listbox"
+						class="ui-autocomplete__panel"
+						data-placement={float?.placement}
+						style={styleVars({
+							"--ac-top": float ? `${float.top}px` : undefined,
+							"--ac-left": float ? `${float.left}px` : undefined,
+							"--ac-width": float ? `${float.width}px` : undefined,
+							"--z-portal": String(stack.zIndex),
 						})}
-				</div>
+					>
+						{suggestions.length === 0
+							? <div class="ui-autocomplete__empty" role="presentation">No results</div>
+							: suggestions.map((s, i) => {
+								const opt: Option = typeof s === "string" ? { label: s, value: s } : s;
+								return (
+									<div
+										key={keyOf(s)}
+										id={`${listId}-opt-${i}`}
+										role="option"
+										aria-selected={i === activeIndex}
+										aria-disabled={opt.disabled || undefined}
+										class={cx(
+											"ui-autocomplete__option",
+											i === activeIndex && "ui-autocomplete__option--active",
+											opt.disabled && "ui-autocomplete__option--disabled",
+										)}
+										onPointerDown={(e) => {
+											e.preventDefault();
+											if (!opt.disabled) selectSuggestion(s);
+										}}
+										onPointerEnter={() => nav.reset(i)}
+									>
+										{itemTemplate ? itemTemplate(opt) : labelOf(s)}
+									</div>
+								);
+							})}
+					</div>
+				</BodyPortal>
 			)}
 		</div>
 	);

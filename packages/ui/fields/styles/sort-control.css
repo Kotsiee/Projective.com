@@ -85,12 +85,12 @@
 
 /* The floating property listbox — a full outline is allowed (it is an interactive surface, §B.4). */
 .ui-sort__menu {
-	min-inline-size: 11rem;
-	max-block-size: 60vh;
+	min-inline-size: var(--fld-panel-minw);
+	max-block-size: var(--fld-panel-maxh);
 	overflow-y: auto;
 	padding: var(--space-1);
 	background: var(--surface);
-	border: 1px solid var(--outline);
+	border: var(--fld-bw) solid var(--fld-panel-border);
 	border-radius: var(--radius-base);
 	box-shadow: var(--elevation-high);
 }
@@ -99,21 +99,31 @@
 	align-items: center;
 	gap: var(--space-2);
 	inline-size: 100%;
-	padding: var(--space-2);
+	min-block-size: var(--fld-opt-h);
+	padding-block: var(--space-2);
+	padding-inline: var(--fld-opt-px);
 	border: none;
-	border-radius: var(--radius-sm);
+	border-radius: var(--fld-opt-radius);
 	background: transparent;
 	color: var(--on-surface);
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--fld-opt-fs);
 	text-align: start;
 	cursor: pointer;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
-.ui-sort__option:hover,
+.ui-sort__option:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+/*
+ * Focus is NOT hover. These two were one rule with `outline: none` and no replacement, so a keyboard
+ * user inside this menu got the same faint tint a passing mouse produces and no ring at all — the
+ * one place in the taxonomy where focus was genuinely invisible.
+ */
 .ui-sort__option:focus-visible {
 	outline: none;
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 .ui-sort__option[data-selected="true"] {
 	color: var(--primary);

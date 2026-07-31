@@ -6,6 +6,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
+import { ariaInvalid } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
 
 export interface RatingProps extends Omit<BaseFieldProps, "fluid"> {
@@ -150,7 +151,7 @@ export function Rating(props: RatingProps): JSX.Element {
 			aria-describedby={describedBy}
 			aria-disabled={disabled || undefined}
 			aria-readonly={readOnly || undefined}
-			aria-invalid={status === "invalid" || undefined}
+			aria-invalid={ariaInvalid(status)}
 			class={cx(
 				"ui-rating",
 				`ui-rating--size-${size}`,
@@ -184,12 +185,14 @@ export function Rating(props: RatingProps): JSX.Element {
 							starRefs.current[i] = el;
 						}}
 						type="button"
-						class={cx("ui-rating__star", filled && "ui-rating__star--on")}
+						class={cx("ui-rating__star ui-hit", filled && "ui-rating__star--on")}
 						role="radio"
 						aria-checked={index1 === current}
 						aria-posinset={index1}
 						aria-setsize={stars}
-						aria-label={`${index1} ${index1 === 1 ? "star" : "stars"}`}
+						/* "3 of 5 stars", not "3 stars" — the scale is the half of the fact that a bare
+						   position leaves out, and a listener cannot infer it from the group. */
+						aria-label={`${index1} of ${stars} ${stars === 1 ? "star" : "stars"}`}
 						tabIndex={disabled ? -1 : index1 === tabbable ? 0 : -1}
 						disabled={disabled}
 						onClick={() => select(index1)}

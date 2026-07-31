@@ -1,23 +1,27 @@
 /*
  * Field foundation — shared control geometry, variants, statuses and helper pieces for the whole
  * fields taxonomy. Token-only (DESIGN_SYSTEM.md §A); no hardcoded hex/radius/duration/shadow. Every
- * input-shaped control composes `.ui-field` for a single source of size/variant/status truth.
+ * input-shaped control composes `.ui-field` for a single source of size/variant/status truth, and
+ * every control that CANNOT compose it (Checkbox, Slider, Rating, ColorPicker…) still reads the same
+ * `--fld-*` state channels from `styles/index.css`, so the state language is one for all 27.
  *
  * Separation hierarchy (§B.4): a full outline is allowed here because inputs ARE interactive.
  */
 
 /* #region Size ramp — resolved into per-control custom properties */
 .ui-field {
-	--field-height: 2.5rem; /* 40px — spec input height */
-	--field-px: var(--space-3);
-	--field-font: 0.9375rem;
+	--field-height: var(--fld-h-md);
+	--field-px: var(--fld-px-md);
+	--field-font: var(--fld-fs-md);
 	--field-gap: var(--space-2);
-	--field-radius: var(--radius-base);
-	--field-border: var(--outline);
-	--field-bg: var(--surface);
-	--field-fg: var(--on-surface);
+	--field-radius: var(--fld-r-md);
+	--field-border: var(--fld-rest-bd);
+	--field-bg: var(--fld-rest-bg);
+	--field-fg: var(--fld-rest-fg);
 	--field-accent: var(--primary);
 	--field-on-accent: var(--on-primary);
+	/* The status icon channel (§A.5). Unset at rest; a status sets it and the `__mark` slot paints. */
+	--field-mark: transparent;
 
 	box-sizing: border-box;
 	display: inline-flex;
@@ -30,7 +34,7 @@
 	line-height: 1.4;
 	color: var(--field-fg);
 	background: var(--field-bg);
-	border: 1px solid var(--field-border);
+	border: var(--fld-bw) solid var(--field-border);
 	border-radius: var(--field-radius);
 	transition:
 		border-color var(--dur-fast) var(--ease-standard),
@@ -39,16 +43,29 @@
 }
 
 .ui-field--size-sm {
-	--field-height: 2rem;
-	--field-px: var(--space-2);
-	--field-font: 0.8125rem;
-	--field-radius: var(--radius-sm);
+	--field-height: var(--fld-h-sm);
+	--field-px: var(--fld-px-sm);
+	--field-font: var(--fld-fs-sm);
+	--field-radius: var(--fld-r-sm);
 }
 .ui-field--size-lg {
-	--field-height: 3rem;
-	--field-px: var(--space-4);
-	--field-font: 1.0625rem;
-	--field-radius: var(--radius-lg);
+	--field-height: var(--fld-h-lg);
+	--field-px: var(--fld-px-lg);
+	--field-font: var(--fld-fs-lg);
+	--field-radius: var(--fld-r-lg);
+}
+
+/*
+ * The 16px mobile floor. Safari on iOS zooms the viewport when a text field smaller than 16px takes
+ * focus, and it does not zoom back out — the user is left on a page they now have to pan. The
+ * desktop ramp is a density decision and stays; on a touch viewport the editable text steps up to
+ * the document base instead. The CONTROL keeps its height, so nothing reflows around it.
+ */
+@media (max-width: 767px) and (pointer: coarse) {
+	.ui-field__input,
+	.ui-field__input::placeholder {
+		font-size: max(var(--field-font), var(--text-base));
+	}
 }
 /* #endregion */
 
@@ -71,7 +88,7 @@
 .ui-field--bare {
 	--field-bg: transparent;
 	--field-border: transparent;
-	--field-radius: var(--radius-sm);
+	--field-radius: var(--fld-r-sm);
 	padding-inline: var(--space-2);
 }
 .ui-field--bare:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
@@ -92,7 +109,7 @@
 
 /* #region Interaction states */
 .ui-field:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
-	--field-border: var(--on-surface-variant);
+	--field-border: var(--fld-hover-bd);
 }
 .ui-field--focused,
 .ui-field:focus-within {
@@ -100,28 +117,62 @@
 	box-shadow: var(--focus-ring-shadow);
 	outline: none;
 }
+
+/*
+ * Disabled fades the INK and the BORDER, never the whole box.
+ *
+ * The previous `opacity: 0.55` on the root also faded the focus ring and — paired with
+ * `pointer-events: none` — guaranteed the `not-allowed` cursor could never render, because an
+ * element that takes no pointer events also takes no cursor. Keeping pointer events lets the cursor
+ * do the communicating that colour alone should not, and a disabled control is already removed from
+ * activation by the native `disabled` attribute / `aria-disabled` on the control itself.
+ */
 .ui-field--disabled {
-	opacity: 0.55;
+	--field-fg: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--field-bg));
+	--field-border: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--field-bg));
 	cursor: not-allowed;
-	pointer-events: none;
+	user-select: none;
 }
+.ui-field--disabled .ui-field__input,
+.ui-field--disabled .ui-field__input::placeholder {
+	cursor: not-allowed;
+}
+
+/* Read-only keeps full ink — the value is authoritative and selectable; only the invitation to
+   edit is withdrawn. */
 .ui-field--readonly {
-	--field-bg: var(--surface-1);
+	--field-bg: var(--fld-readonly-bg);
+	--field-border: var(--fld-readonly-bd);
+	cursor: default;
+}
+
+/* Loading — a control awaiting its own data (AutoComplete fetching, a Select hydrating options).
+   The control stays focusable and keyboard-operable; only its content reads as provisional. */
+.ui-field--loading {
+	--field-fg: var(--fld-loading-fg);
+	cursor: progress;
+}
+.ui-field--loading .ui-field__input {
+	cursor: progress;
 }
 /* #endregion */
 
-/* #region Validation statuses (paired with icon channel by consumers for CVD, §A.5) */
+/* #region Validation statuses — colour PLUS a mark, never hue alone (§A.5) */
 .ui-field--invalid {
-	--field-border: var(--danger);
-	--field-accent: var(--danger);
+	--field-border: var(--fld-invalid-bd);
+	--field-accent: var(--fld-invalid-bd);
+	--field-mark: var(--fld-invalid-mark);
 }
 .ui-field--success {
-	--field-border: var(--success);
-	--field-accent: var(--success);
+	--field-border: var(--fld-valid-bd);
+	--field-accent: var(--fld-valid-bd);
+	--field-mark: var(--fld-valid-mark);
 }
 .ui-field--warning {
-	--field-border: var(--warning);
-	--field-accent: var(--warning);
+	--field-border: var(--fld-warning-bd);
+	--field-accent: var(--fld-warning-bd);
+	--field-bg: var(--fld-warning-bg);
+	--field-mark: var(--fld-warning-mark);
 }
 /*
  * Two-tier creation gate (root CLAUDE.md). `required` = RED initial-creation gate (needed to create
@@ -130,14 +181,51 @@
  * hairline — still §B.4-clean (the field is interactive, so a full outline is allowed).
  */
 .ui-field--required {
-	--field-border: var(--danger);
-	--field-accent: var(--danger);
-	--field-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+	--field-border: var(--fld-required-bd);
+	--field-accent: var(--fld-required-bd);
+	--field-bg: var(--fld-required-bg);
+	--field-mark: var(--fld-invalid-mark);
 }
 .ui-field--gate {
-	--field-border: var(--warning);
-	--field-accent: var(--warning);
-	--field-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+	--field-border: var(--fld-gate-bd);
+	--field-accent: var(--fld-gate-bd);
+	--field-bg: var(--fld-gate-bg);
+	--field-mark: var(--fld-warning-mark);
+}
+
+/*
+ * The status mark. A trailing glyph slot every `.ui-field` control may render; it collapses to
+ * nothing at rest because `--field-mark` is transparent and the slot is zero-width until a status
+ * paints it. This is the icon channel the CVD overlay depends on — an invalid field and a valid one
+ * must differ by more than hue.
+ */
+.ui-field__mark {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 0;
+	overflow: hidden;
+	color: var(--field-mark);
+	transition: inline-size var(--dur-fast) var(--ease-standard);
+}
+.ui-field--invalid > .ui-field__mark,
+.ui-field--success > .ui-field__mark,
+.ui-field--warning > .ui-field__mark,
+.ui-field--required > .ui-field__mark,
+.ui-field--gate > .ui-field__mark,
+.ui-field--loading > .ui-field__mark {
+	inline-size: 1em;
+	margin-inline-start: var(--space-1);
+}
+/* Loading has no status hue of its own — the spinner reads as secondary ink, not as an alarm. */
+.ui-field--loading > .ui-field__mark {
+	color: var(--fld-loading-fg);
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-field__mark {
+		transition: none;
+	}
 }
 /* #endregion */
 
@@ -155,8 +243,19 @@
 	block-size: 100%;
 }
 .ui-field__input::placeholder {
-	color: var(--text-secondary);
+	color: var(--fld-placeholder-fg);
 	opacity: 1;
+}
+/*
+ * A disabled placeholder is the faintest text in the taxonomy — secondary ink already, then faded
+ * again. Compositing the two measured 3.26:1, so it resolves from `--fld-rest-fg` (5.04:1) rather
+ * than stacking two fades. It loses the placeholder-vs-value tonal step, and that is the right
+ * trade: inside a disabled control that distinction guides no action, while legibility is the whole
+ * requirement. The same reasoning applies to a disabled calendar day, which was the worst in the set
+ * at 2.30:1 on the one control where reading the greyed-out dates IS the information.
+ */
+.ui-field--disabled .ui-field__input::placeholder {
+	color: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--field-bg));
 }
 /* #endregion */
 
@@ -165,20 +264,66 @@
 	display: inline-block;
 	margin-block-end: var(--space-1);
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	font-weight: 600;
-	color: var(--on-surface);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
 }
 .ui-field-label__required {
 	margin-inline-start: 0.15em;
 	color: var(--danger);
 }
+/*
+ * The hint row reserves its height whether or not it has content, so a validation message appearing
+ * mid-form does not shove every field below it down the page. `min-block-size` rather than a fixed
+ * height, so a two-line error still grows.
+ */
 .ui-field-hint {
 	margin-block-start: var(--space-1);
-	font-size: 0.8125rem;
-	color: var(--text-secondary);
+	min-block-size: var(--fld-hint-min-h);
+	font-size: var(--fld-hint-fs);
+	line-height: var(--fld-hint-min-h);
+	color: var(--fld-hint-fg);
 }
 .ui-field-hint--error {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
 	color: var(--danger);
+}
+.ui-field-hint__icon {
+	flex: 0 0 auto;
+	line-height: 0;
+}
+
+/*
+ * Required legend. A lone asterisk with nothing to explain it is an anti-pattern; a form that uses
+ * `required` renders this once, near its submit action.
+ */
+.ui-field-legend {
+	margin: 0;
+	font-size: var(--fld-hint-fs);
+	color: var(--fld-hint-fg);
+}
+.ui-field-legend__mark {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Busy spinner (shared by every `loading` control) */
+.ui-field-busy {
+	animation: ui-field-spin 900ms linear infinite;
+	transform-origin: 50% 50%;
+}
+@keyframes ui-field-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+/* Jump to a settled state rather than stopping mid-sweep — a frozen partial ring still reads as
+   "not finished", which is the whole message (§B.5 reduced-motion). */
+@media (prefers-reduced-motion: reduce) {
+	.ui-field-busy {
+		animation: none;
+	}
 }
 /* #endregion */

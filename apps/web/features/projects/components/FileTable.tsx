@@ -8,6 +8,7 @@ import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import type { FileItem, FileSortDir, FileSortKey } from "../types/projects-types.ts";
 import { listRowHeight, listShowsThumbnails, zoom } from "../core/view-state.ts";
 import { FileKindIcon } from "./file-glyphs.tsx";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * FileTable — the dense list/table presentation of the workspace, window-virtualized (only in-view
@@ -126,7 +127,7 @@ export function FileTable(props: FileTableProps): JSX.Element {
 		const active = sortKey.value === col.sort;
 		return (
 			<span class="fx-th__sort" data-active={active ? "true" : undefined} aria-hidden="true">
-				{active ? (sortDir.value === "asc" ? "▲" : "▼") : "⇅"}
+				<Icon name={active ? (sortDir.value === "asc" ? "sort-asc" : "sort-desc") : "sort"} />
 			</span>
 		);
 	}

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { Avatar, Carousel } from "@projective/ui/display";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
+import { Popover } from "@projective/ui/feedback";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import type { FileItem } from "../types/projects-types.ts";
 import { kindLabel } from "../core/file-model.ts";
@@ -84,14 +85,7 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 	const noteDraft = useSignal("");
 	const notesByFile = useSignal<Record<string, string[]>>({});
 	const menuOpen = useSignal(false);
-	const menuRef = useRef<HTMLDivElement>(null);
 	const menuBtnRef = useRef<HTMLButtonElement>(null);
-	useDismiss({
-		open: menuOpen.value,
-		onDismiss: () => (menuOpen.value = false),
-		panelRef: menuRef,
-		triggerRef: menuBtnRef,
-	});
 
 	// Reset the page (and any in-flight rename) whenever a new group is opened.
 	const groupKey = files.map((f) => f.id).join("|");
@@ -135,7 +129,7 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 	return (
 		<BodyPortal>
 			<div class="fx-modal" data-state={state} style={`z-index:${stack.zIndex}`}>
-				<Backdrop visible={state === "open"} blur onClick={onClose} />
+				<Backdrop visible={state === "open"} onClick={onClose} />
 				<div
 					ref={panelRef}
 					class="fx-modal__panel"
@@ -197,41 +191,42 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 							>
 								<StarGlyph size={17} filled={file.starred} />
 							</button>
-							<div class="fx-modal__menuwrap">
-								<button
-									ref={menuBtnRef}
-									type="button"
-									class="fx-modal__act"
-									aria-haspopup="menu"
-									aria-expanded={menuOpen.value}
-									aria-label="More actions"
-									onClick={() => (menuOpen.value = !menuOpen.value)}
-								>
-									<KebabIcon size={17} />
-								</button>
-								{menuOpen.value
-									? (
-										<div ref={menuRef} class="fx-modal__menu" role="menu">
-											<button
-												type="button"
-												class="fx-modal__menuitem"
-												role="menuitem"
-												onClick={() => (menuOpen.value = false)}
-											>
-												Copy link
-											</button>
-											<button
-												type="button"
-												class="fx-modal__menuitem"
-												role="menuitem"
-												onClick={() => (menuOpen.value = false)}
-											>
-												Report
-											</button>
-										</div>
-									)
-									: null}
-							</div>
+							{
+								/*
+								 * The kebab menu goes through the shared Popover — i.e. through BodyPortal and the
+								 * managed z-stack — rather than an absolutely-positioned child. As a child it lived
+								 * inside the panel's `overflow: hidden`, so it was the one overlay in the system that
+								 * could be clipped by its own container.
+								 */
+							}
+							<button
+								ref={menuBtnRef}
+								type="button"
+								class="fx-modal__act"
+								aria-label="More actions"
+							>
+								<KebabIcon size={17} />
+							</button>
+							<Popover open={menuOpen} targetRef={menuBtnRef} placement="bottom-end">
+								<div class="fx-modal__menu" role="menu">
+									<button
+										type="button"
+										class="fx-modal__menuitem"
+										role="menuitem"
+										onClick={() => (menuOpen.value = false)}
+									>
+										Copy link
+									</button>
+									<button
+										type="button"
+										class="fx-modal__menuitem"
+										role="menuitem"
+										onClick={() => (menuOpen.value = false)}
+									>
+										Report
+									</button>
+								</div>
+							</Popover>
 							<button
 								type="button"
 								class="fx-modal__act fx-modal__act--close"

@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import type { SubmissionStatus } from "../types/projects-types.ts";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * submission-glyphs — the Submissions explorer's inline-SVG icon set (tree node kinds, review-status
@@ -14,22 +15,7 @@ interface GlyphProps {
 }
 
 function svg(size: number, className: string | undefined, children: JSX.Element): JSX.Element {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width={size}
-			height={size}
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.7"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			class={className}
-			aria-hidden="true"
-		>
-			{children}
-		</svg>
-	);
+	return <IconShell size={size} class={className}>{children}</IconShell>;
 }
 
 // #region Tree node-kind glyphs

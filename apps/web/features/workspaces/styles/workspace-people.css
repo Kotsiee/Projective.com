@@ -51,7 +51,7 @@
 .wsp-people__views {
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 	padding: 2px;
 	border-radius: var(--radius-base);
 	background: var(--surface-2);
@@ -178,7 +178,7 @@
 .wsp-mcard__ident {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
@@ -343,7 +343,7 @@
 .wsp-override {
 	display: inline-flex;
 	align-items: center;
-	gap: 2px;
+	gap: var(--space-px);
 	padding-inline: var(--space-1);
 	padding-block: 1px;
 	border-radius: var(--radius-xs);
@@ -753,7 +753,7 @@
 .wsp-mdrawer__ident {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
@@ -935,9 +935,8 @@ does anything (§B.4 — the fill is the separator). */
 	align-items: center;
 	gap: var(--space-3);
 	flex-wrap: wrap;
-	padding: var(--space-3);
-	border-radius: var(--radius-lg);
-	background: var(--surface-2);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
 }
 
 .wsp-mdrawer__lastowner-text {
@@ -1023,7 +1022,7 @@ does anything (§B.4 — the fill is the separator). */
 .wsp-invites__body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
+	gap: var(--space-px);
 	min-inline-size: 0;
 }
 
@@ -1077,9 +1076,6 @@ does anything (§B.4 — the fill is the separator). */
 	align-items: center;
 	gap: var(--space-2);
 	flex-wrap: wrap;
-	padding: var(--space-3);
-	border-radius: var(--radius-container-lg);
-	background: var(--surface-1);
 }
 
 .wsp-invites__linkfield {
@@ -1124,10 +1120,15 @@ does anything (§B.4 — the fill is the separator). */
 	min-inline-size: 0;
 }
 
+/*
+ * A FORM label, so it takes the package's field-label register — not `--wsp-fs-label`, which is the
+ * console's 12px eyebrow step for section headings and stat tiles. The two registers were being
+ * spelled the same way, which is how a form field ended up labelled two steps below its own value.
+ */
 .wsp-inviteform__label {
-	font-size: var(--wsp-fs-label);
-	font-weight: 600;
-	color: var(--on-surface);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
 }
 
 .wsp-inviteform__hint {
@@ -1140,9 +1141,6 @@ does anything (§B.4 — the fill is the separator). */
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
-	padding: var(--space-3);
-	border-radius: var(--radius-lg);
-	background: var(--surface-1);
 	min-inline-size: 0;
 }
 

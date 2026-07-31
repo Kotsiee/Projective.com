@@ -1,6 +1,7 @@
 import type { JSX, VNode } from "preact";
 import "../styles/chip.css";
 import { cx } from "../../core/cx.ts";
+import { Icon } from "../../icons/mod.ts";
 
 export interface ChipProps {
 	/** Visible label text (also used to build the remove button's accessible name). */
@@ -64,7 +65,7 @@ export function Chip(props: ChipProps): JSX.Element {
 					aria-label={`Remove ${label}`}
 					onClick={onRemoveClick}
 				>
-					<span aria-hidden="true">×</span>
+					<Icon name="close" />
 				</button>
 			)}
 		</span>

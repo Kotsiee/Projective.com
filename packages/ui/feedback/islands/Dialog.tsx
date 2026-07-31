@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX, VNode } from "preact";
+import type { ComponentChildren, JSX, RefObject, VNode } from "preact";
 import { useRef, useState } from "preact/hooks";
 import "../styles/dialog.css";
 import { cx } from "../../core/cx.ts";
@@ -14,6 +14,7 @@ import { useIsMobile } from "../../hooks/useMediaQuery.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { OverlayPosition } from "../../types/mod.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Props
 /** Render context handed to the header/footer template render-props. */
@@ -40,6 +41,11 @@ export interface DialogProps {
 	position?: OverlayPosition;
 	/** Render a backdrop + trap focus + block interaction beneath (default `true`). */
 	modal?: boolean;
+	/**
+	 * ARIA role (default `"dialog"`). Destructive confirmations pass `"alertdialog"` so assistive tech
+	 * announces the prompt with the urgency its consequence warrants.
+	 */
+	role?: "dialog" | "alertdialog";
 	/** Clicking the backdrop closes the dialog (default `true` when modal). */
 	dismissableMask?: boolean;
 	/** Show the header close (×) button (default `true`). */
@@ -58,6 +64,11 @@ export interface DialogProps {
 	width?: string;
 	/** Fixed block size (CSS length). */
 	height?: string;
+	/**
+	 * Element (or scope) that takes focus on open, instead of the first tabbable — which is otherwise
+	 * the header's × button, since the header precedes the body in DOM order.
+	 */
+	initialFocusRef?: RefObject<HTMLElement>;
 	/** Fired whenever visibility changes. */
 	onVisibleChange?: (visible: boolean) => void;
 	/** Extra class(es) merged onto the panel. */
@@ -85,6 +96,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 		footerTemplate,
 		position = "center",
 		modal = true,
+		role = "dialog",
 		dismissableMask = true,
 		closable = true,
 		draggable = false,
@@ -94,6 +106,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 		closeOnEscape = true,
 		width,
 		height,
+		initialFocusRef,
 		onVisibleChange,
 		class: className,
 		children,
@@ -118,12 +131,16 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 	});
 	const close = () => ctrl.set(false);
 
-	useFocusTrap({ active: mounted && modal, containerRef: panelRef });
+	useFocusTrap({
+		active: mounted && modal,
+		containerRef: panelRef,
+		initialFocusRef,
+		inertBackground: modal,
+	});
 	useDismiss({
 		open: mounted,
-		onDismiss: () => {
-			if (stack.isTop) close();
-		},
+		enabled: stack.isTop,
+		onDismiss: close,
 		panelRef,
 		closeOnEscape,
 		closeOnOutside: false,
@@ -205,7 +222,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 			>
 				<div
 					ref={panelRef}
-					role="dialog"
+					role={role}
 					aria-modal={modal || undefined}
 					aria-labelledby={hasHeader && (header !== undefined || headerTemplate)
 						? titleId
@@ -218,7 +235,11 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 				>
 					{headerTemplate
 						? (
+							// Carries `titleId` so `aria-labelledby` resolves to the region's own text. A
+							// template renders no `<h2 id={titleId}>`, so pointing at one would dangle and
+							// leave the dialog with no accessible name at all.
 							<div
+								id={titleId}
 								class="ui-dialog__header"
 								onPointerDown={onHeaderPointerDown}
 								onPointerMove={onHeaderPointerMove}
@@ -244,7 +265,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 											aria-pressed={maximized}
 											onClick={toggleMaximize}
 										>
-											{maximized ? "🗗" : "🗖"}
+											<Icon name={maximized ? "collapse" : "expand"} />
 										</button>
 									)}
 									{closable && (
@@ -254,7 +275,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 											aria-label="Close"
 											onClick={close}
 										>
-											×
+											<Icon name="close" />
 										</button>
 									)}
 								</div>

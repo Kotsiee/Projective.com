@@ -65,9 +65,7 @@
 .ui-select-button__option + .ui-select-button__option {
 	border-inline-start: 1px solid var(--border-subtle);
 }
-.ui-select-button__option:hover:not(:disabled):not([aria-pressed="true"]):not(
-	[aria-checked="true"]
-) {
+.ui-select-button__option:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 .ui-select-button__option:focus-visible {

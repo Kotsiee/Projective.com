@@ -89,15 +89,16 @@
 	overflow: hidden;
 	color: var(--on-surface);
 	background: var(--surface);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-medium);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
+	box-shadow: var(--elevation-high);
 	pointer-events: auto;
 	touch-action: pan-y;
 	opacity: var(--toast-opacity, 1);
 	transform: translateX(var(--toast-drag, 0px));
 	transition:
 		opacity var(--dur-medium) var(--ease-standard),
-		transform var(--dur-medium) var(--ease-standard);
+		transform var(--dur-medium) var(--spring-standard);
 }
 .ui-toast__item--dragging {
 	transition: none;
@@ -204,24 +205,38 @@
 /* #endregion */
 
 /* #region Countdown affordance */
+/*
+ * The countdown runs on `transform`, never on `inline-size`. Two reasons, and the second is the one
+ * that matters: a layout-property animation is composited on the main thread for the whole life of
+ * every toast, and — because the bar's visible width would be PRODUCED by the animation rather than
+ * declared — a throttled animation clock parked it at full width, promising a timer that had in fact
+ * already expired. Scaling a statically full-width bar cannot lie that way.
+ */
 .ui-toast__progress {
 	position: absolute;
 	inset-block-end: 0;
 	inset-inline-start: 0;
+	inline-size: 100%;
 	block-size: 3px;
 	background: var(--toast-accent);
+	/* `transform-origin` has no logical keywords, so RTL is flipped explicitly — the bar must always
+	drain toward the reading-end edge. */
+	transform-origin: left center;
 	animation: ui-toast-countdown linear forwards;
 	animation-duration: var(--toast-life, 3000ms);
+}
+[dir="rtl"] .ui-toast__progress {
+	transform-origin: right center;
 }
 .ui-toast__progress--paused {
 	animation-play-state: paused;
 }
 @keyframes ui-toast-countdown {
 	from {
-		inline-size: 100%;
+		transform: scaleX(1);
 	}
 	to {
-		inline-size: 0%;
+		transform: scaleX(0);
 	}
 }
 @media (prefers-reduced-motion: reduce) {

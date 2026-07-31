@@ -7,6 +7,7 @@ import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 export interface ChipsProps extends BaseFieldProps {
 	/** Bound list of chip strings — raw `string[]` or `Signal<string[]>`. */
@@ -140,7 +141,7 @@ export function Chips(props: ChipsProps): JSX.Element {
 							removeAt(i);
 						}}
 					>
-						<span aria-hidden="true">×</span>
+						<Icon name="close" />
 					</button>
 				</span>
 			))}

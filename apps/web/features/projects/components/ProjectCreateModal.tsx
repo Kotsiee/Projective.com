@@ -11,6 +11,7 @@ import type { Option } from "@projective/ui/fields";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import type { CreateProject, ProjectCreateFormat, ProjectView } from "../types/projects-types.ts";
 import { CloseIcon, PlusIcon, TrashIcon } from "./glyphs.tsx";
+import { Icon } from "@projective/ui/icons";
 
 /**
  * ProjectCreateModal — the lightweight, 2-panel "Create Project" surface launched from the lane's
@@ -112,7 +113,7 @@ function StageRow(props: {
 				onPointerDown={sortable.listeners.onPointerDown}
 				onKeyDown={sortable.listeners.onKeyDown}
 			>
-				<span aria-hidden="true">⠿</span>
+				<Icon name="grip" />
 			</button>
 			<button type="button" class="pcm-stage__main" onClick={props.onSelect}>
 				<span class="pcm-stage__index" aria-hidden="true">{props.index + 1}</span>
@@ -305,7 +306,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	return (
 		<BodyPortal>
 			<div class="pcm" data-state={state} style={`z-index:${stack.zIndex}`}>
-				<Backdrop visible={state === "open"} blur onClick={onClose} />
+				<Backdrop visible={state === "open"} onClick={onClose} />
 				<div
 					ref={panelRef}
 					class="pcm__panel"
@@ -465,7 +466,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 												class="pcm__back"
 												onClick={() => (selection.value = null)}
 											>
-												‹ Back
+												<Icon name="chevron-left" /> Back
 											</button>
 											<h3 class="pcm__stagetitle">Configure stage</h3>
 										</div>
@@ -536,7 +537,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 												class="pcm__back"
 												onClick={() => (selection.value = null)}
 											>
-												‹ Back
+												<Icon name="chevron-left" /> Back
 											</button>
 											<h3 class="pcm__stagetitle">Configure role</h3>
 										</div>

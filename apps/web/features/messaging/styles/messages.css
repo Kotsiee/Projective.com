@@ -44,6 +44,7 @@
 
 /* #region Conversation list */
 .msg-conv {
+	position: relative;
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
@@ -56,6 +57,23 @@
 .msg-conv[data-active="true"] {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
+
+/*
+ * Active needs a channel that is not hue. The tint alone put this row a single low-alpha step away
+ * from :hover, which is the one comparison a CVD or greyscale overlay flattens completely — and the
+ * font-weight channel is already spoken for by [data-unread], so reusing it would collapse two
+ * different meanings onto one mark. The leading bar is the mark the COLLAPSED rail beside it already
+ * uses (`.msg-rail__btn--avatar[data-active]`), so expanded and collapsed now agree.
+ */
+.msg-conv[data-active="true"]::after {
+	content: "";
+	position: absolute;
+	inset-inline-start: 2px;
+	inset-block: 10px;
+	inline-size: 3px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
 .msg-conv__link {
 	flex: 1;
 	min-inline-size: 0;
@@ -66,6 +84,16 @@
 	text-decoration: none;
 	color: inherit;
 }
+
+/* The conversation row is the primary navigation of a top-level route and had NO focus rule at all,
+   so keyboard traversal of the inbox was invisible. Matches the row's own radius so the ring traces
+   the shape the user sees, not the anchor's box. */
+.msg-conv__link:focus-visible {
+	outline: none;
+	border-radius: var(--radius-lg);
+	box-shadow: var(--focus-ring-shadow);
+}
+
 .msg-conv__avatar {
 	position: relative;
 	flex: none;

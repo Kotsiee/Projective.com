@@ -6,11 +6,13 @@
 
 .ui-radio {
 	--rb-size: 1.25rem;
-	--rb-font: 0.9375rem;
+	--rb-font: var(--fld-fs-md);
 
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
+	/* The whole label row is the target — same reasoning as the Checkbox. */
+	min-block-size: var(--fld-hit);
 	font-family: var(--font-sans);
 	font-size: var(--rb-font);
 	color: var(--on-surface);
@@ -27,10 +29,35 @@
 	--rb-font: 1.0625rem;
 }
 
+/* Mirrors the Checkbox disabled contract exactly — fade the ink and the border, keep pointer events
+   so the `not-allowed` cursor can paint, and let the native `disabled` attribute do the blocking. */
 .ui-radio--disabled {
-	opacity: 0.55;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
-	pointer-events: none;
+}
+.ui-radio--disabled .ui-radio__box {
+	border-color: color-mix(in srgb, var(--outline) var(--fld-disabled-mix), var(--surface));
+	background: var(--surface-1);
+}
+
+/* Read-only — the selection stands, the invitation to change it does not. */
+.ui-radio--readonly {
+	cursor: default;
+}
+.ui-radio--readonly .ui-radio__box {
+	background: var(--fld-readonly-bg);
+}
+
+.ui-radio--invalid .ui-radio__box,
+.ui-radio--required .ui-radio__box {
+	border-color: var(--fld-invalid-bd);
+}
+.ui-radio--gate .ui-radio__box,
+.ui-radio--warning .ui-radio__box {
+	border-color: var(--fld-gate-bd);
+}
+.ui-radio--success .ui-radio__box {
+	border-color: var(--fld-valid-bd);
 }
 
 /* #region Visually-hidden native radio (focusable + form-submittable) */

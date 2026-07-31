@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { IconShell } from "@projective/ui/icons";
 
 /**
  * Channel Header glyphs — the icons unique to the channel/chat view Header that the feed
@@ -13,20 +14,7 @@ import type { JSX } from "preact";
 
 // #region Base
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
-	return (
-		<svg
-			viewBox="0 0 24 24"
-			width="1em"
-			height="1em"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.8"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-			{...props}
-		/>
-	);
+	return <IconShell {...props} />;
 }
 // #endregion
 

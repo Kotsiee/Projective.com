@@ -26,6 +26,8 @@ interface DialogRecord {
 	id: string;
 	visible: Signal<boolean>;
 	config: Signal<DialogConfig>;
+	/** Removes the record and fires `onClose` exactly once, whichever path closed the dialog. */
+	dispose: () => void;
 }
 // #endregion
 
@@ -41,27 +43,38 @@ function openDialog(config: DialogConfig): DialogInstanceRef {
 	const visible = signal(true);
 	const cfg = signal(config);
 
-	const remove = () => {
+	// Idempotent, and the single removal path. `onClose` is documented as firing after the dialog has
+	// closed and been removed, but the Escape / × / backdrop routes went through a separate branch that
+	// only spliced the store — so the callback fired for `handle.close()` and for nothing else.
+	let disposed = false;
+	const dispose = () => {
+		if (disposed) return;
+		disposed = true;
 		store.value = store.value.filter((r) => r.id !== id);
 		cfg.peek().onClose?.();
 	};
 	const close = () => {
 		if (!visible.peek()) return;
 		visible.value = false;
-		setTimeout(remove, EXIT_MS);
+		setTimeout(dispose, EXIT_MS);
 	};
 	const update = (patch: Partial<DialogConfig>) => {
 		cfg.value = { ...cfg.value, ...patch };
 	};
 
-	store.value = [...store.value, { id, visible, config: cfg }];
+	store.value = [...store.value, { id, visible, config: cfg, dispose }];
 	return { id, close, update };
 }
 
 /** Close every open dynamic dialog. */
 function closeAll(): void {
+	// Snapshot the ids being closed and remove only those. Emptying the whole store on a timer also
+	// destroyed anything opened during the exit window — a dialog that had never been asked to close.
+	const closing = new Set(store.value.map((r) => r.id));
 	for (const r of store.value) r.visible.value = false;
-	setTimeout(() => (store.value = []), EXIT_MS);
+	setTimeout(() => {
+		store.value = store.value.filter((r) => !closing.has(r.id));
+	}, EXIT_MS);
 }
 // #endregion
 
@@ -93,9 +106,7 @@ function DynamicInstance({ rec }: { rec: DialogRecord }): JSX.Element {
 			{...dialogProps}
 			visible={rec.visible}
 			onVisibleChange={(v) => {
-				if (!v) {
-					setTimeout(() => (store.value = store.value.filter((r) => r.id !== rec.id)), EXIT_MS);
-				}
+				if (!v) setTimeout(rec.dispose, EXIT_MS);
 			}}
 		>
 			{typeof content === "function" ? (content as () => VNode)() : content}

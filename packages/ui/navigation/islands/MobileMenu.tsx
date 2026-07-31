@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX } from "preact";
 import "../styles/mobile-menu.css";
 import { useSignal } from "@preact/signals";
+import { Icon } from "../../icons/mod.ts";
 
 export interface MobileMenuProps {
 	/** Drawer contents — typically the same NavItems as the desktop sidebar. */
@@ -28,7 +29,7 @@ export function MobileMenu({ children, label = "Menu" }: MobileMenuProps): JSX.E
 				aria-expanded={open.value ? "true" : "false"}
 				onClick={() => (open.value = !open.value)}
 			>
-				<span aria-hidden="true">☰</span>
+				<Icon name="menu" />
 			</button>
 			<div
 				class="ui-mobile-menu"

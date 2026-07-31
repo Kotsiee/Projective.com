@@ -8,8 +8,11 @@ import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { useFloating } from "../hooks/useFloating.ts";
 import { useDismiss } from "../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
 import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
+import { Icon } from "../../icons/mod.ts";
 
 // #region Types
 
@@ -204,6 +207,12 @@ function toDates(v: DateValue): Date[] {
  * and a Today/Clear button bar. The grid is a full ARIA `grid` with roving-focus keyboard control
  * (arrows move ±1 day / ±7 days, PageUp/Down change month, Home/End hit week edges, Enter/Space
  * selects). Composes the shared `.ui-field` geometry for the popup trigger.
+ *
+ * In popup mode the PANEL is projected into `document.body` via {@link BodyPortal} and claims a live
+ * stacking index from {@link useOverlayStack}, so it escapes any ancestor that would clip it
+ * (`overflow: hidden`) or re-base its `position: fixed` (`transform`/`filter`/`backdrop-filter`) —
+ * the trap a Dialog panel sets. The `inline` presentation is not portalled: it is ordinary in-flow
+ * content, not an overlay.
  */
 export function DatePicker(props: DatePickerProps): JSX.Element {
 	const {
@@ -260,6 +269,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	// #endregion
 
 	// #region Overlay positioning + dismissal
+	const stack = useOverlayStack({ active: open.value && !inline, layer: "popover" });
 	const floating = useFloating({
 		open: open.value && !inline,
 		triggerRef: triggerRef as RefObject<HTMLElement>,
@@ -549,7 +559,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 					aria-label="Previous month"
 					onClick={() => (viewDate.value = addMonths(viewDate.peek(), -1))}
 				>
-					‹
+					<Icon name="chevron-left" />
 				</button>
 				{numberOfMonths === 1
 					? (
@@ -579,7 +589,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 					aria-label="Next month"
 					onClick={() => (viewDate.value = addMonths(viewDate.peek(), 1))}
 				>
-					›
+					<Icon name="chevron-right" />
 				</button>
 			</div>
 		);
@@ -766,20 +776,23 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 				)}
 			</div>
 			{open.value && (
-				<div
-					id={panelId}
-					ref={panelRef}
-					class="ui-datepicker__panel"
-					role="dialog"
-					aria-modal="false"
-					aria-label={ariaLabel ?? "Choose date"}
-					style={styleVars({
-						"--float-top": floating ? `${floating.top}px` : undefined,
-						"--float-left": floating ? `${floating.left}px` : undefined,
-					})}
-				>
-					{renderPanelBody()}
-				</div>
+				<BodyPortal>
+					<div
+						id={panelId}
+						ref={panelRef}
+						class="ui-datepicker__panel"
+						role="dialog"
+						aria-modal="false"
+						aria-label={ariaLabel ?? "Choose date"}
+						style={styleVars({
+							"--float-top": floating ? `${floating.top}px` : undefined,
+							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
+					>
+						{renderPanelBody()}
+					</div>
+				</BodyPortal>
 			)}
 		</div>
 	);

@@ -10,7 +10,7 @@
 .cat-chip {
     display: inline-flex;
     align-items: center;
-    padding: 0.1rem var(--space-2);
+    padding: var(--space-px) var(--space-2);
     border-radius: var(--radius-sm);
     font-size: 0.72rem;
     font-weight: 600;
@@ -42,28 +42,12 @@
 
 /* #region View control rig (footer band) */
 /*
- * The rig is the reference File Explorer rig (`.fx-rig`, Decision #32) on a second surface, so it
- * carries the same box model verbatim: a `--space-2`/`--space-4` inset around the compact ZoomSlider,
- * left-aligned, with the track allowed to grow to a bounded 18rem. Only the persistence key and the
- * aria-label differ (`CATALOGUE_ZOOM`, so seller density is independent of file density).
+ * The rig IS the reference File Explorer rig — literally the shared `.ui-viewrig`
+ * (`features/shell/styles/view-zoom-rig.css`), not a copy of its box model. Only the persistence key
+ * and the aria-label differ (`CATALOGUE_ZOOM`, so seller density is independent of file density).
  */
 .cat-rig {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
-}
-
-.cat-rig__mode {
-    display: inline-flex;
-    align-items: center;
-    color: var(--text-secondary);
-}
-
-.cat-rig .ui-zoom {
     inline-size: 100%;
-    max-inline-size: 18rem;
 }
 
 /* #endregion */
@@ -135,7 +119,7 @@
 .cat-newmenu {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-px);
     min-inline-size: 12rem;
 }
 
@@ -279,14 +263,14 @@
 /* Analytics period selector (footer) */
 .cat-period {
     display: inline-flex;
-    gap: 2px;
+    gap: var(--space-px);
     padding: 2px;
     border-radius: var(--radius-base);
     background: var(--surface-2);
 }
 
 .cat-period__btn {
-    padding: 0.1rem var(--space-2);
+    padding: var(--space-px) var(--space-2);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -498,10 +482,12 @@
     min-inline-size: 0;
 }
 
+/* The one field-label typography, from the package contract. This was `0.78rem` — a value on no
+   ramp, differing from `@projective/ui`'s label for no reason a reader could name. */
 .cat-field__label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--on-surface-variant);
+    font-size: var(--fld-label-fs);
+    font-weight: var(--fld-label-fw);
+    color: var(--fld-label-fg);
 }
 
 .cat-field__hint {
@@ -509,8 +495,8 @@
     align-items: center;
     gap: var(--space-1);
     margin: 0;
-    font-size: 0.76rem;
-    color: var(--text-secondary);
+    font-size: var(--fld-hint-fs);
+    color: var(--fld-hint-fg);
 }
 
 .cat-field__hint-icon {
@@ -595,17 +581,25 @@
 .cat-kpis {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-    gap: var(--space-3);
+    /* The gap IS the separator now the tiles are unboxed, so it carries the grouping on its own. */
+    gap: var(--space-5);
     align-items: stretch;
 }
 
+/*
+ * A stat tile is never boxed — it is a label, a figure and a trend, and those three read as a unit
+ * from type weight and proximity alone (§B.4 tiers 1 + 3). This matches `.wsp-tile`, which renders
+ * the identical dataviz stat-tile contract in workspaces; the two had disagreed only here.
+ *
+ * No sibling hairline, unlike `.wsp-tile`: this is a WRAPPING `auto-fit` grid, so a
+ * `+ .cat-tile { border-inline-start }` rule would draw a stray leading edge on the first tile of
+ * every wrapped row. Spacing is the device that survives reflow.
+ */
 .cat-tile {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    padding: var(--space-3);
-    border-radius: var(--radius-lg);
-    background: var(--surface-1);
+    min-inline-size: 0;
 }
 
 .cat-tile__label {
@@ -699,7 +693,7 @@
     display: flex;
     flex-direction: column;
     block-size: 100%;
-    border-radius: var(--radius-xl);
+    border-radius: var(--card-radius-media);
     background: var(--surface-1);
     overflow: hidden;
     transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
@@ -707,12 +701,12 @@
 
 .cat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 22px -12px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--elevation-medium);
 }
 
 .cat-card__media {
     position: relative;
-    aspect-ratio: 16 / 10;
+    aspect-ratio: var(--card-media-ratio);
     background: var(--surface-2);
     overflow: hidden;
 }
@@ -748,7 +742,7 @@
 }
 
 .cat-card__status {
-    padding: 0.1rem var(--space-2);
+    padding: var(--space-px) var(--space-2);
     border-radius: var(--radius-sm);
     font-size: 0.68rem;
     font-weight: 700;
@@ -768,8 +762,8 @@
 .cat-card__flag--promo {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 0.1rem var(--space-2);
+    gap: var(--space-px);
+    padding: var(--space-px) var(--space-2);
     border-radius: var(--radius-sm);
     font-size: 0.66rem;
     font-weight: 700;
@@ -780,7 +774,7 @@
 .cat-card__flag--alert {
     display: inline-flex;
     align-items: center;
-    padding: 0.1rem 0.3rem;
+    padding: var(--space-px) var(--space-1);
     border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--warning) var(--tint-strong), var(--surface));
     color: var(--warning);
@@ -789,8 +783,8 @@
 .cat-card__body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
-    padding: var(--space-3);
+    gap: var(--card-gap-tight);
+    padding: var(--card-pad-tight);
     flex: 1;
     min-block-size: 0;
 }
@@ -890,7 +884,7 @@
 .cat-menu {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-px);
     min-inline-size: 11rem;
 }
 
@@ -1319,13 +1313,16 @@
     inset-block-start: calc(var(--shell-topbar-h, 3.5rem) + var(--space-4));
 }
 
+/*
+ * No frame. This block's whole job is to show the listing card exactly as it will appear in the
+ * grid, and a tinted rounded panel around it changed the tone the card sits on and added a second
+ * corner just inside the first — so the preview misrepresented the thing it was previewing. The
+ * uppercase heading labels the region; the gap separates it (§B.4 tiers 1 + 3).
+ */
 .cat-preview {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    padding: var(--space-4);
-    border-radius: var(--radius-xl);
-    background: var(--surface-1);
 }
 
 .cat-preview__h {
@@ -1337,8 +1334,10 @@
     color: var(--on-surface-variant);
 }
 
+/* The card supplies its own corner; this wrapper only reserves the slot. (A `border-radius` here
+   clipped nothing — there was no `overflow` to clip with — so it was inert ink in the stylesheet.) */
 .cat-preview__card {
-    border-radius: var(--radius-xl);
+    min-inline-size: 0;
 }
 
 .cat-preview__gate {
