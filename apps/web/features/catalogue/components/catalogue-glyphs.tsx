@@ -185,6 +185,17 @@ export function CheckIcon({ size = 16, class: c }: GlyphProps): JSX.Element {
 export function ChevronDownIcon({ size = 16, class: c }: GlyphProps): JSX.Element {
 	return svg(size, c, <path d="M6 9l6 6 6-6" />);
 }
+/** The recovery glyph on the console's error state — a re-run arc, not a warning triangle. */
+export function RetryIcon({ size = 16, class: c }: GlyphProps): JSX.Element {
+	return svg(
+		size,
+		c,
+		<>
+			<path d="M20 12a8 8 0 1 1-2.7-6" />
+			<path d="M20 4v5h-5" />
+		</>,
+	);
+}
 // #endregion
 
 // #region Quick filters / status signals

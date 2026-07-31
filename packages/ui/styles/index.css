@@ -478,6 +478,37 @@
 	--card-media-ratio: 16 / 10;
 	--card-media-ratio-square: 1 / 1;
 
+	/*
+	 * The surface a chip takes when it floats on a card's MEDIA — a status pill on a listing cover, a
+	 * price on a product photograph, an engagement type on a service thumbnail.
+	 *
+	 * It is deliberately opaque. Glass over a THEME surface is fine, because the composite is knowable
+	 * and every text pair on it was verified; glass over CONTENT is a different problem wearing the
+	 * same clothes, because the backdrop is a photograph nobody has seen. Three features independently
+	 * shipped the translucent version and all three failed WCAG AA at their worst case — measured
+	 * 3.75:1 (marketing price over a light photo, dark theme), 4.07:1 and 3.05:1 (catalogue status
+	 * tones over light and dark covers). Raising the veil does not rescue it: by the opacity that
+	 * clears 4.5:1 the blur is drawing nothing anyway. So an image-backed chip is not glass — it is a
+	 * label, and it gets a solid surface.
+	 *
+	 * It lives here rather than in a feature because it is a cross-feature contract: explore, catalogue
+	 * and the marketing landing all read it, and a token scoped to one feature's stylesheet resolves to
+	 * nothing on the surfaces that do not load that sheet — silently, since the chip still lays out.
+	 */
+	--chip-on-media: var(--surface);
+
+	/*
+	 * The card hover language. Four card families independently chose a lift (−2 / −4 / −6px) and a
+	 * media zoom (1.04 / 1.045 / 1.05); no rule distinguished them, so the same gesture read at three
+	 * different intensities depending on which page the user was on.
+	 *
+	 * Both are `transform`-only by construction, which is what keeps them honest at frame zero: the
+	 * resting state is the untransformed element, so a card whose animation clock never runs is already
+	 * correct. Nothing here animates a property that encodes data or geometry.
+	 */
+	--card-hover-lift: -4px;
+	--card-media-zoom: 1.04;
+
 	/* Row heights: the comfortable default, the dense variant, and the footer rig's control row
 	   (matched to the shared ZoomSlider's compact height so every rig band lines up). */
 	--row-h: 3rem;

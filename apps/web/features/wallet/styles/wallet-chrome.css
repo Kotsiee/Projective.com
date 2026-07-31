@@ -332,22 +332,191 @@
 	padding: var(--space-2);
 }
 
+.wlt-headerband__panel--filter {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 14rem;
+}
+
 .wlt-headerband__panel-note {
-	margin: 0;
+	margin: 0 0 var(--space-1);
+	padding-inline: var(--space-2);
 	font-size: var(--wlt-fs-micro);
+	letter-spacing: var(--wlt-label-track);
+	text-transform: uppercase;
 	color: var(--text-secondary);
 }
 
-/* Below 1200px the segmented range yields; the currency select and the entries survive. */
+/* A filter row is an interactive control, so the engaged contour is earned (§B.4 tier 5). */
+.wlt-headerband__filter-option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	font: inherit;
+	font-size: var(--wlt-fs-body);
+	text-align: start;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.wlt-headerband__filter-option:hover {
+	background: var(--surface-3);
+}
+
+.wlt-headerband__filter-option[aria-pressed="true"] {
+	border-color: var(--border-subtle);
+	background: var(--surface-2);
+}
+
+.wlt-headerband__filter-option:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wlt-headerband__filter-mark {
+	display: inline-flex;
+	align-items: center;
+	color: var(--wlt-available);
+}
+
+.wlt-headerband__filter-option:nth-child(3) .wlt-headerband__filter-mark {
+	color: var(--wlt-locked-hi);
+}
+
+.wlt-headerband__filter-option:nth-child(4) .wlt-headerband__filter-mark {
+	color: var(--wlt-pending-hi);
+}
+
+.wlt-headerband__filter-option:nth-child(5) .wlt-headerband__filter-mark {
+	color: var(--wlt-hold-hi);
+}
+
+/*
+ * The section switcher. Hidden wherever the lane renders, because section navigation is the lane's
+ * and two permanent routes to one destination is one too many. It appears at exactly the width the
+ * lane leaves (middle-nav.css `max-width: 767px`), so the duty transfers rather than duplicating.
+ */
+.wlt-headerband__sections {
+	display: none;
+}
+
+.wlt-headerband__section-trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--wlt-fs-body);
+	font-weight: 600;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.wlt-headerband__section-trigger:hover {
+	background: var(--surface-3);
+}
+
+.wlt-headerband__section-trigger:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.wlt-headerband__section-glyph,
+.wlt-headerband__menu-glyph {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+}
+
+.wlt-headerband__section-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wlt-headerband__section-caret {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+}
+
+.wlt-headerband__menu {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 13rem;
+	padding: var(--space-1);
+}
+
+.wlt-headerband__menu-item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--wlt-fs-body);
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+.wlt-headerband__menu-item:hover {
+	background: var(--surface-3);
+}
+
+.wlt-headerband__menu-item[aria-current="page"] {
+	background: var(--surface-2);
+	color: var(--primary);
+}
+
+.wlt-headerband__menu-item[aria-current="page"] .wlt-headerband__menu-glyph {
+	color: var(--primary);
+}
+
+/* Below 1200px the account's kind badge yields — the avatar and name still carry the identity. */
 @media (max-width: 1200px) {
 	.wlt-headerband__badge {
 		display: none;
 	}
 }
 
+/*
+ * Below 900px the account NAME yields, not the reporting window. The window was the control being
+ * dropped here, which left `/wallet` and `/wallet/activity` reporting over a period no one on a
+ * tablet could change; the avatar keeps answering "which wallet" on its own.
+ */
 @media (max-width: 900px) {
-	.wlt-headerband__range {
+	.wlt-headerband__name {
 		display: none;
+	}
+}
+
+/* The lane is gone below this width (middle-nav.css), so the band picks up section navigation. */
+@media (max-width: 767px) {
+	.wlt-headerband__sections {
+		display: inline-flex;
+		min-inline-size: 0;
+	}
+
+	/*
+	 * The avatar STAYS. By this width the badge and the name have already yielded, so identity is down
+	 * to one mark — and on a surface where the same controls move money out of a personal wallet or a
+	 * team vault, the answer to "whose money is this" is the last thing that may leave the band. The
+	 * section name is what truncates when the row runs out of room.
+	 */
+	.wlt-headerband__section-name {
+		min-inline-size: 0;
 	}
 }
 /* #endregion */
@@ -361,12 +530,33 @@
  * `--shell-midnav-footer-h` box overshot that computed corner by `--space-1`, so the frame surface ran
  * on behind the rig.
  */
+/*
+ * `container-type: inline-size` is load-bearing twice over.
+ *
+ * (1) It gives the rig INLINE-SIZE CONTAINMENT, so its width is computed without regard to its
+ *     contents. Before this, the labelled `nowrap` cluster contributed its full 739px to the
+ *     min-content of the whole middle-nav content column, which — the column being a `1fr` grid track
+ *     whose automatic minimum is `auto` — starved the nav lane to 2px at an 820px viewport and
+ *     overflowed the frame's `clip` by 50px at 768px. The band may no longer bid for the lane's space.
+ *     (middle-nav.css carries the matching `minmax(0, 1fr)`; either alone would leave the other's
+ *     failure reachable.)
+ *
+ * (2) It makes the tier switch a CONTAINER QUERY keyed on the band's real width, so the collapse is
+ *     deterministic CSS rather than a client width observer — the same "render both, reveal one"
+ *     technique the collapsed project rail uses. The three tiers are: glyph + label · glyph only
+ *     (§B.6.3's icon-only sticky footer, the name relocated to the Tooltip every action already
+ *     carries) · one Actions menu. The MENU HOLDS EVERY ACTION at every tier, so no width can remove
+ *     a path to money — which the old `nth-child(n + 3) { display: none }` mobile rule did.
+ */
 .wlt-footerrig {
+	container-type: inline-size;
+	container-name: wltrig;
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
 	gap: var(--space-3);
 	padding: var(--space-2) var(--space-4);
+	min-inline-size: 0;
 }
 
 .wlt-footerrig__actions,
@@ -375,7 +565,12 @@
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 0;
-	overflow: hidden;
+}
+
+/* The Tooltip anchor is an inline span; in the flex row it must carry the button's box, not wrap it. */
+.wlt-footerrig .ui-tooltip__anchor {
+	display: inline-flex;
+	min-inline-size: 0;
 }
 
 .wlt-footerrig__menu {
@@ -430,6 +625,14 @@
 	opacity: 0.55;
 	background: none;
 	color: var(--text-secondary);
+}
+
+/* The menu lists every action at one weight — a filled row inside a list of ten is a recommendation. */
+.wlt-footerrig__menu .wlt-footerrig__action {
+	justify-content: flex-start;
+	inline-size: 100%;
+	block-size: auto;
+	padding-block: var(--space-2);
 }
 
 .wlt-footerrig__glyph {
@@ -517,28 +720,122 @@
 	color: var(--on-surface);
 }
 
-/* Mobile: the rig becomes a bottom bar; only the highest-priority actions survive the width. */
+/*
+ * #region Rig tiers — a container query on the band's real width (see the `container-type` note above)
+ *
+ * TIER 1 (widest, no query): glyph + label, and the Actions menu appears only when there are more
+ * actions than the cluster's five slots.
+ * TIER 2: labels drop, glyphs stay — §B.6.3's icon-only sticky footer. Each action's name is already
+ * on a portal Tooltip + `aria-label`, so the label is relocated, never deleted.
+ * TIER 3: the cluster yields entirely to the menu, which has held every action all along.
+ *
+ * The `[data-density="true"]` variants raise each threshold by the width the row-density rig occupies,
+ * so a table page steps down one tier earlier rather than letting the two controls collide.
+ */
+
+/* Tier 1 — the menu is a spillover control, so it hides when nothing has spilled. */
+.wlt-footerrig[data-overflow="false"] .wlt-footerrig__more {
+	display: none;
+}
+
+/* Tier 2 — icon-only actions. Square box, name on the tooltip. */
+@container wltrig (max-width: 46rem) {
+	.wlt-footerrig__actions .wlt-footerrig__label,
+	.wlt-footerrig__export .wlt-footerrig__label,
+	.wlt-footerrig__more-label {
+		/* `clip` rather than `display: none`: the box collapses but the accessible name survives in
+		   the tree, so the control is never announced as nameless while it is drawn as a glyph. */
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.wlt-footerrig__action,
+	.wlt-footerrig__more,
+	.wlt-footerrig__export {
+		gap: 0;
+		inline-size: var(--wlt-rig-row);
+		padding-inline: 0;
+		justify-content: center;
+	}
+
+	/* The menu is a list of names; it never enters the icon-only tier. */
+	.wlt-footerrig__menu .wlt-footerrig__action {
+		gap: var(--space-2);
+		inline-size: 100%;
+		padding-inline: var(--space-3);
+		justify-content: flex-start;
+	}
+
+	.wlt-footerrig__menu .wlt-footerrig__label {
+		position: static;
+		inline-size: auto;
+		block-size: auto;
+		margin: 0;
+		overflow: visible;
+		clip-path: none;
+	}
+}
+
+@container wltrig (max-width: 58rem) {
+	.wlt-footerrig[data-density="true"] .wlt-footerrig__actions .wlt-footerrig__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+
+	.wlt-footerrig[data-density="true"] .wlt-footerrig__actions .wlt-footerrig__action {
+		gap: 0;
+		inline-size: var(--wlt-rig-row);
+		padding-inline: 0;
+		justify-content: center;
+	}
+}
+
+/* Tier 3 — the menu carries every action, so hiding the cluster costs nothing. */
+@container wltrig (max-width: 26rem) {
+	.wlt-footerrig__actions {
+		display: none;
+	}
+
+	/*
+	 * Matches the tier-1 hide selector exactly, so it wins on source order rather than on a
+	 * specificity accident — a bare `.wlt-footerrig__more` here (0,1,0) would lose to that rule's
+	 * (0,3,0) and leave a phone with no route to any action at all.
+	 */
+	.wlt-footerrig[data-overflow="false"] .wlt-footerrig__more {
+		display: inline-flex;
+	}
+
+	/* The density rig is the page's own control on a table view; it narrows rather than leaves. */
+	.wlt-footerrig .wlt-footerrig__density {
+		min-inline-size: 6rem;
+	}
+}
+
+/*
+ * A money action under a thumb. The 28px rig row clears WCAG 2.5.8's 24px floor but is not a
+ * comfortable target for a control that moves money, and in the icon-only tier the box IS the target.
+ */
+@media (pointer: coarse) {
+	.wlt-footerrig {
+		--wlt-rig-row: 2.5rem;
+	}
+}
+
+/* Mobile: the rig becomes a bottom bar clear of the home indicator. */
 @media (max-width: 767px) {
 	.wlt-footerrig {
 		padding-inline: var(--space-3);
 		padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
-	}
-
-	.wlt-footerrig__action:nth-child(n + 3) {
-		display: none;
-	}
-
-	.wlt-footerrig__menu .wlt-footerrig__action:nth-child(n + 3) {
-		display: inline-flex;
-	}
-
-	.wlt-footerrig__export {
-		font-size: 0;
-		gap: 0;
-	}
-
-	.wlt-footerrig__more-label {
-		display: none;
 	}
 }
 /* #endregion */

@@ -1,0 +1,52 @@
+/*
+ * project-preview-rig — the engagement preview's action rig in the middle-nav footer band
+ * (`/projects/[projectId]`). Pure CSS + strict BEM, token-only, logical properties only
+ * (root CLAUDE.md §3).
+ *
+ * Geometry matches the sibling footer rigs (`board-rig.css`, `submission-rig.css`) so the band reads
+ * the same height and inset on every projects route — `--space-2` block, `--space-4` inline.
+ *
+ * Action order follows §B.8.6: the supporting text leads, the commitment is last in the inline
+ * direction, set with `justify-content` rather than a spacer so it mirrors for free under
+ * `dir="rtl"` and cannot silently left-align if the note is ever conditional.
+ */
+.proj-pvrig {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	padding: var(--space-2) var(--space-4);
+}
+
+/*
+ * The note earns its place by answering the question the button raises ("what happens if I press
+ * this?"), so the commitment is not the only thing in the band. It is running text, so it takes a
+ * measure — one of the two places a `max-inline-size` is allowed on this surface.
+ */
+.proj-pvrig__note {
+	margin: 0;
+	min-inline-size: 0;
+	max-inline-size: var(--measure-narrow);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.proj-pvrig__actions {
+	margin-inline-start: auto;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/*
+ * Below `--bp-md` the band stands down: `profile.css`'s own responsive rule reveals the body copy of
+ * the same action at exactly this width, and two visible copies of one primary action is the defect
+ * this rig was added to fix, not a second instance of it.
+ */
+@media (max-width: 767px) {
+	.proj-pvrig {
+		display: none;
+	}
+}

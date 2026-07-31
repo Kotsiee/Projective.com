@@ -16,10 +16,54 @@
  * boxes. Full borders + hover/active tints belong to interactive elements only (buttons, links, tabs).
  */
 
-/* #region Page container — 60–80% of page width on desktop, full-bleed below */
+/*
+ * #region Page container — full-bleed inside the shell canvas
+ *
+ * The canvas IS the frame; the page does not build a second one. `.pf` previously capped itself at
+ * `clamp(320px, 80%, 76rem)` inside a canvas the shell had already inset by the global rail + the
+ * lane, then handed 320px of what was left to a fixed 18rem meta rail. The arithmetic: a 1280px
+ * viewport resolved the work grid to 417px — one service card per row, with 184px of dead margin
+ * either side — and a 1025px viewport collapsed it to 213px, narrower than the same grid at 375px.
+ * On this surface `max-inline-size` now survives in exactly one place, `.pf-story__text`, where a
+ * measure cap is a reading aid; no figure, card, grid or table is ever its descendant (the /wallet
+ * band contract, Decision #60).
+ *
+ * `.pf-scope` carries `container-type` because a container cannot query itself. Every breakpoint on
+ * this surface used to key off the VIEWPORT while the surface lives in a canvas ~360px narrower —
+ * narrower still when the lane is dragged wider or the rail expands — so the regions below query the
+ * container and respond to the space they actually have, in all three hosts (authed middle-nav
+ * canvas · guest aside-offset body · full-bleed mobile column).
+ */
+.pf-scope {
+	container-type: inline-size;
+	container-name: pf;
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
 .pf {
-	inline-size: clamp(320px, 80%, 76rem);
-	margin-inline: auto;
+	/*
+	 * One spacing vocabulary for the whole surface, with deliberate contrast: regions are twice as far
+	 * apart as blocks, blocks twice as far as rows. The previous 24/32/24/24 sequence made the Overview
+	 * preamble and the work region read as equal-weight siblings.
+	 */
+	--pf-region-gap: var(--space-7); /* identity | overview | work */
+	--pf-block-gap: var(--space-5); /* blocks inside a region */
+
+	display: flex;
+	flex-direction: column;
+	/*
+	 * Proximity does the grouping: identity and the Overview are ONE group ("who this is") and sit a
+	 * block-gap apart; the work is the other, and the region gap is the boundary between them. The
+	 * previous 24 / 32 / 24 / 24 sequence made every seam the same size, so the preamble and the
+	 * primary content read as equal-weight siblings.
+	 */
+	gap: var(--pf-block-gap);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding-inline: var(--space-6);
 	padding-block: var(--space-4) var(--space-8);
 	color: var(--on-surface);
 }
@@ -27,24 +71,30 @@
 /* Tab region below the permanent Overview: the tab bar + the routed tab body. `scroll-margin` lands
    the Reviews click-through (`#profile-sections`) below the sticky top bar + header band, not under them. */
 .pf-sections {
-	margin-block-start: var(--space-6);
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	/* The group boundary: `.pf`'s own gap already supplies the block interval, so add the difference. */
+	margin-block-start: calc(var(--pf-region-gap) - var(--pf-block-gap));
 	scroll-margin-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) +
 		var(--space-3));
 }
 
 .pf-tabpanel {
-	margin-block-start: var(--space-5);
+	margin-block-start: var(--pf-block-gap);
+	min-inline-size: 0;
 }
 
-@media (max-width: 1024px) {
+/* Tighter cadence once the CONTAINER (not the window) is narrow — the regions still read apart. */
+@container pf (max-width: 44rem) {
 	.pf {
-		inline-size: 92%;
+		--pf-region-gap: var(--space-6);
+		padding-inline: var(--space-4);
 	}
 }
 
 @media (max-width: 767px) {
 	.pf {
-		inline-size: 100%;
 		padding-inline: var(--space-3);
 	}
 }
@@ -64,9 +114,18 @@
 	flex-direction: column;
 }
 
+/*
+ * The cover holds its 7:2 proportion while that proportion is affordable, and stops growing after it
+ * is not. Unbounded, it scales with the page: now that the page is full-bleed, a 1440px display gave
+ * the banner 309px and a 1920px one would take 430px — so the wider the display, the more of the first
+ * viewport is decorative photograph, and the further the work falls below the fold. The cap trades a
+ * ratio nobody can verify by eye for reading order they feel immediately. (7:2 is the §C.4 brand-MARK
+ * ratio, Decision #4 — it was never a mandate for the profile cover.)
+ */
 .pf-header__banner {
 	aspect-ratio: 7 / 2;
 	inline-size: 100%;
+	max-block-size: 15rem;
 	background-size: cover;
 	background-position: center;
 	background-color: var(--surface-2);
@@ -178,9 +237,64 @@
 	color: var(--on-surface-variant, var(--text-secondary));
 }
 
+/*
+ * The identity header carries NO action cluster above the lane breakpoint — the lane owns Follow ·
+ * Message · Hire, and the header band owns the condensed pair once the identity scrolls away. Three
+ * simultaneous copies of the same filled CTA is a §B.8.2 breach ("one filled action per decision
+ * region") and it was measurably worse than that: two copies sat ~12px apart in the same eyeline at
+ * rest, three once scrolled.
+ *
+ * Below 767px the lane does not exist (middle-nav.css / guest-shell.css both drop it at that exact
+ * width), so the body carries the ONE fallback. It was previously `flex: none` beside a `flex: 1`
+ * identity block, so it never wrapped: at 768px the Hire button ran 51px past the canvas clip, and
+ * at 375px it started at x=379 — entirely off-screen, with the lane copy `display:none` and the band
+ * copy `visibility:hidden`. Three Hire buttons in the DOM, none reachable. It is now its own
+ * full-width row under the identity.
+ */
 .pf-header__actions {
+	display: none;
 	flex: none;
 	padding-block-start: var(--space-3);
+}
+
+@media (max-width: 767px) {
+	.pf-header__bar {
+		flex-wrap: wrap;
+	}
+
+	.pf-header__actions {
+		display: block;
+		flex: 1 0 100%;
+		padding-block-start: var(--space-4);
+	}
+
+	.pf-actions {
+		justify-content: stretch;
+	}
+
+	.pf-actions > .pf-btn {
+		flex: 1 1 0;
+		justify-content: center;
+		min-block-size: 40px;
+	}
+}
+
+/*
+ * A 112px avatar over a 7:2 banner stops working once the banner is shorter than the avatar it is
+ * meant to hold: at a 375px container the banner is 107px tall and the disc is 112px, so the overlap
+ * inverts. Scale the disc and its negative offset together against the CONTAINER.
+ */
+@container pf (max-width: 34rem) {
+	.pf-header .pf-header__avatar {
+		inline-size: 72px;
+		block-size: 72px;
+		margin-block-start: -36px;
+		border-width: 3px;
+	}
+
+	.pf-header__name {
+		font-size: 1.25rem;
+	}
 }
 
 /* #endregion */
@@ -331,6 +445,25 @@
 	text-overflow: ellipsis;
 }
 
+/*
+ * The band is identity, not action. Where a lane exists it already holds Follow · Message · Hire
+ * permanently and in view, so a second filled `Hire` in the band put two primaries ~154px apart in one
+ * eyeline — §B.8.2 counts per decision region, and the shell chrome is one region.
+ *
+ * Below 767px there is no lane, and by the time this band reveals the body header's action row has
+ * scrolled away by definition — so the two are mutually exclusive by render condition, which is exactly
+ * the case §B.8.2 exempts. Net: exactly one filled CTA on screen at every width and every scroll offset.
+ */
+.pf-stickyhead__actions {
+	display: none;
+}
+
+@media (max-width: 767px) {
+	.pf-stickyhead__actions {
+		display: block;
+	}
+}
+
 .pf-stickyhead__actions .pf-btn {
 	padding: 0.3rem 0.7rem;
 	font-size: 0.78rem;
@@ -339,12 +472,43 @@
 /* #endregion */
 
 /* #region Tab bar — underlined text tabs (§B.4/§D.4) */
+/*
+ * The tab strip is the section switcher for a panel that routinely runs past 3,600px (six service
+ * cards in one column measured 3,658px). It used to scroll away with the content, so changing
+ * section from deep inside a tab meant scrolling all the way back up. It now pins under the top bar
+ * + header band — the two chrome layers that are already fixed there — so the section nav is
+ * reachable from anywhere in the panel. The band is 0px tall until the identity condenses, and the
+ * identity has always condensed well before the strip reaches the pin line, so the constant offset
+ * is honest at the only moment it applies.
+ */
 .pf-tabs {
-	position: relative;
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+	z-index: var(--z-raised);
 	margin-block-start: 0;
+	/* Bleed the pinned strip to the page gutters so content cannot slide past it at the edges. */
+	margin-inline: calc(var(--space-6) * -1);
+	padding-inline: var(--space-6);
+	background: var(--surface);
 	border-block-end: var(--hairline);
 	overflow-x: auto;
 	scrollbar-width: none;
+}
+
+@container pf (max-width: 44rem) {
+	.pf-tabs {
+		margin-inline: calc(var(--space-4) * -1);
+		padding-inline: var(--space-4);
+	}
+}
+
+/* Mobile has neither the top bar's sibling bands nor a lane — pin to the header alone. */
+@media (max-width: 767px) {
+	.pf-tabs {
+		inset-block-start: var(--shell-topbar-h);
+		margin-inline: calc(var(--space-3) * -1);
+		padding-inline: var(--space-3);
+	}
 }
 
 .pf-tabs::-webkit-scrollbar {
@@ -524,55 +688,83 @@
 
 /* #endregion */
 
-/* #region Split view — main + sticky meta rail */
-.pf-split {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) 18rem;
-	gap: var(--space-6);
-	margin-block-start: var(--space-5);
-	align-items: start;
-}
-
-.pf-split__main {
-	min-inline-size: 0;
-}
-
+/*
+ * #region Meta block — profile context (status · clock · location · response · reputation)
+ *
+ * These are identity facts, not page data, so per the region contract they belong to the LANE, which
+ * already owns scope and persists across every tab and the availability calendar. As a body rail they
+ * cost a permanent 18rem + 2rem gutter — 320px taken from the work grid for a block whose content
+ * measured 324px tall inside a 4,238px column, i.e. ~92% empty. That single reservation is what kept
+ * the services grid at one column all the way up to a 1600px display.
+ *
+ * The lane is already a surface, so the block separates with §B.4 tier 1 + 3 + 4 (spacing, the label
+ * register, one hairline) instead of stacking two tinted, rounded panels inside it — a card inside an
+ * elevated surface is the §B.9.2 nesting the card policy names outright.
+ *
+ * Below 767px the lane does not exist, so `--inline` is the single body fallback: the same facts, laid
+ * out as a wrapping row rather than a tall column, directly under the Overview.
+ */
 .pf-meta {
-	position: sticky;
-	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-3));
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-4);
+	gap: var(--space-3);
 	min-inline-size: 0;
 }
 
-@media (max-width: 1024px) {
-	.pf-split {
-		grid-template-columns: minmax(0, 1fr);
+/* The lane variant is a section of the lane panel — no box of its own. */
+.pf-meta--lane {
+	padding-block-start: var(--space-3);
+	margin-block-start: var(--space-1);
+	border-block-start: var(--hairline);
+}
+
+/* The body fallback exists only where the lane cannot. */
+.pf-meta--inline {
+	display: none;
+}
+
+@media (max-width: 767px) {
+	.pf-meta--inline {
+		display: flex;
+		gap: var(--space-4);
 	}
 
-	.pf-meta {
-		position: static;
-		order: -1;
+	/* Wide-and-short beats tall-and-narrow in a single mobile column. */
+	.pf-meta--inline .pf-meta__rows {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2) var(--space-5);
 	}
 }
 
 /* #endregion */
 
-/* #region Meta rail content */
+/* #region Meta block content */
 .pf-meta__panel {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
+}
+
+/* The mobile fallback sits on the page surface, not the lane's, so it takes one tonal step. */
+.pf-meta--inline .pf-meta__panel {
 	padding: var(--space-4);
 	background: var(--surface-1);
 	border-radius: var(--radius-lg);
+}
+
+.pf-meta__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
 }
 
 .pf-meta__row {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
+	min-inline-size: 0;
 	font-size: 0.9rem;
 	color: var(--on-surface);
 }
@@ -634,16 +826,26 @@
 	color: var(--on-surface);
 }
 
-/* Reviews panel (Part 3) — a SEPARATE panel below the meta panel; the whole panel is the click-through
-   into the Reviews tab (Part 1.2 / 3.2). Inherits the `.pf-meta__panel` box + adds the link affordance. */
+/* Reviews block — the whole block is the click-through into the Reviews tab (Part 1.2 / 3.2). It is
+   interactive, so it may carry a hover tint (§B.4 tier 5); it bleeds to the host's gutters so the
+   target reads as a row of the lane rather than a floating box inside it. */
 .pf-revpanel {
+	border-radius: var(--radius-base);
 	text-decoration: none;
 	color: inherit;
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-revpanel:hover {
-	background: var(--surface-2);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.pf-meta--lane .pf-revpanel {
+	padding: var(--space-2);
+	margin-inline: calc(var(--space-2) * -1);
+	margin-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+	padding-block-start: var(--space-3);
 }
 
 .pf-revpanel:focus-visible {
@@ -703,12 +905,52 @@
 	color: var(--text-secondary);
 }
 
-.pf-rep__empty,
-.pf-empty {
+.pf-rep__empty {
 	margin: 0;
 	padding: var(--space-4) 0;
 	font-size: 0.85rem;
 	color: var(--text-secondary);
+}
+
+/*
+ * Empty state. It was a single grey sentence — "Nothing here yet." — set in the smallest type on the
+ * page, which tells a visitor nothing and an owner less. An empty section is the cheapest place on a
+ * profile to teach the next action, so it now names what the section is FOR and, for the owner, hands
+ * over the create action that otherwise only exists in the panel head.
+ */
+.pf-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	padding-block: var(--space-7);
+	text-align: center;
+	color: var(--text-secondary);
+}
+
+.pf-empty__mark {
+	inline-size: var(--icon-xl);
+	block-size: var(--icon-xl);
+	color: var(--text-secondary);
+	opacity: 0.55;
+}
+
+.pf-empty__title {
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.pf-empty__note {
+	max-inline-size: 44ch;
+	font-size: 0.85rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+.pf-empty__action {
+	margin-block-start: var(--space-2);
 }
 
 /* #endregion */
@@ -782,11 +1024,38 @@
 
 /* #endregion */
 
-/* #region About column */
+/* #region Overview — story beside the scannable facets */
+/*
+ * The Overview is a preamble to the work, and it used to stack four full-width rows — a 72ch story, a
+ * one-line skill row, a one-line language row and a logo carousel — each taking a full page-width row
+ * for content 300–600px wide. At 1440px that made it the largest object in the first viewport (409k px²,
+ * more than the header) and pushed the tab strip below the fold. Beside each other, the same content
+ * is roughly half as tall and the story keeps its measure either way.
+ */
 .pf-about {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-5);
+	gap: var(--pf-block-gap, var(--space-5));
+	min-inline-size: 0;
+}
+
+.pf-about__facets {
+	display: flex;
+	flex-direction: column;
+	gap: var(--pf-block-gap, var(--space-5));
+	min-inline-size: 0;
+}
+
+/* Two columns once the CONTAINER can seat a readable measure plus a facet column — not before. The
+   threshold is 56rem because a 1280px viewport resolves this container to 921px (57.6rem): the most
+   common desktop must land on the useful side of the branch, not one rem short of it. */
+@container pf (min-width: 56rem) {
+	.pf-about {
+		display: grid;
+		grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+		column-gap: var(--space-7);
+		align-items: start;
+	}
 }
 
 .pf-about__heading {
@@ -798,8 +1067,14 @@
 	color: var(--text-secondary);
 }
 
+/*
+ * The ONE measure cap on this surface. Now that the page is full-bleed, running prose would otherwise
+ * set to the whole canvas; ~72ch is the legible line. Nothing that carries a figure, card, grid or
+ * table is ever a descendant of this rule (the /wallet band contract, Decision #60).
+ */
 .pf-story__text {
 	margin: 0;
+	max-inline-size: 72ch;
 	font-size: 0.95rem;
 	line-height: 1.6;
 	color: var(--on-surface);
@@ -1034,20 +1309,22 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
+	min-inline-size: 0;
 }
 
+/*
+ * The panel head no longer restates the tab. The strip directly above already names the section, in
+ * the active state, 24px away — an `<h2>` repeating it put the largest type on the page on a word the
+ * eye had just read, and pushed the work down a further 52px. The heading survives for assistive tech
+ * (`.ui-visually-hidden` on the `<h2>`), so the panel keeps its landmark name.
+ *
+ * The head is not rendered at all when there is no owner action, rather than reserving an empty row.
+ */
 .pf-panel__head {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: var(--space-3);
-}
-
-.pf-panel__title {
-	margin: 0;
-	font-size: 1.15rem;
-	font-weight: 700;
-	letter-spacing: -0.01em;
 }
 
 .pf-create {
@@ -2028,8 +2305,9 @@
 	scroll-margin-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
 }
 
-.guest-shell .pf-meta {
-	inset-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
+/* The pinned tab strip re-bases on the pill site header (there is no top bar + reserved band here). */
+.guest-shell .pf-tabs {
+	inset-block-start: var(--site-header-h, 5.5rem);
 }
 
 /*

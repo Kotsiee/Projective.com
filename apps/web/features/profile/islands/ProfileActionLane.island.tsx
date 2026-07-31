@@ -6,6 +6,7 @@ import "../styles/profile.css";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { ProfileIcon, tabIcon } from "../components/profile-glyphs.tsx";
+import { ProfileMetaSidebar } from "../components/ProfileMetaSidebar.tsx";
 import {
 	availabilityHref,
 	ctaFor,
@@ -495,6 +496,13 @@ export default function ProfileActionLane(
 
 					<div class="pf-lane__scroll">
 						{inEdit ? managementNav() : actionStack()}
+						{
+							/* The profile's context facts (status · local time · location · response · reputation)
+					    live here, not in a body rail: the lane already owns scope, persists across every tab
+					    AND the availability calendar, and had a tall empty scroll region below the action
+					    stack. This is what returns 320px per tab to the work grid. */
+						}
+						{inEdit ? null : <ProfileMetaSidebar profile={profile} variant="lane" />}
 					</div>
 
 					<div class="pf-lane__footer">

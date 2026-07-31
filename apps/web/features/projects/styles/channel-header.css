@@ -315,6 +315,19 @@
 		color var(--dur-fast) var(--ease-standard);
 }
 
+/*
+ * The two menu items that stand in for the Star / Pop-out buttons once those drop below `--bp-md`.
+ * Hidden here, revealed by the responsive query, so the action is reachable at both widths and never
+ * present twice.
+ *
+ * COMPOUND (0,2,0), not the bare modifier. `.chan-menu__item` above also declares `display`, and a
+ * bare `.chan-menu__item--mobile` is only (0,1,0) — it ties, so the winner is decided by source
+ * order alone. Written that way it shipped both copies visible on desktop.
+ */
+.chan-menu__item.chan-menu__item--mobile {
+	display: none;
+}
+
 .chan-menu__item:hover {
 	background: var(--surface-2);
 }
@@ -429,6 +442,47 @@
 	three regions stay on one row (the underline indicator still lands on the divider). */
 	.chan-header__sub {
 		display: none;
+	}
+
+	/*
+	 * Drop the desktop flex-1 / flex-1 balance. That balance exists only to centre the tab strip, and at
+	 * 390px it costs more than it buys: it gave the identity and the actions 65px each while the actions'
+	 * four `flex: none` 2rem buttons need 140px, so they overflowed their own block and painted ON TOP of
+	 * the Submissions and Tasks tabs (measured: 63px of overlap).
+	 *
+	 * Instead the identity sizes to its content — capped, so a long channel name can never evict the
+	 * tabs — the actions size to theirs, and the tab strip absorbs the remainder. The tabs are the region
+	 * that degrades gracefully, because they already scroll; making the identity the flexible one is what
+	 * truncated a six-letter channel name to nothing.
+	 */
+	.chan-header__meta {
+		flex: 0 1 auto;
+		max-inline-size: 45%;
+	}
+
+	/* The desktop gap is set for text tabs; once the labels drop to their leading glyph it is spacing a
+	   word that is no longer there, and the 16px it holds is the width the channel name is short of. */
+	.chan-header__tabs {
+		flex: 1 1 auto;
+		gap: var(--space-3);
+	}
+
+	.chan-header__actions {
+		flex: none;
+	}
+
+	/*
+	 * Below the breakpoint the trailing tray keeps only the two controls that open something (details,
+	 * kebab); Star and Pop-out move INTO the kebab menu, whose `--desktop`/`--mobile` items are swapped by
+	 * this same query. Pure CSS both ways — no JS breakpoint, so no hydration mismatch (Part D.3, mirroring
+	 * `.shell-util__slot--desktop`/`--mobile`).
+	 */
+	.chan-action--desktop {
+		display: none;
+	}
+
+	.chan-menu__item.chan-menu__item--mobile {
+		display: flex;
 	}
 
 	.chan-tab__icon {

@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from "preact";
 import { cx } from "@ui/core/cx.ts";
 import { styleVars } from "@ui/core/style.ts";
 import { Alert } from "@projective/ui/feedback";
+import { notifyWalletChanged } from "../core/wallet-state.ts";
 
 /**
  * band-parts — the band-stack frame primitives (BUILD CONTRACT §4).
@@ -92,11 +93,33 @@ export function EmptyBand(props: { text: string; hint?: string }): JSX.Element {
  * A BAND-SCOPED error. Every other band keeps rendering: a wallet that blanks entirely because one
  * fetch failed destroys the sense of custody the whole surface is built to produce (§9).
  */
-export function BandError(props: { message: string; retryHref: string }): JSX.Element {
+export function BandError(props: { message: string; onRetry: () => void }): JSX.Element {
 	return (
 		<div class="wlt-error">
 			<Alert severity="danger" class="wlt-error__alert">{props.message}</Alert>
-			<a class="wlt-error__retry" href={props.retryHref}>Try again</a>
+			{
+				/* A retry is a re-read, not a navigation — a link here would reload the page and lose the
+			    viewer's place in the ledger to recover from a transient failure. */
+			}
+			<button type="button" class="wlt-error__retry" onClick={props.onRetry}>Try again</button>
+		</div>
+	);
+}
+
+/**
+ * The stack's read-failure notice — {@link BandError} given the consumer it was written for and never
+ * received. It renders nothing until a read fails, so every screen drops it in unconditionally.
+ *
+ * Deliberately a `<div>`, NOT a `Band`. The stack's alternating tonal step is keyed on
+ * `nth-of-type` over `<section>` elements, so a `<section>` appearing here would invert every band's
+ * tone the moment something went wrong — a surface that restripes itself on an error is a surface
+ * that looks broken in a second, unrelated way.
+ */
+export function WalletErrorBand(props: { message: string | null }): JSX.Element | null {
+	if (!props.message) return null;
+	return (
+		<div class="wlt-errorband" role="alert">
+			<BandError message={props.message} onRetry={notifyWalletChanged} />
 		</div>
 	);
 }

@@ -2,11 +2,11 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
 import { Grid } from "@projective/ui/layout";
-import { Band, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { PaymentCard } from "../components/PaymentCard.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { activeMethodId, currentWalletContext } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { activeMethodId, currentWalletContext, walletError } from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type { MethodsView } from "../types/wallet-types.ts";
 
 /**
@@ -29,7 +29,9 @@ export default function WalletMethodsScreen(props: WalletMethodsScreenProps): JS
 
 	const refetch = async () => {
 		const res = await WalletService.methods(currentWalletContext());
-		if (res.ok && res.data) view.value = res.data.methods;
+		applyRead(res, (d) => {
+			view.value = d.methods;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -39,6 +41,7 @@ export default function WalletMethodsScreen(props: WalletMethodsScreenProps): JS
 	return (
 		<main class="wlt" aria-label="Payment methods">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Methods">
 					<PageHead title="Payment methods" meta={<span>{m.length} saved</span>} />
 				</Band>
@@ -48,7 +51,7 @@ export default function WalletMethodsScreen(props: WalletMethodsScreenProps): JS
 						? (
 							<EmptyBand
 								text="No payment methods saved."
-								hint="Add one from the action bar. Card details are collected and held by Stripe."
+								hint="Choose “Add method” in the action bar. Card details are collected and held by Stripe."
 							/>
 						)
 						: (

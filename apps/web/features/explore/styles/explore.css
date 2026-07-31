@@ -7,7 +7,20 @@
  */
 
 /* #region Tokens + root */
-.ex {
+/*
+ * The `--ex-*` layer lives on `:root`, not on `.ex`.
+ *
+ * These tokens are read by the discovery CARDS, and the cards travel: they render inside `.ex` on
+ * `/explore`, inside `.vw-related.ex` on `/view`, inside the profile layout's `.ex` wrapper on
+ * `/@handle`, and — since the marketing fork was retired — inside `.lp` on the landing page, which has
+ * no `.ex` ancestor at all. A token scoped to a wrapper silently falls back to nothing everywhere the
+ * component renders outside it, and the fallback is invisible: the card still lays out, just with the
+ * wrong radius and no chip surface. Hosting them at the root is the same correction the `--wlt-*` and
+ * `--fld-*` layers already took for the same reason.
+ *
+ * `.ex` keeps only what is genuinely the Explore PAGE's: its fill, its background, its font stack.
+ */
+:root {
 	--ex-r-sm: var(--radius-lg);
 	--ex-r-md: var(--radius-xl);
 	--ex-r-lg: var(--card-radius-media);
@@ -34,11 +47,20 @@
 	 * is still under 4.5:1, and at that point the blur is drawing nothing anyway. So an image-backed
 	 * chip is not glass — it is a label, and it gets the solid surface. `backdrop-filter` comes off
 	 * with it, since blurring a backdrop you have made opaque only costs a compositing layer.
+	 *
+	 * This is now the ONE chip surface for the whole product, so it was promoted to the design system as
+	 * `--chip-on-media` (see `packages/ui/styles/index.css`): the marketing price chip and the catalogue
+	 * status chip ran the translucent construction this replaced and measured 3.75:1 and 3.05:1
+	 * respectively at their worst case. A feature-scoped token could not serve them — it resolves to
+	 * nothing on any surface that does not load this sheet, silently, because the chip still lays out.
+	 * The `--ex-` name is kept as the local alias so no call site had to change.
 	 */
-	--ex-chip-on-media: var(--surface);
+	--ex-chip-on-media: var(--chip-on-media);
 	--ex-primary-tint: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	--ex-pad-x: clamp(1.25rem, 5vw, 5rem);
+}
 
+.ex {
 	display: block;
 	min-block-size: 100vh;
 	background: var(--surface);
@@ -503,12 +525,28 @@
 /* #endregion */
 
 /* #region Card base */
-/* Flex column + full-height so every card in a grid/rail row shares the tallest card's height and the
-   foot pins to the bottom (equal-height rows). */
+/*
+ * Flex column + full-height so every card in a grid/rail row shares the tallest card's height and the
+ * foot pins to the bottom (equal-height rows).
+ *
+ * SEPARATION (§B.4): ONE resting device — the tonal step from `--surface-2` against the page's
+ * `--surface`, read through the radius. Measured 1.165:1 in light, 1.131:1 in dark; on a rounded block
+ * this size, with a media band supplying a hard edge across the top, that is a legible boundary. The
+ * 1px hairline this rule used to carry was a THIRD simultaneous device (tint + border + radius, and a
+ * fourth on hover once the shadow arrived) doing nothing the tint was not already doing. `.cat-card`
+ * has always separated on tint + radius alone against a busier console and reads cleanly.
+ *
+ * The hairline returns for the one cohort that asked for it: `data-contrast="high"` restores it as an
+ * INSET ring (`--ex-card-ring`) rather than a border, so switching the overlay never changes the card's
+ * box metrics and never reflows a grid. Hover composes the ring with the elevation rather than
+ * replacing it.
+ */
 .ex-card {
 	/* Per-card accent — a stand-in for the card's dominant thumbnail hue (see core/accent.ts). Cards
 	   with media/banners override it inline; tags tint to it on hover (Golden Blueprint §3). */
 	--ex-accent: var(--primary);
+	/* Resting ring: none, until the high-contrast overlay asks for one. */
+	--ex-card-ring: 0 0 0 0 transparent;
 
 	position: relative;
 	display: flex;
@@ -520,30 +558,36 @@
 	block-size: 100%;
 	color: inherit;
 	background: var(--surface-2);
-	border: 1px solid var(--ex-hair);
 	border-radius: var(--ex-r-lg);
 	overflow: clip;
+	box-shadow: var(--ex-card-ring);
 	transition:
 		transform var(--dur-medium) var(--spring-standard),
-		box-shadow var(--dur-medium) var(--ease-standard),
-		border-color var(--dur-slow) var(--ease-standard);
+		box-shadow var(--dur-medium) var(--ease-standard);
 }
 
 /* Hover: a smooth Y-axis lift + an expanded deep shadow — the background stays stable (Golden
-   Blueprint §3). No tonal fill, no border flash. */
+   Blueprint §3). No tonal fill. The resting ring composes ahead of the elevation so a high-contrast
+   card keeps its boundary while it lifts. */
 .ex-card:hover,
 .ex-card:focus-within {
-	transform: translateY(-4px);
-	box-shadow: var(--elevation-high);
-	border-color: var(--ex-hair-strong);
+	transform: translateY(var(--card-hover-lift));
+	box-shadow: var(--ex-card-ring), var(--elevation-high);
+}
+
+/*
+ * High-contrast overlay (§A.5) — an explicit request for stronger boundaries, so the card takes the
+ * hairline back. `--hairline-color` is not widened by `:root[data-contrast="high"]`, hence
+ * `--hairline-strong-color` here: at 40% outline it is the widened edge this cohort actually needs.
+ */
+:root[data-contrast="high"] .ex-card {
+	--ex-card-ring: inset 0 0 0 1px var(--hairline-strong-color);
 }
 
 /* Reduced motion: keep the deepened shadow as the hover affordance, drop the lift. */
 @media (prefers-reduced-motion: reduce) {
 	.ex-card {
-		transition:
-			box-shadow var(--dur-medium) var(--ease-standard),
-			border-color var(--dur-slow) var(--ease-standard);
+		transition: box-shadow var(--dur-medium) var(--ease-standard);
 	}
 
 	.ex-card:hover,
@@ -552,7 +596,16 @@
 	}
 }
 
-/* The stretched primary link overlays the whole card; owner/pills sit above it (z-index:2). */
+/*
+ * The stretched primary link overlays the whole card; owner/pills sit above it (z-index:2).
+ *
+ * Focus lands on the CARD, not on an inner fragment, because the link IS the card's footprint. The
+ * treatment is the canonical two-tone `--focus-ring-shadow` composite rather than the flat
+ * `outline: 2px solid var(--primary)` this rule used to carry: a single accent colour cannot clear 3:1
+ * against both the card fill and the page behind it, which is the whole reason the generated halo+ink
+ * pair exists. It is drawn INSIDE the link's own box (`inset`) so the card's `overflow: clip` cannot
+ * shave it — an outset ring on a clipped child is invisible on three edges.
+ */
 .ex-card__link {
 	position: absolute;
 	inset: 0;
@@ -561,10 +614,30 @@
 }
 
 .ex-card__link:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 
+/*
+ * `:visited` — DECIDED, deliberately absent. A repeat-scan discovery feed would genuinely benefit from
+ * marking seen results, but it is not expressible under the stretched-link pattern: the anchor is an
+ * empty overlay with no rendered content of its own, and the privacy model restricts `:visited` to a
+ * short list of colour properties on the link ELEMENT — it cannot cascade to the title or any other
+ * descendant. Painting the overlay itself would tint the whole card, including its photograph.
+ * A "seen" state here needs server-side read state, not a selector.
+ */
+
+/*
+ * THE BAND CONTRACT. Every modifier composes the same four slots in the same order, at one padding
+ * (`--card-pad-media`) and one internal rhythm (`--card-gap`):
+ *
+ *   media  →  __body[ __eyebrow? → __title → __byline → __foot? ]
+ *
+ * Only the media's aspect ratio and which optional slots appear may vary, and only where the ENTITY
+ * justifies it: a product's price is an overlay chip on its media (media-forward masonry tile), so it
+ * has no foot; an article has no rating, so its byline's trailing slot carries the read time. Nothing
+ * here varies by which card was written first.
+ */
 .ex-card__body {
 	position: relative;
 	display: flex;
@@ -572,21 +645,45 @@
 	flex: 1 1 auto;
 	gap: var(--card-gap);
 	padding: var(--card-pad-media);
+	min-inline-size: 0;
 }
 
+/*
+ * Two lines, hard. This was the only unclamped title in the system, and it is the one four of six
+ * modifiers use. Measured on a 246px service card, a 103-character title took the title band from 26px
+ * to 132px and the card from 368px to 447px — and because grid and carousel rows equalise height, every
+ * SIBLING card grew with it. One seller writing a long name reflowed the whole row.
+ *
+ * `line-clamp` is set alongside `-webkit-line-clamp`: the prefixed property alone is a Blink/WebKit-only
+ * clamp, which is how the catalogue title has been silently unbounded outside those engines.
+ */
 .ex-card__title {
 	margin: 0;
 	font-size: 1.1rem;
 	font-weight: 600;
 	letter-spacing: -0.01em;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	/* Long unbroken strings (a URL, a run-on product code) would otherwise push the card wider than its
+	   cell instead of wrapping into the clamp. */
+	overflow-wrap: anywhere;
 }
 
+/* The one sanctioned title step-down: a masonry product tile and a list article are read at a smaller
+   optical size than a service card in a 4-up grid. Same weight, same tracking — size only. */
 .ex-card__title--sm {
 	font-size: 1rem;
 }
 
-/* Byline row — owner attribution LEFT, review rating RIGHT, on one baseline. Collapses the former
-   separate owner band + rating band into a single scannable line (title king, everything else recedes). */
+/*
+ * Byline row — attribution LEFT, its trailing fact RIGHT, on one baseline. Collapses the former
+ * separate owner band + rating band into a single scannable line (title king, everything else
+ * recedes). Every modifier uses this row for attribution, including the ones whose trailing slot is
+ * empty, so the composition is identical whether or not a rating exists.
+ */
 .ex-card__byline {
 	display: flex;
 	align-items: center;
@@ -600,17 +697,43 @@
 	flex: 1 1 auto;
 }
 
-.ex-card__byline .ui-ratingstars {
+.ex-card__byline .ui-ratingstars,
+.ex-card__byline .ex-muted {
 	flex: 0 0 auto;
 }
 
+/*
+ * The foot was `nowrap` with no min-width floor, so a wide price range overran it: measured
+ * `scrollWidth 208` against `clientWidth 196` on a 246px card showing `£12,000 – £48,000`, pushing the
+ * turnaround text out past the padding.
+ *
+ * The price is the fact worth protecting, so it holds its intrinsic width and the SECONDARY slot gives
+ * way — first by truncating, then, once truncation would leave it meaningless, by dropping to its own
+ * line. That keeps the price complete (a clipped price is worse than no price) without letting the row
+ * silently spill.
+ */
 .ex-card__foot {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
-	gap: var(--space-3);
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
 	margin-block-start: auto;
 	padding-block-start: var(--space-4);
+	min-inline-size: 0;
+}
+
+.ex-card__foot > .ex-price {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+}
+
+.ex-card__foot > .ex-muted {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 /* #endregion */
 
@@ -642,7 +765,7 @@
    premium media-zoom. Paired with the card lift; both revert cleanly on leave. */
 .ex-card:hover .ex-media img,
 .ex-card:focus-within .ex-media img {
-	transform: scale(1.045);
+	transform: scale(var(--card-media-zoom));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -663,10 +786,25 @@
 	z-index: 2;
 }
 
-/* Top-left overlay flag stack — holds the media/cover corner chips (a Promoted badge, the engagement
-   type / price chip, the profile kind tag) so they stack cleanly without overlapping. A vertical
-   column by default; `--row` lays them out inline (used on the wider profile cover). */
+/*
+ * Top-left overlay flag stack — holds the media/cover corner chips (a Promoted badge, the engagement
+ * type / price chip, the profile kind tag) so they stack cleanly without overlapping. A vertical
+ * column by default; `--row` lays them out inline (used on the wider profile cover).
+ *
+ * STACKING ORDER is the source order the cards emit: Promoted first, then the entity chip. Promoted is
+ * a disclosure the viewer is owed before they read the offer, so it takes the top slot and never
+ * truncates; the entity chip below it is the slot that gives way when the card narrows.
+ *
+ * The inline size reserves the top-RIGHT actions gutter rather than only the card's own padding. The
+ * kebab and quick-action cluster is two 2rem controls plus a gap, and the stack previously measured
+ * against the full card width — so nothing but luck kept a long label out from under it. `.cat-card`
+ * has always reserved this gutter explicitly; this is the same reservation, expressed against the
+ * actual control geometry.
+ */
 .ex-flags {
+	/* 2 × 2rem controls + their gap + the gutter each side. */
+	--ex-actions-gutter: calc(2 * 2rem + var(--space-2) + var(--space-3));
+
 	position: absolute;
 	inset-block-start: var(--space-3);
 	inset-inline-start: var(--space-3);
@@ -675,7 +813,7 @@
 	flex-direction: column;
 	align-items: flex-start;
 	gap: var(--space-2);
-	max-inline-size: calc(100% - 2 * var(--space-3));
+	max-inline-size: calc(100% - var(--space-3) - var(--ex-actions-gutter));
 }
 
 .ex-flags--row {
@@ -684,22 +822,60 @@
 	flex-wrap: wrap;
 }
 
-/* Promoted / sponsored marker — a subtle glass chip with a soft dot. Reads as a gentle disclosure,
-   not a loud ad: muted label, a quiet primary dot, and the glass tint alone to lift it off the
-   thumbnail. No contour — the chip is not actionable (§B.4: a chip takes a tint, never a border). */
+/*
+ * THE CHIP CONTRACT — one shell, two type registers.
+ *
+ * Every chip that floats on a card's media shares this shell: the SOLID `--ex-chip-on-media` label
+ * surface (never a translucent veil — see the token's own note; a chip whose legibility depends on the
+ * photograph behind it is a defect, and the measured failures were 3.75:1 and 3.05:1), one radius, one
+ * block padding, one stacking behaviour, and one truncation rule. No contour: a chip is not actionable
+ * (§B.4 — a chip takes a tint, never a border).
+ *
+ * The two registers are a real content distinction, not drift. A LABEL (Promoted, the engagement type)
+ * is small, uppercase and tracked-out because it is a classification the eye skips unless it is
+ * looking; a FIGURE (a price) is larger and thin because it is the same money treatment `.ex-price`
+ * sets everywhere else in the feed. The registers differ only in type, never in shell.
+ */
+.ex-promoted,
+.ex-media__type,
+.ex-media__price {
+	--ex-chip-pad-inline: var(--space-2);
+
+	max-inline-size: 100%;
+	padding: var(--space-1) var(--ex-chip-pad-inline);
+	border-radius: var(--radius-xl);
+	color: var(--on-surface);
+	background: var(--ex-chip-on-media);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Label register. */
+.ex-promoted,
+.ex-media__type {
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+/* Figure register — matches `.ex-price`'s thin money treatment. */
+.ex-media__price {
+	--ex-chip-pad-inline: var(--space-3);
+	font-size: 0.95rem;
+	font-weight: 300;
+	letter-spacing: -0.01em;
+}
+
+/* Promoted / sponsored marker. Reads as a gentle disclosure, not a loud ad: a muted label and one
+   quiet primary dot. `inline-flex` for the dot's baseline; the label is two fixed words and never
+   needs to truncate, so it keeps the full shell without an ellipsis case. */
 .ex-promoted {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	padding: var(--space-1) var(--space-2);
-	font-size: 0.66rem;
-	font-weight: 600;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-	color: var(--on-surface);
-	background: var(--ex-chip-on-media);
-	border-radius: var(--radius-xl);
-	white-space: nowrap;
+	flex: 0 0 auto;
 }
 
 .ex-promoted__dot {
@@ -710,22 +886,20 @@
 	flex: 0 0 auto;
 }
 
-/* A single glass "engagement type" chip overlaid on the thumbnail (Pipeline / One-Off / Session). It
-   replaces the old full-width type eyebrow band AND the redundant category tag — one clear signal on
-   the image, so the body reads title → who → price with no noise between. */
+/*
+ * The engagement-type chip (Pipeline / One-Off / Session). It replaces the old full-width type eyebrow
+ * band AND the redundant category tag — one clear signal on the image, so the body reads title → who →
+ * price with no noise between. `inline-block` rather than `inline-flex` so the shell's
+ * `text-overflow: ellipsis` actually resolves: this is the slot that gives way on a narrow card, and
+ * "Direct Deliverable" is the label that needs it.
+ */
 .ex-media__type {
-	display: inline-flex;
-	align-items: center;
-	padding: var(--space-1) var(--space-2);
-	font-size: 0.68rem;
-	font-weight: 600;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-	color: var(--on-surface);
-	background: var(--ex-chip-on-media);
-	border-radius: var(--radius-xl);
+	display: inline-block;
+	min-inline-size: 0;
 }
 
+/* The tint is a second, redundant channel — the chip always prints the literal type name, so the
+   colour is recognition speed, never the only carrier of the meaning. */
 .ex-media__type[data-type="Session"],
 .ex-media__type[data-type="Group Session"] {
 	color: var(--primary);
@@ -734,16 +908,10 @@
 	color: var(--secondary);
 }
 
-/* Product price chip — lives in the top-left flag stack so it never collides with the top-right kebab;
-   thin weight to match the uniform service pricing. */
+/* Product price chip — lives in the top-left flag stack so it never collides with the top-right kebab. */
 .ex-media__price {
-	padding: var(--space-1) var(--space-3);
-	font-size: 0.95rem;
-	font-weight: 300;
-	letter-spacing: -0.01em;
-	color: var(--on-surface);
-	background: var(--ex-chip-on-media);
-	border-radius: var(--radius-xl);
+	display: inline-block;
+	min-inline-size: 0;
 }
 /* #endregion */
 
@@ -764,17 +932,28 @@
 	text-overflow: ellipsis;
 }
 
+/*
+ * ONE metadata line. This was three stacked rows — rating, then languages, then counts — each set at a
+ * near-identical quiet weight, so the card presented five competing focal points and the face stopped
+ * winning. They carry the same KIND of fact (quiet, secondary, scannable), so they belong on one
+ * wrapping line at one weight. No information was dropped; it stopped being three separate reads.
+ */
 .ex-talent__meta {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-4);
+	gap: var(--space-1) var(--space-3);
+	font-size: 0.82rem;
+	color: var(--on-surface-variant);
+	min-inline-size: 0;
 }
 
 /* Languages spoken — plain metadata, e.g. "Speaks EN, FR". */
 .ex-talent__langs {
-	font-size: 0.82rem;
-	color: var(--on-surface-variant);
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .ex-talent__langs-label {
@@ -783,23 +962,18 @@
 	margin-inline-end: 0.15rem;
 }
 
-/* Minimal counts row — services + products sold (freelancers) or team size, middot-separated. */
-.ex-talent__counts {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-4);
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
-}
-
+/* Services + products sold (freelancers) or team size. Middot-separated, inline with the rest of the
+   metadata line rather than a row of its own. */
 .ex-talent__count {
 	position: relative;
+	white-space: nowrap;
 }
 
-.ex-talent__count + .ex-talent__count::before {
+.ex-talent__count + .ex-talent__count::before,
+.ex-talent__langs + .ex-talent__count::before {
 	content: "·";
 	position: absolute;
-	inset-inline-start: calc(-1 * var(--space-2) - 0.5ch);
+	inset-inline-start: calc(-1 * var(--space-2) + 0.1ch);
 	color: var(--ex-hair-strong);
 }
 
@@ -1028,10 +1202,10 @@
 	padding: var(--space-3);
 	background-image:
 		linear-gradient(
-			to bottom,
-			transparent 45%,
-			color-mix(in srgb, var(--surface-2) 92%, transparent)
-		),
+		to bottom,
+		transparent 45%,
+		color-mix(in srgb, var(--surface-2) 92%, transparent)
+	),
 		var(--ex-cover);
 	background-size: cover;
 	background-position: center;
@@ -1191,10 +1365,22 @@
 }
 /* #endregion */
 
-/* #region Product / article eyebrows */
+/* #region Product / article modifiers */
 .ex-card--product .ex-eyebrow,
 .ex-card--article .ex-eyebrow {
 	color: var(--on-surface-variant);
+}
+
+/*
+ * The product tile is the ONE card whose media height is content-driven — that variability is what
+ * makes the masonry interlock, so it takes no `aspect-ratio`. The cost was a frame that measured 0px
+ * until the image decoded (and stayed 0px forever if it 404'd), collapsing the tile and reflowing the
+ * whole column when the image finally landed. A min height floors the frame without capping it: once
+ * the image resolves it drives the height as before, and until then the frame holds a `--surface-1`
+ * band of roughly the right size instead of vanishing.
+ */
+.ex-card--product .ex-media {
+	min-block-size: 8rem;
 }
 
 .ex-card--article-list {

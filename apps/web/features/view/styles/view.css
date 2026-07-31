@@ -8,25 +8,62 @@
  */
 
 /* #region Page frame */
+/*
+ * `.vw` is the container, not a centred column. `max-inline-size: 1180px; margin-inline: auto` was
+ * measured to never bind where it was needed and to hurt where it was not: the surface lives inside a
+ * canvas already ~344px narrower than the window (64px rail + 280px lane), so at 1440 the cap sat
+ * 100px past the region it was capping, while on the article template it pushed the prose column
+ * 152px away from its own TOC lane. A reading measure belongs on the prose element — `.art-layout`
+ * already does that correctly — and the page frame fills its region (the /wallet band contract,
+ * Decision #60).
+ *
+ * `container-type` for the same reason `profile.css` has it: every breakpoint here used to key off the
+ * VIEWPORT, so at a 1024px window the hero still believed it had 1024px while its container had 665px
+ * — and the showcase image collapsed to 185×139. The regions below query the container. Safe against
+ * the fixed-overlay trap because the lightbox mounts through `BodyPortal`.
+ */
 .vw {
+	container-type: inline-size;
+	container-name: vw;
+
+	/*
+	 * One spacing vocabulary, with deliberate contrast. The largest interval marks the largest idea
+	 * change — leaving the product for other people's products — so the eye can tell that boundary
+	 * from the one between two recommendation rails. The previous 72 / 0 / 32 / 32 / 32 sequence made
+	 * every seam identical except the one that was missing entirely.
+	 */
+	--vw-region-gap: var(--space-8); /* product ⇄ cross-sell: the page's biggest idea change */
+	--vw-block-gap: var(--space-7); /* blocks inside the product */
+	--vw-section-gap: var(--space-6); /* sections inside the cross-sell */
+
+	display: flex;
+	flex-direction: column;
 	inline-size: 100%;
-	max-inline-size: 1180px;
-	margin-inline: auto;
-	padding: var(--space-5) var(--space-5) var(--space-6);
+	min-inline-size: 0;
+	padding: var(--space-5) var(--space-5) var(--space-8);
 	color: var(--on-surface);
 }
 
+/* A hidden child contributes no flex gap, so the desktop `--laned` case needs no compensation. */
 .vw__back-row {
 	margin-block-end: var(--space-4);
+}
+
+/* The not-found state has no lane and ~370px of content in a 900px region. Top-aligning it left the
+   whole message in the upper sixth of an otherwise blank canvas; it now sits where the eye rests. */
+.vw--empty {
+	justify-content: center;
+	min-block-size: min(70vh, 34rem);
 }
 
 .vw__back {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
+	min-block-size: var(--fld-hit);
 	padding: 0.35rem 0.7rem;
-	font-size: 0.85rem;
-	font-weight: 500;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
 	color: var(--text-secondary);
 	text-decoration: none;
 	border-radius: var(--radius-full);
@@ -37,6 +74,14 @@
 .vw__back:hover {
 	color: var(--on-surface);
 	background: var(--surface-2);
+}
+.vw__back:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* An SVG arrow does not mirror itself — the glyph is drawn, so flip it in the mirrored direction. */
+[dir="rtl"] .vw__back-arrow {
+	transform: scaleX(-1);
 }
 
 /* On desktop the side-nav lane carries its own Back button in the lane header, so the in-body row is
@@ -51,16 +96,25 @@
 /* #endregion */
 
 /* #region Hero grid */
+/*
+ * The floor belongs to the MEDIA column. It was on the secondary informational column
+ * (`minmax(320px, 0.85fr)` against `minmax(0, 1.25fr)`), so under pressure the only thing that could
+ * yield was the showcase — the one element the page is built around. Measured at a 1024px window:
+ * a 265px media column holding a 185×139 image, smaller than any recommendation card below it, while
+ * the description held its full 320px. Now the description yields first and the media never drops
+ * below a size that can carry a product.
+ */
 .vw-hero {
 	display: grid;
-	grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
+	grid-template-columns: minmax(min(26rem, 100%), 1.3fr) minmax(0, 0.85fr);
 	gap: var(--space-6);
 	align-items: start;
 }
 
-@media (max-width: 960px) {
+/* Container, not viewport: at a 1024px window this region is 665px wide and must already be stacked. */
+@container vw (max-width: 46rem) {
 	.vw-hero {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-5);
 	}
 }
@@ -108,8 +162,8 @@
 	box-shadow: 0 0 0 1px var(--primary);
 }
 .vw-thumb:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .vw-thumb--more::after {
@@ -135,11 +189,15 @@
 	aspect-ratio: 4 / 3;
 	padding: 0;
 	border: none;
-	border-radius: var(--radius-2xl, var(--radius-xl));
+	border-radius: var(--card-radius-media);
 	overflow: hidden;
 	background: var(--surface-2);
 	cursor: zoom-in;
 	box-shadow: var(--elevation-low);
+}
+.vw-gallery__main:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow), var(--elevation-low);
 }
 .vw-gallery__main img {
 	inline-size: 100%;
@@ -161,10 +219,10 @@
 	inset-inline-end: var(--space-3);
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
+	gap: var(--space-1);
 	padding: 0.35rem 0.6rem;
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	background: color-mix(in srgb, var(--surface) 80%, transparent);
 	backdrop-filter: blur(6px);
@@ -177,9 +235,9 @@
 	opacity: 1;
 }
 
-@media (max-width: 540px) {
+@container vw (max-width: 34rem) {
 	.vw-gallery {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.vw-gallery__strip {
 		order: 2;
@@ -229,8 +287,8 @@
 	border-block-end: var(--hairline);
 }
 .vw-lightbox__counter {
-	font-size: 0.85rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 .fx-modal__actions {
@@ -259,8 +317,8 @@
 	background: var(--surface-2);
 }
 .fx-modal__act:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .vw-lightbox__stage {
@@ -363,38 +421,46 @@
 .vw-details {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-3);
+	/* The identity cluster is ONE group — title, chips, creator, rating sit close. Sections below
+	   separate themselves with their own margin, so proximity does the grouping. */
+	gap: var(--space-2);
 	min-inline-size: 0;
-}
-.vw-details__eyebrow {
-	font-size: 0.75rem;
-	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	color: var(--primary);
 }
 .vw-details__title {
 	margin: 0;
-	font-size: clamp(1.5rem, 1.1rem + 1.5vw, 2rem);
-	font-weight: 700;
-	line-height: 1.15;
+	font-size: clamp(var(--text-xl), 1rem + 1vw, var(--text-2xl));
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
 	color: var(--on-surface);
 }
 
+/*
+ * The chip row now carries the entity format as its first chip. It used to be a separate `__eyebrow`
+ * above the title, which both duplicated the mode chip directly beneath it (a Service page read
+ * "SERVICE" then "Brand identity" then "Brand · Pipeline") and put a kicker above a heading. One row
+ * of chips answers "what is this" once.
+ */
 .vw-badges {
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--space-2);
+	margin-block-start: var(--space-1);
 }
 .vw-badge {
 	display: inline-flex;
 	align-items: center;
 	padding: 0.2rem 0.6rem;
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
+}
+.vw-badge[data-tone="format"] {
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+	color: var(--on-surface);
 }
 .vw-badge[data-tone="mode"] {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
@@ -405,20 +471,30 @@
 	color: var(--warning);
 }
 
+/*
+ * De-boxed. This was a `--surface-1` panel measuring 1.1:1 against the page — a 405×76 container
+ * doing no separating work at all, spending §B.9.3's whole boundary budget on a tint nobody can see.
+ * The avatar and the name already read as a unit; the hover tint supplies the affordance.
+ */
 .vw-creator {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-3);
-	padding: var(--space-3);
-	margin-block-start: var(--space-1);
-	border-radius: var(--radius-lg);
-	background: var(--surface-1);
+	align-self: flex-start;
+	max-inline-size: 100%;
+	padding: var(--space-2);
+	margin-block-start: var(--space-3);
+	margin-inline-start: calc(var(--space-2) * -1);
+	border-radius: var(--radius-full);
 	text-decoration: none;
 	transition: background-color var(--dur-fast) var(--ease-standard);
-	max-inline-size: 100%;
 }
 .vw-creator:hover {
 	background: var(--surface-2);
+}
+.vw-creator:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .vw-creator__id {
 	display: flex;
@@ -429,8 +505,9 @@
 .vw-creator__name {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.3rem;
-	font-weight: 600;
+	gap: var(--space-1);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .vw-creator__nametext {
@@ -439,7 +516,7 @@
 	white-space: nowrap;
 }
 .vw-creator__handle {
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 
@@ -458,33 +535,44 @@
 .vw-ratesum:hover {
 	background: var(--surface-2);
 }
+.vw-ratesum:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 .vw-ratesum__score {
-	font-weight: 700;
+	font-weight: var(--fw-bold);
 }
 .vw-ratesum__count {
-	font-size: 0.85rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 	text-decoration: underline;
 	text-underline-offset: 2px;
 }
 
+/*
+ * §B.4 tier 1 + 3, not tier 4. Four of these stacked in a 380px column meant four hairlines where a
+ * label and an interval read on their own — borders compensating for a spacing ramp that was not
+ * being used. More space above the heading than below it (§A.3), per the §B.9.1 prescription.
+ */
 .vw-section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
-	padding-block-start: var(--space-3);
-	border-block-start: var(--hairline);
+	margin-block-start: var(--space-5);
+	min-inline-size: 0;
 }
 .vw-section__label {
 	margin: 0;
-	font-size: 0.95rem;
-	font-weight: 600;
-	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 .vw-details__summary {
 	margin: 0;
-	font-size: 0.925rem;
-	line-height: 1.6;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 
@@ -493,14 +581,14 @@
 	margin: 0;
 	padding: 0;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
 	gap: var(--space-2);
 }
 .vw-specs__item {
 	display: flex;
 	align-items: flex-start;
 	gap: var(--space-2);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 .vw-specs__check {
@@ -534,131 +622,89 @@
 	overflow-y: auto;
 }
 
+/*
+ * The price leads the lane. Ranked by ink mass across the first viewport it used to place 12th of 15
+ * — below the trust list, the back row and a section heading — on a page whose entire purpose is a
+ * purchase decision. It is now the largest type in the lane and sits directly above the commitment.
+ */
 .vw-price {
 	display: flex;
 	flex-direction: column;
-	gap: 0.2rem;
+	gap: var(--space-px);
 }
 .vw-price__value {
-	font-size: 1.6rem;
-	font-weight: 700;
-	line-height: 1.1;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
 	color: var(--on-surface);
 }
 .vw-price__caption {
-	font-size: 0.8rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 
+/* The CTA stack composes `Button` (§B.8) — variant carries interaction weight, so the hand-rolled
+   `.vw-cta--primary/--outline/--ghost` vocabulary is gone. This is layout only. */
 .vw-ctas {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
 }
-.vw-cta {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	padding: 0.7rem 1rem;
-	font-size: 0.9rem;
-	font-weight: 600;
-	font-family: inherit;
-	border-radius: var(--radius-full);
-	border: 1px solid transparent;
-	cursor: pointer;
-	text-decoration: none;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-.vw-cta:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
-}
-.vw-cta--primary {
-	background: var(--primary);
-	color: var(--on-primary);
-}
-.vw-cta--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
-}
-.vw-cta--outline {
-	background: transparent;
-	border-color: color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
-	color: var(--on-surface);
-}
-.vw-cta--outline:hover {
-	border-color: var(--primary);
-	color: var(--primary);
-}
-.vw-cta--outline[data-on="true"] {
-	border-color: var(--primary);
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-}
-.vw-cta--ghost {
-	background: var(--surface-2);
-	color: var(--on-surface);
-}
-.vw-cta--ghost:hover {
-	background: var(--surface-3, var(--surface-2));
-}
-.vw-cta__glyph {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-}
 .vw-ctas__status {
 	margin: 0;
 	min-block-size: 1rem;
-	font-size: 0.78rem;
+	font-size: var(--text-xs);
 	color: var(--primary);
 }
 
+/*
+ * Compact. Measured at 249px of lane height for three lines of reassurance copy — 8.9× the ink of the
+ * price, and the second-heaviest element in the whole first viewport. Trust facts are a footnote to a
+ * decision, not the decision: one row each, inline glyph, no 2rem chip.
+ */
 .vw-trust {
 	list-style: none;
 	margin: 0;
 	padding: var(--space-3) 0 0;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-3);
+	gap: var(--space-2);
 	border-block-start: var(--hairline);
 }
 .vw-trust__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
+	display: grid;
+	grid-template-columns: var(--icon-sm) minmax(0, 1fr);
+	align-items: baseline;
+	column-gap: var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
 }
 .vw-trust__icon {
 	flex: none;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
 	color: var(--text-secondary);
+	/* Optical: a baseline-aligned grid row would hang the glyph a hair low against the cap height. */
+	transform: translateY(0.15em);
 }
 .vw-trust__icon[data-icon="escrow"] {
-	background: color-mix(in srgb, var(--success) 15%, transparent);
 	color: var(--success);
 }
 .vw-trust__text {
 	display: flex;
-	flex-direction: column;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--space-1);
 	min-inline-size: 0;
 }
-.vw-trust__label {
-	font-size: 0.72rem;
-	color: var(--text-secondary);
-}
 .vw-trust__value {
-	font-size: 0.85rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
+}
+.vw-trust__label {
+	color: var(--text-secondary);
 }
 
 /* Primary tint on the collapsed-rail Buy/Message icon buttons. */
@@ -671,7 +717,128 @@
 }
 /* #endregion */
 
+/* #region Tablet lane density (768–1023px) */
+/*
+ * Between 768 and ~1023 the lane held a fixed 280px while the content region dropped to 409px: 45% of
+ * the viewport spent on nav chrome to show a phone-width page, and the surface's most cramped state was
+ * the one where it still drew full chrome. The lane has a purpose-built icon rail — it was simply never
+ * engaged automatically — so at this range it collapses to it, returning ~216px to the body.
+ *
+ * Scoped with `:has()` to THIS surface's lanes only (`.vw-lane` · `.vw-projlane` · `.art-toclane`), so
+ * /projects, /messages, /wallet and the profile keep whatever density their own users chose. It mirrors
+ * the `[data-mode="collapsed"]` rules rather than replacing them; a user who expands the lane at this
+ * width is overridden, which is the correct trade at a width where 409px of content is unreadable.
+ */
+@media (min-width: 768px) and (max-width: 1023px) {
+	.ui-splitter:has(.vw-lane, .vw-projlane, .art-toclane) {
+		inline-size: calc(var(--shell-sidebar-w) + 6px);
+	}
+	.ui-splitter:has(.vw-lane, .vw-projlane, .art-toclane) .pf-lane__full {
+		display: none;
+	}
+	.ui-splitter:has(.vw-lane, .vw-projlane, .art-toclane) .pf-lane__rail {
+		display: flex;
+	}
+}
+/* #endregion */
+
+/* #region `/view/[id]/schedule` wrapper */
+/*
+ * Moved here from `features/calendar/styles/calendar-page.css`. These classes style a VIEW route, and
+ * living in the calendar sheet meant they were delivered only by the `ScheduleView` island — so the
+ * branch that renders no calendar (schedule unavailable) shipped with no rules at all. A route's chrome
+ * belongs to the feature that owns the route, not to the feature whose island happens to be on it.
+ */
+.view-schedule {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding: var(--space-5);
+}
+.view-schedule__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+/* More space above the title than below it — the back link belongs to the page above, not to this one. */
+.view-schedule__back {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-block-size: var(--fld-hit);
+	margin-block-end: var(--space-2);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	text-decoration: none;
+}
+.view-schedule__back:hover {
+	color: var(--on-surface);
+}
+.view-schedule__back:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-full);
+}
+/* A page title, sized like one. It measured 21.6px — below several body elements on the sibling route
+   it is reached from, so the schedule read as a fragment rather than a destination. */
+.view-schedule__title {
+	margin: 0;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	color: var(--on-surface);
+}
+.view-schedule__sub {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-md);
+}
+
+/* The unavailable state centres in the region it would have filled instead of hugging the top-left. */
+.view-schedule--empty {
+	justify-content: center;
+	min-block-size: min(60vh, 32rem);
+}
+/* #endregion */
+
+/* #region Mobile transaction block (≤767px, where the lane does not exist) */
+/*
+ * The lane is `display:none` below 767px, and the whole transaction lived in it — so a phone got a
+ * gallery, a title and a description with no price and no way to buy. This is the body-side copy,
+ * revealed exactly where the lane is not, so the two are never both in the accessibility tree.
+ * Placed directly under the hero: image → title → price → buy is the order a phone reads in.
+ */
+.vw-buy {
+	display: none;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin-block-start: var(--space-5);
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+@media (max-width: 767px) {
+	.vw-buy {
+		display: flex;
+	}
+}
+/* #endregion */
+
 /* #region Service view — showcase toggle, availability calendar, team roles */
+/*
+ * The service template renders its stage showcase as a direct child of `.vw`, and this class carried
+ * NO rules at all — a dead hook. `.vw` had no gap and only `.vw-body` had a top margin, so the hero
+ * and the stage showcase touched: measured 0px between the two most important blocks on a Pipeline
+ * page. (The projects template escaped it because its stages sit inside `.vw-project__body`.)
+ */
+.vw-service__stages {
+	margin-block-start: var(--vw-block-gap, var(--space-7));
+}
+
 /* The main showcase region for a bookable service — media gallery ⇄ availability calendar. */
 .vw-showcase {
 	display: flex;
@@ -680,22 +847,33 @@
 	min-inline-size: 0;
 }
 
-/* In-showcase mode switch (mirrors the lane's `pf-availtoggle`, reachable on mobile). */
+/*
+ * The in-showcase mode switch exists for ONE reason: below 767px the lane is `display:none`, so the
+ * lane's `pf-availtoggle` is unreachable. It carried no media query, so it also rendered on desktop —
+ * two visible `role="tablist"` elements with identical options, one in the lane and one in the body.
+ * That is a region breach and an assistive-tech duplicate. It now exists only where it is the only
+ * copy.
+ */
 .vw-showcase__switch {
-	display: inline-flex;
+	display: none;
 	align-self: flex-start;
 	gap: var(--space-px);
 	padding: 0.2rem;
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 }
+@media (max-width: 767px) {
+	.vw-showcase__switch {
+		display: inline-flex;
+	}
+}
 .vw-showcase__tab {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
+	gap: var(--space-1);
 	padding: 0.35rem 0.75rem;
-	font-size: 0.8rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	font-family: inherit;
 	color: var(--text-secondary);
 	border: none;
@@ -712,15 +890,15 @@
 	box-shadow: var(--elevation-low);
 }
 .vw-showcase__tab:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* Availability calendar frame inside the showcase. */
 .vw-showcase__calendar {
 	inline-size: 100%;
-	min-block-size: 460px;
-	border-radius: var(--radius-2xl, var(--radius-xl));
+	min-block-size: 28.75rem;
+	border-radius: var(--card-radius-media);
 	overflow: hidden;
 	background: var(--surface-1);
 	box-shadow: var(--elevation-low);
@@ -739,10 +917,10 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 0.35rem;
+	gap: var(--space-1);
 	padding: 0.45rem 0.5rem;
-	font-size: 0.8rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	font-family: inherit;
 	color: var(--text-secondary);
 	border: none;
@@ -759,15 +937,15 @@
 	box-shadow: var(--elevation-low);
 }
 .pf-availtoggle__opt:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* A subtle text link to the full-page calendar under the booking CTAs. */
 .vw-lane__fulllink {
 	align-self: center;
-	font-size: 0.8rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--primary);
 	text-decoration: none;
 }
@@ -784,20 +962,28 @@
 	flex-direction: column;
 	gap: var(--space-2);
 }
+/*
+ * A role is not a discrete addressable object (§B.9.1) — it is a row in a list of roles — so it gets
+ * proximity and a hairline between siblings, not a tinted box each. Geometry, where any survives,
+ * reads the §A.3 card rhythm rather than declaring its own.
+ */
 .vw-teamrole {
 	display: grid;
-	grid-template-columns: 1.75rem minmax(0, 1fr);
-	gap: var(--space-2);
-	padding: var(--space-3);
-	border-radius: var(--radius-md);
-	background: var(--surface-1);
+	grid-template-columns: var(--icon-md) minmax(0, 1fr);
+	gap: var(--card-gap);
+	padding-block: var(--card-pad-tight);
+	border-block-start: var(--hairline);
+}
+.vw-teamrole:first-child {
+	border-block-start: none;
+	padding-block-start: 0;
 }
 .vw-teamrole__icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 1.75rem;
-	block-size: 1.75rem;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
 	color: var(--text-secondary);
 }
 .vw-teamrole__body {
@@ -807,28 +993,28 @@
 	min-inline-size: 0;
 }
 .vw-teamrole__name {
-	font-size: 0.9rem;
-	font-weight: 700;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .vw-teamrole__summary {
-	font-size: 0.82rem;
-	line-height: 1.5;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
 	color: var(--text-secondary);
 }
 .vw-teamrole__skills {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-2);
-	margin-block-start: 0.15rem;
+	gap: var(--space-1);
+	margin-block-start: var(--space-1);
 }
 .vw-teamrole__skill {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.3rem;
+	gap: var(--space-1);
 	padding: 0.2rem 0.5rem;
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	border-radius: var(--radius-full);
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 	color: var(--primary);
@@ -838,15 +1024,38 @@
 }
 /* #endregion */
 
+/* #region Shared heading */
+/* The major-block heading. One tier above `.vw-section__label` (the uppercase group register), so the
+   two read as a real hierarchy rather than two sizes of the same thing. Shared by all four templates. */
+.vw-h2 {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	color: var(--on-surface);
+}
+/* #endregion */
+
 /* #region Recommendation sections */
+/*
+ * The cross-sell used to be 73% of the page: two sections, each fanning out into up to five labelled
+ * single-type blocks, one of them an unbounded product masonry. The height came from the number of
+ * BLOCKS, not the number of items — a carousel pages, a stack of blocks does not — so the cap is on
+ * blocks, and the masonry is gone from this surface (it belongs on Explore, where products are the
+ * feed rather than a footnote).
+ *
+ * `--vw-region-gap` above it is the largest interval on the page: this is where you stop reading about
+ * this product and start being sold others.
+ */
 .vw-body {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-6);
-	margin-block-start: var(--space-6);
+	gap: var(--vw-section-gap, var(--space-6));
+	margin-block-start: var(--vw-region-gap, var(--space-8));
 }
 
-/* A titled section ("More by …" / "Similar"), holding one dedicated block per entity type. */
+/* A titled section ("More by …" / "Similar"), holding at most two single-type blocks. */
 .vw-related {
 	display: flex;
 	flex-direction: column;
@@ -860,24 +1069,31 @@
 }
 .vw-related__title {
 	margin: 0;
-	font-size: 1.15rem;
-	font-weight: 700;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }
 .vw-related__sub {
-	margin: 0.2rem 0 0;
-	font-size: 0.85rem;
+	margin: var(--space-px) 0 0;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .vw-related__all {
 	flex: none;
-	font-size: 0.85rem;
-	font-weight: 600;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--primary);
 	text-decoration: none;
 }
 .vw-related__all:hover {
 	text-decoration: underline;
+}
+[dir="rtl"] .vw-related__allarrow {
+	transform: scaleX(-1);
 }
 .vw-related__groups {
 	display: flex;
@@ -894,18 +1110,33 @@
 }
 .vw-group__label {
 	margin: 0;
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
 	color: var(--text-secondary);
 }
 
-/* Carousel — every non-product format, via the `@projective/ui/display` Carousel island. Each slide
- * holds one native card; the card's own `inline-size: 100%` fills the slot the library sizes. */
+/*
+ * Every format rides the `@projective/ui/display` Carousel. Each slide holds one native card; the
+ * card's own `inline-size: 100%` fills the slot the library sizes.
+ *
+ * The width CAP is load-bearing. `RelatedCarousel` caps `numVisible` to the item count so a lone card
+ * "fills the viewport" — which meant a group of ONE rendered a 1017px-wide slide, and a card whose
+ * media is 16:10 turned that into a 773px-tall block for a single recommendation. Measured: the
+ * one-article group was the tallest thing in the entire cross-sell, taller than the stage showcase.
+ * A card is a card at any group size; the slot may be wide, the card may not.
+ */
 .vw-slide {
 	block-size: 100%;
 }
 .vw-slide > .ex-card {
 	block-size: 100%;
+	max-inline-size: 24rem;
+}
+/* Projects are divider-rows, not fixed cards — they earn the wider slot. */
+.vw-slide--projects > .ex-projrow {
+	max-inline-size: none;
 }
 
 /* Projects are divider-rows, not fixed cards — frame the row inside its (wider) slide. */
@@ -913,15 +1144,8 @@
 	block-size: 100%;
 	border-block-end: none;
 	background: var(--surface-1);
-	border-radius: var(--radius-lg);
-	padding: var(--space-4);
-}
-
-/* Product masonry — distinct from the carousels; reuses the shared `.ex-masonry` flow (no library
- * masonry equivalent). The compound selector (0,2,0) outranks the bare `.ex-masonry` (0,1,0)
- * regardless of stylesheet order. */
-.ex-masonry.vw-group__masonry {
-	columns: 3 15rem;
+	border-radius: var(--card-radius);
+	padding: var(--card-pad);
 }
 /* #endregion */
 
@@ -930,24 +1154,26 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
-	padding-block-start: var(--space-5);
-	border-block-start: var(--hairline);
-	scroll-margin-block-start: calc(var(--shell-topbar-h, 56px) + var(--space-4));
+	scroll-margin-block-start: calc(
+		var(--shell-topbar-h, 3rem) + var(--shell-midnav-header-h, 3rem) + var(--space-4)
+	);
 }
 .vw-reviews__title {
 	margin: 0;
-	font-size: 1.3rem;
-	font-weight: 700;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
 }
 .vw-reviews__grid {
 	display: grid;
-	grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+	grid-template-columns: minmax(15rem, 18.75rem) minmax(0, 1fr);
 	gap: var(--space-6);
 	align-items: start;
 }
-@media (max-width: 780px) {
+@container vw (max-width: 44rem) {
 	.vw-reviews__grid {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-5);
 	}
 }
@@ -956,11 +1182,11 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
-	padding: var(--space-4);
-	border-radius: var(--radius-lg);
+	padding: var(--card-pad);
+	border-radius: var(--card-radius);
 	background: var(--surface-1);
 	position: sticky;
-	inset-block-start: calc(var(--shell-topbar-h, 56px) + var(--space-3));
+	inset-block-start: calc(var(--shell-topbar-h, 3rem) + var(--space-3));
 }
 .vw-revagg__score {
 	display: flex;
@@ -968,12 +1194,13 @@
 	gap: var(--space-1);
 }
 .vw-revagg__avg {
-	font-size: 2.6rem;
-	font-weight: 700;
-	line-height: 1;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
 }
 .vw-revagg__count {
-	font-size: 0.85rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .vw-revagg__tracks {
@@ -989,9 +1216,10 @@
 	gap: var(--space-px);
 }
 .vw-revagg__tracklabel {
-	font-size: 0.72rem;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--text-secondary);
 }
 
@@ -1005,6 +1233,7 @@
 	grid-template-columns: 2.2rem 1fr 2.4rem;
 	align-items: center;
 	gap: var(--space-2);
+	min-block-size: var(--fld-hit);
 	padding: var(--space-1) var(--space-2);
 	border: none;
 	border-radius: var(--radius-sm);
@@ -1015,12 +1244,19 @@
 .vw-revbar:hover {
 	background: var(--surface-2);
 }
+.vw-revbar:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 .vw-revbar[data-on="true"] {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 .vw-revbar__star {
-	font-size: 0.78rem;
-	font-weight: 600;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-px);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 	text-align: start;
 }
@@ -1038,7 +1274,7 @@
 	transition: inline-size var(--dur-medium) var(--ease-standard);
 }
 .vw-revbar__pct {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 	text-align: end;
 }
@@ -1049,25 +1285,45 @@
 	gap: var(--space-4);
 	min-inline-size: 0;
 }
+/*
+ * Sticky to its own list, not hoisted into a page-level band. The /wallet footer band owns controls
+ * that govern the SURFACE; this sort and filter govern one section a third of the way down a composed
+ * page, and a persistent band offering "Most recent · Highest · Lowest" while the reader is looking at
+ * the hero would be worse than the problem it solved. Sticking it to its list keeps the control with
+ * its data and stops it reading as body content that scrolled past.
+ */
 .vw-revlist__toolbar {
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h, 3rem) + var(--space-2));
+	z-index: var(--z-raised);
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--space-3);
 	flex-wrap: wrap;
+	padding-block: var(--space-2);
+	background: var(--bg);
 }
 .vw-revlist__count {
-	font-size: 0.85rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .vw-revlist__clear {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-px);
+	min-block-size: var(--fld-hit);
 	border: none;
 	background: transparent;
 	color: var(--primary);
-	font-size: 0.85rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	cursor: pointer;
 	padding: 0;
+}
+.vw-revlist__clear:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .vw-sort {
 	display: inline-flex;
@@ -1077,9 +1333,10 @@
 	background: var(--surface-2);
 }
 .vw-sort__opt {
+	min-block-size: var(--fld-hit);
 	padding: 0.35rem 0.75rem;
-	font-size: 0.8rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 	border: none;
 	border-radius: var(--radius-full);
@@ -1094,6 +1351,10 @@
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
 }
+.vw-sort__opt:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 
 .vw-revlist__items {
 	list-style: none;
@@ -1105,7 +1366,7 @@
 }
 .vw-revlist__empty {
 	color: var(--text-secondary);
-	font-size: 0.9rem;
+	font-size: var(--text-md);
 }
 .vw-review {
 	display: flex;
@@ -1142,11 +1403,11 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 }
 .vw-review__handle {
-	font-size: 0.78rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .vw-review__meta {
@@ -1157,7 +1418,7 @@
 	flex: none;
 }
 .vw-review__date {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .vw-review__body {
@@ -1167,14 +1428,14 @@
 }
 .vw-review__reviewtitle {
 	margin: 0;
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .vw-review__text {
 	margin: 0;
-	font-size: 0.875rem;
-	line-height: 1.55;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 .vw-review__badges {
@@ -1186,8 +1447,8 @@
 	display: inline-flex;
 	align-items: center;
 	padding: 0.15rem 0.5rem;
-	font-size: 0.72rem;
-	font-weight: 600;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);

@@ -111,8 +111,8 @@
 	color: var(--text-secondary);
 }
 
-/* The live region for a currency or account change. Never a persistent `aria-live` on the balance. 
-   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+/* The live region for a currency or account change. Never a persistent `aria-live` on the balance.
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 
 /* #endregion */

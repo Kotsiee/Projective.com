@@ -9,14 +9,8 @@
  * borders only on interactive controls. Responsive + reduced-motion (jump-to-final).
  */
 
-/* Shared H2 used across the project + article templates. */
-.vw-h2 {
-	margin: 0;
-	font-size: 1.2rem;
-	font-weight: 700;
-	line-height: 1.2;
-	color: var(--on-surface);
-}
+/* `.vw-h2` is defined once, in the imported `view.css` — it was duplicated verbatim here and in
+   `article-view.css`, which is three places to change one heading. */
 
 /* #region Project header (adapts pf-header) */
 .vw-projhead .pf-header__name {
@@ -27,8 +21,8 @@
 	align-items: center;
 	gap: 0.35rem;
 	padding: 0.2rem 0.6rem;
-	font-size: 0.75rem;
-	font-weight: 700;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-bold);
 	color: var(--primary);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border-radius: var(--radius-full);
@@ -50,8 +44,8 @@
 	gap: var(--space-1);
 	text-decoration: none;
 	color: var(--on-surface);
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	padding: 0.1rem 0.35rem 0.1rem 0.1rem;
 	border-radius: var(--radius-full);
 	transition: background-color var(--dur-fast) var(--ease-standard);
@@ -74,8 +68,8 @@
 	display: inline-flex;
 	align-items: center;
 	padding: 0.15rem 0.55rem;
-	font-size: 0.74rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
@@ -86,7 +80,7 @@
 }
 .vw-projhead__summary {
 	margin: 0.15rem 0 0;
-	font-size: 0.9rem;
+	font-size: var(--text-md);
 	color: var(--text-secondary);
 }
 .vw-projhead__actions.pf-actions {
@@ -111,7 +105,7 @@
 }
 .vw-project__summary {
 	margin: 0;
-	font-size: 0.95rem;
+	font-size: var(--text-base);
 	line-height: 1.6;
 	color: var(--text-secondary);
 }
@@ -127,15 +121,15 @@
 	gap: 0.1rem;
 }
 .vw-metagrid__cell dt {
-	font-size: 0.72rem;
+	font-size: var(--text-2xs);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--text-secondary);
 }
 .vw-metagrid__cell dd {
 	margin: 0;
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 /* #endregion */
@@ -154,8 +148,8 @@
 	align-items: center;
 	gap: 0.35rem;
 	padding: 0.25rem 0.6rem;
-	font-size: 0.78rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--on-surface);
@@ -201,8 +195,8 @@
 }
 .vw-role__name {
 	grid-area: name;
-	font-size: 0.88rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -210,13 +204,13 @@
 }
 .vw-role__seats {
 	grid-area: seats;
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .vw-role__price {
 	grid-area: price;
-	font-size: 0.82rem;
-	font-weight: 700;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-bold);
 	color: var(--on-surface);
 	white-space: nowrap;
 }
@@ -232,7 +226,7 @@
 }
 .vw-seatpool__desc {
 	margin: 0;
-	font-size: 0.85rem;
+	font-size: var(--text-md);
 	line-height: 1.5;
 	color: var(--text-secondary);
 }
@@ -243,13 +237,13 @@
 	gap: var(--space-3);
 }
 .vw-seatpool__count {
-	font-size: 0.8rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .vw-seatpool__price {
-	font-size: 0.82rem;
-	font-weight: 700;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-bold);
 	color: var(--on-surface);
 	white-space: nowrap;
 }
@@ -268,7 +262,7 @@
 }
 .vw-project__stageshint {
 	margin: 0;
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--text-secondary);
 	max-inline-size: 60ch;
 }
@@ -297,6 +291,13 @@
 	justify-content: center;
 	padding-block-start: 15px;
 }
+/*
+ * Status carries a SHAPE, not only a hue. Completed / active / upcoming were distinguished purely by
+ * `--success` / `--primary` / neutral on the node and a 3px accent — unreadable to a viewer who cannot
+ * separate those hues, and the §A.5 colour-blindness overlay cannot rescue meaning that only exists as
+ * colour. Completed fills solid and swaps its number for a check; active carries a ring; upcoming stays
+ * hollow. The hue still does its work for everyone else.
+ */
 .vw-stage__node {
 	inline-size: 24px;
 	block-size: 24px;
@@ -309,8 +310,8 @@
 	color: var(--text-secondary);
 }
 .vw-stage__num {
-	font-size: 0.72rem;
-	font-weight: 700;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
 }
 .vw-stage[data-status="completed"] .vw-stage__node {
 	border-color: var(--success);
@@ -321,30 +322,26 @@
 	border-color: var(--primary);
 	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 	color: var(--primary);
+	/* The second channel: an active stage is the only one wearing a ring. At `--tint-soft` (8%) it
+	   measured as barely a shape at all, which defeats the point of having a non-colour channel. */
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
+/*
+ * One separation device. An open stage carried a tonal step AND a 3px inline-start accent AND a resting
+ * elevation — three competing claims about how far it sits from its neighbours (§B.9.3 budgets one), and
+ * a coloured 3px edge is the surface habit this system rejects outright. The tint alone now says "open";
+ * status lives on the rail node, which is where the eye already goes to read sequence.
+ */
 .vw-stage__card {
 	min-inline-size: 0;
-	border-radius: var(--radius-lg);
+	border-radius: var(--card-radius);
 	background: var(--surface-1);
-	border-inline-start: 3px solid transparent;
 	overflow: hidden;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		box-shadow var(--dur-fast) var(--ease-standard);
-}
-.vw-stage[data-status="completed"] .vw-stage__card {
-	border-inline-start-color: var(--success);
-}
-.vw-stage[data-status="active"] .vw-stage__card {
-	border-inline-start-color: var(--primary);
-}
-.vw-stage[data-status="upcoming"] .vw-stage__card {
-	border-inline-start-color: color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 .vw-stage[data-open="true"] .vw-stage__card {
 	background: var(--surface-2);
-	box-shadow: var(--elevation-low);
 }
 
 .vw-stage__head {
@@ -362,8 +359,8 @@
 	color: var(--on-surface);
 }
 .vw-stage__head:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: -2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 	border-radius: var(--radius-md);
 }
 .vw-stage__heading {
@@ -376,34 +373,34 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	font-size: 0.95rem;
-	font-weight: 600;
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .vw-stage__flag {
 	padding: 0.05rem 0.4rem;
-	font-size: 0.66rem;
-	font-weight: 700;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--primary);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border-radius: var(--radius-full);
 }
 .vw-stage__sub {
-	font-size: 0.78rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .vw-stage__price {
-	font-size: 0.85rem;
-	font-weight: 700;
+	font-size: var(--text-md);
+	font-weight: var(--fw-bold);
 	color: var(--on-surface);
 	white-space: nowrap;
 }
 /* Service stages show a turnaround pill where a project shows the seat meter. */
 .vw-stage__turn {
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 	white-space: nowrap;
 }
@@ -415,28 +412,35 @@
 	transform: rotate(180deg);
 }
 
-/* Seat-fill meter. */
+/*
+ * Seat-fill meter. Filled vs unfilled was hue alone; a taken seat is now SOLID and a free seat is
+ * hollow, so the count survives a monochrome render or a colour-blindness overlay. The
+ * `.vw-seatmeter__label` beside it states the figure in words regardless.
+ */
 .vw-seatmeter {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.25rem;
+	gap: var(--space-px);
 }
 .vw-seatmeter__seg {
 	inline-size: 0.5rem;
 	block-size: 0.5rem;
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--on-surface) 16%, transparent);
+	border: 1px solid color-mix(in srgb, var(--on-surface) 28%, transparent);
+	background: transparent;
 }
 .vw-seatmeter__seg[data-filled="true"] {
+	border-color: var(--primary);
 	background: var(--primary);
 }
 .vw-stage[data-status="completed"] .vw-seatmeter__seg[data-filled="true"] {
+	border-color: var(--success);
 	background: var(--success);
 }
 .vw-seatmeter__label {
-	margin-inline-start: 0.35rem;
-	font-size: 0.72rem;
-	font-weight: 600;
+	margin-inline-start: var(--space-1);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 
@@ -462,7 +466,7 @@
 }
 .vw-stage__desc {
 	margin: 0;
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	line-height: 1.55;
 	color: var(--text-secondary);
 }
@@ -477,7 +481,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .vw-stage__fact svg {
@@ -485,7 +489,7 @@
 }
 .vw-stage__fact strong {
 	color: var(--on-surface);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 .vw-stage__group {
 	display: flex;
@@ -493,9 +497,9 @@
 	gap: var(--space-2);
 }
 .vw-stage__grouplabel {
-	font-size: 0.72rem;
+	font-size: var(--text-2xs);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--text-secondary);
 }
 /* Deliverables list — the "what you get" bullets in a service stage. */
@@ -511,7 +515,7 @@
 	display: flex;
 	align-items: flex-start;
 	gap: var(--space-2);
-	font-size: 0.85rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 .vw-stage__deliverable svg {
@@ -546,14 +550,14 @@
 	gap: 0.1rem;
 }
 .vw-fin__label {
-	font-size: 0.72rem;
+	font-size: var(--text-2xs);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--text-secondary);
 }
 .vw-fin__value {
-	font-size: 1.4rem;
-	font-weight: 700;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-bold);
 	line-height: 1.05;
 	color: var(--on-surface);
 }
@@ -564,12 +568,12 @@
 	margin-block-start: 0.15rem;
 }
 .vw-fin__funded {
-	font-size: 0.78rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--success);
 }
 .vw-fin__note {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .vw-metrics {
@@ -592,12 +596,12 @@
 	color: var(--text-secondary);
 }
 .vw-metric__label {
-	font-size: 0.8rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .vw-metric__value {
-	font-size: 0.82rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 
@@ -607,9 +611,9 @@
 	gap: var(--space-2);
 }
 .vw-jumps__head {
-	font-size: 0.72rem;
+	font-size: var(--text-2xs);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--text-secondary);
 }
 .vw-jumps__list {
@@ -639,16 +643,16 @@
 	background: var(--surface-2);
 }
 .vw-jump:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: -2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .vw-jump__idx {
 	inline-size: 1.4rem;
 	block-size: 1.4rem;
 	display: grid;
 	place-items: center;
-	font-size: 0.7rem;
-	font-weight: 700;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
 	border-radius: var(--radius-full);
 	background: var(--surface-2);
 	color: var(--text-secondary);
@@ -668,15 +672,15 @@
 	min-inline-size: 0;
 }
 .vw-jump__name {
-	font-size: 0.85rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .vw-jump__sub {
-	font-size: 0.72rem;
+	font-size: var(--text-2xs);
 	color: var(--text-secondary);
 }
 .vw-jump__chev {
@@ -691,8 +695,8 @@
 	position: relative;
 }
 .vw-railnum__n {
-	font-size: 0.85rem;
-	font-weight: 700;
+	font-size: var(--text-md);
+	font-weight: var(--fw-bold);
 }
 .vw-railnum[data-status="completed"] {
 	color: var(--success);
@@ -715,7 +719,7 @@
 	font-style: italic;
 }
 .vw-metagrid__cell dd.vw-empty {
-	font-weight: 500;
+	font-weight: var(--fw-medium);
 	font-style: normal;
 	color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
 }
@@ -724,7 +728,7 @@
 	padding: var(--space-4);
 	border-radius: var(--radius-lg);
 	background: var(--surface-1);
-	font-size: 0.9rem;
+	font-size: var(--text-md);
 }
 
 /* A stage whose facts / skills are all unconfigured: collapse the empty strip + group entirely. */

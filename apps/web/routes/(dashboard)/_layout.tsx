@@ -9,27 +9,29 @@ import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts"
 import { resolveSessionKind } from "@web/features/projects/core/session-model.ts";
 import { channelHeaderFor } from "@web/features/projects/core/channel-header-slot.tsx";
 import { projectHeaderFor } from "@web/features/projects/core/project-header-slot.tsx";
+import { projectFooterFor } from "@web/features/projects/core/project-footer-slot.tsx";
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
 import { filesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
 import { submissionsFooterFor } from "@web/features/projects/core/submissions-footer-slot.tsx";
 import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
 import { conversationFooterFor } from "@web/features/messaging/core/conversation-footer-slot.tsx";
+import {
+	inboxFooterFor,
+	inboxHeaderFor,
+	messagesLaneFor,
+} from "@web/features/messaging/core/inbox-slots.tsx";
 import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-slot.tsx";
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
+import { catalogueHeaderFor } from "@web/features/catalogue/core/catalogue-header-slot.tsx";
 import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
 import { walletFooterFor } from "@web/features/wallet/core/wallet-footer-slot.tsx";
 import { walletHeaderFor } from "@web/features/wallet/core/wallet-header-slot.tsx";
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
-import {
-	resolveConversationList,
-	resolveMessagingSettings,
-} from "@web/features/messaging/core/conversations-ssr.ts";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
-import MessagesSidebar from "@web/features/messaging/islands/MessagesSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 
 /**
@@ -76,13 +78,16 @@ function projectSlugOf(pathname: string): string | null {
 /**
  * Resolve the middle-nav footer band for a request: the channel/conversation Chat composer on a Chat
  * tab, the File Explorer's View Control Rig on a `/files` route, the Submissions rig on
- * `/submissions`, the Board rig on `/board`, else nothing. Composed so exactly one owns the single
- * footer slot per URL. Every navigation is a full page render, so this simply resolves fresh each time.
+ * `/submissions`, the Board rig on `/board`, the engagement preview's Apply rig on a bare
+ * `/projects/[id]`, else nothing. Composed so exactly one owns the single footer slot per URL. Every
+ * navigation is a full page render, so this simply resolves fresh each time.
  */
 function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
 	return channelFooterFor(url, context) ?? filesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
-		conversationFooterFor(url, context) ?? catalogueFooterFor(url, context) ??
+		projectFooterFor(url, context) ??
+		inboxFooterFor(url, context) ?? conversationFooterFor(url, context) ??
+		catalogueFooterFor(url, context) ??
 		walletFooterFor(url, context) ?? workspaceFooterFor(url, context);
 }
 
@@ -93,8 +98,9 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
  */
 function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
 	return channelHeaderFor(url, context) ?? projectHeaderFor(url, context) ??
-		conversationHeaderFor(url, context) ?? walletHeaderFor(url, context) ??
-		workspaceHeaderFor(url, context);
+		inboxHeaderFor(url, context) ?? conversationHeaderFor(url, context) ??
+		catalogueHeaderFor(url, context) ??
+		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context);
 }
 
 /**
@@ -103,29 +109,8 @@ function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
  * default section switcher.
  */
 function laneFor(url: URL, context: UserContext): ComponentChildren {
-	// The global inbox (`/messages`) hosts the conversation search + advanced filters + New/Settings lane.
-	if (url.pathname.startsWith("/messages")) {
-		const { page, role } = resolveConversationList(context);
-		const settings = resolveMessagingSettings(context) ??
-			{
-				autoResponsesEnabled: false,
-				autoResponses: [],
-				readReceipts: true,
-				showTypingIndicator: true,
-				notifications: {
-					newMessage: true,
-					mentions: true,
-					groupActivity: true,
-					serviceInquiries: true,
-					sound: true,
-					muteAll: false,
-					quietHoursEnabled: false,
-					quietStart: "22:00",
-					quietEnd: "08:00",
-				},
-			};
-		return <MessagesSidebar initial={page} role={role} path={url.pathname} settings={settings} />;
-	}
+	// The global inbox: the scope map on the `/messages` root, the conversation list beside an open one.
+	if (url.pathname.startsWith("/messages")) return messagesLaneFor(url, context);
 
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
 	if (url.pathname.startsWith("/catalogue")) return catalogueLaneFor(url, context);

@@ -46,7 +46,15 @@ export const CatalogueTypeFilter = z.enum(["all", "product", "service"]);
 export type CatalogueTypeFilter = z.infer<typeof CatalogueTypeFilter>;
 
 /** The property the console sorts listings on. */
-export const CatalogueSort = z.enum(["recent", "best-selling", "price", "rating", "status"]);
+export const CatalogueSort = z.enum([
+	"recent",
+	"title",
+	"best-selling",
+	"views",
+	"price",
+	"rating",
+	"status",
+]);
 export type CatalogueSort = z.infer<typeof CatalogueSort>;
 
 /** Sort direction (the `SortControl` asc/desc toggle). */

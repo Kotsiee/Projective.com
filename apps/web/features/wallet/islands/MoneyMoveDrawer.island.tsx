@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
 import { Drawer, Message } from "@projective/ui/feedback";
-import { InputNumber, InputText, Select } from "@projective/ui/fields";
+import { Button, InputNumber, InputText, Select } from "@projective/ui/fields";
 import { WalletIdCard } from "../components/WalletIdCard.tsx";
 import { SplitPreview } from "../components/SplitPreview.tsx";
 import { Money } from "../components/Money.tsx";
@@ -180,15 +180,8 @@ export default function MoneyMoveDrawer(props: MoneyMoveDrawerProps): JSX.Elemen
 			</div>
 
 			<footer class="wlt-drawer__foot">
-				<button type="button" class="wlt-btn" onClick={closeWalletAction}>Cancel</button>
-				<button
-					type="button"
-					class="wlt-btn wlt-btn--primary"
-					disabled={!ready}
-					onClick={proceed}
-				>
-					Continue
-				</button>
+				<Button variant="text" label="Cancel" onClick={closeWalletAction} />
+				<Button variant="filled" label="Continue" disabled={!ready} onClick={proceed} />
 			</footer>
 		</Drawer>
 	);

@@ -1,53 +1,469 @@
 /*
- * catalogue.css — the seller Catalogue surface: the navigation lane (CatalogueLane + collapsed rail),
- * the create modal, the console (segment tabs · analytics strip · zoom grid/table), and the manage-page
- * editor. Token-only, strict BEM (root CLAUDE.md §3 / DESIGN_SYSTEM.md §B). Non-interactive content is
+ * catalogue.css — the seller Catalogue surface, laid out to the `/wallet` region contract: the LANE
+ * owns navigation and scope, the HEADER band owns identity and global controls, the FOOTER band owns
+ * actions and density, and the BODY owns viewing and selecting data only.
+ *
+ * Sections follow those regions: the shared status chip · the two header bands (console · manage page)
+ * · the two footer bands (view-control rig · action rig) · the lane and its collapsed rail · the create
+ * modal · the console body (analytics · cards · table · states) · the manage-page editor.
+ *
+ * Token-only, strict BEM (root CLAUDE.md §3 / DESIGN_SYSTEM.md §B). Non-interactive content is
  * separated by spacing + tonal tints + single hairlines (§B.4); full borders only on interactive
  * controls. The shared lane chrome (`.ui-lane-*`) + fields are NOT restyled here — only feature bits.
  */
 
 /* #region Status chip (shared) */
 .cat-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--space-px) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: 0.72rem;
-    font-weight: 600;
-    line-height: 1.5;
-    white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	padding: var(--space-px) var(--space-2);
+	border-radius: var(--radius-sm);
+	font-size: 0.72rem;
+	font-weight: 600;
+	line-height: 1.5;
+	white-space: nowrap;
 }
 
 .cat-chip[data-tone="success"] {
-    background: color-mix(in srgb, var(--success) 16%, transparent);
-    color: var(--success);
+	background: color-mix(in srgb, var(--success) 16%, transparent);
+	color: var(--success);
 }
 
 .cat-chip[data-tone="warning"] {
-    background: color-mix(in srgb, var(--warning) var(--tint-strong), transparent);
-    color: var(--warning);
+	background: color-mix(in srgb, var(--warning) var(--tint-strong), transparent);
+	color: var(--warning);
 }
 
 .cat-chip[data-tone="neutral"] {
-    background: var(--surface-2);
-    color: var(--on-surface-variant);
+	background: var(--surface-2);
+	color: var(--on-surface-variant);
 }
 
 .cat-chip[data-tone="muted"] {
-    background: var(--surface-1);
-    color: var(--text-secondary);
+	background: var(--surface-1);
+	color: var(--text-secondary);
 }
 
 /* #endregion */
 
-/* #region View control rig (footer band) */
+/* #region Header band — the console (identity · search · analytics window) */
 /*
- * The rig IS the reference File Explorer rig — literally the shared `.ui-viewrig`
+ * The band the surface never had. Everything in it used to be in the scrolling body: the search inside
+ * a `.fx-toolbar` that duplicated the lane's own, and the analytics window inside the KPI block. It is
+ * a single non-scrolling row, so the three things it holds are always where the seller left them.
+ */
+.cat-hdr {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	/* The shipped header-band box (`.wlt-headerband`): a definite band height, the same inline padding.
+	   Without a definite height the band collapses to its content and the frame's top curve shifts. */
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+}
+
+.cat-hdr__ident {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	flex: none;
+}
+
+.cat-hdr__title {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 650;
+	line-height: 1.2;
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+/* The count is identity, not decoration — the surface says how much of itself you are looking at. */
+.cat-hdr__count {
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-hdr__search {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	/* A search field is read at the length of a listing title, not the length of the frame. */
+	max-inline-size: 24rem;
+}
+
+.cat-hdr__searchicon {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+
+/*
+ * The mobile-only type switch, styled as a segmented control rather than the lane's underlined tabs:
+ * in a 48px band a segment reads as one control, where underlines read as three loose links.
+ */
+.cat-hdr__types {
+	display: none;
+	gap: var(--space-px);
+	flex: none;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+
+.cat-hdr__type {
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-sm);
+	color: var(--text-secondary);
+	font-size: 0.74rem;
+	text-decoration: none;
+	white-space: nowrap;
+	transition: color var(--dur-fast) var(--ease-standard), background var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cat-hdr__type:hover {
+	color: var(--on-surface);
+}
+
+.cat-hdr__type:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-hdr__type[data-on="true"] {
+	background: var(--surface);
+	color: var(--on-surface);
+	font-weight: 600;
+}
+
+/* Analytics period selector — a HEADER-band control (it scopes the whole summary), matching
+   `/wallet`, whose header band owns its own 30/60/90 range. */
+.cat-period {
+	display: inline-flex;
+	gap: var(--space-px);
+	flex: none;
+	padding: 2px;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+
+.cat-period__btn {
+	padding: var(--space-1) var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.74rem;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard), background var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cat-period__btn:hover {
+	color: var(--on-surface);
+}
+
+.cat-period__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-period__btn[data-on="true"] {
+	background: var(--surface);
+	color: var(--on-surface);
+	font-weight: 600;
+}
+
+/* Below the lane breakpoint the identity yields first — the search is the working control. */
+@media (max-width: 900px) {
+	.cat-hdr {
+		gap: var(--space-3);
+		padding-inline: var(--space-4);
+	}
+
+	.cat-hdr__count {
+		display: none;
+	}
+}
+
+@media (max-width: 767px) {
+	/* The analytics window yields on a phone — the summary states its own period in the body, and the
+	   type scope is the control a seller actually reaches for at this size. */
+	.cat-period {
+		display: none;
+	}
+
+	.cat-hdr__types {
+		display: inline-flex;
+	}
+}
+
+@media (max-width: 620px) {
+	.cat-hdr__title {
+		display: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Header band — the manage page (back · title · status · save state) */
+.cat-lhdr {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+}
+
+.cat-lhdr__back {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex: none;
+	padding: var(--space-1) var(--space-2);
+	margin-inline-start: calc(var(--space-2) * -1);
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	font-size: 0.82rem;
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard), background var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cat-lhdr__back:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.cat-lhdr__back:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-lhdr__title {
+	margin: 0;
+	min-inline-size: 0;
+	font-size: 0.95rem;
+	font-weight: 650;
+	line-height: 1.2;
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * The autosave state, pinned. Three redundant channels — a word, a tone, and a mark whose SHAPE
+ * differs per state — so it survives both a colour-blind overlay and a glance.
+ */
+.cat-lhdr__save {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex: none;
+	margin-inline-start: auto;
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.cat-lhdr__savemark {
+	inline-size: 9px;
+	block-size: 9px;
+	border-radius: 50%;
+	flex: none;
+	background: currentColor;
+}
+
+/* Saved: a hollow ring — settled, nothing outstanding. */
+.cat-lhdr__savemark[data-state="saved"] {
+	background: transparent;
+	border: 2px solid currentColor;
+}
+
+/* Saving: an open arc that turns. */
+.cat-lhdr__savemark[data-state="saving"] {
+	background: transparent;
+	border: 2px solid currentColor;
+	border-block-start-color: transparent;
+	animation: cat-spin var(--dur-slow, 900ms) linear infinite;
+}
+
+.cat-lhdr__save[data-state="saving"] {
+	color: var(--warning);
+}
+
+.cat-lhdr__save[data-state="saved"] {
+	color: var(--success);
+}
+
+@keyframes cat-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-lhdr__savemark[data-state="saving"] {
+		animation: none;
+		/* No spin: the arc still reads as "open", which is the state it encodes. */
+	}
+}
+
+@media (max-width: 620px) {
+	.cat-lhdr {
+		padding-inline: var(--space-4);
+	}
+
+	.cat-lhdr__back span {
+		display: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Footer band — the console view-control rig */
+/*
+ * The zoom half IS the reference File Explorer rig — literally the shared `.ui-viewrig`
  * (`features/shell/styles/view-zoom-rig.css`), not a copy of its box model. Only the persistence key
  * and the aria-label differ (`CATALOGUE_ZOOM`, so seller density is independent of file density).
+ * Sort joins it here because density and ordering are the same kind of decision about the same list.
  */
 .cat-rig {
-    inline-size: 100%;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 100%;
+	padding-inline: var(--space-4);
+}
+
+.cat-rig__zoom {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.cat-rig__end {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+}
+
+/*
+ * Mobile-only create. Below the lane breakpoint the lane — the only other home for this action — is
+ * `display: none`, which left a seller able to browse their catalogue but not add to it unless it
+ * happened to be empty. It appears exactly where the lane isn't.
+ */
+.cat-rig__new {
+	display: none;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-3);
+	border: none;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	color: var(--on-primary);
+	font: inherit;
+	font-size: 0.8rem;
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.cat-rig__new:hover {
+	background: var(--primary-hover, color-mix(in srgb, var(--primary) 88%, var(--on-surface)));
+}
+
+.cat-rig__new:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+@media (max-width: 767px) {
+	.cat-rig__new {
+		display: inline-flex;
+	}
+
+	/* The zoom track yields the room; the create action is the one that must not be lost. */
+	.cat-rig__zoom {
+		flex: 0 1 auto;
+		min-inline-size: 0;
+		overflow: hidden;
+	}
+}
+
+/* #endregion */
+
+/* #region Footer band — the manage page action rig */
+/*
+ * The band `/catalogue/[id]` never had. The gate and the action it gates now sit together: a disabled
+ * Publish that does not say why is a dead end, and the readiness checklist used to be 447px away in a
+ * sticky aside that outlived the button entirely.
+ */
+.cat-arig {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 100%;
+	padding-inline: var(--space-4);
+}
+
+.cat-arig__gate {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	min-inline-size: 0;
+	font-size: 0.82rem;
+	font-weight: 500;
+	color: var(--warning);
+}
+
+.cat-arig__gate[data-ready="true"] {
+	color: var(--success);
+}
+
+.cat-arig__gate > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cat-arig__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	margin-inline-start: auto;
+}
+
+/* A disabled Button swallows pointer events, so the Tooltip needs a live element to anchor to. */
+.cat-arig__pubwrap {
+	display: inline-flex;
+}
+
+@media (max-width: 620px) {
+	.cat-arig {
+		gap: var(--space-2);
+		padding-inline: var(--space-4);
+	}
+
+	/* The gate collapses to its glyph — the tooltip on Publish still carries the words. */
+	.cat-arig__gate > span {
+		display: none;
+	}
 }
 
 /* #endregion */
@@ -55,535 +471,579 @@
 /* #region Lane — dual presentation */
 .cat-lane,
 .cat-lane__full {
-    display: flex;
-    flex-direction: column;
-    block-size: 100%;
-    min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
 }
 
 .cat-rail {
-    display: none;
+	display: none;
 }
 
 .ui-splitter[data-mode="collapsed"] .cat-lane__full {
-    display: none;
+	display: none;
 }
 
 .ui-splitter[data-mode="collapsed"] .cat-rail {
-    display: flex;
+	display: flex;
 }
 
 /* ＋ New — the primary CTA in the lane FOOTER (the same position as the `/projects` "New project"
    button), mirroring `.proj-lane__create`: an auto-width primary pill + its product/service popover
    trigger (the caret marks the menu). */
 .cat-lane__newbtn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.7rem;
-    border: none;
-    border-radius: var(--radius-full);
-    background: var(--primary);
-    color: var(--on-primary);
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        box-shadow var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.4rem 0.7rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	color: var(--on-primary);
+	font: inherit;
+	font-size: 0.8rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
 }
 
+/* Was `color-mix(… var(--primary) 88%, black)` — a raw colour keyword in a token-only stylesheet, and
+   one of three different hover treatments for what is visually one pill. `--on-surface` is the
+   theme's own "further from the page" direction, so this darkens in light and lightens in dark. */
 .cat-lane__newbtn:hover {
-    background: color-mix(in srgb, var(--primary) 88%, black);
+	background: var(--primary-hover, color-mix(in srgb, var(--primary) 88%, var(--on-surface)));
 }
 
 .cat-lane__newbtn:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring-shadow);
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-lane__newicon {
-    display: inline-flex;
+	display: inline-flex;
 }
 
 .cat-lane__newlabel {
-    text-align: start;
+	text-align: start;
 }
 
 .cat-lane__newcaret {
-    font-size: 0.7rem;
-    opacity: 0.85;
+	font-size: 0.7rem;
+	opacity: 0.85;
 }
 
 .cat-newmenu {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-px);
-    min-inline-size: 12rem;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 12rem;
 }
 
 .cat-newmenu__item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border: none;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-    transition: background var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--ease-standard);
 }
 
 .cat-newmenu__item:hover {
-    background: var(--surface-2);
+	background: var(--surface-2);
+}
+
+.cat-newmenu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* Delivery-model filter pills (services only) — now hosted inside the lane Filter popover. */
 .cat-lane__models {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
 }
 
 .cat-model-pill {
-    padding: 0.15rem var(--space-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-secondary);
-    font: inherit;
-    font-size: 0.74rem;
-    cursor: pointer;
-    transition: all var(--dur-fast) var(--ease-standard);
+	padding: 0.15rem var(--space-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.74rem;
+	cursor: pointer;
+	transition: all var(--dur-fast) var(--ease-standard);
 }
 
 .cat-model-pill:hover {
-    color: var(--on-surface);
-    border-color: var(--on-surface-variant);
+	color: var(--on-surface);
+	border-color: var(--on-surface-variant);
+}
+
+.cat-model-pill:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-model-pill[data-on="true"] {
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    border-color: var(--primary);
-    color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	border-color: var(--primary);
+	color: var(--primary);
 }
 
 /* Lane Filter popover (the `ui-lane-bar` filter button's panel) */
 .ui-popover.cat-filter-pop .ui-popover__content {
-    padding: var(--space-3);
+	padding: var(--space-3);
 }
 
 .cat-filter {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    inline-size: 15rem;
-    max-inline-size: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 15rem;
+	max-inline-size: 100%;
 }
 
 .cat-filter__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
 }
 
 .cat-filter__title {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--on-surface);
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--on-surface);
 }
 
 .cat-filter__reset {
-    appearance: none;
-    padding: 0;
-    font: inherit;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    transition: color var(--dur-fast) var(--ease-standard);
+	appearance: none;
+	padding: 0;
+	font: inherit;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .cat-filter__reset:hover {
-    color: var(--on-surface);
+	color: var(--on-surface);
+}
+
+.cat-filter__reset:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-filter__facet {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 }
 
 .cat-filter__facet-label {
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .cat-filter__empty {
-    margin: 0;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
 }
 
 /* Section header dot */
 .cat-secdot {
-    inline-size: 8px;
-    block-size: 8px;
-    border-radius: 50%;
-    background: var(--text-secondary);
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: 50%;
+	background: var(--text-secondary);
 }
 
 .cat-secdot[data-status="published"] {
-    background: var(--success);
+	background: var(--success);
 }
 
 .cat-secdot[data-status="paused"] {
-    background: var(--warning);
+	background: var(--warning);
 }
 
 .cat-secdot[data-status="archived"] {
-    background: var(--on-surface-variant);
-    opacity: 0.6;
-}
-
-/* Analytics period selector (footer) */
-.cat-period {
-    display: inline-flex;
-    gap: var(--space-px);
-    padding: 2px;
-    border-radius: var(--radius-base);
-    background: var(--surface-2);
-}
-
-.cat-period__btn {
-    padding: var(--space-px) var(--space-2);
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-secondary);
-    font: inherit;
-    font-size: 0.72rem;
-    cursor: pointer;
-}
-
-.cat-period__btn[data-on="true"] {
-    background: var(--surface);
-    color: var(--on-surface);
-    font-weight: 600;
+	background: var(--on-surface-variant);
+	opacity: 0.6;
 }
 
 /* #endregion */
 
 /* #region Lane row */
 .cat-lrow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-base);
-    color: var(--on-surface);
-    text-decoration: none;
-    transition: background var(--dur-fast) var(--ease-standard);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--on-surface);
+	text-decoration: none;
+	transition: background var(--dur-fast) var(--ease-standard);
 }
 
 .cat-lrow:hover {
-    background: var(--surface-2);
+	background: var(--surface-2);
+}
+
+.cat-lrow:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset, var(--focus-ring-shadow));
 }
 
 .cat-lrow[data-active="true"] {
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .cat-lrow__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 1.5rem;
-    block-size: 1.5rem;
-    color: var(--text-secondary);
-    flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	color: var(--text-secondary);
+	flex: none;
 }
 
 .cat-lrow[data-active="true"] .cat-lrow__icon {
-    color: var(--primary);
+	color: var(--primary);
 }
 
 /* Circular cover thumbnail when the listing has media (else the fallback kind glyph renders). */
 .cat-lrow__thumb {
-    inline-size: 1.5rem;
-    block-size: 1.5rem;
-    border-radius: 50%;
-    object-fit: cover;
-    display: block;
-    background: var(--surface-2);
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border-radius: 50%;
+	object-fit: cover;
+	display: block;
+	background: var(--surface-2);
 }
 
 .cat-lrow__title {
-    flex: 1;
-    min-inline-size: 0;
-    font-size: 0.84rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	flex: 1;
+	min-inline-size: 0;
+	font-size: 0.84rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .cat-lrow__signals {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex: none;
 }
 
 .cat-lrow__sig {
-    display: inline-flex;
+	display: inline-flex;
 }
 
 .cat-lrow__sig--alert {
-    color: var(--warning);
+	color: var(--warning);
 }
 
 .cat-lrow__sig--promo {
-    color: var(--secondary);
+	color: var(--secondary);
 }
 
 .cat-lrow__dot {
-    inline-size: 7px;
-    block-size: 7px;
-    border-radius: 50%;
-    background: var(--success);
+	inline-size: 7px;
+	block-size: 7px;
+	border-radius: 50%;
+	background: var(--success);
 }
 
 /* #endregion */
 
 /* #region Collapsed rail */
 .cat-rail {
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-3) 0;
-    block-size: 100%;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) 0;
+	block-size: 100%;
 }
 
 .cat-rail__top,
 .cat-rail__bottom {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
 }
 
 .cat-rail__items {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-1);
-    flex: 1;
-    min-block-size: 0;
-    overflow-y: auto;
-    padding-block: var(--space-1);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	flex: 1;
+	min-block-size: 0;
+	overflow-y: auto;
+	padding-block: var(--space-1);
 }
 
 .cat-rail__bottom {
-    margin-block-start: auto;
+	margin-block-start: auto;
 }
 
 .cat-rail__brand {
-    color: var(--primary);
+	color: var(--primary);
 }
 
 .cat-rail__new,
 .cat-rail__item,
 .cat-rail__toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--shell-nav-block, 40px);
-    block-size: var(--shell-nav-block, 40px);
-    border: none;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    position: relative;
-    text-decoration: none;
-    transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block, 40px);
+	block-size: var(--shell-nav-block, 40px);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	position: relative;
+	text-decoration: none;
+	transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast)
+		var(--ease-standard);
 }
 
+/* `--on-primary`, not `--surface`. Three controls in this file painted a different ink on the same
+   `--primary` fill than `.cat-lane__newbtn` did — one fill, two inks, one feature. */
 .cat-rail__new {
-    background: var(--primary);
-    color: var(--surface);
+	background: var(--primary);
+	color: var(--on-primary);
 }
 
 .cat-rail__new:hover {
-    filter: brightness(1.06);
+	background: var(--primary-hover, color-mix(in srgb, var(--primary) 88%, var(--on-surface)));
 }
 
 .cat-rail__item:hover,
 .cat-rail__toggle:hover {
-    background: var(--surface-2);
-    color: var(--on-surface);
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.cat-rail__new:focus-visible,
+.cat-rail__item:focus-visible,
+.cat-rail__toggle:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-rail__item[data-active="true"] {
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	color: var(--primary);
 }
 
 .cat-rail__dot {
-    position: absolute;
-    inset-block-start: 6px;
-    inset-inline-end: 6px;
-    inline-size: 7px;
-    block-size: 7px;
-    border-radius: 50%;
-    background: var(--warning);
+	position: absolute;
+	inset-block-start: 6px;
+	inset-inline-end: 6px;
+	inline-size: 7px;
+	block-size: 7px;
+	border-radius: 50%;
+	background: var(--warning);
 }
 
 /* #endregion */
 
 /* #region Create modal + shared fields */
 .cat-create__body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
 }
 
 .cat-create__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
 }
 
 .cat-create__error {
-    margin: 0;
-    color: var(--danger);
-    font-size: 0.82rem;
+	margin: 0;
+	color: var(--danger);
+	font-size: 0.82rem;
 }
 
 .cat-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
 }
 
 /* The one field-label typography, from the package contract. This was `0.78rem` — a value on no
    ramp, differing from `@projective/ui`'s label for no reason a reader could name. */
 .cat-field__label {
-    font-size: var(--fld-label-fs);
-    font-weight: var(--fld-label-fw);
-    color: var(--fld-label-fg);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
 }
 
 .cat-field__hint {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin: 0;
-    font-size: var(--fld-hint-fs);
-    color: var(--fld-hint-fg);
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin: 0;
+	font-size: var(--fld-hint-fs);
+	color: var(--fld-hint-fg);
 }
 
 .cat-field__hint-icon {
-    flex: none;
+	flex: none;
 }
 
 .cat-field-row {
-    display: flex;
-    gap: var(--space-3);
+	display: flex;
+	gap: var(--space-3);
 }
 
-.cat-field-row>.cat-field {
-    flex: 1;
+.cat-field-row > .cat-field {
+	flex: 1;
 }
 
 /* #endregion */
 
 /* #region Console */
 .cat-console {
-    /*
-	 * The console control bar is the SHARED `.fx-toolbar` (see `projects/styles/fx-toolbar.css`) — 100%
-	 * identical to the File Explorer's toolbar. These vars localise where it pins (below the top bar;
-	 * the console has no middle-nav header band) and its min height. `--cat-toolbar-h` offsets the list
-	 * table header below the sticky toolbar.
+	/*
+	 * The list table's sticky column header pins beneath the shell's own chrome. With the toolbar gone
+	 * from the body there is nothing else in the way, so this is simply the topbar plus the header band.
 	 */
-    --fx-chrome: var(--shell-topbar-h);
-    --fx-toolbar-h: 3rem;
-    --cat-toolbar-h: 4.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    padding: var(--space-5) var(--space-5) var(--space-8);
-    min-block-size: 0;
+	--cat-chrome: calc(var(--shell-topbar-h, 3rem) + var(--shell-midnav-header-h, 3rem));
+	display: flex;
+	flex-direction: column;
+	/*
+	 * Section rhythm, not one repeated value. The console has two parts — a summary and the catalogue
+	 * itself — and they are not equally related to each other or to what's inside them. `--space-6`
+	 * between them is deliberately LARGER than the `--space-5` between the KPI tiles inside the summary,
+	 * because the previous arrangement had it backwards: a flat `--space-4` between every section while
+	 * tiles inside one group sat `--space-5` apart, so proximity actively argued that the tiles were
+	 * less related to each other than the toolbar was to the grid.
+	 */
+	gap: var(--space-6);
+	/* `--space-4` inline, matching `.fx-explorer` — the same content edge as the sibling that shares
+	   this surface's list conventions, so navigating between them doesn't shift the column. */
+	padding: var(--space-4) var(--space-4) var(--space-8);
+	min-block-size: 0;
 }
 
 .cat-console__notice {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-base);
-    background: color-mix(in srgb, var(--warning) var(--tint), transparent);
-    color: var(--warning);
-    font-size: 0.84rem;
-}
-
-.cat-console__count {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
+	color: var(--warning);
+	font-size: 0.84rem;
 }
 
 .cat-workspace {
-    min-block-size: 40vh;
+	/* Enough to hold a state without the page collapsing around it; not a magic viewport fraction. */
+	min-block-size: 18rem;
+}
+
+/* A stale list — kept on screen after a failed refresh, but no longer claimed as the answer. */
+.cat-workspace[data-stale="true"] .cat-table,
+.cat-workspace[data-stale="true"] .ui-vgrid {
+	opacity: 0.5;
 }
 
 /* #endregion */
 
-/* #region Analytics block (KPI widgets + the relocated period scope switch) */
+/* #region Analytics block */
 .cat-analytics {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
-.cat-analytics__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
+/*
+ * The block names its own scope in a full sentence. The figures follow the type segment but NOT the
+ * search — a segment is a scope, a search is a lookup — and staying silent about that let "9 active
+ * listings" sit directly above a body reading "0 listings".
+ */
+.cat-analytics__scope {
+	margin: 0;
+	font-size: 0.78rem;
+	font-weight: 500;
+	color: var(--text-secondary);
 }
 
-.cat-analytics__title {
-    margin: 0;
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--on-surface-variant);
+.cat-analytics__disclaim {
+	color: var(--on-surface-variant);
 }
 
 /* #endregion */
 
 /* #region KPI strip */
 .cat-kpis {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-    /* The gap IS the separator now the tiles are unboxed, so it carries the grouping on its own. */
-    gap: var(--space-5);
-    align-items: stretch;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+	/* The gap IS the separator now the tiles are unboxed, so it carries the grouping on its own. It is
+	   deliberately TIGHTER than `.cat-console`'s section gap — see the note there. */
+	gap: var(--space-5);
+	align-items: stretch;
+}
+
+/*
+ * Below the lane breakpoint the summary yields instead of expanding. `auto-fit` over six cells used to
+ * reflow to two columns and grow from 115px to 245px — 29% of a 390px viewport spent on five numbers
+ * before the seller saw a single listing. A scroll rail keeps all five reachable at one row's cost.
+ */
+@media (max-width: 767px) {
+	.cat-kpis {
+		display: flex;
+		gap: var(--space-5);
+		overflow-x: auto;
+		scroll-snap-type: x proximity;
+		/* Bleed to the console's edges so the rail reads as scrollable rather than as a clipped grid. */
+		margin-inline: calc(var(--space-4) * -1);
+		padding-inline: var(--space-4);
+		scrollbar-width: none;
+	}
+
+	.cat-kpis::-webkit-scrollbar {
+		display: none;
+	}
+
+	.cat-tile {
+		flex: 0 0 auto;
+		min-inline-size: 7.5rem;
+		scroll-snap-align: start;
+	}
 }
 
 /*
@@ -596,721 +1056,975 @@
  * every wrapped row. Spacing is the device that survives reflow.
  */
 .cat-tile {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
 }
 
 .cat-tile__label {
-    font-size: 0.74rem;
-    color: var(--text-secondary);
+	font-size: 0.74rem;
+	color: var(--text-secondary);
 }
 
 .cat-tile__row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
 }
 
+/*
+ * 1.05rem, not 1.5rem. At 24px/700 these five figures were the largest, boldest type anywhere on the
+ * console — 63% larger than a listing title — so the eye landed on the summary before any of the
+ * listings the page exists to manage. A figure earns display size by being the page's subject; here it
+ * is context. It still reads as the tile's answer: it is the heaviest thing in its own tile.
+ */
 .cat-tile__value {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: 1.5rem;
-    font-weight: 700;
-    line-height: 1.1;
-    color: var(--on-surface);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: 0.95rem;
+	font-weight: 600;
+	line-height: 1.2;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
 }
 
 .cat-tile__vicon {
-    color: var(--secondary);
+	color: var(--secondary);
 }
 
 .cat-tile__delta {
-    font-size: 0.74rem;
-    font-weight: 600;
+	font-size: 0.74rem;
+	font-weight: 600;
 }
 
 .cat-tile__delta[data-dir="up"] {
-    color: var(--success);
+	color: var(--success);
 }
 
 .cat-tile__delta[data-dir="down"] {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .cat-tile__delta[data-dir="flat"] {
-    color: var(--text-secondary);
+	color: var(--text-secondary);
 }
 
 .cat-tile__caption {
-    font-size: 0.74rem;
-    color: var(--text-secondary);
+	font-size: 0.74rem;
+	color: var(--text-secondary);
 }
 
-.cat-spark {
-    display: block;
-    inline-size: 100%;
-    block-size: 22px;
-    margin-block-start: 2px;
-}
-
-.cat-spark__line {
-    stroke: color-mix(in srgb, var(--primary) 55%, transparent);
-    vector-effect: non-scaling-stroke;
-}
-
-.cat-spark__dot {
-    fill: var(--primary);
-}
-
-.cat-kpis__more {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    align-self: center;
-    justify-content: center;
-    padding: var(--space-2);
-    border-radius: var(--radius-lg);
-    color: var(--primary);
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
-}
-
-.cat-kpis__more:hover {
-    background: var(--surface-1);
-}
+/*
+ * `.cat-spark` and `.cat-kpis__more` were removed with the markup that used them.
+ *
+ * The sparkline was a 96×22 unlabelled polyline with no axis and no scale, whose whole information
+ * content — first point versus last — was already printed as the delta beside it. Two marks for one
+ * fact is decoration, and dropping it is also what gave the block back the height it needed to stop
+ * eating a third of a mobile viewport.
+ *
+ * `.cat-kpis__more` linked `/catalogue?view=analytics`. Nothing read `view`: the route handler parses
+ * `type`, `sort` and `search` only, so the link reloaded the identical page while occupying a full
+ * grid column of the summary.
+ */
 
 /* #endregion */
 
 /* #region Listing card */
 .cat-card {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    block-size: 100%;
-    border-radius: var(--card-radius-media);
-    background: var(--surface-1);
-    overflow: hidden;
-    transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	border-radius: var(--card-radius-media);
+	background: var(--surface-1);
+	overflow: hidden;
+	transition: transform var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast)
+		var(--ease-standard);
 }
 
-.cat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--elevation-medium);
+.cat-card:hover,
+.cat-card:focus-within {
+	transform: translateY(var(--card-hover-lift));
+	box-shadow: var(--elevation-medium);
+}
+
+/*
+ * Focus lands on the CARD. `.cat-card__link` is a stretched link (an `::after` covering the tile) but
+ * the element itself is a text anchor inside the `<h3>`, so with no rule here the browser drew its
+ * default outline around the title words — a fragment of the control, in the middle of the tile, while
+ * the actual hit target was the whole card. Ringing the card is the only honest indication of what
+ * Enter will activate. The ring is inset because `.cat-card` is `overflow: hidden`, which would shave
+ * an outset one on every edge.
+ */
+.cat-card:focus-within {
+	box-shadow: var(--focus-ring-shadow-inset), var(--elevation-medium);
+}
+
+.cat-card__link:focus-visible {
+	outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-card,
+	.cat-card__img {
+		transition: none;
+	}
+
+	.cat-card:hover,
+	.cat-card:focus-within {
+		transform: none;
+	}
+
+	.cat-card:hover .cat-card__img {
+		transform: none;
+	}
 }
 
 .cat-card__media {
-    position: relative;
-    aspect-ratio: var(--card-media-ratio);
-    background: var(--surface-2);
-    overflow: hidden;
+	position: relative;
+	aspect-ratio: var(--card-media-ratio);
+	background: var(--surface-2);
+	overflow: hidden;
 }
 
 .cat-card__img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
-    transition: transform var(--dur-medium) var(--ease-standard);
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	transition: transform var(--dur-medium) var(--ease-standard);
 }
 
-.cat-card:hover .cat-card__img {
-    transform: scale(1.04);
+.cat-card:hover .cat-card__img,
+.cat-card:focus-within .cat-card__img {
+	transform: scale(var(--card-media-zoom));
 }
 
 .cat-card__placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    block-size: 100%;
-    color: var(--on-surface-variant);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	block-size: 100%;
+	color: var(--on-surface-variant);
 }
 
 .cat-card__flags {
-    position: absolute;
-    inset-block-start: var(--space-2);
-    inset-inline-start: var(--space-2);
-    inset-inline-end: 2.6rem;
-    /* clear the top-right kebab */
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-start: var(--space-2);
+	inset-inline-end: 2.6rem;
+	/* clear the top-right kebab */
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
 }
 
-.cat-card__status {
-    padding: var(--space-px) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: 0.68rem;
-    font-weight: 700;
-    backdrop-filter: blur(6px);
-    background: color-mix(in srgb, var(--surface) 70%, transparent);
-    color: var(--on-surface);
+/*
+ * THE CHIP CONTRACT, shared with the discovery cards (`.ex-promoted` / `.ex-media__type` — see
+ * `explore.css`). These chips float on an arbitrary listing cover, so they take the SOLID
+ * `--ex-chip-on-media` label surface at the family's radius and label register.
+ *
+ * They used to run a 70%-translucent veil plus a `blur(6px)`, which measured 4.07:1 for the success
+ * tone over a light cover in dark theme and 3.05:1 for the warning tone over a dark cover in light —
+ * both below WCAG AA, and both invisible to review because the failure depends on which photograph a
+ * seller uploaded. The blur went with the veil: blurring a backdrop you have made opaque draws nothing
+ * and costs a compositing layer. (The raw `6px` was also the only untokenised blur in the file;
+ * `--glass-blur` is the token, and it is now unneeded here.)
+ */
+.cat-card__status,
+.cat-card__flag--promo,
+.cat-card__flag--alert {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	padding: var(--space-px) var(--space-2);
+	border-radius: var(--radius-xl);
+	font-size: 0.68rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	background: var(--chip-on-media);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
+/* The tone tints the ink on the shared surface. Every one of these chips also prints its status word
+   (or, for the alert, carries a distinct glyph plus a tooltip), so colour is never the sole carrier. */
 .cat-card__status[data-tone="success"] {
-    color: var(--success);
+	color: var(--success);
 }
 
 .cat-card__status[data-tone="warning"] {
-    color: var(--warning);
+	color: var(--warning);
 }
 
 .cat-card__flag--promo {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-px);
-    padding: var(--space-px) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: 0.66rem;
-    font-weight: 700;
-    background: color-mix(in srgb, var(--secondary) var(--tint-strong), var(--surface));
-    color: var(--secondary);
+	color: var(--secondary);
 }
 
 .cat-card__flag--alert {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--space-px) var(--space-1);
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--warning) var(--tint-strong), var(--surface));
-    color: var(--warning);
+	padding-inline: var(--space-1);
+	color: var(--warning);
 }
 
 .cat-card__body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--card-gap-tight);
-    padding: var(--card-pad-tight);
-    flex: 1;
-    min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--card-gap-tight);
+	padding: var(--card-pad-tight);
+	flex: 1;
+	min-block-size: 0;
 }
 
 .cat-card__title {
-    margin: 0;
-    font-size: 0.92rem;
-    font-weight: 600;
-    line-height: 1.3;
-    color: var(--on-surface);
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+	margin: 0;
+	font-size: 0.92rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--on-surface);
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	/* The standard property alongside the prefixed one — without it the clamp is Blink/WebKit-only and
+	   a long title runs unbounded everywhere else, changing this cell's height against its siblings. */
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
 }
 
 .cat-card__link {
-    color: inherit;
-    text-decoration: none;
+	color: inherit;
+	text-decoration: none;
 }
 
 .cat-card__link::after {
-    content: "";
-    position: absolute;
-    inset: 0;
+	content: "";
+	position: absolute;
+	inset: 0;
 }
 
 .cat-card__meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    margin-block-start: auto;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	margin-block-start: auto;
 }
 
 .cat-card__kind {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.74rem;
-    color: var(--text-secondary);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: 0.74rem;
+	color: var(--text-secondary);
 }
 
 .cat-card__price {
-    font-size: 0.84rem;
-    font-weight: 600;
-    color: var(--on-surface);
+	font-size: 0.84rem;
+	font-weight: 600;
+	color: var(--on-surface);
 }
 
 .cat-card__metrics {
-    display: flex;
-    gap: var(--space-3);
-    padding-block-start: var(--space-1);
+	display: flex;
+	gap: var(--space-3);
+	padding-block-start: var(--space-1);
 }
 
 .cat-card__stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 0.74rem;
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: 0.74rem;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 .cat-card__kebab {
-    position: absolute;
-    inset-block-start: var(--space-2);
-    inset-inline-end: var(--space-2);
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 1.9rem;
-    block-size: 1.9rem;
-    border: none;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--surface) 80%, transparent);
-    backdrop-filter: blur(6px);
-    color: var(--on-surface);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard);
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	z-index: 2;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.9rem;
+	block-size: 1.9rem;
+	border: none;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--surface) 80%, transparent);
+	backdrop-filter: blur(var(--glass-blur));
+	color: var(--on-surface);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard), background var(--dur-fast)
+		var(--ease-standard);
 }
 
 .cat-card:hover .cat-card__kebab,
 .cat-card__kebab[aria-expanded="true"] {
-    opacity: 1;
+	opacity: 1;
 }
 
 .cat-card__kebab:hover {
-    background: var(--surface-2);
+	background: var(--surface-2);
+}
+
+/* The kebab is opacity-0 until hover; focus must reveal it or a keyboard user targets an invisible
+   control. */
+.cat-card__kebab:focus-visible {
+	opacity: 1;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 /* #endregion */
 
 /* #region Kebab menu (shared) */
 .cat-menu {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-px);
-    min-inline-size: 11rem;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 11rem;
 }
 
 .cat-menu__item {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border: none;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    font-size: 0.84rem;
-    text-align: start;
-    cursor: pointer;
-    transition: background var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.84rem;
+	text-align: start;
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--ease-standard);
 }
 
 .cat-menu__item:hover {
-    background: var(--surface-2);
+	background: var(--surface-2);
+}
+
+.cat-menu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-menu__item[data-danger="true"] {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .cat-menu__icon {
-    display: inline-flex;
-    color: var(--text-secondary);
+	display: inline-flex;
+	color: var(--text-secondary);
 }
 
 .cat-menu__item[data-danger="true"] .cat-menu__icon {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .cat-menu__sep {
-    block-size: 1px;
-    margin: var(--space-1) 0;
-    background: var(--hairline-color, var(--border-subtle));
+	block-size: 1px;
+	margin: var(--space-1) 0;
+	background: var(--hairline-color, var(--border-subtle));
 }
 
 /* #endregion */
 
 /* #region Table */
 .cat-table {
-    display: flex;
-    flex-direction: column;
+	display: flex;
+	flex-direction: column;
+	/*
+	 * The table is its own query container. The column set has to answer to the width the table is
+	 * actually given, and that depends on whether the lane is expanded — so a viewport media query
+	 * would be measuring the wrong box.
+	 */
+	container-type: inline-size;
+	container-name: cat-table;
+}
+
+/*
+ * ONE template, shared by the header row and every virtualized body row, so the two can never drift.
+ * The leading track is `minmax(0, 2fr)` — never a px floor. A px floor on the flexible column is
+ * precisely what made the old grid unable to fit: the fixed remainder set a minimum the container
+ * could not honour, and the overflow was destroyed by the shell frame's `clip` with no scrollbar
+ * anywhere to recover it.
+ */
+.cat-table__head,
+.cat-trow {
+	grid-template-columns: var(--cat-cols);
+}
+
+.cat-table {
+	--cat-cols: minmax(0, 2fr) 104px minmax(96px, 132px) 132px 148px 80px 84px 88px;
+}
+
+/* The kind only rides along with the name once its own column has been dropped. */
+.cat-trow__kind {
+	display: none;
+}
+
+/*
+ * Drop order, least load-bearing first: Rating → Views → Orders → Type → Edited. Name, Status and
+ * Price never drop — they are what the console is for.
+ */
+@container cat-table (max-width: 1040px) {
+	.cat-table {
+		--cat-cols: minmax(0, 2fr) 104px minmax(96px, 132px) 132px 148px 80px 84px;
+	}
+
+	.cat-th[data-col="rating"],
+	.cat-td[data-col="rating"] {
+		display: none;
+	}
+}
+
+@container cat-table (max-width: 900px) {
+	.cat-table {
+		--cat-cols: minmax(0, 2fr) 104px minmax(96px, 132px) 132px 148px 84px;
+	}
+
+	.cat-th[data-col="views"],
+	.cat-td[data-col="views"] {
+		display: none;
+	}
+}
+
+@container cat-table (max-width: 800px) {
+	.cat-table {
+		--cat-cols: minmax(0, 2fr) 104px minmax(96px, 132px) 132px 148px;
+	}
+
+	.cat-th[data-col="orders"],
+	.cat-td[data-col="orders"] {
+		display: none;
+	}
+}
+
+@container cat-table (max-width: 660px) {
+	.cat-table {
+		--cat-cols: minmax(0, 2fr) 104px minmax(96px, 132px) 148px;
+	}
+
+	.cat-th[data-col="type"],
+	.cat-td[data-col="type"] {
+		display: none;
+	}
+
+	.cat-trow__kind {
+		display: inline;
+	}
+}
+
+@container cat-table (max-width: 500px) {
+	.cat-table {
+		--cat-cols: minmax(0, 2fr) 104px minmax(80px, 110px);
+	}
+
+	.cat-th[data-col="edited"],
+	.cat-td[data-col="edited"] {
+		display: none;
+	}
+}
+
+/* Only at a width no phone actually reaches. Status is what a seller scans a catalogue FOR. */
+@container cat-table (max-width: 300px) {
+	.cat-table {
+		--cat-cols: minmax(0, 1fr) minmax(72px, 96px);
+	}
+
+	.cat-th[data-col="status"],
+	.cat-td[data-col="status"] {
+		display: none;
+	}
 }
 
 .cat-table__head {
-    position: sticky;
-    /* Pin BELOW the sticky console toolbar so the column headers are never hidden behind it. */
-    inset-block-start: calc(var(--shell-topbar-h, 0px) + var(--cat-toolbar-h, 3.25rem) - var(--space-4, 1px));
-    z-index: 1;
-    display: grid;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    background: var(--surface);
-    border-block-end: var(--hairline, 1px solid var(--border-subtle));
+	position: sticky;
+	/* Pin flush beneath the shell chrome — the topbar plus the header band. With the in-body toolbar
+	   gone there is nothing else between the column headers and the top of the frame. */
+	inset-block-start: var(--cat-chrome, 6rem);
+	z-index: 1;
+	display: grid;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	/* Opaque, not translucent: rows must not read through the header they scroll under. */
+	background: var(--surface);
+	border-block-end: var(--hairline, 1px solid var(--border-subtle));
 }
 
 .cat-th {
-    font-size: 0.74rem;
-    color: var(--text-secondary);
-    font-weight: 600;
+	font-size: 0.74rem;
+	color: var(--text-secondary);
+	font-weight: 600;
 }
 
 .cat-th[data-align="end"] {
-    text-align: end;
+	text-align: end;
 }
 
 .cat-th[data-align="end"] .cat-th__btn {
-    justify-content: flex-end;
+	justify-content: flex-end;
 }
 
 .cat-th__btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    inline-size: 100%;
-    border: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	inline-size: 100%;
+	min-inline-size: 0;
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.cat-th__btn:hover {
+	color: var(--on-surface);
+}
+
+.cat-th__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-th__btn > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .cat-th__ind {
-    opacity: 0.7;
+	opacity: 0.7;
 }
 
 .cat-table__body {
-    position: relative;
+	position: relative;
 }
 
 .cat-trow {
-    position: absolute;
-    inset-inline: 0;
-    inset-block-start: 0;
-    display: grid;
-    gap: var(--space-3);
-    align-items: center;
-    padding: 0 var(--space-3);
-    color: var(--on-surface);
-    text-decoration: none;
-    border-radius: var(--radius-base);
-    transition: background var(--dur-fast) var(--ease-standard);
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: 0;
+	display: grid;
+	gap: var(--space-3);
+	align-items: center;
+	padding: 0 var(--space-3);
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-base);
+	transition: background var(--dur-fast) var(--ease-standard);
 }
 
 .cat-trow:hover {
-    background: var(--surface-1);
+	background: var(--surface-1);
+}
+
+.cat-trow:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset, var(--focus-ring-shadow));
 }
 
 .cat-td {
-    font-size: 0.84rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	font-size: 0.84rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .cat-td--muted {
-    color: var(--text-secondary);
+	color: var(--text-secondary);
 }
 
 .cat-td--num {
-    text-align: end;
-    font-variant-numeric: tabular-nums;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
 }
 
 .cat-td--title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-weight: 500;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	font-weight: 500;
+}
+
+/*
+ * The kind, shown inline only when the Type column has been dropped for width. A narrow table should
+ * carry less furniture, not less information — the fact rejoins the name rather than disappearing.
+ */
+.cat-trow__kind {
+	flex: none;
+	font-size: 0.74rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
 }
 
 .cat-trow__thumb {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 1.9rem;
-    block-size: 1.9rem;
-    border-radius: var(--radius-sm);
-    background: var(--surface-2);
-    color: var(--on-surface-variant);
-    overflow: hidden;
-    flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.9rem;
+	block-size: 1.9rem;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	color: var(--on-surface-variant);
+	overflow: hidden;
+	flex: none;
 }
 
 .cat-trow__thumb img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
 }
 
 .cat-trow__name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .cat-trow__rating {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    justify-content: flex-end;
-    color: var(--secondary);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	justify-content: flex-end;
+	color: var(--secondary);
 }
 
 /* #endregion */
 
-/* #region Empty state */
-.cat-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-8) var(--space-4);
-    text-align: center;
+/* #region Body states — empty · error · loading */
+/*
+ * One state block, three states. Empty and error share a shape because they occupy the same slot and
+ * answer the same question ("why is there nothing here?"); what differs is the answer and the verb.
+ * Every one of them ends in a control — a state that names a next action and gives you nothing to
+ * click has told you what to do and then refused to let you do it.
+ */
+.cat-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-8) var(--space-4);
+	text-align: center;
 }
 
-.cat-empty__glyph {
-    display: inline-flex;
-    color: var(--on-surface-variant);
-    opacity: 0.7;
+.cat-state__glyph {
+	display: inline-flex;
+	color: var(--on-surface-variant);
+	opacity: 0.7;
 }
 
-.cat-empty__title {
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--on-surface);
+.cat-state--error .cat-state__glyph {
+	color: var(--warning);
+	opacity: 1;
 }
 
-.cat-empty__note {
-    margin: 0;
-    max-inline-size: 26rem;
-    font-size: 0.86rem;
-    color: var(--text-secondary);
+.cat-state__title {
+	margin: 0;
+	font-size: 1.05rem;
+	font-weight: 600;
+	color: var(--on-surface);
 }
 
-.cat-empty__cta {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin-block-start: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border: none;
-    border-radius: var(--radius-lg);
-    background: var(--primary);
-    color: var(--surface);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
+.cat-state__note {
+	margin: 0;
+	/* ~62ch at this size — one comfortable measure for one role. */
+	max-inline-size: 26rem;
+	font-size: 0.86rem;
+	line-height: 1.5;
+	color: var(--text-secondary);
 }
 
-.cat-empty__cta:hover {
-    filter: brightness(1.06);
+/*
+ * The default is the quiet, reversible action (Clear search, Try again). Only the create action —
+ * the one that starts something — takes the primary fill, and the lane already carries the surface's
+ * other primary, so this appears solely when the catalogue is genuinely empty.
+ */
+.cat-state__cta {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.86rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cat-state__cta:hover {
+	background: var(--surface-2);
+	border-color: var(--on-surface-variant);
+}
+
+.cat-state__cta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-state__cta--primary {
+	border-color: transparent;
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.cat-state__cta--primary:hover {
+	border-color: transparent;
+	background: var(--primary-hover, color-mix(in srgb, var(--primary) 88%, var(--on-surface)));
+}
+
+/*
+ * The loading state matches the shape of what is arriving, so nothing jumps when it lands. There was
+ * no loading state at all before: `loading` reached one `aria-busy` attribute and `loadingMore`
+ * reached nothing, so between keystroke and result the console looked idle.
+ */
+.cat-skel {
+	display: grid;
+	gap: var(--space-4);
+}
+
+.cat-skel--grid {
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.cat-skel--grid .cat-skel__cell {
+	block-size: 17rem;
+	border-radius: var(--card-radius-media);
+}
+
+.cat-skel--list {
+	gap: var(--space-1);
+}
+
+.cat-skel--list .cat-skel__cell {
+	block-size: 3.4rem;
+	border-radius: var(--radius-base);
+}
+
+.cat-skel__cell {
+	background: var(--surface-1);
+	/* A slow directional sweep, not a pulse: it reads as "arriving", and one authored moment is
+	   enough. The gradient is the only motion on the surface. */
+	background-image: linear-gradient(
+		var(--skel-angle, 100deg),
+		transparent 30%,
+		color-mix(in srgb, var(--on-surface) 6%, transparent) 50%,
+		transparent 70%
+	);
+	background-size: 220% 100%;
+	animation: cat-skel-sweep 1.4s var(--ease-standard) infinite;
+}
+
+/* The sweep encodes a reading direction, so it mirrors with the document. */
+[dir="rtl"] .cat-skel__cell {
+	--skel-angle: 260deg;
+}
+
+@keyframes cat-skel-sweep {
+	from {
+		background-position: 120% 0;
+	}
+	to {
+		background-position: -20% 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-skel__cell {
+		animation: none;
+		background-image: none;
+	}
 }
 
 /* #endregion */
 
 /* #region Editor (manage page) */
+/*
+ * `.cat-editor__bar` and its children are gone: back, identity, status chip and the save state moved
+ * to the header band, the lifecycle actions to the footer band. It was `position: static` at the top
+ * of a 1264px scroll, so reaching the fields cost the seller all four at once.
+ */
 .cat-editor {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    padding: var(--space-5) var(--space-5) var(--space-8);
-}
-
-.cat-editor__bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-}
-
-.cat-editor__back {
-    color: var(--text-secondary);
-    font-size: 0.86rem;
-    text-decoration: none;
-}
-
-.cat-editor__back:hover {
-    color: var(--on-surface);
-}
-
-.cat-editor__ident {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.cat-editor__save {
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-}
-
-.cat-editor__save[data-state="saving"] {
-    color: var(--warning);
-}
-
-.cat-editor__save[data-state="saved"] {
-    color: var(--success);
-}
-
-.cat-editor__actions {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-inline-start: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-4) var(--space-4) var(--space-8);
 }
 
 .cat-editor__notice {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-base);
-    background: var(--surface-1);
-    color: var(--on-surface-variant);
-    font-size: 0.84rem;
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+	color: var(--on-surface-variant);
+	font-size: 0.84rem;
 }
 
 .cat-editor__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: var(--space-6);
-    align-items: start;
+	display: grid;
+	grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+	gap: var(--space-6);
+	align-items: start;
 }
 
 .cat-editor__form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	min-inline-size: 0;
 }
 
 .cat-form__section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
 .cat-form__h {
-    margin: 0;
-    font-size: 0.82rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--on-surface-variant);
+	margin: 0;
+	font-size: 0.82rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--on-surface-variant);
 }
 
 .cat-form__hint {
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--text-secondary);
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--text-secondary);
 }
 
 .cat-media {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
 }
 
 .cat-media__item {
-    position: relative;
-    inline-size: 5.5rem;
-    block-size: 4rem;
-    border-radius: var(--radius-base);
-    overflow: hidden;
-    background: var(--surface-2);
+	position: relative;
+	inline-size: 5.5rem;
+	block-size: 4rem;
+	border-radius: var(--radius-base);
+	overflow: hidden;
+	background: var(--surface-2);
 }
 
 .cat-media__item img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.cat-media__remove:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-media__remove {
-    position: absolute;
-    inset-block-start: 2px;
-    inset-inline-end: 2px;
-    inline-size: 1.2rem;
-    block-size: 1.2rem;
-    border: none;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--surface) 75%, transparent);
-    color: var(--on-surface);
-    line-height: 1;
-    cursor: pointer;
+	position: absolute;
+	inset-block-start: 2px;
+	inset-inline-end: 2px;
+	inline-size: 1.2rem;
+	block-size: 1.2rem;
+	border: none;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--surface) 75%, transparent);
+	color: var(--on-surface);
+	line-height: 1;
+	cursor: pointer;
 }
 
 .cat-media__empty {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    color: var(--text-secondary);
-    font-size: 0.84rem;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	color: var(--text-secondary);
+	font-size: 0.84rem;
 }
 
 .cat-media__add {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
 }
 
-.cat-media__add> :first-child {
-    flex: 1;
+.cat-media__add > :first-child {
+	flex: 1;
 }
 
 .cat-avail {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
 .cat-avail__days {
-    display: inline-flex;
-    gap: var(--space-1);
+	display: inline-flex;
+	gap: var(--space-1);
 }
 
 .cat-avail__day {
-    inline-size: 2rem;
-    block-size: 2rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: 50%;
-    background: transparent;
-    color: var(--text-secondary);
-    font: inherit;
-    font-size: 0.76rem;
-    cursor: pointer;
-    transition: all var(--dur-fast) var(--ease-standard);
+	inline-size: 2rem;
+	block-size: 2rem;
+	border: 1px solid var(--border-subtle);
+	border-radius: 50%;
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.76rem;
+	cursor: pointer;
+	transition: all var(--dur-fast) var(--ease-standard);
 }
 
 .cat-avail__day[data-on="true"] {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--surface);
-    font-weight: 600;
+	background: var(--primary);
+	border-color: var(--primary);
+	color: var(--on-primary);
+	font-weight: 600;
 }
 
-.cat-textarea {
-    inline-size: 100%;
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-base);
-    background: var(--surface-1);
-    color: var(--on-surface);
-    font: inherit;
-    font-size: 0.86rem;
-    resize: vertical;
+.cat-avail__day:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
-.cat-textarea:focus-visible {
-    outline: none;
-    border-color: var(--primary);
-}
+/*
+ * `.cat-textarea` is gone — the Booking note now uses the package `Textarea`. The hand-rolled element
+ * removed its own focus outline (`outline: none`) and replaced it with a border-colour change, which
+ * is not a focus indicator; it also sat outside the `--fld-*` state model that its nine sibling fields
+ * on this page already use.
+ */
 
 /* Preview (right) */
 .cat-editor__preview {
-    position: sticky;
-    inset-block-start: calc(var(--shell-topbar-h, 3.5rem) + var(--space-4));
+	position: sticky;
+	inset-block-start: calc(
+		var(--shell-topbar-h, 3rem) + var(--shell-midnav-header-h, 3rem) + var(--space-4)
+	);
 }
 
 /*
@@ -1320,94 +2034,61 @@
  * uppercase heading labels the region; the gap separates it (§B.4 tiers 1 + 3).
  */
 .cat-preview {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
 .cat-preview__h {
-    margin: 0;
-    font-size: 0.82rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--on-surface-variant);
+	margin: 0;
+	font-size: 0.82rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--on-surface-variant);
 }
 
 /* The card supplies its own corner; this wrapper only reserves the slot. (A `border-radius` here
    clipped nothing — there was no `overflow` to clip with — so it was inert ink in the stylesheet.) */
 .cat-preview__card {
-    min-inline-size: 0;
+	min-inline-size: 0;
 }
 
-.cat-preview__gate {
-    padding: var(--space-3);
-    border-radius: var(--radius-lg);
-    background: var(--surface-2);
-    font-size: 0.84rem;
-}
-
-.cat-preview__gate[data-ready="true"] {
-    background: color-mix(in srgb, var(--success) var(--tint), transparent);
-}
-
-.cat-preview__ok {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin: 0;
-    color: var(--success);
-    font-weight: 600;
-}
-
-.cat-preview__missing {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin: 0 0 var(--space-1);
-    color: var(--warning);
-    font-weight: 600;
-}
-
-.cat-preview__list {
-    margin: 0;
-    padding-inline-start: var(--space-5);
-    color: var(--text-secondary);
-}
+/* `.cat-preview__gate` / `__ok` / `__missing` / `__list` removed — the readiness checklist travels
+   with the Publish button in the footer band now, not 447px away in an aside that outlived it. */
 
 .cat-preview__public {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    color: var(--primary);
-    font-size: 0.86rem;
-    font-weight: 600;
-    text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	color: var(--primary);
+	font-size: 0.86rem;
+	font-weight: 600;
+	text-decoration: none;
 }
 
 .cat-preview__public:hover {
-    text-decoration: underline;
+	text-decoration: underline;
 }
 
 /* #endregion */
 
 /* #region Responsive */
 @media (max-width: 900px) {
-    .cat-editor__grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
+	.cat-editor__grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
 
-    .cat-editor__preview {
-        position: static;
-    }
+	.cat-editor__preview {
+		position: static;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-
-    .cat-card,
-    .cat-card__img {
-        transition: none;
-    }
+	.cat-card,
+	.cat-card__img {
+		transition: none;
+	}
 }
 
 /* #endregion */

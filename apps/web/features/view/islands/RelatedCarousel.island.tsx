@@ -23,17 +23,24 @@ export interface RelatedCarouselProps {
 	/** The single entity type in this block (drives slide sizing + the accessible name). */
 	kind: ExploreItem["type"];
 	label: string;
+	/**
+	 * Cards per row at the widest size. The library's `responsiveOptions` are keyed to the VIEWPORT, but
+	 * this rail's real constraint is the column hosting it — the article template runs its rails inside a
+	 * `--measure-wide` column, where the default 3-up rendered 197px cards at a 1440px window. A host
+	 * that knows it is narrow says so.
+	 */
+	columns?: number;
 }
 
 export default function RelatedCarousel(
-	{ items, ctx, authed, kind, label }: RelatedCarouselProps,
+	{ items, ctx, authed, kind, label, columns }: RelatedCarouselProps,
 ): JSX.Element {
 	const len = items.length;
 	const isProjects = kind === "projects";
 	const cap = (n: number): number => Math.max(1, Math.min(n, len));
 
 	// Base (desktop) visible count; every value caps to the item count so a single card fills the row.
-	const baseVisible = cap(isProjects ? 2 : 3);
+	const baseVisible = cap(columns ?? (isProjects ? 2 : 3));
 	const responsiveOptions = isProjects
 		? [{ breakpoint: "980px", numVisible: cap(1), numScroll: cap(1) }]
 		: [

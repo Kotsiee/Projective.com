@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Icon } from "@projective/ui/icons";
 import "../styles/project-view.css";
 import ProjectViewHeader from "../islands/ProjectViewHeader.island.tsx";
 import { ProjectShowcaseBody } from "./ProjectShowcaseBody.tsx";
@@ -12,9 +13,10 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * project), then the shared {@link ProjectShowcaseBody} (owner summary + classification-tailored
  * metadata + the interactive stage-flow visualizer) — the SAME body the authenticated
  * `/projects/[id]` Preview reuses, so the showcase layout stays in lockstep across both surfaces. Per
- * the brief it renders a single primary CTA (Apply, in the header + the side lane), and deliberately NO
- * generic "More by…", "Similar", or "Reviews" sections — the sidebar action lane + stage jumps carry
- * the navigation instead. Details are tailored to the project's {@link ProjectViewExtra.classification}
+ * the brief it renders a single primary CTA — Apply, owned by the side lane on desktop and by the body
+ * header below 767px where no lane exists (see {@link ProjectActions}) — and deliberately NO generic
+ * "More by…", "Similar", or "Reviews" sections: the sidebar action lane + stage jumps carry the
+ * navigation instead. Details are tailored to the project's {@link ProjectViewExtra.classification}
  * (Pipeline vs One-Off); there is no escrow chrome.
  */
 export function ProjectViewScreen(
@@ -29,7 +31,10 @@ export function ProjectViewScreen(
 		<div class="vw vw-project">
 			{/* Mobile-only: on desktop the side-nav lane header carries Back (hidden via `--laned`). */}
 			<div class="vw__back-row vw__back-row--laned">
-				<a class="vw__back" href={backHrefFor(ctx)}>← {backLabelFor(ctx)}</a>
+				<a class="vw__back" href={backHrefFor(ctx)}>
+					<Icon name="arrow-left" size="sm" class="vw__back-arrow" />
+					<span>{backLabelFor(ctx)}</span>
+				</a>
 			</div>
 
 			<ProjectViewHeader item={view.item} project={project} authed={authed} ctx={ctx} />

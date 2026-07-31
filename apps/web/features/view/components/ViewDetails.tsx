@@ -7,12 +7,13 @@ import { badgeTagsFor, ENTITY_LABEL } from "../core/view-model.ts";
 import { ViewIcon } from "./view-glyphs.tsx";
 
 /**
- * ViewDetails — the hero's right details column (Part 1.2). The entity overview: eyebrow + title, the
- * badge tag row (category · engagement/delivery mode · Promoted), the creator profile header card
- * (avatar/logo · name · `@handle` · verified crest, linking to `/[handle]`), a rating & reviews
- * summary that jumps to the reviews section, and the rich description + key specifications. The
- * transactional actions live in the sidebar action lane (Part 2), so this column is purely
- * informational.
+ * ViewDetails — the hero's right details column (Part 1.2). The entity overview: the title, the badge
+ * tag row (format · category · engagement/delivery mode · Promoted), the creator identity link
+ * (avatar/logo · name · `@handle` · verified crest, routing to `/[handle]`), a rating & reviews summary
+ * that jumps to the reviews section, and the rich description + key specifications.
+ *
+ * Purely informational: on desktop the transaction lives in the sidebar action lane (Part 2), and below
+ * 767px — where no lane exists — in the sibling {@link ViewBuyBar} rendered under the hero.
  */
 export function ViewDetails({ view }: { view: EntityView }): JSX.Element {
 	const { item, reviews, deliverables, service } = view;
@@ -25,9 +26,12 @@ export function ViewDetails({ view }: { view: EntityView }): JSX.Element {
 
 	return (
 		<div class="vw-details">
-			<span class="vw-details__eyebrow">{ENTITY_LABEL[item.type]}</span>
 			<h1 class="vw-details__title">{item.title}</h1>
 
+			{
+				/* The entity format leads this row — it used to be a separate eyebrow above the title, which
+			    duplicated the mode chip directly beneath it. See `badgeTagsFor`. */
+			}
 			{badges.length > 0
 				? (
 					<div class="vw-badges">

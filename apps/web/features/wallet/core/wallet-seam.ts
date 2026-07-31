@@ -1,6 +1,13 @@
 import { useEffect } from "preact/hooks";
 import { type DevSeamState, readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
-import { activeWallet, devSim, displayCurrency, WALLET_REFRESH_EVENT } from "./wallet-state.ts";
+import {
+	activeWallet,
+	devSim,
+	displayCurrency,
+	WALLET_REFRESH_EVENT,
+	walletError,
+} from "./wallet-state.ts";
+import type { WalletResult } from "../types/results.ts";
 import type { WalletSim } from "../types/wallet-types.ts";
 
 /**
@@ -52,6 +59,24 @@ export function useWalletSeam(
 		apply();
 		return subscribeDevSeam(apply);
 	}, [display, wallet]);
+}
+
+/**
+ * Apply a read's payload, or record why it failed. The ONE place a wallet read is unwrapped.
+ *
+ * Every screen previously wrote `if (res.ok && res.data) { … }` and stopped there, so a failure was
+ * indistinguishable from a no-op: the previous wallet's balances stayed on screen after a currency
+ * switch or an account switch that never landed. Routing all ten call sites through here means a
+ * failed read always says so, and a successful one always clears the last complaint.
+ */
+export function applyRead<T>(res: WalletResult<T>, apply: (data: T) => void): void {
+	if (res.ok && res.data) {
+		walletError.value = null;
+		apply(res.data);
+		return;
+	}
+	walletError.value = res.message ?? Object.values(res.errors ?? {})[0] ??
+		"These figures could not be refreshed just now.";
 }
 
 /** Refetch whenever a money mutation completes (a modal fired {@link WALLET_REFRESH_EVENT}). */

@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import "../styles/wallet.css";
 import { Alert, Dialog } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import { WalletService } from "../core/WalletService.ts";
 import {
 	closeWalletAction,
@@ -93,34 +94,38 @@ export default function ConfirmMoveModal(): JSX.Element | null {
 	// The action row goes through Dialog's `footer` slot, NOT children. As a child it landed inside the
 	// scrolling body, so on a short viewport the irreversible commit — "Withdraw £X" — scrolled out of
 	// sight while the amount above it stayed visible. The slot is a sibling of the scroll region.
+	/*
+	 * The shared `Button`, not a local `.wlt-btn` class. Variant is interaction weight, not styling
+	 * (§B.8.1), and this overlay gets exactly one `filled`: the commit. Back and View transaction are
+	 * `text` — the escape hatch and a navigation, neither of which is what this dialog is asking.
+	 */
 	const foot = flow.step === "done"
 		? (
 			<>
-				<a class="wlt-btn wlt-btn--ghost" href="/wallet/transactions">View transaction</a>
-				<button type="button" class="wlt-btn wlt-btn--primary" onClick={close}>Done</button>
+				{
+					/* A navigation, so an anchor and a link — not a button wearing an href. It keeps
+			    middle-click, open-in-new-tab and the browser's own affordances. */
+				}
+				<a class="wlt-link" href="/wallet/transactions">View transaction</a>
+				<Button variant="filled" label="Done" onClick={close} />
 			</>
 		)
 		: (
 			<>
-				<button
-					type="button"
-					class="wlt-btn"
+				<Button
+					variant="text"
+					label="Back"
 					disabled={flow.step === "pending"}
 					onClick={() => {
 						moveFlow.value = null;
 					}}
-				>
-					Back
-				</button>
-				<button
-					type="button"
-					class="wlt-btn wlt-btn--primary"
+				/>
+				<Button
+					variant="filled"
+					label={flow.step === "pending" ? "Sending…" : flow.step === "error" ? "Try again" : verb}
 					disabled={flow.step === "pending"}
-					aria-disabled={flow.step === "pending" ? "true" : undefined}
 					onClick={() => void commit()}
-				>
-					{flow.step === "pending" ? "Sending…" : flow.step === "error" ? "Try again" : verb}
-				</button>
+				/>
 			</>
 		);
 

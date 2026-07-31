@@ -31,11 +31,27 @@
 
 :root {
 	/* #region Display-numeric type scale (§1.1) — money is the surface's primary typography */
+	/*
+	 * The display ramp, RE-CUT. Measured at 1440 it resolved 72 / 50.9 / 39.6 / 36 / 30.1 / 22.4 — six
+	 * steps, none more than ~1.4× its neighbour below 50, which is a gradient rather than a hierarchy.
+	 * Two specific inversions came out of it:
+	 *
+	 *  - the Standing SCORE at 50.9 was 71% of the balance and sat in a band the reader reaches on the
+	 *    second screen, where nothing competes with it — so on scroll it became the page's second hero.
+	 *    It is now clearly subordinate: the largest thing in its own band, and not a rival to the one
+	 *    figure this surface exists to state.
+	 *  - the PENCE, at 0.55em of a 72px figure, rendered 39.6 and outsized the 36px commission rate.
+	 *    The least significant glyphs on the surface outranked a figure that decides what the user is
+	 *    charged. See `--wlt-minor-size-hero` below.
+	 *
+	 * The ramp now reads 72 → 40 → 36 → 30 → 26 → 22: five decisive steps, each unmistakably below the
+	 * last, with the pence sitting where their importance actually is.
+	 */
 	--wlt-fs-hero: clamp(2.75rem, 1.35rem + 3.6vw, 4.5rem);
 	--wlt-fs-figure: clamp(1.5rem, 1.25rem + 0.7vw, 2rem);
 	--wlt-fs-key: clamp(var(--text-lg), 0.95rem + 0.5vw, 1.5rem);
 	--wlt-fs-rate: clamp(1.75rem, 1.4rem + 1.1vw, 2.25rem);
-	--wlt-fs-score: clamp(2.5rem, 2.1rem + 1.2vw, 3.25rem);
+	--wlt-fs-score: clamp(2rem, 1.7rem + 0.9vw, 2.5rem);
 	--wlt-fs-body: var(--text-md);
 	--wlt-fs-label: var(--text-xs);
 	--wlt-fs-micro: var(--text-2xs);
@@ -45,6 +61,15 @@
 	`--minor-fade`): this file said 0.52em and workspace-tokens.css 0.55em, and 0.55 won on the
 	legibility floor — the reasoning, including why the fade is unitless, lives with the tokens. */
 	--wlt-minor-size: var(--minor-size);
+	/*
+	 * The pence ratio is SIZE-DEPENDENT, and the shared 0.55em is the small end's floor — at body
+	 * scale a smaller ratio stops being readable, which is what that number was settled on. Run
+	 * unchanged against a 72px hero it produced 39.6px pence: larger than the commission rate, larger
+	 * than every real money figure in the intelligence band, and second only to the balance itself.
+	 * A ratio that is a floor at 14px is not a ratio at 72px. Applied ONLY at the hero step; the
+	 * global token keeps every other size exactly where it was.
+	 */
+	--wlt-minor-size-hero: 0.36em;
 	--wlt-minor-fade: var(--minor-fade);
 	--wlt-num-track: var(--tracking-tight);
 	--wlt-label-track: var(--tracking-wide);
@@ -102,6 +127,17 @@
 	 */
 	--wlt-card-ratio: 1.586;
 
+	/*
+	 * The band's alternating tonal step (§B.4 tier 2). A TRANSLUCENT overlay rather than a named
+	 * `--surface-N`, because `.wlt` paints no ground of its own: it inherits the page canvas, and a
+	 * named tone would be a step against a surface this file cannot see. An overlay steps against
+	 * whatever it actually sits on, in light and dark, and survives a canvas retint.
+	 *
+	 * ~3.5% is one Material container tone's worth of separation and no more. This is the rung that
+	 * lets whitespace stop doing all the work; it is not meant to read as a card.
+	 */
+	--wlt-band-tint: color-mix(in srgb, var(--on-surface) 3.5%, transparent);
+
 	--wlt-band-pad: clamp(var(--space-5), 3.2vw, var(--space-8));
 	--wlt-band-gap: var(--band-gap);
 	--wlt-band-pad-b: var(--band-pad-block-end);
@@ -137,6 +173,9 @@
  * `--minor-fade` on their own.
  */
 :root[data-contrast="high"] {
+	/* The band step widens with everything else — at 3.5% it is a hint, and a hint is the first thing
+	   to disappear for the reader who asked for more separation, not less. */
+	--wlt-band-tint: color-mix(in srgb, var(--on-surface) 8%, transparent);
 	--wlt-locked: color-mix(in srgb, var(--primary) 52%, var(--surface-2));
 	--wlt-locked-hi: color-mix(in srgb, var(--primary) 66%, var(--surface-2));
 	--wlt-pending: color-mix(in srgb, var(--secondary) 74%, var(--surface-2));

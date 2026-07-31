@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveConversationFiles } from "@web/features/messaging/core/conversations-ssr.ts";
 import { FilesView } from "@web/features/projects/components/workspace-views.tsx";
+import { ConversationNotFound } from "@web/features/messaging/components/ConversationNotFound.tsx";
 
 /**
  * Files tab — the conversation's shared attachments (`/messages/[conversationId]/files`). Resolves the
@@ -14,12 +15,16 @@ import { FilesView } from "@web/features/projects/components/workspace-views.tsx
  */
 export default define.page(function ConversationFilesPage(ctx) {
 	const { conversationId } = ctx.params;
+	// Guarded like the Chat and Members tabs: an unresolvable conversation must render the not-found
+	// body, not a File Explorer over a null projection.
+	const initial = resolveConversationFiles(conversationId);
+	if (!initial) return <ConversationNotFound />;
 	return (
 		<FilesView
 			scope="conversation"
 			id={conversationId}
 			channelId={conversationId}
-			initial={resolveConversationFiles(conversationId)}
+			initial={initial}
 		/>
 	);
 });

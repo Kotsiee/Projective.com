@@ -2,13 +2,13 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
 import { Tooltip } from "@projective/ui/feedback";
-import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, BandHead, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { FundStateMark } from "../components/FundStateMark.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
 import { Money } from "../components/Money.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { currentWalletContext, walletError } from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type { PayoutsView } from "../types/wallet-types.ts";
 
 /**
@@ -47,7 +47,9 @@ export default function WalletPayoutsScreen(props: WalletPayoutsScreenProps): JS
 
 	const refetch = async () => {
 		const res = await WalletService.payouts(currentWalletContext());
-		if (res.ok && res.data) view.value = res.data.payouts;
+		applyRead(res, (d) => {
+			view.value = d.payouts;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -57,6 +59,7 @@ export default function WalletPayoutsScreen(props: WalletPayoutsScreenProps): JS
 	return (
 		<main class="wlt" aria-label="Payouts">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Payouts">
 					<PageHead
 						title="Payouts"
@@ -109,7 +112,7 @@ export default function WalletPayoutsScreen(props: WalletPayoutsScreenProps): JS
 						? (
 							<EmptyBand
 								text="No payout destination yet."
-								hint="Add one from the action bar to receive money."
+								hint="Choose “Payout schedule” in the action bar to set where money goes."
 							/>
 						)
 						: (

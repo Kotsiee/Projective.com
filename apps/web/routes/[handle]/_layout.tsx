@@ -109,41 +109,48 @@ export default define.page(function ProfileLayout(ctx) {
 		return shell(viewLane, viewHeader, <ctx.Component />);
 	}
 
-	// The Availability calendar is a full-page, app-like surface — it does NOT use the profile chrome
-	// (no header/tabs/meta rail) or the lane; the calendar carries its own mini-map + availability
-	// panel + controls, and fills the whole content region under the header. No footer (the calendar
-	// owns its own scroll).
+	// The Availability calendar keeps the profile's LANE and a PINNED identity band, but not the body
+	// chrome (no header/tabs/Overview) — the calendar carries its own mini-map + availability panel +
+	// controls and fills the content region. It previously rendered with neither, which left the page
+	// with no identity ("whose calendar is this?") and — because the lane's Profile ⁄ Availability
+	// toggle was the only route in — literally zero links back to the profile. The band is `pinned`
+	// because there is no body header here to migrate from, so it is simply present.
 	if (segments[1] === "availability") {
-		return shell(undefined, undefined, <ctx.Component />, false);
+		return shell(
+			lane,
+			<ProfileStickyHeader profile={profile} canEdit={canEdit} pinned />,
+			<ctx.Component />,
+			false,
+		);
 	}
 
 	// The active tab highlighted below the permanent Overview — the URL segment, or the kind's default
 	// (Services) on the bare `/@handle` index (root CLAUDE.md — Part 1.1).
 	const active = activeTabOf(path) ?? defaultTabFor(profile.kind);
-	// Persistent split (root CLAUDE.md — Part 1 / Part 3): the main column carries the PERMANENT
-	// Overview and then the tab bar + the routed tab body; the sticky meta rail sits alongside on every
-	// tab (it is no longer Overview-only). `ctx.Component` is always a tab body now.
+	// Single full-width column (root CLAUDE.md — Part 1): identity → the PERMANENT Overview → the tab
+	// bar + the routed tab body. The meta facts moved into the LANE, which already owns scope and
+	// persists across every tab; as a body rail they reserved 18rem + a 2rem gutter on every tab for a
+	// block that measured ~324px of content, which is what held the work grid to one column up to a
+	// 1600px display. `--inline` below is the ≤767px fallback, where no lane exists.
 	return shell(
 		lane,
 		stickyHeader,
 		(
-			<div class="pf">
-				<ProfileHeader profile={profile} canEdit={canEdit} />
-				<div class="pf-split">
-					<div class="pf-split__main">
-						<ProfileAbout profile={profile} canEdit={canEdit} />
-						<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">
-							<ProfileTabs profile={profile} active={active} />
-							{
-								/* `.ex` establishes the explore-card `--ex-*` token context for the reused
-						    collections (neutralised to a bare token-carrier in profile.css). */
-							}
-							<div class="ex pf-tabpanel">
-								<ctx.Component />
-							</div>
-						</section>
-					</div>
-					<ProfileMetaSidebar profile={profile} />
+			<div class="pf-scope">
+				<div class="pf">
+					<ProfileHeader profile={profile} canEdit={canEdit} />
+					<ProfileAbout profile={profile} canEdit={canEdit} />
+					<ProfileMetaSidebar profile={profile} variant="inline" />
+					<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">
+						<ProfileTabs profile={profile} active={active} />
+						{
+							/* `.ex` establishes the explore-card `--ex-*` token context for the reused
+					    collections (neutralised to a bare token-carrier in profile.css). */
+						}
+						<div class="ex pf-tabpanel">
+							<ctx.Component />
+						</div>
+					</section>
 				</div>
 			</div>
 		),

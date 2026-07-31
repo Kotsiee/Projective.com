@@ -1,13 +1,13 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/catalogue.css";
 // The explore card CSS is app-local + island-bundled (Decision #39): importing it here styles the REAL
 // `ServiceCard`/`ProductCard` rendered in the live preview. Their `@projective/ui` component CSS
 // (Avatar · RatingStars) rides the island graph automatically (the cards import those modules).
 import "@features/explore/styles/explore.css";
 import { RichTextEditor } from "@projective/ui/editor";
-import { Button, Chips, InputText, Select } from "@projective/ui/fields";
+import { Button, Chips, InputText, Select, Textarea } from "@projective/ui/fields";
 import { ServiceCard } from "@features/explore/components/cards/ServiceCard.tsx";
 import { ProductCard } from "@features/explore/components/cards/ProductCard.tsx";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
@@ -18,15 +18,15 @@ import {
 	publicListingHref,
 	statusMeta,
 } from "../core/catalogue-model.ts";
+import { EyeIcon, ImageIcon } from "../components/catalogue-glyphs.tsx";
 import {
-	AlertIcon,
-	ArchiveIcon,
-	CheckIcon,
-	EyeIcon,
-	ImageIcon,
-	PauseIcon,
-	PublishIcon,
-} from "../components/catalogue-glyphs.tsx";
+	editorMissing,
+	editorReady,
+	editorSaveState,
+	editorStatus,
+	editorStatusRequest,
+	editorTitle,
+} from "../core/catalogue-state.ts";
 import {
 	type ListingAvailability,
 	type ListingDetail,
@@ -40,12 +40,19 @@ import {
 import { Icon } from "@projective/ui/icons";
 
 /**
- * ListingEditor — the deep manage page (`/catalogue/[id]`), a two-panel surface: the rich editor form
- * (left) beside a LIVE preview rendering the REAL `ServiceCard`/`ProductCard` (right) with a "View
- * public page" link. Products vs services diverge only in the delivery-model + pricing fields (branch on
- * `kind`, like `EntityViewScreen`); the console chrome is shared. Draft autosave is debounced +
- * optimistic; Publish is the gated action (title + a price + ≥1 media — the shared `publishReadiness`).
- * Dumb: every mutation goes through the thin {@link CatalogueService}.
+ * ListingEditor — the manage page BODY: the rich editor form (left) beside a LIVE preview rendering
+ * the REAL `ServiceCard`/`ProductCard` (right). Products vs services diverge only in the
+ * delivery-model + pricing fields (branch on `kind`, like `EntityViewScreen`).
+ *
+ * The page's chrome is no longer here. Identity, status and the autosave indicator went to the header
+ * band; the publish gate and its lifecycle actions went to the footer band. Both used to sit in
+ * `.cat-editor__bar`, a `position: static` strip at the top of a 1264px scrolling body — so the moment
+ * the seller reached the fields they were editing, they lost the save state, the status and the
+ * Publish button together.
+ *
+ * The body keeps the *authority* it has to keep: it holds the unsaved draft, so it is the only thing
+ * allowed to perform a lifecycle change. The footer publishes an intent; this island flushes the
+ * pending autosave and then acts, so Publish is always judged against what the seller actually typed.
  */
 
 // #region Props + constants
@@ -152,6 +159,40 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 	const gate = useComputed(() => publishReadiness(preview.value));
 	// #endregion
 
+	// #region Publish to the bands (header = identity + save state, footer = the gate)
+	useEffect(() => {
+		editorTitle.value = initial.title;
+		editorStatus.value = initial.status;
+		editorSaveState.value = "saved";
+		const g = publishReadiness(preview.peek());
+		editorReady.value = g.ready;
+		editorMissing.value = g.missing;
+	}, []);
+
+	useSignalEffect(() => {
+		editorTitle.value = title.value;
+	});
+	useSignalEffect(() => {
+		editorStatus.value = status.value;
+	});
+	useSignalEffect(() => {
+		editorSaveState.value = saveState.value;
+	});
+	useSignalEffect(() => {
+		const g = gate.value;
+		editorReady.value = g.ready;
+		editorMissing.value = g.missing;
+	});
+
+	/** The footer band's Publish/Pause/Archive intent — only the body may perform it (see the JSDoc). */
+	useSignalEffect(() => {
+		const next = editorStatusRequest.value;
+		if (!next) return;
+		editorStatusRequest.value = null;
+		void setStatus(next);
+	});
+	// #endregion
+
 	// #region Save + lifecycle
 	function buildPatch(): UpdateListingInput {
 		return {
@@ -216,7 +257,6 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 	}
 	// #endregion
 
-	const meta = statusMeta(status.value);
 	const previewItem = useComputed(() => buildPreviewItem(preview.value));
 	const showPipeline = isService && serviceType.value === "Pipeline";
 	const showSession = isService &&
@@ -226,53 +266,6 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 
 	return (
 		<div class="cat-editor">
-			{/* Header rig — back · identity · save state · status controls. */}
-			<header class="cat-editor__bar">
-				<a class="cat-editor__back" href="/catalogue" aria-label="Back to catalogue">← Catalogue</a>
-				<div class="cat-editor__ident">
-					<span class="cat-chip" data-tone={meta.tone}>{meta.label}</span>
-					<span class="cat-editor__save" data-state={saveState.value}>
-						{saveState.value === "saving"
-							? "Saving…"
-							: saveState.value === "saved"
-							? "All changes saved"
-							: "Unsaved changes"}
-					</span>
-				</div>
-				<div class="cat-editor__actions">
-					{status.value === "published"
-						? (
-							<Button
-								variant="outlined"
-								size="sm"
-								label="Pause"
-								icon={<PauseIcon />}
-								onClick={() => void setStatus("paused")}
-							/>
-						)
-						: (
-							<Button
-								variant="filled"
-								severity="primary"
-								size="sm"
-								label="Publish"
-								icon={<PublishIcon />}
-								disabled={!gate.value.ready}
-								onClick={() => void setStatus("published")}
-							/>
-						)}
-					{status.value !== "archived" && (
-						<Button
-							variant="text"
-							size="sm"
-							label="Archive"
-							icon={<ArchiveIcon />}
-							onClick={() => void setStatus("archived")}
-						/>
-					)}
-				</div>
-			</header>
-
 			{notice.value && <p class="cat-editor__notice" role="status">{notice.value}</p>}
 
 			<div class="cat-editor__grid">
@@ -494,16 +487,23 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 										/>
 									</label>
 								</div>
+								{
+									/*
+									 * The package `Textarea`, not a bare element. The hand-rolled `.cat-textarea` it
+									 * replaces removed its own focus outline and substituted a border tint — no
+									 * visible focus indicator at all for a keyboard user — and stood outside the
+									 * whole `--fld-*` state model that its nine sibling fields on this page use.
+									 */
+								}
 								<label class="cat-field">
 									<span class="cat-field__label">Booking note</span>
-									<textarea
-										class="cat-textarea"
-										value={avNote.value}
-										onInput={(e) => {
-											avNote.value = (e.target as HTMLTextAreaElement).value;
-											touch();
-										}}
+									<Textarea
+										value={avNote}
+										onValueChange={touch}
 										rows={2}
+										autoResize
+										maxRows={6}
+										fluid
 										placeholder="e.g. Booked in 60-minute blocks · 48h notice"
 										aria-label="Booking note"
 									/>
@@ -547,25 +547,14 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 								: <ProductCard item={previewItem.value as ProductItem} authed />}
 						</div>
 
-						<div class="cat-preview__gate" data-ready={gate.value.ready ? "true" : undefined}>
-							{gate.value.ready
-								? (
-									<p class="cat-preview__ok">
-										<CheckIcon size={15} /> Ready to publish
-									</p>
-								)
-								: (
-									<>
-										<p class="cat-preview__missing">
-											<AlertIcon size={15} /> Add to publish:
-										</p>
-										<ul class="cat-preview__list">
-											{gate.value.missing.map((m) => <li key={m}>{m}</li>)}
-										</ul>
-									</>
-								)}
-						</div>
-
+						{
+							/*
+							 * The readiness checklist is NOT repeated here. It now travels with the Publish button
+							 * in the footer band, where it can actually help: as a sticky aside it outlived the
+							 * button it described, so the seller could read what was missing at exactly the moment
+							 * they could no longer act on it.
+							 */
+						}
 						<a
 							class="cat-preview__public"
 							href={publicListingHref(preview.value)}

@@ -12,7 +12,6 @@ import {
 	LaneHead,
 	LaneIconButton,
 	LaneList,
-	LaneSearch,
 	LaneSection,
 	LaneSections,
 	LaneTabs,
@@ -25,13 +24,12 @@ import { CatalogueRail } from "../components/CatalogueRail.tsx";
 import { CatalogueFilterPanel } from "../components/CatalogueFilterPanel.tsx";
 import { ListingLaneRow } from "../components/ListingLaneRow.tsx";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
-import { openCreate } from "../core/catalogue-state.ts";
+import { consoleQuery, openCreate } from "../core/catalogue-state.ts";
 import { listingHref, segmentHref, STATUS_SECTIONS, TYPE_TABS } from "../core/catalogue-model.ts";
 import {
 	AlertIcon,
 	BoxIcon,
 	PlusIcon,
-	SearchIcon,
 	ServiceIcon,
 	SlidersIcon,
 	StarGlyph,
@@ -49,16 +47,20 @@ import { Icon } from "@projective/ui/icons";
 /**
  * CatalogueLane — the `/catalogue` navigation lane. Like `ProjectSidebar`/`MessagesSidebar` it renders
  * BOTH presentations at once and lets CSS reveal exactly one via `.ui-splitter[data-mode="collapsed"]`:
- * an expanded stack (the primary `＋ New` popover CTA in the header · a `ui-lane-bar` search + Filter
- * popover · subtle `ui-lane-toggles` icon rows for the type switch and quick filters · the status-section
- * accordion) and a collapsed {@link CatalogueRail}. Chrome is composed entirely from the shared
+ * an expanded stack (the type switch at the peak · a `ui-lane-bar` Filter popover · a `ui-lane-toggles`
+ * quick-filter row · the status-section accordion · the primary `＋ New` popover CTA in the footer) and
+ * a collapsed {@link CatalogueRail}. Chrome is composed entirely from the shared
  * `@projective/ui/navigation` lane primitives — so this lane, the `/projects` sidebar, and the
  * `/messages` inbox render ONE control set; parity is structural.
  *
+ * It owns **navigation and scope**, which is the lane's half of the region contract, and nothing else:
+ * search belongs to the header band (there is one field for the whole surface, and this list narrows
+ * against the same `consoleQuery` the console fetches on), sort and density belong to the footer band.
+ *
  * THIN: it paints from the SSR page (all statuses for the active `?type=` segment). The type switch is a
- * full navigation (so the console updates too), while the search, quick/model filters, and status
- * grouping are client-side narrows over the loaded set. It mounts the {@link CatalogueCreateModal}
- * (driven by the shared `catalogue-state` signals so the console empty-state can open it too).
+ * full navigation (so the console updates too), while the quick/model filters and status grouping are
+ * client-side narrows over the loaded set. It mounts the {@link CatalogueCreateModal} (driven by the
+ * shared `catalogue-state` signals so the console empty-state and the mobile footer rig open it too).
  */
 
 // #region Props + constants
@@ -89,7 +91,6 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 	// #region State
 	const listings = useSignal<ListingSummary[]>(props.initial.items);
 	const collapsed = useSignal(false);
-	const query = useSignal("");
 	const attention = useSignal(false);
 	const promoted = useSignal(false);
 	const bestSelling = useSignal(false);
@@ -116,9 +117,18 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 	// #region Derived (apply search + quick + model filters → group by status)
 	const filtered = useComputed<ListingSummary[]>(() => {
 		const ms = new Set(models.value);
-		const q = query.value.trim().toLowerCase();
+		// The one search term, owned by the header band — see the LaneBar comment below.
+		const q = consoleQuery.value.trim().toLowerCase();
 		return listings.value.filter((l) => {
-			if (q && !l.title.toLowerCase().includes(q)) return false;
+			/*
+			 * Match the SAME fields the server matches, not just the title. One search term with two
+			 * different predicates is the old two-search problem wearing a disguise: searching "brand"
+			 * returned two listings in the console and one in this list, because the server also matches
+			 * category and tags. The summary projection carries `category`, so both sides agree on it.
+			 */
+			if (
+				q && !l.title.toLowerCase().includes(q) && !l.category.toLowerCase().includes(q)
+			) return false;
 			if (attention.value && !l.needsAttention) return false;
 			if (promoted.value && !l.promoted) return false;
 			if (bestSelling.value && l.metrics.orders <= 0) return false;
@@ -206,15 +216,15 @@ export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 						onSelect={onSelectType}
 					/>
 
+					{
+						/*
+						 * No search field here. The lane used to carry its own, and the console body carried a
+						 * second one — same word, two regions, two scopes, no shared state — so a term that
+						 * emptied the console left this list showing every listing, side by side, at the same
+						 * moment. There is now ONE search, in the header band, and this list narrows against it.
+						 */
+					}
 					<LaneBar>
-						<LaneSearch
-							value={query.value}
-							placeholder="Search listings"
-							label="Search listings"
-							icon={<SearchIcon size={16} />}
-							onInput={(v) => (query.value = v)}
-						/>
-
 						<Popover
 							open={filterOpen}
 							placement="bottom-end"

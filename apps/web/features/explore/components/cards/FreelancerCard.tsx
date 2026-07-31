@@ -80,6 +80,10 @@ export function FreelancerCard(
 
 				<p class="ex-talent__headline">{item.craft}</p>
 
+				{
+					/* One metadata line, not three stacked rows — rating, languages and counts are the same
+				    kind of quiet secondary fact, so they read together and let the face stay primary. */
+				}
 				<div class="ex-talent__meta">
 					{helper && (
 						<RatingStars
@@ -99,9 +103,6 @@ export function FreelancerCard(
 							</span>
 						)
 						: null}
-				</div>
-
-				<div class="ex-talent__counts">
 					{counts.filter(Boolean).map((c) => (
 						<span class="ex-talent__count" key={c as string}>{c}</span>
 					))}

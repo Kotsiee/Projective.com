@@ -82,13 +82,15 @@ export interface PickOption {
 	label: string;
 }
 
-/** The console sort options (drives the `SortControl` property dropdown). */
+/** The console sort options (drives the footer rig's `SortControl` property dropdown). */
 export const SORT_OPTIONS: readonly PickOption[] = [
 	{ label: "Recently edited", value: "recent" },
-	{ label: "Best-selling", value: "best-selling" },
-	{ label: "Price", value: "price" },
-	{ label: "Rating", value: "rating" },
+	{ label: "Name", value: "title" },
 	{ label: "Status", value: "status" },
+	{ label: "Price", value: "price" },
+	{ label: "Views", value: "views" },
+	{ label: "Best-selling", value: "best-selling" },
+	{ label: "Rating", value: "rating" },
 ];
 
 /** The five service delivery models (the Services model filter + the create-modal picker). */
@@ -107,13 +109,26 @@ export function kindNoun(kind: "product" | "service"): string {
 
 /** Coerce a raw string to a valid sort key, else `recent`. */
 export function toSort(raw: string | null): CatalogueSort {
-	const ok: CatalogueSort[] = ["recent", "best-selling", "price", "rating", "status"];
+	const ok: CatalogueSort[] = [
+		"recent",
+		"title",
+		"best-selling",
+		"views",
+		"price",
+		"rating",
+		"status",
+	];
 	return ok.includes(raw as CatalogueSort) ? (raw as CatalogueSort) : "recent";
 }
 
-/** The natural direction a sort key reads in — recent/best-selling/rating desc, price/status asc. */
+/**
+ * The direction a sort key reads most naturally in first. Magnitudes open at their largest (newest,
+ * best-selling, most-viewed, highest-rated); a name and a lifecycle read forwards.
+ */
 export function defaultSortDir(sort: CatalogueSort): "asc" | "desc" {
-	return sort === "recent" || sort === "best-selling" || sort === "rating" ? "desc" : "asc";
+	return sort === "recent" || sort === "best-selling" || sort === "views" || sort === "rating"
+		? "desc"
+		: "asc";
 }
 
 /** Coerce a raw string to a valid type segment, else `all`. */

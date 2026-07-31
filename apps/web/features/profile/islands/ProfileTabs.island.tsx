@@ -30,6 +30,18 @@ const MORE_ESTIMATE = 84;
 /** A couple of pixels of slack so a tab that just barely fits is never clipped by rounding. */
 const FIT_SLACK = 2;
 
+/**
+ * The strip's usable width — its CONTENT box. `clientWidth` includes horizontal padding, and the strip
+ * now carries a page gutter (it bleeds to the page edges so pinned content cannot slide past it there).
+ * Measuring the padding box made the split believe it had ~64px more room than it did, so the last tab
+ * overflowed the gutter and sat flush against the page edge instead of on the content margin.
+ */
+function contentWidthOf(el: HTMLElement): number {
+	const cs = getComputedStyle(el);
+	const pad = (parseFloat(cs.paddingInlineStart) || 0) + (parseFloat(cs.paddingInlineEnd) || 0);
+	return Math.max(0, el.clientWidth - pad);
+}
+
 export default function ProfileTabs({ profile, active }: ProfileTabsProps): JSX.Element {
 	// Reviews is pinned to the right (Decision #40) and never enters the overflow menu; every other tab
 	// is a "content" tab that may collapse into `More ▾` when the bar is too narrow.
@@ -76,7 +88,7 @@ export default function ProfileTabs({ profile, active }: ProfileTabsProps): JSX.
 		const reviewsNode = trailing[0] ? itemRefs.current.get(trailing[0]) : null;
 		reviewsW.current = reviewsNode ? reviewsNode.offsetWidth : 0;
 
-		containerW.value = el.clientWidth;
+		containerW.value = contentWidthOf(el);
 		ready.value = true;
 	}, [ready.value]);
 
@@ -84,8 +96,10 @@ export default function ProfileTabs({ profile, active }: ProfileTabsProps): JSX.
 	useEffect(() => {
 		const el = nav.current;
 		if (!el) return;
-		const ro = new ResizeObserver((entries) => {
-			for (const entry of entries) containerW.value = entry.contentRect.width;
+		// Read through the same helper as the initial pass rather than `entry.contentRect`, so the split
+		// can never be fed two different definitions of "the strip's width".
+		const ro = new ResizeObserver(() => {
+			containerW.value = contentWidthOf(el);
 		});
 		ro.observe(el);
 		const mq = globalThis.matchMedia?.("(min-width: 768px)");

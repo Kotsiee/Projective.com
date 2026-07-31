@@ -231,7 +231,7 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 						class="wlt-lane__switch"
 						ref={triggerRef}
 						aria-haspopup="listbox"
-						aria-expanded={switcherOpen.value}
+						aria-expanded={switcherOpen.value ? "true" : "false"}
 						onClick={() => {
 							switcherOpen.value = !switcherOpen.value;
 						}}

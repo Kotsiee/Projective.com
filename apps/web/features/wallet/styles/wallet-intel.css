@@ -863,52 +863,15 @@
 }
 /* #endregion */
 
-/* #region Buttons used inside data rows (interactive — a full contour is correct here) */
-.wlt-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font: inherit;
-	font-size: var(--wlt-fs-body);
-	padding-inline: var(--space-4);
-	padding-block: var(--space-2);
-	border-radius: var(--radius-base);
-	border: 1px solid transparent;
-	background: transparent;
-	color: var(--on-surface);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
-}
-
-.wlt-btn:hover {
-	background: var(--surface-3);
-}
-
-.wlt-btn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
-}
-
-.wlt-btn[disabled] {
-	opacity: 0.55;
-	cursor: default;
-}
-
-.wlt-btn--primary {
-	background: var(--primary);
-	color: var(--on-primary);
-}
-
-.wlt-btn--primary:hover {
-	background: color-mix(in srgb, var(--primary) 86%, var(--on-surface));
-}
-
-.wlt-btn--ghost {
-	border-color: var(--border-subtle);
-}
-
+/* #region The surface's one link treatment */
+/*
+ * The parallel `.wlt-btn` / `--primary` / `--ghost` family that used to live here is GONE. It was a
+ * second button system beside `@projective/ui`'s `Button`, with its own variants and no severity
+ * axis at all — which is how an irreversible "Approve £450.00" ended up styled identically to a safe
+ * primary, and why a repeated row action could be `filled` without anything objecting. Weight and
+ * severity are the shared component's job (§B.8); this file keeps only the link, which is a
+ * navigation treatment and not a control.
+ */
 .wlt-link {
 	color: var(--primary);
 	text-decoration: none;

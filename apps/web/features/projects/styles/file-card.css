@@ -98,7 +98,7 @@
 .fx-card__by {
 	display: flex;
 	align-items: center;
-	gap: 5px;
+	gap: var(--space-1);
 	min-inline-size: 0;
 }
 .fx-card__sender {

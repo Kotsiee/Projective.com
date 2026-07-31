@@ -109,8 +109,8 @@
 	color: var(--text-secondary);
 }
 .msg-conv__muted svg {
-	inline-size: 12px;
-	block-size: 12px;
+	inline-size: var(--icon-2xs);
+	block-size: var(--icon-2xs);
 }
 .msg-conv__body {
 	flex: 1;
@@ -127,19 +127,19 @@
 }
 .msg-conv__name {
 	font-family: var(--font-sans);
-	font-size: 0.9rem;
-	font-weight: 500;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .msg-conv[data-unread="true"] .msg-conv__name {
-	font-weight: 700;
+	font-weight: var(--fw-bold);
 }
 .msg-conv__time {
 	flex: none;
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .msg-conv__bottom {
@@ -151,7 +151,7 @@
 .msg-conv__preview {
 	flex: 1;
 	min-inline-size: 0;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -195,8 +195,8 @@
 	color: var(--on-surface);
 }
 .msg-conv__kebab svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 
 /* Kebab menu (independent from the projects message-action `.msg-menu`). */
@@ -212,7 +212,7 @@
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-3);
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
 	background: transparent;
 	border: none;
@@ -223,6 +223,10 @@
 }
 .conv-menu__item:hover {
 	background: var(--surface-2);
+}
+.conv-menu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .conv-menu__item[data-danger="true"] {
 	color: var(--danger);
@@ -238,8 +242,8 @@
 	color: var(--danger);
 }
 .conv-menu__icon svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 /* #endregion */
 
@@ -281,12 +285,12 @@
 	color: var(--on-surface);
 }
 .msg-rail__btn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .msg-rail__btn svg {
-	inline-size: 24px;
-	block-size: 24px;
+	inline-size: var(--icon-lg);
+	block-size: var(--icon-lg);
 }
 .msg-rail__btn--accent {
 	color: var(--primary);
@@ -315,6 +319,19 @@
 	border: 2px solid var(--surface-1);
 	z-index: 1;
 }
+/*
+ * The rail's expand toggle. `--toggle` shipped as a class hook with no rule anywhere in the repo,
+ * so the one control that gets the viewer OUT of the collapsed rail looked identical to the eight
+ * conversation avatars above it. It now reads as chrome: quieter at rest, and separated from the
+ * list by the group's own hairline rather than sitting in it.
+ */
+.msg-rail__btn--toggle {
+	color: var(--text-secondary);
+	opacity: 0.8;
+}
+.msg-rail__btn--toggle:hover {
+	opacity: 1;
+}
 /* #endregion */
 
 /* #region Advanced filter panel */
@@ -335,8 +352,8 @@
 }
 .msg-filter__title {
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .msg-filter__count {
@@ -345,20 +362,31 @@
 	justify-content: center;
 	min-inline-size: 1.25rem;
 	padding: 0 var(--space-1);
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	color: var(--on-primary);
 	background: var(--primary);
 	border-radius: var(--radius-full);
 }
 .msg-filter__reset {
 	margin-inline-start: auto;
+	/* Was a bare text button with no padding — 15.6px tall, well under the 24px target floor. */
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-2);
 	font-family: var(--font-sans);
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--primary);
 	background: none;
 	border: none;
+	border-radius: var(--radius-base);
 	cursor: pointer;
+}
+.msg-filter__reset:hover {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+}
+.msg-filter__reset:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .msg-filter__facet {
 	display: flex;
@@ -366,10 +394,10 @@
 	gap: var(--space-2);
 }
 .msg-filter__label {
-	font-size: 0.75rem;
-	font-weight: 600;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
+	letter-spacing: var(--tracking-wide);
 	color: var(--text-secondary);
 }
 .msg-matrix {
@@ -378,9 +406,14 @@
 	gap: var(--space-1);
 }
 .msg-matrix__opt {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-block-size: var(--fld-hit);
 	padding: var(--space-1) var(--space-3);
 	font-family: var(--font-sans);
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
 	background: var(--surface-2);
 	border: 1px solid transparent;
@@ -391,54 +424,75 @@
 		color var(--dur-fast) var(--ease-standard),
 		border-color var(--dur-fast) var(--ease-standard);
 }
+.msg-matrix__opt:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * Selected. Measured, the previous rule differed from unselected by a 1.003:1 LUMINANCE ratio — a
+ * hue-only state, invisible under greyscale or a CVD overlay — and it dropped the label's own
+ * contrast from 7.14:1 to 4.36:1, so choosing a facet made it harder to read. Three non-hue channels
+ * now carry it: the label steps to semibold, the ink goes to full `--on-surface`, and a leading
+ * check mark appears. The tint is the fourth channel, not the only one.
+ */
 .msg-matrix__opt[data-on="true"] {
-	color: var(--primary);
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
+.msg-matrix__opt[data-on="true"]::before {
+	content: "";
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
 /* #endregion */
 
-/* #region Shared buttons */
-.msg-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
+/*
+ * The `.msg-btn` family is GONE. It reimplemented `@projective/ui` `Button` — base, ghost, primary,
+ * hover, focus and disabled — inside a feature stylesheet, and in doing so shipped the only raw hex
+ * in the surface (`color-mix(… var(--primary) 88%, #000)`), a focus ring in a second vocabulary, and
+ * a disabled opacity that matched none of its four siblings. Every call site now composes the real
+ * Button, so the surface inherits its severities, sizes, loading state and `--fld-*` state contract.
+ */
+
+/* #region Lane error (a failed refine must never be silent) */
+.msg-lane-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
 	gap: var(--space-2);
-	padding: var(--space-2) var(--space-4);
-	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	font-weight: 600;
+	margin-block-end: var(--space-3);
+	padding: var(--space-3);
 	border-radius: var(--radius-lg);
-	border: 1px solid var(--border-subtle);
-	background: var(--surface-1);
+	background: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface-2));
+}
+.msg-lane-error__text {
+	margin: 0;
+	font-size: var(--text-sm);
 	color: var(--on-surface);
+}
+.msg-lane-error__retry {
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-2);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	color: var(--primary);
+	background: none;
+	border: none;
+	border-radius: var(--radius-base);
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast)
-		var(--ease-standard);
 }
-.msg-btn:hover {
-	background: var(--surface-2);
+.msg-lane-error__retry:hover {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
-.msg-btn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
-}
-.msg-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-.msg-btn--ghost {
-	background: transparent;
-	border-color: transparent;
-	color: var(--text-secondary);
-}
-.msg-btn--primary {
-	background: var(--primary);
-	border-color: var(--primary);
-	color: var(--on-primary);
-}
-.msg-btn--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, #000);
+.msg-lane-error__retry:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 
@@ -465,21 +519,35 @@
 	border-radius: var(--radius-full);
 }
 .msg-picker__chip-name {
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--on-surface);
 }
+/* Was 18x18 — the smallest control on the surface, under the 24px target floor. The GLYPH stays
+   14px; the button grows around it, which is what `--fld-hit` is for. */
 .msg-picker__chip-remove {
 	display: inline-flex;
-	padding: 2px;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	padding: 0;
 	border: none;
 	border-radius: var(--radius-full);
 	background: transparent;
 	color: var(--text-secondary);
 	cursor: pointer;
 }
+.msg-picker__chip-remove:hover {
+	background: var(--surface-3, var(--surface-1));
+	color: var(--on-surface);
+}
+.msg-picker__chip-remove:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 .msg-picker__chip-remove svg {
-	inline-size: 14px;
-	block-size: 14px;
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
 }
 .msg-picker__search {
 	position: relative;
@@ -493,15 +561,15 @@
 	pointer-events: none;
 }
 .msg-picker__search-icon svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 .msg-picker__search-input,
 .msg-picker__group-name {
 	inline-size: 100%;
 	padding: var(--space-2) var(--space-3);
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
 	background: var(--surface-2);
 	border: 1px solid transparent;
@@ -526,7 +594,7 @@
 	padding: var(--space-4);
 	text-align: center;
 	color: var(--text-secondary);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 }
 .msg-picker__row {
 	display: flex;
@@ -543,6 +611,10 @@
 .msg-picker__row:hover {
 	background: var(--surface-2);
 }
+.msg-picker__row:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 .msg-picker__row[data-on="true"] {
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
@@ -553,12 +625,12 @@
 	flex-direction: column;
 }
 .msg-picker__row-name {
-	font-size: 0.875rem;
-	font-weight: 500;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 .msg-picker__row-context {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .msg-picker__row-check {
@@ -566,8 +638,8 @@
 	color: var(--primary);
 }
 .msg-picker__row-check svg {
-	inline-size: 18px;
-	block-size: 18px;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
 }
 .msg-picker__actions {
 	display: flex;
@@ -601,22 +673,22 @@
 	align-items: center;
 	gap: var(--space-2);
 	font-family: var(--font-sans);
-	font-size: 0.95rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .msg-set__section-title svg {
-	inline-size: 18px;
-	block-size: 18px;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
 	color: var(--text-secondary);
 }
 .msg-set__section-note {
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .msg-set__ar[data-off="true"] {
-	opacity: 0.55;
+	opacity: var(--fld-disabled-alpha);
 	pointer-events: none;
 }
 .msg-set__row {
@@ -627,18 +699,18 @@
 	padding: var(--space-2) 0;
 }
 .msg-set__row[data-disabled="true"] {
-	opacity: 0.5;
+	opacity: var(--fld-disabled-alpha);
 }
 .msg-set__row-copy {
 	display: flex;
 	flex-direction: column;
 }
 .msg-set__row-label {
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
 }
 .msg-set__row-hint {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .msg-set__quiet {
@@ -650,7 +722,7 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .msg-set__quiet-field input {
@@ -660,6 +732,11 @@
 	background: var(--surface-2);
 	border: 1px solid transparent;
 	border-radius: var(--radius-base);
+}
+.msg-set__quiet-field input:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: var(--focus-ring-shadow);
 }
 .msg-set__actions {
 	display: flex;
@@ -677,19 +754,28 @@
 }
 .msg-ar__empty {
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
+/*
+ * A rule was a tinted, rounded box whose CHILDREN then tinted back UP to `--surface-1` and added a
+ * full border — three surface levels inside one dialog, with the innermost lighter than its parent.
+ * The rule is now separated by space and a single leading hairline (§B.4's ladder), so its fields
+ * are the only boxes in the group and the nesting reads as one level, not three.
+ */
 .msg-ar__rule {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
-	padding: var(--space-3);
-	background: var(--surface-2);
-	border-radius: var(--radius-lg);
+	padding-block: var(--space-4);
+	padding-inline-start: var(--space-3);
+	border-inline-start: var(--hairline);
+}
+.msg-ar__rule + .msg-ar__rule {
+	border-block-start: var(--hairline);
 }
 .msg-ar__rule[data-off="true"] {
-	opacity: 0.6;
+	opacity: var(--fld-disabled-alpha);
 }
 .msg-ar__rule-head {
 	display: flex;
@@ -701,8 +787,8 @@
 	min-inline-size: 0;
 	padding: var(--space-1) var(--space-2);
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	background: transparent;
 	border: 1px solid transparent;
@@ -727,9 +813,13 @@
 	color: var(--danger);
 	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
 }
+.msg-ar__remove:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 .msg-ar__remove svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 .msg-ar__triggers {
 	display: flex;
@@ -737,27 +827,35 @@
 	gap: var(--space-1);
 }
 .msg-ar__trigger {
+	min-block-size: var(--fld-hit);
 	padding: var(--space-1) var(--space-2);
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
 	color: var(--text-secondary);
-	background: var(--surface-1);
+	background: var(--surface-2);
 	border: 1px solid transparent;
 	border-radius: var(--radius-full);
 	cursor: pointer;
 }
+/* Same hue-only defect as `.msg-matrix__opt` — weight and ink carry the state beside the tint. */
 .msg-ar__trigger[data-on="true"] {
-	color: var(--primary);
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
 	border-color: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+}
+.msg-ar__trigger:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 .msg-ar__cond,
 .msg-ar__message {
 	inline-size: 100%;
 	padding: var(--space-2);
 	font-family: var(--font-sans);
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--on-surface);
-	background: var(--surface-1);
+	background: var(--surface-2);
 	border: 1px solid var(--border-subtle);
 	border-radius: var(--radius-base);
 }
@@ -780,17 +878,17 @@
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .msg-ar__ai-label svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 .msg-ar__ai-soon {
 	padding: 1px var(--space-1);
-	font-size: 0.6875rem;
-	font-weight: 600;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
 	text-transform: uppercase;
 	color: var(--secondary, var(--primary));
 	background: color-mix(in srgb, var(--secondary, var(--primary)) 14%, transparent);
@@ -803,27 +901,37 @@
 	align-self: flex-start;
 	padding: var(--space-2) var(--space-3);
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--primary);
 	background: transparent;
 	border: 1px dashed color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 	border-radius: var(--radius-lg);
 	cursor: pointer;
 }
+.msg-ar__add:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
 .msg-ar__add svg {
-	inline-size: 16px;
-	block-size: 16px;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 /* #endregion */
 
 /* #region Empty-state (inbox root + not-found body) */
+/*
+ * `min-block-size: 60vh` sized this against the VIEWPORT rather than the region it lives in, so it
+ * always sat in the upper two-thirds of the canvas with a dead band beneath it. Filling its parent
+ * instead centres it in the space it was actually given, at any frame height.
+ */
 .msg-empty {
+	flex: 1;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	gap: var(--space-3);
-	min-block-size: 60vh;
+	min-block-size: 100%;
 	padding: var(--space-6);
 	text-align: center;
 }
@@ -835,21 +943,48 @@
 	color: var(--text-secondary);
 }
 .msg-empty__glyph svg {
-	inline-size: 32px;
-	block-size: 32px;
+	inline-size: var(--icon-xl);
+	block-size: var(--icon-xl);
 }
 .msg-empty__title {
 	margin: 0;
 	font-family: var(--font-sans);
-	font-size: 1.25rem;
-	font-weight: 700;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-bold);
 	color: var(--on-surface);
 }
 .msg-empty__note {
 	margin: 0;
-	max-inline-size: 26rem;
-	font-size: 0.9rem;
+	max-inline-size: 40ch;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
+}
+.msg-empty__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fld-hit);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	font-family: var(--font-sans);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+	color: var(--on-primary);
+	text-decoration: none;
+	background: var(--primary);
+	border-radius: var(--radius-full);
+}
+.msg-empty__action:hover {
+	background: color-mix(in srgb, var(--primary) var(--tint-heavy), var(--on-surface));
+}
+.msg-empty__action:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.msg-empty__action svg {
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 /* #endregion */
 
@@ -861,3 +996,40 @@
 		transition: none;
 	}
 }
+
+/* #region Failure copy (the states that used to be silent) */
+.msg-picker__failed {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding: var(--space-4);
+}
+.msg-picker__failed-title,
+.msg-set__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+.msg-set__error {
+	margin-block-start: var(--space-3);
+	text-align: end;
+}
+/* #endregion */
+
+/*
+ * #region Class hooks that shipped with no rule
+ *
+ * `msg-set`, `msg-newconv` and `conv-menu-pop` were applied in the TSX and matched NOTHING anywhere
+ * in the repo — dead hooks that read as styled but were not. `conv-menu-pop` is the one that mattered:
+ * its sibling `.msg-filter-pop` sizes its popover and `.chan-menu-pop` sizes the channel one, so the
+ * conversation kebab menu was the only menu on the surface with no width contract of its own.
+ */
+.conv-menu-pop {
+	min-inline-size: 13rem;
+}
+.msg-set,
+.msg-newconv {
+	--dialog-body-gap: var(--space-4);
+}
+/* #endregion */

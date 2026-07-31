@@ -1,14 +1,14 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, BandHead, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { FlowBand } from "../components/FlowBand.tsx";
 import { BurnDownPanel } from "../components/BurnDownPanel.tsx";
 import { Money } from "../components/Money.tsx";
 import { buildCategoryBars, buildProjectBars } from "../core/category-chart.ts";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext, flowPeriod } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { currentWalletContext, flowPeriod, walletError } from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import { styleVars } from "@ui/core/style.ts";
 import type { ActivityView } from "../types/wallet-types.ts";
 
@@ -32,7 +32,9 @@ export default function WalletActivityScreen(props: WalletActivityScreenProps): 
 	const refetch = async () => {
 		const range = flowPeriod.value === "30d" ? "30d" : "90d";
 		const res = await WalletService.activity(currentWalletContext(), range);
-		if (res.ok && res.data) activity.value = res.data.activity;
+		applyRead(res, (d) => {
+			activity.value = d.activity;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -45,6 +47,7 @@ export default function WalletActivityScreen(props: WalletActivityScreenProps): 
 	return (
 		<main class="wlt" aria-label="Activity">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Activity">
 					<PageHead
 						title="Activity"
@@ -64,10 +67,19 @@ export default function WalletActivityScreen(props: WalletActivityScreenProps): 
 					/>
 				</Band>
 
-				<Band tone="flow" index={1} titleId="wlt-act-flow">
-					<BandHead id="wlt-act-flow" title="Money in vs out" />
-					<FlowBand flow={a.flow} range={a.range === "12m" ? "90d" : a.range} id="wlt-act-chart" />
-				</Band>
+				{
+					/*
+					 * `FlowBand` renders its OWN `Band` and `BandHead`. Wrapping it in a second pair put a
+					 * `<section class="wlt-band">` inside a `<section class="wlt-band">` and printed the
+					 * heading twice — "Money in vs out" directly above "Money in vs out · last 90 days".
+					 */
+				}
+				<FlowBand
+					flow={a.flow}
+					range={a.range === "12m" ? "90d" : a.range}
+					id="wlt-act-chart"
+					index={1}
+				/>
 
 				<Band tone="intel" index={2} titleId="wlt-act-cat">
 					<BandHead id="wlt-act-cat" title="Spend by category" />

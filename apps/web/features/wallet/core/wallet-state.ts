@@ -115,6 +115,23 @@ export function withSim<T extends Record<string, unknown>>(payload: T): T {
  */
 export const fundFilter = signal<FundState | null>(null);
 
+/**
+ * The header band's ledger query. It lives here rather than inside the band because the band and the
+ * table are separate hydration roots — the band previously held this in a local `useSignal` that
+ * nothing read, so the field accepted typing and narrowed nothing. Writing it is paired with
+ * {@link notifyWalletChanged}, which is what the table listens to.
+ */
+export const ledgerSearch = signal<string>("");
+
+/**
+ * The message from the most recent FAILED read, or `null`. Every screen's refetch was written
+ * `if (res.ok && res.data) { … }` with no else, across ten call sites — so a failed currency switch,
+ * dev-axis flip or post-mutation refresh left the previous wallet's figures on screen, silently and
+ * indefinitely. On a surface whose entire job is conveying custody, stale money presented as current
+ * money is the worst available outcome. {@link applyRead} writes this; `WalletErrorBand` renders it.
+ */
+export const walletError = signal<string | null>(null);
+
 /** Whether the payment-method deck has expanded from its fanned rest state into the grid overlay. */
 export const deckExpanded = signal<boolean>(false);
 /** The method whose detail drawer is open (`null` = none). */
@@ -160,6 +177,7 @@ export const moveFlow = signal<MoveFlowState | null>(null);
  */
 export function resetOnRefetch(): void {
 	fundFilter.value = null;
+	ledgerSearch.value = "";
 	drawerLine.value = null;
 	deckExpanded.value = false;
 	activeMethodId.value = null;

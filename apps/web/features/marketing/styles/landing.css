@@ -12,6 +12,18 @@
  */
 @import "./site-shell.css";
 @import "./hero-search.css";
+/*
+ * The canonical discovery card contract. The landing service, product and profile cards render
+ * `.ex-card` rather than a parallel `.lp-*` fork, so one definition of card separation, hover, focus,
+ * clamping and the media-overlay chips serves both the marketing surface and the search feed.
+ *
+ * Delivery mechanism: this sheet reaches `/` through the route's own page graph (`landing.css` is the
+ * only stylesheet `/` links), and an `@import` is inlined into it at build time. That is exactly how
+ * `profile.css` already delivers the same sheet to `/@handle` — verified in the build manifest, where
+ * `explore.css` has no standalone asset and exists only inlined into its importers. The `--ex-*` tokens
+ * the cards read sit on `:root`, not on `.ex`, so they resolve here without a `.ex` wrapper.
+ */
+@import "../../explore/styles/explore.css";
 
 /* #region Landing tokens */
 .lp {
@@ -218,11 +230,11 @@
 	z-index: 1;
 	background:
 		linear-gradient(
-			to top,
-			var(--surface) 2%,
-			color-mix(in srgb, var(--surface) var(--tint-heavy), transparent) 46%,
-			color-mix(in srgb, var(--surface) 78%, transparent) 100%
-		),
+		to top,
+		var(--surface) 2%,
+		color-mix(in srgb, var(--surface) var(--tint-heavy), transparent) 46%,
+		color-mix(in srgb, var(--surface) 78%, transparent) 100%
+	),
 		radial-gradient(
 		120% 90% at 18% 30%,
 		color-mix(in srgb, var(--surface) 30%, transparent) 0%,
@@ -364,7 +376,8 @@
 }
 
 @keyframes lp-scroll-dot {
-	0%, 100% {
+	0%,
+	100% {
 		transform: translateY(0);
 		opacity: 1;
 	}
@@ -557,189 +570,54 @@
 /* #endregion */
 
 /* #region Card base */
+/*
+ * `.lp-card` now dresses ONE card — the open-project tile, the single landing card whose presentation
+ * the entity justifies (discovery renders a project as a hairline list row, not a tile). Services,
+ * products and profiles render the canonical `.ex-card` contract imported at the top of this file.
+ *
+ * Separation matches that contract: a tonal step plus radius, no resting hairline (§B.4 — the border
+ * was a third simultaneous device, and a fourth once hover added the shadow), and the same −4px lift.
+ * The lift is a transform and the elevation a shadow, both correct at frame zero and both dropped
+ * under reduced motion below, so a frozen animation clock leaves the card in its resting state.
+ */
 .lp-card {
 	display: block;
 	position: relative;
 	color: inherit;
 	text-decoration: none;
 	background: var(--surface-2);
-	border: 1px solid var(--lp-hair);
 	border-radius: var(--lp-r-lg);
 	overflow: clip;
 	transition:
 		transform var(--dur-medium) var(--spring-standard),
-		box-shadow var(--dur-medium) var(--ease-standard),
-		border-color var(--dur-slow) var(--ease-standard),
-		background-color var(--dur-slow) var(--ease-standard);
+		box-shadow var(--dur-medium) var(--ease-standard);
 }
 
 .lp-card:hover {
-	transform: translateY(-6px);
+	transform: translateY(var(--card-hover-lift));
 	box-shadow: var(--elevation-high);
-	border-color: color-mix(in srgb, var(--primary) 55%, var(--lp-hair));
 }
 
+/* The canonical two-tone focus composite (`theme-engine.ts`), not the legacy flat outline: no single
+   colour clears 3:1 against both the card fill and the page behind it. */
 .lp-card:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
-.lp-section--services .lp-card,
-.lp-section--products .lp-card {
-	background: var(--surface-2);
-}
-/* #endregion */
-
-/* #region Profile card */
-.lp-profile__cover {
-	position: relative;
-	block-size: 8.5rem;
-	background-image:
-		linear-gradient(
-			to bottom,
-			transparent 40%,
-			color-mix(in srgb, var(--surface-2) 92%, transparent)
-		),
-		var(--lp-cover);
-	background-size: cover;
-	background-position: center;
-	padding: var(--space-3);
+/* High-contrast overlay (§A.5) — the boundary comes back as an inset ring, matching `.ex-card`. */
+:root[data-contrast="high"] .lp-card {
+	box-shadow: inset 0 0 0 1px var(--hairline-strong-color);
 }
 
-.lp-profile__body {
-	padding: 0 var(--space-5) var(--space-5);
-}
+@media (prefers-reduced-motion: reduce) {
+	.lp-card {
+		transition: box-shadow var(--dur-medium) var(--ease-standard);
+	}
 
-.lp-profile__head {
-	display: flex;
-	align-items: flex-end;
-	gap: var(--space-3);
-	margin-block-start: -2rem;
-}
-
-.lp-profile__avatar {
-	border: 3px solid var(--surface-2);
-	box-shadow: var(--elevation-low);
-}
-
-.lp-profile__id {
-	display: flex;
-	flex-direction: column;
-	padding-block-end: 0.35rem;
-}
-
-.lp-profile__name {
-	font-weight: 600;
-	font-size: 1.1rem;
-	letter-spacing: -0.01em;
-}
-
-.lp-profile__handle {
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
-}
-
-.lp-profile__craft {
-	margin: var(--space-4) 0 var(--space-4);
-	font-size: 0.95rem;
-	color: var(--on-surface-variant);
-}
-
-.lp-profile__skills {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
-	min-block-size: 2rem;
-}
-
-.lp-profile__foot {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	margin-block-start: var(--space-4);
-	padding-block-start: var(--space-4);
-}
-
-.lp-profile__rating {
-	font-size: 0.9rem;
-	font-weight: 500;
-	color: var(--primary);
-}
-
-.lp-profile__delivered {
-	font-weight: 400;
-	color: var(--on-surface-variant);
-}
-
-.lp-profile__rate {
-	font-size: 0.95rem;
-	font-weight: 600;
-	white-space: nowrap;
-}
-/* #endregion */
-
-/* #region Service card */
-.lp-service__media {
-	position: relative;
-	aspect-ratio: 4 / 3;
-	overflow: clip;
-}
-
-.lp-service__img {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
-	display: block;
-	transition: transform var(--dur-slow) var(--spring-standard);
-}
-
-.lp-card:hover .lp-service__img {
-	transform: scale(1.05);
-}
-
-.lp-service__tag {
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-start: var(--space-3);
-}
-
-.lp-service__body {
-	padding: var(--space-5);
-}
-
-.lp-service__title {
-	margin: 0;
-	font-size: 1.15rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
-}
-
-.lp-service__provider {
-	display: block;
-	margin-block-start: 0.35rem;
-	font-size: 0.9rem;
-	color: var(--on-surface-variant);
-}
-
-.lp-service__foot {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-3);
-	margin-block-start: var(--space-5);
-	padding-block-start: var(--space-4);
-}
-
-.lp-service__price {
-	font-size: 1.3rem;
-	font-weight: 300;
-	letter-spacing: -0.02em;
-}
-
-.lp-service__delivery {
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
+	.lp-card:hover {
+		transform: none;
+	}
 }
 /* #endregion */
 
@@ -753,10 +631,10 @@
 	block-size: 7rem;
 	background-image:
 		linear-gradient(
-			to bottom,
-			transparent,
-			color-mix(in srgb, var(--surface-2) 88%, transparent)
-		),
+		to bottom,
+		transparent,
+		color-mix(in srgb, var(--surface-2) 88%, transparent)
+	),
 		var(--lp-cover);
 	background-size: cover;
 	background-position: center;
@@ -823,10 +701,12 @@
 	font-size: 0.98rem;
 }
 
-.lp-project__cta {
+/* The foot's secondary fact. It replaced an "Open board →" pseudo-button that named an action the
+   whole card already performed and drew the eye away from the budget with an accent colour. */
+.lp-project__stagecount {
 	font-size: 0.9rem;
-	font-weight: 500;
-	color: var(--primary);
+	color: var(--on-surface-variant);
+	white-space: nowrap;
 }
 /* #endregion */
 
@@ -847,63 +727,6 @@
 	margin-block-end: var(--space-5);
 }
 
-.lp-product {
-	display: block;
-}
-
-.lp-product__media {
-	position: relative;
-	overflow: clip;
-}
-
-.lp-product__img {
-	inline-size: 100%;
-	block-size: auto;
-	display: block;
-	transition: transform var(--dur-slow) var(--spring-standard);
-}
-
-.lp-card:hover .lp-product__img {
-	transform: scale(1.04);
-}
-
-.lp-product__price {
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-end: var(--space-3);
-	padding: var(--space-1) var(--space-3);
-	font-size: 0.85rem;
-	font-weight: 600;
-	color: var(--on-surface);
-	background: var(--lp-glass);
-	border-radius: var(--radius-xl);
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
-}
-
-.lp-product__body {
-	padding: var(--space-4) var(--space-5) var(--space-5);
-}
-
-.lp-product__category {
-	font-size: 0.72rem;
-	font-weight: 600;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--on-surface-variant);
-}
-
-.lp-product__title {
-	margin: 0.4rem 0 0.3rem;
-	font-size: 1.1rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
-}
-
-.lp-product__maker {
-	font-size: 0.88rem;
-	color: var(--on-surface-variant);
-}
 /* #endregion */
 
 /* Footer styles moved to `footer.css` (imported by PublicFooter) so the footer renders correctly on
@@ -968,18 +791,10 @@
 		inline-size: min(78vw, 18rem);
 	}
 
-	.lp-profile__cover {
-		block-size: 7rem;
-	}
-
-	.lp-profile__body,
-	.lp-service__body,
+	/* The service, product and profile cards are `.ex-card` now and carry their own mobile rules from
+	   the canonical sheet, so only the project tile needs a landing-local compression here. */
 	.lp-project__body {
 		padding: var(--space-4);
-	}
-
-	.lp-product__body {
-		padding: var(--space-3) var(--space-4) var(--space-4);
 	}
 
 	.lp-how__step {

@@ -9,8 +9,10 @@ import { IconShell } from "@projective/ui/icons";
  * `{OverviewGlyph}`, never `<OverviewGlyph />`. A VNode may not be mounted twice at once — clone it
  * (`cloneElement`) if the same glyph must appear in two places in one tree.
  *
- * All strokes are `currentColor` at `1.8` on a `0 0 24 24` box, matching the shared glyph metrics so
- * the wallet's rail reads as one set with the global sidebar.
+ * Every glyph renders through `IconShell` on a `0 0 24 24` box, so weight comes from `--icon-stroke`
+ * against `.ui-icon` and is never authored here (§B.7.2) — one number renders identically from 12px
+ * to 32px, and a per-glyph override is impossible by construction. No mark in this file means two
+ * things: an action and a section may look alike, but they may not BE the same VNode.
  *
  * **Two glyphs are deliberately absent from this file: a PADLOCK and a WARNING TRIANGLE.** Escrowed
  * capital is drawn as a strongbox (stored value) and contested capital as a pause (held, under
@@ -202,6 +204,39 @@ export const RequestSpendGlyph: VNode = svg(
 );
 
 export const SmootherGlyph: VNode = svg(<path d="M3 15c3.5 0 3.5-6 7-6s3.5 6 7 6 4-2 4-2" />, 18);
+
+/**
+ * Add method — the instrument face of {@link MethodsGlyph} with a plus, so the ACT reads as a sibling
+ * of the section it belongs to rather than a different vocabulary. It exists because `add_method`
+ * previously borrowed {@link RecurringGlyph}: two actions sharing one mark is the collision §B.7
+ * resolved for `PinIcon`/`XIcon`/`Archive`, and the wallet rig had two more of it.
+ */
+export const SaveMethodGlyph: VNode = svg(
+	<>
+		<rect x="2.5" y="5.5" width="13.5" height="11" rx="2.2" />
+		<path d="M2.5 9.6h13.5" />
+		<path d="M19 13.5v6" />
+		<path d="M22 16.5h-6" />
+	</>,
+	18,
+);
+
+/**
+ * Payout schedule — a recurring cadence rather than the single out-movement {@link WithdrawGlyph}
+ * draws. `set_payout` previously borrowed Withdraw's arrow, which said "take money out now" for a
+ * control that only sets WHEN money leaves.
+ */
+export const PayoutScheduleGlyph: VNode = svg(
+	<>
+		<rect x="3" y="4.8" width="18" height="16.2" rx="2.2" />
+		<path d="M3 9.6h18" />
+		<path d="M8 2.8v3.4" />
+		<path d="M16 2.8v3.4" />
+		<path d="M12 12.6v4.2" />
+		<path d="m10 15 2 2 2-2" />
+	</>,
+	18,
+);
 // #endregion
 
 // #region Utility
@@ -256,6 +291,30 @@ export const FilterGlyph: VNode = svg(
 		<path d="M10 18h4" />
 	</>,
 	16,
+);
+
+/**
+ * A disclosure caret. Drawn, not the Unicode `▾` — §B.7 exists because a second icon family made of
+ * text characters is exactly how a set stops being one set.
+ */
+export const ChevronGlyph: VNode = svg(<path d="m6 9 6 6 6-6" />, 16);
+
+/**
+ * The capability-matrix pair, replacing a `●`/`–` character pair. Granted is a FILLED disc and
+ * not-granted an open ring at the same diameter — one shape channel, two states, so the grid reads
+ * without relying on the colour difference alone. Not a tick and a cross: a cross says "refused",
+ * and an ungranted capability is simply one this member does not hold.
+ */
+export const GrantedMark: VNode = (
+	<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+		<circle cx="6" cy="6" r="4.5" fill="currentColor" />
+	</svg>
+);
+
+export const NotGrantedMark: VNode = (
+	<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+		<circle cx="6" cy="6" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+	</svg>
 );
 
 export const MoreGlyph: VNode = svg(

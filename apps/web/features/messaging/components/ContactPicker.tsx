@@ -1,7 +1,8 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Avatar } from "@projective/ui/display";
+import { Button } from "@projective/ui/fields";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
 import type { MessagingContact, MessagingRole } from "../types/messaging-types.ts";
@@ -19,8 +20,12 @@ export interface ContactPickerProps {
 	mode: "new" | "add";
 	/** Ids already in the conversation (excluded from the list) — `add` mode. */
 	existingIds?: string[];
-	/** Fired with the picked ids (+ optional group name for a multi-pick). */
-	onConfirm: (contactIds: string[], groupName?: string) => void;
+	/**
+	 * Fired with the picked ids (+ optional group name for a multi-pick). May return a promise; the
+	 * picker awaits it so the confirm button can show a pending state and a failure can be reported
+	 * here rather than closing the modal on a silent no-op.
+	 */
+	onConfirm: (contactIds: string[], groupName?: string) => void | Promise<string | null>;
 	onCancel: () => void;
 }
 // #endregion
@@ -28,22 +33,37 @@ export interface ContactPickerProps {
 export function ContactPicker(props: ContactPickerProps): JSX.Element {
 	const contacts = useSignal<MessagingContact[]>([]);
 	const loading = useSignal(true);
+	const error = useSignal<string | null>(null);
+	const submitting = useSignal(false);
+	const submitError = useSignal<string | null>(null);
 	const query = useSignal("");
 	const selected = useSignal<string[]>([]);
 	const groupName = useSignal("");
 
-	useEffect(() => {
-		let live = true;
+	function load(): void {
+		loading.value = true;
+		error.value = null;
 		MessagingService.contacts(props.role).then((res) => {
-			if (!live) return;
-			const exclude = new Set(props.existingIds ?? []);
-			contacts.value = (res.ok && res.data ? res.data.contacts.contacts : []).filter((c) =>
-				!exclude.has(c.id)
-			);
+			if (!live.current) return;
+			// A failed fetch must NOT fall through to `[]` — that renders as "No matching contacts",
+			// which is indistinguishable from a genuinely empty list and tells the viewer something
+			// untrue about their own account.
+			if (res.ok && res.data) {
+				const exclude = new Set(props.existingIds ?? []);
+				contacts.value = res.data.contacts.contacts.filter((c) => !exclude.has(c.id));
+			} else {
+				error.value = res.message ?? "Couldn't load your contacts.";
+			}
 			loading.value = false;
 		});
+	}
+
+	const live = useRef(true);
+	useEffect(() => {
+		live.current = true;
+		load();
 		return () => {
-			live = false;
+			live.current = false;
 		};
 	}, []);
 
@@ -66,7 +86,22 @@ export function ContactPicker(props: ContactPickerProps): JSX.Element {
 	}
 
 	const isMulti = selected.value.length > 1;
-	const canConfirm = selected.value.length > 0;
+	const canConfirm = selected.value.length > 0 && !submitting.value;
+
+	/** Confirm, awaiting the caller so the button can show pending and a failure can be shown here. */
+	async function submit(): Promise<void> {
+		if (selected.value.length === 0) return;
+		submitting.value = true;
+		submitError.value = null;
+		const message = await props.onConfirm(
+			selected.value,
+			isMulti ? groupName.value.trim() || undefined : undefined,
+		);
+		if (!live.current) return;
+		submitting.value = false;
+		if (message) submitError.value = message;
+	}
+
 	const confirmLabel = props.mode === "add"
 		? "Add to conversation"
 		: isMulti
@@ -131,8 +166,25 @@ export function ContactPicker(props: ContactPickerProps): JSX.Element {
 			>
 				{loading.value
 					? <p class="msg-picker__empty">Loading contacts…</p>
+					: error.value
+					? (
+						<div class="msg-picker__failed" role="alert">
+							<p class="msg-picker__failed-title">{error.value}</p>
+							<Button
+								label="Try again"
+								variant="outlined"
+								severity="secondary"
+								size="sm"
+								onClick={load}
+							/>
+						</div>
+					)
 					: shown.length === 0
-					? <p class="msg-picker__empty">No matching contacts.</p>
+					? (
+						<p class="msg-picker__empty">
+							{needle ? "No contacts match that search." : "You have no contacts to message yet."}
+						</p>
+					)
 					: (
 						shown.map((c) => {
 							const on = selected.value.includes(c.id);
@@ -160,23 +212,25 @@ export function ContactPicker(props: ContactPickerProps): JSX.Element {
 					)}
 			</div>
 
-			{/* Actions. */}
+			{/* A failed create is reported here, where the viewer's selection still is. */}
+			{submitError.value && <p class="msg-picker__failed-title" role="alert">{submitError.value}
+			</p>}
+
+			{/* Actions — the shared system Button, not a feature-local button family. */}
 			<div class="msg-picker__actions">
-				<button type="button" class="msg-btn msg-btn--ghost" onClick={props.onCancel}>
-					Cancel
-				</button>
-				<button
-					type="button"
-					class="msg-btn msg-btn--primary"
+				<Button
+					label="Cancel"
+					variant="text"
+					severity="secondary"
+					disabled={submitting.value}
+					onClick={props.onCancel}
+				/>
+				<Button
+					label={confirmLabel}
 					disabled={!canConfirm}
-					onClick={() =>
-						props.onConfirm(
-							selected.value,
-							isMulti ? groupName.value.trim() || undefined : undefined,
-						)}
-				>
-					{confirmLabel}
-				</button>
+					loading={submitting.value}
+					onClick={() => void submit()}
+				/>
 			</div>
 		</div>
 	);

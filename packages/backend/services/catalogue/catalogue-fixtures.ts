@@ -301,8 +301,13 @@ function priceValue(d: ListingDetail): number {
 /** The ascending comparator for a sort key; the caller flips it by direction. */
 function ascCompare(sort: CatalogueListParams["sort"], a: ListingDetail, b: ListingDetail): number {
 	switch (sort) {
+		case "title":
+			// Numeric-aware + case-insensitive, so "Iconography set — 640" files where a reader expects.
+			return a.title.localeCompare(b.title, "en", { numeric: true, sensitivity: "base" });
 		case "best-selling":
 			return a.metrics.orders - b.metrics.orders;
+		case "views":
+			return a.metrics.views30d - b.metrics.views30d;
 		case "price":
 			return priceValue(a) - priceValue(b);
 		case "rating":
@@ -321,9 +326,19 @@ function statusCounts(list: ListingDetail[]) {
 	return counts;
 }
 
-/** Roll up the KPI strip over every non-archived listing. */
-function computeStats(): CatalogueStats {
-	const live = allListings().filter((d) => d.status !== "archived");
+/**
+ * Roll up the KPI strip over every non-archived listing **in the active type scope**.
+ *
+ * The scope argument is deliberate. A type segment is a scope the seller chose and stays in, so the
+ * analytics must follow it — reporting the whole catalogue while the console shows only Services made
+ * the two disagree on screen. A *search* is not a scope: it is a lookup, and "revenue across listings
+ * matching 'brand'" answers no question a seller has. So the strip follows the segment, ignores the
+ * query, and the console labels which of the two it is reporting.
+ */
+function computeStats(type?: CatalogueListParams["type"]): CatalogueStats {
+	const live = allListings().filter((d) =>
+		d.status !== "archived" && (!type || type === "all" || d.kind === type)
+	);
 	let views30d = 0, orders = 0, revenue = 0, ratingSum = 0, ratingWeight = 0;
 	const trend = Array(8).fill(0);
 	for (const d of live) {
@@ -393,7 +408,7 @@ export function listListings(params: CatalogueListParams): CataloguePage {
 		nextCursor,
 		total,
 		statusCounts: statusCounts(all),
-		stats: computeStats(),
+		stats: computeStats(params.type),
 		viewerId: ACTING_SELLER.handle,
 	};
 }

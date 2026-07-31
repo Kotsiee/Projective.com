@@ -9,9 +9,14 @@ import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ProductItem } from "../../types/explore-types.ts";
 
 /**
- * ProductCard — a ready-to-buy digital product for the staggered masonry. Media-forward (the `span`
- * drives its height in the column flow), with a floating price chip, owner attribution, and its review
- * rating beneath.
+ * ProductCard — a ready-to-buy digital product for the staggered masonry. Media-forward: the image's
+ * own intrinsic ratio drives the tile's height in the column flow, which is what makes the masonry
+ * interlock. The price rides the media as an overlay chip rather than a foot, so the body stays a
+ * three-band read — category, title, owner + rating.
+ *
+ * The tile carried an `ex-card--span{n}` class for its supposed "column weight". No stylesheet has ever
+ * defined that class, so it did nothing; the staggering has always come from the intrinsic image ratio.
+ * Removed rather than left as a claim the CSS does not honour.
  */
 export function ProductCard(
 	{ item, ctx = { scope: "explore" }, onSelect, authed = false }: {
@@ -23,7 +28,7 @@ export function ProductCard(
 ): JSX.Element {
 	const review = item.rating?.asHelper ?? item.rating?.asClient;
 	return (
-		<article class={`ex-card ex-card--product ex-card--span${item.span}`}>
+		<article class="ex-card ex-card--product">
 			<CardLink
 				item={item}
 				ctx={ctx}
@@ -34,18 +39,16 @@ export function ProductCard(
 			<div class="ex-media">
 				<img src={item.media} alt="" loading="lazy" decoding="async" />
 				<span class="ex-flags">
-						{item.sponsored && <PromotedBadge />}
-						<span class="ex-media__price">{item.price}</span>
-					</span>
+					{item.sponsored && <PromotedBadge />}
+					<span class="ex-media__price">{item.price}</span>
+				</span>
 			</div>
 			<div class="ex-card__body">
 				<span class="ex-eyebrow">{item.category}</span>
 				<h3 class="ex-card__title ex-card__title--sm">{item.title}</h3>
 				<div class="ex-card__byline">
 					<OwnerBadge owner={item.owner} variant="mini" />
-					{review && (
-						<RatingStars value={review.value} count={review.count} size="sm" compact />
-					)}
+					{review && <RatingStars value={review.value} count={review.count} size="sm" compact />}
 				</div>
 			</div>
 		</article>

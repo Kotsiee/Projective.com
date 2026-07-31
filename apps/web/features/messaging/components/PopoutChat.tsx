@@ -37,6 +37,8 @@ export interface PopoutChatProps {
 export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	const messages = useSignal<ChatMessage[]>([]);
 	const loading = useSignal(true);
+	const loadingOlder = useSignal(false);
+	const error = useSignal<string | null>(null);
 	const hasMore = useSignal(false);
 	const cursor = useSignal<string | null>(null);
 	const canPin = useSignal(false);
@@ -45,6 +47,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const composerApi = useRef<ComposerHandle | null>(null);
 	const dragDepth = useRef(0);
+	const settleTimers = useRef<number[]>([]);
 
 	// #region Fetch
 	function fetchPage(before: string | null): Promise<MessagePage | null> {
@@ -58,32 +61,53 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		);
 	}
 
+	/**
+	 * Pin to the newest message. A single `requestAnimationFrame` is not enough: the media in a
+	 * message grows `scrollHeight` after that first frame, so a lone rAF lands the panel part-way up
+	 * a conversation. Re-pin across a settle window (the same hardening the window-scrolled
+	 * {@link ChatFeed} needed), and stop early once the panel is actually at the bottom.
+	 */
 	function scrollToBottom(): void {
-		requestAnimationFrame(() => {
+		const pin = () => {
 			const el = scrollRef.current;
 			if (el) el.scrollTop = el.scrollHeight;
-		});
+		};
+		pin();
+		requestAnimationFrame(pin);
+		const timers = [60, 180, 400].map((ms) => setTimeout(pin, ms) as unknown as number);
+		settleTimers.current.forEach(clearTimeout);
+		settleTimers.current = timers;
 	}
 
 	async function loadLatest(): Promise<void> {
 		loading.value = true;
+		error.value = null;
 		const page = await fetchPage(null);
 		if (page) {
 			messages.value = page.messages;
 			hasMore.value = page.hasMore;
 			cursor.value = page.nextCursor;
 			canPin.value = page.permissions.canPin;
+		} else {
+			// Without this the panel renders "No messages yet. Say hello 👋" on a NETWORK FAILURE —
+			// a conversation with history would look brand new.
+			error.value = "Couldn't load this conversation.";
 		}
 		loading.value = false;
 		scrollToBottom();
 	}
 
 	async function loadOlder(): Promise<void> {
-		if (!hasMore.value || !cursor.value) return;
+		if (!hasMore.value || !cursor.value || loadingOlder.value) return;
 		const el = scrollRef.current;
 		const prevHeight = el?.scrollHeight ?? 0;
+		loadingOlder.value = true;
 		const page = await fetchPage(cursor.value);
-		if (!page) return;
+		loadingOlder.value = false;
+		if (!page) {
+			error.value = "Couldn't load earlier messages.";
+			return;
+		}
 		messages.value = [...page.messages, ...messages.value];
 		hasMore.value = page.hasMore;
 		cursor.value = page.nextCursor;
@@ -94,6 +118,10 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 
 	useEffect(() => {
 		void loadLatest();
+		return () => {
+			settleTimers.current.forEach(clearTimeout);
+			settleTimers.current = [];
+		};
 	}, [state.projectId, state.channelId, state.conversationId]);
 	// #endregion
 
@@ -189,6 +217,15 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 			<div class="pop-chat__scroll" ref={scrollRef}>
 				{loading.value
 					? <p class="pop-chat__hint">Loading conversation…</p>
+					: error.value && messages.value.length === 0
+					? (
+						<div class="pop-chat__failed" role="alert">
+							<p class="pop-chat__hint">{error.value}</p>
+							<button type="button" class="pop-chat__earlier" onClick={() => void loadLatest()}>
+								Try again
+							</button>
+						</div>
+					)
 					: messages.value.length === 0
 					? <p class="pop-chat__hint">No messages yet. Say hello 👋</p>
 					: (
@@ -197,9 +234,11 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 								<button
 									type="button"
 									class="pop-chat__earlier"
+									disabled={loadingOlder.value}
+									aria-busy={loadingOlder.value ? "true" : undefined}
 									onClick={() => void loadOlder()}
 								>
-									Load earlier
+									{loadingOlder.value ? "Loading…" : "Load earlier"}
 								</button>
 							)}
 							{rows.map((row) => <Fragment key={row.key}>{renderRow(row)}</Fragment>)}

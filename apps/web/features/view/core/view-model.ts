@@ -75,12 +75,20 @@ export function groupItemsByType(items: ExploreItem[]): EntityGroup[] {
 /** A badge chip in the hero details column. `tone` picks the visual treatment. */
 export interface BadgeTag {
 	label: string;
-	tone: "category" | "mode" | "promoted";
+	tone: "format" | "category" | "mode" | "promoted";
 }
 
-/** Derive the hero badge row: category, engagement/delivery mode, and a Promoted pill when sponsored. */
+/**
+ * Derive the hero badge row: the entity format, its category, the engagement/delivery mode, and a
+ * Promoted pill when sponsored.
+ *
+ * The format chip leads because it used to be a separate `__eyebrow` above the title — a kicker that
+ * also duplicated the mode chip immediately below it (a Service page read "SERVICE" → title → "Brand ·
+ * Pipeline"). Folding it in answers "what is this" exactly once, and keeps the answer for the formats
+ * whose badge row would otherwise be empty (articles, people, teams).
+ */
 export function badgeTagsFor(item: ExploreItem): BadgeTag[] {
-	const tags: BadgeTag[] = [];
+	const tags: BadgeTag[] = [{ label: ENTITY_LABEL[item.type], tone: "format" }];
 	switch (item.type) {
 		case "services":
 			tags.push({ label: item.category, tone: "category" });
@@ -103,6 +111,45 @@ export function badgeTagsFor(item: ExploreItem): BadgeTag[] {
 	}
 	if (item.sponsored) tags.push({ label: "Promoted", tone: "promoted" });
 	return tags;
+}
+// #endregion
+
+// #region Commerce shape
+/** How an entity is transacted — what the CTA stack offers, and what it calls it. */
+export interface ViewCommerce {
+	/** Session-format service: booked from a schedule rather than bought outright. */
+	bookable: boolean;
+	/** Multi-attendee group session (changes the booking noun). */
+	group: boolean;
+	/** Bought outright: a non-session service, or a product. */
+	purchasable: boolean;
+	/** "Book a session" / "Book a seat". */
+	bookLabel: string;
+	/** "Message" / "Message team" / "Message author". */
+	msgLabel: string;
+}
+
+/**
+ * Resolve the transactional shape of an entity. Pure and shared: the side-nav {@link ViewActionLane}
+ * and the ≤767px in-body {@link ViewBuyBar} both derive from this, so the two copies of the CTA stack
+ * cannot offer different actions. (They are mutually exclusive by `display`, so only one is ever in
+ * the accessibility tree — the same pattern `.pf-header__actions` uses on the profile page.)
+ */
+export function commerceFor(item: ExploreItem): ViewCommerce {
+	const bookable = item.type === "services" &&
+		(item.serviceType === "Session" || item.serviceType === "Group Session");
+	const group = item.type === "services" && item.serviceType === "Group Session";
+	return {
+		bookable,
+		group,
+		purchasable: (item.type === "services" && !bookable) || item.type === "products",
+		bookLabel: group ? "Book a seat" : "Book a session",
+		msgLabel: item.type === "articles"
+			? "Message author"
+			: item.owner.kind === "team" || item.owner.kind === "business"
+			? "Message team"
+			: "Message",
+	};
 }
 // #endregion
 

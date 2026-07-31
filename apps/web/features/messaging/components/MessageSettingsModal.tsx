@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Dialog } from "@projective/ui/feedback";
-import { ToggleSwitch } from "@projective/ui/fields";
+import { Button, ToggleSwitch } from "@projective/ui/fields";
 import { AutoResponseEditor } from "./AutoResponseEditor.tsx";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { settingsModalOpen } from "../core/messaging-state.ts";
@@ -56,6 +56,8 @@ function SwitchRow(
 
 export function MessageSettingsModal({ initial }: MessageSettingsModalProps): JSX.Element {
 	const draft = useSignal<MessagingSettings>(initial);
+	const saving = useSignal(false);
+	const saveError = useSignal<string | null>(null);
 
 	// Layer the last-saved local edits over the SSR baseline (after hydration only).
 	useEffect(() => {
@@ -78,9 +80,23 @@ export function MessageSettingsModal({ initial }: MessageSettingsModalProps): JS
 		patch({ autoResponses });
 	}
 
-	function save(): void {
+	/**
+	 * Persist locally, then await the service. The result was previously discarded (`void`) and the
+	 * modal closed regardless — so a failed save looked exactly like a successful one. Now the modal
+	 * stays open on failure and says so; the local write still stands, so nothing the viewer typed is
+	 * lost either way.
+	 */
+	async function save(): Promise<void> {
+		saving.value = true;
+		saveError.value = null;
 		writeStored("local", LocalKeys.MESSAGING_SETTINGS, JSON.stringify(draft.value));
-		void MessagingService.saveSettings(draft.value);
+		const res = await MessagingService.saveSettings(draft.value);
+		saving.value = false;
+		if (!res.ok) {
+			saveError.value = res.message ??
+				"Couldn't save to your account. These settings are kept on this device for now.";
+			return;
+		}
 		settingsModalOpen.value = false;
 	}
 
@@ -210,15 +226,17 @@ export function MessageSettingsModal({ initial }: MessageSettingsModalProps): JS
 				</section>
 			</div>
 
+			{saveError.value && <p class="msg-set__error" role="alert">{saveError.value}</p>}
+
 			<div class="msg-set__actions">
-				<button
-					type="button"
-					class="msg-btn msg-btn--ghost"
+				<Button
+					label="Cancel"
+					variant="text"
+					severity="secondary"
+					disabled={saving.value}
 					onClick={() => (settingsModalOpen.value = false)}
-				>
-					Cancel
-				</button>
-				<button type="button" class="msg-btn msg-btn--primary" onClick={save}>Save settings</button>
+				/>
+				<Button label="Save settings" loading={saving.value} onClick={() => void save()} />
 			</div>
 		</Dialog>
 	);

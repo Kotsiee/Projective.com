@@ -2299,6 +2299,150 @@ alongside the rest of the work. | `DESIGN_SYSTEM.md` §C.1 + the field-contract 
 `apps/web/features/auth/styles/auth.css` · `apps/web/features/catalogue/**` ·
 `apps/web/features/workspaces/**` · Decisions #19 / #50 / #60 |
 
+| 63 | **Wallet — reachability, and the other half of the region contract (2026-07-31). REFINES Decision
+#60.** A composed-page layout review of `/wallet` found the BODY half of #60's region contract honoured
+better than anywhere else in the codebase (17 controls on the Overview, every one a data selection or a
+navigation — no tabs, no filter dropdown, no CTA) and the CHROME half unfinished in ways that made the
+surface unusable below a 1080px window. **(A) The footer band was setting the surface's minimum width.**
+`.ui-middle-nav` is `grid-template-columns: auto 1fr`, and a `1fr` track's automatic minimum is `auto`,
+so the content column could not shrink below its own min-content — which one `nowrap` rig of six
+text-labelled buttons raised to **739px** (measured: 252px with the footer hidden, 95px with header and
+footer hidden). The lane, being the `auto` track, absorbed every pixel: **280px → 2px at an 820px
+viewport with all six nav links clipped**, and at 768px the content column overflowed the frame's `clip`
+by 50px and cut the lifetime-earned figure. Two fixes, either of which alone leaves the other's failure
+reachable: `minmax(0, 1fr)` on the content track, and `container-type: inline-size` on the rig, whose
+inline-size containment stops it contributing its width at all. **(B) The rig now adapts by WIDTH, not by
+page identity, and no action is ever lost to it.** `TABLE_VIEWS` gated everything and was wrong three
+ways: a row-density slider on Payouts and Invoices, which render `<dl>`/`<ul>` fact lists and where
+`walletZoom` is read by nothing (only `LedgerTable` reads it); a `nth-child(n + 3) { display: none }`
+mobile rule that deleted **Transfer, Fund escrow and New recurring** on exactly the four pages with no
+menu to recover them; and the width floor above. Three container-query tiers (label → glyph-only, which
+is §B.6.3's icon-only sticky footer, with the name relocated to the Tooltip every action now carries →
+one menu), and **the menu holds every action at every tier**. **(C) Five actions existed in code and
+nowhere in the interface.** `add_method` / `set_payout` / `enrol_smoother` had labels, capability
+requirements, glyphs and `WalletService` methods, and `quickActionsFor` never emitted them;
+`MoneyMoveDrawer` returned `null` for those plus `new_recurring` and `request_spend`, and was the only
+consumer of `activeAction`. So Methods could not add a method, Payouts could not change the schedule its
+own docstring called changeable, an eligible Income Smoother could not be enrolled in, and three empty
+states pointed at "the action bar" for controls it was never given. New `ConfigureDrawer` (reversible
+settings commit directly — the confirmation modal is for the irreversible); `quickActionsFor` emits the
+three; a `VIEW_ACTION` map gives each page its own leading primary. **Add method collects no card data
+by construction** — no PAN, expiry or CVV field, because Stripe holds it and an input implying otherwise
+is a custody claim the surface spends its whole design refusing to make. **(D) The action layer was
+mounted in `WalletOverviewScreen`** — one route, while the rig that opens it renders on eight — so every
+footer action on the seven deep pages opened nothing. It moved to the rig. **(E) Section navigation
+below 767px.** The lane is `display: none` there and was the only route between the eight sections, so
+Activity / Funding / Methods / Invoices / Access were unreachable on every phone; the header band now
+carries a capability-filtered switcher at exactly the width the lane leaves — **the duty transfers, it
+does not duplicate**. The `@media (max-width: 900px)` rule that dropped the reporting window now drops
+the account NAME instead: the avatar still answers "whose money is this", which is the last fact allowed
+to leave a band whose controls move money. **(F) Two header controls were inert** — Search wrote to a
+local signal nothing read, and Filter opened a panel whose entire content was a sentence telling you to
+use the balance meter, on four pages where that meter is not rendered. Both now work. **(G) The §B.4
+ladder was missing a rung**: `wallet-bands.css` documented a tonal step and every band computed
+`rgba(0, 0, 0, 0)`, leaving a near-uniform 64/48/64px gap to carry all separation. Now an alternating
+`nth-of-type(even)` tint (position, not tone name — Payouts runs intel→flow→ledger and a name-keyed rule
+would abut two tinted bands), a translucent `color-mix` overlay so it steps against whatever ground it
+actually sits on, and the ledger hairline removed so every boundary spends exactly one device (§B.9.3).
+**(H) Type ramp re-cut.** Six display steps, none more than ~1.4× its neighbour below 50px, with two
+inversions: the Standing score at 50.9px was 71% of the balance and became the page's second hero on
+scroll (now 40px), and the pence at `0.55em` of a 72px figure rendered **39.6px — larger than the
+commission rate**. That ratio is the SMALL end's legibility floor and is not a ratio at display scale;
+a hero-only `0.36em` puts them at 25.9px. The ramp is now 72 → 40 → 36 → 30 → 26 → 22. **(I) Policy.**
+Approve/Decline were a repeated `filled --primary` row action carrying the amount in the label (both now
+`text` with severity doing the work, amount out of the verb per the file's own RULE O-2); the parallel
+`.wlt-btn` family — a second button system with no severity axis, which is how an irreversible approval
+came to look like a safe primary — is deleted and its 11 sites migrated to `Button`; `●`/`–` capability
+marks became drawn glyphs; `add_method` and `set_payout` stopped borrowing Recurring's and Withdraw's
+glyphs; mobile Export stopped being nameless (`font-size: 0` with no `aria-label`); `aria-expanded`
+now renders in both states (Preact drops `={false}`, so five menu buttons shipped without it). **(J) Two
+correctness bugs found in passing:** the ledger's `loadMore` and sort refetch each built their own params
+and both omitted the fund-state filter, so page 2 of a filtered ledger came back unfiltered and appended
+onto filtered rows; and ten refetches were `if (res.ok && res.data)` with no else, so a failed currency
+or account switch left the previous wallet's figures on screen indefinitely — `applyRead` + the
+previously-unreferenced `BandError`/`WalletSkeleton` now close both. **Verified by measurement** at
+1440 / 1024 / 820 / 768 / 390, LTR + RTL, light + dark: lane 280px at every width it exists, **zero
+clipped elements and zero document overflow in both directions** (the stage-gate figure "56 / 50" was
+clipped 13px in BOTH — a nowrap label took 128px of an 86px box and collapsed the `1fr` meter to zero;
+its panel now uses a container query, because the intel band splits into ~430px plates and a viewport
+media query could never see the width that was actually wrong). **NOT verified: click-through of the
+drawers** — Fresh's deferred island revival does not run in the hidden preview pane (no Preact listeners
+attach on any island, including long-shipped ones), so the action layer is verified by SSR output and
+type-checking only. **Flagged (surface, do not silently resolve):** (a) the `@media (pointer: coarse)`
+bump of the rig row to 40px cannot be exercised in the preview, which reports a fine pointer at every
+width; (b) the detector's one remaining finding is `--spring-standard` matched on the word "spring" —
+it resolves to `cubic-bezier(0.22, 1, 0.36, 1)`, which is ease-out-quint with no overshoot, exactly what
+§B.5 specifies. | `DESIGN_SYSTEM.md` §B.4 / §B.6 / §B.8 / §B.9 · `packages/ui/navigation/styles/middle-nav.css`
+· `apps/web/features/wallet/**` · `packages/backend/services/finance/wallet-fixtures.ts` · Decisions #55
+/ #60 / #62 |
+
+| 63 | **Messaging — the `/messages` root inverted the region contract; the inbox moves to the body
+(2026-07-31).** A composed-page layout audit of the messaging surface found the index route built the
+opposite way round from `/wallet`, the reference implementation of the contract: the **lane was the
+surface** (search · filters · partitions · the entire conversation list · both primary actions) and
+the **body was a placeholder** — 1096×852, ~80% of the content region, holding a glyph, an `h1` and a
+sentence. Measured consequences: the conversation row got 234px, of which the message preview got
+**114px — 8.3% of the content region — clipping at 47% of its natural width** (`scrollWidth` 240);
+the root had **no header band and no footer band at all** (`conversationHeaderFor`/`FooterFor` return
+`null` off a specific conversation), which is why every global control had collected in the lane
+head; and below the shell's `max-width: 767px` rule — which REMOVES `.ui-middle-nav__lane`
+(`middle-nav.css:168`) — the list, search, filters, all five toggles, every row kebab, Settings and
+New message all measured `0×0`, leaving copy that read *"Select a conversation from the list"* beside
+no list. (`/projects` fails identically; `/wallet` proves it is solvable in the same shell — it keeps
+a 3435px body and both bands at 390px.) **Resolved by restoring the contract on the root**, while the
+DETAIL route keeps the conversation list in the lane, which is genuine sibling navigation: new
+**`InboxView`** (body — the list, and the only fetch owner), **`InboxHeader`** (header band —
+identity · live count · search · id-based refinements), **`InboxFooter`** (footer band — New message ·
+Settings · density), **`InboxScopeLane`** (lane — partitions and relation facets as NAMED rows with
+LIVE COUNTS, replacing five unlabelled icon toggles), resolved by `inbox-slots.tsx`
+(`inboxHeaderFor`/`inboxFooterFor`/`messagesLaneFor`, mirroring the wallet slots). The preview track
+went **114px → 577px at 1440** and shows 100% of its natural width at every size. Four regions are
+four hydration roots, so they share **`inbox-state.ts`** (the board-footer↔body precedent) — but the
+row layout uses **container queries**, not viewport media queries, because at exactly 768px the lane
+is still shown and the content region is 424px, narrower than it is at 768px with the lane hidden;
+guessing from the viewport produced a 36px preview track at that boundary. **Also fixed:** the
+duplicated `Starred` control (same glyph, same label, 160px apart, different behaviour AND different
+latency — one refetched, one was a client overlay); **six silently discarded errors**, three of which
+rendered a failed fetch as an EMPTY result (`ContactPicker` → *"No matching contacts"*, `PopoutChat` →
+*"No messages yet"*, and a failed create/save closing its modal as though it had succeeded); `busy`
+reaching the DOM as `aria-busy` and nothing else (`lane.css` had zero matching rules, so a refine was
+invisible to sighted viewers); the missing not-found guard on `[conversationId]/files.tsx` that its
+two sibling tabs both had; `hasMore`/`nextCursor` never being read, so a truncated inbox was silently
+truncated; the message column and the composer resolving **two different measures** (feed uncapped,
+composer `56rem` — the field sat 130px inside the column and 125px short of where own bubbles land)
+now unified on one **`--chat-measure`** token; the filter chip whose selected state differed by a
+**1.003:1 luminance ratio** while DROPPING its label contrast from 7.14:1 to 4.36:1; the footer band
+pinning to `inset-block-end: 0` on mobile, which is exactly where the fixed `.ui-bottom-nav` sits
+(measured: identical 390×56 rects); the `.msg-btn` family that reimplemented `Button` and shipped the
+surface's only raw hex; **33 font sizes, 11 weights and 22 icon px** migrated to `--text-*`/`--fw-*`/
+`--icon-*` (three sizes — `0.9rem`, `0.95rem`, `1.25rem` — were off-ramp entirely); two focus
+vocabularies collapsed to the canonical `--focus-ring-shadow` with eleven controls that had NO focus
+rule gaining one; sub-24px hit targets raised; the auto-response three-level box-in-box flattened; the
+empty state's `min-block-size: 60vh` (sized against the VIEWPORT, not its region); and four class
+hooks applied in TSX with no rule anywhere in the repo. **Two bugs of one class found in the new code
+during verification and worth remembering: `inboxAll.value.length === 0` was used both as "not seeded
+yet" and as a seed guard, so a search matching nothing re-seeded the SSR list and rendered the full
+inbox back; and the header inferred "not loaded" from the same emptiness and printed the SSR count
+above an empty list. Empty is a real value — only an explicit `inboxSeeded` flag may gate a seed.**
+Verified in-browser at 1440 / 1024 / 900 / 768 / 390, LTR and RTL (zero horizontal overflow in both
+directions at every width), with the scope/search/filter/density/empty/clear paths exercised
+end-to-end; detector clean; typecheck + fmt clean. **NOT verified in this environment (stated, not
+claimed): `:focus-visible` rendering** — the preview pane never takes real keyboard focus, so the
+rules are confirmed present and using the composite token by source audit only. No DB/lifecycle
+change (still a read projection over fixtures) → no `documentation/database/*` or
+`PRODUCT_MANAGEMENT.md` change; no new `@projective/ui` primitive → no `DESIGN_SYSTEM.md` §C.1 change
+(the two package edits are behavioural fixes to existing components: a visible `aria-busy` state on
+`LaneList`, and the mobile footer-band offset). **Flagged (surface, do not silently resolve):** (a)
+`/projects` has the SAME mobile failure — its root body still reads *"Pick a project from the list on
+the left"* with the lane removed — and was deliberately left out of this pass; (b) the mobile row
+drops the hover-revealed kebab entirely (there is no hover on touch), so Favourite/Archive/Delete are
+reachable only from inside a conversation on a phone — a long-press or swipe affordance is the real
+answer and is deferred. | `DESIGN_SYSTEM.md` Part D / §B.4 / §B.6 ·
+`apps/web/features/messaging/**` · `apps/web/routes/(dashboard)/messages/**` ·
+`apps/web/routes/(dashboard)/_layout.tsx` · `packages/ui/navigation/styles/{lane,middle-nav}.css` ·
+`apps/web/features/projects/styles/{chat-feed,chat-composer}.css` · `apps/web/utils/storage-keys.ts`
+· `.impeccable/critique/2026-07-31T12-00-00Z__messaging-layout.md` · Decisions #49 / #50 / #52 / #60 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

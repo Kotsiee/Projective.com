@@ -173,6 +173,12 @@ export const LocalKeys = {
 	 */
 	CONVERSATION_PREFS: "pj.local.messages.conversationPrefs",
 	/**
+	 * The `/messages` body inbox row density — `"comfortable"` (default, two-line rows with the
+	 * engagement context) or `"compact"`. Owned by the footer band's density control, read by the body.
+	 * Mirrors the Files/Wallet zoom keys: the footer band owns density, the body reads it.
+	 */
+	MESSAGES_DENSITY: "pj.local.messages.density",
+	/**
 	 * The Message Settings (auto-responses + notification preferences) — a JSON `MessagingSettings` blob.
 	 * A client-side stub until `MESSAGING_BACKEND_LIVE` owns the write path; read after hydration to
 	 * hydrate the settings modal with the viewer's last-saved local edits over the SSR baseline.

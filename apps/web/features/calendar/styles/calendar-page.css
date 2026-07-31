@@ -119,39 +119,7 @@
 }
 /* #endregion */
 
-/* #region /view/[entity]/schedule wrapper */
-.view-schedule {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-	inline-size: 100%;
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding: var(--space-5);
-}
-.view-schedule__head {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-}
-.view-schedule__back {
-	align-self: flex-start;
-	font-size: 0.8rem;
-	color: var(--text-secondary);
-	text-decoration: none;
-}
-.view-schedule__back:hover {
-	color: var(--on-surface);
-}
-.view-schedule__title {
-	margin: 0;
-	font-size: 1.35rem;
-	font-weight: 700;
-	color: var(--on-surface);
-}
-.view-schedule__sub {
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: 0.9rem;
-}
-/* #endregion */
+/* The `.view-schedule*` block moved to `features/view/styles/view.css`. It styles the
+   `/view/[id]/schedule` routes, which the VIEW feature owns, and it was only ever delivered here
+   because a calendar island happened to carry this sheet — so the branch that renders no calendar
+   (schedule unavailable) shipped with no rules at all. */

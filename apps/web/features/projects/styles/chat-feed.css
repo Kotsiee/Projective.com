@@ -32,10 +32,26 @@
 
 /* #endregion */
 
+/*
+ * The shared chat measure — ONE column for the messages and the field that produces them.
+ *
+ * These were two independent widths: the composer capped at `56rem` and centred while the feed ran
+ * the full content region uncapped. Measured on a 1440px viewport that put the text field 130px
+ * inside the message column's leading edge and 125px short of where the viewer's own bubbles land —
+ * you typed in a narrower column than you read. Both now resolve the same token, so the two can no
+ * longer drift. On `:root` rather than a shared ancestor because the feed lives in the content
+ * region and the composer in the frame's footer band; they have no common styled parent.
+ */
+:root {
+	--chat-measure: 56rem;
+}
+
 /* #region Virtualization viewport (bottom-anchored) */
 .chat-feed__viewport {
 	position: relative;
 	inline-size: 100%;
+	max-inline-size: var(--chat-measure);
+	margin-inline: auto;
 	/* Bottom-anchor: push the (short) stream to the bottom of the filled feed, above the composer. */
 	margin-block-start: auto;
 	padding-block: var(--space-3);
@@ -116,11 +132,21 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
+	/* Shares the chat measure with the stream and the composer — the banner belongs to the column it
+	   is pinning a message from, not to the whole content region. */
+	inline-size: 100%;
+	max-inline-size: var(--chat-measure);
 	margin-block: var(--space-2);
+	margin-inline: auto;
 	padding: 0.35rem 0.5rem 0.35rem 0.7rem;
 	background: color-mix(in srgb, var(--surface-1) 96%, var(--primary));
+	/*
+	 * One hairline, all four sides. This carried a 3px `--primary` leading stripe on top of the tint,
+	 * the hairline, the elevation AND its own pin glyph — four channels for one meaning, and the
+	 * thick coloured edge is the tell the design floor bans outright. The pin icon already says
+	 * "pinned" in the accent; the banner needs nothing louder than its own tint to be found.
+	 */
 	border: var(--hairline);
-	border-inline-start: 3px solid var(--primary);
 	border-radius: var(--radius-lg);
 	box-shadow: var(--elevation-low);
 }

@@ -18,12 +18,18 @@ export interface ProfileStickyHeaderProps {
 	profile: ProfileView;
 	/** Whether the viewer owns this profile (swaps the CTA for Edit-profile). */
 	canEdit: boolean;
+	/**
+	 * Render the band open from the first byte instead of migrating it on scroll. Set on surfaces that
+	 * have no body `ProfileHeader` to migrate FROM — today the availability calendar, which otherwise
+	 * showed no identity at all: nothing on the page said whose calendar it was.
+	 */
+	pinned?: boolean;
 }
 
 export default function ProfileStickyHeader(
-	{ profile, canEdit }: ProfileStickyHeaderProps,
+	{ profile, canEdit, pinned = false }: ProfileStickyHeaderProps,
 ): JSX.Element {
-	const condensed = headerCondensed.value;
+	const condensed = pinned || headerCondensed.value;
 	return (
 		<div
 			class="pf-stickyhead"

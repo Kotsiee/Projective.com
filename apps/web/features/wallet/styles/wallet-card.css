@@ -470,8 +470,8 @@
 	outline-offset: 2px;
 }
 
-/* Announcements only - the state change is already visible, so it carries no visual weight. 
-   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+/* Announcements only - the state change is already visible, so it carries no visual weight.
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 
 .wlt-deck--empty {

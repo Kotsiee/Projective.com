@@ -96,10 +96,16 @@ const VIEW_TOGGLES: readonly LaneToggleOption<ConversationView>[] = [
 	{ key: "archived", label: "Archived", icon: <MessagingIcon name="archive" /> },
 ];
 
-/** The permanent icon-only quick filters (mirrors the projects UtilityShortcuts row). */
+/**
+ * The permanent icon-only quick filters (mirrors the projects UtilityShortcuts row).
+ *
+ * Unread ONLY. A second "Starred" lived here — same glyph, same label, 160px from the Starred
+ * partition above, narrowing the set instead of switching it, and resolving on a different timescale
+ * (this row is a client overlay; the partition refetches). Two identical-looking controls with
+ * different behaviour is not a shortcut, it is a coin toss; the partition owns starred.
+ */
 const QUICK_TOGGLES = [
 	{ key: "unread" as const, label: "Unread", icon: <MessagingIcon name="mail" /> },
-	{ key: "starred" as const, label: "Starred", icon: <MessagingIcon name="star" /> },
 ];
 
 type QuickKey = (typeof QUICK_TOGGLES)[number]["key"];
@@ -124,10 +130,10 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	const view = useSignal<ConversationView>("inbox");
 	const q = useSignal("");
 	const unread = useSignal(false);
-	const starredOnly = useSignal(false);
 	const filter = useSignal<ConversationFilter>({});
 	const filterOpen = useSignal(false);
 	const loading = useSignal(false);
+	const error = useSignal<string | null>(null);
 	const collapsed = useSignal(false);
 
 	const searchTimer = useRef<number | null>(null);
@@ -146,7 +152,13 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		});
 		if (id !== reqId.current) return; // a newer request superseded this one
 		loading.value = false;
-		if (res.ok && res.data) serverList.value = res.data.page.conversations;
+		if (res.ok && res.data) {
+			serverList.value = res.data.page.conversations;
+			error.value = null;
+		} else {
+			// Previously the message was dropped and the stale list stayed on screen with no signal.
+			error.value = res.message ?? "Couldn't refresh your conversations.";
+		}
 		persistFilters();
 	}
 
@@ -229,21 +241,14 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 			? merged.filter((c) => c.starred && !c.archived)
 			: merged.filter((c) => !c.archived);
 		// The quick-filter row narrows the partition further (each toggle is an AND on the visible set).
-		return partitioned.filter((c) =>
-			(!starredOnly.value || c.starred) && (!unread.value || c.unread)
-		);
+		return partitioned.filter((c) => !unread.value || c.unread);
 	});
 
 	const services = useComputed(() => serviceOptions(optionSource.value));
 	const products = useComputed(() => productOptions(optionSource.value));
 	const entities = useComputed(() => entityOptions(optionSource.value));
 	const filterCount = useComputed(() => activeFilterCount({ filter: filter.value }));
-	const activeQuick = useComputed<QuickKey[]>(() => {
-		const keys: QuickKey[] = [];
-		if (unread.value) keys.push("unread");
-		if (starredOnly.value) keys.push("starred");
-		return keys;
-	});
+	const activeQuick = useComputed<QuickKey[]>(() => (unread.value ? ["unread"] : []));
 	// #endregion
 
 	// #region Conversation-state actions (optimistic, persisted locally)
@@ -267,14 +272,10 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		updatePref(id, { deleted: true });
 	}
 
-	/** Toggle one quick filter. `unread` is a server facet (refetch); `starred` is a local overlay. */
-	function onQuick(key: QuickKey): void {
-		if (key === "unread") {
-			unread.value = !unread.value;
-			void apply();
-			return;
-		}
-		starredOnly.value = !starredOnly.value;
+	/** Toggle the Unread quick filter — a server facet, so it refetches. */
+	function onQuick(_key: QuickKey): void {
+		unread.value = !unread.value;
+		void apply();
 	}
 	// #endregion
 
@@ -375,6 +376,14 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				</LaneHead>
 
 				<LaneList label="Conversations" busy={loading.value}>
+					{error.value && (
+						<div class="msg-lane-error" role="alert">
+							<p class="msg-lane-error__text">{error.value}</p>
+							<button type="button" class="msg-lane-error__retry" onClick={() => void apply()}>
+								Retry
+							</button>
+						</div>
+					)}
 					{displayed.value.length === 0
 						? (
 							<LaneEmpty

@@ -8,21 +8,28 @@ import { reviewsHref } from "../core/profile-model.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 
 /**
- * ProfileMetaSidebar — the sticky right rail of the profile (root CLAUDE.md — Part 3). Two stacked
- * tonal-tint panels (§B.4):
- *  1. The meta panel — a header pairing the live online status (left) with the local time / timezone +
- *     availability (right), then equal-weight rows for location and average response time.
- *  2. A separate Reviews panel below — the DUAL-role summary (as Freelancer AND as Client), a
- *     click-through to the Reviews tab (Part 1.2 / 3.2).
+ * ProfileMetaSidebar — the profile's context block (root CLAUDE.md — Part 3): the live online status
+ * paired with the owner's local time / timezone + availability, then equal-weight rows for location and
+ * average response time, then the DUAL-role reviews summary (as Freelancer AND as Client) as a
+ * click-through into the Reviews tab (Part 1.2 / 3.2).
  *
- * Follower/following counts are gone (Part 3.1); Verification moved to the header badge (Part 1.3). The
- * rail persists across every tab beside the permanent Overview.
+ * These are identity facts, so per the region contract they belong to the **lane**, which already owns
+ * scope and persists across every tab and the availability calendar — `variant="lane"` renders them as a
+ * hairline-separated section of the lane panel (no box of its own: a card inside an already-elevated
+ * surface is the §B.9.2 nesting the card policy bans). As a body rail they reserved 18rem + a 2rem
+ * gutter on every tab for ~324px of content, which is what starved the work grid.
+ *
+ * `variant="inline"` is the ≤767px fallback only — below that width neither shell renders a lane, so the
+ * body carries these facts once, as a wrapping row under the Overview. Follower/following counts are
+ * gone (Part 3.1); Verification moved to the header badge (Part 1.3).
  */
-export function ProfileMetaSidebar({ profile }: { profile: ProfileView }): JSX.Element {
+export function ProfileMetaSidebar(
+	{ profile, variant = "lane" }: { profile: ProfileView; variant?: "lane" | "inline" },
+): JSX.Element {
 	const { rating, location } = profile;
 	const hasReviews = !!(rating.asHelper || rating.asClient);
 	return (
-		<aside class="pf-meta" aria-label="Profile details">
+		<aside class={`pf-meta pf-meta--${variant}`} aria-label="Profile details">
 			{/* Panel 1 — status + location + response. */}
 			<div class="pf-meta__panel">
 				<div class="pf-meta__head">

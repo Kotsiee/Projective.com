@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { Band, BandHead } from "../components/band-parts.tsx";
+import { Band, BandHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { IntelligenceBand } from "../components/IntelligenceBand.tsx";
 import { IncomingTimeline } from "../components/IncomingTimeline.tsx";
 import { RecentLedger } from "../components/RecentLedger.tsx";
@@ -9,12 +9,14 @@ import { FlowBand } from "../components/FlowBand.tsx";
 import { Money } from "../components/Money.tsx";
 import CapitalMeter from "./CapitalMeter.island.tsx";
 import CardDeck from "./CardDeck.island.tsx";
-import MoneyMoveDrawer from "./MoneyMoveDrawer.island.tsx";
-import ConfirmMoveModal from "./ConfirmMoveModal.island.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext, fundFilter, resetOnRefetch } from "../core/wallet-state.ts";
-import { flowPeriod } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import {
+	currentWalletContext,
+	fundFilter,
+	resetOnRefetch,
+	walletError,
+} from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type {
 	MethodsView,
 	WalletOverview,
@@ -39,6 +41,11 @@ import type {
  * currency, dev axis, flow range, or a completed mutation). Money strings always come from the
  * server; the hero's count-up interpolates between them and writes the server string on its final
  * frame, and never re-animates on a refetch.
+ *
+ * The action layer is NOT here. It moved to `WalletFooterRig`, which is the control that opens it and
+ * the only region rendered on all eight routes — mounted in this body it reached one route while the
+ * rig reached eight, so every footer action on the seven deep pages opened nothing. This body now
+ * renders data and nothing else, which is what the region contract asks of it.
  */
 export interface WalletOverviewScreenProps {
 	initial: WalletOverview;
@@ -53,12 +60,12 @@ export default function WalletOverviewScreen(props: WalletOverviewScreenProps): 
 
 	const refetch = async () => {
 		const res = await WalletService.overview(currentWalletContext());
-		if (res.ok && res.data) {
-			overview.value = res.data.overview;
+		applyRead(res, (d) => {
+			overview.value = d.overview;
 			// A fund-state filter selected against one wallet's ledger must not silently persist
 			// into another's.
 			resetOnRefetch();
-		}
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -71,6 +78,7 @@ export default function WalletOverviewScreen(props: WalletOverviewScreenProps): 
 	return (
 		<main class="wlt" aria-label="Wallet overview">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				{/* Band 1 — the balance identity, and (except on the read-only rollup) the card deck. */}
 				<Band tone="hero" index={0} label="Balance">
 					<div class="wlt-herorow" data-deck={isAggregate ? "false" : "true"}>
@@ -123,22 +131,6 @@ export default function WalletOverviewScreen(props: WalletOverviewScreenProps): 
 					</div>
 				</Band>
 			</div>
-
-			{
-				/*
-				 * The money-movement layer is mounted once, here, and driven by the footer rig's signals.
-				 * Composition (a drawer that keeps the ledger legible) and commitment (a modal that
-				 * deliberately removes the escape route) are two surfaces, not one.
-				 */
-			}
-			<MoneyMoveDrawer
-				accounts={props.switcher.accounts}
-				available={o.available}
-				methods={props.methods.methods}
-				team={o.team}
-				activeAccount={o.ref}
-			/>
-			<ConfirmMoveModal />
 		</main>
 	);
 }

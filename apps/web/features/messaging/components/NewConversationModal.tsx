@@ -22,14 +22,21 @@ export function NewConversationModal({ role }: { role?: MessagingRole }): JSX.El
 	});
 	const req = contactPicker.value;
 
-	async function confirm(contactIds: string[], groupName?: string): Promise<void> {
+	/**
+	 * Create, then navigate. On failure the modal STAYS OPEN and returns the message for the picker to
+	 * render beside the selection that produced it — closing on a silent no-op (the previous
+	 * behaviour) left the viewer believing a conversation had been started when none had.
+	 */
+	async function confirm(contactIds: string[], groupName?: string): Promise<string | null> {
 		const res = await MessagingService.create({ contactIds, groupName });
-		closeContactPicker();
-		if (res.ok && res.data) {
-			try {
-				globalThis.location.href = conversationHref(res.data.id);
-			} catch { /* SSR / no window — non-fatal */ }
+		if (!res.ok || !res.data) {
+			return res.message ?? "Couldn't start that conversation. Please try again.";
 		}
+		closeContactPicker();
+		try {
+			globalThis.location.href = conversationHref(res.data.id);
+		} catch { /* SSR / no window — non-fatal */ }
+		return null;
 	}
 
 	return (

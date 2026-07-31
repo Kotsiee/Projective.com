@@ -2,12 +2,12 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
 import { Tooltip } from "@projective/ui/feedback";
-import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, BandHead, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { Money } from "../components/Money.tsx";
 import { CapsRoster } from "../components/CapsRoster.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { currentWalletContext, walletError } from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type { InvoicesView } from "../types/wallet-types.ts";
 
 /**
@@ -28,7 +28,9 @@ export default function WalletInvoicesScreen(props: WalletInvoicesScreenProps): 
 
 	const refetch = async () => {
 		const res = await WalletService.invoices(currentWalletContext());
-		if (res.ok && res.data) view.value = res.data.invoices;
+		applyRead(res, (d) => {
+			view.value = d.invoices;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -40,6 +42,7 @@ export default function WalletInvoicesScreen(props: WalletInvoicesScreenProps): 
 		return (
 			<main class="wlt" aria-label="Invoices">
 				<div class="wlt__stack">
+					<WalletErrorBand message={walletError.value} />
 					<Band tone="head" index={0} label="Invoices">
 						<PageHead title="Invoices" />
 					</Band>
@@ -57,6 +60,7 @@ export default function WalletInvoicesScreen(props: WalletInvoicesScreenProps): 
 	return (
 		<main class="wlt" aria-label="Invoices">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Invoices">
 					<PageHead
 						title="Invoices"

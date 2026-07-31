@@ -8,14 +8,7 @@
  * Responsive + reduced-motion (jump-to-final).
  */
 
-/* Shared H2 (also defined in project-view.css; identical). */
-.vw-h2 {
-	margin: 0;
-	font-size: 1.2rem;
-	font-weight: 700;
-	line-height: 1.2;
-	color: var(--on-surface);
-}
+/* `.vw-h2` is defined once, in the imported `view.css`. */
 
 /*
  * The article PAGE column — it carries the cover figure, the media gallery and the comments as well
@@ -35,19 +28,27 @@
 	gap: var(--space-3);
 	margin-block-end: var(--space-4);
 }
-.art-header__eyebrow {
-	font-size: 0.75rem;
-	font-weight: 600;
-	letter-spacing: 0.04em;
+/*
+ * The article keeps a topic line, but it is no longer a kicker: it sits BELOW the title as part of the
+ * byline group, where "Article · Payments" reads as metadata about the piece rather than as a label
+ * announcing a heading that already announces itself.
+ */
+.art-header__topic {
+	display: inline-flex;
+	align-items: center;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--primary);
 }
 .art-header__title {
 	margin: 0;
-	font-size: clamp(1.7rem, 1.2rem + 2vw, 2.6rem);
-	font-weight: 700;
-	line-height: 1.12;
-	letter-spacing: -0.015em;
+	font-size: clamp(var(--text-2xl), 1.2rem + 2vw, 2.5rem);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
 	color: var(--on-surface);
 }
 .art-header__byline {
@@ -74,8 +75,8 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.3rem;
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 }
 .art-header__sep {
 	inline-size: 3px;
@@ -87,7 +88,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.85rem;
+	font-size: var(--text-md);
 	color: var(--text-secondary);
 }
 .art-meta svg {
@@ -102,7 +103,7 @@
 	aspect-ratio: 16 / 8;
 	object-fit: cover;
 	display: block;
-	border-radius: var(--radius-2xl, var(--radius-xl));
+	border-radius: var(--card-radius-media);
 	background: var(--surface-2);
 }
 /* #endregion */
@@ -141,15 +142,15 @@
 }
 .art-h2 {
 	margin: var(--space-4) 0 0;
-	font-size: 1.5rem;
-	font-weight: 700;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-bold);
 	line-height: 1.25;
 	letter-spacing: -0.01em;
 }
 .art-h3 {
 	margin: var(--space-2) 0 0;
-	font-size: 1.2rem;
-	font-weight: 600;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
 	line-height: 1.3;
 	color: var(--text-secondary);
 }
@@ -157,13 +158,17 @@
 	margin: 0;
 	color: var(--on-surface);
 }
+/* A 1px accent rule, not a 3px slab. The weight was carrying emphasis that the size, the italic and
+   the indent already carry, and a thick coloured edge on a callout is the one border this system
+   refuses outright. */
 .art-quote {
-	margin: var(--space-2) 0;
-	padding: var(--space-2) var(--space-4);
-	border-inline-start: 3px solid var(--primary);
-	font-size: 1.15rem;
+	margin: var(--space-4) 0;
+	padding: var(--space-1) var(--space-4);
+	border-inline-start: 1px solid var(--primary);
+	font-size: var(--text-xl);
 	font-style: italic;
-	line-height: 1.5;
+	line-height: var(--leading-snug);
+	text-wrap: pretty;
 	color: var(--on-surface);
 }
 .art-list {
@@ -191,7 +196,7 @@
 	background: var(--surface-2);
 }
 .art-figcap {
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 	text-align: center;
 }
@@ -258,8 +263,8 @@
 	inset-block-end: 0;
 	inset-inline: 0;
 	padding: var(--space-4) var(--space-3) var(--space-3);
-	font-size: 0.9rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	text-align: start;
 	color: #fff;
 	background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
@@ -279,8 +284,8 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.4rem;
-	font-size: 0.85rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .art-audio__title svg {
@@ -304,7 +309,7 @@
 }
 .art-gallery-sec__sub {
 	margin: 0;
-	font-size: 0.85rem;
+	font-size: var(--text-md);
 	color: var(--text-secondary);
 }
 .art-gallery__slide {
@@ -358,8 +363,8 @@
 	inset-block-end: var(--space-2);
 	inset-inline-end: var(--space-2);
 	padding: 0.1rem 0.4rem;
-	font-size: 0.7rem;
-	font-weight: 600;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
 	color: #fff;
 	background: color-mix(in srgb, #000 55%, transparent);
 	border-radius: var(--radius-sm);
@@ -368,8 +373,8 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.78rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 }
 .art-mediacard__label svg {
@@ -391,12 +396,12 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.4rem;
-	font-size: 0.85rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 }
 .art-toclane__read {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .art-toclane__scroll {
@@ -420,7 +425,7 @@
 	padding: 0.4rem var(--space-3);
 	margin-inline-start: -1px;
 	border-inline-start: 2px solid transparent;
-	font-size: 0.85rem;
+	font-size: var(--text-md);
 	line-height: 1.35;
 	color: var(--text-secondary);
 	text-decoration: none;
@@ -429,14 +434,14 @@
 		border-color var(--dur-fast) var(--ease-standard);
 }
 .art-toc__item[data-level="3"] .art-toc__link {
-	font-size: 0.8rem;
+	font-size: var(--text-sm);
 }
 .art-toc__link:hover {
 	color: var(--on-surface);
 }
 .art-toc__item[data-active="true"] .art-toc__link {
 	color: var(--primary);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	border-inline-start-color: var(--primary);
 }
 
@@ -504,23 +509,32 @@
 	gap: var(--space-2);
 	min-inline-size: 0;
 }
+/*
+ * The composer reads the `--fld-*` contract rather than inventing a field. Its focus state was
+ * `outline: none` plus a border-colour change — a 1px hue shift as the SOLE focus indicator, which is
+ * exactly the failure `--focus-ring-shadow` exists to prevent (no single colour clears 3:1 against
+ * both the control fill and the page). The border still moves; the ring is what you can actually see.
+ */
 .art-composer__input {
 	inline-size: 100%;
 	resize: vertical;
 	min-block-size: 3rem;
 	padding: var(--space-3);
 	font-family: inherit;
-	font-size: 0.9rem;
-	line-height: 1.5;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 	color: var(--on-surface);
-	background: var(--surface-1);
-	border: 1px solid color-mix(in srgb, var(--on-surface) 15%, transparent);
+	background: var(--fld-surface, var(--surface-1));
+	border: 1px solid var(--fld-border, color-mix(in srgb, var(--on-surface) 15%, transparent));
 	border-radius: var(--radius-lg);
-	transition: border-color var(--dur-fast) var(--ease-standard);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
 }
 .art-composer__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
+	box-shadow: var(--focus-ring-shadow);
 }
 .art-composer__foot {
 	display: flex;
@@ -571,8 +585,8 @@
 	gap: var(--space-2);
 }
 .art-cmt__author {
-	font-size: 0.9rem;
-	font-weight: 700;
+	font-size: var(--text-md);
+	font-weight: var(--fw-bold);
 	color: var(--on-surface);
 	text-decoration: none;
 }
@@ -580,12 +594,12 @@
 	text-decoration: underline;
 }
 .art-cmt__date {
-	font-size: 0.75rem;
+	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
 .art-cmt__body {
 	margin: 0;
-	font-size: 0.9rem;
+	font-size: var(--text-md);
 	line-height: 1.55;
 	color: var(--on-surface);
 }
@@ -601,8 +615,8 @@
 	gap: 0.3rem;
 	padding: 0.2rem 0.4rem;
 	margin-inline-start: -0.4rem;
-	font-size: 0.78rem;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;

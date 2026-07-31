@@ -202,17 +202,24 @@
  * The stage floor is a LINEAR meter, deliberately a different form from the arc. Two dials would
  * imply two independent scores; one dial plus one bar reads as one rung with two conditions.
  */
+/*
+ * Two flanking labels over a full-width bar — the same shape the hero's capital meter uses (track,
+ * then legend), so the surface's two meters read as one idea. It also cannot clip at any width: both
+ * text tracks are shrinkable and the label is allowed to wrap, where the previous `auto 1fr auto` row
+ * gave a nowrap 128px label priority over the bar and pushed the count off the surface entirely.
+ */
 .wlt-standing__stages {
 	display: grid;
-	grid-template-columns: auto 1fr auto;
-	align-items: center;
-	gap: var(--space-3);
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: baseline;
+	column-gap: var(--space-3);
+	row-gap: var(--space-2);
 	padding-block-start: var(--space-3);
 	border-block-start: var(--hairline);
 }
 
-.wlt-standing__stages-label {
-	white-space: nowrap;
+.wlt-standing__stage-meter {
+	grid-column: 1 / -1;
 }
 
 .wlt-standing__stage-meter {
@@ -234,9 +241,11 @@
 }
 
 .wlt-standing__stage-count {
+	justify-self: end;
 	font-size: var(--wlt-fs-body);
 	color: var(--on-surface);
 	font-variant-numeric: tabular-nums lining-nums;
+	/* A fraction may never break across lines — "56 /" over "50" is a different number. */
 	white-space: nowrap;
 }
 /* #endregion */
@@ -279,7 +288,20 @@
 }
 /* #endregion */
 
-@media (max-width: 1100px) {
+/*
+ * A CONTAINER query, not a viewport one. The gauge's width has almost nothing to do with the
+ * viewport: the intelligence band splits into two plates, so at a 1440px viewport this panel is
+ * ~430px, and the `minmax(0, 17rem)` arc track took 272px of it — leaving the payoff column 134px,
+ * in which "Completed stages" wrapped to FIVE lines against a 41px figure. The old
+ * `max-width: 1100px` breakpoint could never see any of that, which is why it never fired where the
+ * problem actually was.
+ */
+.wlt-standing {
+	container-type: inline-size;
+	container-name: wltstanding;
+}
+
+@container wltstanding (max-width: 34rem) {
 	.wlt-standing__body {
 		grid-template-columns: minmax(0, 1fr);
 	}

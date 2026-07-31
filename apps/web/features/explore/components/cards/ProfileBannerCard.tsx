@@ -49,9 +49,9 @@ export function ProfileBannerCard(
 				aria-hidden="true"
 			>
 				<span class="ex-flags ex-flags--row">
-						{item.sponsored && <PromotedBadge />}
-						<Tag value={tag.label} severity={tag.severity} variant="subtle" rounded />
-					</span>
+					{item.sponsored && <PromotedBadge />}
+					<Tag value={tag.label} severity={tag.severity} variant="subtle" rounded />
+				</span>
 			</div>
 			<div class="ex-banner__body">
 				<div class="ex-banner__id">
@@ -72,11 +72,17 @@ export function ProfileBannerCard(
 				</div>
 				<p class="ex-banner__craft">{item.craft}</p>
 				<RatingTracks rating={item.rating} />
+				{
+					/* Languages share the talent card's single metadata line, so both banner variants set
+				    secondary facts at one weight instead of each inventing a band. */
+				}
 				{item.languages?.length
 					? (
-						<span class="ex-talent__langs">
-							<span class="ex-talent__langs-label">Speaks</span> {item.languages.join(", ")}
-						</span>
+						<div class="ex-talent__meta">
+							<span class="ex-talent__langs">
+								<span class="ex-talent__langs-label">Speaks</span> {item.languages.join(", ")}
+							</span>
+						</div>
 					)
 					: null}
 				<div class="ex-card__foot">

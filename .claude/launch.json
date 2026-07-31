@@ -325,6 +325,42 @@
 				"--strictPort"
 			],
 			"port": 8073
+		},
+		{
+			"name": "web-cards",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8173",
+				"--strictPort"
+			],
+			"port": 8173
+		},
+		{
+			"name": "web-projlayout",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8373",
+				"--strictPort"
+			],
+			"port": 8373
+		},
+		{
+			"name": "web-pflayout",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8273",
+				"--strictPort"
+			],
+			"port": 8273
 		}
 	]
 }

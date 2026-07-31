@@ -5,6 +5,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
 import { FundStateDot, fundStateLabel } from "../components/FundStateMark.tsx";
 import { Money } from "../components/Money.tsx";
+import { WalletSkeleton } from "../components/WalletSkeleton.tsx";
 import {
 	categoryLabel,
 	groupByDay,
@@ -13,10 +14,20 @@ import {
 	reasonLabel,
 } from "../core/ledger-model.ts";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext, drawerLine } from "../core/wallet-state.ts";
+import {
+	currentWalletContext,
+	drawerLine,
+	fundFilter,
+	ledgerSearch,
+} from "../core/wallet-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import { listRowHeight, walletZoom, zoom } from "../core/view-state.ts";
-import type { LedgerLine, TransactionPage, TxnSort } from "../types/wallet-types.ts";
+import type {
+	LedgerLine,
+	TransactionListParams,
+	TransactionPage,
+	TxnSort,
+} from "../types/wallet-types.ts";
 
 /**
  * LedgerTable — the full ledger at 100% of the content region.
@@ -61,14 +72,27 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 		hasMore.value = props.page.hasMore;
 	}, [props.page]);
 
+	/*
+	 * ONE param builder for both the paging fetch and the sort refetch. They previously each wrote
+	 * their own, and both omitted the active fund-state filter — so page 2 of a filtered ledger came
+	 * back unfiltered and appended straight onto the filtered rows. A ledger that quietly mixes a
+	 * filtered page with an unfiltered one is worse than one that cannot filter at all.
+	 */
+	const params = (extra?: { cursor?: string | null }): TransactionListParams => ({
+		limit: 40,
+		...(extra?.cursor ? { cursor: extra.cursor } : {}),
+		...(fundFilter.value ? { fundState: fundFilter.value } : {}),
+		...(ledgerSearch.value.trim() ? { search: ledgerSearch.value.trim() } : {}),
+		...(sortKey.value ? { sort: sortKey.value, dir: sortDir.value } : {}),
+	});
+
 	const loadMore = async () => {
 		if (loading.value || !hasMore.value) return;
 		loading.value = true;
-		const res = await WalletService.transactions(currentWalletContext(), {
-			limit: 40,
-			cursor: cursor.value,
-			...(sortKey.value ? { sort: sortKey.value, dir: sortDir.value } : {}),
-		});
+		const res = await WalletService.transactions(
+			currentWalletContext(),
+			params({ cursor: cursor.value }),
+		);
 		if (res.ok && res.data) {
 			lines.value = [...lines.value, ...res.data.page.items];
 			cursor.value = res.data.page.nextCursor;
@@ -101,10 +125,7 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 			sortKey.value = "";
 		}
 		loading.value = true;
-		const res = await WalletService.transactions(currentWalletContext(), {
-			limit: 40,
-			...(sortKey.value ? { sort: sortKey.value, dir: sortDir.value } : {}),
-		});
+		const res = await WalletService.transactions(currentWalletContext(), params());
 		if (res.ok && res.data) {
 			lines.value = res.data.page.items;
 			cursor.value = res.data.page.nextCursor;
@@ -205,7 +226,15 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 			</div>
 
 			<div class="wlt-ledger__sentinel" ref={sentinel} aria-hidden="true" />
-			{loading.value && <p class="wlt-ledger__tail" role="status">Loading more…</p>}
+			{
+				/*
+				 * Rows shaped like the rows they become, rather than a line of text: a ledger that grows
+				 * by three grey bars of the right height does not shift when the real ones land, and a
+				 * layout that jumps is the last thing a money surface should do. The visually-hidden
+				 * `role="status"` inside the skeleton is what announces it.
+				 */
+			}
+			{loading.value && <WalletSkeleton shape="rows" rows={3} />}
 		</div>
 	);
 }

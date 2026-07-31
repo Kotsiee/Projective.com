@@ -4,6 +4,7 @@ import { useEffect } from "preact/hooks";
 import "../styles/channel-header.css";
 import { Avatar } from "@projective/ui/display";
 import { Drawer, Popover, Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { CHANNEL_TABS, type ChannelMeta, visibleChannelTabKeys } from "../core/channel-view.ts";
 import { readDevSeam, resolveViewer, watchDevSeam } from "../core/submission-access.ts";
 import { liveSessionKind, type SessionKind } from "../core/session-model.ts";
@@ -250,7 +251,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 			<div class="chan-header__actions">
 				<button
 					type="button"
-					class="chan-action chan-action--star"
+					class="chan-action chan-action--star chan-action--desktop"
 					data-on={isStarred.value ? "true" : undefined}
 					aria-pressed={isStarred.value}
 					aria-label={isStarred.value ? "Unstar channel" : "Star channel"}
@@ -260,23 +261,13 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				</button>
 
 				<Tooltip content="Pop out chat" placement="bottom">
-					<button type="button" class="chan-action" aria-label="Pop out chat" onClick={popOut}>
-						<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-							<path
-								d="M14 4h6v6M20 4l-8 8"
-								stroke="currentColor"
-								stroke-width="1.6"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-							<path
-								d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"
-								stroke="currentColor"
-								stroke-width="1.6"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-						</svg>
+					<button
+						type="button"
+						class="chan-action chan-action--desktop"
+						aria-label="Pop out chat"
+						onClick={popOut}
+					>
+						<Icon name="external-link" size="md" />
 					</button>
 				</Tooltip>
 
@@ -314,6 +305,43 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 					)}
 				>
 					<div class="chan-menu" role="menu" aria-label="Channel actions">
+						{
+							/*
+							 * Star and Pop-out live here only below `--bp-md`, where their dedicated buttons drop
+							 * out of the trailing tray. Both copies are always in the DOM and the visible one is
+							 * chosen by `@media` alone — no JS breakpoint, so there is no hydration mismatch and
+							 * neither action is ever present twice (Part D.3).
+							 */
+						}
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							aria-checked={isStarred.value}
+							class="chan-menu__item chan-menu__item--mobile"
+							onClick={() => {
+								toggleStar();
+								menuOpen.value = false;
+							}}
+						>
+							<span class="chan-menu__icon" aria-hidden="true">{cloneElement(StarIcon)}</span>
+							<span class="chan-menu__label">
+								{isStarred.value ? "Unstar channel" : "Star channel"}
+							</span>
+						</button>
+						<button
+							type="button"
+							role="menuitem"
+							class="chan-menu__item chan-menu__item--mobile"
+							onClick={() => {
+								popOut();
+								menuOpen.value = false;
+							}}
+						>
+							<span class="chan-menu__icon" aria-hidden="true">
+								<Icon name="external-link" />
+							</span>
+							<span class="chan-menu__label">Pop out chat</span>
+						</button>
 						<button
 							type="button"
 							role="menuitemcheckbox"

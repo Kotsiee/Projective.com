@@ -170,8 +170,22 @@ export function StandingGauge(props: StandingGaugeProps): JSX.Element {
 
 					{gate && s.commissionPaid && <p class="wlt-standing__gate">{gate}</p>}
 
+					{
+						/*
+						 * Label and count flank the meter ABOVE it rather than beside it, and the source
+						 * order matches that so nothing is visually reordered. The three were previously
+						 * one `auto 1fr auto` row: the nowrap label took 128px of an 86px box, the meter's
+						 * `1fr` collapsed to zero, and the count — the stage-gate figure, one of the two
+						 * conditions this whole gauge exists to carry — was pushed 13px outside the
+						 * surface's `overflow: clip` and cut, in LTR and RTL alike.
+						 */
+					}
 					<div class="wlt-standing__stages">
 						<span class="wlt-standing__stages-label wlt-label">Completed stages</span>
+						<span class="wlt-standing__stage-count wlt-num">
+							{s.stagesCompleted}
+							{s.next ? ` / ${s.next.minStages}` : ""}
+						</span>
 						<span
 							class="wlt-standing__stage-meter"
 							style={styleVars({ "--wlt-fill": `${stagePct}%` })}
@@ -182,10 +196,6 @@ export function StandingGauge(props: StandingGaugeProps): JSX.Element {
 							aria-label="Completed stages toward the next rung"
 						>
 							<span class="wlt-standing__stage-fill" />
-						</span>
-						<span class="wlt-standing__stage-count wlt-num">
-							{s.stagesCompleted}
-							{s.next ? ` / ${s.next.minStages}` : ""}
 						</span>
 					</div>
 				</div>

@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import "../styles/article-view.css";
 import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { profileHref } from "@features/explore/core/routing.ts";
@@ -15,10 +16,11 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
 
 /**
  * ArticleViewScreen — the custom **Articles** view template body (`/view/[id]?type=articles`). An
- * article-focused layout: an editorial header (topic eyebrow · title · uploader byline · published date
- * · read time) over the cover, the rich {@link ArticleContent} body (the interactive Table of Contents
- * lives in the side nav), the {@link ArticleMediaGallery} carousel of every media asset used, then the
- * bottom sections — more from the uploader, suggested articles (reusing the explore cards), and the
+ * article-focused layout: an editorial header (title, then a byline carrying topic · uploader ·
+ * published date · read time) over the cover, the rich {@link ArticleContent} body (the interactive
+ * Table of Contents lives in the side nav), the {@link ArticleMediaGallery} carousel of every media
+ * asset used, then the bottom sections — more from the uploader, suggested articles (reusing the
+ * explore cards at a narrower 2-up because this template's column is a reading measure), and the
  * comments thread.
  */
 export function ArticleViewScreen(
@@ -47,13 +49,21 @@ export function ArticleViewScreen(
 			<ViewStyleAnchor />
 
 			<div class="vw__back-row">
-				<a class="vw__back" href={backHrefFor(ctx)}>← {backLabelFor(ctx)}</a>
+				<a class="vw__back" href={backHrefFor(ctx)}>
+					<Icon name="arrow-left" size="sm" class="vw__back-arrow" />
+					<span>{backLabelFor(ctx)}</span>
+				</a>
 			</div>
 
 			<header class="art-header">
-				<span class="art-header__eyebrow">{ENTITY_LABEL.articles} · {article.topic}</span>
 				<h1 class="art-header__title">{item.title}</h1>
+				{
+					/* The topic sits in the byline, not above the title — metadata about the piece, not a
+				    kicker announcing a heading that already announces itself. */
+				}
 				<div class="art-header__byline">
+					<span class="art-header__topic">{ENTITY_LABEL.articles} · {article.topic}</span>
+					<span class="art-header__sep" aria-hidden="true" />
 					<a class="art-author" href={profileHref(owner.handle)}>
 						<Avatar
 							image={owner.avatar}
@@ -109,13 +119,19 @@ export function ArticleViewScreen(
 					ctx={ctx}
 					authed={authed}
 					seeAllHref={`/${owner.handle}`}
+					columns={2}
 				/>
+				{
+					/* The article runs its rails inside a `--measure-wide` column, so 3-up would render 197px
+				    cards. The host knows it is narrow; the carousel cannot. */
+				}
 				<RelatedSection
 					title="Suggested articles"
 					subtitle="More reading picked for this topic"
 					items={suggested}
 					ctx={ctx}
 					authed={authed}
+					columns={2}
 				/>
 				<ArticleComments
 					comments={article.comments}

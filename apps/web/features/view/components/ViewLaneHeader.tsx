@@ -1,6 +1,7 @@
 import { type JSX, type RefObject } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
 import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { ProfileIcon } from "@features/profile/components/profile-glyphs.tsx";
 import { backHrefFor, backLabelFor, laneMenuActionsFor } from "../core/view-model.ts";
 import type { ExploreItem } from "@projective/types/explore";
@@ -110,7 +111,7 @@ export function ViewLaneHeader(
 				href={backHrefFor(ctx)}
 				aria-label={backLabelFor(ctx)}
 			>
-				<span class="vw-lane__back-arrow" aria-hidden="true">←</span>
+				<Icon name="arrow-left" size="sm" class="vw-lane__back-arrow vw__back-arrow" />
 				<span class="vw-lane__back-label">{backLabelFor(ctx)}</span>
 			</a>
 			<div class="pf-lane__header-actions">

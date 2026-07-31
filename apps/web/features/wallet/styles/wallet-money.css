@@ -102,6 +102,16 @@
 	line-height: 1;
 }
 
+/*
+ * The hero's pence take their own, smaller ratio. The shared 0.55em is the SMALL end's legibility
+ * floor; against a 72px figure it rendered 39.6px pence — bigger than the commission rate and every
+ * money figure in the intelligence band. A ratio that is a floor at body scale is not a ratio at
+ * display scale, and the two decimal places of a balance are the least significant glyphs here.
+ */
+.wlt-money--hero .wlt-money__minor {
+	font-size: var(--wlt-minor-size-hero);
+}
+
 .wlt-money--figure .wlt-money__amount {
 	font-size: var(--wlt-fs-figure);
 	font-weight: 600;

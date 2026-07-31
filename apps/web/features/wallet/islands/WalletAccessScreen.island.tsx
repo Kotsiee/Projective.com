@@ -2,15 +2,16 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
 import { Avatar } from "@projective/ui/display";
-import { Checkbox } from "@projective/ui/fields";
+import { Button, Checkbox } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
-import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, BandHead, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { CapsRoster } from "../components/CapsRoster.tsx";
 import { Money } from "../components/Money.tsx";
+import { GrantedMark, NotGrantedMark } from "../core/glyphs.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { can } from "../core/capability.ts";
-import { currentWalletContext, notifyWalletChanged } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { currentWalletContext, notifyWalletChanged, walletError } from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type {
 	AccessView,
 	VaultCapability,
@@ -60,7 +61,9 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 
 	const refetch = async () => {
 		const res = await WalletService.access(currentWalletContext());
-		if (res.ok && res.data) view.value = res.data.access;
+		applyRead(res, (d) => {
+			view.value = d.access;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -74,6 +77,7 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 		return (
 			<main class="wlt" aria-label="Access">
 				<div class="wlt__stack">
+					<WalletErrorBand message={walletError.value} />
 					<Band tone="head" index={0} label="Access">
 						<PageHead title="Access" />
 					</Band>
@@ -107,6 +111,7 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 	return (
 		<main class="wlt" aria-label="Access">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Access">
 					<PageHead
 						title="Access"
@@ -166,6 +171,12 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 															/>
 														)
 														: (
+															/*
+															 * Drawn marks, not `●` and `–`. Two text characters standing in for an icon are
+															 * the second, unmanaged icon family §B.7 exists to remove: they take the font's
+															 * weight rather than `--icon-stroke`, they do not sit on the size ramp, and an en
+															 * dash renders differently in every fallback face a reader might land on.
+															 */
 															<Tooltip
 																content={`${granted ? "Granted" : "Not granted"}: ${CAP_LABEL[c]}`}
 																placement="top"
@@ -176,7 +187,7 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 																	aria-label={granted ? "Granted" : "Not granted"}
 																	role="img"
 																>
-																	{granted ? "●" : "–"}
+																	{granted ? GrantedMark : NotGrantedMark}
 																</span>
 															</Tooltip>
 														)}
@@ -220,23 +231,34 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 										</span>
 										<span class="wlt-rows__meta">{ap.dateLabel}</span>
 										{canDecide && ap.status === "pending" && (
+											/*
+											 * Repeated row actions, so BOTH are `text` weight (§B.8.2: a column of
+											 * filled buttons is a column of noise, and it makes the row's own
+											 * content the least prominent thing in the row). Approve was `filled
+											 * --primary` once per pending request and carried the amount in its
+											 * label — the surface's own RULE O-2 puts the amount in the
+											 * confirmation, not the verb, and the amount is already the third
+											 * column of this very row. Severity does the distinguishing that
+											 * weight used to.
+											 */
 											<span class="wlt-rows__actions">
-												<button
-													type="button"
-													class="wlt-btn wlt-btn--ghost"
+												<Button
+													variant="text"
+													severity="danger"
+													size="sm"
+													label="Decline"
 													disabled={busy.value === ap.id}
 													onClick={() => void decide(ap.id, "reject")}
-												>
-													Decline
-												</button>
-												<button
-													type="button"
-													class="wlt-btn wlt-btn--primary"
+												/>
+												<Button
+													variant="text"
+													severity="success"
+													size="sm"
+													label="Approve"
+													aria-label={`Approve ${ap.amount.display} for ${ap.requesterName}`}
 													disabled={busy.value === ap.id}
 													onClick={() => void decide(ap.id, "approve")}
-												>
-													Approve {ap.amount.display}
-												</button>
+												/>
 											</span>
 										)}
 									</li>

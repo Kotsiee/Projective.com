@@ -28,56 +28,59 @@ export function ProfileAbout(
 ): JSX.Element {
 	return (
 		<div class="pf-about">
-			<section class="pf-about__block" aria-label="About">
+			<section class="pf-about__block pf-about__lead" aria-label="About">
 				<h2 class="pf-about__heading">About</h2>
 				<div class="pf-story">
 					<ProfileStory story={profile.story} canEdit={canEdit} />
 				</div>
 			</section>
 
-			{profile.skills.length > 0 && (
-				<section class="pf-about__block" aria-label="Skills">
-					<h2 class="pf-about__heading">Skills</h2>
-					<div class="pf-skills">
-						{profile.skills.map((skill) => (
-							<a
-								key={skill.label}
-								class="pf-skill"
-								href={filterHref({ q: skill.label })}
-								aria-label={`Filter Explore by ${skill.label}`}
-							>
-								<Tag
-									variant="subtle"
-									rounded
-									icon={<CategoryGlyph category={skill.category} />}
-									value={skill.label}
-								/>
-							</a>
-						))}
-					</div>
-				</section>
-			)}
+			{/* The scannable facets — they sit beside the story once the container can hold both. */}
+			<div class="pf-about__facets">
+				{profile.skills.length > 0 && (
+					<section class="pf-about__block" aria-label="Skills">
+						<h2 class="pf-about__heading">Skills</h2>
+						<div class="pf-skills">
+							{profile.skills.map((skill) => (
+								<a
+									key={skill.label}
+									class="pf-skill"
+									href={filterHref({ q: skill.label })}
+									aria-label={`Filter Explore by ${skill.label}`}
+								>
+									<Tag
+										variant="subtle"
+										rounded
+										icon={<CategoryGlyph category={skill.category} />}
+										value={skill.label}
+									/>
+								</a>
+							))}
+						</div>
+					</section>
+				)}
 
-			{profile.languages.length > 0 && (
-				<section class="pf-about__block" aria-label="Languages">
-					<h2 class="pf-about__heading">Languages</h2>
-					<ul class="pf-langs" role="list">
-						{profile.languages.map((lang) => (
-							<li class="pf-langpill" key={lang.code} data-level={lang.level}>
-								<span class="pf-langpill__lang">{lang.label}</span>
-								<span class="pf-langpill__level">{LEVEL_LABEL[lang.level]}</span>
-							</li>
-						))}
-					</ul>
-				</section>
-			)}
+				{profile.languages.length > 0 && (
+					<section class="pf-about__block" aria-label="Languages">
+						<h2 class="pf-about__heading">Languages</h2>
+						<ul class="pf-langs" role="list">
+							{profile.languages.map((lang) => (
+								<li class="pf-langpill" key={lang.code} data-level={lang.level}>
+									<span class="pf-langpill__lang">{lang.label}</span>
+									<span class="pf-langpill__level">{LEVEL_LABEL[lang.level]}</span>
+								</li>
+							))}
+						</ul>
+					</section>
+				)}
 
-			{profile.notableClients.length > 0 && (
-				<section class="pf-about__block" aria-label="Notable clients">
-					<h2 class="pf-about__heading">Worked with</h2>
-					<WorkedWithCarousel clients={profile.notableClients} />
-				</section>
-			)}
+				{profile.notableClients.length > 0 && (
+					<section class="pf-about__block" aria-label="Notable clients">
+						<h2 class="pf-about__heading">Worked with</h2>
+						<WorkedWithCarousel clients={profile.notableClients} />
+					</section>
+				)}
+			</div>
 		</div>
 	);
 }

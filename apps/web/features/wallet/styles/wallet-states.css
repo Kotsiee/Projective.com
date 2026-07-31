@@ -45,9 +45,25 @@
 	min-inline-size: 0;
 }
 
+/*
+ * The read-failure strip. It is a `<div>`, never a `<section class="wlt-band">`, because the stack's
+ * alternating tonal step counts sections — a band appearing here would restripe every band below it
+ * the moment a fetch failed. It takes the band's inline padding so it lines up with the content it
+ * is reporting on, and the block padding of a notice rather than of a band.
+ */
+.wlt-errorband {
+	padding-inline: var(--wlt-band-pad);
+	padding-block: var(--space-4) 0;
+}
+
 .wlt-error__retry {
-	color: var(--primary);
+	font: inherit;
 	font-size: var(--wlt-fs-body);
+	border: none;
+	background: none;
+	padding: 0;
+	cursor: pointer;
+	color: var(--primary);
 	text-decoration: none;
 }
 

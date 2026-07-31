@@ -2,6 +2,7 @@ import { type JSX, type VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 // The action lane reuses the profile lane's `pf-lane*` skeleton (header + collapse machinery + the
 // `.ui-splitter[data-mode]` / `:root[data-guest-nav]` density reveals), so profile.css must ride this
 // island's client bundle. `view.css` layers the pricing/CTA/trust content styling on top.
@@ -15,7 +16,7 @@ import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { ViewLaneHeader } from "../components/ViewLaneHeader.tsx";
 import { type ViewGlyph, ViewIcon } from "../components/view-glyphs.tsx";
-import { messageHrefFor, scheduleHrefFor, signInHref } from "../core/view-model.ts";
+import { commerceFor, messageHrefFor, scheduleHrefFor, signInHref } from "../core/view-model.ts";
 import { availabilityMode, jumpToStage, setAvailabilityMode } from "../core/view-state.ts";
 import { basketIds, hydrateBasket, inBasket, toggleBasket } from "../core/basket-state.ts";
 import type {
@@ -110,19 +111,11 @@ export default function ViewActionLane(
 
 	// #region Derived
 	// A Session service is booked from its schedule, not bought outright (root CLAUDE.md Decision #37):
-	// its primary CTA opens the availability calendar instead of Buy/Add-to-basket.
-	const bookable = item.type === "services" &&
-		(item.serviceType === "Session" || item.serviceType === "Group Session");
-	const group = item.type === "services" && item.serviceType === "Group Session";
-	const purchasable = (item.type === "services" && !bookable) || item.type === "products";
+	// its primary CTA opens the availability calendar instead of Buy/Add-to-basket. Shared with the
+	// ≤767px in-body `ViewBuyBar` so the two CTA stacks cannot drift.
+	const { bookable, group, purchasable, bookLabel, msgLabel } = commerceFor(item);
 	const scheduleHref = bookable ? scheduleHrefFor(item, ctx) : null;
-	const bookLabel = group ? "Book a seat" : "Book a session";
 	const msgHref = authed ? messageHrefFor(item) : signInHref(item, ctx);
-	const msgLabel = item.type === "articles"
-		? "Message author"
-		: item.owner.kind === "team" || item.owner.kind === "business"
-		? "Message team"
-		: "Message";
 
 	function onBuy(): void {
 		if (!authed) {
@@ -315,23 +308,31 @@ export default function ViewActionLane(
 						)
 						: null}
 
-					{/* Primary action CTAs, stacked. */}
+					{
+						/* Primary action CTAs, stacked. `Button` variants carry the interaction weight (§B.8.1)
+					    — exactly one `filled` commitment, a real alternative `outlined`, and the escape
+					    hatch as `text`. They were three identically-shaped full-width pills distinguished
+					    only by fill. */
+					}
 					<div class="vw-ctas">
 						{bookable
 							? (
 								<>
-									<button
-										type="button"
-										class="vw-cta vw-cta--primary"
+									<Button
+										fluid
+										rounded
+										icon={<ViewIcon name="calendar" size={18} />}
+										label={bookLabel}
 										onClick={() => setAvailabilityMode(true)}
-									>
-										<ViewIcon name="calendar" size={18} />
-										<span>{bookLabel}</span>
-									</button>
-									<a class="vw-cta vw-cta--ghost" href={msgHref}>
-										<ViewIcon name="message" size={18} />
-										<span>{msgLabel}</span>
-									</a>
+									/>
+									<Button
+										variant="text"
+										fluid
+										rounded
+										icon={<ViewIcon name="message" size={18} />}
+										label={msgLabel}
+										onClick={() => (globalThis.location.href = msgHref)}
+									/>
 									{scheduleHref
 										? (
 											<a class="vw-lane__fulllink" href={scheduleHref}>
@@ -344,42 +345,50 @@ export default function ViewActionLane(
 							: purchasable
 							? (
 								<>
-									<button type="button" class="vw-cta vw-cta--primary" onClick={onBuy}>
-										<ViewIcon name="buy" size={18} />
-										<span>Buy now</span>
-									</button>
-									<button
-										type="button"
-										class="vw-cta vw-cta--outline"
-										data-on={added ? "true" : undefined}
+									<Button
+										fluid
+										rounded
+										icon={<ViewIcon name="buy" size={18} />}
+										label="Buy now"
+										onClick={onBuy}
+									/>
+									<Button
+										variant="outlined"
+										fluid
+										rounded
 										aria-pressed={added}
+										icon={<ViewIcon name={added ? "check" : "basket"} size={18} />}
+										label={added ? "In basket" : "Add to basket"}
 										onClick={onToggleBasket}
-									>
-										<ViewIcon name={added ? "check" : "basket"} size={18} />
-										<span>{added ? "In basket" : "Add to basket"}</span>
-									</button>
-									<a class="vw-cta vw-cta--ghost" href={msgHref}>
-										<ViewIcon name="message" size={18} />
-										<span>{msgLabel}</span>
-									</a>
+									/>
+									<Button
+										variant="text"
+										fluid
+										rounded
+										icon={<ViewIcon name="message" size={18} />}
+										label={msgLabel}
+										onClick={() => (globalThis.location.href = msgHref)}
+									/>
 								</>
 							)
 							: (
 								<>
-									<a class="vw-cta vw-cta--primary" href={msgHref}>
-										<ViewIcon name="message" size={18} />
-										<span>{msgLabel}</span>
-									</a>
-									<button
-										type="button"
-										class="vw-cta vw-cta--outline"
-										data-on={favorited.value ? "true" : undefined}
+									<Button
+										fluid
+										rounded
+										icon={<ViewIcon name="message" size={18} />}
+										label={msgLabel}
+										onClick={() => (globalThis.location.href = msgHref)}
+									/>
+									<Button
+										variant="outlined"
+										fluid
+										rounded
 										aria-pressed={favorited.value}
+										icon={<ProfileIcon name="star" />}
+										label={favorited.value ? "Saved" : "Save"}
 										onClick={() => (favorited.value = !favorited.value)}
-									>
-										<ProfileIcon name="star" class="vw-cta__glyph" />
-										<span>{favorited.value ? "Saved" : "Save"}</span>
-									</button>
+									/>
 								</>
 							)}
 					</div>

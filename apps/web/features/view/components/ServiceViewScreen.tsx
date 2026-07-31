@@ -1,10 +1,12 @@
 import type { JSX } from "preact";
+import { Icon } from "@projective/ui/icons";
 import "../styles/view.css";
 import type { EntityView, ServiceViewExtra } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts";
 import ServiceShowcase from "../islands/ServiceShowcase.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
+import ViewBuyBar from "../islands/ViewBuyBar.island.tsx";
 import StageFlow from "../islands/StageFlow.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import { ViewDetails } from "./ViewDetails.tsx";
@@ -46,7 +48,10 @@ export function ServiceViewScreen(
 
 			{/* Mobile-only: on desktop the side-nav lane header carries Back (hidden via `--laned`). */}
 			<div class="vw__back-row vw__back-row--laned">
-				<a class="vw__back" href={backHrefFor(ctx)}>← {backLabelFor(ctx)}</a>
+				<a class="vw__back" href={backHrefFor(ctx)}>
+					<Icon name="arrow-left" size="sm" class="vw__back-arrow" />
+					<span>{backLabelFor(ctx)}</span>
+				</a>
 			</div>
 
 			{/* Hero: showcase (media ⁄ availability) left + entity overview right. */}
@@ -61,6 +66,15 @@ export function ServiceViewScreen(
 				/>
 				<ViewDetails view={view} />
 			</div>
+
+			{/* ≤767px only — the lane is `display:none` there and it owns the whole transaction. */}
+			<ViewBuyBar
+				item={item}
+				pricing={view.pricing}
+				trust={view.trust}
+				authed={authed}
+				ctx={ctx}
+			/>
 
 			{/* Stage showcase — Pipeline / One-Off only, mirroring the Projects view. */}
 			{service.showcaseStages && service.stages.length > 0

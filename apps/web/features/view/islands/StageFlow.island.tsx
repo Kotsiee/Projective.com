@@ -129,7 +129,6 @@ export default function StageFlow(
 											<span
 												class="vw-seatmeter"
 												aria-label={`${stage.seatsFilled} of ${stage.seatsTotal} seats filled`}
-												title={`${stage.seatsFilled}/${stage.seatsTotal} seats`}
 											>
 												{Array.from({ length: stage.seatsTotal }, (_, i) => (
 													<span

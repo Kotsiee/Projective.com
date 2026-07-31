@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { Band, BandHead, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, BandHead, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { Money } from "../components/Money.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { currentWalletContext, walletError } from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type { FundingView } from "../types/wallet-types.ts";
 
 /**
@@ -28,7 +28,9 @@ export default function WalletFundingScreen(props: WalletFundingScreenProps): JS
 
 	const refetch = async () => {
 		const res = await WalletService.funding(currentWalletContext());
-		if (res.ok && res.data) view.value = res.data.funding;
+		applyRead(res, (d) => {
+			view.value = d.funding;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -38,6 +40,7 @@ export default function WalletFundingScreen(props: WalletFundingScreenProps): JS
 	return (
 		<main class="wlt" aria-label="Funding">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Funding">
 					<PageHead
 						title="Funding"

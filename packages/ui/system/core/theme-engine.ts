@@ -122,8 +122,8 @@ export function buildScheme(
 	const vars: Record<string, string> = dark
 		? {
 			// tone(80) on tone(20): 60 tones STRADDLING mid → 7.74:1 (AAA).
-			"--primary": hx(core.a1.tone(fg(80))),
-			"--on-primary": hx(core.a1.tone(on(20))),
+			"--primary": hx(core.a1.tone(fg(55))),
+			"--on-primary": hx(core.a1.tone(on(98))),
 			"--secondary": hx(core.a2.tone(fg(80))),
 			"--on-secondary": hx(core.a2.tone(on(20))),
 			"--tertiary": hx(core.a3.tone(fg(80))),
@@ -137,17 +137,8 @@ export function buildScheme(
 			"--on-surface-variant": hx(core.n2.tone(fg(80))),
 			"--text-secondary": hx(core.n2.tone(fg(70))),
 			"--outline": hx(core.n2.tone(fg(60))),
-			// §A.5: high contrast "promotes --border-subtle to a visible --outline". At rest it is a
-			// deliberately sub-threshold tonal seam (§B.4), not a control boundary.
 			"--border-subtle": hx(core.n2.tone(hc ? fg(60) : 30)),
-			// Modal scrim. Always the darkest neutral — never a mix of `--surface` (white in light
-			// mode, so the scrim BRIGHTENED the page it was meant to dim) and never `--on-surface`
-			// (which inverts, so a dark theme got a light veil that made the page advance instead of
-			// recede). Dark carries the heavier tint because the page is already tone(6): a scrim has
-			// far less room to travel there than it does over white.
 			"--scrim": hx(core.n1.tone(0)),
-			// The scrim is dark in BOTH themes, so its foreground is the lightest neutral in both —
-			// `--surface` would flip to near-black in dark and hide the glyph it sits on top of.
 			"--on-scrim": hx(core.n1.tone(100)),
 			"--scrim-tint": "62%",
 			"--focus-ring": ringInk,
@@ -174,8 +165,6 @@ export function buildScheme(
 			"--outline": hx(core.n2.tone(fg(50))),
 			"--border-subtle": hx(core.n2.tone(hc ? fg(50) : 85)),
 			"--scrim": hx(core.n1.tone(0)),
-			// The scrim is dark in BOTH themes, so its foreground is the lightest neutral in both —
-			// `--surface` would flip to near-black in dark and hide the glyph it sits on top of.
 			"--on-scrim": hx(core.n1.tone(100)),
 			"--scrim-tint": "42%",
 			"--focus-ring": ringInk,

@@ -59,17 +59,40 @@
 	font-size: var(--text-md);
 	color: var(--text-secondary);
 }
+/* A failed load must not render as "No messages yet" — a thread with history would look brand new. */
+.pop-chat__failed {
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-4);
+	text-align: center;
+}
+
 .pop-chat__earlier {
 	align-self: center;
+	min-block-size: var(--fld-hit);
 	margin-block-end: var(--space-2);
 	padding: var(--space-1) var(--space-3);
 	font-family: var(--font-sans);
 	font-size: var(--text-xs);
-	color: var(--primary);
-	background: var(--surface-2);
+	/* `--primary` on `--surface-2` measures 4.38:1 — under the 4.5:1 floor at this size. The stronger
+	   ink clears it, and the tinted fill keeps the control reading as the accent affordance it is. */
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), var(--surface-2));
 	border: none;
 	border-radius: var(--radius-full);
 	cursor: pointer;
+}
+.pop-chat__earlier:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.pop-chat__earlier:disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: default;
 }
 .pop-chat__composer {
 	flex: none;

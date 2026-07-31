@@ -8,8 +8,14 @@ import type { ArticleItem, ExploreItem } from "../../types/explore-types.ts";
 
 /**
  * ArticleCard — a help/editorial article for the grid/list combo section. Descriptive thumbnail, a
- * topic + read-time eyebrow, the headline, and author attribution. The `orientation` prop switches
+ * topic eyebrow, the headline, and an author + read-time byline. The `orientation` prop switches
  * between the media-on-top grid tile and the media-beside list row (same markup, CSS-driven).
+ *
+ * The byline uses the family's `.ex-card__byline` row rather than a bare `OwnerBadge`, so attribution
+ * composes identically to a service or product card. Read time moved out of the eyebrow — where it was
+ * middot-joined to the topic — into the byline's trailing slot, the position a service card gives its
+ * rating. That leaves the eyebrow to carry one fact and gives the article the same four-band rhythm as
+ * the rest of the family.
  *
  * Articles ALWAYS navigate straight to their standalone page — they deliberately IGNORE `onSelect`, so
  * they never open the Search Results side-drawer (an article is a read, not a preview).
@@ -31,9 +37,12 @@ export function ArticleCard(
 				<img src={item.media} alt="" loading="lazy" decoding="async" />
 			</div>
 			<div class="ex-card__body">
-				<span class="ex-eyebrow">{item.topic} · {item.readMinutes} min read</span>
+				<span class="ex-eyebrow">{item.topic}</span>
 				<h3 class="ex-card__title ex-card__title--sm">{item.title}</h3>
-				<OwnerBadge owner={item.owner} size="sm" />
+				<div class="ex-card__byline">
+					<OwnerBadge owner={item.owner} variant="mini" />
+					<span class="ex-muted">{item.readMinutes} min read</span>
+				</div>
 			</div>
 		</article>
 	);

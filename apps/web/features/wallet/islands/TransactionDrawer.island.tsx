@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import "../styles/wallet.css";
 import { Drawer } from "@projective/ui/feedback";
+import { Button } from "@projective/ui/fields";
 import { fundStateLabel, FundStateMark } from "../components/FundStateMark.tsx";
 import { Money } from "../components/Money.tsx";
 import { categoryLabel, isDisputeReason, reasonLabel, refLabel } from "../core/ledger-model.ts";
@@ -132,16 +133,19 @@ export default function TransactionDrawer(): JSX.Element | null {
 			</div>
 
 			<footer class="wlt-drawer__foot">
-				{ref && line.href && <a class="wlt-btn wlt-btn--ghost" href={line.href}>{ref}</a>}
-				<button
-					type="button"
-					class="wlt-btn"
+				{
+					/* This drawer only READS a movement, so it has no primary: a link out to the source and
+				    the escape hatch, both at low weight (§B.8.1). A `filled` Close would claim the panel
+				    was asking something. */
+				}
+				{ref && line.href && <a class="wlt-link" href={line.href}>{ref}</a>}
+				<Button
+					variant="text"
+					label="Close"
 					onClick={() => {
 						drawerLine.value = null;
 					}}
-				>
-					Close
-				</button>
+				/>
 			</footer>
 		</Drawer>
 	);

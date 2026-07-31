@@ -441,6 +441,28 @@
 	padding-inline: var(--space-4);
 }
 
+/*
+ * `busy` was reaching the DOM as `aria-busy` and nothing else — announced to assistive technology,
+ * invisible to everyone else, so a search or filter refine looked like nothing was happening. The
+ * list now recedes and stops taking clicks while it refreshes.
+ *
+ * A recede, not a spinner: the rows already on screen are still the right ones in almost every case,
+ * so dimming them says "updating" without the flash of replacing real content with a placeholder.
+ * The transition is the only animated part — the dimmed state itself is a static opacity, so a
+ * frozen or reduced-motion clock still renders the busy state correctly.
+ */
+.ui-lane-list[aria-busy="true"] {
+	opacity: 0.55;
+	pointer-events: none;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-lane-list[aria-busy="true"] {
+		transition: none;
+	}
+}
+
 .ui-lane-empty {
 	display: flex;
 	flex-direction: column;

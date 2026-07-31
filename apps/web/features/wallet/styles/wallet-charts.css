@@ -252,8 +252,8 @@
 /* #endregion */
 
 /* Every chart ships its data as a real table. A chart no screen reader can read is not accessible,
-   and on a surface holding other people's money that is a custody failure, not a polish item. 
-   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+   and on a surface holding other people's money that is a custody failure, not a polish item.
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 /* #endregion */
 

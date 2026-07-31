@@ -214,7 +214,7 @@ export default function CardDeck(props: CardDeckProps): JSX.Element {
 						type="button"
 						class="wlt-deck__expand"
 						ref={triggerRef}
-						aria-expanded={open}
+						aria-expanded={open ? "true" : "false"}
 						aria-label="Show all payment methods"
 						onClick={() => (deckExpanded.value = true)}
 					>

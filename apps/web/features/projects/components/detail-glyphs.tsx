@@ -262,16 +262,17 @@ export function projectViewLinks(
 			seg: "submissions",
 		});
 	}
-	links.push(
-		{
-			key: "attachments",
-			label: "Attachments",
-			icon: AttachmentsIcon,
-			seg: "attachments",
-			overflow: true,
-		},
-		{ key: "finances", label: "Finances", icon: FinancesIcon, seg: "finances", overflow: true },
-	);
+	links.push({
+		key: "attachments",
+		label: "Attachments",
+		icon: AttachmentsIcon,
+		seg: "attachments",
+		overflow: true,
+	});
+	// NOTE: a `finances` link was removed here. There is no `/projects/[slug]/finances` route, so the
+	// segment fell through to the `[channelId]` dynamic route; `resolveChannelMeta` returned null, both
+	// frame bands resolved to nothing, and the page rendered the general channel's chat transcript with
+	// no tabs and no composer. Restore it together with the route, not before.
 	return links;
 }
 // #endregion

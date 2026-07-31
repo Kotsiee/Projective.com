@@ -842,6 +842,8 @@ function quickActionsFor(
 	caps: VaultCapability[],
 	/** Retained for the live path, which will re-check it server-side before money moves. */
 	_verification: WalletVerification,
+	/** The personal extras, so the Smoother's enrol affordance is offered only where it can be used. */
+	personal: PersonalExtras | null,
 ): WalletAction[] {
 	const actions: WalletAction[] = [];
 	if (caps.includes("add_funds")) actions.push("top_up");
@@ -858,6 +860,22 @@ function quickActionsFor(
 	if (variant === "team" && caps.includes("distribute")) actions.push("distribute");
 	if (caps.includes("spend")) actions.push("fund_escrow");
 	if (caps.includes("add_funds")) actions.push("new_recurring");
+	/*
+	 * The three CONFIGURATION actions. They were defined end to end — label, capability requirement,
+	 * glyph, and a footer rig ready to draw them — and then never offered by this function, so
+	 * `/wallet/methods` had no way to add a method, `/wallet/payouts` no way to change the schedule it
+	 * described as changeable, and an eligible Smoother no way to enrol. Each screen's empty state
+	 * pointed at "the action bar" for a control the action bar was never given.
+	 *
+	 * They sit AFTER the movement actions deliberately: on the Overview these are the tail, and the
+	 * rig's `VIEW_ACTION` map promotes each one to the lead on the page it belongs to.
+	 */
+	if (caps.includes("add_funds")) actions.push("add_method");
+	if (caps.includes("withdraw")) actions.push("set_payout");
+	/* `eligible` only: the label is "Smooth income", which is an offer, not a settings screen. An
+	   already-enrolled subject needs an ADJUST action that does not exist yet, and offering them a
+	   control whose label misdescribes it is worse than offering nothing. */
+	if (personal?.incomeSmoother?.status === "eligible") actions.push("enrol_smoother");
 	if (variant !== "personal" && !caps.includes("spend")) actions.push("request_spend");
 	return actions;
 }
@@ -1265,6 +1283,14 @@ export function overview(query: WalletQuery): WalletOverview {
 	const verification = resolveVerification(variant, isFreelancer, sim.kyc ?? "verified");
 	const bal = resolveBalances(seed, sim.fundMix ?? "normal");
 	const lines = rawLedger(seed).slice(0, 8).map((r) => toLine(r, display, LOCALE));
+	/*
+	 * Hoisted out of the literal below because `quickActionsFor` needs the Smoother's state: the enrol
+	 * affordance is offered only where there is something to enrol IN, and `SmootherPanel` deliberately
+	 * renders no CTA of its own (the body owns viewing and selecting only).
+	 */
+	const personal = variant === "personal"
+		? personalExtras(seed, isFreelancer, display, LOCALE, sim)
+		: null;
 
 	return {
 		ref: walletRef(seed, display, LOCALE, sim),
@@ -1295,13 +1321,11 @@ export function overview(query: WalletQuery): WalletOverview {
 		flow: flowSeries(seed, 90, 12, display),
 		flowRange: "90d",
 		recent: lines,
-		quickActions: quickActionsFor(variant, caps, verification),
+		quickActions: quickActionsFor(variant, caps, verification, personal),
 		capabilities: caps,
 		verification,
 		standing: standingFor(seed, variant, isFreelancer, display, LOCALE, sim),
-		personal: variant === "personal"
-			? personalExtras(seed, isFreelancer, display, LOCALE, sim)
-			: null,
+		personal,
 		team: variant === "team" ? teamExtras(seed, display, LOCALE) : null,
 		business: variant === "business" ? businessExtras(seed, display, LOCALE) : null,
 	};

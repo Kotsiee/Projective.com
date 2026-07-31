@@ -1,13 +1,18 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import "../styles/wallet.css";
-import { Band, EmptyBand, PageHead } from "../components/band-parts.tsx";
+import { Band, EmptyBand, PageHead, WalletErrorBand } from "../components/band-parts.tsx";
 import { fundStateLabel } from "../components/FundStateMark.tsx";
 import LedgerTable from "./LedgerTable.island.tsx";
 import TransactionDrawer from "./TransactionDrawer.island.tsx";
 import { WalletService } from "../core/WalletService.ts";
-import { currentWalletContext, fundFilter } from "../core/wallet-state.ts";
-import { useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import {
+	currentWalletContext,
+	fundFilter,
+	ledgerSearch,
+	walletError,
+} from "../core/wallet-state.ts";
+import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
 import type { TransactionPage } from "../types/wallet-types.ts";
 
 /**
@@ -36,8 +41,11 @@ export default function WalletTransactionsScreen(
 		const res = await WalletService.transactions(currentWalletContext(), {
 			limit: 40,
 			...(fundFilter.value ? { fundState: fundFilter.value } : {}),
+			...(ledgerSearch.value.trim() ? { search: ledgerSearch.value.trim() } : {}),
 		});
-		if (res.ok && res.data) page.value = res.data.page;
+		applyRead(res, (d) => {
+			page.value = d.page;
+		});
 	};
 	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
 	useWalletRefresh(refetch);
@@ -48,6 +56,7 @@ export default function WalletTransactionsScreen(
 	return (
 		<main class="wlt" aria-label="Transactions">
 			<div class="wlt__stack">
+				<WalletErrorBand message={walletError.value} />
 				<Band tone="head" index={0} label="Transactions">
 					<PageHead
 						title="Transactions"

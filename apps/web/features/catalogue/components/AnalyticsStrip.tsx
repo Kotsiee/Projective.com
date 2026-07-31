@@ -1,21 +1,35 @@
 import type { JSX } from "preact";
 import { type AnalyticsPeriod, analyticsPeriod } from "../core/catalogue-state.ts";
-import { ChartIcon, StarGlyph } from "./catalogue-glyphs.tsx";
-import type { CatalogueStats } from "../types/catalogue-types.ts";
 import { Icon } from "@projective/ui/icons";
+import { StarGlyph } from "./catalogue-glyphs.tsx";
+import type { CatalogueStats, CatalogueTypeFilter } from "../types/catalogue-types.ts";
 
 /**
- * AnalyticsStrip — the console's light KPI row: 5 stat tiles (Active listings · Views · Orders ·
- * Revenue · Avg rating) following the dataviz stat-tile contract (sentence-case label · auto-compact
- * value · optional signed delta vs the named period · a de-emphasised sparkline with the current point
- * accented). Text wears text tokens; only the sparkline mark carries the accent (`--primary`); the
- * delta carries direction via `--success`/`--danger`. Token-only + theme-aware. It reports over the
- * window chosen by the lane footer's period selector (the shared `analyticsPeriod` signal), scaling the
- * flow metrics; the deep analytics dashboard is a separate future surface ("Full analytics →").
+ * AnalyticsStrip — the console's KPI row: five stat tiles following the dataviz stat-tile contract
+ * (sentence-case label · auto-compact value · optional signed delta · text in text tokens, direction in
+ * `--success`/`--danger`). The window it reports over comes from the header band's period switch
+ * (the shared `analyticsPeriod` signal, matching `/wallet`, whose header band owns its 30/60/90 range).
+ *
+ * Two things it deliberately no longer does.
+ *
+ * **It no longer asserts a number it cannot support.** The strip rolls up the seller's whole catalogue
+ * within the active *type* segment — a scope they chose and stay in — but a *search* is a lookup, not a
+ * scope, so the figures do not follow it. Previously that was silent, and "9 active listings" could sit
+ * directly above a body reading "0 listings". Now the block names its own scope, and says so out loud
+ * whenever a search has narrowed the list beneath it.
+ *
+ * **It no longer draws a sparkline.** The line was 96×22, unlabelled, with no axis and no scale, and
+ * its entire information content — first point versus last — was already printed as the delta beside
+ * it. Two marks for one fact is decoration; removing it also gave the block back 22px per tile, which
+ * is what let it stop eating 29% of a mobile viewport.
  */
 
 export interface AnalyticsStripProps {
 	stats: CatalogueStats;
+	/** The active type segment — names the scope the figures actually cover. */
+	type: CatalogueTypeFilter;
+	/** Whether a search is currently narrowing the list below, so the block can disclaim it. */
+	narrowed?: boolean;
 }
 
 const PERIOD_FACTOR: Record<AnalyticsPeriod, number> = { "7d": 0.25, "30d": 1, "90d": 3 };
@@ -46,7 +60,16 @@ function trendDelta(trend: number[]): number | null {
 	return Math.round(((last - first) / first) * 100);
 }
 
-export function AnalyticsStrip({ stats }: AnalyticsStripProps): JSX.Element {
+/** What the figures cover, in the seller's own words. */
+function scopeLabel(type: CatalogueTypeFilter): string {
+	return type === "service"
+		? "all your services"
+		: type === "product"
+		? "all your products"
+		: "your whole catalogue";
+}
+
+export function AnalyticsStrip({ stats, type, narrowed }: AnalyticsStripProps): JSX.Element {
 	const period = analyticsPeriod.value;
 	const factor = PERIOD_FACTOR[period];
 	const views = Math.round(stats.views30d * factor);
@@ -55,34 +78,39 @@ export function AnalyticsStrip({ stats }: AnalyticsStripProps): JSX.Element {
 	const delta = trendDelta(stats.trend);
 
 	return (
-		<div class="cat-kpis" role="group" aria-label="Catalogue analytics">
-			<StatTile
-				label="Active listings"
-				value={compact(stats.activeListings)}
-				caption={`${stats.totalListings} total`}
-			/>
-			<StatTile
-				label={`Views · ${PERIOD_LABEL[period]}`}
-				value={compact(views)}
-				delta={delta}
-				trend={stats.trend}
-			/>
-			<StatTile label="Orders & bookings" value={compact(orders)} caption={PERIOD_LABEL[period]} />
-			<StatTile
-				label="Revenue"
-				value={compactMoney(revenue)}
-				delta={delta}
-				caption={PERIOD_LABEL[period]}
-			/>
-			<StatTile
-				label="Avg rating"
-				value={stats.avgRating > 0 ? stats.avgRating.toFixed(1) : "—"}
-				icon={<StarGlyph size={15} filled />}
-			/>
-			<a class="cat-kpis__more" href="/catalogue?view=analytics" aria-label="Open full analytics">
-				<ChartIcon size={15} /> Full analytics →
-			</a>
-		</div>
+		<section class="cat-analytics" aria-label="Catalogue analytics">
+			<h2 class="cat-analytics__scope">
+				Last {PERIOD_LABEL[period]} across {scopeLabel(type)}
+				{narrowed && (
+					<span class="cat-analytics__disclaim">
+						{" "}— not affected by your search
+					</span>
+				)}
+			</h2>
+
+			<div class="cat-kpis">
+				{
+					/*
+					 * "not archived", not "total". The roll-up excludes archived listings but the body list
+					 * includes them, so a bare "7 total" sat beside 8 rows and read as an error. The caption
+					 * names the exclusion instead of hiding it.
+					 */
+				}
+				<StatTile
+					label="Published"
+					value={compact(stats.activeListings)}
+					caption={`of ${stats.totalListings} not archived`}
+				/>
+				<StatTile label="Views" value={compact(views)} delta={delta} />
+				<StatTile label="Orders & bookings" value={compact(orders)} />
+				<StatTile label="Revenue" value={compactMoney(revenue)} delta={delta} />
+				<StatTile
+					label="Avg rating"
+					value={stats.avgRating > 0 ? stats.avgRating.toFixed(1) : "—"}
+					icon={<StarGlyph size={14} filled />}
+				/>
+			</div>
+		</section>
 	);
 }
 
@@ -92,11 +120,10 @@ interface StatTileProps {
 	value: string;
 	caption?: string;
 	delta?: number | null;
-	trend?: number[];
 	icon?: JSX.Element;
 }
 
-function StatTile({ label, value, caption, delta, trend, icon }: StatTileProps): JSX.Element {
+function StatTile({ label, value, caption, delta, icon }: StatTileProps): JSX.Element {
 	const dir = delta == null ? 0 : Math.sign(delta);
 	return (
 		<div class="cat-tile">
@@ -113,48 +140,8 @@ function StatTile({ label, value, caption, delta, trend, icon }: StatTileProps):
 					</span>
 				)}
 			</div>
-			{trend && trend.length > 1
-				? <Sparkline series={trend} />
-				: caption
-				? <span class="cat-tile__caption">{caption}</span>
-				: null}
+			{caption && <span class="cat-tile__caption">{caption}</span>}
 		</div>
-	);
-}
-
-/** A minimal 2px sparkline — de-emphasised line + accented current point (dataviz stat-tile trend). */
-function Sparkline({ series }: { series: number[] }): JSX.Element {
-	const w = 96;
-	const h = 22;
-	const max = Math.max(...series, 1);
-	const min = Math.min(...series, 0);
-	const span = max - min || 1;
-	const step = series.length > 1 ? w / (series.length - 1) : w;
-	const pts = series.map((v, i) => {
-		const x = i * step;
-		const y = h - ((v - min) / span) * (h - 3) - 1.5;
-		return `${x.toFixed(1)},${y.toFixed(1)}`;
-	});
-	const last = pts[pts.length - 1].split(",");
-	return (
-		<svg
-			class="cat-spark"
-			viewBox={`0 0 ${w} ${h}`}
-			width={w}
-			height={h}
-			aria-hidden="true"
-			preserveAspectRatio="none"
-		>
-			<polyline
-				class="cat-spark__line"
-				points={pts.join(" ")}
-				fill="none"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			/>
-			<circle class="cat-spark__dot" cx={last[0]} cy={last[1]} r="2.5" />
-		</svg>
 	);
 }
 // #endregion

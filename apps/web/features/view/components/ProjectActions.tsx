@@ -5,12 +5,17 @@ import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
 /**
- * ProjectActions — the Projects view's **single primary CTA**: Apply to project. Shared by the body
- * header and the migrated sticky header so the two stay in lockstep (both read the module-level
- * `projectApplied` signal — mirrors how `ProfileActions` shares `following`). Rendered inside island
- * trees, so the signal read is reactive. The secondary Save / Message controls were removed so Apply
- * stands as the only call to action in the main area. Apply is an optimistic client stub (guests
- * bounce to sign-in); the real application flow is a Phase-2 route.
+ * ProjectActions — the Projects view's **single primary CTA**: Apply to project. All three mounts read
+ * the module-level `projectApplied` signal (mirroring how `ProfileActions` shares `following`), so they
+ * stay in lockstep; rendered inside island trees, so the read is reactive.
+ *
+ * **Exactly one mount is ever visible, and which one depends on width.** Above 767px the lane owns the
+ * CTA and both `pf-header__actions` and `pf-stickyhead__actions` are `display:none` (profile.css) —
+ * §B.8.2 counts per decision region and the shell chrome is one region. Below 767px there is no lane, so
+ * the body header carries it until it scrolls away and the condensed band takes over. Do not read the
+ * duplicate mounts as three competing primaries: they are one button in three mutually exclusive states.
+ *
+ * Apply is an optimistic client stub (guests bounce to sign-in); the real application flow is Phase 2.
  */
 export function ProjectActions(
 	{ item, authed, ctx }: {
