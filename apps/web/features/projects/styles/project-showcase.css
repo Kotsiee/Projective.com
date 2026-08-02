@@ -445,7 +445,8 @@
 	align-items: center;
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-3);
-	border: 1px dashed var(--outline, color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent));
+	border: 1px dashed var(--outline, color-mix(in srgb, var(--on-surface) var(--tint-strong),
+		transparent));
 	border-radius: var(--radius-base);
 	background: transparent;
 	color: var(--on-surface);

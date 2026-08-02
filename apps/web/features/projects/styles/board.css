@@ -2,23 +2,31 @@
  * Kanban board — workspace shell, the /files-parity toolbar, the ticket card content, the List view,
  * and the column header. Token-only, strict BEM. §B.4: columns/cards handled by @projective/ui/kanban;
  * here the toolbar is borderless controls and the list rows separate by a single hairline (no boxes).
- * The board is bounded to the viewport so its columns scroll internally (a real board), leaving room for
- * the footer rig band.
+ * The board is bounded to the content region so its columns scroll internally (a real board).
+ *
+ * It FILLS that region (down the `.ui-page-canvas__body` flex column) rather than re-deriving its own
+ * height from `100dvh` minus a guess at the chrome above and below it. The guess was wrong in both
+ * directions and in a way no single number could fix: the footer rig was assumed at `3.25rem` and
+ * measures 50.39px, the header band is assumed at `--shell-midnav-header-h` but is whatever the
+ * mounted header renders, and the project/channel split needed a second `data-scope` rule to track
+ * which bands happen to exist on that route. The shell already knows all of this — the grid row IS
+ * the answer — so the board asks for the row instead of predicting it.
+ *
+ * The basis must be `0`, not `auto`. The middle-nav frame is content-sized (it grows so the WINDOW can
+ * scroll a long body — a chat feed, a wallet), so an `auto` basis reports the board's natural height as
+ * a demand on the `1fr` content row and the frame simply grows to honour it: measured 639.83px of
+ * demand against a 621.61px region, which is 18px of document scrollbar on a board that had already
+ * been told to fit. A `0` basis makes the intrinsic contribution zero, so the row is sized by what is
+ * LEFT rather than by what the columns contain, and the board then grows into exactly that. The
+ * columns keep their own internal scroll, which is where a board's overflow belongs.
  */
 .brd {
-	--brd-footer: 3.25rem;
 	display: flex;
 	flex-direction: column;
+	flex: 1 1 0;
 	min-block-size: 0;
-	block-size: calc(100dvh - var(--shell-topbar-h) - var(--brd-footer));
 	padding-inline: var(--space-4);
 	padding-block: var(--space-2) 0;
-}
-
-.brd[data-scope="channel"] {
-	block-size: calc(
-		100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--brd-footer)
-	);
 }
 
 /* #region Toolbar (sticky, borderless — mirrors the File Explorer toolbar) */
@@ -261,23 +269,6 @@
 	color: var(--warning);
 }
 
-.tkt__tags {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.tkt__tag {
-	padding: 1px 0.4rem;
-	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	font-size: 0.6875rem;
-	color: var(--text-secondary);
-}
-
 .tkt__foot {
 	display: flex;
 	align-items: center;
@@ -299,6 +290,23 @@
 	align-items: center;
 	gap: 2px;
 	font-variant-numeric: tabular-nums;
+}
+
+/* A date that has passed and a workload above standard are the two facts on a card that change what
+   the reader should do about it, so they are the only two allowed to carry colour here. */
+.tkt__m[data-overdue] {
+	color: var(--danger);
+	font-weight: var(--fw-semibold);
+}
+
+.tkt__m[data-level="high"] {
+	color: var(--warning);
+}
+
+.tkt__m:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-sm);
 }
 
 .tkt__flag {
@@ -488,10 +496,8 @@
 }
 /* #endregion */
 
-@media (max-width: 768px) {
-	.brd,
-	.brd[data-scope="channel"] {
-		block-size: auto;
-		min-block-size: calc(100dvh - var(--shell-topbar-h) - var(--brd-footer));
-	}
-}
+/* No mobile height override. The board fills its grid row at every width, so the columns keep their
+   own internal scroll and the document never grows past the viewport — the previous rule released the
+   board to `block-size: auto` with a `100dvh`-derived floor, which is the same guess the base rule
+   just dropped (and it keyed off 768px, one pixel wide of the shell's own 767px mobile boundary, so at
+   exactly 768px the desktop lane was still mounted while the board had already switched models). */

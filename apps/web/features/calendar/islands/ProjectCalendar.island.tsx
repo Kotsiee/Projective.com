@@ -53,8 +53,10 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 		);
 	}
 
+	// No `--channel` modifier: the surface fills whatever content region the shell hands it, so the
+	// channel scope no longer needs a variant that subtracts the header band by hand.
 	return (
-		<div class={`cal-surface${props.scope === "channel" ? " cal-surface--channel" : ""}`}>
+		<div class="cal-surface">
 			<Calendar
 				events={events.value}
 				timezone={p.timezone}

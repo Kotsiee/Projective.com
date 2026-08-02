@@ -42,7 +42,6 @@ export const handler = define.handlers({
 				query: sp.get("query") || undefined,
 				assignee: sp.get("assignee") || undefined,
 				priority,
-				tag: sp.get("tag") || undefined,
 			}),
 		);
 	},

@@ -31,3 +31,12 @@ export type {
 } from "./islands/DraggablePopover.tsx";
 export { usePresence } from "./core/usePresence.ts";
 export type { Presence, PresenceState } from "./core/usePresence.ts";
+
+/**
+ * The modal STACK — a replace-in-place router for a chain of modals. Only the top frame renders, so
+ * a chain of three costs one backdrop blur rather than three, and each frame's live UI state is
+ * cached (non-reactively) so popping back restores the surface a user actually left.
+ */
+export { bindFrameSignal, createModalStack } from "./core/modal-stack.ts";
+export type { ModalFrame, ModalStack } from "./core/modal-stack.ts";
+export { useFrameScroll, useFrameState } from "./hooks/useModalStack.ts";

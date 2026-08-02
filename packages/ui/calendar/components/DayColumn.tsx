@@ -54,9 +54,7 @@ export function DayColumn(props: DayColumnProps): JSX.Element {
 					: undefined}
 			/>
 
-			{props.blackout
-				? <div class="cal-daycol__blackout" aria-hidden="true" />
-				: null}
+			{props.blackout ? <div class="cal-daycol__blackout" aria-hidden="true" /> : null}
 
 			{(props.workingWindows ?? []).map((w, i) => {
 				const top = yFor(Math.max(rangeStartMin, w.startMinute));

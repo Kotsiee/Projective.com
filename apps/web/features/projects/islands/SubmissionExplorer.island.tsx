@@ -60,6 +60,7 @@ import {
 	type TaskChecklist,
 	toggleChecklistItem,
 } from "../core/submission-tasks.ts";
+import { wantsReview } from "../core/ticket-view.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import { filesZoom, gridColWidth, viewMode, zoom } from "../core/view-state.ts";
 import { FileCard } from "../components/FileCard.tsx";
@@ -479,6 +480,23 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	useEffect(() => {
 		checklist.value = buildTaskChecklist(seedKey, { hasTickets: fulfilsTickets(format) });
 	}, [seedKey, format]);
+
+	/*
+	 * The hand-off from the ticket modal (root CLAUDE.md §8 Decision #65). A review opened inside a
+	 * ticket rewrites the URL to this route with `?review=1`, so a link copied mid-review REOPENS the
+	 * review here rather than merely landing on the submission. The marker is then stripped from the
+	 * URL, because it describes an arrival and re-running it on every Back would be wrong.
+	 *
+	 * Gated on the resolved reviewer role, so a freelancer following the same link sees their files
+	 * rather than a review workspace they cannot act in.
+	 */
+	useEffect(() => {
+		if (typeof location === "undefined") return;
+		if (!wantsReview(location.search)) return;
+		if (!review.value || !viewer.isReviewer) return;
+		reviewOpen.value = true;
+		history.replaceState(history.state, "", location.pathname);
+	}, [review.value?.unit.path.join("/"), viewer.isReviewer]);
 
 	// Publish Tasks-panel availability to the footer toggle; reset on unmount.
 	useEffect(() => {

@@ -30,6 +30,8 @@ export {
 } from "./components/SortableContext.tsx";
 export { DragOverlay } from "./components/DragOverlay.tsx";
 export type { DragOverlayProps } from "./components/DragOverlay.tsx";
+export { DropIndicator } from "./components/DropIndicator.tsx";
+export type { DropIndicatorProps } from "./components/DropIndicator.tsx";
 // #endregion
 
 // #region Hooks

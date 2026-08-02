@@ -1,0 +1,1586 @@
+/*
+ * TicketView — the View Ticket modal (`.tkv-*`). Replaces the retired `.tkd` surface entirely.
+ *
+ * Token-only, strict BEM, logical properties throughout so the whole modal mirrors under
+ * `dir="rtl"`. The panel's enter transform is SELF-CLEARING (it resolves to `none` while open), so
+ * descendant `position: fixed` overlays — the portalled tooltips, the Select panel, the kebab
+ * popover — still resolve against the viewport rather than being re-based onto this panel (root
+ * CLAUDE.md §8 Decision #8/#9).
+ *
+ * ## The separation rule this file is built on (§B.4)
+ *
+ * Nothing non-interactive carries a four-sided border. Regions are told apart by ONE hairline and a
+ * tonal step; blocks within a region by spacing and type weight alone. The only full borders in here
+ * belong to controls — the drop zone, the stage rows a reader can open, the metric buttons. That is
+ * why the tabs, the ledger, the breakdown table and the history log have no frames around them: a
+ * card inside a card inside a modal is three nested boxes competing to be the thing you are reading.
+ */
+:root {
+	--tkv-side-w: 20rem;
+	--tkv-node: 1.375rem;
+	/* The submissions grid column, driven by the shared zoom store. */
+	--tkv-col: 168px;
+}
+
+.tkv {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: clamp(0px, 2vw, 28px);
+}
+
+.tkv__panel {
+	position: relative;
+	inline-size: var(--overlay-w-full);
+	block-size: var(--overlay-h-lg);
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	background: var(--surface);
+	border-radius: var(--overlay-radius-lg);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	opacity: 0;
+	transform: translateY(12px) scale(0.985);
+	transition:
+		opacity var(--dur-medium) var(--ease-emphasized),
+		transform var(--dur-medium) var(--spring-standard);
+}
+
+.tkv__panel[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+
+/* #region Header */
+.tkv__top {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.tkv__ident {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+/* The status chip is the one place a tone is allowed to carry meaning alone, because it also
+   carries its own word — the hue is reinforcement, not the channel. */
+.tkv__status {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	block-size: 1.5rem;
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--text-secondary);
+}
+
+.tkv__status[data-tone="info"] {
+	background: color-mix(in srgb, var(--secondary) var(--tint-soft), transparent);
+	color: var(--secondary);
+}
+.tkv__status[data-tone="progress"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	color: var(--primary);
+}
+.tkv__status[data-tone="review"] {
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+	color: var(--warning);
+}
+.tkv__status[data-tone="success"] {
+	background: color-mix(in srgb, var(--success) var(--tint-soft), transparent);
+	color: var(--success);
+}
+.tkv__status[data-tone="warning"] {
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+	color: var(--warning);
+}
+
+.tkv__title {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.tkv__who {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.tkv__stack {
+	display: inline-flex;
+	border-radius: var(--radius-full);
+}
+
+.tkv__stack:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * On a NEW ticket the title is the required field rather than a heading, so it is a field from the
+ * start. It borrows the heading's metrics exactly — same size, weight and line-height — so the
+ * moment it becomes one on save, nothing moves.
+ */
+.tkv__titlefield {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.tkv__titlefield .ui-field__input {
+	font-size: var(--text-lg);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.tkv__acts {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.tkv__act {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv__act:hover,
+.tkv__act[aria-pressed="true"] {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
+}
+
+.tkv__act:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Meta bar + tab strip — ONE hairline separates the chrome from the body */
+.tkv__bar {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: 0 var(--space-4);
+	border-block-end: var(--hairline);
+}
+
+.tkv-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tkv-meta__item {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 1.75rem;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+}
+
+/*
+ * "Claimed by" is the one value on this row the client does not set — it records what the market did
+ * with the ticket. It sits alone at the far end so the four things a client governs read as one
+ * group, and the outcome as a separate fact.
+ */
+.tkv-meta__item[data-end="true"] {
+	margin-inline-start: auto;
+}
+
+.tkv-meta__mark {
+	color: var(--text-tertiary, var(--text-secondary));
+}
+
+.tkv-meta__k {
+	color: var(--text-secondary);
+}
+
+.tkv-meta__v {
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+/* Intensity is a WORD. The multiplier that turns it into money is arithmetic and lives on the
+   Finances tab, where it can be shown working instead of asserted. */
+.tkv-meta__v[data-level="low"] {
+	color: var(--text-secondary);
+}
+.tkv-meta__v[data-level="high"] {
+	color: var(--warning);
+}
+.tkv-meta__v[data-tone="danger"] {
+	color: var(--danger);
+}
+.tkv-meta__v[data-tone="warning"] {
+	color: var(--warning);
+}
+.tkv-meta__v[data-tone="muted"] {
+	color: var(--text-secondary);
+}
+.tkv-meta__v[data-overdue="true"] {
+	color: var(--danger);
+}
+
+/*
+ * The static ⇄ control swap. At rest the trigger is the VALUE with a quiet caret — no field chrome,
+ * because a row of dropdowns above a document turns reading into operating a control panel. Hover
+ * and focus reveal it is a control; clicking replaces it with the real one, already open.
+ */
+.tkv-meta__trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	min-block-size: var(--fld-hit);
+	padding: 2px var(--space-1);
+	margin-inline: calc(var(--space-1) * -1);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-xs);
+	color: inherit;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-meta__trigger:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.tkv-meta__trigger:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.tkv-meta__caret {
+	color: var(--text-tertiary, var(--text-secondary));
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-meta__trigger:hover .tkv-meta__caret,
+.tkv-meta__trigger:focus-visible .tkv-meta__caret {
+	opacity: 1;
+}
+
+.tkv-meta__editor {
+	display: inline-flex;
+	align-items: center;
+}
+
+/* The control keeps the row's compact metrics rather than the field ramp's default height, so the
+   bar does not grow taller the moment one value is being changed. */
+.tkv-meta__select,
+.tkv-meta__date {
+	--fld-h-sm: 1.75rem;
+	min-inline-size: 8.5rem;
+}
+
+.tkv-meta__select--person {
+	min-inline-size: 11rem;
+}
+
+.tkv-meta__date {
+	min-inline-size: 9.5rem;
+}
+
+/* A person is a face and a name, wherever one appears on this row — in the value, in the trigger,
+   and in the dropdown the trigger opens. */
+.tkv-person {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	border-radius: var(--radius-full);
+}
+
+.tkv-person__name {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.tkv-person__none {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 20px;
+	block-size: 20px;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+}
+
+.tkv-person:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.tkv-tabs {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-1);
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.tkv-tabs::-webkit-scrollbar {
+	display: none;
+}
+
+/* An underline, not a pill: the strip sits directly on the region hairline, so the active mark
+   lands ON that line rather than adding a second edge beside it (§B.4). */
+.tkv-tabs__tab {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3) calc(var(--space-3) - 1px);
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	white-space: nowrap;
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-tabs__tab::after {
+	content: "";
+	position: absolute;
+	inset-inline: var(--space-2);
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px;
+	background: var(--primary);
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-emphasized);
+}
+
+.tkv-tabs__tab:hover {
+	color: var(--on-surface);
+}
+
+.tkv-tabs__tab[aria-selected="true"] {
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+
+.tkv-tabs__tab[aria-selected="true"]::after {
+	transform: scaleX(1);
+}
+
+.tkv-tabs__tab:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-sm);
+}
+
+/* History is an archive rather than a working view, so it sits apart at the far end and drops its
+   label — the name lives in the tooltip and the accessible name (§B.6). */
+.tkv-tabs__tab[data-icononly="true"] {
+	margin-inline-start: auto;
+	padding-inline: var(--space-2);
+}
+
+.tkv-tabs__count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.25rem;
+	block-size: 1.125rem;
+	padding-inline: 5px;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
+.tkv-tabs__tab[aria-selected="true"] .tkv-tabs__count {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	color: var(--primary);
+}
+
+/* Unread on the History trigger is a DOT, not a count — the count itself is a footer metric the
+   reader clicks; here it is only "there is something new" (DESIGN_SYSTEM Part D). */
+.tkv-tabs__dot {
+	position: absolute;
+	inset-block-start: 6px;
+	inset-inline-end: 4px;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
+/* #endregion */
+
+/* #region Body regions */
+.tkv__regions {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+}
+
+.tkv__split {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.tkv__main,
+.tkv__side {
+	min-inline-size: 0;
+	block-size: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.tkv__body {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	padding: var(--space-5) var(--space-5) var(--space-6);
+}
+
+.tkv__body:focus-visible {
+	outline: none;
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+/* The side panel is told apart by one hairline and a tonal step. No box. */
+.tkv__side {
+	border-inline-start: var(--hairline);
+	background: var(--surface-1);
+}
+/* #endregion */
+
+/* #region Shared body vocabulary */
+.tkv-doc {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
+
+.tkv-doc__sec {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.tkv-h {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.tkv-h__count {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0;
+	text-transform: none;
+	color: var(--text-secondary);
+	opacity: 0.85;
+}
+
+.tkv-h__note {
+	margin-inline-start: auto;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-regular);
+	letter-spacing: 0;
+	text-transform: none;
+	color: var(--text-secondary);
+}
+
+.tkv-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-8) var(--space-4);
+	margin: 0;
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.tkv-empty--inline {
+	display: block;
+	padding: var(--space-2) 0;
+	text-align: start;
+	font-size: var(--text-xs);
+}
+
+.tkv-empty__mark {
+	color: var(--text-secondary);
+	opacity: 0.5;
+}
+
+.tkv-empty__title {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.tkv-empty__note {
+	margin: 0;
+	max-inline-size: 34rem;
+	font-size: var(--text-xs);
+	line-height: var(--leading-relaxed);
+}
+
+.tkv-note {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+
+.tkv-chip {
+	display: inline-flex;
+	align-items: center;
+	block-size: 1.375rem;
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+}
+
+.tkv-chip[data-tone="progress"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	color: var(--primary);
+}
+.tkv-chip[data-tone="success"] {
+	background: color-mix(in srgb, var(--success) var(--tint-soft), transparent);
+	color: var(--success);
+}
+.tkv-chip[data-tone="warning"] {
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+	color: var(--warning);
+}
+.tkv-chip[data-level="high"] {
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+	color: var(--warning);
+}
+
+.tkv-facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.tkv-facts--inline {
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: var(--space-6);
+}
+
+.tkv-facts__row {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-3);
+	font-size: var(--text-xs);
+}
+
+.tkv-facts__row dt {
+	flex: none;
+	min-inline-size: 7rem;
+	color: var(--text-secondary);
+}
+
+.tkv-facts__row dd {
+	margin: 0;
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.tkv-facts__note {
+	margin-inline-start: var(--space-2);
+	font-weight: var(--fw-regular);
+	color: var(--text-secondary);
+}
+
+.tkv-sr {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+/* #endregion */
+
+/*
+ * Rich-text prose, as the editor emits it. Only the six formats the shared RichTextEditor allows can
+ * appear here (bold · italic · underline · strike · H1–H3 · lists), so the vocabulary is small and
+ * closed rather than "whatever HTML arrives".
+ */
+.tkv-rich {
+	font-size: var(--text-sm);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+}
+
+.tkv-rich--sm {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.tkv-rich > :first-child {
+	margin-block-start: 0;
+}
+
+.tkv-rich > :last-child {
+	margin-block-end: 0;
+}
+
+.tkv-rich p {
+	margin-block: var(--space-2);
+}
+
+.tkv-rich h1,
+.tkv-rich h2,
+.tkv-rich h3 {
+	margin-block: var(--space-4) var(--space-2);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.tkv-rich h1 {
+	font-size: var(--text-base);
+}
+
+.tkv-rich h2 {
+	font-size: var(--text-sm);
+}
+
+.tkv-rich h3 {
+	font-size: var(--text-xs);
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.tkv-rich ul,
+.tkv-rich ol {
+	margin-block: var(--space-2);
+	padding-inline-start: var(--space-5);
+}
+
+.tkv-rich li {
+	margin-block: var(--space-1);
+}
+/* #endregion */
+
+/* #region Details tab — the running stages */
+.tkv-live {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block: var(--space-3);
+}
+
+/* Consecutive live stages are separated by a single hairline, not by two boxes meeting. */
+.tkv-live + .tkv-live {
+	border-block-start: var(--hairline);
+}
+
+.tkv-live__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.tkv-live__step {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--tkv-node);
+	block-size: var(--tkv-node);
+	border-radius: var(--radius-full);
+	/* A primary RING with the numeral on the surface pair: `--on-primary` on `--primary` measures
+	   3.57:1 in dark mode (root CLAUDE.md §8 Decision #64's flagged token-layer issue), so the
+	   numeral is never set on the filled swatch. */
+	box-shadow: inset 0 0 0 1.5px var(--primary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
+	color: var(--on-surface);
+	background: var(--surface);
+}
+
+.tkv-live__name {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0;
+	border: none;
+	background: transparent;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.tkv-live__name:hover {
+	color: var(--primary);
+}
+
+.tkv-live__name:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-sm);
+}
+
+.tkv-live__int {
+	margin-inline-start: auto;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
+.tkv-live__int[data-level="high"] {
+	color: var(--warning);
+}
+
+.tkv-live__tasktitle {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin: var(--space-1) 0 0;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* The Stages tab has no vocabulary of its own: it renders the shared stage pipeline (`.tkc-*`,
+   ticket-pipeline.css), and the stage it selects opens in this modal's own side panel. */
+
+/* #region Finances tab */
+.tkv-fin {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
+
+/* No frame, no zebra: the rows are separated by one hairline each and the numerals are tabular, so
+   the column reads as a column without a grid drawn around it. */
+.tkv-table {
+	inline-size: 100%;
+	border-collapse: collapse;
+	font-size: var(--text-xs);
+}
+
+.tkv-table th,
+.tkv-table td {
+	padding: var(--space-2) var(--space-2);
+	text-align: start;
+	vertical-align: middle;
+}
+
+.tkv-table thead th {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	border-block-end: var(--hairline);
+}
+
+.tkv-table tbody tr + tr th,
+.tkv-table tbody tr + tr td {
+	border-block-start: var(--hairline);
+}
+
+.tkv-table__name {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.tkv-table__num {
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.tkv-table__mult {
+	color: var(--text-secondary);
+}
+
+.tkv-table__total {
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.tkv-table__none {
+	color: var(--text-secondary);
+}
+
+.tkv-table tfoot th,
+.tkv-table tfoot td {
+	border-block-start: var(--hairline-strong);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.tkv-table__grand {
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+}
+
+.tkv-ledger {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tkv-ledger__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-1);
+}
+
+.tkv-ledger__row + .tkv-ledger__row {
+	border-block-start: var(--hairline);
+}
+
+.tkv-ledger__mark {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--text-secondary);
+}
+
+.tkv-ledger__row[data-kind="release"] .tkv-ledger__mark {
+	background: color-mix(in srgb, var(--success) var(--tint-soft), transparent);
+	color: var(--success);
+}
+
+.tkv-ledger__row[data-kind="fee"] .tkv-ledger__mark {
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+	color: var(--warning);
+}
+
+.tkv-ledger__body {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.tkv-ledger__label {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.tkv-ledger__meta {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+
+.tkv-ledger__state {
+	flex: none;
+	font-size: var(--text-2xs);
+	text-transform: capitalize;
+	color: var(--text-secondary);
+}
+
+.tkv-ledger__state[data-state="held"] {
+	color: var(--primary);
+}
+
+.tkv-ledger__amount {
+	flex: none;
+	min-inline-size: 5.5rem;
+	text-align: end;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.tkv-ledger__amount[data-negative] {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Attachments tab — the `/files` explorer, scoped to one ticket */
+.tkv-files {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-block-size: 100%;
+}
+
+/* Sits in the same bar as the zoom rig, so it reads as the other half of "what can I do with this
+   view" rather than as a form control that wandered into a toolbar. */
+.tkv-addfile {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: var(--fld-h-sm);
+	padding-inline: var(--space-3);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--radius-full);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-addfile:hover {
+	border-color: var(--fld-hover-bd);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.tkv-addfile:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region History tab */
+.tkv-log {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tkv-log__row + .tkv-log__row {
+	border-block-start: var(--hairline);
+}
+
+.tkv-log__entry {
+	inline-size: 100%;
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	text-align: start;
+	color: inherit;
+	font: inherit;
+}
+
+.tkv-log__entry--go {
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-log__entry--go:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.tkv-log__entry--go:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The actor's face leads the entry, with the event's kind as a small badge on it. Two channels, not
+ * one: a log is a record of people doing things, so a reader scanning for "who changed the price"
+ * finds a face faster than a name inside a sentence — and the badge keeps the WHAT legible without
+ * the row growing a second column.
+ */
+.tkv-log__who {
+	position: relative;
+	flex: none;
+	display: inline-flex;
+}
+
+.tkv-log__system {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 26px;
+	block-size: 26px;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+}
+
+.tkv-log--compact {
+	gap: var(--space-1);
+}
+
+.tkv-log--compact .tkv-log__system {
+	inline-size: 22px;
+	block-size: 22px;
+}
+
+/* The kind, as a badge on the corner of the face. The ring is drawn in the row's own ground so the
+   badge reads as sitting on the avatar rather than punched through it. */
+.tkv-log__mark {
+	position: absolute;
+	inset-block-end: -2px;
+	inset-inline-end: -3px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 0.9375rem;
+	block-size: 0.9375rem;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface));
+	box-shadow: 0 0 0 2px var(--surface);
+	color: var(--text-secondary);
+}
+
+/* Unread carries a mark, not only a hue — a state never rides on colour alone (§A.5). */
+.tkv-log__row[data-unread="true"] .tkv-log__mark {
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+	color: var(--primary);
+	box-shadow:
+		0 0 0 2px var(--surface),
+		0 0 0 3.5px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.tkv-log__body {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.tkv-log__summary {
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.tkv-log__actor {
+	font-weight: var(--fw-semibold);
+}
+
+.tkv-log__detail {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+
+.tkv-log__at {
+	flex: none;
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.tkv-log__go {
+	flex: none;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Submissions tab */
+.tkv-subs {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-block-size: 100%;
+}
+
+.tkv-subs__bar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.tkv-subs__trail {
+	flex: 1 1 12rem;
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.tkv-subs__zoom {
+	flex: none;
+}
+
+.tkv-subs__layout {
+	display: grid;
+	grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr);
+	gap: var(--space-4);
+	align-items: start;
+}
+
+/* One vertical hairline divides the navigator from the workspace — the §B.4 single rule, not a
+   panel with a frame. */
+.tkv-subs__tree {
+	padding-inline-end: var(--space-3);
+	border-inline-end: var(--hairline);
+}
+
+.tkv-subs__work {
+	min-inline-size: 0;
+}
+
+.tkv-subs__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--tkv-col), 1fr));
+	gap: var(--space-3);
+}
+
+@container (max-width: 640px) {
+	.tkv-subs__layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.tkv-subs__tree {
+		padding-inline-end: 0;
+		border-inline-end: none;
+		border-block-end: var(--hairline);
+		padding-block-end: var(--space-3);
+	}
+}
+/* #endregion */
+
+/* #region Side panel — recent activity (Details) and the stage inspector (Stages) */
+.tkv-rail {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	padding: var(--space-4) var(--space-3) var(--space-6);
+}
+
+.tkv-rail__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	margin-block-end: var(--space-3);
+}
+
+.tkv-rail__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.tkv-rail__count {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+
+.tkv-rail__count[data-unread="true"] {
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	font-weight: var(--fw-semibold);
+	color: var(--primary);
+}
+
+/* The panel is a glance at the log, not the archive. When there is more, it says how much more and
+   goes there — rather than growing into a second copy of the History tab. */
+.tkv-rail__more {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-rail__more:hover {
+	color: var(--primary);
+}
+
+.tkv-rail__more:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* The stage inspector fills the panel it is docked in rather than scrolling inside a scroller. */
+.tkv__side .tkc-insp {
+	min-block-size: auto;
+}
+
+/* #endregion */
+
+/* #region Footer — the money first, then what it is made of, then what to do next */
+.tkv__foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	padding: var(--space-3) var(--space-4);
+	border-block-start: var(--hairline);
+	background: var(--surface-1);
+}
+
+/*
+ * Two currency figures, and they lead. What a ticket costs and what it has actually cost so far are
+ * the two facts a client checks before every decision on this surface, and a currency figure sitting
+ * in a row of counts reads as one more count — so they are lifted out, set larger, and given the
+ * leading edge where the eye lands first.
+ */
+.tkv-money {
+	flex: none;
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-5);
+}
+
+.tkv-money__fig {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	border-radius: var(--radius-sm);
+}
+
+.tkv-money__fig:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.tkv-money__k {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.tkv-money__v {
+	font-size: var(--text-lg);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+/* Spent is the secondary of the pair — same channel, lower weight, so the two never compete to be
+   the headline while still being read together. */
+.tkv-money__fig[data-role="spent"] .tkv-money__v {
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
+/* A price nobody has set and a price of nothing are different facts, so an unpriced ticket never
+   renders a currency figure at all. */
+.tkv-money__v[data-unpriced="true"] {
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	color: var(--text-secondary);
+}
+
+/* One hairline sets the money apart from the counts it is made of — §B.4's single rule, not a box. */
+.tkv-metrics {
+	flex: 0 1 auto;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	border-inline-start: var(--hairline);
+	list-style: none;
+}
+
+.tkv__gate {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-2xs);
+	line-height: var(--leading-snug);
+	text-align: end;
+	color: var(--text-secondary);
+}
+
+/* Holds the actions against the end of the row on a ticket with nothing pending to say. */
+.tkv__gate--spacer {
+	display: block;
+}
+
+.tkv-metric {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 2rem;
+	padding-inline: var(--space-3);
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-metric[data-static="true"] {
+	cursor: default;
+}
+
+.tkv-metric:hover:not([data-static="true"]) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
+}
+
+.tkv-metric:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.tkv-metric[data-active="true"] {
+	color: var(--on-surface);
+}
+
+.tkv-metric__mark {
+	color: currentColor;
+	opacity: 0.75;
+}
+
+.tkv__footacts {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region Kebab menu */
+.tkv-menu__items {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 12rem;
+}
+
+.tkv-menu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	text-align: start;
+	text-decoration: none;
+	font-size: var(--text-xs);
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-menu__item:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.tkv-menu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.tkv-menu__item--danger {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Responsive — the side panel is the first thing to go */
+@media (max-width: 900px) {
+	.tkv__side {
+		display: none;
+	}
+
+	/* The gate line is the first thing to lose its own column: it is a sentence, and the money and
+	   the actions on either side of it are not. It reappears below them. */
+	.tkv__foot {
+		flex-wrap: wrap;
+		row-gap: var(--space-2);
+	}
+
+	.tkv__gate {
+		order: 4;
+		flex-basis: 100%;
+		text-align: start;
+	}
+
+	.tkv__gate--spacer {
+		display: none;
+	}
+
+	.tkv__footacts {
+		margin-inline-start: auto;
+	}
+}
+
+@media (max-width: 640px) {
+	.tkv {
+		padding: 0;
+	}
+
+	.tkv__panel {
+		inline-size: 100%;
+		block-size: 100%;
+		border-radius: 0;
+	}
+
+	.tkv__who {
+		display: none;
+	}
+
+	/* Six labelled tabs need ~590px and the strip has ~343px, so it became a hidden horizontal
+	   scroller — reachable only by a viewer who thought to try. Collapsing to glyphs fits all six at
+	   once, which is what §B.6 asks of a dense surface anyway; the names live on in `aria-label` and
+	   the counts stay, because a count is the reason to open the tab. */
+	.tkv-tabs__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.tkv-tabs {
+		gap: 0;
+		justify-content: space-between;
+	}
+
+	.tkv-tabs__tab {
+		padding-inline: var(--space-2);
+	}
+
+	.tkv-tabs__tab[data-icononly="true"] {
+		margin-inline-start: 0;
+	}
+
+	.tkv-subs__layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.tkv-subs__tree {
+		padding-inline-end: 0;
+		border-inline-end: none;
+		border-block-end: var(--hairline);
+		padding-block-end: var(--space-3);
+	}
+
+	/* The counts go before the money does. A count is a way IN to a tab that is one tap away anyway;
+	   the two currency figures are the only things down here that cannot be found elsewhere. */
+	.tkv-metrics {
+		padding-inline-start: 0;
+		border-inline-start: none;
+	}
+
+	.tkv-money {
+		gap: var(--space-4);
+	}
+
+	.tkv-money__v {
+		font-size: var(--text-base);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion — jump to the final state, never a slow version of it */
+@media (prefers-reduced-motion: reduce) {
+	.tkv__panel,
+	.tkv-tabs__tab::after,
+	.tkv-meta__trigger,
+	.tkv-meta__caret,
+	.tkv-metric,
+	.tkv__act {
+		transition: none;
+	}
+}
+/* #endregion */

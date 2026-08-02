@@ -11,90 +11,90 @@
  * is the source of truth (set pre-paint); the modifier class is a standalone alias.
  */
 :root {
-    --shell-sidebar-cur-w: var(--shell-sidebar-w);
+	--shell-sidebar-cur-w: var(--shell-sidebar-w);
 }
 
 :root[data-sidebar="expanded"] {
-    --shell-sidebar-cur-w: var(--shell-sidebar-w-expanded);
+	--shell-sidebar-cur-w: var(--shell-sidebar-w-expanded);
 }
 
 .ui-shell-sidebar--expanded {
-    --shell-sidebar-cur-w: var(--shell-sidebar-w-expanded);
+	--shell-sidebar-cur-w: var(--shell-sidebar-w-expanded);
 }
 
 .ui-shell-sidebar {
-    inline-size: var(--shell-sidebar-cur-w);
-    block-size: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding-block: var(--space-2);
-    /* background: var(--surface-2); */
-    backdrop-filter: none;
-    /* the sidebar is opaque — glass blur belongs to the header layers only */
-    overflow: hidden;
-    transition: inline-size var(--dur-medium) var(--spring-standard);
+	inline-size: var(--shell-sidebar-cur-w);
+	block-size: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding-block: var(--space-2);
+	/* background: var(--surface-2); */
+	backdrop-filter: none;
+	/* the sidebar is opaque — glass blur belongs to the header layers only */
+	overflow: hidden;
+	transition: inline-size var(--dur-medium) var(--spring-standard);
 }
 
 .ui-shell-sidebar__items {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    flex: 1 1 auto;
-    min-block-size: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
 }
 
 .ui-shell-sidebar__footer {
-    margin-block-start: auto;
-    padding-block-start: var(--space-1);
-    /* The footer — not the button's own margin — pins the toggle. A fixed inline-start pad keeps the
-	   toggle's centre on the shared icon axis (32px) at BOTH rail widths: in the 64px collapsed rail an
-	   8px pad + 48px block leaves an equal 8px on the right (perfectly centred); in the expanded rail
-	   the same 8px pad holds the identical absolute x, so widening the rail never shifts the button —
-	   only the dotted divider inside it slides. (A prior `margin-inline:auto` silently failed: auto
-	   margins don't centre an inline-flex box.) */
-    display: flex;
-    padding-inline-start: var(--space-2);
+	margin-block-start: auto;
+	padding-block-start: var(--space-1);
+	/* The footer — not the button's own margin — pins the toggle. A fixed inline-start pad keeps the
+	toggle's centre on the shared icon axis (32px) at BOTH rail widths: in the 64px collapsed rail an
+	8px pad + 48px block leaves an equal 8px on the right (perfectly centred); in the expanded rail
+	the same 8px pad holds the identical absolute x, so widening the rail never shifts the button —
+	only the dotted divider inside it slides. (A prior `margin-inline:auto` silently failed: auto
+	margins don't centre an inline-flex box.) */
+	display: flex;
+	padding-inline-start: var(--space-2);
 }
 
 /* #region Collapse/expand toggle — labelless custom morphing SVG, pinned bottom-left in the footer */
 .ui-shell-sidebar__toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--shell-nav-block);
-    block-size: var(--shell-nav-block);
-    flex: 0 0 auto;
-    border: 0;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface-variant, var(--text-secondary));
-    cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	flex: 0 0 auto;
+	border: 0;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface-variant, var(--text-secondary));
+	cursor: pointer;
 }
 
 .ui-shell-sidebar__toggle:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-shell-sidebar__toggle:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+	outline: 3px solid var(--focus-ring);
+	outline-offset: -2px;
 }
 
 .ui-shell-sidebar__toggle .shell-toggle {
-    inline-size: 22px;
-    block-size: 22px;
+	inline-size: 22px;
+	block-size: 22px;
 }
 
 /* The dotted divider morphs between the left (collapsed) and right (expanded) edge of the square. */
 .shell-toggle__bar {
-    transition: transform var(--dur-medium) var(--spring-standard);
+	transition: transform var(--dur-medium) var(--spring-standard);
 }
 
 :root[data-sidebar="expanded"] .shell-toggle__bar {
-    transform: translateX(6px);
+	transform: translateX(6px);
 }
 
 /* #endregion */
@@ -105,149 +105,149 @@
 .ui-shell-sidebar .ui-nav-item__icon svg,
 .ui-shell-sidebar .ui-sidebar-sublink__icon svg,
 .ui-shell-sidebar__toggle .shell-toggle {
-    stroke-width: 1.9;
+	stroke-width: 1.9;
 }
 
 /* #endregion */
 
 /* #region Nested disclosure groups (YouTube-style recent workspaces / Dashboard quick-links) */
 .ui-sidebar-group__row {
-    display: flex;
-    align-items: center;
+	display: flex;
+	align-items: center;
 }
 
 .ui-sidebar-group__row .ui-tooltip__anchor {
-    flex: 1 1 auto;
-    min-inline-size: 0;
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
 .ui-sidebar-group__caret {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 28px;
-    block-size: 28px;
-    margin-inline-end: var(--space-2);
-    border: 0;
-    /* Muted: the wrapper has NO background shift on hover — only the glyph itself transitions. */
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 28px;
+	block-size: 28px;
+	margin-inline-end: var(--space-2);
+	border: 0;
+	/* Muted: the wrapper has NO background shift on hover — only the glyph itself transitions. */
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
 }
 
 .ui-sidebar-group__caret:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
-    border-radius: var(--radius-sm);
+	outline: 3px solid var(--focus-ring);
+	outline-offset: -2px;
+	border-radius: var(--radius-sm);
 }
 
 /* Vertical toggle: chevron points DOWN when closed, UP when open (not the horizontal right→down). */
 .ui-sidebar-group__caret svg {
-    inline-size: 16px;
-    block-size: 16px;
-    color: var(--text-secondary);
-    transform: rotate(90deg);
-    transition:
-        transform var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard);
+	inline-size: 16px;
+	block-size: 16px;
+	color: var(--text-secondary);
+	transform: rotate(90deg);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
 }
 
 .ui-sidebar-group__caret:hover svg {
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .ui-sidebar-group[data-open="true"] .ui-sidebar-group__caret svg {
-    transform: rotate(-90deg);
+	transform: rotate(-90deg);
 }
 
 /* Hide the disclosure caret entirely in the collapsed rail (no room, no sublinks). */
 :root[data-sidebar="collapsed"] .ui-sidebar-group__caret {
-    display: none;
+	display: none;
 }
 
 /* Sublinks only exist in the expanded rail (no room in the collapsed icon column). */
 .ui-sidebar-sublinks {
-    list-style: none;
-    margin: var(--space-1) 0 var(--space-1) calc(var(--space-4) + 12px);
-    padding-inline-start: var(--space-2);
-    /* Single-edge guide line (§B.4 — hairline, never a box). */
-    border-inline-start: var(--hairline);
-    display: none;
+	list-style: none;
+	margin: var(--space-1) 0 var(--space-1) calc(var(--space-4) + 12px);
+	padding-inline-start: var(--space-2);
+	/* Single-edge guide line (§B.4 — hairline, never a box). */
+	border-inline-start: var(--hairline);
+	display: none;
 }
 
 :root[data-sidebar="expanded"] .ui-sidebar-group[data-open="true"] .ui-sidebar-sublinks {
-    display: block;
+	display: block;
 }
 
 .ui-sidebar-sublink {
-    position: relative;
-    /* containing block for its own update-dot (so it never escapes the row) */
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    block-size: 32px;
-    padding-inline: var(--space-2);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-weight: 300;
-    text-decoration: none;
-    white-space: nowrap;
-    overflow: hidden;
+	position: relative;
+	/* containing block for its own update-dot (so it never escapes the row) */
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 32px;
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-sm);
+	color: var(--text-secondary);
+	font-weight: 300;
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
 }
 
 /* Workspace update-dot sits at the trailing edge of the row, vertically centered (not on an icon). */
 .ui-sidebar-sublink .ui-nav-item__dot {
-    inset-block-start: 50%;
-    inset-inline-end: var(--space-2);
-    transform: translateY(-50%);
+	inset-block-start: 50%;
+	inset-inline-end: var(--space-2);
+	transform: translateY(-50%);
 }
 
 .ui-sidebar-sublink:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-    color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
 }
 
 .ui-sidebar-sublink--active {
-    color: var(--on-surface);
-    font-weight: 400;
+	color: var(--on-surface);
+	font-weight: 400;
 }
 
 .ui-sidebar-sublink:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+	outline: 3px solid var(--focus-ring);
+	outline-offset: -2px;
 }
 
 .ui-sidebar-sublink__icon {
-    display: inline-flex;
-    inline-size: 16px;
-    block-size: 16px;
-    flex: 0 0 auto;
-    color: var(--text-secondary);
+	display: inline-flex;
+	inline-size: 16px;
+	block-size: 16px;
+	flex: 0 0 auto;
+	color: var(--text-secondary);
 }
 
 /* Owner avatar leading a workspace sublink — circular, replaces the generic icon. */
 .ui-sidebar-sublink__avatar {
-    display: inline-flex;
-    flex: 0 0 auto;
-    inline-size: 22px;
-    block-size: 22px;
+	display: inline-flex;
+	flex: 0 0 auto;
+	inline-size: 22px;
+	block-size: 22px;
 }
 
 .ui-sidebar-sublink__text {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 /* #endregion */
 
 /* The rail's Tooltip anchors must lay out as full-width rows, not inline chips. */
 .ui-shell-sidebar .ui-tooltip__anchor {
-    display: block;
+	display: block;
 }
 
 /* Tooltips describe collapsed icons only; in the expanded rail the label is already visible. */
 :root[data-sidebar="expanded"] .ui-shell-sidebar .ui-tooltip {
-    display: none;
+	display: none;
 }

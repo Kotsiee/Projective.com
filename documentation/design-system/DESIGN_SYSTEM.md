@@ -354,8 +354,8 @@ The `fields` sub-path ships 27 controls. An audit measured them rather than read
 good spine reaching only one family: the 10 controls that compose `.ui-field` were already
 pixel-identical, while the other 15 re-declared their own geometry and their own state vocabulary in
 parallel — **five** disabled opacities (0.40–0.55, measuring 2.30–5.04:1), **four** option-row
-heights across four sibling dropdowns (43.6 / 38.5 / 37.0 / 30.5px), **five** label typographies, and
-a `MultiSelect` that stood 20px taller than every sibling when empty. This section is the single
+heights across four sibling dropdowns (43.6 / 38.5 / 37.0 / 30.5px), **five** label typographies,
+and a `MultiSelect` that stood 20px taller than every sibling when empty. This section is the single
 token layer that ends that, and the state matrix every control must satisfy to ship.
 
 **A.7.1 The layer lives on `:root`, not on `.ui-field`.** A control's label, hint, footer rig and —
@@ -369,33 +369,33 @@ nothing in collisions.
 **A.7.2 Geometry is shared, not coincidental.** A `Select` and an `InputText` at the same size are
 pixel-identical: **32 / 40 / 48px** tall, **8 / 12 / 16px** inline padding, **6 / 8 / 12px** radius,
 **13 / 15 / 17px** type. `--fld-fs-md`/`-lg` sit a half-step above their neighbours on the §A.4 ramp
-**deliberately** — a value the user *typed* is read under different conditions than a table cell they
-scan. A **16px floor applies on coarse-pointer viewports** because iOS Safari zooms a sub-16px field
-on focus and does not zoom back out.
+**deliberately** — a value the user _typed_ is read under different conditions than a table cell
+they scan. A **16px floor applies on coarse-pointer viewports** because iOS Safari zooms a sub-16px
+field on focus and does not zoom back out.
 
 **A.7.3 The canonical state matrix.** Every state declares the same **four channels — border ·
 surface · ink · ring — plus a mark.** A control that cannot compose `.ui-field` (Checkbox, Slider,
 Rating, Knob, ZoomSlider, ToggleSwitch…) keeps its own **shape** but reads the same channels, so a
 state reaches all 27 rather than only the input family.
 
-| State      | Border               | Surface              | Ink                  | Ring                    | Mark (`.ui-field__mark`)      | `aria-`                           |
-| :--------- | :------------------- | :------------------- | :------------------- | :---------------------- | :---------------------------- | :-------------------------------- |
-| `default`  | `--fld-rest-bd`      | `--fld-rest-bg`      | `--fld-rest-fg`      | —                       | none                          | —                                 |
-| `hover`    | `--fld-hover-bd`     | `--fld-rest-bg`      | `--fld-rest-fg`      | —                       | none                          | —                                 |
-| `focus`    | `--fld-focus-bd`     | `--fld-rest-bg`      | `--fld-rest-fg`      | `--focus-ring-shadow`   | none                          | —                                 |
-| `invalid`  | `--fld-invalid-bd`   | `--fld-invalid-bg`   | `--fld-rest-fg`      | composes with focus     | `--fld-invalid-mark` · AlertMark | `aria-invalid="true"`          |
-| `required` | `--fld-required-bd`  | `--fld-required-bg`  | `--fld-rest-fg`      | composes with focus     | `--fld-invalid-mark` · AlertMark | `aria-invalid` **on submit only** |
-| `gate`     | `--fld-gate-bd`      | `--fld-gate-bg`      | `--fld-rest-fg`      | composes with focus     | `--fld-warning-mark` · GateMark  | **not** `aria-invalid`         |
-| `success`  | `--fld-valid-bd`     | `--fld-rest-bg`      | `--fld-rest-fg`      | composes with focus     | `--fld-valid-mark` · CheckMark   | —                              |
-| `warning`  | `--fld-warning-bd`   | `--fld-warning-bg`   | `--fld-rest-fg`      | composes with focus     | `--fld-warning-mark` · AlertMark | —                              |
-| `loading`  | `--fld-rest-bd`      | `--fld-rest-bg`      | `--fld-loading-fg`   | —                       | BusyMark (`--fld-loading-alpha`) | `aria-busy="true"`             |
-| `readonly` | `--fld-readonly-bd`  | `--fld-readonly-bg`  | `--fld-rest-fg`      | `--focus-ring-shadow`   | none                          | `readonly` (**still focusable**)  |
-| `disabled` | faded by `--fld-disabled-mix` | **unchanged** | faded by `--fld-disabled-mix` | none        | none                          | `disabled`                        |
+| State      | Border                        | Surface             | Ink                           | Ring                  | Mark (`.ui-field__mark`)         | `aria-`                           |
+| :--------- | :---------------------------- | :------------------ | :---------------------------- | :-------------------- | :------------------------------- | :-------------------------------- |
+| `default`  | `--fld-rest-bd`               | `--fld-rest-bg`     | `--fld-rest-fg`               | —                     | none                             | —                                 |
+| `hover`    | `--fld-hover-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | —                     | none                             | —                                 |
+| `focus`    | `--fld-focus-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | `--focus-ring-shadow` | none                             | —                                 |
+| `invalid`  | `--fld-invalid-bd`            | `--fld-invalid-bg`  | `--fld-rest-fg`               | composes with focus   | `--fld-invalid-mark` · AlertMark | `aria-invalid="true"`             |
+| `required` | `--fld-required-bd`           | `--fld-required-bg` | `--fld-rest-fg`               | composes with focus   | `--fld-invalid-mark` · AlertMark | `aria-invalid` **on submit only** |
+| `gate`     | `--fld-gate-bd`               | `--fld-gate-bg`     | `--fld-rest-fg`               | composes with focus   | `--fld-warning-mark` · GateMark  | **not** `aria-invalid`            |
+| `success`  | `--fld-valid-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | composes with focus   | `--fld-valid-mark` · CheckMark   | —                                 |
+| `warning`  | `--fld-warning-bd`            | `--fld-warning-bg`  | `--fld-rest-fg`               | composes with focus   | `--fld-warning-mark` · AlertMark | —                                 |
+| `loading`  | `--fld-rest-bd`               | `--fld-rest-bg`     | `--fld-loading-fg`            | —                     | BusyMark (`--fld-loading-alpha`) | `aria-busy="true"`                |
+| `readonly` | `--fld-readonly-bd`           | `--fld-readonly-bg` | `--fld-rest-fg`               | `--focus-ring-shadow` | none                             | `readonly` (**still focusable**)  |
+| `disabled` | faded by `--fld-disabled-mix` | **unchanged**       | faded by `--fld-disabled-mix` | none                  | none                             | `disabled`                        |
 
-`required`/`gate` are the two-tier creation gate (see the §C.1 note): `required` is needed **now** to
-create the base record and drives the danger ramp; `gate` is optional to draft but needed to
-**publish**, drives the warning ramp, and is deliberately **not** `aria-invalid` — a soft-informative
-state announced as an error is a lie to a screen reader.
+`required`/`gate` are the two-tier creation gate (see the §C.1 note): `required` is needed **now**
+to create the base record and drives the danger ramp; `gate` is optional to draft but needed to
+**publish**, drives the warning ramp, and is deliberately **not** `aria-invalid` — a
+soft-informative state announced as an error is a lie to a screen reader.
 
 Four consequences a reviewer can check without opening a browser:
 
@@ -426,8 +426,8 @@ Four consequences a reviewer can check without opening a browser:
 `--fld-panel-border`. Four sibling dropdowns previously shipped four row heights (43.6 / 38.5 / 37.0
 / 30.5px), three paddings and two type sizes. The min-width is load-bearing on its own: without it a
 71px trigger produced a 71px menu with every label ellipsised away. Every panel renders through
-`BodyPortal` with a `useOverlayStack` index — a `position: fixed` panel that merely stays in the tree
-is re-based by the glass chrome (measured: **324px** off) and clipped by the Dialog's own
+`BodyPortal` with a `useOverlayStack` index — a `position: fixed` panel that merely stays in the
+tree is re-based by the glass chrome (measured: **324px** off) and clipped by the Dialog's own
 `overflow: hidden` (§B.10.4).
 
 > **Merge gate.** A `fields` PR that declares a control-local height, radius, inline padding, label
@@ -435,11 +435,11 @@ is re-based by the glass chrome (measured: **324px** off) and clipped by the Dia
 > control that implements fewer than the matrix's states, or ships an interactive part under
 > `--fld-hit` without `.ui-hit`.
 
-> **Two engine traps this layer has already hit** — both fail **silently**, so they are review items,
-> not runtime errors. This engine drops `min()` and nested `calc()` inside `min-inline-size` (use a
-> plain `var()`), and drops a `color-mix()` whose percentage arrives as `calc(var(…) * 100%)`. Hence
-> the deliberate pair: **`--fld-disabled-mix`** (a literal `%`, for mixes) and
-> **`--fld-disabled-alpha`** (unitless, for `opacity`). They are not duplicates.
+> **Two engine traps this layer has already hit** — both fail **silently**, so they are review
+> items, not runtime errors. This engine drops `min()` and nested `calc()` inside `min-inline-size`
+> (use a plain `var()`), and drops a `color-mix()` whose percentage arrives as
+> `calc(var(…) * 100%)`. Hence the deliberate pair: **`--fld-disabled-mix`** (a literal `%`, for
+> mixes) and **`--fld-disabled-alpha`** (unitless, for `opacity`). They are not duplicates.
 
 ---
 
@@ -582,6 +582,12 @@ vocabulary (file kinds, fund states, session archetypes) keeps those glyphs in t
 renders them through `<IconShell>` so it inherits the contract rather than re-declaring one. No
 feature may hand-author a bare `<svg>` icon root.
 
+Two entries added with the ticket-view rebuild are worth naming because both exist to stop a
+near-synonym from being reused: **`history`** is a clock with the counter-clockwise arrow, which is
+what separates an ARCHIVE from `clock` (a time) and `refresh` (a repeat); **`panel-right`** is a
+frame with its trailing column divided, so the glyph says WHERE the companion panel appears rather
+than merely that something toggles — which a chevron cannot.
+
 **B.7.2 One grid, one weight.** `viewBox="0 0 24 24"`, artwork inset ≥2 units per side,
 `fill="none"`, `stroke="currentColor"`, round cap and join. `stroke-width` is **not** authored on
 the glyph: `icon.css` sets it from `--icon-stroke` (1.5) against `.ui-icon` and pairs it with
@@ -626,11 +632,11 @@ ancestor.
 
 **The consequence is not theoretical.** `packages/ui/feedback/core/icons.tsx` was the one glyph
 module shipping **without** `aria-hidden`, so every `Alert` announced its decorative severity mark
-*before* its own text — a screen-reader user heard the ornament first and the message second, on the
+_before_ its own text — a screen-reader user heard the ornament first and the message second, on the
 component whose entire job is to deliver a message. The rule is stated as "every `<svg>`", with no
 per-module discretion, precisely because a single module opting out is invisible to sighted review.
 The mirror-image defect is a **decorative** icon given a name: an `aria-label` on a glyph that sits
-beside its own visible label makes the control announce twice, and an `aria-label` on the *control*
+beside its own visible label makes the control announce twice, and an `aria-label` on the _control_
 that differs from the visible text breaks WCAG 2.5.3 (Label in Name) — three fields in
 `apps/web/features/catalogue/islands/CatalogueCreateModal.island.tsx` carried `aria-label`s that
 overrode the visible label they sat under, and two of the three were not associated with their
@@ -666,17 +672,17 @@ logos), quarantined in its own module and never reused as UI iconography.
 (`primary` · `secondary` · `success` · `info` · `warning` · `help` · `danger`) × three sizes, plus
 `raised` / `rounded` / `iconOnly` / `fluid`. That is a large surface, and a large surface without a
 policy is how a screen ends up with four equally-loud buttons and no answer to "what do I do here."
-The policy is that **the variant is not a taste choice — it is a declaration of interaction weight**,
-and weight is a property of the action, not of the designer's mood.
+The policy is that **the variant is not a taste choice — it is a declaration of interaction
+weight**, and weight is a property of the action, not of the designer's mood.
 
 **B.8.1 Variant by interaction weight.**
 
-| Variant    | Weight                | Use for                                                                 |
-| :--------- | :-------------------- | :---------------------------------------------------------------------- |
-| `filled`   | The commitment        | The **one** action the view exists to complete — Publish, Sign in, Send |
+| Variant    | Weight                | Use for                                                                                    |
+| :--------- | :-------------------- | :----------------------------------------------------------------------------------------- |
+| `filled`   | The commitment        | The **one** action the view exists to complete — Publish, Sign in, Send                    |
 | `outlined` | A real alternative    | A second path a user genuinely picks between (Cancel-with-consequence, a secondary create) |
-| `text`     | Repeated / in-context | Row actions, list affordances, toolbar verbs, the escape hatch (Cancel) |
-| `link`     | Navigation            | Goes somewhere; never mutates                                            |
+| `text`     | Repeated / in-context | Row actions, list affordances, toolbar verbs, the escape hatch (Cancel)                    |
+| `link`     | Navigation            | Goes somewhere; never mutates                                                              |
 
 **B.8.2 One filled action per view — and per overlay.** A view's primary action is singular by
 definition; the moment there are two, neither is primary and the user reads a fork. The cap counts
@@ -685,16 +691,16 @@ each get one. It does **not** count a `filled` button that is mutually exclusive
 render condition (a Publish that swaps to a Pause is one button in two states, not two buttons).
 
 **Right** — `apps/web/features/catalogue/islands/ListingEditor.island.tsx:245-271`: a status rig of
-three actions where exactly one is `filled` (Publish, and it is `disabled` until
-`publishReadiness` clears), Pause is `outlined`, Archive is `text`. The hierarchy is legible at a
-glance and survives translation, because it is carried by weight rather than by word length.
+three actions where exactly one is `filled` (Publish, and it is `disabled` until `publishReadiness`
+clears), Pause is `outlined`, Archive is `text`. The hierarchy is legible at a glance and survives
+translation, because it is carried by weight rather than by word length.
 
 **Right** — `apps/web/features/workspaces/components/InviteQueue.tsx:147-236`: four repeated row
 actions all `text` (severity distinguishing accept from the rest), and the one utility action
 `outlined`. A repeated action is **never** `filled` — a column of filled buttons is a column of
-noise, and it makes the row's *content* the least prominent thing in the row.
+noise, and it makes the row's _content_ the least prominent thing in the row.
 
-**B.8.3 Severity is meaning, never decoration.** Severity encodes what the action *is* — it is not a
+**B.8.3 Severity is meaning, never decoration.** Severity encodes what the action _is_ — it is not a
 palette. Two rules follow:
 
 - **An irreversible or destructive action takes `severity="danger"`, always.**
@@ -703,15 +709,15 @@ palette. Two rules follow:
   chance to notice was the word "Transfer"; the interface said "this is the normal thing to do
   here." Now `variant="filled" severity="danger"`, a vocabulary the codebase already had and had
   simply not reached for. Read that as the general failure mode: the wrong severity is almost never
-  a *misuse* of the API, it is a *non-use* of it.
+  a _misuse_ of the API, it is a _non-use_ of it.
 - **Do not invent a severity by re-tinting.** The accent-pair block (`--x-accent` / `--x-on`) is
   hand-copied across `Button` · `Badge` · `Tag` · `Alert` · `Message` · `Toast`, so a wrong pair
-  appears **six times, not once**. `secondary` once paired with `--on-surface` and measured
-  **2.67:1 light / 1.32:1 dark**; `info` was aliased to `--secondary`, so the generated blue ramp
-  rendered nowhere and two severities were visual duplicates. When a severity or ramp changes, all
-  six components are in scope for that PR.
+  appears **six times, not once**. `secondary` once paired with `--on-surface` and measured **2.67:1
+  light / 1.32:1 dark**; `info` was aliased to `--secondary`, so the generated blue ramp rendered
+  nowhere and two severities were visual duplicates. When a severity or ramp changes, all six
+  components are in scope for that PR.
 
-**B.8.4 Shape.** `rounded` is the **pill** (`--radius-full`) and is a *shape*, reserved for
+**B.8.4 Shape.** `rounded` is the **pill** (`--radius-full`) and is a _shape_, reserved for
 chip-like and floating controls; it is deliberately not multiplied by `--radius-scale` (§A.3). Every
 other button reads the radius ramp **at its own size** — a `sm` button is not a `lg` button's corner
 on a smaller box. `Button` and `ToggleButton` shipped a fixed `--radius-base` at all three sizes,
@@ -721,18 +727,18 @@ which is why an `sm` control read visibly rounder than its neighbours. `raised` 
 **B.8.5 Icon-only buttons.** An icon-only button is a control with its label removed, not a control
 without one. It must carry **all three**: an `aria-label`, a portal `Tooltip` (§B.6 — never a native
 `title`), and a hit target of at least `--fld-hit` (24px, WCAG 2.2 AA 2.5.8) via `.ui-hit` where the
-glyph box is smaller. The overlay family shipped close buttons in **four sizes and two shapes**
-(24 / 28 / 32 / 36px; `--radius-sm` vs `--radius-full`), the 24px one failing 2.5.8 outright — which
-is why the single `--overlay-action-size` now exists (§B.10). The glyph is **not** the hit target
+glyph box is smaller. The overlay family shipped close buttons in **four sizes and two shapes** (24
+/ 28 / 32 / 36px; `--radius-sm` vs `--radius-full`), the 24px one failing 2.5.8 outright — which is
+why the single `--overlay-action-size` now exists (§B.10). The glyph is **not** the hit target
 (§B.7.3).
 
 **B.8.6 Action order is fixed.** Secondary and destructive actions lead; the primary is **last in
 the inline direction** (rightmost under LtR, and it mirrors for free under `dir="rtl"` because the
 row uses logical properties, §A.6). Order is set with `justify-content`, **not** with a spacer —
 three modal footers achieve `flex-end` only via an unconditional `flex: 1 1 auto` spacer
-(`apps/web/features/projects/styles/ticket-modal.css:331`,
-`project-create-modal.css:442`, `submission-review.css:523`), so they are one conditional render
-away from silently left-aligning their actions.
+(`apps/web/features/projects/styles/ticket-modal.css:331`, `project-create-modal.css:442`,
+`submission-review.css:523`), so they are one conditional render away from silently left-aligning
+their actions.
 
 > **Merge gate.** A PR is not mergeable if it renders more than one `filled` button in a single
 > decision region, styles an irreversible action without `severity="danger"`, ships an icon-only
@@ -744,39 +750,39 @@ away from silently left-aligning their actions.
 ### B.9 Card Usage Policy (merge gate)
 
 §B.4 says do not box non-interactive content. The card is the component most likely to break that
-rule, because reaching for a card *feels* like structure while actually being the absence of it — it
+rule, because reaching for a card _feels_ like structure while actually being the absence of it — it
 is the tool you use when you have not decided what the hierarchy is. This section is §B.4 applied to
 the one component that most tempts you out of it.
 
 **B.9.1 A card is warranted only when the content is a discrete, addressable object.** The test is
 whether the content would still make sense **lifted out of the page** — a listing, a file, a member,
-a message, a workspace. If it would not, it is a *section of this page*, and a section gets **§B.4
+a message, a workspace. If it would not, it is a _section of this page_, and a section gets **§B.4
 tier 1 + 3: spacing and a heading**, not a box.
 
 **Wrong** — grouped, non-interactive content in a four-sided border, because the group needed a
-name. **Right** — give the group a `--text-xs` uppercase label (§A.4's label register), a `--space-6`
-gap above it and `--space-3` below, and let the type do the structural work. If that still does not
-read, escalate to a **tonal step** (`--surface-1`/`-2`), and only then to a **single hairline**.
-Reaching straight for the box skips three tiers that cost no ink.
+name. **Right** — give the group a `--text-xs` uppercase label (§A.4's label register), a
+`--space-6` gap above it and `--space-3` below, and let the type do the structural work. If that
+still does not read, escalate to a **tonal step** (`--surface-1`/`-2`), and only then to a **single
+hairline**. Reaching straight for the box skips three tiers that cost no ink.
 
 **B.9.2 Cards do not nest.** A card inside a card means one of the two is not an object. The nesting
 that actually ships is subtler and just as banned — **a card inside an already-elevated surface**:
 `apps/web/features/projects/styles/attachment-modal.css:548,601,646` gives `.fx-audio`, `.fx-code`
 and `.fx-doc` each `background: var(--surface)` + `box-shadow: var(--elevation-low)`, inside
 `.fx-modal__media` (tinted), inside `.fx-modal__panel` (`--surface`). **Three nested surface layers,
-two of them the same colour, separated by shadow alone** — which is exactly the "wall of equal-weight
-bordered boxes" §B.4 was written against, just built from shadows instead of borders. A panel is
-already a surface; content inside it separates by spacing and tint, and the innermost thing is not
-a card.
+two of them the same colour, separated by shadow alone** — which is exactly the "wall of
+equal-weight bordered boxes" §B.4 was written against, just built from shadows instead of borders. A
+panel is already a surface; content inside it separates by spacing and tint, and the innermost thing
+is not a card.
 
 **B.9.3 One separation device per boundary — the budget.** A boundary gets **one** of: a tonal step,
 a hairline, a shadow, or a radius+border. Not two, and never all four. The audit's clearest symptom
-of an exhausted budget is a boundary carrying a tint *and* a hairline *and* an elevation, which
+of an exhausted budget is a boundary carrying a tint _and_ a hairline _and_ an elevation, which
 reads as three competing claims about how far apart the two things are.
 
 **B.9.4 The variants, and why `filled` is the default.** `Card` ships `elevated` · `filled` · `flat`
 and **defaults to `filled`** (`packages/ui/display/components/Card.tsx:63`). The default was once
-`elevated` — the *most* restricted variant — so every future consumer would have inherited a resting
+`elevated` — the _most_ restricted variant — so every future consumer would have inherited a resting
 shadow it never asked for. **Elevation means the surface is genuinely above its neighbours**: it
 overlaps content, it drags, or it is lifted out of flow. `raised` is a hover/drag/focus **response**
 and never a resting state. A tonal step is measured against the card's actual **parent**, not
@@ -784,9 +790,9 @@ against the page — `filled` on a tinted region needs a different step than `fi
 
 **B.9.5 Interactivity is what licenses the border.** Per §B.4 tier 5, a full contour declares "you
 can act on this." The `kanban` sub-path is the reference implementation of the pair: **columns are
-non-interactive containers** (tonal tint + a single hairline, no box) while **cards are interactive**
-(surface + radius + resting elevation). If a card family carries a full border, a reviewer is
-entitled to ask what happens when it is clicked; "nothing" is a finding.
+non-interactive containers** (tonal tint + a single hairline, no box) while **cards are
+interactive** (surface + radius + resting elevation). If a card family carries a full border, a
+reviewer is entitled to ask what happens when it is clicked; "nothing" is a finding.
 
 **B.9.6 A card family declares no geometry.** Padding, gap, corner and media proportion come from
 the §A.3 card rhythm tokens (`--card-pad`/`-media`/`-tight`, `--card-gap`/`-tight`,
@@ -813,17 +819,17 @@ a family: **five radii**, **two separator token families**, **six scrim recipes*
 dialog widths**, **six right-drawer widths**, **five header-density systems** (bar heights running
 ~40→64px within one behavioural class), and **zero adoption of the type ramp** — `grep` for
 `--text-*`/`--fw-*`/`--leading-*` across all fourteen sheets returned nothing. Border presence was
-*inverted by layer*: every package panel had a full four-sided border, every app modal panel had
+_inverted by layer_: every package panel had a full four-sided border, every app modal panel had
 none, so the same role read bordered or borderless depending on who built it. This section makes the
 family one object.
 
-**B.10.1 Two tiers, two geometries.** Every overlay resolves to one of two tiers, and the tier
-fixes the geometry:
+**B.10.1 Two tiers, two geometries.** Every overlay resolves to one of two tiers, and the tier fixes
+the geometry:
 
-| Tier          | Members                                                              | Radius                | Seam        |
-| :------------ | :------------------------------------------------------------------- | :-------------------- | :---------- |
-| **Anchored / system** | Popover, Tooltip, ConfirmPopup, Toast, Message, Alert, HoverCard | `--overlay-radius-sm` | `--hairline`|
-| **Workspace** | Dialog, Drawer sheet, DraggablePopover, the app modals               | `--overlay-radius-lg` | `--hairline`|
+| Tier                  | Members                                                          | Radius                | Seam         |
+| :-------------------- | :--------------------------------------------------------------- | :-------------------- | :----------- |
+| **Anchored / system** | Popover, Tooltip, ConfirmPopup, Toast, Message, Alert, HoverCard | `--overlay-radius-sm` | `--hairline` |
+| **Workspace**         | Dialog, Drawer sheet, DraggablePopover, the app modals           | `--overlay-radius-lg` | `--hairline` |
 
 Size comes from `--overlay-w-sm/md/lg/xl/full` and `--overlay-h-md/lg`, **each carrying a viewport
 term** so a panel can never exceed the window — `attachment-modal.css:20` shipped
@@ -850,7 +856,7 @@ does not exist in either theme's ramp.
 `--z-overlay` (1100) < modals/drawers `--z-modal` (1300) < draggable windows `--z-draggable` (1500)
 < toasts < tooltips. `useOverlayStack(layer)` allocates from the class base, stepping above anything
 already open, so an independent modal always outranks an independent popover **and** a dropdown
-opened *inside* a modal still stacks above it. Two rules keep it true:
+opened _inside_ a modal still stacks above it. Two rules keep it true:
 
 - **No static `z-index` on an overlay.** `tooltip.css:14`, `toast.css:10` and `hover-card.css:14`
   (at **1100 — behind any Dialog**) opted out of the manager, and eight `fields/styles/*.css` sheets
@@ -863,9 +869,9 @@ opened *inside* a modal still stacks above it. Two rules keep it true:
   ceiling is derived from live claims, not accumulated.
 
 **B.10.4 Every panel must render through `BodyPortal`.** A `position: fixed` panel that merely stays
-in the tree is not safe: the sticky middle-nav lane is a **stacking context** that caps its subtree's
-paint order, it is `overflow: clip`, and any glass ancestor's `backdrop-filter` **re-bases `fixed`
-onto that ancestor's box**. All three at once. The Dialog is the trap in its purest form —
+in the tree is not safe: the sticky middle-nav lane is a **stacking context** that caps its
+subtree's paint order, it is `overflow: clip`, and any glass ancestor's `backdrop-filter` **re-bases
+`fixed` onto that ancestor's box**. All three at once. The Dialog is the trap in its purest form —
 `dialog.css:71-72,80` settles its enter transform to `scale(1)` and never to `none`, and **a
 transform at rest is still a containing block for `fixed` descendants and a stacking context**,
 alongside `overflow: hidden` — so every field dropdown opened inside a Dialog was simultaneously
@@ -881,9 +887,9 @@ the rule: **presence must never depend on a frame.** Resting CSS is `opacity: 0`
 tab, which never services `requestAnimationFrame`, left a mounted, scroll-locked, focus-trapped,
 **invisible** modal that never repaired itself. Every rAF flip therefore carries a **timer
 watchdog**, and reduced motion opens in the same commit and skips the frame entirely. The same rule
-governs CSS: the Toast countdown animates `transform: scaleX()` on a statically full-width bar, never
-`inline-size` — a frozen clock previously parked the bar at 100%, claiming an infinite timer while
-the toast expired on schedule.
+governs CSS: the Toast countdown animates `transform: scaleX()` on a statically full-width bar,
+never `inline-size` — a frozen clock previously parked the bar at 100%, claiming an infinite timer
+while the toast expired on schedule.
 
 **B.10.6 Focus-management checklist.** Every modal-behaving overlay satisfies **all seven**:
 
@@ -897,26 +903,50 @@ the toast expired on schedule.
 4. **Escape dismisses exactly one layer.** Every instance listens on `document` in the capture
    phase, so dismissal is gated on `useOverlayStack().isTop` and Escape uses
    **`stopImmediatePropagation`** — with `stopPropagation` and an `isTop` that was never demoted,
-   one Escape closed the confirmation *and* the dialog beneath it.
+   one Escape closed the confirmation _and_ the dialog beneath it.
 5. **Focus returns** to the trigger on close.
-6. **The overlay is named.** `role="dialog"` without an accessible name announces *worse* than no
+6. **The overlay is named.** `role="dialog"` without an accessible name announces _worse_ than no
    role; `Popover` and `ConfirmPopup` shipped unnamed. A confirmation is `role="alertdialog"`.
 7. **Dismissal resolves to the safe outcome.** Escape and backdrop **reject**, never accept — the
    one thing the family already got right, and the one thing it can never regress.
 
-**B.10.7 Non-modal overlays are held to the parts that apply.** A `Tooltip` takes no focus (correct);
-a `HoverCard` still needs **Escape** (WCAG 1.4.13) and must not point `aria-describedby` at a node it
-also marks `aria-hidden="true"`. A `Toast` that carries an action needs a keyboard path to it before
-auto-dismissal — see the deferred list, Part F.
+**B.10.7 Non-modal overlays are held to the parts that apply.** A `Tooltip` takes no focus
+(correct); a `HoverCard` still needs **Escape** (WCAG 1.4.13) and must not point `aria-describedby`
+at a node it also marks `aria-hidden="true"`. A `Toast` that carries an action needs a keyboard path
+to it before auto-dismissal — see the deferred list, Part F.
 
-**B.10.8 Density and the irreversible-action rule.** A panel already supplies its own padding and its
-own scroll region; content inside it supplies neither again. `wallet-overlays.css:28` re-declares
-`padding: var(--space-5)` **and** `overflow-y: auto` inside `.ui-drawer__body`, which already has
-both — 3rem of inline padding and **two nested scrollers on one axis**. And an irreversible action
-must never be able to scroll out of view: `ConfirmMoveModal.island.tsx:114` passes its footer as
-**children**, so the "Confirm / Withdraw £X" commit lands inside the scrolling `.ui-dialog__body`
-rather than the footer slot and drops below the fold on a short viewport. Footers go in the `footer`
-prop.
+**B.10.8 Density and the irreversible-action rule.** A panel already supplies its own padding and
+its own scroll region; content inside it supplies neither again. `wallet-overlays.css:28`
+re-declares `padding: var(--space-5)` **and** `overflow-y: auto` inside `.ui-drawer__body`, which
+already has both — 3rem of inline padding and **two nested scrollers on one axis**. And an
+irreversible action must never be able to scroll out of view: `ConfirmMoveModal.island.tsx:114`
+passes its footer as **children**, so the "Confirm / Withdraw £X" commit lands inside the scrolling
+`.ui-dialog__body` rather than the footer slot and drops below the fold on a short viewport. Footers
+go in the `footer` prop.
+
+**B.10.9 A second modal REPLACES the first — it never covers it.** When an overlay opens another (a
+ticket opening a submission review, a review opening a file), the obvious implementation mounts the
+second on top of the first. Do not. Every overlay in this system dims through a blurred `Backdrop`,
+and a full-viewport `backdrop-filter` is the most expensive thing a browser can be asked to
+composite each frame; stacking two multiplies that cost to make the lower surface unreadable anyway,
+and leaves two focus traps arguing about Escape.
+
+The contract is the `@projective/ui/overlay` **modal stack**: a chain where only the top frame
+renders, and the frame beneath keeps its live UI state in a cache so returning restores the surface
+the viewer actually left — the tab they were on, the tree node they had browsed to, where they had
+scrolled — rather than a reset one. Three properties make it work and each is load-bearing:
+
+1. **The state cache is not reactive.** A modal writing its scroll offset on every scroll event must
+   not invalidate the frame list and re-render the host. The frames are a signal; the per-frame
+   cache is a plain `Map` keyed by a monotonic frame id.
+2. **Frames are keyed by that id, not by what they show.** The same ticket opened twice in one chain
+   is two visits, and must not share a tab position.
+3. **The chain owns its URL with `replaceState`, not `pushState` + `history.back()`.** The tempting
+   design makes the browser's Back button close the overlay; measured, `history.back()` from a
+   pushState entry was observed reloading the document, which destroys the chain and every cached
+   frame with it. A Back that loses the work is worse than a Back that leaves the page. Replacing
+   keeps the address bar honest — a link copied mid-review still addresses the submission — while
+   making it structurally impossible for a traversal to tear the chain down.
 
 > **Merge gate.** An overlay PR is not mergeable if it introduces a radius, width, seam token or
 > scrim recipe outside this section, sets a static `z-index` instead of `useOverlayStack`, renders a
@@ -933,20 +963,20 @@ verbatim because every component depends only on the token contract (Part A) —
 
 ### C.1 The seven taxonomies (authoritative roster)
 
-| Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                                                                     |
-| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, **Lane chrome** (LaneHead, LaneFooter(+Actions), LaneList, LaneBar, LaneTabs, LaneSearch, LaneIconButton, LaneToggleRow, LaneSection(+LaneSections), LaneCollapseButton, LaneEmpty — the shared middle-nav lane control set every lane surface composes), Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination) |
-| **`@projective/ui/fields`**     | **Button** (4 variants `filled`/`outlined`/`text`/`link` × 7 severities × 3 sizes, plus the `raised`/`rounded`/`iconOnly`/`fluid` modifiers — governed by §B.8, which is what decides *which* of those 84 combinations is correct), SplitButton, SpeedDial, InputText, Textarea, InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl, **FieldLegend** (the one-line explanation an asterisk needs), **status marks** (AlertMark/CheckMark/GateMark/BusyMark + `FieldMark`/`statusMark` — the §A.5 icon channel rendered into every `.ui-field__mark` slot). All geometry and every state read the `--fld-*` contract (§A.7)                                                                |
-| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, **Card** (`elevated`/`filled`/`flat`, default **`filled`**; a **non-interactive** container — `raised` is a transient hover/drag/focus response, never a resting state; all geometry from the §A.3 card rhythm tokens, governed by §B.9), Avatar, AvatarGroup, Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                                                     |
-| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog (`role`, `initialFocusRef`), DynamicDialog, ConfirmDialog (`role="alertdialog"`, opens on the reject action), ConfirmPopup (`label`), Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel; `label` promotes it to `role="dialog"` — an unnamed dialog announces worse than no role), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                       |
-| **`@projective/ui/overlay`**    | Backdrop (tint/blur fixed by `--scrim`/`--scrim-tint`/`--scrim-blur`, no `blur` prop), Overlay (modal band + `inert` background), HoverCard (stack-managed, Escape-dismissable per WCAG 1.4.13), Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window, bounded z counter) (+ `usePresence`, watchdogged enter)                                                                                                                                                                                                                      |
-| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                                                                                                                               |
-| **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                                                                                                                              |
-| **`@projective/ui/icons`**      | Icon (registry glyph by canonical name), IconShell (the base every feature-owned glyph module renders through), `ICON_PATHS` registry + `IconName` union — the single icon contract (§B.7). Token-driven via `--icon-2xs…--icon-xl` + `--icon-stroke`; one 24-unit grid; `vector-effect: non-scaling-stroke` holds one rendered weight at every size                                                                                                                                                                                                      |
-| **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                                                                                                                                 |
+| Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **`@projective/ui/navigation`** | AppShell, ShellFrame, ShellTopBar, ShellSidebar, MiddleNav, PageCanvas, NavItem, BottomNav, Link, MiddleNavSplitter, MobileMenu, TreeNav, **Lane chrome** (LaneHead, LaneFooter(+Actions), LaneList, LaneBar, LaneTabs, LaneSearch, LaneIconButton, LaneToggleRow, LaneSection(+LaneSections), LaneCollapseButton, LaneEmpty — the shared middle-nav lane control set every lane surface composes), Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **`@projective/ui/fields`**     | **Button** (4 variants `filled`/`outlined`/`text`/`link` × 7 severities × 3 sizes, plus the `raised`/`rounded`/`iconOnly`/`fluid` modifiers — governed by §B.8, which is what decides _which_ of those 84 combinations is correct), SplitButton, SpeedDial, InputText, Textarea, **InlineEdit** (text that becomes its own field in place, at identical metrics — the owner-editing affordance), InputNumber, InputMask, Password, InputGroup(+Addon), FloatLabel, IftaLabel, IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown — with `optionTemplate`/`valueTemplate` for rows that carry an identity rather than a word: a person's face, a workspace mark, rendered in both the panel and the trigger while `Option.label` stays the name typeahead matches), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider, Knob, SortControl, ZoomSlider, DatePicker, ColorPicker, FileUpload, FormControl, **FieldLegend** (the one-line explanation an asterisk needs), **status marks** (AlertMark/CheckMark/GateMark/BusyMark + `FieldMark`/`statusMark` — the §A.5 icon channel rendered into every `.ui-field__mark` slot). All geometry and every state read the `--fld-*` contract (§A.7) |
+| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, **Card** (`elevated`/`filled`/`flat`, default **`filled`**; a **non-interactive** container — `raised` is a transient hover/drag/focus response, never a resting state; all geometry from the §A.3 card rhythm tokens, governed by §B.9), Avatar, AvatarGroup, **AvatarStack** (the data-driven cascading roster with a `+N` overflow chip and one composed a11y label), Badge (+OverlayBadge), RatingStars, Chip, Tag, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, Toast, Dialog (`role`, `initialFocusRef`), DynamicDialog, ConfirmDialog (`role="alertdialog"`, opens on the reject action), ConfirmPopup (`label`), Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel; `label` promotes it to `role="dialog"` — an unnamed dialog announces worse than no role), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **`@projective/ui/overlay`**    | Backdrop (tint/blur fixed by `--scrim`/`--scrim-tint`/`--scrim-blur`, no `blur` prop), Overlay (modal band + `inert` background), HoverCard (stack-managed, Escape-dismissable per WCAG 1.4.13), Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window, bounded z counter) (+ `usePresence`, watchdogged enter), **the modal STACK** (`createModalStack` + `useFrameState`/`useFrameScroll`/`bindFrameSignal`) — a replace-in-place router for a chain of modals: only the TOP frame renders, so a ticket → review chain composites ONE blurred backdrop instead of two, and each frame's live UI state (tab, inputs, scroll offsets) is held in a deliberately **non-reactive** cache so popping back restores the surface the viewer left rather than a fresh one (§B.10.9)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay, **DropIndicator** (the landing seam a sortable list draws at the insertion point — the ghost says _what_, this says _where_) (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **`@projective/ui/calendar`**   | Calendar (island), CalendarHeader, MiniMonth, AvailabilityPanel, TimeGrid (Week), DayTimeline (infinite Day), MonthGrid, DayColumn, EventBlock (+ hooks `useCalendarViewport`, `useNowTick`; overlap-packing `packDayEvents`; timezone-explicit `calendarTime` matrix utils)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **`@projective/ui/icons`**      | Icon (registry glyph by canonical name), IconShell (the base every feature-owned glyph module renders through), `ICON_PATHS` registry + `IconName` union — the single icon contract (§B.7). Token-driven via `--icon-2xs…--icon-xl` + `--icon-stroke`; one 24-unit grid; `vector-effect: non-scaling-stroke` holds one rendered weight at every size                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
 > `SYSTEM_ARCHITECTURE.md` Restructure Change Log). Migration note: the former Fields/Data/Charts
@@ -961,39 +991,39 @@ verbatim because every component depends only on the token contract (Part A) —
 > faint tonal fill so an unmet gate reads at a glance in a dense form.
 
 > **The field contract — one state language, one geometry (§A.7 `--fld-*`).** Every control in
-> `fields` resolves its size, surface and state from a single token layer on `:root`, and every state
-> declares the same four channels: **border · surface · ink · ring**, plus a **mark**. Consequences a
-> reviewer can check:
+> `fields` resolves its size, surface and state from a single token layer on `:root`, and every
+> state declares the same four channels: **border · surface · ink · ring**, plus a **mark**.
+> Consequences a reviewer can check:
 >
 > - **Geometry is shared, not coincidental.** A Select and an InputText at the same size are
 >   pixel-identical — 32/40/48px tall, 8/12/16px inline padding, 6/8/12px radius, 13/15/17px type.
 >   Controls that cannot compose `.ui-field` (Checkbox, Slider, Rating, ZoomSlider…) keep their own
->   SHAPE but read the same state channels, so `disabled`/`readonly`/`invalid`/`gate`/`loading` reach
->   all of them rather than only the input family.
+>   SHAPE but read the same state channels, so `disabled`/`readonly`/`invalid`/`gate`/`loading`
+>   reach all of them rather than only the input family.
 > - **One focus treatment.** `--focus-ring-shadow` (two-tone) on every control, including the custom
 >   ones. `--focus-ring-shadow-inset` is the only permitted variant, and only where an outset ring
 >   would be clipped by a segmented group's own overflow.
 > - **One disabled value.** `--fld-disabled-mix` fades INK and BORDER, never the box, and never with
 >   `pointer-events: none` — that silently cancels the `not-allowed` cursor it is paired with. It
 >   measures 4.5:1 or better; a state you cannot read is not a state.
-> - **Status never rides on hue.** Each validation state paints `--field-mark` and the control renders
->   it into a `.ui-field__mark` slot that is zero-width at rest (§A.5).
+> - **Status never rides on hue.** Each validation state paints `--field-mark` and the control
+>   renders it into a `.ui-field__mark` slot that is zero-width at rest (§A.5).
 > - **A hit target floor.** `.ui-hit` grows any part smaller than `--fld-hit` (24px, WCAG 2.2 AA
->   2.5.8) via a transparent pseudo-element, so density survives the floor instead of trading against
->   it.
+>   2.5.8) via a transparent pseudo-element, so density survives the floor instead of trading
+>   against it.
 > - **Panels are one object.** Every dropdown shares option-row height, padding, type, panel
 >   max-height, min-width, radius, border and surface — and renders through `BodyPortal` with a
->   managed z-index, because a `position: fixed` layer that stays in the tree is re-based by the glass
->   chrome (measured: 324px off).
+>   managed z-index, because a `position: fixed` layer that stays in the tree is re-based by the
+>   glass chrome (measured: 324px off).
 
 > **Which labelling model.** `FormControl` is the default for every form field — it is the only one
 > that wires `for` + `aria-describedby` + required + error together, and it reserves the hint row's
-> height so an appearing error cannot shove the form down. `IconField` adds an affordance glyph inside
-> an already-labelled control. `InputGroup` joins two controls that form ONE value (amount+currency).
-> `IftaLabel` suits dense data-entry tables where a stacked label costs a row. `FloatLabel` suits
-> marketing/auth surfaces only, and never a form carrying hints or validation — a floated label
-> collides with its own described-by text. Do not mix models within one form. A form that marks any
-> field `required` renders `FieldLegend` once near its submit.
+> height so an appearing error cannot shove the form down. `IconField` adds an affordance glyph
+> inside an already-labelled control. `InputGroup` joins two controls that form ONE value
+> (amount+currency). `IftaLabel` suits dense data-entry tables where a stacked label costs a row.
+> `FloatLabel` suits marketing/auth surfaces only, and never a form carrying hints or validation — a
+> floated label collides with its own described-by text. Do not mix models within one form. A form
+> that marks any field `required` renders `FieldLegend` once near its submit.
 
 **Implementation status:** `layout` is built and consumed by the app — Box, Container, Grid, Row,
 Column, Stack, AspectRatio, Divider, Separator (`packages/ui/layout/`, zero-JS server components;
@@ -1332,13 +1362,41 @@ scrollbar. The chrome stays put by **pinning to the viewport, not by locking the
 bar is `position:
 sticky; top: 0`; the global sidebar and the middle-nav lane are `position: sticky`
 just below the top bar (`inset-block-start: var(--shell-topbar-h)`), each capped to the remaining
-viewport height (`block-size: calc(100dvh - topbar)`, `align-self: start`) with its **own** internal
-overflow (`.ui-shell-sidebar__items`, `.ui-splitter__body`) so a tall rail scrolls inside itself
-rather than lengthening — or scrolling away with — the page. The Green body
-(`.ui-page-canvas__body`, `overflow: visible`) flows naturally: its content lengthens the document
-and the window scrolls it, while in-view chrome (the channel header **band** + the chat composer
-**footer band**) sticks to the viewport within that same window scroll. The nested frames use
-`overflow: clip` (for the rounded corners), which does **not** establish a scroll container, so
+viewport height with its **own** internal overflow (`.ui-shell-sidebar__items`,
+`.ui-splitter__body`) so a tall rail scrolls inside itself rather than lengthening — or scrolling
+away with — the page.
+
+> **The two rails express that cap differently, and the difference is load-bearing.** The global
+> sidebar sits in a single grid row, so a definite `block-size: calc(100dvh - topbar)` with
+> `align-self: start` is safe. The **middle-nav lane spans all three frame rows**
+> (`grid-row: 1 / -1`, so its own header/footer align into the header and footer bands), which makes
+> a definite height on it an **input to sizing the tracks it crosses** — and a spanning item's
+> contribution lands on the flexible `1fr` content row **without the auto-sized bands being deducted
+> first**. So the lane must cap with **`max-block-size`** and **stretch** to its area, never
+> `block-size` + `align-self: start`. With the definite height it sized the content row to the whole
+> viewport remainder and the bands then stacked _on top_, making the frame taller than the viewport
+> by **exactly (header band + footer band)** — a document scrollbar on every laned route meant to
+> fit the screen (measured at 720px: 98px on `/projects/{id}/{channel}/tasks`, 50.4px on `/…/board`,
+> 48px on `/…/calendar` and `/@handle/availability`). A long body is unaffected either way: the rows
+> already exceed the cap, so the lane clamps to it.
+
+**A surface that is meant to fit the screen fills its grid row; it does not re-derive one.** The
+Kanban board (`.brd`) and the in-app calendar (`.cal-surface`) are `flex: 1 1 0` down the
+`.ui-page-canvas__body` column rather than computing `100dvh` minus a guess at the chrome above and
+below. Those guesses cannot be made correct: a band's height is whatever the route mounts into it,
+and which bands exist changes per route. **The basis must be `0`, not `auto`** — the frame is
+content-sized so the window can scroll a long body, so an `auto` basis lets the surface's natural
+height bid the `1fr` row larger and the frame grows to honour it (measured: a 639.83px board demand
+against a 621.61px region — 18px of scrollbar on a board already told to fit). A `0` basis
+contributes nothing intrinsically, so the row is sized by what is **left** and the surface expands
+into exactly that; its own columns / time grid keep the internal scroll, which is where that
+overflow belongs. For the same reason such a surface carries **no `min-block-size` floor** — a floor
+taller than the region is precisely how a fit-to-screen page grows a scrollbar on a short viewport.
+
+The Green body (`.ui-page-canvas__body`, `overflow: visible`) flows naturally: its content lengthens
+the document and the window scrolls it, while in-view chrome (the channel header **band** + the chat
+composer **footer band**) sticks to the viewport within that same window scroll. The nested frames
+use `overflow: clip` (for the rounded corners), which does **not** establish a scroll container, so
 every sticky descendant resolves against the window — one scrollbar, no nested traps. The **main
 window scrollbar keeps standard browser behaviour** (always visible). Every **inner** scroll
 container instead gets a global **self-hiding custom scrollbar** (`styles/index.css`, scoped
@@ -1631,75 +1689,71 @@ were **not** encoded above, because each conflicts with a standing house rule. P
 `CLAUDE.md` §8 rule, they are logged rather than silently resolved. Both positions are stated; none
 is currently in force.
 
-**F.1 — Focus ring: `box-shadow` composite vs. native `outline`.**
-_Audit position:_ the focus indicator should be an `outline` with `outline-offset`. `outline` is
-never clipped by an ancestor's `overflow`, and — decisively — **Windows High Contrast / forced-colors
-mode discards `box-shadow` entirely**, so today's ring vanishes for exactly the users most dependent
-on it. _House position (§A.7.1, in force):_ `--focus-ring-shadow` is a two-tone halo+ink composite
-because **no single colour clears 3:1 against both the control fill and the page** — the previous
-single-colour ring measured 1.00:1 on `--primary` in dark. An `outline` is one colour. _Possible
-resolution not yet taken:_ ship both — the composite as the default, plus a
-`@media (forced-colors: active)` block that swaps to `outline: 2px solid Highlight`. Needs a ruling
-because it makes every control carry two focus implementations.
+**F.1 — Focus ring: `box-shadow` composite vs. native `outline`.** _Audit position:_ the focus
+indicator should be an `outline` with `outline-offset`. `outline` is never clipped by an ancestor's
+`overflow`, and — decisively — **Windows High Contrast / forced-colors mode discards `box-shadow`
+entirely**, so today's ring vanishes for exactly the users most dependent on it. _House position
+(§A.7.1, in force):_ `--focus-ring-shadow` is a two-tone halo+ink composite because **no single
+colour clears 3:1 against both the control fill and the page** — the previous single-colour ring
+measured 1.00:1 on `--primary` in dark. An `outline` is one colour. _Possible resolution not yet
+taken:_ ship both — the composite as the default, plus a `@media (forced-colors: active)` block that
+swaps to `outline: 2px solid Highlight`. Needs a ruling because it makes every control carry two
+focus implementations.
 
-**F.2 — Seven severities is more than this product means.**
-_Audit position:_ `help` (mapped to `--tertiary`) carries no meaning anywhere in Projective, and
-`info` vs `secondary` were literal visual duplicates until 2026-07-30 — evidence that the set is
-wider than the vocabulary. A smaller set is harder to misuse, and §B.8.3's whole problem is misuse.
-_House position:_ the roster is committed to **PrimeNG feature-parity** (§C.1 roster-rename note); a
-severity is part of that surface, and removing one is a breaking change to a copy-paste-portable
-package. _Ruling needed:_ keep all seven for parity and forbid `help` by policy, or drop it from the
-`Severity` union.
+**F.2 — Seven severities is more than this product means.** _Audit position:_ `help` (mapped to
+`--tertiary`) carries no meaning anywhere in Projective, and `info` vs `secondary` were literal
+visual duplicates until 2026-07-30 — evidence that the set is wider than the vocabulary. A smaller
+set is harder to misuse, and §B.8.3's whole problem is misuse. _House position:_ the roster is
+committed to **PrimeNG feature-parity** (§C.1 roster-rename note); a severity is part of that
+surface, and removing one is a breaking change to a copy-paste-portable package. _Ruling needed:_
+keep all seven for parity and forbid `help` by policy, or drop it from the `Severity` union.
 
-**F.3 — The `filled`-per-view cap vs. genuinely two-primary surfaces.**
-_Audit position (encoded as §B.8.2):_ one `filled` per decision region. _Unresolved case:_ the
-wallet footer rig legitimately offers **Top up** and **Withdraw** as co-equal primaries — neither is
-subordinate, and demoting one to `outlined` would misrepresent the surface. §B.8.2's "mutually
-exclusive by render condition" escape does not cover them. _Options:_ (a) accept the cap and pick a
-winner per rig; (b) formalise a "co-primary pair" exception limited to a footer action rig; (c)
-treat each as its own decision region. Currently the cap is written as absolute, so the wallet rig
-is technically in violation.
+**F.3 — The `filled`-per-view cap vs. genuinely two-primary surfaces.** _Audit position (encoded as
+§B.8.2):_ one `filled` per decision region. _Unresolved case:_ the wallet footer rig legitimately
+offers **Top up** and **Withdraw** as co-equal primaries — neither is subordinate, and demoting one
+to `outlined` would misrepresent the surface. §B.8.2's "mutually exclusive by render condition"
+escape does not cover them. _Options:_ (a) accept the cap and pick a winner per rig; (b) formalise a
+"co-primary pair" exception limited to a footer action rig; (c) treat each as its own decision
+region. Currently the cap is written as absolute, so the wallet rig is technically in violation.
 
-**F.4 — §B.6 icon-first density vs. §B.7.7's ban on icon inflation.**
-_These two sections point opposite ways and the boundary is undrawn._ §B.6 mandates a glyph on every
-lane row and every dense list item; §B.7.7 bans "a decorative icon beside every label" and "icons
-that duplicate their label." A lane row reading `[folder glyph] Files` satisfies the first and
-arguably violates the second. _Ruling needed:_ state where the density mandate stops — e.g. "a glyph
-is required where it is the row's **only** distinguishing mark at a glance, and banned where the
-label alone is already unique within its list."
+**F.4 — §B.6 icon-first density vs. §B.7.7's ban on icon inflation.** _These two sections point
+opposite ways and the boundary is undrawn._ §B.6 mandates a glyph on every lane row and every dense
+list item; §B.7.7 bans "a decorative icon beside every label" and "icons that duplicate their
+label." A lane row reading `[folder glyph] Files` satisfies the first and arguably violates the
+second. _Ruling needed:_ state where the density mandate stops — e.g. "a glyph is required where it
+is the row's **only** distinguishing mark at a glance, and banned where the label alone is already
+unique within its list."
 
-**F.5 — Card nesting vs. the shipped split-pane modals.**
-_Audit position (encoded as §B.9.2):_ no card inside a card, and no card inside an elevated panel.
-_Conflict:_ four app modals (attachment preview, ticket, project-create, submission review) are
-`Splitter`-based two-pane workspaces where the panes are, structurally, containers inside an elevated
-panel. §B.9.2 as written condemns the pattern; what it *means* to condemn is a nested **surface +
-shadow**, not a nested **region**. _Ruling needed:_ an explicit carve-out for a layout region that
-carries tint and spacing but no shadow and no border, so the rule is enforceable without flagging
-four legitimate modals.
+**F.5 — Card nesting vs. the shipped split-pane modals.** _Audit position (encoded as §B.9.2):_ no
+card inside a card, and no card inside an elevated panel. _Conflict:_ four app modals (attachment
+preview, ticket, project-create, submission review) are `Splitter`-based two-pane workspaces where
+the panes are, structurally, containers inside an elevated panel. §B.9.2 as written condemns the
+pattern; what it _means_ to condemn is a nested **surface + shadow**, not a nested **region**.
+_Ruling needed:_ an explicit carve-out for a layout region that carries tint and spacing but no
+shadow and no border, so the rule is enforceable without flagging four legitimate modals.
 
-**F.6 — Toast auto-dismiss vs. WCAG 2.2.1.**
-_Audit position:_ a Toast carrying an action auto-dismisses at 3000ms with **no keyboard path to
-reach it** — a keyboard or screen-reader user cannot act on it at all, which is a Timing Adjustable
-failure, not a polish item. _House position:_ toasts are transient by design and a persistent toast
-becomes an `Alert`. _Options:_ (a) actionable toasts never auto-dismiss; (b) any focus or hover
-within the region pauses every timer; (c) actions are banned from `Toast` outright and promoted to
-`Alert`. Not encoded because all three change shipped behaviour.
+**F.6 — Toast auto-dismiss vs. WCAG 2.2.1.** _Audit position:_ a Toast carrying an action
+auto-dismisses at 3000ms with **no keyboard path to reach it** — a keyboard or screen-reader user
+cannot act on it at all, which is a Timing Adjustable failure, not a polish item. _House position:_
+toasts are transient by design and a persistent toast becomes an `Alert`. _Options:_ (a) actionable
+toasts never auto-dismiss; (b) any focus or hover within the region pauses every timer; (c) actions
+are banned from `Toast` outright and promoted to `Alert`. Not encoded because all three change
+shipped behaviour.
 
-**F.7 — `--scrim-blur` vs. the glass identity.**
-_Audit position:_ the scrim's `backdrop-filter` stacks on top of the shell chrome's own
-`--glass-blur`, and two composited blur layers over a full viewport is the most expensive thing the
-app draws — on low-end hardware it is the modal-open jank. Drop blur from the scrim; the corrected
-`--scrim` tint (F/B.10.2) now provides the separation the blur was compensating for. _House
-position:_ glass is a stated part of the visual identity (§D.1, §D.5), and the scrim is where it
-reads most. _Ruling needed:_ keep, drop, or gate behind a measured device signal.
+**F.7 — `--scrim-blur` vs. the glass identity.** _Audit position:_ the scrim's `backdrop-filter`
+stacks on top of the shell chrome's own `--glass-blur`, and two composited blur layers over a full
+viewport is the most expensive thing the app draws — on low-end hardware it is the modal-open jank.
+Drop blur from the scrim; the corrected `--scrim` tint (F/B.10.2) now provides the separation the
+blur was compensating for. _House position:_ glass is a stated part of the visual identity (§D.1,
+§D.5), and the scrim is where it reads most. _Ruling needed:_ keep, drop, or gate behind a measured
+device signal.
 
-**F.8 — The type ramp has zero adoption in the overlay family.**
-Not a conflict so much as an unbudgeted migration: `grep var(--text-*)|var(--fw-*)|var(--leading-*)`
-across all fourteen overlay sheets returns **nothing**, and the off-ramp literals (`1.0625rem`,
-`1.05rem`, `0.74rem`, `0.72rem`) are what produce five header-density systems and bar heights running
-40→64px within one class. Encoding it as a gate would make the next overlay PR responsible for a
-family-wide refactor. _Ruling needed:_ ship it as a gate now, or as a tracked migration with a
-deadline.
+**F.8 — The type ramp has zero adoption in the overlay family.** Not a conflict so much as an
+unbudgeted migration: `grep var(--text-*)|var(--fw-*)|var(--leading-*)` across all fourteen overlay
+sheets returns **nothing**, and the off-ramp literals (`1.0625rem`, `1.05rem`, `0.74rem`, `0.72rem`)
+are what produce five header-density systems and bar heights running 40→64px within one class.
+Encoding it as a gate would make the next overlay PR responsible for a family-wide refactor. _Ruling
+needed:_ ship it as a gate now, or as a tracked migration with a deadline.
 
 ---
 

@@ -17,7 +17,6 @@ export const BoardService = {
 		if (params.query) qs.set("query", params.query);
 		if (params.assignee) qs.set("assignee", params.assignee);
 		if (params.priority) qs.set("priority", params.priority);
-		if (params.tag) qs.set("tag", params.tag);
 		return getProjects<{ page: BoardPage }>(`/api/projects/board?${qs.toString()}`);
 	},
 };

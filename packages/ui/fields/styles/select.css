@@ -40,6 +40,18 @@
 .ui-select__label--placeholder {
 	color: var(--text-secondary);
 }
+/*
+ * A templated value/option is a LAYOUT, not a string: an avatar beside a name, a mark beside a
+ * label. It stays inside the base box (so `white-space: nowrap` and `overflow: hidden` still
+ * inherit and a long name still clips rather than widening the trigger), but it lays its content
+ * out in a row instead of an inline flow.
+ */
+.ui-select__label--template,
+.ui-select__option-label--template {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
 .ui-select__chevron {
 	flex: 0 0 auto;
 	display: inline-flex;

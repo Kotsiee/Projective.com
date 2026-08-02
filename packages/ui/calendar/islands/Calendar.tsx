@@ -190,33 +190,31 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 
 	return (
 		<div class={cx("cal", `cal--${v}`, props.class)}>
-			{props.hideSidePanel
-				? null
-				: (
-					<aside class="cal__side" aria-label="Calendar navigation">
-						<MiniMonth
-							monthMs={monthMs.value}
-							focusMs={focusMs.value}
-							tz={tz}
-							view={v}
-							nowMs={now.value}
-							mounted={mounted.value}
-							onPick={miniPick}
-							onMonthStep={(d) => (monthMs.value = addZonedMonths(monthMs.value, d, tz))}
-						/>
-						{props.availability
-							? (
-								<AvailabilityPanel
-									availability={props.availability}
-									tz={tz}
-									hour12={hour12}
-									nowMs={now.value}
-									mounted={mounted.value}
-								/>
-							)
-							: null}
-					</aside>
-				)}
+			{props.hideSidePanel ? null : (
+				<aside class="cal__side" aria-label="Calendar navigation">
+					<MiniMonth
+						monthMs={monthMs.value}
+						focusMs={focusMs.value}
+						tz={tz}
+						view={v}
+						nowMs={now.value}
+						mounted={mounted.value}
+						onPick={miniPick}
+						onMonthStep={(d) => (monthMs.value = addZonedMonths(monthMs.value, d, tz))}
+					/>
+					{props.availability
+						? (
+							<AvailabilityPanel
+								availability={props.availability}
+								tz={tz}
+								hour12={hour12}
+								nowMs={now.value}
+								mounted={mounted.value}
+							/>
+						)
+						: null}
+				</aside>
+			)}
 
 			<div class="cal__main" ref={mainRef}>
 				<CalendarHeader
@@ -230,7 +228,9 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 					onPrev={() => step(-1)}
 					onNext={() => step(1)}
 					onToday={goToday}
-					onToggleFilters={presentKinds.length > 1 ? () => (filtersOpen.value = !filtersOpen.value) : undefined}
+					onToggleFilters={presentKinds.length > 1
+						? () => (filtersOpen.value = !filtersOpen.value)
+						: undefined}
 				/>
 
 				{filtersOpen.value
@@ -240,7 +240,11 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 								<button
 									key={k}
 									type="button"
-									class={cx("cal__filterchip", !hidden.has(k) && "cal__filterchip--on", `cal__filterchip--${k}`)}
+									class={cx(
+										"cal__filterchip",
+										!hidden.has(k) && "cal__filterchip--on",
+										`cal__filterchip--${k}`,
+									)}
 									onClick={() => toggleKind(k)}
 									aria-pressed={!hidden.has(k)}
 								>

@@ -217,7 +217,13 @@ export function useCalendarViewport(opts: UseCalendarViewportOptions): CalendarV
 		const el = scrollRef.current;
 		if (!el) return;
 		e.preventDefault(); // suppress middle-click autoscroll / text selection
-		drag.current = { active: true, x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop };
+		drag.current = {
+			active: true,
+			x: e.clientX,
+			y: e.clientY,
+			sl: el.scrollLeft,
+			st: el.scrollTop,
+		};
 		panning.value = true;
 		const move = (ev: PointerEvent) => {
 			if (!drag.current.active) return;

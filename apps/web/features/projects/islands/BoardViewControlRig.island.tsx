@@ -96,7 +96,20 @@ export default function BoardViewControlRig(): JSX.Element {
 
 			<span class="brd-rig__spacer" />
 
-			{caps.isClient
+			{
+				/*
+				 * Two different reasons the actions can be missing, told apart deliberately. A viewer
+				 * without a client seat sees ABSENCE — a control that exists only to refuse them teaches
+				 * nothing. An engagement with no tickets at all (a session is booked, not ticketed) gets a
+				 * sentence, because there the answer is "no such thing here", which absence would leave
+				 * them hunting for.
+				 */
+			}
+			{caps.isClient && !caps.hasTickets
+				? <p class="brd-rig__note">Sessions are booked, not ticketed.</p>
+				: null}
+
+			{caps.isClient && caps.hasTickets
 				? (
 					<div class="brd-rig__actions">
 						<button type="button" class="brd-rig__action" onClick={requestCreateTicket}>

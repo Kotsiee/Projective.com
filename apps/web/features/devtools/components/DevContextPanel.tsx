@@ -9,6 +9,7 @@ import {
 	DEV_MEMBER_ROLES,
 	DEV_MEMBERSHIP_STATES,
 	DEV_MESSAGING_ROLES,
+	DEV_MIC_PERMISSIONS,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
 	DEV_ROSTER_STATES,
@@ -339,6 +340,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.messagingRole}
 						disabled={!o.enabled}
 						onChange={(messagingRole) => patchDevContext({ messagingRole })}
+					/>
+				</Field>
+
+				<Field label="Microphone" hint="voice capture">
+					<Segment
+						name="Microphone"
+						options={DEV_MIC_PERMISSIONS}
+						value={o.micPermission}
+						disabled={!o.enabled}
+						onChange={(micPermission) => patchDevContext({ micPermission })}
 					/>
 				</Field>
 

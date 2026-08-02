@@ -50,6 +50,7 @@ export {
 // #region Text inputs & adornments
 export { InputText, type InputTextProps } from "./islands/InputText.tsx";
 export { Textarea, type TextareaProps } from "./islands/Textarea.tsx";
+export { InlineEdit, type InlineEditProps } from "./islands/InlineEdit.tsx";
 export {
 	type ButtonLayout,
 	InputNumber,

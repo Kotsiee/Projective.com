@@ -204,7 +204,10 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 
 					<div class="cal-tg__cols" style={styleVars({ "--cal-cols": "minmax(0, 1fr)" })}>
 						<div class="cal-tg__col cal-tg__col--timeline">
-							<div class="cal-daycol__hit" onPointerDown={(e) => onCreatePointerDown(e as unknown as PointerEvent)} />
+							<div
+								class="cal-daycol__hit"
+								onPointerDown={(e) => onCreatePointerDown(e as unknown as PointerEvent)}
+							/>
 
 							{/* Day dividers + date labels */}
 							{days.map((i) => {
@@ -212,7 +215,10 @@ export function DayTimeline(props: DayTimelineProps): JSX.Element {
 								return (
 									<div
 										key={`d${i}`}
-										class={cx("cal-tg__daymark", i === nowIdx && mounted && "cal-tg__daymark--today")}
+										class={cx(
+											"cal-tg__daymark",
+											i === nowIdx && mounted && "cal-tg__daymark--today",
+										)}
 										style={styleVars({ "--cal-top": `${yFor(minuteOf(dayStart))}px` })}
 									>
 										{fmtDayLabel(dayStart, tz)}

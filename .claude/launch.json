@@ -361,6 +361,18 @@
 				"--strictPort"
 			],
 			"port": 8273
+		},
+		{
+			"name": "web-ticket",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8473",
+				"--strictPort"
+			],
+			"port": 8473
 		}
 	]
 }

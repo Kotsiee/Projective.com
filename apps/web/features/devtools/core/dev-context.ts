@@ -27,6 +27,7 @@ import {
 	type DevMemberRole,
 	type DevMembershipState,
 	type DevMessagingRole,
+	type DevMicPermission,
 	type DevPersona,
 	type DevProjectType,
 	type DevRosterState,
@@ -61,6 +62,7 @@ export type {
 	DevLayoutDirection,
 	DevMemberRole,
 	DevMessagingRole,
+	DevMicPermission,
 	DevProjectType,
 	DevServiceType,
 	DevSessionBookingStatus,
@@ -132,6 +134,13 @@ export interface DevOverrides {
 	 */
 	messagingRole: DevMessagingRole;
 	/**
+	 * Simulated microphone permission for the chat composer's voice memo — a NEW axis reaching the
+	 * capture states that otherwise require changing real browser settings and reloading: a persisted
+	 * block, a browser without `MediaRecorder`, and the slow-grant connecting window. `granted` still
+	 * asks the real device; nothing here fabricates audio.
+	 */
+	micPermission: DevMicPermission;
+	/**
 	 * Simulated `/wallet` vault capability role (Owner/Admin/PM/member) — a NEW axis the Wallet surface's
 	 * capability gating rolls up from (which money controls the viewer may operate). Personal wallets are
 	 * always owner; this bites only on a team/business vault.
@@ -199,6 +208,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	messagingRole: "freelancer",
+	micPermission: "auto",
 	walletVaultRole: "admin",
 	walletKyc: "verified",
 	walletSmoother: "enrolled",
@@ -278,6 +288,15 @@ export const DEV_MESSAGING_ROLES: ReadonlyArray<DevOption<DevMessagingRole>> = [
 	{ value: "freelancer", label: "Freelancer" },
 	{ value: "client", label: "Client" },
 	{ value: "business", label: "Business" },
+];
+
+/** Microphone-permission options in display order (chat composer voice capture). */
+export const DEV_MIC_PERMISSIONS: ReadonlyArray<DevOption<DevMicPermission>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "prompt", label: "Prompt" },
+	{ value: "granted", label: "Granted" },
+	{ value: "denied", label: "Blocked" },
+	{ value: "unsupported", label: "No support" },
 ];
 
 /** Wallet vault-role options in display order (`/wallet` capability gating). */
@@ -422,6 +441,7 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devMessagingRole = next.messagingRole;
+		root.dataset.devMicPermission = next.micPermission;
 		root.dataset.devWalletRole = next.walletVaultRole;
 		root.dataset.devWalletKyc = next.walletKyc;
 		root.dataset.devWalletSmoother = next.walletSmoother;
@@ -455,6 +475,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devMessagingRole;
+		delete root.dataset.devMicPermission;
 		delete root.dataset.devWalletRole;
 		delete root.dataset.devWalletKyc;
 		delete root.dataset.devWalletSmoother;

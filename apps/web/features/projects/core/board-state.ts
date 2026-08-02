@@ -62,7 +62,11 @@ export function requestCheckout(): void {
 // #endregion
 
 // #region Body → footer capabilities
-/** What the footer needs to know to render the right controls (published by the body as state resolves). */
+/**
+ * What the footer needs to know to render the right controls, published by the body as its state
+ * resolves — including on every Dev Context Switcher change, so a persona flip moves the footer and
+ * the board together instead of leaving the rig offering an action the body would refuse.
+ */
 export interface BoardCaps {
 	/** The acting user is the client — gates Create Stage / Create Ticket / Checkout. */
 	isClient: boolean;
@@ -70,13 +74,22 @@ export interface BoardCaps {
 	isProjectBoard: boolean;
 	/** Number of draft/unpurchased tickets in the basket (drives Add to Basket ⁄ Checkout + the count). */
 	basketCount: number;
+	/**
+	 * Whether this engagement has tickets at all. A session is booked rather than ticketed, so the
+	 * create actions are absent because there is no such thing here — a different fact from "you may
+	 * not", and the rig states it rather than silently dropping the controls.
+	 */
+	hasTickets: boolean;
 }
 
-export const boardCaps = signal<BoardCaps>({
+const EMPTY_CAPS: BoardCaps = {
 	isClient: false,
 	isProjectBoard: true,
 	basketCount: 0,
-});
+	hasTickets: true,
+};
+
+export const boardCaps = signal<BoardCaps>(EMPTY_CAPS);
 
 export function publishBoardCaps(caps: BoardCaps): void {
 	boardCaps.value = caps;
@@ -87,6 +100,6 @@ export function resetBoardState(): void {
 	createTicketOpen.value = false;
 	createStageOpen.value = false;
 	checkoutOpen.value = false;
-	boardCaps.value = { isClient: false, isProjectBoard: true, basketCount: 0 };
+	boardCaps.value = EMPTY_CAPS;
 }
 // #endregion

@@ -219,7 +219,10 @@ export function useVirtualScroll(opts: UseVirtualScrollOptions): UseVirtualScrol
 			globalThis.scrollTo({ top: doc.scrollHeight, behavior });
 		} else if (parentRef?.current) {
 			const p = parentRef.current;
-			p.scrollTo({ [horizontal ? "left" : "top"]: horizontal ? p.scrollWidth : p.scrollHeight, behavior });
+			p.scrollTo({
+				[horizontal ? "left" : "top"]: horizontal ? p.scrollWidth : p.scrollHeight,
+				behavior,
+			});
 		}
 		// Reflect the programmatic scroll now (don't wait for the deferred `scroll` event).
 		if (behavior === "auto") syncRef.current();
@@ -260,5 +263,12 @@ export function useVirtualScroll(opts: UseVirtualScrollOptions): UseVirtualScrol
 		syncRef.current();
 	}, [offsets, count, useWindow, parentRef, horizontal]);
 
-	return { virtualItems, totalSize, range: { start, end }, measureElement, scrollToIndex, scrollToEnd };
+	return {
+		virtualItems,
+		totalSize,
+		range: { start, end },
+		measureElement,
+		scrollToIndex,
+		scrollToEnd,
+	};
 }

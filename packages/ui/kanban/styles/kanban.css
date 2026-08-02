@@ -214,8 +214,8 @@
 }
 /* #endregion */
 
-/* Live region for keyboard drag announcements. 
-   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles` 
+/* Live region for keyboard drag announcements.
+   Visually hidden via the shared `.ui-visually-hidden` utility in `@projective/ui/styles`
    (this rule was a byte-for-byte reimplementation of it). */
 
 @media (prefers-reduced-motion: reduce) {

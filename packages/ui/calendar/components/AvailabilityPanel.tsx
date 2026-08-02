@@ -54,13 +54,17 @@ export function AvailabilityPanel(props: AvailabilityPanelProps): JSX.Element {
 							.filter((r) => r.weekday === weekday)
 							.sort((a, b) => a.startMinute - b.startMinute);
 						return (
-							<li key={label} class={cx("cal-avail__row", !windows.length && "cal-avail__row--off")}>
+							<li
+								key={label}
+								class={cx("cal-avail__row", !windows.length && "cal-avail__row--off")}
+							>
 								<span class="cal-avail__day">{label}</span>
 								<span class="cal-avail__windows">
 									{windows.length
 										? windows.map((w, i) => (
 											<span key={i} class="cal-avail__window">
-												{fmtMinuteLabel(w.startMinute, hour12)} – {fmtMinuteLabel(w.endMinute, hour12)}
+												{fmtMinuteLabel(w.startMinute, hour12)} –{" "}
+												{fmtMinuteLabel(w.endMinute, hour12)}
 											</span>
 										))
 										: <span class="cal-avail__closed">Unavailable</span>}

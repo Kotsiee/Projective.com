@@ -125,39 +125,40 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 	const rowsIn = (root: HTMLElement | null) =>
 		Array.from(root?.querySelectorAll<HTMLButtonElement>(rowSelector) ?? []);
 
-	const onKeyDown = (node: TreeNavNode, hasChildren: boolean) =>
-	(e: JSX.TargetedKeyboardEvent<HTMLButtonElement>) => {
-		const root = e.currentTarget.closest<HTMLElement>(".ui-treenav");
-		const rows = rowsIn(root);
-		const i = rows.indexOf(e.currentTarget);
-		switch (e.key) {
-			case "ArrowDown":
-				e.preventDefault();
-				rows[Math.min(rows.length - 1, i + 1)]?.focus();
-				break;
-			case "ArrowUp":
-				e.preventDefault();
-				rows[Math.max(0, i - 1)]?.focus();
-				break;
-			case "ArrowRight":
-				e.preventDefault();
-				if (hasChildren && !isExpanded(node.key)) setExpanded(node.key, true, node);
-				else if (hasChildren) rows[i + 1]?.focus();
-				break;
-			case "ArrowLeft":
-				e.preventDefault();
-				if (hasChildren && isExpanded(node.key)) setExpanded(node.key, false, node);
-				break;
-			case "Home":
-				e.preventDefault();
-				rows[0]?.focus();
-				break;
-			case "End":
-				e.preventDefault();
-				rows[rows.length - 1]?.focus();
-				break;
-		}
-	};
+	const onKeyDown =
+		(node: TreeNavNode, hasChildren: boolean) =>
+		(e: JSX.TargetedKeyboardEvent<HTMLButtonElement>) => {
+			const root = e.currentTarget.closest<HTMLElement>(".ui-treenav");
+			const rows = rowsIn(root);
+			const i = rows.indexOf(e.currentTarget);
+			switch (e.key) {
+				case "ArrowDown":
+					e.preventDefault();
+					rows[Math.min(rows.length - 1, i + 1)]?.focus();
+					break;
+				case "ArrowUp":
+					e.preventDefault();
+					rows[Math.max(0, i - 1)]?.focus();
+					break;
+				case "ArrowRight":
+					e.preventDefault();
+					if (hasChildren && !isExpanded(node.key)) setExpanded(node.key, true, node);
+					else if (hasChildren) rows[i + 1]?.focus();
+					break;
+				case "ArrowLeft":
+					e.preventDefault();
+					if (hasChildren && isExpanded(node.key)) setExpanded(node.key, false, node);
+					break;
+				case "Home":
+					e.preventDefault();
+					rows[0]?.focus();
+					break;
+				case "End":
+					e.preventDefault();
+					rows[rows.length - 1]?.focus();
+					break;
+			}
+		};
 	// #endregion
 
 	// #region Row
@@ -231,9 +232,7 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 
 						<span class="ui-treenav__text">
 							<span class="ui-treenav__label">{node.label}</span>
-							{node.sublabel
-								? <span class="ui-treenav__sublabel">{node.sublabel}</span>
-								: null}
+							{node.sublabel ? <span class="ui-treenav__sublabel">{node.sublabel}</span> : null}
 						</span>
 
 						{node.status ? <span class="ui-treenav__status">{node.status}</span> : null}

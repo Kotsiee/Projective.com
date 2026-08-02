@@ -21,7 +21,11 @@ import {
 	WeekViewIcon,
 } from "./glyphs.tsx";
 
-const VIEWS: { key: CalendarViewMode; label: string; icon: (p: { size?: number }) => JSX.Element }[] = [
+const VIEWS: {
+	key: CalendarViewMode;
+	label: string;
+	icon: (p: { size?: number }) => JSX.Element;
+}[] = [
 	{ key: "day", label: "Day", icon: DayViewIcon },
 	{ key: "week", label: "Week", icon: WeekViewIcon },
 	{ key: "month", label: "Month", icon: MonthViewIcon },
@@ -47,17 +51,32 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 			<div class="cal-header__lead">
 				<div class="cal-header__nav" role="group" aria-label="Navigate">
 					<Tooltip content="Today">
-						<button type="button" class="cal-header__today" onClick={props.onToday} aria-label="Go to today">
+						<button
+							type="button"
+							class="cal-header__today"
+							onClick={props.onToday}
+							aria-label="Go to today"
+						>
 							<TodayIcon size={16} />
 						</button>
 					</Tooltip>
 					<Tooltip content="Previous">
-						<button type="button" class="cal-header__navbtn" onClick={props.onPrev} aria-label="Previous">
+						<button
+							type="button"
+							class="cal-header__navbtn"
+							onClick={props.onPrev}
+							aria-label="Previous"
+						>
 							<ChevronLeftIcon size={18} />
 						</button>
 					</Tooltip>
 					<Tooltip content="Next">
-						<button type="button" class="cal-header__navbtn" onClick={props.onNext} aria-label="Next">
+						<button
+							type="button"
+							class="cal-header__navbtn"
+							onClick={props.onNext}
+							aria-label="Next"
+						>
 							<ChevronRightIcon size={18} />
 						</button>
 					</Tooltip>
@@ -103,7 +122,9 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 							{props.integrations.map((it) => (
 								<Tooltip
 									key={it.id}
-									content={`${it.label}: ${it.connected ? "connected — shown as Busy/Available only" : "not connected"}`}
+									content={`${it.label}: ${
+										it.connected ? "connected — shown as Busy/Available only" : "not connected"
+									}`}
 								>
 									<span
 										class={cx("cal-header__int", it.connected && "cal-header__int--on")}

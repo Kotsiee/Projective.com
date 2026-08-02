@@ -39,33 +39,33 @@ never by appending new timestamped migrations that patch earlier ones.
 - **Fold, don't patch.** A new column goes **directly into the object's `CREATE TABLE`**; a new enum
   value into its `CREATE TYPE ... AS ENUM`; a changed default/constraint is edited on the column
   itself. **Do NOT** add `ALTER TABLE ... ADD COLUMN`, `ALTER TYPE ... ADD VALUE`, `DROP CONSTRAINT`
-  + re-`ADD`, or any "migration on top of a migration." The only permitted `ALTER TABLE` is an
-  `ADD CONSTRAINT ... FOREIGN KEY` placed in a trailing `00000###_tables_fk_*.sql` file **when and
-  only when** a genuine circular dependency makes an inline FK impossible.
+  - re-`ADD`, or any "migration on top of a migration." The only permitted `ALTER TABLE` is an
+    `ADD CONSTRAINT ... FOREIGN KEY` placed in a trailing `00000###_tables_fk_*.sql` file **when and
+    only when** a genuine circular dependency makes an inline FK impossible.
 - **Naming convention (strict):** every file is `vvvvtooo_type_purpose.sql` — an 8-digit numeric
   prefix `vvvv`(=`0000`) + `t`(1-digit category) + `ooo`(3-digit order within category) + a verbose
   `type` matching `t` + a snake_case `purpose`. Categories run in order and MUST stay layered:
 
-  | `t` | Category | `type` names | Holds |
-  | :- | :------- | :----------- | :---- |
-  | 0 | Core setup | `schemas` · `extensions` · `enums` · `tables` | `CREATE SCHEMA/EXTENSION/TYPE`, `CREATE TABLE` (all columns/constraints inline) |
-  | 1 | Functions & triggers | `functions` · `rpcs` · `triggers` | `CREATE FUNCTION`/`RPC`s first, then all `CREATE TRIGGER` |
-  | 2 | Security | `policies` · `permissions` | `ENABLE ROW LEVEL SECURITY`, `CREATE POLICY`, `GRANT`/`REVOKE`, realtime publication |
-  | 3 | Views | `views` | `CREATE [MATERIALIZED] VIEW` |
-  | 4 | Indexes | `indexes` | standalone `CREATE INDEX` |
-  | 5 | Seed | `seed` | top-level reference-data `INSERT`s (never backfills or in-function inserts) |
+  | `t` | Category             | `type` names                                  | Holds                                                                                |
+  | :-- | :------------------- | :-------------------------------------------- | :----------------------------------------------------------------------------------- |
+  | 0   | Core setup           | `schemas` · `extensions` · `enums` · `tables` | `CREATE SCHEMA/EXTENSION/TYPE`, `CREATE TABLE` (all columns/constraints inline)      |
+  | 1   | Functions & triggers | `functions` · `rpcs` · `triggers`             | `CREATE FUNCTION`/`RPC`s first, then all `CREATE TRIGGER`                            |
+  | 2   | Security             | `policies` · `permissions`                    | `ENABLE ROW LEVEL SECURITY`, `CREATE POLICY`, `GRANT`/`REVOKE`, realtime publication |
+  | 3   | Views                | `views`                                       | `CREATE [MATERIALIZED] VIEW`                                                         |
+  | 4   | Indexes              | `indexes`                                     | standalone `CREATE INDEX`                                                            |
+  | 5   | Seed                 | `seed`                                        | top-level reference-data `INSERT`s (never backfills or in-function inserts)          |
 
-- **Place each statement in its category, not next to related code.** A new table's columns go in the
-  cat-0 table file; its policies in cat-2; its indexes in cat-4; its seed rows in cat-5 — each edited
-  into the existing domain file for that category. Keep cat-0 table files dependency-ordered (no
-  forward-referencing FK across files). Triggers always live in a cat-1 `triggers` file (after every
-  `functions` file), because a trigger needs its function to exist first.
+- **Place each statement in its category, not next to related code.** A new table's columns go in
+  the cat-0 table file; its policies in cat-2; its indexes in cat-4; its seed rows in cat-5 — each
+  edited into the existing domain file for that category. Keep cat-0 table files dependency-ordered
+  (no forward-referencing FK across files). Triggers always live in a cat-1 `triggers` file (after
+  every `functions` file), because a trigger needs its function to exist first.
 - **Escrows, Wallets, Stages** remain protected: do not remove their columns or alter their existing
-  FK relationships without explicit human permission — the reset convenience is for **additive/edit**
-  schema evolution, not for silently dropping financial structure.
+  FK relationships without explicit human permission — the reset convenience is for
+  **additive/edit** schema evolution, not for silently dropping financial structure.
 - **Zod SSOT:** a schema change must land with its matching `@projective/types` Zod schema/interface
-  **and** the matching `documentation/database/[domain]/*` update **in the same change**. The DB, the
-  types package, and the docs must never drift.
+  **and** the matching `documentation/database/[domain]/*` update **in the same change**. The DB,
+  the types package, and the docs must never drift.
 
 ## 2. Architecture & the Islands Boundary
 
@@ -151,21 +151,21 @@ The four founding conflicts were **resolved on 2026-07-12** (below). For any **n
 you find between source docs: do not pick a side quietly — flag it in the PR, add a row here, and
 ask a human. This table is the durable decision log.
 
-| #  | Decision (2026-07-12)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Applied in                                                                                                                                                                                                                                                                                    |
-| :- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1  | **Chart engine — tiered.** D3.js (scales/geometry + low-density SVG) → Canvas2D (mid-density) → PIXI/WebGL (high-density stage, fed by Rust/WASM). Renderer auto-selected on a performance metric.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `PRODUCT_SPEC.md` §Libraries · `SYSTEM_ARCHITECTURE.md` §Charts · `DESIGN_SYSTEM.md` §B.5/§C.5                                                                                                                                                                                                |
-| 2  | **Platform fee — 5%** flat, **plus Stripe processing fees passed through** (separate from the 5%). `finance-model.md` is canonical; `investor-summary.md` corrected from 10%.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `finance-model.md` §1.1/top-note · `investor-summary.md` §4                                                                                                                                                                                                                                   |
-| 3  | **Profile route param — `[handle]`** (matches the `@handle` entity identifier). `PRODUCT_SPEC.md` sitemap updated `/[profile]` → `/[handle]`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `PRODUCT_SPEC.md` §Sitemap · §4 above · `api/README.md`                                                                                                                                                                                                                                       |
-| 4  | **Brand mark ratios — 1:1 (icon) + 7:2 (wordmark)**, per `PRODUCT_SPEC.md` §Visual Identity (SSOT). The brief's 3:1 is superseded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `DESIGN_SYSTEM.md` §C.4                                                                                                                                                                                                                                                                       |
-| 5  | **Signup route — `/join`** (renamed from `/register`, 2026-07-13, per product owner). `/register` is retired — no redirect kept; all app links repoint to `/join`. Sitemap + ROUTING updated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `PRODUCT_SPEC.md` §Sitemap · `ROUTING.md` · `apps/web/routes/(public)/(auth)/join.tsx`                                                                                                                                                                                                        |
-| 6  | **Age guardrails (new rule, 2026-07-13).** DoB age-gate: **<13 blocked**, **13–17 restricted** (no buy/sell until 18), **≥18 full**. `restricted` re-derived server-side; capability-scoped only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `PRODUCT_SPEC.md` §Account Creation, Age Guardrails & Onboarding · `apps/web/features/auth/`                                                                                                                                                                                                  |
-| 7  | **Onboarding shapes (new rule, 2026-07-13).** Individual = lean (intent + credentials + basics + DoB). Organization = comprehensive wizard (identity, contact/address, scale, IAM, admin login), still Draft/Unverified; KYB stays deferred to L3. Google OAuth pre-fills `/join`. `redirectTo` return-path (guard param renamed `redirect`→`redirectTo`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `PRODUCT_SPEC.md` §Account Creation… · `apps/web/features/auth/` · `(dashboard)/_middleware.ts`                                                                                                                                                                                               |
-| 8  | **Auth UX overhaul (2026-07-13).** `/join` is a fixed **non-scrolling** two-column wizard with a live "passport" summary; steps **1 → 1.6** (skills shown only for Freelancer; password skipped for OAuth/SSO). Softer, filled `@projective/ui` field variants for the lower-contrast palette; one scoped glassmorphic summary card. Adds **Enterprise SSO** (SAML/OIDC domain discovery, `/api/auth/sso`, provider wiring deferred). **Note:** step containers must stay `transform`-free — a transformed ancestor re-bases the field overlays' `position:fixed` panels.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `PRODUCT_SPEC.md` §Account Creation… · `apps/web/features/auth/` · `auth.css`                                                                                                                                                                                                                 |
-| 9  | **`/join` premium redesign (2026-07-13).** Supersedes parts of #8 for the join sidebar: **deep-primary illustrative aside** with one large adaptive SVG scene (glass "passport" card **removed** from `/join`; it remains only on login/verify/forgot via `SceneAside`), **expressive imaginative step titles** (no literal "Step 1.2"), **neutral** first step (no default account type), **auto-advance** on choice-only steps, and felt ~0.5s slide-and-fade. **Business rule:** **Organizations are client/buyer-only** — they cannot register to provide services, so the org flow skips the Client/Freelancer step and the skills step; an org **website / corporate domain** field is added to the org scale step. **Individuals get any-step Google OAuth** (mid-flow pre-fill, no bypass). Purpose/Skills become **interactive pill clusters + a custom-tag combobox, capped at 5**. **Transform refinement of #8:** `.auth-step` may carry a **self-clearing** enter transform (no `forwards` fill) — it reverts to `transform:none` before any overlay opens, so `position:fixed` panels still resolve to the viewport; a _persistent_ transform remains forbidden. | `PRODUCT_SPEC.md` §Onboarding step sequence · `apps/web/features/auth/` (`JoinArt.tsx`, `TagSelect.tsx`, `SummaryPanel.tsx`, `StepForm.tsx`) · `auth.css`                                                                                                                                     |
-| 10 | **Thin-Frontend / Fat-Backend service pattern (2026-07-14).** Formalises §2. Thin client services (`AuthService`) gather input + call `/api/*`; **thin routes** do HTTP+Zod+guard only; **fat services** live in the new **`@projective/backend`** workspace member (alias `@server/services/*`), own all logic/DB/session, are the sole Supabase touchpoint, and return a transport-agnostic `ServiceResult<T>`. Fat services are **stub-first**, gated live by **`AUTH_BACKEND_LIVE`** (default off). All 8 `/api/auth/*` routes delegate to `AuthBackendService`; behaviour preserved. Also: **`Organisation` ≠ `business_profiles`** — an org is a **client/buyer-only** entity, a genuinely new table (Phase 2 migration pending), NOT a rename of `business_profiles`. **[Corrected by Decision #61, 2026-07-30: this row originally called `business_profiles` "the seller-side" entity when distinguishing it from Organisations. That wording is wrong — a Business is BUYER-side (a Client with multiple members), per `documentation/database/org/Tables.md` + `PRODUCT_SPEC.md` and the product owner's 2026-07-29 ruling. The distinction Decision #10 was reaching for is scale/structure, not side of market.]** Client-side **storage-keys dictionary** at `apps/web/utils/storage-keys.ts`; `/verify` gains an auto-login **verification-status poll** (reads mig 0312's `verified_at` when live).                                                                                                                                                                                               | `SYSTEM_ARCHITECTURE.md` §Backend Services · `packages/backend/` · `apps/web/features/auth/` · `apps/web/routes/api/auth/*`                                                                                                                                                                   |
-| 11 | **Env-name drift — RESOLVED (2026-07-14, product owner).** The **canonical** documented Environment Variable Contract names win: `DENO_ENV` / `APP_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `GOOGLE_CLIENT_SECRET`. The `.env` / `.env.development` / `.env.production` aliases (`APP_ENV` / `URL` / `SB_SERVICE_ROLE_KEY` / `GOOGLE_SECRET`) were renamed to match, `config.toml`'s Google `secret` now reads `env(GOOGLE_CLIENT_SECRET)`, and `packages/backend/core/env.ts` + `auth-cookies.ts` read the canonical names directly (dual-read fallback removed). Separately, the three `.env*` files were **untracked from git** (`git rm --cached`; they were already `.gitignore`d) — the previously committed real Google + Supabase secrets remain in git history and must be **rotated** by a human.                                                                                                                                                                                                                                                                                                                                                                        | `SYSTEM_ARCHITECTURE.md` §Environment Variable Contract · `packages/backend/core/env.ts` · `apps/web/utils/auth-cookies.ts` · `supabase/config.toml` · `.env.example`                                                                                                                         |
-| 13 | **Global footer redesign + newsletter thin/fat (2026-07-14).** The public footer (`PublicFooter`, mounted on every `(public)` surface via `_layout`, excluded from the zero-scroll auth screens by composition) was rebuilt as a premium five-column masthead (brand + social tray · three ELI5, jargon-free link stacks — "safe & easy payments", never "escrow" · a newsletter capture) over a thin utility bar (copyright · legal · a soft-breathing "systems operational" status dot). Link stacks are native `<details>` — accessible mobile accordions, CSS-force-open on desktop (zero JS). The newsletter is the **third** implementation of Decision #10's contract and its smallest write: `NewsletterService` (client, Zod-validates first) → `POST /api/newsletter/subscribe` (thin) → `NewsletterBackendService` (fat, `@server/services/newsletter/`) → `ServiceResult<T>`, stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default off, `isNewsletterBackendLive()`). Subscribe shape is the Zod SSOT **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`). No DB migration yet (the `newsletter.subscriptions` table is Phase 2).                 | `SYSTEM_ARCHITECTURE.md` §Backend Services · `packages/types/newsletter/` · `packages/backend/services/newsletter/` · `apps/web/features/marketing/` (`PublicFooter.tsx`, `NewsletterForm.island.tsx`, `NewsletterService.ts`) · `apps/web/routes/api/newsletter/subscribe.ts` · `footer.css` |
-| 12 | **Explore thin-frontend/fat-backend decoupling (2026-07-14).** Second, **read-only** implementation of Decision #10's contract: `ExploreService` (client) → `/api/explore/{search,item,related}` (thin) → `ExploreBackendService` (fat, `@server/services/explore/`) → `ServiceResult<T>`, stub-first behind **`EXPLORE_BACKEND_LIVE`** (default off, `isExploreBackendLive()`). The discovery fixtures + query/ranking/grouping logic were relocated OUT of the app into the backend package (the boundary forbids `@features` imports); the Explore domain shapes moved to the Zod SSOT **`@projective/types/explore`** (`ExploreItem`, `ExploreParams`, `ResultGroup`, `SearchPayload`, `HomeFeed`). `/explore` + `/view/[id]` SSR call the fat service directly; the `SearchDashboard` island refines client-side via the API. Client storage keys registered in `apps/web/utils/storage-keys.ts` (the `src/…` path in the brief is superseded — CLAUDE.md §4 bans `src/`).                                                                                                                                                                                                | `SYSTEM_ARCHITECTURE.md` §Backend Services · `packages/backend/services/explore/` · `packages/types/explore/` · `apps/web/features/explore/` · `apps/web/routes/api/explore/*`                                                                                                                |
+| #  | Decision (2026-07-12)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Applied in                                                                                                                                                                                                                                                                                    |
+| :- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1  | **Chart engine — tiered.** D3.js (scales/geometry + low-density SVG) → Canvas2D (mid-density) → PIXI/WebGL (high-density stage, fed by Rust/WASM). Renderer auto-selected on a performance metric.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `PRODUCT_SPEC.md` §Libraries · `SYSTEM_ARCHITECTURE.md` §Charts · `DESIGN_SYSTEM.md` §B.5/§C.5                                                                                                                                                                                                |
+| 2  | **Platform fee — 5%** flat, **plus Stripe processing fees passed through** (separate from the 5%). `finance-model.md` is canonical; `investor-summary.md` corrected from 10%.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `finance-model.md` §1.1/top-note · `investor-summary.md` §4                                                                                                                                                                                                                                   |
+| 3  | **Profile route param — `[handle]`** (matches the `@handle` entity identifier). `PRODUCT_SPEC.md` sitemap updated `/[profile]` → `/[handle]`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `PRODUCT_SPEC.md` §Sitemap · §4 above · `api/README.md`                                                                                                                                                                                                                                       |
+| 4  | **Brand mark ratios — 1:1 (icon) + 7:2 (wordmark)**, per `PRODUCT_SPEC.md` §Visual Identity (SSOT). The brief's 3:1 is superseded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `DESIGN_SYSTEM.md` §C.4                                                                                                                                                                                                                                                                       |
+| 5  | **Signup route — `/join`** (renamed from `/register`, 2026-07-13, per product owner). `/register` is retired — no redirect kept; all app links repoint to `/join`. Sitemap + ROUTING updated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `PRODUCT_SPEC.md` §Sitemap · `ROUTING.md` · `apps/web/routes/(public)/(auth)/join.tsx`                                                                                                                                                                                                        |
+| 6  | **Age guardrails (new rule, 2026-07-13).** DoB age-gate: **<13 blocked**, **13–17 restricted** (no buy/sell until 18), **≥18 full**. `restricted` re-derived server-side; capability-scoped only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `PRODUCT_SPEC.md` §Account Creation, Age Guardrails & Onboarding · `apps/web/features/auth/`                                                                                                                                                                                                  |
+| 7  | **Onboarding shapes (new rule, 2026-07-13).** Individual = lean (intent + credentials + basics + DoB). Organization = comprehensive wizard (identity, contact/address, scale, IAM, admin login), still Draft/Unverified; KYB stays deferred to L3. Google OAuth pre-fills `/join`. `redirectTo` return-path (guard param renamed `redirect`→`redirectTo`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `PRODUCT_SPEC.md` §Account Creation… · `apps/web/features/auth/` · `(dashboard)/_middleware.ts`                                                                                                                                                                                               |
+| 8  | **Auth UX overhaul (2026-07-13).** `/join` is a fixed **non-scrolling** two-column wizard with a live "passport" summary; steps **1 → 1.6** (skills shown only for Freelancer; password skipped for OAuth/SSO). Softer, filled `@projective/ui` field variants for the lower-contrast palette; one scoped glassmorphic summary card. Adds **Enterprise SSO** (SAML/OIDC domain discovery, `/api/auth/sso`, provider wiring deferred). **Note:** step containers must stay `transform`-free — a transformed ancestor re-bases the field overlays' `position:fixed` panels.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `PRODUCT_SPEC.md` §Account Creation… · `apps/web/features/auth/` · `auth.css`                                                                                                                                                                                                                 |
+| 9  | **`/join` premium redesign (2026-07-13).** Supersedes parts of #8 for the join sidebar: **deep-primary illustrative aside** with one large adaptive SVG scene (glass "passport" card **removed** from `/join`; it remains only on login/verify/forgot via `SceneAside`), **expressive imaginative step titles** (no literal "Step 1.2"), **neutral** first step (no default account type), **auto-advance** on choice-only steps, and felt ~0.5s slide-and-fade. **Business rule:** **Organizations are client/buyer-only** — they cannot register to provide services, so the org flow skips the Client/Freelancer step and the skills step; an org **website / corporate domain** field is added to the org scale step. **Individuals get any-step Google OAuth** (mid-flow pre-fill, no bypass). Purpose/Skills become **interactive pill clusters + a custom-tag combobox, capped at 5**. **Transform refinement of #8:** `.auth-step` may carry a **self-clearing** enter transform (no `forwards` fill) — it reverts to `transform:none` before any overlay opens, so `position:fixed` panels still resolve to the viewport; a _persistent_ transform remains forbidden.                                                                                                                                                                                                                                      | `PRODUCT_SPEC.md` §Onboarding step sequence · `apps/web/features/auth/` (`JoinArt.tsx`, `TagSelect.tsx`, `SummaryPanel.tsx`, `StepForm.tsx`) · `auth.css`                                                                                                                                     |
+| 10 | **Thin-Frontend / Fat-Backend service pattern (2026-07-14).** Formalises §2. Thin client services (`AuthService`) gather input + call `/api/*`; **thin routes** do HTTP+Zod+guard only; **fat services** live in the new **`@projective/backend`** workspace member (alias `@server/services/*`), own all logic/DB/session, are the sole Supabase touchpoint, and return a transport-agnostic `ServiceResult<T>`. Fat services are **stub-first**, gated live by **`AUTH_BACKEND_LIVE`** (default off). All 8 `/api/auth/*` routes delegate to `AuthBackendService`; behaviour preserved. Also: **`Organisation` ≠ `business_profiles`** — an org is a **client/buyer-only** entity, a genuinely new table (Phase 2 migration pending), NOT a rename of `business_profiles`. **[Corrected by Decision #61, 2026-07-30: this row originally called `business_profiles` "the seller-side" entity when distinguishing it from Organisations. That wording is wrong — a Business is BUYER-side (a Client with multiple members), per `documentation/database/org/Tables.md` + `PRODUCT_SPEC.md` and the product owner's 2026-07-29 ruling. The distinction Decision #10 was reaching for is scale/structure, not side of market.]** Client-side **storage-keys dictionary** at `apps/web/utils/storage-keys.ts`; `/verify` gains an auto-login **verification-status poll** (reads mig 0312's `verified_at` when live). | `SYSTEM_ARCHITECTURE.md` §Backend Services · `packages/backend/` · `apps/web/features/auth/` · `apps/web/routes/api/auth/*`                                                                                                                                                                   |
+| 11 | **Env-name drift — RESOLVED (2026-07-14, product owner).** The **canonical** documented Environment Variable Contract names win: `DENO_ENV` / `APP_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `GOOGLE_CLIENT_SECRET`. The `.env` / `.env.development` / `.env.production` aliases (`APP_ENV` / `URL` / `SB_SERVICE_ROLE_KEY` / `GOOGLE_SECRET`) were renamed to match, `config.toml`'s Google `secret` now reads `env(GOOGLE_CLIENT_SECRET)`, and `packages/backend/core/env.ts` + `auth-cookies.ts` read the canonical names directly (dual-read fallback removed). Separately, the three `.env*` files were **untracked from git** (`git rm --cached`; they were already `.gitignore`d) — the previously committed real Google + Supabase secrets remain in git history and must be **rotated** by a human.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `SYSTEM_ARCHITECTURE.md` §Environment Variable Contract · `packages/backend/core/env.ts` · `apps/web/utils/auth-cookies.ts` · `supabase/config.toml` · `.env.example`                                                                                                                         |
+| 13 | **Global footer redesign + newsletter thin/fat (2026-07-14).** The public footer (`PublicFooter`, mounted on every `(public)` surface via `_layout`, excluded from the zero-scroll auth screens by composition) was rebuilt as a premium five-column masthead (brand + social tray · three ELI5, jargon-free link stacks — "safe & easy payments", never "escrow" · a newsletter capture) over a thin utility bar (copyright · legal · a soft-breathing "systems operational" status dot). Link stacks are native `<details>` — accessible mobile accordions, CSS-force-open on desktop (zero JS). The newsletter is the **third** implementation of Decision #10's contract and its smallest write: `NewsletterService` (client, Zod-validates first) → `POST /api/newsletter/subscribe` (thin) → `NewsletterBackendService` (fat, `@server/services/newsletter/`) → `ServiceResult<T>`, stub-first behind **`NEWSLETTER_BACKEND_LIVE`** (default off, `isNewsletterBackendLive()`). Subscribe shape is the Zod SSOT **`@projective/types/newsletter`** (`NewsletterSubscribeSchema`). No DB migration yet (the `newsletter.subscriptions` table is Phase 2).                                                                                                                                                                                                                                                      | `SYSTEM_ARCHITECTURE.md` §Backend Services · `packages/types/newsletter/` · `packages/backend/services/newsletter/` · `apps/web/features/marketing/` (`PublicFooter.tsx`, `NewsletterForm.island.tsx`, `NewsletterService.ts`) · `apps/web/routes/api/newsletter/subscribe.ts` · `footer.css` |
+| 12 | **Explore thin-frontend/fat-backend decoupling (2026-07-14).** Second, **read-only** implementation of Decision #10's contract: `ExploreService` (client) → `/api/explore/{search,item,related}` (thin) → `ExploreBackendService` (fat, `@server/services/explore/`) → `ServiceResult<T>`, stub-first behind **`EXPLORE_BACKEND_LIVE`** (default off, `isExploreBackendLive()`). The discovery fixtures + query/ranking/grouping logic were relocated OUT of the app into the backend package (the boundary forbids `@features` imports); the Explore domain shapes moved to the Zod SSOT **`@projective/types/explore`** (`ExploreItem`, `ExploreParams`, `ResultGroup`, `SearchPayload`, `HomeFeed`). `/explore` + `/view/[id]` SSR call the fat service directly; the `SearchDashboard` island refines client-side via the API. Client storage keys registered in `apps/web/utils/storage-keys.ts` (the `src/…` path in the brief is superseded — CLAUDE.md §4 bans `src/`).                                                                                                                                                                                                                                                                                                                                                                                                                                     | `SYSTEM_ARCHITECTURE.md` §Backend Services · `packages/backend/services/explore/` · `packages/types/explore/` · `apps/web/features/explore/` · `apps/web/routes/api/explore/*`                                                                                                                |
 
 | 14 | **Navigation-shell overhaul — four-profile matrix (2026-07-15).** The shell resolves to four
 form-factor × auth profiles (Desktop/Mobile × Guest/User). **Auth is now resolved site-wide**: the
@@ -1778,26 +1778,29 @@ vs PRODUCT_SPEC full forfeit) is untouched and remains logged below. | root CLAU
 §Escrow/Wallets/Finance + §Identity · `SYSTEM_ARCHITECTURE.md` · `DESIGN_SYSTEM.md` §A.6 ·
 `PRODUCT_MANAGEMENT.md` §3.5 · Decisions #6 / #7 / #10 / #47 |
 
-| 55 | **Wallet & Finance frontend surface — `/wallet` (2026-07-24).** The 14th thin-frontend/fat-backend
-read AND the finance domain's first WRITE surface: the context-scoped Wallet — a calm Overview hub +
-deep pages (`/wallet/{transactions,activity,payouts,funding,methods,invoices,access}`) +
-BodyPortal action modals — over the finance Zod SSOT (`@projective/types/finance`, Decision #54).
-Thin `WalletService` → `apiFetch` → `/api/wallet/*` (thin routes = HTTP+Zod+guard, NO server
-capability gate) → fat **`WalletBackendService`** (`@server/services/finance/`) → `ServiceResult<T>`,
-gated by the NEW **`FINANCE_BACKEND_LIVE`** (default off, `isFinanceBackendLive()`). **ALL money math
-is server-side** (`wallet-fixtures.ts`): the three-state balance projection, the
+| 55 | **Wallet & Finance frontend surface — `/wallet` (2026-07-24).** The 14th
+thin-frontend/fat-backend read AND the finance domain's first WRITE surface: the context-scoped
+Wallet — a calm Overview hub + deep pages
+(`/wallet/{transactions,activity,payouts,funding,methods,invoices,access}`) + BodyPortal action
+modals — over the finance Zod SSOT (`@projective/types/finance`, Decision #54). Thin `WalletService`
+→ `apiFetch` → `/api/wallet/*` (thin routes = HTTP+Zod+guard, NO server capability gate) → fat
+**`WalletBackendService`** (`@server/services/finance/`) → `ServiceResult<T>`, gated by the NEW
+**`FINANCE_BACKEND_LIVE`** (default off, `isFinanceBackendLive()`). **ALL money math is
+server-side** (`wallet-fixtures.ts`): the three-state balance projection, the
 5%-fee→vault-cut→template→remainder-to-vault team split (finance-model §5), FX conversion + `Intl`
 formatting, the KYC gate — the client only renders the returned `MoneyView`s (never computes a
-balance/split/fee/conversion). Added to the SSOT (never inlined): **`packages/types/finance/wallet.ts`**
-(`MoneyView` + the read projections `WalletOverview`/`WalletSwitcher`/`TransactionPage`/`ActivityView`/
+balance/split/fee/conversion). Added to the SSOT (never inlined):
+**`packages/types/finance/wallet.ts`** (`MoneyView` + the read projections
+`WalletOverview`/`WalletSwitcher`/`TransactionPage`/`ActivityView`/
 `PayoutsView`/`FundingView`/`MethodsView`/`InvoicesView`/`AccessView` + the action inputs + the pure
-`formatMoney`/`capabilitiesForRole`/`walletVariant` helpers + the `WalletQuery`/`WalletSim` read shapes).
-**The wallet is the finance face of the active context** (Decisions #16/#17): a personal wallet, a
-team/business/organisation vault (same route, `?w=scope:id` switcher override), or a read-only **"All
-accounts"** aggregate rollup; three overview faces (personal freelancer/client · team split · business
-burn-down). Fixtures DERIVE a coherent finance world from the SAME cast as the rest of the app
-(`nav-fixtures` `northwind`/`atlas-collective`/`monarch-labs`/`verdant-studio`, fixed clock, unsigned
-`>>>` hash, TDZ-safe) + a mutable session STORE so top-up/withdraw/transfer/distribute/fund-escrow/
+`formatMoney`/`capabilitiesForRole`/`walletVariant` helpers + the `WalletQuery`/`WalletSim` read
+shapes). **The wallet is the finance face of the active context** (Decisions #16/#17): a personal
+wallet, a team/business/organisation vault (same route, `?w=scope:id` switcher override), or a
+read-only **"All accounts"** aggregate rollup; three overview faces (personal freelancer/client ·
+team split · business burn-down). Fixtures DERIVE a coherent finance world from the SAME cast as the
+rest of the app (`nav-fixtures` `northwind`/`atlas-collective`/`monarch-labs`/`verdant-studio`,
+fixed clock, unsigned `>>>` hash, TDZ-safe) + a mutable session STORE so
+top-up/withdraw/transfer/distribute/fund-escrow/
 recurring/method/payout/spend-request/smoother-enrol are exercisable — **no DB migration** (a
 read+write projection over fixtures; the RLS-scoped `finance.*` tables + money functions are the
 deferred live path, slotting in behind the same gate with zero shape churn). **Reuse (relentless):**
@@ -1806,26 +1809,27 @@ the lane (`WalletLane` + collapsed `WalletRail`, `.ui-splitter[data-mode]`) from
 `FileTable`/`useVirtualScroll`/`ZoomSlider` (footer View Control Rig via `walletFooterFor`,
 `LocalKeys.WALLET_ZOOM`/`WALLET_COLUMNS`); the modals from `Dialog`+`BodyPortal`+`InputNumber`; the
 Income Smoother/verification-lock states; charts hand-rolled + `d3-scale`/`d3-shape` inline SVG
-**app-side** (Decision #1 tier-1; kept OUT of `packages/ui` per its no-deps portability contract → **no
-new `@projective/ui` primitive → no `DESIGN_SYSTEM.md` §C.1 change**). **RtL:** CSS logical properties
-ONLY — verified the whole surface mirrors to the opposite edge under `dir="rtl"` with zero horizontal
-leak. **Dev Context Switcher parity (§5 merge gate):** SIX new axes — vault role (Owner/Admin/PM/member)
-· KYC state (verified/unverified/payout-not-set-up) · Income-Smoother state · fund-state mix · display
-currency · layout direction (ltr/rtl/auto) — added across `dev-seam.ts` (READ contract) +
-`dev-context.ts` (`DevOverrides`+`DEV_DEFAULTS`+`DevOption`+`reflect()` set/delete, incl. `root.dir`) +
-`DevContextPanel` (a "Wallet / Finance" control group); each drives a LIVE server refetch (the island
-passes them as query params — the server never sees the client seam). Lane + footer resolved by
-`walletLaneFor`/`walletFooterFor` in `(dashboard)/_layout.tsx`. Verified end-to-end (personal/team/
-business faces from context, three-state balances, all deep pages, d3 charts, the KYC lock, all six
-axes incl. £→€ conversion + RtL mirror, the write path top-up, guest bounce). **Flagged (surface, do
-not silently resolve):** (a) the account switcher is a WALLET-local control (personal · vaults ·
-aggregate), NOT unified with the header context switcher — reconcile whether switching a wallet should
-re-stamp the active context; (b) **FX spread / conversion-fee economics remain OPEN** (finance-model
-§11) — the surface displays origin amount + converted amount + rate only, never a fabricated fee; (c)
-the **Instant Payout fee magnitude is TBD** platform-wide — disclosed as "a small fee applies", never a
-%; (d) the RtL document `dir` is currently driven by the dev axis over a shell-root LtR default — the
-REAL `org.user_preferences.layout_direction`-driven `dir` at the shell root is a small additive TODO
-(the pref isn't in the chrome JWT); (e) member / counterparty links follow the canonical `/@handle`
+**app-side** (Decision #1 tier-1; kept OUT of `packages/ui` per its no-deps portability contract →
+**no new `@projective/ui` primitive → no `DESIGN_SYSTEM.md` §C.1 change**). **RtL:** CSS logical
+properties ONLY — verified the whole surface mirrors to the opposite edge under `dir="rtl"` with
+zero horizontal leak. **Dev Context Switcher parity (§5 merge gate):** SIX new axes — vault role
+(Owner/Admin/PM/member) · KYC state (verified/unverified/payout-not-set-up) · Income-Smoother state
+· fund-state mix · display currency · layout direction (ltr/rtl/auto) — added across `dev-seam.ts`
+(READ contract) + `dev-context.ts` (`DevOverrides`+`DEV_DEFAULTS`+`DevOption`+`reflect()`
+set/delete, incl. `root.dir`) + `DevContextPanel` (a "Wallet / Finance" control group); each drives
+a LIVE server refetch (the island passes them as query params — the server never sees the client
+seam). Lane + footer resolved by `walletLaneFor`/`walletFooterFor` in `(dashboard)/_layout.tsx`.
+Verified end-to-end (personal/team/ business faces from context, three-state balances, all deep
+pages, d3 charts, the KYC lock, all six axes incl. £→€ conversion + RtL mirror, the write path
+top-up, guest bounce). **Flagged (surface, do not silently resolve):** (a) the account switcher is a
+WALLET-local control (personal · vaults · aggregate), NOT unified with the header context switcher —
+reconcile whether switching a wallet should re-stamp the active context; (b) **FX spread /
+conversion-fee economics remain OPEN** (finance-model §11) — the surface displays origin amount +
+converted amount + rate only, never a fabricated fee; (c) the **Instant Payout fee magnitude is
+TBD** platform-wide — disclosed as "a small fee applies", never a %; (d) the RtL document `dir` is
+currently driven by the dev axis over a shell-root LtR default — the REAL
+`org.user_preferences.layout_direction`-driven `dir` at the shell root is a small additive TODO (the
+pref isn't in the chrome JWT); (e) member / counterparty links follow the canonical `/@handle`
 (Decision #3), not `/profiles/[id]`. | `SYSTEM_ARCHITECTURE.md` §Backend Services ·
 `packages/types/finance/wallet.ts` · `packages/backend/services/finance/` ·
 `packages/backend/core/{env,supabase}.ts` · `apps/web/features/wallet/` ·
@@ -1851,9 +1855,9 @@ precedent). Lands with the **Zod SSOT** (new `@projective/types/integrations`; n
 `documentation/database/{scheduling,integrations}/{Tables,Policies,Functions}.md` + `Schemas.md` /
 `README.md`. Business/arch: `PRODUCT_SPEC.md` §Discovery & Courtesy Calls (a THIRD discovery path
 under §The Hiring Process), `SYSTEM_ARCHITECTURE.md` §Conferencing 2.1/2.2 + the Environment
-Variable Contract (connection-OAuth keys), `PRODUCT_MANAGEMENT.md` §3.5 (two new domain
-lifecycles). **Key decisions:** (a) **A discovery call is a conversion tool, not a deliverable** —
-no Project/Stage/Ticket, never in the §3.1 delivery state-machine, no Workload Intensity; a
+Variable Contract (connection-OAuth keys), `PRODUCT_MANAGEMENT.md` §3.5 (two new domain lifecycles).
+**Key decisions:** (a) **A discovery call is a conversion tool, not a deliverable** — no
+Project/Stage/Ticket, never in the §3.1 delivery state-machine, no Workload Intensity; a
 **reschedule is not a state** (return to `proposed` + a counter). (b) **Courtesy (free) vs paid** —
 the free "Calendar Handshake" has no payment, no escrow, no KYC gate and must stay bookable by
 someone who has connected nothing. (c) **Authentication ≠ authorization** — the GoTrue sign-in OAuth
@@ -1871,39 +1875,37 @@ NULL (service-role owns its own layer). (h) **Shape is public, content is not** 
 schedule exposes bands/blackout spans/free-busy kinds to `anon`; blackout **labels** need
 `label_is_public` because a policy cannot mask a column. **Reused, NOT forked:** money is the
 existing `(amount_minor, currency)` pair; visibility mirrors `finance.fn_owner_visible`; project
-events reuse `projects.has_project_access`; the knobs go in the existing
-`security.platform_params`; `projects.session_events`/`cohorts`/`session_attendance` remain the SSOT
-for paid Session delivery (mirrored, never replaced) and
-`org.freelancer_profiles.availability_status` stays the coarse ranking cache. **Flagged conflicts
-(surface, do NOT resolve):** (a) **Paid calls have no escrow path** — `finance.escrows` requires
-BOTH `project_stage_id` and `payer_business_id` NOT NULL, so a standalone 1-1 paid call is
-inexpressible; `escrow_id` is nullable and set only for an already-funded stage. Relaxing those
-columns (a **protected** table, §1) or auto-provisioning a session-format micro-project both need
-human sign-off. (b) **Cancellation economics** — the pre-existing `finance-model.md` §4 (50%) vs
-`PRODUCT_SPEC.md` §Sessions (full forfeit) conflict is untouched; the schema records
-`refund_amount_minor`/`penalty_amount_minor` as OUTCOMES so either rule is expressible without a
-migration. Courtesy-call rules are NEW and deliberate: **no financial consequence**, reliability
-signal only. (c) Whether that reliability signal feeds `security.penalties` / discovery rank is
-undecided. (d) The shared-entity schedule **write** gate is "any active member" /
-`org.is_team_lead`; tightening it to a specific `org.team_permission`/`business_permission` needs a
-human. (e) **`documentation/database/Schemas.md` has always listed 11 schemas but
-`0001_init_schemas.sql` creates 12** — it also creates **`reviews`**, undocumented and folder-less;
-`scheduling` makes the documented set 12 of the real 13. Reconciling `reviews` needs a human. (f) An
-availability band **cannot cross local midnight** (`end_minute > start_minute`) — a deliberate
-simplification, so 23:00–01:00 is two bands. | root CLAUDE.md §1/§3/§5/§6 ·
-`supabase/migrations/20260724100000..104000_*` · `packages/types/integrations/*` +
-`packages/types/scheduling/{rows,calls,scheduling}.ts` ·
-`documentation/database/{scheduling,integrations}/*` ·
-`documentation/database/{Schemas,README}.md` · `PRODUCT_SPEC.md` §The Hiring Process ·
-`SYSTEM_ARCHITECTURE.md` §Conferencing + §Environment Variable Contract · `PRODUCT_MANAGEMENT.md`
-§3.5 · Decisions #37 / #47 / #54 |
+events reuse `projects.has_project_access`; the knobs go in the existing `security.platform_params`;
+`projects.session_events`/`cohorts`/`session_attendance` remain the SSOT for paid Session delivery
+(mirrored, never replaced) and `org.freelancer_profiles.availability_status` stays the coarse
+ranking cache. **Flagged conflicts (surface, do NOT resolve):** (a) **Paid calls have no escrow
+path** — `finance.escrows` requires BOTH `project_stage_id` and `payer_business_id` NOT NULL, so a
+standalone 1-1 paid call is inexpressible; `escrow_id` is nullable and set only for an
+already-funded stage. Relaxing those columns (a **protected** table, §1) or auto-provisioning a
+session-format micro-project both need human sign-off. (b) **Cancellation economics** — the
+pre-existing `finance-model.md` §4 (50%) vs `PRODUCT_SPEC.md` §Sessions (full forfeit) conflict is
+untouched; the schema records `refund_amount_minor`/`penalty_amount_minor` as OUTCOMES so either
+rule is expressible without a migration. Courtesy-call rules are NEW and deliberate: **no financial
+consequence**, reliability signal only. (c) Whether that reliability signal feeds
+`security.penalties` / discovery rank is undecided. (d) The shared-entity schedule **write** gate is
+"any active member" / `org.is_team_lead`; tightening it to a specific
+`org.team_permission`/`business_permission` needs a human. (e) **`documentation/database/Schemas.md`
+has always listed 11 schemas but `0001_init_schemas.sql` creates 12** — it also creates
+**`reviews`**, undocumented and folder-less; `scheduling` makes the documented set 12 of the
+real 13. Reconciling `reviews` needs a human. (f) An availability band **cannot cross local
+midnight** (`end_minute > start_minute`) — a deliberate simplification, so 23:00–01:00 is two bands.
+| root CLAUDE.md §1/§3/§5/§6 · `supabase/migrations/20260724100000..104000_*` ·
+`packages/types/integrations/*` + `packages/types/scheduling/{rows,calls,scheduling}.ts` ·
+`documentation/database/{scheduling,integrations}/*` · `documentation/database/{Schemas,README}.md`
+· `PRODUCT_SPEC.md` §The Hiring Process · `SYSTEM_ARCHITECTURE.md` §Conferencing + §Environment
+Variable Contract · `PRODUCT_MANAGEMENT.md` §3.5 · Decisions #37 / #47 / #54 |
 
 | 57 | **Notification Engine — documentation + database FOUNDATION (2026-07-24).** A **docs + DB +
 Zod-only** pass (NO UI / islands / routes / features / backend services), mirroring the Decision #54
 / #56 shape. Adds **5 additive, timestamped migrations** (`20260724090000`–`094000`) — (1) the
 **`comms.notification_types` catalog** (routing policy as data: category · urgency · default channel
-fan-out · mute-ability · quiet-hours override · dedupe window · audit flag; **81 event keys seeded**)
-plus the additive event-envelope columns on `comms.notifications` (`category`, `urgency`,
+fan-out · mute-ability · quiet-hours override · dedupe window · audit flag; **81 event keys
+seeded**) plus the additive event-envelope columns on `comms.notifications` (`category`, `urgency`,
 `actor_user_id`, `context_type`/`context_id`, `action_url`, `payload`, `group_key`/`group_count`,
 `channels`, `seen_at`, `archived_at`, `expires_at`) and 9 partial indexes; (2) **preference
 granularity** — recurring, timezone-aware quiet hours + digest cadence + global snooze +
@@ -1920,36 +1922,37 @@ realtime, `pg_cron` jobs** and a feature-flagged outbound dispatch trigger. **TH
 ZERO policies** — default-deny — so `authenticated` could never read a notification and Realtime
 (publishing the table since 0206) could never emit one; the in-app channel has never worked. Lands
 with the **Zod SSOT** `@projective/types/comms` (`common`/`catalog`/`notifications`/`preferences` +
-the `./comms` export) and the de-stubbed `documentation/database/comms/{Tables,Policies,Functions}.md`
-(Policies + Functions were `_Not yet documented._`), plus `Schemas.md`, `database/README.md`,
-`PRODUCT_MANAGEMENT.md` §3.5 (two new domain lifecycles: notification delivery + scheduled
-notification) and `SYSTEM_ARCHITECTURE.md` §The Notification Engine. **Verified against a real
-Postgres 16** (throwaway container, Supabase-shaped scaffold): all 5 migrations apply clean; legacy
-alias resolution, collapse, quiet-hours push-drop, critical-pierces-quiet-hours,
-mandatory-survives-snooze, per-type mute, audit write, queue dedupe + processing, per-device push
-fan-out, feed exclusion of muted rows, expiry sweep, escalation idempotency and suppression
-semantics all behave; RLS verified as an `authenticated` role (own-rows-only, forging blocked,
-reassignment blocked). **Authored, NOT applied to any live database** (a human step, Decisions
-#47/#54/#56 precedent). **Design invariants:** the catalog is **policy, not a gate** (deliberately
-NO FK from `notifications.type`, and `fn_notify` auto-registers an unknown key); **the engine never
-raises** (it is called from inside escrow/stage RPCs); a notification **row is always written** while
-`channels` records what the router decided (empty = recorded, delivered nowhere); there is **no
-client INSERT policy**, so _"Payout sent"_ cannot be spoofed; nothing is hard-deleted (dismiss =
-`archived_at`). **Flagged conflicts (surface, do not silently resolve):** (a) **key-convention
-split** — `comms/Tables.md` has always documented dotted keys (`message.new`) but the live escrow
-callers (0305/0311) emit underscored ones (`stage_funded`, `stage_approved`, `stage_cancelled`,
-`project_handover`); resolved non-destructively (dotted canonical + the four legacy keys in
-`aliases[]` + `fn_resolve_type_key`) so those call sites are untouched — **rewriting the
-money-movement RPCs needs human sign-off**. (b) **`quiet_hours tstzrange` superseded** — it is an
-ABSOLUTE range and cannot express a recurring nightly window; kept under the Additive Rule and still
-honoured, with the new `quiet_hours_*`+`timezone` columns authoritative. (c) **`digest boolean`
-superseded** by `digest_frequency` (backfilled `true`→`daily`). (d) **`org.user_preferences`
+the `./comms` export) and the de-stubbed
+`documentation/database/comms/{Tables,Policies,Functions}.md` (Policies + Functions were
+`_Not yet documented._`), plus `Schemas.md`, `database/README.md`, `PRODUCT_MANAGEMENT.md` §3.5 (two
+new domain lifecycles: notification delivery + scheduled notification) and `SYSTEM_ARCHITECTURE.md`
+§The Notification Engine. **Verified against a real Postgres 16** (throwaway container,
+Supabase-shaped scaffold): all 5 migrations apply clean; legacy alias resolution, collapse,
+quiet-hours push-drop, critical-pierces-quiet-hours, mandatory-survives-snooze, per-type mute, audit
+write, queue dedupe + processing, per-device push fan-out, feed exclusion of muted rows, expiry
+sweep, escalation idempotency and suppression semantics all behave; RLS verified as an
+`authenticated` role (own-rows-only, forging blocked, reassignment blocked). **Authored, NOT applied
+to any live database** (a human step, Decisions #47/#54/#56 precedent). **Design invariants:** the
+catalog is **policy, not a gate** (deliberately NO FK from `notifications.type`, and `fn_notify`
+auto-registers an unknown key); **the engine never raises** (it is called from inside escrow/stage
+RPCs); a notification **row is always written** while `channels` records what the router decided
+(empty = recorded, delivered nowhere); there is **no client INSERT policy**, so _"Payout sent"_
+cannot be spoofed; nothing is hard-deleted (dismiss = `archived_at`). **Flagged conflicts (surface,
+do not silently resolve):** (a) **key-convention split** — `comms/Tables.md` has always documented
+dotted keys (`message.new`) but the live escrow callers (0305/0311) emit underscored ones
+(`stage_funded`, `stage_approved`, `stage_cancelled`, `project_handover`); resolved
+non-destructively (dotted canonical + the four legacy keys in `aliases[]` + `fn_resolve_type_key`)
+so those call sites are untouched — **rewriting the money-movement RPCs needs human sign-off**. (b)
+**`quiet_hours tstzrange` superseded** — it is an ABSOLUTE range and cannot express a recurring
+nightly window; kept under the Additive Rule and still honoured, with the new
+`quiet_hours_*`+`timezone` columns authoritative. (c) **`digest boolean` superseded** by
+`digest_frequency` (backfilled `true`→`daily`). (d) **`org.user_preferences`
 `notification_email`/`notification_push` are a second, coarser copy** of the same toggles (seeded by
 Decision #47's trigger) — `comms.notification_prefs` is the engine's SSOT and the two are **not
 reconciled** (a data decision). (e) `fn_notify` is replaced via **DROP + CREATE**, not
 `CREATE OR REPLACE` — adding defaulted params changes the signature and keeping both would make a
-six-arg call ambiguous; every existing call site still resolves to the new function unchanged.
-(f) **Push/email/SMS have no transport yet** — the `dispatch-push`/`send-email` Edge Functions, the
+six-arg call ambiguous; every existing call site still resolves to the new function unchanged. (f)
+**Push/email/SMS have no transport yet** — the `dispatch-push`/`send-email` Edge Functions, the
 VAPID keypair, FCM/APNs credentials and an SMTP/email-provider block in `config.toml` are the
 deferred live path; the outbound trigger ships **feature-flagged off** with an `XXXX-XXXX`
 placeholder URL. (g) `pg_cron`/`pg_net` are **optional** — registration is guarded and only raises a
@@ -1962,14 +1965,15 @@ placeholder URL. (g) `pg_cron`/`pg_net` are **optional** — registration is gua
 | 58 | **Subscriptions, Entitlements & the earned Standing ladder — documentation + database
 FOUNDATION (2026-07-24).** A **docs + DB + Zod-only** pass (NO UI / islands / routes / features /
 backend services). Adds **4 additive, timestamped migrations** (`20260724110000`–`113000`) — (1) the
-**`analytics` event substrate** (that schema's first tables: `event_catalogue` · append-only `events`
-· `daily_rollups` · `fn_emit` · `v_unregistered_events`), (2) the **earned Standing ladder** in `org`
-(`standing_levels` · `entity_standing` · `standing_events` · `create_mastery` · `achievements` +
-`entity_achievements` · `quality_streaks` + `fn_recompute_standing`/`fn_award_achievement`/
-`fn_touch_streak`/`fn_record_mastery`), (3) the **paid ladder** in `finance` (`plans` ·
-`plan_entitlements` · `subscriptions` **extended additively** · `subscription_events` ·
-`entitlement_grants` · `standing_commission_tiers` · `negotiated_rates`), (4) **resolution, metering
-& enforcement** (`allowance_periods` · `allowance_ledger` · `fn_effective_limit`/`fn_has_entitlement`
+**`analytics` event substrate** (that schema's first tables: `event_catalogue` · append-only
+`events` · `daily_rollups` · `fn_emit` · `v_unregistered_events`), (2) the **earned Standing
+ladder** in `org` (`standing_levels` · `entity_standing` · `standing_events` · `create_mastery` ·
+`achievements` + `entity_achievements` · `quality_streaks` +
+`fn_recompute_standing`/`fn_award_achievement`/ `fn_touch_streak`/`fn_record_mastery`), (3) the
+**paid ladder** in `finance` (`plans` · `plan_entitlements` · `subscriptions` **extended
+additively** · `subscription_events` · `entitlement_grants` · `standing_commission_tiers` ·
+`negotiated_rates`), (4) **resolution, metering & enforcement** (`allowance_periods` ·
+`allowance_ledger` · `fn_effective_limit`/`fn_has_entitlement`
 /`fn_effective_commission_bp`/`fn_effective_platform_fee_bp`/`fn_current_allowance`/
 `fn_consume_allowance`/`fn_footprint_usage` + three param-gated triggers) — each **RLS-on with
 policies**, **additive-only** (no table/column/FK/function/trigger dropped; the pre-existing
@@ -1987,45 +1991,45 @@ plan **accelerates capacity but can never buy reputation** (nothing in `finance`
 `org.entity_standing`; every Standing mutator is `REVOKE`d from `public`). **Reused, NOT forked:**
 Standing is the discretised rung of the EXISTING Reliability Index ($R_i$, `PRODUCT_SPEC.md`
 §Reputation & Discovery), not a competing score; `security.penalties` remains the penalty SSOT;
-`finance.subscriptions` was extended rather than replaced; the "Architect" designation is seeded into
-`org.achievements` rather than reinvented. **Owner decisions applied (2026-07-24):** Individual Pro =
-**£12.99/mo**; free published listings **10 scaling with rank** (Pro = 2×); active public projects
-**3 free / 15 Pro**; **no cap on joining** teams/businesses; the 5% **may** flex for Organisation
-volume deals; governing constraint = _"never feel suffocated; upgrading should just make sense."_
-**Flagged conflicts / open items (surface, do NOT silently resolve):** (a) **`finance-model.md` §1.1
-reworded** — "no paywall on freelancer **project** volume" → "no paywall on **execution** volume";
-this is a real semantic change to a previously absolute guardrail, made on the owner's explicit
-instruction, and is logged here rather than applied silently. (b) **`business_pro` price is unset** —
-entitlements seeded, `finance.plans.price_cents` deliberately `NULL`. (c) **Enforcement ships
-fail-open** — `proposal_allowance_enforced` + `footprint_caps_enforced` default `false`, so the caps
-**meter** but never refuse; flipping them changes live user-visible behaviour and needs a human. (d)
-**`published_listings` usage count returns 0** until the `catalogue.*` tables land (Decision #53
-keeps `/catalogue` on fixtures) — the cap already resolves, only its live count is pending. (e)
-**Standing is never recomputed by a trigger** — it is a sweep
-(`standing_recompute_interval_hours`), because recomputing reputation inside a stage-approval
-transaction would couple money movement to reputation math; the sweep job itself is not yet written.
-(f) `standing_demotion_grace_days` is seeded but **not yet consumed** by `fn_recompute_standing`
-(anti-flapping guard reserved). (g) `finance.plan_entitlements` `organisation_businesses` counts 0
-because businesses are **not yet FK-linked** to an organisation (Phase 2). (h) The Standing metric
-inputs (`completion_rate`, `on_time_rate`, dual-track ratings, `dispute_rate`,
-`workload_reliability`) have **no writer yet** — the backfill from `projects.*`/`finance.ratings` is
-a follow-up. (i) **Timestamp collision avoided:** these migrations were renumbered from
-`2026072409xxxx` to `2026072411xxxx` because the concurrent Notification Engine (#57) had already
-claimed the `090000`–`094000` slots. (j) **Denial telemetry goes dark once enforcement is ON** — the
-`RAISE` that blocks also rolls back the `entitlement.denied` row written moments earlier (Postgres
-has no autonomous transactions); after either param is flipped, the app layer must catch the
-`check_violation` and emit the denial itself, or the conversion funnel stops being measurable exactly
-when it starts mattering. **Validated by execution, not inspection:** all four migrations were
-applied to a throwaway Postgres 16 container against a stub of their dependencies, and the resolver /
-metering / enforcement paths exercised (free→Pro resolution, rung scaling 10→20→40 listings, 50→70→170
-proposals, the L5 volume floor holding a 95.9-score subject at L4, legacy-column mirroring, buffer
-exhaustion, draft-vs-live footprint, and both triggers refusing once switched on). | root CLAUDE.md
-§1/§5/§6 ·
-`supabase/migrations/20260724110000..113000_*` · `packages/types/{analytics,org/standing,
-finance/{plans,entitlements}}` · `documentation/database/{analytics,org,finance}/*` ·
-`documentation/database/{Schemas,README}.md` · `finance-model.md` §1/§16 · `PRODUCT_SPEC.md`
-§Escrow/Wallets/Finance #7 + §Reputation & Discovery #5 · `PRODUCT_MANAGEMENT.md` §3.5 · Decisions #2
-/ #47 / #53 / #54 / #57 |
+`finance.subscriptions` was extended rather than replaced; the "Architect" designation is seeded
+into `org.achievements` rather than reinvented. **Owner decisions applied (2026-07-24):** Individual
+Pro = **£12.99/mo**; free published listings **10 scaling with rank** (Pro = 2×); active public
+projects **3 free / 15 Pro**; **no cap on joining** teams/businesses; the 5% **may** flex for
+Organisation volume deals; governing constraint = _"never feel suffocated; upgrading should just
+make sense."_ **Flagged conflicts / open items (surface, do NOT silently resolve):** (a)
+**`finance-model.md` §1.1 reworded** — "no paywall on freelancer **project** volume" → "no paywall
+on **execution** volume"; this is a real semantic change to a previously absolute guardrail, made on
+the owner's explicit instruction, and is logged here rather than applied silently. (b)
+**`business_pro` price is unset** — entitlements seeded, `finance.plans.price_cents` deliberately
+`NULL`. (c) **Enforcement ships fail-open** — `proposal_allowance_enforced` +
+`footprint_caps_enforced` default `false`, so the caps **meter** but never refuse; flipping them
+changes live user-visible behaviour and needs a human. (d) **`published_listings` usage count
+returns 0** until the `catalogue.*` tables land (Decision #53 keeps `/catalogue` on fixtures) — the
+cap already resolves, only its live count is pending. (e) **Standing is never recomputed by a
+trigger** — it is a sweep (`standing_recompute_interval_hours`), because recomputing reputation
+inside a stage-approval transaction would couple money movement to reputation math; the sweep job
+itself is not yet written. (f) `standing_demotion_grace_days` is seeded but **not yet consumed** by
+`fn_recompute_standing` (anti-flapping guard reserved). (g) `finance.plan_entitlements`
+`organisation_businesses` counts 0 because businesses are **not yet FK-linked** to an organisation
+(Phase 2). (h) The Standing metric inputs (`completion_rate`, `on_time_rate`, dual-track ratings,
+`dispute_rate`, `workload_reliability`) have **no writer yet** — the backfill from
+`projects.*`/`finance.ratings` is a follow-up. (i) **Timestamp collision avoided:** these migrations
+were renumbered from `2026072409xxxx` to `2026072411xxxx` because the concurrent Notification Engine
+(#57) had already claimed the `090000`–`094000` slots. (j) **Denial telemetry goes dark once
+enforcement is ON** — the `RAISE` that blocks also rolls back the `entitlement.denied` row written
+moments earlier (Postgres has no autonomous transactions); after either param is flipped, the app
+layer must catch the `check_violation` and emit the denial itself, or the conversion funnel stops
+being measurable exactly when it starts mattering. **Validated by execution, not inspection:** all
+four migrations were applied to a throwaway Postgres 16 container against a stub of their
+dependencies, and the resolver / metering / enforcement paths exercised (free→Pro resolution, rung
+scaling 10→20→40 listings, 50→70→170 proposals, the L5 volume floor holding a 95.9-score subject at
+L4, legacy-column mirroring, buffer exhaustion, draft-vs-live footprint, and both triggers refusing
+once switched on). | root CLAUDE.md §1/§5/§6 · `supabase/migrations/20260724110000..113000_*` ·
+`packages/types/{analytics,org/standing,
+finance/{plans,entitlements}}` ·
+`documentation/database/{analytics,org,finance}/*` · `documentation/database/{Schemas,README}.md` ·
+`finance-model.md` §1/§16 · `PRODUCT_SPEC.md` §Escrow/Wallets/Finance #7 + §Reputation & Discovery
+#5 · `PRODUCT_MANAGEMENT.md` §3.5 · Decisions #2 / #47 / #53 / #54 / #57 |
 
 | 59 | **Integration & Plugin Platform — `integrations` schema redesigned from scratch (2026-07-25).
 Docs + DB + Zod-only** pass (NO UI / islands / routes / features / backend services). The
@@ -2037,173 +2041,187 @@ of architecture is the `(provider, capability)` pair, NOT the vendor. **(A) Conn
 schema change): `integrations.providers` enriched (category vs. multi-valued capability axes,
 `auth_scheme`, `broker` recording the integration STRATEGY — calendar→Nylas unified API,
 storage/dev→direct, CRM tail→Merge, always wrapped behind our own adapter), `user_connections` now a
-`(user, provider, external_account_id)` **state machine** (`pending→active→degraded→expired/revoked/
-disconnected`, multi-account per vendor), the token vault **split into `connection_secrets`** (its
-own table, **no policy/no view/service-role only**, KMS **envelope encryption** via `key_id`, never a
-symmetric env secret), `connection_sync_state` (delta cursors), `webhook_subscriptions` (first-class
-`expires_at` a cron renews) + `webhook_deliveries` (idempotency ledger, dedupe on
-`(provider_slug, external_delivery_id)`), `connection_audit`. **(B) Plugin ecosystem** ("Projective
-OS", post-MVP, schema+seams laid now so the later build is not a rewrite): `extension_points` (the
-slot registry — first-party counterpart of the app's `channelHeaderFor`/`laneFor`/`middleNavFooterFor`
-resolvers), `plugin_scopes` (capability-permission vocabulary AS DATA), `plugins` + `plugin_versions`
-(GitHub-hosted, SRI-pinned `bundle_url` on a SEPARATE origin, manifest jsonb), `plugin_installations`
-(scoped consent, `granted_scopes` the mediator enforces), `plugin_grants` (hashed client secrets,
-headless/automation) + `plugin_audit`. **Trust model is adversarial (Figma/Shopify, NOT Obsidian):**
-third-party code never runs in the host origin (sandboxed cross-origin iframe / declarative Block-Kit
-tier the host renders with `@projective/ui`; **Shadow DOM is a styling boundary, not a security
-one**); every data touch is capability-scoped through a server Plugin-API mediator
-(`fn_plugin_has_scope`) — a plugin is a first-party OAuth client with extra UI rights. **The three
-retrofit-killing seams already hold today:** thin-routes/fat-services (a plugin `/api/*` call ==
-an island `/api/*` call — anything a plugin could call already goes through HTTP, never a service
-import), the slot-resolver pattern, and the token-only design-system contract. Enums greatly
-expanded (`provider_kind` 2→12, `provider_category`, `auth_scheme`, `sync_direction`,
-`webhook_status`, `connection_action` + 8 plugin enums). Preserves `providers.slug` + `user_connections.id`
-PKs (scheduling FKs untouched). Full functions/triggers/RLS/grants/views/indexes/seed wired; a
-`v_plugin_catalog` LATERAL view replaces a circular `latest_version_id` FK. Zod SSOT split into
+`(user, provider, external_account_id)` **state machine**
+(`pending→active→degraded→expired/revoked/
+disconnected`, multi-account per vendor), the token vault
+**split into `connection_secrets`** (its own table, **no policy/no view/service-role only**, KMS
+**envelope encryption** via `key_id`, never a symmetric env secret), `connection_sync_state` (delta
+cursors), `webhook_subscriptions` (first-class `expires_at` a cron renews) + `webhook_deliveries`
+(idempotency ledger, dedupe on `(provider_slug, external_delivery_id)`), `connection_audit`. **(B)
+Plugin ecosystem** ("Projective OS", post-MVP, schema+seams laid now so the later build is not a
+rewrite): `extension_points` (the slot registry — first-party counterpart of the app's
+`channelHeaderFor`/`laneFor`/`middleNavFooterFor` resolvers), `plugin_scopes` (capability-permission
+vocabulary AS DATA), `plugins` + `plugin_versions` (GitHub-hosted, SRI-pinned `bundle_url` on a
+SEPARATE origin, manifest jsonb), `plugin_installations` (scoped consent, `granted_scopes` the
+mediator enforces), `plugin_grants` (hashed client secrets, headless/automation) + `plugin_audit`.
+**Trust model is adversarial (Figma/Shopify, NOT Obsidian):** third-party code never runs in the
+host origin (sandboxed cross-origin iframe / declarative Block-Kit tier the host renders with
+`@projective/ui`; **Shadow DOM is a styling boundary, not a security one**); every data touch is
+capability-scoped through a server Plugin-API mediator (`fn_plugin_has_scope`) — a plugin is a
+first-party OAuth client with extra UI rights. **The three retrofit-killing seams already hold
+today:** thin-routes/fat-services (a plugin `/api/*` call == an island `/api/*` call — anything a
+plugin could call already goes through HTTP, never a service import), the slot-resolver pattern, and
+the token-only design-system contract. Enums greatly expanded (`provider_kind` 2→12,
+`provider_category`, `auth_scheme`, `sync_direction`, `webhook_status`, `connection_action` + 8
+plugin enums). Preserves `providers.slug` + `user_connections.id` PKs (scheduling FKs untouched).
+Full functions/triggers/RLS/grants/views/indexes/seed wired; a `v_plugin_catalog` LATERAL view
+replaces a circular `latest_version_id` FK. Zod SSOT split into
 `providers.ts`/`connections.ts`/`plugins.ts` (+ `common.ts`), NO token/secret shape anywhere.
 Consolidated edit-in-place (root CLAUDE.md §1) — **NOT applied to any live DB** (a human step,
 Decisions #47/#54 precedent). **Deferred (code, not migrations):** the consent handshake, the
 **proactive token-refresh scheduler** (refresh before expiry, not lazily on 401), webhook ingestion
-+ channel renewal, canonical-model sync adapters, per-user + global rate limiting, and the entire
-plugin SDK/CLI/review-pipeline/marketplace (post-PMF). **AI workflows/automation agents ride the
-same capability-scoped Plugin API — an agent is a `headless` plugin.** **Flagged (surface, do not
-silently resolve):** (a) connections stay **per-user** (the freelancer-workspace scope), NOT
-per-vault — a team/business shared connection would need an owner axis; deferred. (b) `outlook` +
-`microsoft_teams` remain **separate vendor rows** (both Microsoft) to preserve the scheduling FKs
-rather than consolidate to one `microsoft` slug + capability array; reconcile if a unified Microsoft
-provider is wanted. (c) `notion` keeps its `calendar` capability (Decision #37's `INTEGRATION_SOURCES`
-lists it) AND gains `docs`; confirm Notion-as-calendar is still intended. | `SYSTEM_ARCHITECTURE.md`
-§Integration Blueprints #3 (§3.1–3.4) · `documentation/database/integrations/{Tables,Policies,Functions}.md`
-· `documentation/database/{Schemas,README}.md` · `packages/types/integrations/*` ·
-`supabase/migrations/{00000004,00000020,00001500,00001870,00002001,00002015,00002510,00002520,00003004,00003005,00004008,00005050}*`
-· Decisions #37 / #47 / #54 / #56 |
 
-| 60 | **Wallet & Finance surface — complete redesign to a band architecture (2026-07-28). SUPERSEDES the
-presentation of Decision #55.** The `/wallet` frontend is rebuilt from a boxed card grid into a
-**vertical stack of FULL-BLEED bands**. The single biggest change: `max-inline-size: 1100px;
-margin-inline: auto` is **deleted** from both `.wallet-overview` and `.wallet-page` — on this surface
-a money figure, a chart and a table always get the whole content region, and `max-inline-size` now
-survives in exactly two places (`.wlt-prose` running text, `.wlt-formfield` form fields) with a rule
-forbidding any figure/chart/table from being their descendant. The whole `.wallet-*` BEM tree is
-replaced by `.wlt-*`; `wallet.css` becomes an `@import` barrel over 13 sheets. **Region contract
-(strict):** the LANE owns the account switcher + section nav + an ambient verification chip; a **NEW
-middle-nav HEADER band** (`walletHeaderFor`, composed into `middleNavHeaderFor` — the wallet had none
-before) owns identity + the 30/60/90 range + search/filter entry + the display-currency toggle; the
-FOOTER band (`walletFooterFor`, widened from `/wallet/transactions` only to **every** `/wallet*`
-route) owns every money action + density/sort + Export; the BODY owns viewing and selecting data
-ONLY — no tabs, no filter dropdowns, no primary CTAs. **The signature element** is the four-state
-capital meter: one shared rail split by `flex-grow` into Available/Locked/Pending/On-hold with **no
-minimum width ever** (a sliver gets an achromatic overhanging pip instead of a dishonest floor), the
-track `aria-hidden` and decorative while the legend carries every fact in five redundant static
-channels (shape mark · label · figure · printed % · tone). Locked is `color-mix(--primary 34%,
---surface-2)` — the same hue as spendable cash at a lower temperature, so escrowed capital reads as
-stored, never blocked; **`--danger` is banned above the fold** and appears only on a ledger reason
-chip, the Standing penalty bar, and a band-scoped error. **Two gates behave differently on purpose:**
-capability → **absence** (a member never sees Access or Distribute), verification → **rendered but
-locked** with the one permitted lock glyph and a nudge carrying `verification.prompt` (removing it
-hides the path to getting paid; locking it teaches it) — `quickActionsFor` was changed to stop folding
-`canWithdraw` into the OFFER so the client can draw the lock. **Additive SSOT** (no DB migration —
-still a read+write projection over fixtures): `WalletOverviewSchema.capital` (server-summed, so the
-client never totals money), `lockedStageCount`, `heldCaseCount`, `IncomingItemSchema.clearingFraction`
-(server clock — an unsynced client would draw a dishonest 7-day ring), and **`WalletStandingSchema`**
-+ `StandingRung`/`StandingComponent`/`StandingGate`, carrying the earned ladder verbatim from
-`finance-model.md` §16.3 and the commission taper priced as MONEY against the wallet's own trailing
-volume. The **Standing gauge** renders the rung as what it PAYS: an arc for the continuous index, a
-**hatched ceiling veil** for everything past the stage-gated rung, and a separate LINEAR stage meter —
-because a rung has TWO conditions and an arc can only encode one, so the score may sweep past a notch
-while the rung honestly does not advance. It carries no button, plan badge or upgrade affordance:
-Standing is earned and can never be bought (§16.5). A **7th Dev axis** (`walletStanding`, incl. the
-`stage_floor` edge case) mirrors it per §5. **Three defects found and fixed in verification, all the
-same class — a fact depending on an animation or a scope that may not resolve:** (a) the hero
-count-up painted a starting `0` before its first `rAF`, so a backgrounded tab showed £0.00 for a
-funded wallet — it no longer lowers a figure it cannot raise, and a watchdog snaps to the server
-string; (b) the meter's segments animated `flex-grow` with a `backwards` fill, so a frozen animation
-clock left every share at zero width — motion now only ever decorates `transform`/`opacity`, never the
-property that encodes data; (c) the local token layer was scoped to `.wlt`, but the lane, header band,
-footer rig and every `BodyPortal` overlay render OUTSIDE it, so all `--wlt-*` silently fell back —
-tokens are now on `:root` (all names are `--wlt-`-prefixed). Also: `opacity` replaces
-`color-mix(… currentColor …)` for the pence de-emphasis (engines drop a `currentColor` mix that is
-itself defining `color`), and the fade token is unitless (a `%` through `var()` is rejected by older
-`<alpha-value>` grammar). **No new `@projective/ui` primitive** (reuses Drawer · Dialog · Popover ·
-Tooltip · Avatar · Select · SelectButton · InputNumber · InputText · Checkbox · ZoomSlider · Grid ·
-Message · Alert · LaneChrome) → **no `DESIGN_SYSTEM.md` §C.1 change**; no lifecycle change → no
-`PRODUCT_MANAGEMENT.md` change. Verified in-browser: all four variants (personal/team/business +
-read-only aggregate), all 7 deep pages, the Transfer flow end-to-end (footer → drawer → modal reading
-`Transfer £250.00` → success → the movement appears in the ledger), light + dark, `dir="rtl"` (lane
-64→1241, deck 1165→51, segments reverse, **zero horizontal overflow both directions**), mobile 390px,
-the verification lock, the member capability gate, and the converted-currency 2×2 reflow.
-**Flagged (surface, do not silently resolve):** (a) the fixtures now generate Standing for a `team`
-subject too, but per the brief the gauge renders only in the PERSONAL intelligence band — decide
-whether a team vault should surface its own rung; (b) `/wallet/access` capability toggles and the
-`/wallet/methods` detail drawer remain optimistic stubs pending `FINANCE_BACKEND_LIVE`; (c) the FX
-spread and the Instant-Payout fee magnitude stay undecided platform economics and the surface
-deliberately renders neither — three facts inline (origin · converted · rate) and the literal phrase
-"a small fee applies". | `packages/types/finance/wallet.ts` ·
-`packages/backend/services/finance/wallet-fixtures.ts` · `apps/web/features/wallet/**` ·
-`apps/web/routes/(dashboard)/wallet/*` · `apps/web/routes/(dashboard)/_layout.tsx` ·
-`apps/web/utils/dev-seam.ts` · `apps/web/features/devtools/` · Decisions #1 / #10 / #54 / #55 / #58 |
+- channel renewal, canonical-model sync adapters, per-user + global rate limiting, and the entire
+  plugin SDK/CLI/review-pipeline/marketplace (post-PMF). **AI workflows/automation agents ride the
+  same capability-scoped Plugin API — an agent is a `headless` plugin.** **Flagged (surface, do not
+  silently resolve):** (a) connections stay **per-user** (the freelancer-workspace scope), NOT
+  per-vault — a team/business shared connection would need an owner axis; deferred. (b) `outlook` +
+  `microsoft_teams` remain **separate vendor rows** (both Microsoft) to preserve the scheduling FKs
+  rather than consolidate to one `microsoft` slug + capability array; reconcile if a unified
+  Microsoft provider is wanted. (c) `notion` keeps its `calendar` capability (Decision #37's
+  `INTEGRATION_SOURCES` lists it) AND gains `docs`; confirm Notion-as-calendar is still intended. |
+  `SYSTEM_ARCHITECTURE.md` §Integration Blueprints #3 (§3.1–3.4) ·
+  `documentation/database/integrations/{Tables,Policies,Functions}.md` ·
+  `documentation/database/{Schemas,README}.md` · `packages/types/integrations/*` ·
+  `supabase/migrations/{00000004,00000020,00001500,00001870,00002001,00002015,00002510,00002520,00003004,00003005,00004008,00005050}*`
+  · Decisions #37 / #47 / #54 / #56 |
 
-| 61 | **Teams & Businesses — the multi-member entity console (`/teams`, `/businesses`) (2026-07-30).** The
-16th thin-frontend/fat-backend read and a write surface, built on one mental model: **a Team is a
-Freelancer with multiple members (seller side); a Business is a Client with multiple members (buyer
-side).** An entity is not a new persona but an existing one made multi-seat, so the surface is ONE
-architecture parameterised by `WorkspaceKind` and the diff between the kinds is a **capability table**
-(`capabilitiesForKind` · `presetCapabilities` · `kindCopy`), never a duplicated folder: both kinds share
-the same routes-shape, lane, bands, roster, console, module dispatcher and screens, and
-`consoleOutcome(kind, …)` differs by one argument. New Zod SSOT **`@projective/types/workspace`**
-(`common` vocabulary + capability table · `members` incl. the three-layer permission engine · `policy`
-money governance · `workspace` read/write projections + `WorkspaceSim`), fat **`WorkspaceBackendService`**
-(`@server/services/workspace/`) behind the NEW **`WORKSPACE_BACKEND_LIVE`** (default off), thin
-`/api/workspace/*` (13 routes) + `/api/context/switch`. **No DB migration** — the live path reads the
-EXISTING `org.teams` / `org.business_profiles` / `org.*_members` / `org.*_roles`, which is why the
-projections live under their own `workspace` sub-path rather than the DB-row-mirroring `org` one.
-**(A) The module registry (`core/module-registry.tsx`) is the extensibility core:** one array drives the
-lane's grouped nav, the collapsed rail, the `[module]` route validator and the permission gate. Adding a
-module is one entry + one component. `permission` is a **function of kind** and may return **`null`** =
-every active member may view — load-bearing, not lazy: Overview is permissionless, so a capability-less
-member always has a landing module and the **"never 404 a user out of their own workspace"** invariant is
-satisfiable. Three route outcomes are deliberately distinct: an unregistered segment is a miss, a REAL
-module the viewer may not open **redirects** to `firstModuleFor(...)`, otherwise it renders.
-**(B) Three-layer permissions:** preset roles (read-only bundles; `Duplicate to custom role` is the escape
-hatch) → entity-scoped custom roles → per-member overrides, with the effective set
-`role ∪ granted − revoked` computed by ONE pure SSOT function (`effectivePermissions` / `permissionFacets`)
-so the matrix, the member drawer, the roster row and the server guard cannot disagree. Overrides render
-their PROVENANCE (`+ granted` / `− revoked`) rather than only the outcome. `mayGrant` blocks
-privilege escalation; the last owner routes to a real **ownership transfer** instead of a refusal.
-**(C) Money diverges by kind, honestly:** a team's money comes IN then SPLITS (multi-handle split bar
-whose dividers ARE the total — `rebalanceSplit` holds the 100% invariant in integer basis points, held
-stakes are immovable and never redistributed, full keyboard parity via `role="slider"` with
-money-bearing `aria-valuetext`); a business's comes in FROM members then out as PURCHASES (attributable
-contribution ledger, per-member envelopes reusing `finance.spending_limits` semantics, and
-`evaluateSpend` returning **`needs_approval` as a first-class outcome** so a blocked purchase always
-offers the request path). All money is server-computed `MoneyView`; the client never totals, splits or
-converts. **(D) Two switchers stay distinct** (closes Decision #55's flag (a)): the global
-`useContextSwitch` re-stamps the JWT (`security.switch_session_context` → `/api/auth/refresh` → hard
-nav) and carries the "Acting as" language; `/wallet`'s `?w=` is a page-local VIEW scope that never
-claims to change who you are. **(E) `/businesses` (plural) is canonical** — the singular `/business`
-routes were deleted and `nav-model` / `nav-fixtures` / `actions-model` / `UserActions` repointed
-(creation now `/teams/create` · `/businesses/create`, not `/new`). **(F) Dev parity (§5 merge gate):** six
-axes — entity kind · entity role (incl. `non_member`) · membership state · verification · acting context ·
-roster shape — wired end-to-end through `dev-seam` + `dev-context` (`DevOverrides` · `DEV_DEFAULTS` ·
-`DevOption` lists · `reflect()` set AND delete) + a "Workspaces" panel group, and because the switcher is
-a CLIENT seam the server cannot see, they travel as validated `sim*` QUERY PARAMS (`WorkspaceSim`, the
-`/wallet` precedent) which **survive the gate's own redirect** (`preserveSim`) and are ignored on the live
-path. **Bugs found and fixed in verification:** (1) a `Response` returned from a Fresh `define.page`
-component is dead code, so the redirect never fired and every gated module rendered a BLANK body — the
-resolution moved into `define.handlers` + `page()`; (2) both policy screens measured "unsaved changes"
-against the immutable SSR prop, leaving the footer permanently dirty after a successful save — the
-baseline is now a signal adopted from the server's own response. **Flagged (surface, do not silently
-resolve):** (a) the **Businesses nav gate** remains `businessAccountEnabled` while migration `20260709`
-gates on `org.users_public.is_operator` — settling the buyer-side question rules out `isFreelancer` but
-the remaining two still need one human decision (inherits Decisions #17/#18); (b) **Organisations** now
-overlap Businesses considerably (both buyers with members and a pooled wallet) — own console, scale tier
-of `/businesses`, or profile-only is undecided; (c) entity-owned **catalogue scope** still depends on
-Decision #53's flag (d) fixtures-own-the-whole-corpus issue; (d) whose payment method funds a business
-purchase when the pool is short (fail / prompt to contribute / charge personal) has refund and
-attribution consequences and is undecided; (e) member and counterparty links follow the canonical
-`/@handle` (Decision #3), not `/profiles/[id]`; (f) `isWorkspaceBackendLive()` lives beside its service
-rather than in `core/supabase.ts` with its eight siblings — reconcile if the gates become one registry. |
-root CLAUDE.md §2/§3/§5 · `packages/types/workspace/*` · `packages/backend/services/workspace/*` ·
+| 60 | **Wallet & Finance surface — complete redesign to a band architecture (2026-07-28).
+SUPERSEDES the presentation of Decision #55.** The `/wallet` frontend is rebuilt from a boxed card
+grid into a **vertical stack of FULL-BLEED bands**. The single biggest change:
+`max-inline-size: 1100px;
+margin-inline: auto` is **deleted** from both `.wallet-overview` and
+`.wallet-page` — on this surface a money figure, a chart and a table always get the whole content
+region, and `max-inline-size` now survives in exactly two places (`.wlt-prose` running text,
+`.wlt-formfield` form fields) with a rule forbidding any figure/chart/table from being their
+descendant. The whole `.wallet-*` BEM tree is replaced by `.wlt-*`; `wallet.css` becomes an
+`@import` barrel over 13 sheets. **Region contract (strict):** the LANE owns the account switcher +
+section nav + an ambient verification chip; a **NEW middle-nav HEADER band** (`walletHeaderFor`,
+composed into `middleNavHeaderFor` — the wallet had none before) owns identity + the 30/60/90
+range + search/filter entry + the display-currency toggle; the FOOTER band (`walletFooterFor`,
+widened from `/wallet/transactions` only to **every** `/wallet*` route) owns every money action +
+density/sort + Export; the BODY owns viewing and selecting data ONLY — no tabs, no filter dropdowns,
+no primary CTAs. **The signature element** is the four-state capital meter: one shared rail split by
+`flex-grow` into Available/Locked/Pending/On-hold with **no minimum width ever** (a sliver gets an
+achromatic overhanging pip instead of a dishonest floor), the track `aria-hidden` and decorative
+while the legend carries every fact in five redundant static channels (shape mark · label · figure ·
+printed % · tone). Locked is `color-mix(--primary 34%,
+--surface-2)` — the same hue as spendable
+cash at a lower temperature, so escrowed capital reads as stored, never blocked; **`--danger` is
+banned above the fold** and appears only on a ledger reason chip, the Standing penalty bar, and a
+band-scoped error. **Two gates behave differently on purpose:** capability → **absence** (a member
+never sees Access or Distribute), verification → **rendered but locked** with the one permitted lock
+glyph and a nudge carrying `verification.prompt` (removing it hides the path to getting paid;
+locking it teaches it) — `quickActionsFor` was changed to stop folding `canWithdraw` into the OFFER
+so the client can draw the lock. **Additive SSOT** (no DB migration — still a read+write projection
+over fixtures): `WalletOverviewSchema.capital` (server-summed, so the client never totals money),
+`lockedStageCount`, `heldCaseCount`, `IncomingItemSchema.clearingFraction` (server clock — an
+unsynced client would draw a dishonest 7-day ring), and **`WalletStandingSchema`**
+
+- `StandingRung`/`StandingComponent`/`StandingGate`, carrying the earned ladder verbatim from
+  `finance-model.md` §16.3 and the commission taper priced as MONEY against the wallet's own
+  trailing volume. The **Standing gauge** renders the rung as what it PAYS: an arc for the
+  continuous index, a **hatched ceiling veil** for everything past the stage-gated rung, and a
+  separate LINEAR stage meter — because a rung has TWO conditions and an arc can only encode one, so
+  the score may sweep past a notch while the rung honestly does not advance. It carries no button,
+  plan badge or upgrade affordance: Standing is earned and can never be bought (§16.5). A **7th Dev
+  axis** (`walletStanding`, incl. the `stage_floor` edge case) mirrors it per §5. **Three defects
+  found and fixed in verification, all the same class — a fact depending on an animation or a scope
+  that may not resolve:** (a) the hero count-up painted a starting `0` before its first `rAF`, so a
+  backgrounded tab showed £0.00 for a funded wallet — it no longer lowers a figure it cannot raise,
+  and a watchdog snaps to the server string; (b) the meter's segments animated `flex-grow` with a
+  `backwards` fill, so a frozen animation clock left every share at zero width — motion now only
+  ever decorates `transform`/`opacity`, never the property that encodes data; (c) the local token
+  layer was scoped to `.wlt`, but the lane, header band, footer rig and every `BodyPortal` overlay
+  render OUTSIDE it, so all `--wlt-*` silently fell back — tokens are now on `:root` (all names are
+  `--wlt-`-prefixed). Also: `opacity` replaces `color-mix(… currentColor …)` for the pence
+  de-emphasis (engines drop a `currentColor` mix that is itself defining `color`), and the fade
+  token is unitless (a `%` through `var()` is rejected by older `<alpha-value>` grammar). **No new
+  `@projective/ui` primitive** (reuses Drawer · Dialog · Popover · Tooltip · Avatar · Select ·
+  SelectButton · InputNumber · InputText · Checkbox · ZoomSlider · Grid · Message · Alert ·
+  LaneChrome) → **no `DESIGN_SYSTEM.md` §C.1 change**; no lifecycle change → no
+  `PRODUCT_MANAGEMENT.md` change. Verified in-browser: all four variants (personal/team/business +
+  read-only aggregate), all 7 deep pages, the Transfer flow end-to-end (footer → drawer → modal
+  reading `Transfer £250.00` → success → the movement appears in the ledger), light + dark,
+  `dir="rtl"` (lane 64→1241, deck 1165→51, segments reverse, **zero horizontal overflow both
+  directions**), mobile 390px, the verification lock, the member capability gate, and the
+  converted-currency 2×2 reflow. **Flagged (surface, do not silently resolve):** (a) the fixtures
+  now generate Standing for a `team` subject too, but per the brief the gauge renders only in the
+  PERSONAL intelligence band — decide whether a team vault should surface its own rung; (b)
+  `/wallet/access` capability toggles and the `/wallet/methods` detail drawer remain optimistic
+  stubs pending `FINANCE_BACKEND_LIVE`; (c) the FX spread and the Instant-Payout fee magnitude stay
+  undecided platform economics and the surface deliberately renders neither — three facts inline
+  (origin · converted · rate) and the literal phrase "a small fee applies". |
+  `packages/types/finance/wallet.ts` · `packages/backend/services/finance/wallet-fixtures.ts` ·
+  `apps/web/features/wallet/**` · `apps/web/routes/(dashboard)/wallet/*` ·
+  `apps/web/routes/(dashboard)/_layout.tsx` · `apps/web/utils/dev-seam.ts` ·
+  `apps/web/features/devtools/` · Decisions #1 / #10 / #54 / #55 / #58 |
+
+| 61 | **Teams & Businesses — the multi-member entity console (`/teams`, `/businesses`)
+(2026-07-30).** The 16th thin-frontend/fat-backend read and a write surface, built on one mental
+model: **a Team is a Freelancer with multiple members (seller side); a Business is a Client with
+multiple members (buyer side).** An entity is not a new persona but an existing one made multi-seat,
+so the surface is ONE architecture parameterised by `WorkspaceKind` and the diff between the kinds
+is a **capability table** (`capabilitiesForKind` · `presetCapabilities` · `kindCopy`), never a
+duplicated folder: both kinds share the same routes-shape, lane, bands, roster, console, module
+dispatcher and screens, and `consoleOutcome(kind, …)` differs by one argument. New Zod SSOT
+**`@projective/types/workspace`** (`common` vocabulary + capability table · `members` incl. the
+three-layer permission engine · `policy` money governance · `workspace` read/write projections +
+`WorkspaceSim`), fat **`WorkspaceBackendService`** (`@server/services/workspace/`) behind the NEW
+**`WORKSPACE_BACKEND_LIVE`** (default off), thin `/api/workspace/*` (13 routes) +
+`/api/context/switch`. **No DB migration** — the live path reads the EXISTING `org.teams` /
+`org.business_profiles` / `org.*_members` / `org.*_roles`, which is why the projections live under
+their own `workspace` sub-path rather than the DB-row-mirroring `org` one. **(A) The module registry
+(`core/module-registry.tsx`) is the extensibility core:** one array drives the lane's grouped nav,
+the collapsed rail, the `[module]` route validator and the permission gate. Adding a module is one
+entry + one component. `permission` is a **function of kind** and may return **`null`** = every
+active member may view — load-bearing, not lazy: Overview is permissionless, so a capability-less
+member always has a landing module and the **"never 404 a user out of their own workspace"**
+invariant is satisfiable. Three route outcomes are deliberately distinct: an unregistered segment is
+a miss, a REAL module the viewer may not open **redirects** to `firstModuleFor(...)`, otherwise it
+renders. **(B) Three-layer permissions:** preset roles (read-only bundles;
+`Duplicate to custom role` is the escape hatch) → entity-scoped custom roles → per-member overrides,
+with the effective set `role ∪ granted − revoked` computed by ONE pure SSOT function
+(`effectivePermissions` / `permissionFacets`) so the matrix, the member drawer, the roster row and
+the server guard cannot disagree. Overrides render their PROVENANCE (`+ granted` / `− revoked`)
+rather than only the outcome. `mayGrant` blocks privilege escalation; the last owner routes to a
+real **ownership transfer** instead of a refusal. **(C) Money diverges by kind, honestly:** a team's
+money comes IN then SPLITS (multi-handle split bar whose dividers ARE the total — `rebalanceSplit`
+holds the 100% invariant in integer basis points, held stakes are immovable and never redistributed,
+full keyboard parity via `role="slider"` with money-bearing `aria-valuetext`); a business's comes in
+FROM members then out as PURCHASES (attributable contribution ledger, per-member envelopes reusing
+`finance.spending_limits` semantics, and `evaluateSpend` returning **`needs_approval` as a
+first-class outcome** so a blocked purchase always offers the request path). All money is
+server-computed `MoneyView`; the client never totals, splits or converts. **(D) Two switchers stay
+distinct** (closes Decision #55's flag (a)): the global `useContextSwitch` re-stamps the JWT
+(`security.switch_session_context` → `/api/auth/refresh` → hard nav) and carries the "Acting as"
+language; `/wallet`'s `?w=` is a page-local VIEW scope that never claims to change who you are.
+**(E) `/businesses` (plural) is canonical** — the singular `/business` routes were deleted and
+`nav-model` / `nav-fixtures` / `actions-model` / `UserActions` repointed (creation now
+`/teams/create` · `/businesses/create`, not `/new`). **(F) Dev parity (§5 merge gate):** six axes —
+entity kind · entity role (incl. `non_member`) · membership state · verification · acting context ·
+roster shape — wired end-to-end through `dev-seam` + `dev-context` (`DevOverrides` · `DEV_DEFAULTS`
+· `DevOption` lists · `reflect()` set AND delete) + a "Workspaces" panel group, and because the
+switcher is a CLIENT seam the server cannot see, they travel as validated `sim*` QUERY PARAMS
+(`WorkspaceSim`, the `/wallet` precedent) which **survive the gate's own redirect** (`preserveSim`)
+and are ignored on the live path. **Bugs found and fixed in verification:** (1) a `Response`
+returned from a Fresh `define.page` component is dead code, so the redirect never fired and every
+gated module rendered a BLANK body — the resolution moved into `define.handlers` + `page()`; (2)
+both policy screens measured "unsaved changes" against the immutable SSR prop, leaving the footer
+permanently dirty after a successful save — the baseline is now a signal adopted from the server's
+own response. **Flagged (surface, do not silently resolve):** (a) the **Businesses nav gate**
+remains `businessAccountEnabled` while migration `20260709` gates on `org.users_public.is_operator`
+— settling the buyer-side question rules out `isFreelancer` but the remaining two still need one
+human decision (inherits Decisions #17/#18); (b) **Organisations** now overlap Businesses
+considerably (both buyers with members and a pooled wallet) — own console, scale tier of
+`/businesses`, or profile-only is undecided; (c) entity-owned **catalogue scope** still depends on
+Decision #53's flag (d) fixtures-own-the-whole-corpus issue; (d) whose payment method funds a
+business purchase when the pool is short (fail / prompt to contribute / charge personal) has refund
+and attribution consequences and is undecided; (e) member and counterparty links follow the
+canonical `/@handle` (Decision #3), not `/profiles/[id]`; (f) `isWorkspaceBackendLive()` lives
+beside its service rather than in `core/supabase.ts` with its eight siblings — reconcile if the
+gates become one registry. | root CLAUDE.md §2/§3/§5 · `packages/types/workspace/*` ·
+`packages/backend/services/workspace/*` ·
 `packages/backend/services/context/ContextBackendService.ts` · `packages/backend/core/env.ts` ·
 `apps/web/features/workspaces/**` · `apps/web/routes/(dashboard)/{teams,businesses}/**` ·
 `apps/web/routes/api/{workspace/*,context/switch}` · `apps/web/routes/(dashboard)/_layout.tsx` ·
@@ -2211,190 +2229,198 @@ root CLAUDE.md §2/§3/§5 · `packages/types/workspace/*` · `packages/backend/
 `apps/web/features/shell/islands/UserActions.island.tsx` · `apps/web/utils/dev-seam.ts` ·
 `apps/web/features/devtools/*` · Decisions #3 / #10 / #16 / #17 / #18 / #53 / #55 |
 
-| 62 | **Iconography unified — the `@projective/ui/icons` contract (2026-07-31).** An icon audit found the
-product had **no** icon system: 134 hand-authored `<svg>` roots across 75 files, ~376 named glyphs in 23
-independent per-feature modules, **10** declared `stroke-width` values, **7** viewBoxes, **3** sizing
-models, **47** rendered sizes (9 of them landing on fractional pixels), and a **second complete icon
-family made of Unicode characters** (`▾ ▸ ▲ ▼ ‹ › × ✓ ☰ ⠿ ★ 👤 🗗`, ~85 sites) living inside
-`packages/ui` itself. Measured end to end the same set rendered its lightest glyph at **0.93px** and its
-heaviest at **1.80px** — a 1.93× spread. **NEW 14th sub-path `@projective/ui/icons`**: a canonical
-`ICON_PATHS` registry (95 glyphs, values are **thunks** not VNode constants — closing the Preact
-VNode-reuse hazard at the source rather than at call sites), the `Icon` primitive, and **`IconShell`**,
-the base every feature-owned glyph module now renders through. **The mechanism is CSS, deliberately:**
-`icon.css` sets `stroke-width` from `--icon-stroke` against `.ui-icon` and pairs it with
-`vector-effect: non-scaling-stroke`, and because a CSS declaration outranks an SVG presentation
-attribute, ONE stylesheet normalises all ~376 glyphs without editing a single path — and a per-glyph
-override becomes impossible by construction. `non-scaling-stroke` also **decouples stroke weight from
-grid**, which is what demotes the 11 off-grid (20/16/14/12-unit) glyphs from blocking to cosmetic. New
-tokens `--icon-2xs…--icon-xl` (12·14·16·20·24·32, every step an integer pixel) + `--icon-stroke: 1.5`.
-**Weight is 1.5, not the 1.8 authoring precedent** — 1.8 was a *declared* number whose rendered result
-was that whole spread, so it never named a weight; 1.5px is the shipped median, the value
-`packages/ui/feedback` already rendered at native scale, and it lands on a whole device pixel at 1× and a
-clean 3 at 2×. **Semantic collisions resolved:** `/projects` had TWO glyphs split by form factor (desktop
-rail = briefcase, mobile bottom nav = an architectural arch labelled "Workspace") — the briefcase is now
-canonical; `PinIcon` meant a map pin in auth AND a push-pin in projects → `pin-location`/`pin-fixed`;
-`XIcon` meant the X brand mark AND a close cross → `close` (brand marks stay quarantined in
-`footer-icons.tsx`); `Archive` meant a compressed-file KIND and an archive ACTION → `archive-box` for the
-action. Also fixed: `packages/ui/feedback/core/icons.tsx` was the only glyph module shipping **without
-`aria-hidden`**, so every Alert announced its decorative mark before its own text; and a pre-existing
-`TS2322` in `fields/components/field-marks.tsx` (an `as const` base object widening `aria-hidden` to
-`string`) that the migration resolved. **Flagged (surface, do not silently resolve):** (a)
-**`@tabler/icons-preact` is declared in the root import map and imported nowhere** — a dead dependency
-and a fourth icon family waiting to happen; remove it or justify it. (b) The wallet's four 12×12
-**fund-state marks are data shape channels, not icons** (Decision #60's CVD requirement) and deliberately
-stay off `.ui-icon`. (c) Integer-but-off-ramp sizes (18px, 22px) and the fractional `font-size` driving
-`.ui-lane-iconbtn` remain; a control's hit-target is governed by touch-target rules, not the icon ramp.
-(d) `nav-icons`/`profile-glyphs`/`view-glyphs` still export **VNode constants** from their `PATHS` maps —
-the same reuse hazard the registry now avoids; migrate them to thunks when next touched. |
-`DESIGN_SYSTEM.md` **§B.7** (new, merge-gated) + §C.1 roster · `packages/ui/icons/` ·
-`packages/ui/styles/index.css` · `packages/ui/deno.json` · `packages/ui/feedback/core/icons.tsx` ·
-`packages/ui/fields/components/field-marks.tsx` · 23 feature `*-glyphs.tsx` modules · Decisions #22 /
-#25 / #60 |
+| 62 | **Iconography unified — the `@projective/ui/icons` contract (2026-07-31).** An icon audit
+found the product had **no** icon system: 134 hand-authored `<svg>` roots across 75 files, ~376
+named glyphs in 23 independent per-feature modules, **10** declared `stroke-width` values, **7**
+viewBoxes, **3** sizing models, **47** rendered sizes (9 of them landing on fractional pixels), and
+a **second complete icon family made of Unicode characters** (`▾ ▸ ▲ ▼ ‹ › × ✓ ☰ ⠿ ★ 👤 🗗`, ~85
+sites) living inside `packages/ui` itself. Measured end to end the same set rendered its lightest
+glyph at **0.93px** and its heaviest at **1.80px** — a 1.93× spread. **NEW 14th sub-path
+`@projective/ui/icons`**: a canonical `ICON_PATHS` registry (95 glyphs, values are **thunks** not
+VNode constants — closing the Preact VNode-reuse hazard at the source rather than at call sites),
+the `Icon` primitive, and **`IconShell`**, the base every feature-owned glyph module now renders
+through. **The mechanism is CSS, deliberately:** `icon.css` sets `stroke-width` from `--icon-stroke`
+against `.ui-icon` and pairs it with `vector-effect: non-scaling-stroke`, and because a CSS
+declaration outranks an SVG presentation attribute, ONE stylesheet normalises all ~376 glyphs
+without editing a single path — and a per-glyph override becomes impossible by construction.
+`non-scaling-stroke` also **decouples stroke weight from grid**, which is what demotes the 11
+off-grid (20/16/14/12-unit) glyphs from blocking to cosmetic. New tokens `--icon-2xs…--icon-xl`
+(12·14·16·20·24·32, every step an integer pixel) + `--icon-stroke: 1.5`. **Weight is 1.5, not the
+1.8 authoring precedent** — 1.8 was a _declared_ number whose rendered result was that whole spread,
+so it never named a weight; 1.5px is the shipped median, the value `packages/ui/feedback` already
+rendered at native scale, and it lands on a whole device pixel at 1× and a clean 3 at 2×. **Semantic
+collisions resolved:** `/projects` had TWO glyphs split by form factor (desktop rail = briefcase,
+mobile bottom nav = an architectural arch labelled "Workspace") — the briefcase is now canonical;
+`PinIcon` meant a map pin in auth AND a push-pin in projects → `pin-location`/`pin-fixed`; `XIcon`
+meant the X brand mark AND a close cross → `close` (brand marks stay quarantined in
+`footer-icons.tsx`); `Archive` meant a compressed-file KIND and an archive ACTION → `archive-box`
+for the action. Also fixed: `packages/ui/feedback/core/icons.tsx` was the only glyph module shipping
+**without `aria-hidden`**, so every Alert announced its decorative mark before its own text; and a
+pre-existing `TS2322` in `fields/components/field-marks.tsx` (an `as const` base object widening
+`aria-hidden` to `string`) that the migration resolved. **Flagged (surface, do not silently
+resolve):** (a) **`@tabler/icons-preact` is declared in the root import map and imported nowhere** —
+a dead dependency and a fourth icon family waiting to happen; remove it or justify it. (b) The
+wallet's four 12×12 **fund-state marks are data shape channels, not icons** (Decision #60's CVD
+requirement) and deliberately stay off `.ui-icon`. (c) Integer-but-off-ramp sizes (18px, 22px) and
+the fractional `font-size` driving `.ui-lane-iconbtn` remain; a control's hit-target is governed by
+touch-target rules, not the icon ramp. (d) `nav-icons`/`profile-glyphs`/`view-glyphs` still export
+**VNode constants** from their `PATHS` maps — the same reuse hazard the registry now avoids; migrate
+them to thunks when next touched. | `DESIGN_SYSTEM.md` **§B.7** (new, merge-gated) + §C.1 roster ·
+`packages/ui/icons/` · `packages/ui/styles/index.css` · `packages/ui/deno.json` ·
+`packages/ui/feedback/core/icons.tsx` · `packages/ui/fields/components/field-marks.tsx` · 23 feature
+`*-glyphs.tsx` modules · Decisions #22 / #25 / #60 |
 
-| 62 | **Fields — one state language, one geometry (`--fld-*`) (2026-07-31).** An audit of all 27 controls
-in `@projective/ui/fields` (measured in-browser, not read) found a good spine reaching only the text-input
-family: the 10 controls composing `.ui-field` were already pixel-identical, while 15 re-declared their own
-geometry and state vocabulary in parallel. Resolved by promoting a single **`--fld-*` token layer to
-`:root`** in `styles/index.css` — geometry ramp, label/hint register, panel + option-row contract, and a
-state model where every state declares the same four channels (**border · surface · ink · ring**) plus a
-**mark**. On `:root` rather than `.ui-field` deliberately: a field's label, hint, footer rig and — since
-the panels now leave the subtree — its PORTALLED dropdown all render outside the control, so a scoped
-token would silently fall back for four of five surfaces (the `--wlt-*` lesson, Decision #60). **Fixed,
-each verified by measurement:** the **Knob was unreachable by keyboard** (JSX serialises `tabIndex` onto an
-`<svg>` as a camelCase attribute; SVG attribute names are case-sensitive, so `svg.tabIndex === -1` —
-now lowercase `tabindex`); **SortControl's menu had no focus ring** (`:hover` and `:focus-visible` shared
-one rule with `outline: none`); `aria-valuetext` added to Slider/ZoomSlider via a `formatValue` hook and
-made unconditional on Knob (it was gated on the VISUAL `showValue`, and now omits itself when it would
-merely repeat `aria-valuenow`); a **24px hit-target floor** (`.ui-hit`, WCAG 2.2 AA 2.5.8) for the 6px
-slider track, 18px handle, 12px zoom handle, 20px checkbox/radio and 15px stepper; **MultiSelect was 20px
-taller than every sibling** when EMPTY (`flex-wrap: wrap` on the root let the clear button and chevron drop
-to a second line — wrapping belongs to the chip area alone); **Button + ToggleButton radius never ramped**
-(fixed `--radius-base` at all three sizes); **four sibling dropdowns had four option-row heights**
-(43.6/38.5/37.0/30.5px, three paddings, two type sizes) plus divergent panel surface/elevation/max-height
-and NO `min-inline-size`, so a 71px trigger produced a 71px menu with every label ellipsised away; **five
-disabled opacities** (0.40–0.55, measuring 2.30–5.04:1) collapsed to one that measures **5.04:1**
-everywhere, applied to ink and border rather than the box and no longer paired with `pointer-events: none`
-(which cancels the `not-allowed` cursor it sits beside); the **status icon channel** (§A.5) went from
-documented-but-absent to a real `.ui-field__mark` slot; `loading` became a field state at all
-(`AutoComplete` fetches suggestions and had no way to say so). **App forms:** `auth.css` had replaced the
-canonical two-tone focus ring with a single `0 0 0 2px var(--primary)` and, worse, its invalid rule wrote
-the SAME `box-shadow` property later in the cascade, so **a focused invalid auth field showed no focus
-indicator at all** — invalid now paints the border and the two compose; the dead `.auth .ui-field__label`
-selector (a class that never existed) and the `0.85rem` label override are gone. `CatalogueCreateModal`
-bound each visible label to its control by id (an `aria-label` on each one had been overriding the visible
-text, WCAG 2.5.3; two of three were not associated at all) and stopped painting `required` + `aria-invalid`
-the instant the modal opened. **`OwnershipTransfer`'s irreversible "Transfer ownership" was styled
-identically to a safe primary** — now `severity="danger"`, a vocabulary the codebase already had and had
-simply not reached for. Five label typographies collapsed to `--fld-label-fs`. **Deliberate positions
-(not drift):** `--fld-fs-md`/`-lg` stay a half-step above their neighbours on the type scale because a
-value the user TYPED is read under different conditions than a table cell they scan; a 16px floor applies
-on coarse-pointer viewports because iOS Safari zooms a sub-16px field on focus and does not zoom back.
-**Gotchas worth keeping:** this engine drops `min()`/nested-`calc()` in `min-inline-size` (use a plain
-`var()`), and drops a `color-mix` whose percentage comes from `calc(var(…) * 100%)` — hence the paired
-`--fld-disabled-mix` (literal `%`, for mixes) and `--fld-disabled-alpha` (unitless, for `opacity`).
-**Concurrency note:** the BodyPortal/z-scale migration for the eight field overlays landed in a
-CONCURRENT session working the same tree during this pass; this row records the audit that specified it
-alongside the rest of the work. | `DESIGN_SYSTEM.md` §C.1 + the field-contract and labelling-model notes ·
+| 62 | **Fields — one state language, one geometry (`--fld-*`) (2026-07-31).** An audit of all 27
+controls in `@projective/ui/fields` (measured in-browser, not read) found a good spine reaching only
+the text-input family: the 10 controls composing `.ui-field` were already pixel-identical, while 15
+re-declared their own geometry and state vocabulary in parallel. Resolved by promoting a single
+**`--fld-*` token layer to `:root`** in `styles/index.css` — geometry ramp, label/hint register,
+panel + option-row contract, and a state model where every state declares the same four channels
+(**border · surface · ink · ring**) plus a **mark**. On `:root` rather than `.ui-field`
+deliberately: a field's label, hint, footer rig and — since the panels now leave the subtree — its
+PORTALLED dropdown all render outside the control, so a scoped token would silently fall back for
+four of five surfaces (the `--wlt-*` lesson, Decision #60). **Fixed, each verified by measurement:**
+the **Knob was unreachable by keyboard** (JSX serialises `tabIndex` onto an `<svg>` as a camelCase
+attribute; SVG attribute names are case-sensitive, so `svg.tabIndex === -1` — now lowercase
+`tabindex`); **SortControl's menu had no focus ring** (`:hover` and `:focus-visible` shared one rule
+with `outline: none`); `aria-valuetext` added to Slider/ZoomSlider via a `formatValue` hook and made
+unconditional on Knob (it was gated on the VISUAL `showValue`, and now omits itself when it would
+merely repeat `aria-valuenow`); a **24px hit-target floor** (`.ui-hit`, WCAG 2.2 AA 2.5.8) for the
+6px slider track, 18px handle, 12px zoom handle, 20px checkbox/radio and 15px stepper; **MultiSelect
+was 20px taller than every sibling** when EMPTY (`flex-wrap: wrap` on the root let the clear button
+and chevron drop to a second line — wrapping belongs to the chip area alone); **Button +
+ToggleButton radius never ramped** (fixed `--radius-base` at all three sizes); **four sibling
+dropdowns had four option-row heights** (43.6/38.5/37.0/30.5px, three paddings, two type sizes) plus
+divergent panel surface/elevation/max-height and NO `min-inline-size`, so a 71px trigger produced a
+71px menu with every label ellipsised away; **five disabled opacities** (0.40–0.55, measuring
+2.30–5.04:1) collapsed to one that measures **5.04:1** everywhere, applied to ink and border rather
+than the box and no longer paired with `pointer-events: none` (which cancels the `not-allowed`
+cursor it sits beside); the **status icon channel** (§A.5) went from documented-but-absent to a real
+`.ui-field__mark` slot; `loading` became a field state at all (`AutoComplete` fetches suggestions
+and had no way to say so). **App forms:** `auth.css` had replaced the canonical two-tone focus ring
+with a single `0 0 0 2px var(--primary)` and, worse, its invalid rule wrote the SAME `box-shadow`
+property later in the cascade, so **a focused invalid auth field showed no focus indicator at all**
+— invalid now paints the border and the two compose; the dead `.auth .ui-field__label` selector (a
+class that never existed) and the `0.85rem` label override are gone. `CatalogueCreateModal` bound
+each visible label to its control by id (an `aria-label` on each one had been overriding the visible
+text, WCAG 2.5.3; two of three were not associated at all) and stopped painting `required` +
+`aria-invalid` the instant the modal opened. **`OwnershipTransfer`'s irreversible "Transfer
+ownership" was styled identically to a safe primary** — now `severity="danger"`, a vocabulary the
+codebase already had and had simply not reached for. Five label typographies collapsed to
+`--fld-label-fs`. **Deliberate positions (not drift):** `--fld-fs-md`/`-lg` stay a half-step above
+their neighbours on the type scale because a value the user TYPED is read under different conditions
+than a table cell they scan; a 16px floor applies on coarse-pointer viewports because iOS Safari
+zooms a sub-16px field on focus and does not zoom back. **Gotchas worth keeping:** this engine drops
+`min()`/nested-`calc()` in `min-inline-size` (use a plain `var()`), and drops a `color-mix` whose
+percentage comes from `calc(var(…) * 100%)` — hence the paired `--fld-disabled-mix` (literal `%`,
+for mixes) and `--fld-disabled-alpha` (unitless, for `opacity`). **Concurrency note:** the
+BodyPortal/z-scale migration for the eight field overlays landed in a CONCURRENT session working the
+same tree during this pass; this row records the audit that specified it alongside the rest of the
+work. | `DESIGN_SYSTEM.md` §C.1 + the field-contract and labelling-model notes ·
 `packages/ui/styles/index.css` (`--fld-*`, `.ui-hit`) · `packages/ui/fields/**` ·
 `apps/web/features/auth/styles/auth.css` · `apps/web/features/catalogue/**` ·
 `apps/web/features/workspaces/**` · Decisions #19 / #50 / #60 |
 
-| 63 | **Wallet — reachability, and the other half of the region contract (2026-07-31). REFINES Decision
-#60.** A composed-page layout review of `/wallet` found the BODY half of #60's region contract honoured
-better than anywhere else in the codebase (17 controls on the Overview, every one a data selection or a
-navigation — no tabs, no filter dropdown, no CTA) and the CHROME half unfinished in ways that made the
-surface unusable below a 1080px window. **(A) The footer band was setting the surface's minimum width.**
-`.ui-middle-nav` is `grid-template-columns: auto 1fr`, and a `1fr` track's automatic minimum is `auto`,
-so the content column could not shrink below its own min-content — which one `nowrap` rig of six
-text-labelled buttons raised to **739px** (measured: 252px with the footer hidden, 95px with header and
-footer hidden). The lane, being the `auto` track, absorbed every pixel: **280px → 2px at an 820px
-viewport with all six nav links clipped**, and at 768px the content column overflowed the frame's `clip`
-by 50px and cut the lifetime-earned figure. Two fixes, either of which alone leaves the other's failure
-reachable: `minmax(0, 1fr)` on the content track, and `container-type: inline-size` on the rig, whose
-inline-size containment stops it contributing its width at all. **(B) The rig now adapts by WIDTH, not by
-page identity, and no action is ever lost to it.** `TABLE_VIEWS` gated everything and was wrong three
-ways: a row-density slider on Payouts and Invoices, which render `<dl>`/`<ul>` fact lists and where
-`walletZoom` is read by nothing (only `LedgerTable` reads it); a `nth-child(n + 3) { display: none }`
-mobile rule that deleted **Transfer, Fund escrow and New recurring** on exactly the four pages with no
-menu to recover them; and the width floor above. Three container-query tiers (label → glyph-only, which
-is §B.6.3's icon-only sticky footer, with the name relocated to the Tooltip every action now carries →
+| 63 | **Wallet — reachability, and the other half of the region contract (2026-07-31). REFINES
+Decision #60.** A composed-page layout review of `/wallet` found the BODY half of #60's region
+contract honoured better than anywhere else in the codebase (17 controls on the Overview, every one
+a data selection or a navigation — no tabs, no filter dropdown, no CTA) and the CHROME half
+unfinished in ways that made the surface unusable below a 1080px window. **(A) The footer band was
+setting the surface's minimum width.** `.ui-middle-nav` is `grid-template-columns: auto 1fr`, and a
+`1fr` track's automatic minimum is `auto`, so the content column could not shrink below its own
+min-content — which one `nowrap` rig of six text-labelled buttons raised to **739px** (measured:
+252px with the footer hidden, 95px with header and footer hidden). The lane, being the `auto` track,
+absorbed every pixel: **280px → 2px at an 820px viewport with all six nav links clipped**, and at
+768px the content column overflowed the frame's `clip` by 50px and cut the lifetime-earned figure.
+Two fixes, either of which alone leaves the other's failure reachable: `minmax(0, 1fr)` on the
+content track, and `container-type: inline-size` on the rig, whose inline-size containment stops it
+contributing its width at all. **(B) The rig now adapts by WIDTH, not by page identity, and no
+action is ever lost to it.** `TABLE_VIEWS` gated everything and was wrong three ways: a row-density
+slider on Payouts and Invoices, which render `<dl>`/`<ul>` fact lists and where `walletZoom` is read
+by nothing (only `LedgerTable` reads it); a `nth-child(n + 3) { display: none }` mobile rule that
+deleted **Transfer, Fund escrow and New recurring** on exactly the four pages with no menu to
+recover them; and the width floor above. Three container-query tiers (label → glyph-only, which is
+§B.6.3's icon-only sticky footer, with the name relocated to the Tooltip every action now carries →
 one menu), and **the menu holds every action at every tier**. **(C) Five actions existed in code and
 nowhere in the interface.** `add_method` / `set_payout` / `enrol_smoother` had labels, capability
 requirements, glyphs and `WalletService` methods, and `quickActionsFor` never emitted them;
-`MoneyMoveDrawer` returned `null` for those plus `new_recurring` and `request_spend`, and was the only
-consumer of `activeAction`. So Methods could not add a method, Payouts could not change the schedule its
-own docstring called changeable, an eligible Income Smoother could not be enrolled in, and three empty
-states pointed at "the action bar" for controls it was never given. New `ConfigureDrawer` (reversible
-settings commit directly — the confirmation modal is for the irreversible); `quickActionsFor` emits the
-three; a `VIEW_ACTION` map gives each page its own leading primary. **Add method collects no card data
-by construction** — no PAN, expiry or CVV field, because Stripe holds it and an input implying otherwise
-is a custody claim the surface spends its whole design refusing to make. **(D) The action layer was
-mounted in `WalletOverviewScreen`** — one route, while the rig that opens it renders on eight — so every
-footer action on the seven deep pages opened nothing. It moved to the rig. **(E) Section navigation
-below 767px.** The lane is `display: none` there and was the only route between the eight sections, so
-Activity / Funding / Methods / Invoices / Access were unreachable on every phone; the header band now
-carries a capability-filtered switcher at exactly the width the lane leaves — **the duty transfers, it
-does not duplicate**. The `@media (max-width: 900px)` rule that dropped the reporting window now drops
-the account NAME instead: the avatar still answers "whose money is this", which is the last fact allowed
-to leave a band whose controls move money. **(F) Two header controls were inert** — Search wrote to a
-local signal nothing read, and Filter opened a panel whose entire content was a sentence telling you to
-use the balance meter, on four pages where that meter is not rendered. Both now work. **(G) The §B.4
-ladder was missing a rung**: `wallet-bands.css` documented a tonal step and every band computed
-`rgba(0, 0, 0, 0)`, leaving a near-uniform 64/48/64px gap to carry all separation. Now an alternating
-`nth-of-type(even)` tint (position, not tone name — Payouts runs intel→flow→ledger and a name-keyed rule
-would abut two tinted bands), a translucent `color-mix` overlay so it steps against whatever ground it
-actually sits on, and the ledger hairline removed so every boundary spends exactly one device (§B.9.3).
-**(H) Type ramp re-cut.** Six display steps, none more than ~1.4× its neighbour below 50px, with two
-inversions: the Standing score at 50.9px was 71% of the balance and became the page's second hero on
-scroll (now 40px), and the pence at `0.55em` of a 72px figure rendered **39.6px — larger than the
-commission rate**. That ratio is the SMALL end's legibility floor and is not a ratio at display scale;
-a hero-only `0.36em` puts them at 25.9px. The ramp is now 72 → 40 → 36 → 30 → 26 → 22. **(I) Policy.**
-Approve/Decline were a repeated `filled --primary` row action carrying the amount in the label (both now
-`text` with severity doing the work, amount out of the verb per the file's own RULE O-2); the parallel
-`.wlt-btn` family — a second button system with no severity axis, which is how an irreversible approval
-came to look like a safe primary — is deleted and its 11 sites migrated to `Button`; `●`/`–` capability
-marks became drawn glyphs; `add_method` and `set_payout` stopped borrowing Recurring's and Withdraw's
-glyphs; mobile Export stopped being nameless (`font-size: 0` with no `aria-label`); `aria-expanded`
-now renders in both states (Preact drops `={false}`, so five menu buttons shipped without it). **(J) Two
-correctness bugs found in passing:** the ledger's `loadMore` and sort refetch each built their own params
-and both omitted the fund-state filter, so page 2 of a filtered ledger came back unfiltered and appended
-onto filtered rows; and ten refetches were `if (res.ok && res.data)` with no else, so a failed currency
-or account switch left the previous wallet's figures on screen indefinitely — `applyRead` + the
-previously-unreferenced `BandError`/`WalletSkeleton` now close both. **Verified by measurement** at
-1440 / 1024 / 820 / 768 / 390, LTR + RTL, light + dark: lane 280px at every width it exists, **zero
-clipped elements and zero document overflow in both directions** (the stage-gate figure "56 / 50" was
-clipped 13px in BOTH — a nowrap label took 128px of an 86px box and collapsed the `1fr` meter to zero;
-its panel now uses a container query, because the intel band splits into ~430px plates and a viewport
-media query could never see the width that was actually wrong). **NOT verified: click-through of the
-drawers** — Fresh's deferred island revival does not run in the hidden preview pane (no Preact listeners
-attach on any island, including long-shipped ones), so the action layer is verified by SSR output and
-type-checking only. **Flagged (surface, do not silently resolve):** (a) the `@media (pointer: coarse)`
-bump of the rig row to 40px cannot be exercised in the preview, which reports a fine pointer at every
-width; (b) the detector's one remaining finding is `--spring-standard` matched on the word "spring" —
-it resolves to `cubic-bezier(0.22, 1, 0.36, 1)`, which is ease-out-quint with no overshoot, exactly what
-§B.5 specifies. | `DESIGN_SYSTEM.md` §B.4 / §B.6 / §B.8 / §B.9 · `packages/ui/navigation/styles/middle-nav.css`
-· `apps/web/features/wallet/**` · `packages/backend/services/finance/wallet-fixtures.ts` · Decisions #55
-/ #60 / #62 |
+`MoneyMoveDrawer` returned `null` for those plus `new_recurring` and `request_spend`, and was the
+only consumer of `activeAction`. So Methods could not add a method, Payouts could not change the
+schedule its own docstring called changeable, an eligible Income Smoother could not be enrolled in,
+and three empty states pointed at "the action bar" for controls it was never given. New
+`ConfigureDrawer` (reversible settings commit directly — the confirmation modal is for the
+irreversible); `quickActionsFor` emits the three; a `VIEW_ACTION` map gives each page its own
+leading primary. **Add method collects no card data by construction** — no PAN, expiry or CVV field,
+because Stripe holds it and an input implying otherwise is a custody claim the surface spends its
+whole design refusing to make. **(D) The action layer was mounted in `WalletOverviewScreen`** — one
+route, while the rig that opens it renders on eight — so every footer action on the seven deep pages
+opened nothing. It moved to the rig. **(E) Section navigation below 767px.** The lane is
+`display: none` there and was the only route between the eight sections, so Activity / Funding /
+Methods / Invoices / Access were unreachable on every phone; the header band now carries a
+capability-filtered switcher at exactly the width the lane leaves — **the duty transfers, it does
+not duplicate**. The `@media (max-width: 900px)` rule that dropped the reporting window now drops
+the account NAME instead: the avatar still answers "whose money is this", which is the last fact
+allowed to leave a band whose controls move money. **(F) Two header controls were inert** — Search
+wrote to a local signal nothing read, and Filter opened a panel whose entire content was a sentence
+telling you to use the balance meter, on four pages where that meter is not rendered. Both now work.
+**(G) The §B.4 ladder was missing a rung**: `wallet-bands.css` documented a tonal step and every
+band computed `rgba(0, 0, 0, 0)`, leaving a near-uniform 64/48/64px gap to carry all separation. Now
+an alternating `nth-of-type(even)` tint (position, not tone name — Payouts runs intel→flow→ledger
+and a name-keyed rule would abut two tinted bands), a translucent `color-mix` overlay so it steps
+against whatever ground it actually sits on, and the ledger hairline removed so every boundary
+spends exactly one device (§B.9.3). **(H) Type ramp re-cut.** Six display steps, none more than
+~1.4× its neighbour below 50px, with two inversions: the Standing score at 50.9px was 71% of the
+balance and became the page's second hero on scroll (now 40px), and the pence at `0.55em` of a 72px
+figure rendered **39.6px — larger than the commission rate**. That ratio is the SMALL end's
+legibility floor and is not a ratio at display scale; a hero-only `0.36em` puts them at 25.9px. The
+ramp is now 72 → 40 → 36 → 30 → 26 → 22. **(I) Policy.** Approve/Decline were a repeated
+`filled --primary` row action carrying the amount in the label (both now `text` with severity doing
+the work, amount out of the verb per the file's own RULE O-2); the parallel `.wlt-btn` family — a
+second button system with no severity axis, which is how an irreversible approval came to look like
+a safe primary — is deleted and its 11 sites migrated to `Button`; `●`/`–` capability marks became
+drawn glyphs; `add_method` and `set_payout` stopped borrowing Recurring's and Withdraw's glyphs;
+mobile Export stopped being nameless (`font-size: 0` with no `aria-label`); `aria-expanded` now
+renders in both states (Preact drops `={false}`, so five menu buttons shipped without it). **(J) Two
+correctness bugs found in passing:** the ledger's `loadMore` and sort refetch each built their own
+params and both omitted the fund-state filter, so page 2 of a filtered ledger came back unfiltered
+and appended onto filtered rows; and ten refetches were `if (res.ok && res.data)` with no else, so a
+failed currency or account switch left the previous wallet's figures on screen indefinitely —
+`applyRead` + the previously-unreferenced `BandError`/`WalletSkeleton` now close both. **Verified by
+measurement** at 1440 / 1024 / 820 / 768 / 390, LTR + RTL, light + dark: lane 280px at every width
+it exists, **zero clipped elements and zero document overflow in both directions** (the stage-gate
+figure "56 / 50" was clipped 13px in BOTH — a nowrap label took 128px of an 86px box and collapsed
+the `1fr` meter to zero; its panel now uses a container query, because the intel band splits into
+~430px plates and a viewport media query could never see the width that was actually wrong). **NOT
+verified: click-through of the drawers** — Fresh's deferred island revival does not run in the
+hidden preview pane (no Preact listeners attach on any island, including long-shipped ones), so the
+action layer is verified by SSR output and type-checking only. **Flagged (surface, do not silently
+resolve):** (a) the `@media (pointer: coarse)` bump of the rig row to 40px cannot be exercised in
+the preview, which reports a fine pointer at every width; (b) the detector's one remaining finding
+is `--spring-standard` matched on the word "spring" — it resolves to
+`cubic-bezier(0.22, 1, 0.36, 1)`, which is ease-out-quint with no overshoot, exactly what §B.5
+specifies. | `DESIGN_SYSTEM.md` §B.4 / §B.6 / §B.8 / §B.9 ·
+`packages/ui/navigation/styles/middle-nav.css` · `apps/web/features/wallet/**` ·
+`packages/backend/services/finance/wallet-fixtures.ts` · Decisions #55 / #60 / #62 |
 
 | 63 | **Messaging — the `/messages` root inverted the region contract; the inbox moves to the body
-(2026-07-31).** A composed-page layout audit of the messaging surface found the index route built the
-opposite way round from `/wallet`, the reference implementation of the contract: the **lane was the
-surface** (search · filters · partitions · the entire conversation list · both primary actions) and
-the **body was a placeholder** — 1096×852, ~80% of the content region, holding a glyph, an `h1` and a
-sentence. Measured consequences: the conversation row got 234px, of which the message preview got
-**114px — 8.3% of the content region — clipping at 47% of its natural width** (`scrollWidth` 240);
-the root had **no header band and no footer band at all** (`conversationHeaderFor`/`FooterFor` return
-`null` off a specific conversation), which is why every global control had collected in the lane
-head; and below the shell's `max-width: 767px` rule — which REMOVES `.ui-middle-nav__lane`
+(2026-07-31).** A composed-page layout audit of the messaging surface found the index route built
+the opposite way round from `/wallet`, the reference implementation of the contract: the **lane was
+the surface** (search · filters · partitions · the entire conversation list · both primary actions)
+and the **body was a placeholder** — 1096×852, ~80% of the content region, holding a glyph, an `h1`
+and a sentence. Measured consequences: the conversation row got 234px, of which the message preview
+got **114px — 8.3% of the content region — clipping at 47% of its natural width** (`scrollWidth`
+240); the root had **no header band and no footer band at all** (`conversationHeaderFor`/`FooterFor`
+return `null` off a specific conversation), which is why every global control had collected in the
+lane head; and below the shell's `max-width: 767px` rule — which REMOVES `.ui-middle-nav__lane`
 (`middle-nav.css:168`) — the list, search, filters, all five toggles, every row kebab, Settings and
-New message all measured `0×0`, leaving copy that read *"Select a conversation from the list"* beside
-no list. (`/projects` fails identically; `/wallet` proves it is solvable in the same shell — it keeps
-a 3435px body and both bands at 390px.) **Resolved by restoring the contract on the root**, while the
-DETAIL route keeps the conversation list in the lane, which is genuine sibling navigation: new
-**`InboxView`** (body — the list, and the only fetch owner), **`InboxHeader`** (header band —
-identity · live count · search · id-based refinements), **`InboxFooter`** (footer band — New message ·
-Settings · density), **`InboxScopeLane`** (lane — partitions and relation facets as NAMED rows with
-LIVE COUNTS, replacing five unlabelled icon toggles), resolved by `inbox-slots.tsx`
+New message all measured `0×0`, leaving copy that read _"Select a conversation from the list"_
+beside no list. (`/projects` fails identically; `/wallet` proves it is solvable in the same shell —
+it keeps a 3435px body and both bands at 390px.) **Resolved by restoring the contract on the root**,
+while the DETAIL route keeps the conversation list in the lane, which is genuine sibling navigation:
+new **`InboxView`** (body — the list, and the only fetch owner), **`InboxHeader`** (header band —
+identity · live count · search · id-based refinements), **`InboxFooter`** (footer band — New message
+· Settings · density), **`InboxScopeLane`** (lane — partitions and relation facets as NAMED rows
+with LIVE COUNTS, replacing five unlabelled icon toggles), resolved by `inbox-slots.tsx`
 (`inboxHeaderFor`/`inboxFooterFor`/`messagesLaneFor`, mirroring the wallet slots). The preview track
 went **114px → 577px at 1440** and shows 100% of its natural width at every size. Four regions are
 four hydration roots, so they share **`inbox-state.ts`** (the board-footer↔body precedent) — but the
@@ -2402,46 +2428,354 @@ row layout uses **container queries**, not viewport media queries, because at ex
 is still shown and the content region is 424px, narrower than it is at 768px with the lane hidden;
 guessing from the viewport produced a 36px preview track at that boundary. **Also fixed:** the
 duplicated `Starred` control (same glyph, same label, 160px apart, different behaviour AND different
-latency — one refetched, one was a client overlay); **six silently discarded errors**, three of which
-rendered a failed fetch as an EMPTY result (`ContactPicker` → *"No matching contacts"*, `PopoutChat` →
-*"No messages yet"*, and a failed create/save closing its modal as though it had succeeded); `busy`
-reaching the DOM as `aria-busy` and nothing else (`lane.css` had zero matching rules, so a refine was
-invisible to sighted viewers); the missing not-found guard on `[conversationId]/files.tsx` that its
-two sibling tabs both had; `hasMore`/`nextCursor` never being read, so a truncated inbox was silently
-truncated; the message column and the composer resolving **two different measures** (feed uncapped,
-composer `56rem` — the field sat 130px inside the column and 125px short of where own bubbles land)
-now unified on one **`--chat-measure`** token; the filter chip whose selected state differed by a
-**1.003:1 luminance ratio** while DROPPING its label contrast from 7.14:1 to 4.36:1; the footer band
-pinning to `inset-block-end: 0` on mobile, which is exactly where the fixed `.ui-bottom-nav` sits
-(measured: identical 390×56 rects); the `.msg-btn` family that reimplemented `Button` and shipped the
-surface's only raw hex; **33 font sizes, 11 weights and 22 icon px** migrated to `--text-*`/`--fw-*`/
-`--icon-*` (three sizes — `0.9rem`, `0.95rem`, `1.25rem` — were off-ramp entirely); two focus
-vocabularies collapsed to the canonical `--focus-ring-shadow` with eleven controls that had NO focus
-rule gaining one; sub-24px hit targets raised; the auto-response three-level box-in-box flattened; the
-empty state's `min-block-size: 60vh` (sized against the VIEWPORT, not its region); and four class
-hooks applied in TSX with no rule anywhere in the repo. **Two bugs of one class found in the new code
-during verification and worth remembering: `inboxAll.value.length === 0` was used both as "not seeded
-yet" and as a seed guard, so a search matching nothing re-seeded the SSR list and rendered the full
-inbox back; and the header inferred "not loaded" from the same emptiness and printed the SSR count
-above an empty list. Empty is a real value — only an explicit `inboxSeeded` flag may gate a seed.**
-Verified in-browser at 1440 / 1024 / 900 / 768 / 390, LTR and RTL (zero horizontal overflow in both
-directions at every width), with the scope/search/filter/density/empty/clear paths exercised
-end-to-end; detector clean; typecheck + fmt clean. **NOT verified in this environment (stated, not
-claimed): `:focus-visible` rendering** — the preview pane never takes real keyboard focus, so the
-rules are confirmed present and using the composite token by source audit only. No DB/lifecycle
-change (still a read projection over fixtures) → no `documentation/database/*` or
-`PRODUCT_MANAGEMENT.md` change; no new `@projective/ui` primitive → no `DESIGN_SYSTEM.md` §C.1 change
-(the two package edits are behavioural fixes to existing components: a visible `aria-busy` state on
-`LaneList`, and the mobile footer-band offset). **Flagged (surface, do not silently resolve):** (a)
-`/projects` has the SAME mobile failure — its root body still reads *"Pick a project from the list on
-the left"* with the lane removed — and was deliberately left out of this pass; (b) the mobile row
-drops the hover-revealed kebab entirely (there is no hover on touch), so Favourite/Archive/Delete are
+latency — one refetched, one was a client overlay); **six silently discarded errors**, three of
+which rendered a failed fetch as an EMPTY result (`ContactPicker` → _"No matching contacts"_,
+`PopoutChat` → _"No messages yet"_, and a failed create/save closing its modal as though it had
+succeeded); `busy` reaching the DOM as `aria-busy` and nothing else (`lane.css` had zero matching
+rules, so a refine was invisible to sighted viewers); the missing not-found guard on
+`[conversationId]/files.tsx` that its two sibling tabs both had; `hasMore`/`nextCursor` never being
+read, so a truncated inbox was silently truncated; the message column and the composer resolving
+**two different measures** (feed uncapped, composer `56rem` — the field sat 130px inside the column
+and 125px short of where own bubbles land) now unified on one **`--chat-measure`** token; the filter
+chip whose selected state differed by a **1.003:1 luminance ratio** while DROPPING its label
+contrast from 7.14:1 to 4.36:1; the footer band pinning to `inset-block-end: 0` on mobile, which is
+exactly where the fixed `.ui-bottom-nav` sits (measured: identical 390×56 rects); the `.msg-btn`
+family that reimplemented `Button` and shipped the surface's only raw hex; **33 font sizes, 11
+weights and 22 icon px** migrated to `--text-*`/`--fw-*`/ `--icon-*` (three sizes — `0.9rem`,
+`0.95rem`, `1.25rem` — were off-ramp entirely); two focus vocabularies collapsed to the canonical
+`--focus-ring-shadow` with eleven controls that had NO focus rule gaining one; sub-24px hit targets
+raised; the auto-response three-level box-in-box flattened; the empty state's `min-block-size: 60vh`
+(sized against the VIEWPORT, not its region); and four class hooks applied in TSX with no rule
+anywhere in the repo. **Two bugs of one class found in the new code during verification and worth
+remembering: `inboxAll.value.length === 0` was used both as "not seeded yet" and as a seed guard, so
+a search matching nothing re-seeded the SSR list and rendered the full inbox back; and the header
+inferred "not loaded" from the same emptiness and printed the SSR count above an empty list. Empty
+is a real value — only an explicit `inboxSeeded` flag may gate a seed.** Verified in-browser at 1440
+/ 1024 / 900 / 768 / 390, LTR and RTL (zero horizontal overflow in both directions at every width),
+with the scope/search/filter/density/empty/clear paths exercised end-to-end; detector clean;
+typecheck + fmt clean. **NOT verified in this environment (stated, not claimed): `:focus-visible`
+rendering** — the preview pane never takes real keyboard focus, so the rules are confirmed present
+and using the composite token by source audit only. No DB/lifecycle change (still a read projection
+over fixtures) → no `documentation/database/*` or `PRODUCT_MANAGEMENT.md` change; no new
+`@projective/ui` primitive → no `DESIGN_SYSTEM.md` §C.1 change (the two package edits are
+behavioural fixes to existing components: a visible `aria-busy` state on `LaneList`, and the mobile
+footer-band offset). **Flagged (surface, do not silently resolve):** (a) `/projects` has the SAME
+mobile failure — its root body still reads _"Pick a project from the list on the left"_ with the
+lane removed — and was deliberately left out of this pass; (b) the mobile row drops the
+hover-revealed kebab entirely (there is no hover on touch), so Favourite/Archive/Delete are
 reachable only from inside a conversation on a phone — a long-press or swipe affordance is the real
-answer and is deferred. | `DESIGN_SYSTEM.md` Part D / §B.4 / §B.6 ·
-`apps/web/features/messaging/**` · `apps/web/routes/(dashboard)/messages/**` ·
-`apps/web/routes/(dashboard)/_layout.tsx` · `packages/ui/navigation/styles/{lane,middle-nav}.css` ·
+answer and is deferred. | `DESIGN_SYSTEM.md` Part D / §B.4 / §B.6 · `apps/web/features/messaging/**`
+· `apps/web/routes/(dashboard)/messages/**` · `apps/web/routes/(dashboard)/_layout.tsx` ·
+`packages/ui/navigation/styles/{lane,middle-nav}.css` ·
 `apps/web/features/projects/styles/{chat-feed,chat-composer}.css` · `apps/web/utils/storage-keys.ts`
-· `.impeccable/critique/2026-07-31T12-00-00Z__messaging-layout.md` · Decisions #49 / #50 / #52 / #60 |
+· `.impeccable/critique/2026-07-31T12-00-00Z__messaging-layout.md` · Decisions #49 / #50 / #52 / #60
+|
+
+| 64 | **Ticket system rebuilt — the composer, the detail modal, and a derived price (2026-08-01).**
+The `.tkm` ticket modal is deleted and replaced by two purpose-built surfaces on
+`/projects/[id]/board` and `/projects/[id]/[channel]/tasks`. **The headline rule: a ticket's price
+is never typed.** The manual budget field is gone; cost is the SUM of the selected stages, each at
+the difficulty multiplier the client chose for it — `stageCostCents` / `ticketTotalCents` in the Zod
+SSOT, called by the composer footer, the board card and the fixtures alike, so no second arithmetic
+path exists to round differently. **Workload Intensity becomes a first-class control**
+(`TicketIntensity` = the Architect's Override, PRODUCT_SPEC §The Weighting Engine: Low 0.5x /
+Standard 1.0x / High 2.0x) and is the single lever that moves BOTH the money and the freelancer
+capacity `W_i` — the two were always one axis in the spec and are now one axis in the interface.
+**All tags removed** (ticket- and stage-level: schema field, card row, `BoardListParams.tag`, the
+API param, the fixture vocabulary). **The composer** (`TicketComposer`, `.tkc-*`) is three regions,
+each answering exactly one question: LEFT the ticket (title, brief, intensity, priority, due date,
+attachments, reorderable task list); CENTRE the stage pipeline as a real flow diagram — a gutter
+rail of numbered execution steps, cards carrying a chevron (not a "details" link), the derived stage
+cost, a one-line truncated stage brief and a cascading `AvatarStack`, drag-reorderable with a drawn
+landing seam; RIGHT a stage inspector that renders ONLY while a stage is selected, split into "This
+ticket" (stage brief, intensity override, stage task list) and "Stage overview" (read-only roster,
+existing stage tickets, rate, routing mode, capacity cap). **Simultaneous stage execution** is
+modelled as `TicketStageRef.parallel` + the pure `executionBands()`: a stage joined to the one above
+it starts with it, collapsing two numbered steps into one band drawn on the rail. **The detail
+modal** (`TicketDetail`, `.tkd-*`) is a document, not the composer greyed out: status + meta badges,
+the brief, the stage run, and three archives — History (`ticket_history`-shaped audit log),
+Attachments and Submissions, the latter two mounting the SAME `/files` `FileCard` and `/submissions`
+`SubmissionTree`/`SubmissionNodeList` components rather than second renderers. Owner/admin editing
+is IN PLACE via the new `InlineEdit` primitive; a viewer without the right sees plain text with no
+affordance, because a disabled control advertises a capability and then refuses it. **Three NEW
+`@projective/ui` primitives** (§C.1 roster updated in the same change): `dnd/DropIndicator` (the
+landing seam — the ghost says _what_, a highlighted neighbour cannot say _where_),
+`display/AvatarStack` (data-driven roster + `+N`, one composed a11y label instead of a stream of
+initials; `--avatar-ring` added so the gap is drawn in the colour actually behind the stack), and
+`fields/InlineEdit`. **No DB migration** — the board stays a read projection over fixtures like its
+siblings, and every new field maps to a column that already exists (`tickets.workload_intensity`,
+`due_date`, `unit_price_cents`, `ticket_history`, `project_stages.description_text` /
+`unit_price_cents` / `assignment_mode` / `max_concurrent_intensity`), so the live path slots in
+behind the same `PROJECTS_BACKEND_LIVE` with no shape churn. **Dev Context Switcher (§5 gate) —
+wired, no new axis.** The board originally read the raw SSR `viewerIsClient`, so it was blind to the
+switcher: flipping the persona changed nothing. A new pure `core/board-access.ts` now resolves a
+`BoardAccess` set (`isClient` · `isFreelancer` · `canEditTicket` · `hasTickets`) by layering the
+seam over the SSR baseline, and the board body, the composer, the detail modal AND the middle-nav
+footer rig all read it, so a persona flip moves all four together with no reload. It does NOT
+re-derive the client/provider split — it delegates to the submissions `resolveViewer`, because two
+answers to "which side of the market is this person on" is one too many and the board sits one tab
+from the Submissions explorer. **No new axis was added**: the existing Account type · Entity
+ownership · Team role · Service type controls already express every branch, and a fifth
+near-duplicate axis would only create ambiguity about which one wins. `canEditTicket` is
+deliberately NARROWER than `isClient` — a project manager can commission work without being able to
+silently reword what a freelancer already agreed to deliver, so inside a team it takes ownership or
+an admin seat while an individual client owns their project outright. **Two holes found by
+measurement:** (a) with the composer open, flipping to a freelancer left the submit button live AND
+it created the ticket — read-only inputs gated the controls but not the action, so the capability
+now gates the submit and the board closes a composer whose seat has lost the right (the detail modal
+stays open and degrades in place, because READING a ticket was never the gated part); (b) a session
+engagement has no tickets at all, which absence alone reads as a missing control — `hasTickets`
+gives the rig one sentence ("Sessions are booked, not ticketed.") while a viewer who merely lacks
+the seat still gets pure absence. **Four defects found by measurement, not inspection:** (a) Escape
+inside an inline edit closed the whole dialog — `useDismiss` binds Escape on `document` in the
+CAPTURE phase specifically so inner handlers cannot swallow it, so `stopPropagation` loses by
+construction; `InlineEdit` now registers on `window` capture, which precedes `document` in the
+capture path, and `stopImmediatePropagation`s there. (b) The parallel-execution control was inert
+because it was gated on `stage.locked` — that lock governs the PROJECT's stage sequence, not how one
+ticket routes through stages; ungated. (c) The four-segment Priority control clipped its last option
+to 139px when paired beside Due date in a 21rem panel; both now take a full row. (d) The step
+numeral sat on `--primary` at **3.57:1** in dark mode — the theme's own `--on-primary`/`--primary`
+pair — so the node was redrawn as a primary RING with the numeral on the surface pair at 14.4:1.
+Verified in-browser on both routes: derived totals agree card-to-modal ($525 + $400 + $300 = $1,225;
+a Low ticket at $262.50 + $150 = $412.50 with W 1.35), stage-level intensity override moves the
+footer live, execution bands collapse the step rail, keyboard drag reorders, create round-trips to
+the board, submissions drill tree → unit → files, light + dark all >= 5.38:1, `dir="rtl"` mirrors
+with zero horizontal overflow in both directions, 390px reflows the stage card via a CONTAINER query
+(the pipeline's width is not the viewport's — with the inspector open on a 1280px desktop the centre
+region is ~540px), detector clean, no console errors. **Flagged (surface, do not silently
+resolve):** (a) `--on-primary` on `--primary` measures **3.57:1** in dark mode — a theme-engine
+pairing used by every filled primary control in the product, not a local choice; this pass routed
+around it rather than patching one surface, and it needs a human decision at the token layer. (b) A
+stage's `categoryWeight` is fixture-derived; the live path must read the real CREATE-category
+weight, or `W_i` will be plausible and wrong. (c) Attachment upload is staged by NAME only — real
+upload lands with `PROJECTS_BACKEND_LIVE`. (d) Editing a ticket in place is optimistic and
+per-session, like every sibling board mutation. (e) A stale `packages/*` edit is NOT picked up by
+HMR — the dev server must be restarted, which cost two false negatives during verification. |
+`PRODUCT_SPEC.md` §The Weighting Engine / §Creation & Purchasing Gate · `DESIGN_SYSTEM.md` §C.1 ·
+`packages/types/projects/board.ts` ·
+`packages/ui/{dnd/components/DropIndicator,display/components/AvatarStack,fields/islands/InlineEdit}`
+· `packages/backend/services/projects/board-fixtures.ts` ·
+`apps/web/features/projects/{components/ticket/*,core/ticket-model.ts,styles/ticket-{composer,detail}.css,
+islands/ProjectBoard.island.tsx,components/TicketCard.tsx}`
+· `apps/web/routes/api/projects/board.ts` · Decisions #21 / #32 / #33 / #35 / #62 |
+
+| 65 | **View Ticket modal rebuilt + the modal STACK primitive (2026-08-01). EXTENDS Decision #64.**
+The `.tkd` read modal is replaced by `.tkv` — a Splitter-based document with six tabs and a
+collapsible pipeline panel — and, underneath it, a new `@projective/ui/overlay` primitive that
+changes how this product opens a modal from inside a modal. **(A) The stack.**
+`createModalStack()` + `useFrameState`/`useFrameScroll` (DESIGN_SYSTEM **§B.10.9**, new) is a chain
+where only the TOP frame renders: opening a submission review from a ticket REPLACES the ticket
+rather than covering it, so a two-deep chain composites ONE blurred backdrop instead of two and runs
+one focus trap instead of two, and the ticket's live state — tab, browsed submission path, open
+stages, scroll offsets — is held in a deliberately **non-reactive** `Map` cache so popping back
+restores the surface the viewer left. Two implementation facts are load-bearing: the cache is not a
+signal (a scroll write must not re-render the host), and frames key off a monotonic `uid` (the same
+ticket twice is two visits). **(B) The chain owns its URL with `replaceState`.** The obvious design
+— `pushState` on open, `history.back()` on dismiss, so browser Back closes the overlay — was built,
+and then MEASURED reloading the document: `history.back()` from a pushState entry replaced the page,
+destroying the chain and every cached frame. A Back that loses the ticket is worse than a Back that
+leaves the board, so the chain replaces rather than pushes; the address bar still tracks the review
+(`/projects/[id]/submissions/[stage]/
+[submitter]/[unit]?review=1`), and the `?review=1` marker is
+what makes a copied link REOPEN the review in the standalone explorer instead of merely landing on
+the submission. **(C) Submissions are stage-rooted.** A ticket's tree is rebuilt as **stage →
+submitter → unit**, so a node's segment path IS the review URL's tail — the ticket modal and the
+Submissions explorer address the same node the same way, with no translation layer to drift. The tab
+mounts the SAME tree/cards/file cards and the SAME zoom store (`Ctrl`+wheel, one centre marker, no
+toggle button) as `/submissions`; it deliberately does NOT reuse the window virtualization, because
+a modal's scroller is the modal body and a window-virtualized list inside a dialog measures the
+wrong box — one ticket's deliverables are a bounded handful and render in full. **(D) Additive SSOT,
+no DB migration** (still a read projection): `TicketStageRef.unitPriceCents` (the base rate CAPTURED
+at agreement, so a stage re-rated tomorrow cannot silently restate an existing ticket),
+`BoardCard.owner` (the CLIENT-side accountable seat, distinct from `assignee`, the provider who
+claimed it) + `contributors` + `unreadCount` + `payments` (the escrow/fee/release ledger),
+`TicketHistoryEntry.unread`/`targetPath`, and
+`BoardPage.workspaceKind`/`workspaceLabel`/`clientMembers`. The pure `ticketCostLines()` re-derives
+cost from the captured base × the captured multiplier, because the Finances tab's job is to SHOW the
+arithmetic and so it must BE the arithmetic. **(E) Intensity is never a number.** Low/Standard/High
+is what a client chose; the multiplier appears in exactly one place — as a Finances column beside
+the base rate and the product (`$400 × 2 = $800`) — because a badge reading "High ×2" asserts a
+conclusion the reader cannot check. The three `W n` chips the composer had beside its intensity
+badges are removed; capacity survives as a labelled Finances row and in tooltips. **(F) Two gates,
+told apart deliberately** (the `/wallet` §60 rule): a provider-side viewer sees the ticket owner as
+read-only TEXT, not a disabled Select — the fact is useful to them, the control would be offered and
+then refused; and attachment upload is client-only by product rule, not oversight (a freelancer's
+files are OUTPUTS and go through Submissions so they are versioned, reviewed and tied to the escrow
+release), so the drop zone is absent and a sentence says where their uploads belong. **Two defects
+found by measurement, both in shared code:** (1) `.ui-splitter__pane` shipped
+`flex: 0 0
+var(--split-size)` while the bases sum to exactly 100% and the gutters are additional
+fixed pixels — so every layout Splitter overflowed by `gutters × gutterSize` and clipped its
+trailing pane (4px lost, LTR and RTL alike, on the submission review modal too); shrinking is now
+allowed. (2) Six labelled tabs needed ~590px in a 343px strip at 375px, making it a hidden
+horizontal scroller — labels collapse to glyphs below 640px with `aria-label` always present, so
+"label in name" (WCAG 2.5.3) holds in both presentations. **No new Dev Context axis** (§5 gate): the
+board now resolves every gate through Decision #64's `board-access.ts`, so the existing persona/role
+axes already move the whole surface — verified live, client ↔ freelancer flips the owner control,
+the drop zone, both CTAs and the review action with no reload. Verified in-browser: derived totals
+agree card ↔ modal at all three multipliers (Low `$200 + $262.50 = $462.50`; Standard
+`$400 + $525 + $300 = $1,225`; High `$400×2 +
+$525×2 = $1,850`), fee 5% and release check out on the
+ledger, the ticket → review → back round trip restores the Submissions tab AT its browsed path with
+one backdrop and zero history entries leaked, history-event follow lands on the exact unit, contrast
+4.81–5.77:1 light / 7.46–14.37:1 dark, RTL mirrors the rail to the opposite edge with zero overflow
+in both directions, 375px reflows full-bleed. **Flagged (surface, do not silently resolve):** (a)
+browser Back no longer closes the review — see (B); (b) `onCreateSubmission` ROUTES to the
+Submissions explorer rather than opening a third create modal, because that flow owns the pre-submit
+checks and a second implementation would be the same flow with different rules; (c) attachment
+upload is still staged by NAME only, and review accept/revision are optimistic stubs, pending
+`PROJECTS_BACKEND_LIVE`; (d) the `--on-primary` on `--primary` 3.57:1 dark pairing flagged by
+Decision #64 is still routed around (numbered step nodes are a primary RING with the numeral on the
+surface pair), not fixed at the token layer. | `DESIGN_SYSTEM.md` §B.7.1 / §B.10.9 / §C.1 ·
+`packages/ui/overlay/{core/modal-stack.ts,
+hooks/useModalStack.ts,mod.ts}` ·
+`packages/ui/layout/styles/splitter.css` · `packages/ui/icons/core/paths.tsx` ·
+`packages/types/projects/board.ts` · `packages/backend/services/projects/board-fixtures.ts` ·
+`apps/web/features/projects/{core/ticket-view.ts,components/ticket/{TicketView,TicketStagePanel}.tsx,
+components/ticket/tabs/*,styles/ticket-view.css,islands/{ProjectBoard,SubmissionExplorer}.island.tsx}`
+· Decisions #32 / #33 / #35 / #62 / #64 |
+
+| 66 | **Browser audio capture — micro-permissions, pause/resume, and a real outgoing payload
+(2026-08-02).** The composer's voice memo already had a working `MediaRecorder` engine; this pass
+closes the gaps that made it unshippable and applies to BOTH messaging surfaces at once —
+`/projects/[projectId]/[channelId]` and `/messages/[conversationId]` mount the SAME `ChatComposer`
+island through `channelFooterFor`/`conversationFooterFor`, so parity is structural, not duplicated.
+**(A) Pause/resume is a real capture state, not a UI flag.** `RecorderPhase` gains `paused`
+(`inactive → requesting → recording ⇄ paused → recorded`) driving `MediaRecorder.pause()/resume()`,
+and the elapsed clock changes from `now - startedAt` to **banked segments** (`bankedRef` + an open
+segment), because the old subtraction counted paused wall-time — a memo paused for a minute would
+have reported, and auto-stopped at, a duration it did not contain. Sampling halts with the clock so
+a pause records no silence bars, and the waveform HOLDS its window instead of clearing. Verified by
+measurement: 1.3s paused, timer frozen at `00:02` across the whole pause, resumed take reporting 3s
+of a ~4.25s wall-clock session. **(B) `denied` vs `blocked` is the distinction that earns its
+keep.** A dismissed prompt is recoverable by pressing the mic again; a **persisted** block makes the
+next press silently inert, so only that case spends words on recovery — and they are
+browser-specific (`micHelpFor`, six families, pure and UA-string-driven so it stays testable). The
+state is resolved through the Permissions API with the load-bearing rule that **absence of an answer
+is never denial** (Firefox rejects a `"microphone"` descriptor outright), so `unknown` always falls
+through to a real attempt. A positively-denied state short-circuits before `getUserMedia`. Errors
+became a structured `RecorderError {kind,title,detail,help}` rendered **inline** through the
+existing `Message` primitive rather than a corner `Toast`: the control that failed is right there,
+and instructions are read while looking at the button that refused. **(C) Guards the spec asked
+for.** `MAX_AUDIO_BYTES` (10 MB) checked at finalize — the memo stays playable but Send is refused;
+the device-loss path (`track` `ended` + a `readyState` poll on the clock interval already running,
+since some UAs drop a removed device without firing the event) **keeps what was captured** rather
+than discarding the take; and every exit path — stop, discard, error, unmount, `pagehide` — runs
+`track.stop()`, so the OS recording indicator clears immediately (verified: one stop per take).
+**(D) Send now assembles a real payload.** `ComposerPayload` carries an actual `File` named for the
+container the UA **actually produced** (`audioExtOf` — a `.webm` name on Safari's MP4 breaks players
+that sniff by extension) plus the `MessageAudio`-shaped projection, with `peaks` resampled ONCE at
+the boundary to the SSOT's `.max(512)` — a five-minute take captures ~3300 samples and would have
+failed Zod validation the moment the backend went live. `onSend` widened from `() => void` to take
+it (both existing callers ignore the argument, so they are unchanged). Transport stays stubbed
+behind `PROJECTS_BACKEND_LIVE`; the payload does not. **(E) Background tabs record seamlessly** — a
+memo that silently drops audio while the viewer checks a reference is data loss — with a
+`visibilitychange` handler resuming a UA-suspended `AudioContext` on return, which only ever
+affected the visualiser, never the encoder. **(F) Dev Context Switcher (§5 gate):** a new
+`micPermission` axis (`auto`·`prompt`·`granted`·`denied`·`unsupported`) wired end-to-end through
+`dev-seam` (`DevMicPermission` + `DevSeamState` + `MIC_PERMISSIONS`) and `dev-context`
+(`DevOverrides` + `DEV_DEFAULTS` + `DEV_MIC_PERMISSIONS` + `reflect()` set AND delete) + a panel
+control, reaching the blocked / unsupported / slow-grant branches without changing real browser
+settings and reloading. Simulating `granted` deliberately **overrides** the persisted-block
+short-circuit — otherwise the axis is inert in exactly the browser a developer needs it in — but
+still asks the real device; nothing here fabricates audio. **Three defects found by measurement, not
+inspection:** (1) an oversize memo fell through to an **enabled Mic button that does nothing** (the
+press guard rejects a `recorded` phase), so a finished memo now always shows Send, disabled with the
+reason printed directly beneath, and the disabled Send steps down to a tonal control rather than a
+0.4-alpha wash of `--primary`; (2) `setPointerCapture` throws `NotFoundError` when the pointer is
+already gone, and the throw preceded `rec.start()` — costing the viewer the recording they just
+asked for; (3) simulating `granted` hit the block short-circuit described above. **A11y:** the
+ticking clock is deliberately NOT a live region (a counter announcing five times a second buries
+everything else) — it stays readable on demand while a `role="status"` line announces only the phase
+transitions. No new `@projective/ui` primitive (reuses `Message`/`Popover`/`Tooltip`) → no
+`DESIGN_SYSTEM.md` §C.1 change; no persisted-shape change (the composer draft is transient client
+state; `MessageAudioSchema` already existed and is now actually satisfied) → **no DB migration**, no
+`documentation/database/*` and no `PRODUCT_MANAGEMENT.md` change. **Flagged (surface, do not
+silently resolve):** (a) upload/transport is still stubbed — the payload is real and complete, only
+its dispatch waits on the backend; (b) the attachment-cap overflow remains silent (`addFiles` drops
+the excess with no feedback) — out of scope here but now conspicuous beside a composer that explains
+every capture failure; (c) recording in a background tab relies on the UA exempting audio-capturing
+pages from timer throttling — where it does not, the envelope goes sparse (cosmetic only, since it
+is resampled) while the encoder is unaffected. | `PRODUCT_SPEC.md` §Unified Messaging ·
+`apps/web/features/projects/{hooks/{useAudioRecorder,useWaveform}.ts,core/composer-model.ts,
+types/composer-types.ts,components/composer-glyphs.tsx,islands/ChatComposer.island.tsx,
+styles/chat-composer.css}`
+· `apps/web/utils/dev-seam.ts` · `apps/web/features/devtools/` ·
+`packages/types/projects/messages.ts` (satisfied, unchanged) · Decisions #31 / #34 / #49 / #50 / #62
+/ #63 |
+
+| 66 | **Ticket modal unified — one surface for create, view and edit (2026-08-02). SUPERSEDES the
+two-modal split of Decisions #64/#65.** `TicketComposer` is DELETED (with `TicketBasics` and the
+now-orphaned `TicketStagePanel`), and `TicketView` became the single context-aware surface:
+`mode="create"` composes, `mode="view"` reads, and editing happens IN PLACE in both. The split cost
+more than it saved — the composer and the detail modal each owned a description field, a task list,
+an attachment flow and a stage pipeline, four pairs that had to be kept in agreement by hand, and it
+made "edit this ticket" a mode switch that threw away the reader's position. **One working SHAPE**:
+a ticket being composed is a `BoardCard` nobody has saved yet, so `TicketDraft`/`DraftStage` and
+their reducers are gone; `ticket-model.ts` now operates on the card itself
+(`newTicketCard`/`stageOps`/`taskOps`/`ticketTotals`/`ticketGate`), and **`reconcileCard()` is the
+ONE place a derived field is computed** — price, capacity, checklist counts and due label — called
+by the modal and the board alike so no second arithmetic path can round differently. **Edits are
+STAGED**: the working copy lives in the modal-stack frame cache (so a review round trip preserves
+half-made edits), the footer grows Save/Discard the moment `ticketFingerprint()` diverges from the
+baseline, and nothing reaches the board until Save. **(A) Meta bar** — Intensity · Priority · Due
+follow the `InlineEdit` contract (static value + quiet caret → the real `@projective/ui` control in
+place, opened on the SAME click via a synthetic trigger click, which also dodges the `useDismiss`
+race a programmatic open would lose); Owner keeps its dropdown and gains faces; **"Claimed by" is
+pinned to the far end** (`data-end`) because it is the one value on the row the client does not set.
+**(B) Footer** — the standalone Close is gone (the header × remains); **Ticket cost and Spent lead
+as two prominent currency figures**, then the count badges behind one hairline, then the actions.
+New pure `ticketSpentCents(payments)` in the Zod SSOT counts only **settled** `release` + `fee`,
+never a held escrow — a client must never be told they paid for work nobody has accepted (verified:
+a completed ticket reads Spent $925 against a ledger of $878.75 release + $46.25 fee). **(C) Task
+lists** are client-owned and **never tickable here** — completion is a delivery claim and is made at
+the SUBMISSION level, so the row shows the outcome plus the faces of everyone who satisfied it (new
+additive `TicketTask.completedBy`). **(D) Side panel appears on exactly two tabs**: Details carries
+a recent-activity feed, Stages opens only when a stage is selected — and the stage inspector renders
+in the MODAL's own panel rather than a nested one, so there is one place a stage is configured.
+**(E)** All ticket + stage descriptions use the shared `RichTextEditor` (keyed per ticket/stage —
+Quill owns its DOM after mount, so a shared editor would write the previous subject's brief back on
+the next keystroke). **(F)** Attachments mirrors `/files`, mounting the same `FileCard`/`FileTable`
+and the same zoom store, with the rig + Add-attachment in the Submissions tab's bar position;
+`FileTable` gained an additive `virtualize` flag because it windows against the WINDOW and a
+dialog's scroller is its own body. **(G)** Create mode omits Submissions and History — empty
+archives on a ticket that does not exist yet invite the reader to wonder what they missed. **One
+`@projective/ui` change** (§C.1 updated in the same change): `Select` gained
+`optionTemplate`/`valueTemplate` for rows that carry an identity rather than a word,
+presentation-only (the row keeps its selected-check, `role="option"` and `aria-selected`;
+`Option.label` stays what typeahead matches). **Bug found by measurement and fixed:** the
+ticket-level intensity — the surface's headline price lever — moved a word and no money, because
+`reconcileCard` prices from each STAGE's intensity (measured: Standard → High left the total at
+$1,225). New `applyTicketIntensity()` cascades it to stages that were
+tracking the default and leaves a deliberately-overridden stage alone, which is what "default"
+means; `blankStageRef` now seeds from the ticket's difficulty too. Also fixed in the fixtures: an
+UNCLAIMED ticket could carry completed steps, which the completer rule makes impossible — there is
+nobody to attribute them to. **No DB migration** (still a read+write projection over fixtures, like
+#64/#65) → no `documentation/database/*` change; no lifecycle change → no `PRODUCT_MANAGEMENT.md`
+change. **No new Dev Context axis** (§5 gate): every gate routes through Decision #64's
+`board-access.ts`, verified live — a persona flip moves the meta-bar affordances, the editor, the
+task grips, the drop zone and both CTAs with no reload. Verified in-browser: create → named → Create
+→ transitions in place to view mode with all six tabs and the card on the board; edit → Save
+round-trips to the card ($1,225 → $2,450 at High); stage select opens the inspector in the modal's
+panel with its RTE and reorderable steps; attachments grid ⇄ list at the `/files` columns
+(non-virtualized, 3 rows in a 114px sizer); contrast 5.85–17.14:1 light / 7.46–14.37:1 dark;
+`dir="rtl"` mirrors the meta row and the footer to the opposite edge with **zero horizontal overflow
+in both directions**; 375px hides the panel, collapses the tab labels to glyphs and fits the strip
+with no hidden scroller; no console errors. **Flagged (surface, do not silently resolve):** (a)
+`ticket-composer.css` was renamed `ticket-pipeline.css` and keeps the `.tkc-` prefix — it now names
+ticket COMPOSITION (pipeline · inspector · task list), not a composer modal; (b) attachment upload
+is still staged by NAME only and every ticket write stays optimistic and per-session, pending
+`PROJECTS_BACKEND_LIVE`; (c) the `--on-primary` on `--primary` 3.57:1 dark pairing flagged by #64 is
+still routed around, not fixed at the token layer. | `PRODUCT_SPEC.md` §The Weighting Engine /
+§Creation & Purchasing Gate · `DESIGN_SYSTEM.md` §C.1 · `packages/types/projects/board.ts`
+(`TicketTask.completedBy`, `ticketSpentCents`) ·
+`packages/ui/fields/{islands/Select.tsx,
+styles/select.css}` ·
+`packages/backend/services/projects/board-fixtures.ts` ·
+`apps/web/features/projects/{components/ticket/**,components/FileTable.tsx,
+core/{ticket-model,ticket-view}.ts,islands/ProjectBoard.island.tsx,
+styles/{ticket-view,ticket-pipeline}.css}`
+· Decisions #32 / #33 / #35 / #62 / #64 / #65 |
 
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit

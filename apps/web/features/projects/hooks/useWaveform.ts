@@ -41,7 +41,7 @@ export function useWaveform(
 		if (canvas.height !== h) canvas.height = h;
 		ctx.clearRect(0, 0, w, h);
 
-		if (phase !== "recording" && phase !== "recorded") return;
+		if (phase !== "recording" && phase !== "paused" && phase !== "recorded") return;
 
 		const color = globalThis.getComputedStyle(canvas).color || "#888";
 		ctx.fillStyle = color;
@@ -73,8 +73,10 @@ export function useWaveform(
 			}
 		};
 
-		if (phase === "recording") {
+		if (phase === "recording" || phase === "paused") {
 			// Only as many bars as fit; newest sample hugs the right edge (scrolls left over time).
+			// A pause halts sampling rather than clearing, so the window simply holds its last state —
+			// the take stays visible instead of blanking under the viewer.
 			const capacity = Math.max(1, Math.floor(w / slot));
 			const window = live.length > capacity ? live.slice(-capacity) : live;
 			drawBars(window, window.length, true);

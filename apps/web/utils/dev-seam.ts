@@ -125,6 +125,18 @@ export type DevWorkspaceVerification = "unverified" | "kyb_pending" | "verified"
  */
 export type DevRosterState = "populated" | "empty" | "single";
 
+/**
+ * The microphone permission the Context Switcher can simulate for the chat composer's voice memo.
+ * `auto` defers to the real device; the rest reach states that would otherwise need the developer to
+ * change real browser settings and reload — a persistent block (`denied`), a browser without
+ * `MediaRecorder` (`unsupported`), and the slow-grant window (`prompt`, which holds the connecting
+ * state long enough to see) — so every capture branch is exercisable at runtime.
+ *
+ * Simulating `granted` never fabricates audio: it only skips the simulated delay and still asks the
+ * real device, because a fake recording would prove nothing about the recorder.
+ */
+export type DevMicPermission = "auto" | "prompt" | "granted" | "denied" | "unsupported";
+
 /** The display currency the Context Switcher can simulate (drives the server-side conversion + Intl formatting). */
 export type DevDisplayCurrency = "GBP" | "USD" | "EUR";
 /** The document layout direction the Context Switcher can simulate (RtL/LtR verification, independent of language). */
@@ -165,6 +177,8 @@ export interface DevSeamState {
 	pendingInvites: boolean;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
+	/** The simulated microphone permission for the chat composer's voice memo. */
+	micPermission: DevMicPermission;
 	/** The simulated `/wallet` vault capability role (Owner/Admin/PM/member). */
 	walletVaultRole: DevWalletVaultRole;
 	/** The simulated `/wallet` finance-verification (KYC) state. */
@@ -258,6 +272,13 @@ const MEMBER_ROLES: readonly DevMemberRole[] = [
 ];
 const STAGE_ASSIGNMENTS: readonly DevStageAssignment[] = ["assigned", "unassigned"];
 const MESSAGING_ROLES: readonly DevMessagingRole[] = ["freelancer", "client", "business"];
+const MIC_PERMISSIONS: readonly DevMicPermission[] = [
+	"auto",
+	"prompt",
+	"granted",
+	"denied",
+	"unsupported",
+];
 const SUBMISSION_STATES: readonly DevSubmissionState[] = [
 	"draft",
 	"submitted",
@@ -327,6 +348,7 @@ export function readDevSeam(): DevSeamState | null {
 		memberRole: coerce(ds.devMemberRole, MEMBER_ROLES, "owner_admin"),
 		pendingInvites: ds.devPendingInvites !== "false",
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
+		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		walletVaultRole: coerce(ds.devWalletRole, WALLET_VAULT_ROLES, "admin"),
 		walletKyc: coerce(ds.devWalletKyc, WALLET_KYCS, "verified"),
 		walletSmoother: coerce(ds.devWalletSmoother, WALLET_SMOOTHERS, "enrolled"),

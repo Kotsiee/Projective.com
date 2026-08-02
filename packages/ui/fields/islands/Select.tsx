@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, VNode } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "../styles/field.css";
 import "../styles/select.css";
@@ -38,6 +38,21 @@ export interface SelectProps extends BaseFieldProps {
 	virtualScroll?: boolean;
 	/** Row height in px used by the windowed renderer (required for accurate `virtualScroll`). */
 	virtualItemSize?: number;
+	/**
+	 * Custom content for one option row, rendered in place of its label.
+	 *
+	 * For options that carry an identity rather than a word — a person, a workspace, a currency — where
+	 * a face or a mark is what the reader actually scans for. The row keeps its own selected-check
+	 * channel, its `role="option"` and its `aria-selected`, so the template supplies presentation only
+	 * and never has to reconstruct the semantics. Keep `Option.label` truthful regardless: it is what
+	 * typeahead matches, what the filter searches, and the fallback name.
+	 */
+	optionTemplate?: (opt: Option) => VNode | string;
+	/**
+	 * Custom content for the SELECTED value on the trigger. Defaults to {@link optionTemplate} when
+	 * only that is given, so the common case — the same row shape in both places — is one prop.
+	 */
+	valueTemplate?: (opt: Option) => VNode | string;
 	class?: string;
 }
 // #endregion
@@ -98,6 +113,11 @@ function toRenderGroups(
  * `transform`/`filter`/`backdrop-filter` re-bases it onto that ancestor's box — which is exactly what
  * a Dialog panel is, so a Select opened inside one was clipped to the dialog. The ARIA wiring is
  * id-based (`aria-controls`/`aria-activedescendant`), so it survives the move intact.
+ *
+ * `optionTemplate`/`valueTemplate` let a row carry an identity rather than a word — a person's face,
+ * a workspace mark — without a caller hand-rolling a dropdown to get it. They are presentation only:
+ * the row keeps its own selected-check, `role="option"` and `aria-selected`, and `Option.label` stays
+ * the name typeahead matches and assistive tech reads.
  */
 export function Select(props: SelectProps): JSX.Element {
 	const {
@@ -111,6 +131,8 @@ export function Select(props: SelectProps): JSX.Element {
 		grouping = false,
 		virtualScroll = false,
 		virtualItemSize = 40,
+		optionTemplate,
+		valueTemplate = optionTemplate,
 		id,
 		name,
 		disabled,
@@ -291,7 +313,14 @@ export function Select(props: SelectProps): JSX.Element {
 			<span class="ui-select__option-check" aria-hidden="true">
 				{opt.value === selected && <Icon name="check" />}
 			</span>
-			<span class="ui-select__option-label">{opt.label}</span>
+			<span
+				class={cx(
+					"ui-select__option-label",
+					optionTemplate && "ui-select__option-label--template",
+				)}
+			>
+				{optionTemplate ? optionTemplate(opt) : opt.label}
+			</span>
 		</li>
 	);
 	// #endregion
@@ -324,8 +353,16 @@ export function Select(props: SelectProps): JSX.Element {
 				onClick={toggle}
 				onKeyDown={onKeyDown}
 			>
-				<span class={cx("ui-select__label", !selectedOption && "ui-select__label--placeholder")}>
-					{selectedOption ? selectedOption.label : placeholder}
+				<span
+					class={cx(
+						"ui-select__label",
+						!selectedOption && "ui-select__label--placeholder",
+						selectedOption && valueTemplate && "ui-select__label--template",
+					)}
+				>
+					{selectedOption
+						? valueTemplate ? valueTemplate(selectedOption) : selectedOption.label
+						: placeholder}
 				</span>
 			</button>
 			{name && <input type="hidden" name={name} value={selected} />}

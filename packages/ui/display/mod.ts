@@ -89,6 +89,8 @@ export { Avatar } from "./components/Avatar.tsx";
 export type { AvatarProps, AvatarShape, AvatarSize } from "./components/Avatar.tsx";
 export { AvatarGroup } from "./components/AvatarGroup.tsx";
 export type { AvatarGroupProps } from "./components/AvatarGroup.tsx";
+export { AvatarStack } from "./components/AvatarStack.tsx";
+export type { AvatarStackPerson, AvatarStackProps } from "./components/AvatarStack.tsx";
 export { Chip } from "./components/Chip.tsx";
 export type { ChipProps } from "./components/Chip.tsx";
 export { List } from "./components/List.tsx";

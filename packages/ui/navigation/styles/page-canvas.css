@@ -2,25 +2,25 @@
    model, Decision #31 — NOT a local scroll region; the window owns the single main scrollbar). The
    body panel carries the largest curvature in the shell (the luxury --radius-container-xl). */
 .ui-page-canvas {
-    --frame-radius: var(--radius-container-xl);
-    display: flex;
-    flex-direction: column;
+	--frame-radius: var(--radius-container-xl);
+	display: flex;
+	flex-direction: column;
 }
 
 .ui-page-canvas::before {
-    content: "";
-    display: block;
-    position: fixed;
-    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
-    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
-    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
-    border-block-start: var(--hairline);
-    border-inline-start: var(--hairline);
-    border-start-start-radius: var(--frame-radius);
-    z-index: 0;
-    pointer-events: none;
-    background: var(--frame-surface, var(--surface));
+	content: "";
+	display: block;
+	position: fixed;
+	inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+	inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+	block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+	inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+	border-block-start: var(--hairline);
+	border-inline-start: var(--hairline);
+	border-start-start-radius: var(--frame-radius);
+	z-index: 0;
+	pointer-events: none;
+	background: var(--frame-surface, var(--surface));
 }
 
 /* With a middle-nav footer band present (composer / View Control Rig), the frame surface must stop at
@@ -28,9 +28,10 @@
    corner rounds symmetrically with the top-inline-start corner. Shorten the fixed `::before` by the
    footer band's height (on top of the top-start inset) and round the matching corner. */
 .ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h) + var(--space-1));
-    border-end-start-radius: var(--frame-radius);
-    border-block-end: var(--hairline);
+	block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) -
+		var(--shell-midnav-footer-h) + var(--space-1));
+	border-end-start-radius: var(--frame-radius);
+	border-block-end: var(--hairline);
 }
 
 /* Plain content wrapper (renamed from `__scroll` — it no longer scrolls; the window does). Grows with
@@ -39,16 +40,16 @@
    `flex: 1` down the chain; ordinary page content (a single block child) is unaffected — it sizes to
    its content exactly as before. */
 .ui-page-canvas__body {
-    flex: 1 1 auto;
-    min-block-size: 0;
-    display: flex;
-    flex-direction: column;
-    position: relative;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+	position: relative;
 }
 
 /* Mobile: reserve space so the fixed BottomNav (Part D.3) never covers the tail of the content. */
 @media (max-width: 767px) {
-    .ui-page-canvas__body {
-        padding-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
-    }
+	.ui-page-canvas__body {
+		padding-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
+	}
 }

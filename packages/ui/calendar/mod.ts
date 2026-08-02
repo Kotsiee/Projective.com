@@ -37,7 +37,11 @@ export type { EventBlockProps } from "./components/EventBlock.tsx";
 
 // #region Hooks
 export { useCalendarViewport } from "./hooks/useCalendarViewport.ts";
-export type { CalendarViewport, HourRow, UseCalendarViewportOptions } from "./hooks/useCalendarViewport.ts";
+export type {
+	CalendarViewport,
+	HourRow,
+	UseCalendarViewportOptions,
+} from "./hooks/useCalendarViewport.ts";
 export { gridGeometry } from "./hooks/useCalendarViewport.ts";
 export { useNowTick } from "./hooks/useNowTick.ts";
 export type { NowTick } from "./hooks/useNowTick.ts";

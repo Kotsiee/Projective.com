@@ -30,14 +30,14 @@
 .ui-middle-nav {
 	display: grid;
 	/*
-	 * `minmax(0, 1fr)` on the content track, NOT a bare `1fr`. A `1fr` track's automatic minimum is
-	 * `auto`, so the content column cannot shrink below its own min-content — and the lane, being the
-	 * `auto` track, absorbs every pixel of that shortfall. Measured on `/wallet`: one nowrap footer
-	 * rig raised the content column's min-content to 739px, which squeezed the lane from 280px to
-	 * 2px at an 820px viewport (all six nav links clipped by the lane's `overflow: hidden`) and
-	 * overflowed this frame's `clip` by 50px at 768px. The floor is now the lane's, where it belongs:
-	 * a content region may never bid for space the navigation is standing in.
-	 */
+	* `minmax(0, 1fr)` on the content track, NOT a bare `1fr`. A `1fr` track's automatic minimum is
+	* `auto`, so the content column cannot shrink below its own min-content — and the lane, being the
+	* `auto` track, absorbs every pixel of that shortfall. Measured on `/wallet`: one nowrap footer
+	* rig raised the content column's min-content to 739px, which squeezed the lane from 280px to
+	* 2px at an 820px viewport (all six nav links clipped by the lane's `overflow: hidden`) and
+	* overflowed this frame's `clip` by 50px at 768px. The floor is now the lane's, where it belongs:
+	* a content region may never bid for space the navigation is standing in.
+	*/
 	grid-template-columns: auto minmax(0, 1fr);
 	grid-template-rows: auto 1fr auto;
 	min-block-size: 0;
@@ -87,7 +87,7 @@
 	z-index: var(--z-sticky);
 	min-block-size: 0;
 	/* On the element, not the `::before` underlay — a shadow on a `z-index: -1; inset: 0` pseudo is
-	   occluded by its own parent. See the app-shell.css note for the full rationale. */
+	occluded by its own parent. See the app-shell.css note for the full rationale. */
 	box-shadow: var(--elevation-low);
 }
 
@@ -105,10 +105,26 @@
 /*
  * The nav lane spans the full frame height on the left. Under the native window scroll it is `sticky`
  * below the top bar, capped to the remaining viewport height, so it stays beside the scrolling body
- * instead of scrolling away with — or lengthening — the page. `align-self: start` stops the grid from
- * stretching it; its tall content (the projects feed, the project sidebar) scrolls INTERNALLY via the
- * nested `.ui-splitter__body` (overflow: auto), and its own sticky header/footer ride into the header
- * and footer bands.
+ * instead of scrolling away with — or lengthening — the page. Its tall content (the projects feed, the
+ * project sidebar) scrolls INTERNALLY via the nested `.ui-splitter__body` (overflow: auto), and its own
+ * sticky header/footer ride into the header and footer bands.
+ *
+ * The viewport cap is `max-block-size`, NEVER a definite `block-size` — and the lane stretches to its
+ * grid area rather than sitting at `align-self: start`. This is load-bearing, not a style preference.
+ * The lane spans `1 / -1`, so a DEFINITE height on it is an input to sizing the tracks it crosses, and
+ * a spanning item's contribution lands on the flexible `1fr` content row WITHOUT the auto-sized header
+ * and footer bands being deducted first. So `block-size: calc(100dvh - topbar)` sized the content row
+ * to the WHOLE viewport remainder and then the bands stacked on top of it, making the frame taller than
+ * the viewport by exactly (header band + footer band) and putting a document scrollbar on every laned
+ * route whose body is meant to fit the screen. Measured at 720px on `/projects/{id}/{channel}/tasks`:
+ * rows `48px 672px 50.39px` on a 672px region — 98px of overflow; the same 50.4px on `/…/board`
+ * (footer only) and 48px on `/…/calendar` + `/@handle/availability` (header only). With the cap as a
+ * MAXIMUM the lane stops bidding for track space, the `1fr` row resolves to what is actually left
+ * (`48px 573.61px 50.39px`), and the lane still fills that area and still pins at 672px.
+ *
+ * A long body is unaffected: the rows already exceed the cap, so the lane clamps to it exactly as
+ * before (verified byte-identical on a channel chat feed — 2471px document, lane 672px at y=48 through
+ * a 400px window scroll).
  */
 .ui-middle-nav__lane {
 	grid-column: 1;
@@ -116,8 +132,8 @@
 	position: sticky;
 	inset-block-start: var(--shell-topbar-h);
 	z-index: var(--z-raised);
-	align-self: start;
-	block-size: calc(100dvh - var(--shell-topbar-h));
+	align-self: stretch;
+	max-block-size: calc(100dvh - var(--shell-topbar-h));
 	min-inline-size: 0;
 	min-block-size: 0;
 	overflow: hidden;
@@ -172,12 +188,12 @@
 @media (max-width: 767px) {
 	.ui-middle-nav {
 		/*
-		 * `minmax(0, 1fr)`, for the same reason the desktop track carries it — a bare `1fr` floors at its
-		 * own min-content, and with no lane left to absorb the shortfall the track simply grows past this
-		 * frame's `overflow: clip` and the excess is destroyed. Measured at 390px on a five-tab stage
-		 * channel: a 473.7px track in a 390px box, `document.scrollWidth` still 390 (so no scrollbar
-		 * offers it back) and three controls — Stage details, More actions, Sort — cut off entirely.
-		 */
+		* `minmax(0, 1fr)`, for the same reason the desktop track carries it — a bare `1fr` floors at its
+		* own min-content, and with no lane left to absorb the shortfall the track simply grows past this
+		* frame's `overflow: clip` and the excess is destroyed. Measured at 390px on a five-tab stage
+		* channel: a 473.7px track in a 390px box, `document.scrollWidth` still 390 (so no scrollbar
+		* offers it back) and three controls — Stage details, More actions, Sort — cut off entirely.
+		*/
 		grid-template-columns: minmax(0, 1fr);
 	}
 
@@ -198,12 +214,12 @@
 	}
 
 	/*
-	 * The footer band pins to `inset-block-end: 0`, which on mobile is exactly where the fixed
-	 * `.ui-bottom-nav` already sits — measured at 390px, the two occupied the identical 390×56 rect,
-	 * so a footer action and a nav destination shared every pixel. Lift the band clear of the bottom
-	 * nav (and the home indicator beneath it); `.ui-page-canvas__body` already reserves the same
-	 * offset for the scrolling content, so this only aligns the pinned band with that reservation.
-	 */
+	* The footer band pins to `inset-block-end: 0`, which on mobile is exactly where the fixed
+	* `.ui-bottom-nav` already sits — measured at 390px, the two occupied the identical 390×56 rect,
+	* so a footer action and a nav destination shared every pixel. Lift the band clear of the bottom
+	* nav (and the home indicator beneath it); `.ui-page-canvas__body` already reserves the same
+	* offset for the scrolling content, so this only aligns the pinned band with that reservation.
+	*/
 	.ui-middle-nav__footer {
 		inset-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
 	}

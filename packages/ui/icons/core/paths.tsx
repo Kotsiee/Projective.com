@@ -21,7 +21,9 @@ import type { VNode } from "preact";
 // #region Navigation & structure
 const NAVIGATION = {
 	/** Explore / discovery — a compass. */
-	"explore": () => <path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM15 9l-1.8 4.2L9 15l1.8-4.2z" />,
+	"explore": () => (
+		<path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM15 9l-1.8 4.2L9 15l1.8-4.2z" />
+	),
 	/**
 	 * Projects — a briefcase. THE single Projects mark: the desktop rail and the mobile bottom nav
 	 * were shipping two different glyphs (a briefcase and an architectural arch) for the same
@@ -178,6 +180,17 @@ const CONTROLS = {
 	),
 	/** List density — the table view. */
 	"list": () => <path d="M4 6.5h16M4 12h16M4 17.5h16" />,
+	/**
+	 * Show or hide a companion panel on the trailing edge. The frame is the surface and the divided
+	 * column is the panel, so the glyph states WHERE the thing appears rather than merely that
+	 * something toggles — which a chevron cannot.
+	 */
+	"panel-right": () => (
+		<>
+			<rect x="3.5" y="4.5" width="17" height="15" rx="2.4" />
+			<path d="M14.5 4.5v15" />
+		</>
+	),
 	/** Sort, no direction chosen. Replaces the typed `⇅`. */
 	"sort": () => <path d="M8 4v16M8 4L5 7.5M8 4l3 3.5M16 20V4M16 20l-3-3.5M16 20l3-3.5" />,
 	"sort-asc": () => <path d="M12 20V5M12 5L6.5 10.5M12 5l5.5 5.5" />,
@@ -202,7 +215,9 @@ const CONTROLS = {
 			<path d="M15.5 8.5v-2a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
 		</>
 	),
-	"external-link": () => <path d="M14 4.5h5.5V10M19.5 4.5L11 13M17 14v4.2a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 18.2V8.8A1.8 1.8 0 0 1 5.8 7H10" />,
+	"external-link": () => (
+		<path d="M14 4.5h5.5V10M19.5 4.5L11 13M17 14v4.2a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 18.2V8.8A1.8 1.8 0 0 1 5.8 7H10" />
+	),
 	/** Copy link — two chain links. */
 	"link": () => (
 		<>
@@ -224,7 +239,9 @@ const CONTROLS = {
 	/** Switch context — two paths trading places. */
 	"switch": () => <path d="M4 8.5h13M13.5 5l3.5 3.5-3.5 3.5M20 15.5H7M10.5 12L7 15.5l3.5 3.5" />,
 	/** Sign out. */
-	"logout": () => <path d="M15 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2.5M10.5 12H21M17.5 8.5L21 12l-3.5 3.5" />,
+	"logout": () => (
+		<path d="M15 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2.5M10.5 12H21M17.5 8.5L21 12l-3.5 3.5" />
+	),
 } as const;
 // #endregion
 
@@ -287,8 +304,21 @@ const STATE = {
 			<path d="M12 7.5V12l3 2" />
 		</>
 	),
+	/**
+	 * What has already happened — a clock face with the counter-clockwise arrow that distinguishes an
+	 * ARCHIVE from a plain `clock` (a time) or `refresh` (a repeat).
+	 */
+	"history": () => (
+		<>
+			<path d="M3.6 12a8.4 8.4 0 1 0 2.5-6" />
+			<path d="M3.2 3.6v4.2h4.2" />
+			<path d="M12 7.8V12l2.9 1.8" />
+		</>
+	),
 	/** Time running out — an hourglass. */
-	"hourglass": () => <path d="M7 4h10M7 20h10M7.5 4c0 4 4.5 5.2 4.5 8s-4.5 4-4.5 8M16.5 4c0 4-4.5 5.2-4.5 8s4.5 4 4.5 8" />,
+	"hourglass": () => (
+		<path d="M7 4h10M7 20h10M7.5 4c0 4 4.5 5.2 4.5 8s-4.5 4-4.5 8M16.5 4c0 4-4.5 5.2-4.5 8s4.5 4 4.5 8" />
+	),
 	"eye": () => (
 		<>
 			<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
@@ -315,7 +345,9 @@ const STATE = {
 		</>
 	),
 	/** Favourite / rate. `data-filled` gives the solid state — never a second component. */
-	"star": () => <path d="M12 3.8l2.65 5.37 5.93.86-4.29 4.18 1.01 5.9L12 17.32l-5.3 2.79 1.01-5.9-4.29-4.18 5.93-.86z" />,
+	"star": () => (
+		<path d="M12 3.8l2.65 5.37 5.93.86-4.29 4.18 1.01 5.9L12 17.32l-5.3 2.79 1.01-5.9-4.29-4.18 5.93-.86z" />
+	),
 	/** Verified — a tick inside a scalloped seal. */
 	"verified": () => (
 		<>
@@ -417,7 +449,9 @@ const OBJECTS = {
 			<path d="M8.5 8h7M8.5 12h7M8.5 16h4" />
 		</>
 	),
-	"folder": () => <path d="M3.5 7.5a2 2 0 0 1 2-2h3.3l2 2.5h7.7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />,
+	"folder": () => (
+		<path d="M3.5 7.5a2 2 0 0 1 2-2h3.3l2 2.5h7.7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+	),
 	/** An attachment — a paperclip. */
 	"attachment": () => <path d="M8 12.5l6.5-6.5a3 3 0 0 1 4.2 4.2l-8 8a5 5 0 0 1-7-7l7.5-7.5" />,
 	/** A submission — an outbox tray with an up arrow. */

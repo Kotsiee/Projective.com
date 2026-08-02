@@ -47,3 +47,90 @@
 		transform: none;
 	}
 }
+
+/* #region Drop indicator — the landing seam
+   The rule scales from its leading edge so the line reads as being DRAWN toward the insertion point
+   rather than fading in place; the knob marks that leading edge. Both live inside a zero-height flow
+   box by default (the list's own gap carries them), so revealing one never reflows the rows. */
+.ui-drop-indicator {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: none;
+	block-size: 0;
+	inline-size: 100%;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.ui-drop-indicator[data-orientation="horizontal"] {
+	flex-direction: column;
+	block-size: auto;
+	inline-size: 0;
+	align-self: stretch;
+}
+
+.ui-drop-indicator[data-reserved="true"] {
+	block-size: var(--space-2);
+}
+
+.ui-drop-indicator[data-orientation="horizontal"][data-reserved="true"] {
+	block-size: auto;
+	inline-size: var(--space-2);
+}
+
+.ui-drop-indicator__knob {
+	flex: none;
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	opacity: 0;
+	transform: scale(0.4);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+
+.ui-drop-indicator__rule {
+	flex: 1 1 auto;
+	block-size: 2px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	opacity: 0;
+	transform: scaleX(0);
+	transform-origin: inline-start center;
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-medium) var(--ease-emphasized);
+}
+
+.ui-drop-indicator[data-orientation="horizontal"] .ui-drop-indicator__rule {
+	block-size: auto;
+	inline-size: 2px;
+	transform: scaleY(0);
+	transform-origin: center block-start;
+}
+
+.ui-drop-indicator[data-active="true"] .ui-drop-indicator__knob {
+	opacity: 1;
+	transform: none;
+}
+
+.ui-drop-indicator[data-active="true"] .ui-drop-indicator__rule {
+	opacity: 1;
+	transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-drop-indicator__knob,
+	.ui-drop-indicator__rule {
+		transition: none;
+	}
+
+	.ui-drop-indicator[data-active="true"] .ui-drop-indicator__knob,
+	.ui-drop-indicator[data-active="true"] .ui-drop-indicator__rule {
+		transform: none;
+	}
+}
+/* #endregion */

@@ -1,8 +1,10 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
-import type { BoardCard } from "../types/projects-types.ts";
+import { Icon } from "@projective/ui/icons";
+import { type BoardCard, TICKET_INTENSITY_LABEL } from "../types/projects-types.ts";
 import { priorityLabel, priorityTone } from "../core/board-model.ts";
+import { isOverdue } from "../core/ticket-model.ts";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
 import { ChecklistIcon, CommentIcon, PaperclipIcon, PriorityFlagIcon } from "./board-glyphs.tsx";
 
@@ -20,6 +22,7 @@ export interface TicketCardProps {
 
 export function TicketCard({ card, onOpen }: TicketCardProps): JSX.Element {
 	const showPriority = card.priority === "high" || card.priority === "urgent";
+	const overdue = isOverdue(card.dueDate) && card.status !== "completed";
 	return (
 		<div
 			class="tkt"
@@ -56,16 +59,46 @@ export function TicketCard({ card, onOpen }: TicketCardProps): JSX.Element {
 				{card.activity ? <StageStatusIcon activity={card.activity} /> : null}
 			</div>
 
-			{card.tags.length > 0
-				? (
-					<ul class="tkt__tags" aria-label="Tags">
-						{card.tags.map((t) => <li key={t} class="tkt__tag">{t}</li>)}
-					</ul>
-				)
-				: null}
-
 			<div class="tkt__foot">
 				<div class="tkt__meta">
+					{card.dueLabel
+						? (
+							<Tooltip
+								content={overdue ? `Overdue — was due ${card.dueLabel}` : `Due ${card.dueLabel}`}
+							>
+								<span
+									class="tkt__m"
+									data-overdue={overdue || undefined}
+									tabIndex={0}
+									aria-label={overdue
+										? `Overdue, was due ${card.dueLabel}`
+										: `Due ${card.dueLabel}`}
+								>
+									<Icon name="calendar" size="2xs" />
+									{card.dueLabel}
+								</span>
+							</Tooltip>
+						)
+						: null}
+					{card.intensity !== "standard"
+						? (
+							<Tooltip
+								content={`${
+									TICKET_INTENSITY_LABEL[card.intensity]
+								} intensity — ${card.workload} units of capacity`}
+							>
+								<span
+									class="tkt__m"
+									data-level={card.intensity}
+									tabIndex={0}
+									aria-label={`${TICKET_INTENSITY_LABEL[card.intensity]} workload intensity`}
+								>
+									<Icon name="analytics" size="2xs" />
+									{TICKET_INTENSITY_LABEL[card.intensity]}
+								</span>
+							</Tooltip>
+						)
+						: null}
 					{card.checklistTotal > 0
 						? (
 							<span

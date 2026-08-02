@@ -8,12 +8,18 @@ import { drawWaveform, formatClock } from "../core/audio.ts";
 // #region Icons (package-local — no app glyph imports)
 const PlayGlyph = (
 	<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false">
-		<path d="M8 5.5v13a1 1 0 0 0 1.53.85l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5Z" fill="currentColor" />
+		<path
+			d="M8 5.5v13a1 1 0 0 0 1.53.85l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5Z"
+			fill="currentColor"
+		/>
 	</svg>
 );
 const PauseGlyph = (
 	<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false">
-		<path d="M7 5a1 1 0 0 1 1 1v12a1 1 0 0 1-2 0V6a1 1 0 0 1 1-1Zm10 0a1 1 0 0 1 1 1v12a1 1 0 0 1-2 0V6a1 1 0 0 1 1-1Z" fill="currentColor" />
+		<path
+			d="M7 5a1 1 0 0 1 1 1v12a1 1 0 0 1-2 0V6a1 1 0 0 1 1-1Zm10 0a1 1 0 0 1 1 1v12a1 1 0 0 1-2 0V6a1 1 0 0 1 1-1Z"
+			fill="currentColor"
+		/>
 	</svg>
 );
 // #endregion

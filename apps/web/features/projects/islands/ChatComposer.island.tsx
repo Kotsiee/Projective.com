@@ -2,12 +2,15 @@ import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/chat-composer.css";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Message, Popover, Tooltip } from "@projective/ui/feedback";
 import { CloseIcon, PlusIcon, TrashIcon } from "../components/glyphs.tsx";
 import {
 	FileTypeGlyph,
 	LibraryIcon,
 	MicIcon,
+	MicOffIcon,
+	PauseIcon,
+	ResumeIcon,
 	SendIcon,
 	StopIcon,
 	UploadIcon,
@@ -16,15 +19,27 @@ import {
 	extOf,
 	fileKindOf,
 	formatBytes,
+	formatClock,
 	formatDuration,
+	isVoiceOversize,
 	makeId,
 	MAX_ATTACHMENTS,
+	MAX_AUDIO_PEAKS,
 	PASTE_COLLAPSE_CHARS,
+	resamplePeaks,
+	voiceFileNameFor,
 } from "../core/composer-model.ts";
 import { useAutoResize } from "../hooks/useAutoResize.ts";
 import { useAudioRecorder } from "../hooks/useAudioRecorder.ts";
 import { useWaveform } from "../hooks/useWaveform.ts";
-import type { DraftAttachment, PastedBlock } from "../types/composer-types.ts";
+import type {
+	ComposerPayload,
+	DraftAttachment,
+	PastedBlock,
+	RecorderError,
+	RecorderPhase,
+	VoicePayload,
+} from "../types/composer-types.ts";
 
 /**
  * ChatComposer — the floating message input bar for a channel's Chat tab
@@ -33,16 +48,23 @@ import type { DraftAttachment, PastedBlock } from "../types/composer-types.ts";
  * fixed panel — the glass-blur / fixed-overlay trap, root CLAUDE.md §8/§9) and carries:
  *
  *   - an auto-growing textarea (to a 200px ceiling, then internal scroll);
- *   - a dynamic right control — Mic when empty, Send once there's a draft, Stop while recording;
+ *   - a dynamic right control — Mic when empty, Send once there's a draft, Pause + Stop while capturing;
  *   - a voice engine ({@link useAudioRecorder}) with click-to-toggle, hold-to-talk, and `Ctrl+Space`,
- *     a live scrolling waveform, and static equal-width bars once stopped (5-minute cap);
+ *     a live scrolling waveform, a `mm:ss` clock, pause/resume, and static equal-width bars once
+ *     stopped (5-minute / 10 MB caps);
  *   - a left Plus popover (Upload from Device · Attach from Library — the library modal is stubbed),
  *     drag-and-drop, and up to 10 attachment preview cards;
  *   - long pastes (≥1000 chars) collapsed into a document chip instead of stretching the input.
  *
- * THIN: send is optimistic/stubbed — persistence lands with the live messaging backend behind
- * `PROJECTS_BACKEND_LIVE`, matching the rest of the projects feature. Text and voice drafts are
- * mutually exclusive by construction (the textarea is replaced by the waveform while a memo exists).
+ * Capture failures surface **inline, in the composer itself** rather than as a corner toast: the
+ * control that failed is right here, and a blocked microphone needs instructions the viewer can read
+ * while looking at the button they just pressed.
+ *
+ * THIN: send assembles a real {@link ComposerPayload} — the voice memo becomes an actual `File` with
+ * its envelope already resampled to the persisted cap — and hands it to the host; persistence lands
+ * with the live messaging backend behind `PROJECTS_BACKEND_LIVE`, matching the rest of the projects
+ * feature. Text and voice drafts are mutually exclusive by construction (the textarea is replaced by
+ * the waveform while a memo exists).
  */
 
 /** An imperative handle an external drop zone (e.g. the pop-out popover) uses to enqueue files. */
@@ -63,17 +85,44 @@ export interface ChatComposerProps {
 	 */
 	onReady?: (api: ComposerHandle) => void;
 	/**
-	 * Fired when the viewer sends (before the draft is cleared). The profile quick-message popover (task
-	 * §3) uses it to create the conversation record + navigate into `/messages/[conversationId]` on the
-	 * FIRST message. Unused by the in-frame composer (its send is optimistic/stubbed).
+	 * Fired when the viewer sends, with the assembled outgoing draft, before it is cleared. The profile
+	 * quick-message popover (task §3) uses it to create the conversation record + navigate into
+	 * `/messages/[conversationId]` on the FIRST message; the eventual upload pipeline consumes the same
+	 * payload. Hosts that only care *that* a send happened may ignore the argument.
 	 */
-	onSend?: () => void;
+	onSend?: (payload: ComposerPayload) => void;
 }
 
 /** The primary site sidebar the Plus popover must never slide under (edge-detection). */
 const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 /** A press held at least this long is a hold-to-talk gesture; shorter is a click-to-latch. */
 const HOLD_THRESHOLD_MS = 350;
+
+/** Failures about microphone *access* rather than the take itself — these carry the struck-mic mark. */
+const PERMISSION_KINDS: ReadonlySet<RecorderError["kind"]> = new Set([
+	"blocked",
+	"denied",
+	"unsupported",
+	"no_device",
+	"in_use",
+	"device_lost",
+]);
+
+/** The one sentence announced on each capture phase transition (see the `role="status"` line). */
+function voiceStatus(phase: RecorderPhase, durationMs: number): string {
+	switch (phase) {
+		case "requesting":
+			return "Connecting to your microphone.";
+		case "recording":
+			return "Recording.";
+		case "paused":
+			return "Recording paused.";
+		case "recorded":
+			return `Recording ready, ${formatDuration(durationMs)}. Send or discard it.`;
+		default:
+			return "";
+	}
+}
 
 export default function ChatComposer(
 	{ projectId, channelId, onReady, onSend }: ChatComposerProps,
@@ -99,11 +148,16 @@ export default function ChatComposer(
 
 	// #region Derived
 	const phase = rec.phase.value;
-	const hasVoice = phase === "requesting" || phase === "recording" || phase === "recorded";
+	const memo = rec.draft.value;
+	const capturing = phase === "recording" || phase === "paused";
+	const hasVoice = phase === "requesting" || capturing || phase === "recorded";
 	const hasText = text.value.trim().length > 0;
 	const hasContent = hasText || attachments.value.length > 0 || pasted.value.length > 0;
-	const canSend = phase === "recorded" || (!hasVoice && hasContent);
+	// An oversize memo stays playable but may not be sent — the same ceiling the hook reports on.
+	const oversize = isVoiceOversize(memo);
+	const canSend = phase === "recorded" ? !oversize : (!hasVoice && hasContent);
 	const atCapacity = attachments.value.length >= MAX_ATTACHMENTS;
+	const micBlocked = rec.permission.value === "denied" || rec.permission.value === "unsupported";
 	// #endregion
 
 	// #region Attachments + paste
@@ -198,7 +252,11 @@ export default function ChatComposer(
 		if (rec.phase.value !== "inactive" || hasText) return;
 		holdingRef.current = true;
 		pressAtRef.current = performance.now();
-		event.currentTarget.setPointerCapture?.(event.pointerId);
+		try {
+			// Capture keeps a drag off the button still counting as a hold. It throws if the pointer is
+			// already gone — which must not cost the viewer the recording they just asked for.
+			event.currentTarget.setPointerCapture?.(event.pointerId);
+		} catch { /* pointer released before the handler ran — carry on */ }
 		void rec.start();
 	}
 	function onMicPointerUp(): void {
@@ -231,13 +289,44 @@ export default function ChatComposer(
 		setTimeout(() => auto.resize(), 0);
 	}
 
+	/**
+	 * Assemble the outgoing draft. The memo becomes a real {@link File} named for the container the UA
+	 * actually produced, and its envelope is resampled here — once, at the boundary — to the persisted
+	 * `MessageAudio.peaks` cap, so nothing downstream repeats the maths.
+	 */
+	function buildPayload(): ComposerPayload {
+		let voice: VoicePayload | null = null;
+		if (memo) {
+			const file = new File([memo.blob], voiceFileNameFor(memo.mimeType, new Date()), {
+				type: memo.mimeType,
+				lastModified: Date.now(),
+			});
+			voice = {
+				file,
+				durationMs: memo.durationMs,
+				durationLabel: formatDuration(memo.durationMs),
+				peaks: resamplePeaks(memo.peaks, Math.min(MAX_AUDIO_PEAKS, Math.max(1, memo.peaks.length))),
+			};
+		}
+		// Collapsed pastes were only ever collapsed for display — they rejoin the body on the way out.
+		const body = [text.value.trim(), ...pasted.value.map((p) => p.text)].filter(Boolean).join(
+			"\n\n",
+		);
+		return {
+			projectId,
+			channelId,
+			text: body,
+			files: attachments.value.map((a) => a.file),
+			voice,
+		};
+	}
+
 	function send(): void {
 		if (!canSend) return;
-		// Optimistic/stubbed — the outgoing payload (text + pasted blocks + attachments, or the voice
-		// memo) is assembled here and dispatched once the messaging backend lands behind
-		// `PROJECTS_BACKEND_LIVE`. For now the draft is simply cleared. `onSend` lets a host (the profile
+		// Optimistic/stubbed transport — the payload below is real and complete; only its dispatch waits
+		// on the messaging backend behind `PROJECTS_BACKEND_LIVE`. `onSend` lets a host (the profile
 		// quick-message popover) react to the first send (create + link the conversation).
-		onSend?.();
+		onSend?.(buildPayload());
 		resetDraft();
 	}
 
@@ -273,8 +362,9 @@ export default function ChatComposer(
 		};
 	}, []);
 
+	// The recorder releases its own stream/graph on unmount and `pagehide` (see `useAudioRecorder`);
+	// this only has to clean up the attachment previews the island itself minted.
 	useEffect(() => () => {
-		rec.dispose();
 		for (const a of attachments.value) {
 			if (a.previewUrl) {
 				try {
@@ -306,7 +396,7 @@ export default function ChatComposer(
 	}
 	// #endregion
 
-	const memo = rec.draft.value;
+	const err = rec.error.value;
 
 	return (
 		<div
@@ -458,13 +548,26 @@ export default function ChatComposer(
 						{hasVoice
 							? (
 								<div class="chat-composer__voice" data-phase={phase}>
-									<canvas ref={canvasRef} class="chat-composer__wave" data-phase={phase} />
+									{phase === "requesting" && (
+										<span class="chat-composer__connecting">Connecting to your microphone…</span>
+									)}
+									<canvas
+										ref={canvasRef}
+										class="chat-composer__wave"
+										data-phase={phase}
+										aria-hidden="true"
+									/>
+									{
+										/* Readable on demand, but never a live region — a clock announcing itself five
+									    times a second would bury every other message. Transitions are announced by
+									    the status line below instead. */
+									}
 									<span class="chat-composer__timer">
-										{formatDuration(
+										{formatClock(
 											phase === "recorded" && memo ? memo.durationMs : rec.elapsedMs.value,
 										)}
 										{phase !== "recorded" && (
-											<span class="chat-composer__timer-max">/ {formatDuration(rec.maxMs)}</span>
+											<span class="chat-composer__timer-max">/ {formatClock(rec.maxMs)}</span>
 										)}
 									</span>
 								</div>
@@ -486,27 +589,65 @@ export default function ChatComposer(
 							)}
 					</div>
 
-					{/* Right control — Stop while recording, Send when there's a draft, else Mic. */}
-					{phase === "recording" || phase === "requesting"
+					{
+						/* Right controls — Pause/Resume + Stop while capturing, Send when there's a draft,
+					    else Mic. Pause sits between Cancel and the primary control, so the three recording
+					    actions read left-to-right in the order they are reached. */
+					}
+					{phase === "requesting"
 						? (
-							<Tooltip content="Stop recording" placement="top">
+							<Tooltip content="Cancel" placement="top">
 								<button
 									type="button"
 									class="chat-composer__btn chat-composer__btn--stop"
-									aria-label="Stop recording"
-									onClick={() => (phase === "recording" ? rec.stop() : rec.discard())}
+									data-paused="true"
+									aria-label="Cancel recording"
+									onClick={() => rec.discard()}
 								>
 									{StopIcon}
 								</button>
 							</Tooltip>
 						)
-						: canSend
+						: capturing
 						? (
-							<Tooltip content="Send" placement="top">
+							<>
+								<Tooltip
+									content={phase === "paused" ? "Resume recording" : "Pause recording"}
+									placement="top"
+								>
+									<button
+										type="button"
+										class="chat-composer__btn chat-composer__btn--pause"
+										aria-label={phase === "paused" ? "Resume recording" : "Pause recording"}
+										onClick={() => (phase === "paused" ? rec.resume() : rec.pause())}
+									>
+										{phase === "paused" ? ResumeIcon : PauseIcon}
+									</button>
+								</Tooltip>
+								<Tooltip content="Stop recording" placement="top">
+									<button
+										type="button"
+										class="chat-composer__btn chat-composer__btn--stop"
+										data-paused={phase === "paused" ? "true" : undefined}
+										aria-label="Stop recording"
+										onClick={() => rec.stop()}
+									>
+										{StopIcon}
+									</button>
+								</Tooltip>
+							</>
+						)
+						: phase === "recorded" || canSend
+						? (
+							// A finished memo always shows Send, disabled when it is too large to upload.
+							// Falling back to the Mic here would leave an enabled control that does nothing —
+							// the press guard rejects a `recorded` phase — and hide the only correct action.
+							<Tooltip content={oversize ? "Too large to send" : "Send"} placement="top">
 								<button
 									type="button"
 									class="chat-composer__btn chat-composer__btn--send"
-									aria-label="Send message"
+									aria-label={oversize ? "Send message — recording too large" : "Send message"}
+									disabled={!canSend}
 									onClick={send}
 								>
 									{SendIcon}
@@ -514,23 +655,60 @@ export default function ChatComposer(
 							</Tooltip>
 						)
 						: (
-							<Tooltip content="Hold to talk · click to record · Ctrl+Space" placement="top">
+							<Tooltip
+								content={micBlocked
+									? "Microphone unavailable"
+									: "Hold to talk · click to record · Ctrl+Space"}
+								placement="top"
+							>
 								<button
 									type="button"
 									class="chat-composer__btn chat-composer__btn--mic"
-									aria-label="Record a voice message"
+									data-blocked={micBlocked ? "true" : undefined}
+									aria-label={micBlocked
+										? "Microphone unavailable — why?"
+										: "Record a voice message"}
 									onPointerDown={onMicPointerDown}
 									onPointerUp={onMicPointerUp}
 									onPointerCancel={onMicPointerCancel}
 									onPointerLeave={onMicPointerUp}
 								>
-									{MicIcon}
+									{micBlocked ? MicOffIcon : MicIcon}
 								</button>
 							</Tooltip>
 						)}
 				</div>
 
-				{rec.error.value && <p class="chat-composer__error" role="alert">{rec.error.value}</p>}
+				{
+					/* Capture failures, inline beside the control that produced them. Recovery steps appear
+				    only for a persisted block, where pressing the mic again would do nothing at all. */
+				}
+				{err && (
+					<div class="chat-composer__notice">
+						<Message
+							severity={err.kind === "too_large" || err.kind === "failed" ? "danger" : "warning"}
+							variant="subtle"
+							size="sm"
+							icon={PERMISSION_KINDS.has(err.kind) ? MicOffIcon : undefined}
+							closable
+							onClose={() => rec.clearError()}
+						>
+							<span class="chat-composer__notice-body">
+								<span class="chat-composer__notice-title">{err.title}</span>
+								{err.detail && <span class="chat-composer__notice-detail">{err.detail}</span>}
+								{err.help && <span class="chat-composer__notice-help">{err.help}</span>}
+							</span>
+						</Message>
+					</div>
+				)}
+
+				{
+					/* Phase transitions announced once each, so a non-sighted viewer knows capture began,
+				    paused, and ended without the clock talking over everything. */
+				}
+				<p class="chat-composer__sr" role="status" aria-live="polite">
+					{voiceStatus(phase, memo?.durationMs ?? 0)}
+				</p>
 			</div>
 
 			{/* Hidden device file picker. */}

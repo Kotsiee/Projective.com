@@ -101,6 +101,18 @@
 	color: var(--text-secondary);
 }
 
+/* The one case where the rig explains itself instead of going quiet: this engagement has no tickets
+   to create, which absence alone would read as a missing control. */
+.brd-rig__note {
+	margin: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 @media (max-width: 768px) {
 	.brd-rig__action span {
 		display: none;

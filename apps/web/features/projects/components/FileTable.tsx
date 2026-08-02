@@ -31,6 +31,15 @@ export interface FileTableProps {
 	onOpen: (file: FileItem) => void;
 	onReachEnd?: () => void;
 	loading?: boolean;
+	/**
+	 * Whether rows window-virtualize. Default on — the explorer's corpus is unbounded.
+	 *
+	 * Turn it OFF inside an overlay. This list virtualizes against the WINDOW, but a dialog's scroll
+	 * container is its own body, so the measurement would be of a box the rows are not in and the
+	 * window would report a viewport the list does not occupy. A ticket's attachments are a bounded
+	 * handful, so they simply all render — the same reasoning the ticket's Submissions tab follows.
+	 */
+	virtualize?: boolean;
 }
 
 interface ColumnDef {
@@ -61,7 +70,7 @@ function loadWidths(): Record<string, number> {
 }
 
 export function FileTable(props: FileTableProps): JSX.Element {
-	const { items, sortKey, sortDir, onSort, onOpen, onReachEnd, loading } = props;
+	const { items, sortKey, sortDir, onSort, onOpen, onReachEnd, loading, virtualize = true } = props;
 
 	const widths = useSignal<Record<string, number>>({
 		sender: COLUMNS[1].defaultWidth,
@@ -77,7 +86,9 @@ export function FileTable(props: FileTableProps): JSX.Element {
 	const showThumb = listShowsThumbnails(zoom.value);
 
 	const vs = useVirtualScroll({
-		count: items.length,
+		// Held at zero when the caller opted out, so the hook does no measuring it would only get
+		// wrong. Hooks cannot be conditional; the work they do can be.
+		count: virtualize ? items.length : 0,
 		itemSize: rowH,
 		useWindow: true,
 		parentRef: viewportRef,
@@ -85,6 +96,13 @@ export function FileTable(props: FileTableProps): JSX.Element {
 		onReachEnd,
 		getItemKey: (i) => items[i]?.id ?? i,
 	});
+
+	// Rows keep their absolute placement in both modes, so the two presentations are the same markup
+	// at the same metrics — only how many of them exist differs.
+	const rows = virtualize
+		? vs.virtualItems
+		: items.map((_, index) => ({ index, start: index * rowH }));
+	const totalSize = virtualize ? vs.totalSize : items.length * rowH;
 
 	const gridTemplate =
 		`minmax(200px, 1fr) ${widths.value.sender}px ${widths.value.date}px ${widths.value.size}px`;
@@ -180,8 +198,8 @@ export function FileTable(props: FileTableProps): JSX.Element {
 					/* The sizer is presentational so the virtualization spacer never severs the
 				    rowgroup → row ownership chain in the accessibility tree. */
 				}
-				<div class="fx-table__sizer" role="presentation" style={`height:${vs.totalSize}px`}>
-					{vs.virtualItems.map((vi) => {
+				<div class="fx-table__sizer" role="presentation" style={`height:${totalSize}px`}>
+					{rows.map((vi) => {
 						const file = items[vi.index];
 						if (!file) return null;
 						const thumb = showThumb && file.thumbnailUrl &&

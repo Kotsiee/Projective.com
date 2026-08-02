@@ -375,7 +375,8 @@
 	box-shadow: var(--elevation-medium, var(--elevation-low));
 }
 .mem-card[data-viewer="true"] {
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) var(--tint-heavy), transparent), var(--elevation-low);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) var(--tint-heavy), transparent),
+		var(--elevation-low);
 }
 .mem-card__head {
 	display: grid;

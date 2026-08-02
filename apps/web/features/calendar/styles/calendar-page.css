@@ -5,26 +5,43 @@
  */
 
 /* #region Surface height */
+/*
+ * In-app calendars (project scope, channel scope, and the `/[handle]/availability` full page) FILL the
+ * content region they are handed — down the `.ui-page-canvas__body` flex column —
+ * rather than each computing `100dvh` minus a guess at the chrome stacked above them. Those guesses
+ * were three separate near-misses of the same number: the base and `--full` rules subtracted a
+ * `--space-4` that nothing reserved (leaving a 16px dead strip under the grid), `--channel` subtracted
+ * `--shell-midnav-header-h` for a band whose height is set by whatever header the route mounts, and no
+ * variant could account for a footer band at all. The shell's grid row already carries the exact
+ * remainder, so the surface consumes it instead of predicting it — and it now tracks a band appearing
+ * or disappearing with no rule to update.
+ *
+ * The basis must be `0`, not `auto` — the same rule the Kanban board follows, for the same reason. The
+ * middle-nav frame is content-sized so the WINDOW can scroll a long body, so an `auto` basis would let
+ * the time grid's natural height bid the `1fr` content row larger and the frame would grow to honour
+ * it. A `0` basis contributes nothing intrinsically, so the row is sized by what is LEFT and the
+ * calendar expands into exactly that.
+ *
+ * `min-block-size: 0` (not the old `24rem` floor) is what keeps a short viewport honest: a floor taller
+ * than the region is precisely how a fixed-height surface pushes a document scrollbar onto a page that
+ * is supposed to fit. The time grid owns its own internal scroll, so a short region degrades by showing
+ * fewer hours, never by growing the page.
+ */
 .cal-surface {
 	display: flex;
-	min-block-size: 24rem;
-	/* Dashboard project calendar: fill the viewport below the top bar (app-like, internal scroll). */
-	block-size: calc(100dvh - var(--shell-topbar-h) - var(--space-4));
+	flex: 1 1 0;
+	min-block-size: 0;
 	overflow: hidden;
 }
-/* Channel calendar sits below the sticky channel header band too. */
-.cal-surface--channel {
-	block-size: calc(100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--space-4));
-}
-/* Schedule surfaces embed in a scrolling page (public view) — bound + let the page scroll. */
+/*
+ * The one variant that is NOT a filled app region: the public `/view/[entity]/schedule` surface embeds
+ * in an ordinary scrolling marketing page, where there is no region to fill and the page — not the
+ * calendar — owns the scroll. It keeps an explicit bounded height and opts out of the flex fill.
+ */
 .cal-surface--schedule {
+	flex: none;
 	block-size: min(calc(100dvh - 9rem), 46rem);
 	min-block-size: 30rem;
-}
-/* The `/[handle]/availability` full-page surface — fill the whole content region under the top bar. */
-.cal-surface--full {
-	block-size: calc(100dvh - var(--shell-topbar-h) - var(--space-4));
-	min-block-size: 0;
 }
 .cal-surface--empty {
 	align-items: center;
@@ -35,11 +52,9 @@
 	font-size: 0.9rem;
 }
 @media (max-width: 768px) {
-	.cal-surface {
-		block-size: calc(100dvh - var(--shell-topbar-h) - var(--shell-bottomnav-h));
-	}
 	.cal-surface--schedule {
 		block-size: min(calc(100dvh - 8rem), 40rem);
+		min-block-size: 0;
 	}
 }
 /* #endregion */

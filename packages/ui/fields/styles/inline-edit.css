@@ -1,0 +1,105 @@
+/*
+ * InlineEdit — text that becomes its own input in place.
+ *
+ * The contract: `.ui-inline-edit__value` and `.ui-inline-edit__input` must resolve to the SAME box.
+ * Both inherit font, weight, size, line-height and colour from the host, both carry the same
+ * padding and the same negative inline offset, so swapping one for the other moves no glyph. Every
+ * value below is shared through `--ui-ie-*` for exactly that reason — a rule that sets only one
+ * side is how this drifts back into a jump.
+ */
+:root {
+	--ui-ie-px: var(--space-1);
+	--ui-ie-py: 2px;
+	--ui-ie-radius: var(--radius-sm);
+}
+
+.ui-inline-edit {
+	display: inline-flex;
+	align-items: flex-start;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	margin-inline-start: calc(var(--ui-ie-px) * -1);
+	padding: var(--ui-ie-py) var(--ui-ie-px);
+	border: none;
+	border-radius: var(--ui-ie-radius);
+	background: transparent;
+	font: inherit;
+	color: inherit;
+	text-align: start;
+	cursor: text;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-inline-edit[data-block="true"] {
+	display: flex;
+	inline-size: 100%;
+}
+
+.ui-inline-edit:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.ui-inline-edit:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-inline-edit__value {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+}
+
+.ui-inline-edit__empty {
+	color: var(--fld-placeholder-fg);
+	font-weight: var(--fw-regular);
+}
+
+/* The pencil is a hint, not a control: it rides at the value's cap height and only resolves on
+   approach, so resting text stays text. */
+.ui-inline-edit__mark {
+	flex: none;
+	margin-block-start: 0.25em;
+	color: var(--text-secondary);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-inline-edit:hover .ui-inline-edit__mark,
+.ui-inline-edit:focus-visible .ui-inline-edit__mark {
+	opacity: 1;
+}
+
+.ui-inline-edit__input {
+	display: block;
+	inline-size: 100%;
+	max-inline-size: 100%;
+	margin-inline-start: calc(var(--ui-ie-px) * -1);
+	padding: var(--ui-ie-py) var(--ui-ie-px);
+	border: var(--fld-bw) solid var(--fld-focus-bd);
+	border-radius: var(--ui-ie-radius);
+	background: var(--surface);
+	font: inherit;
+	color: var(--on-surface);
+	resize: none;
+	overflow: hidden;
+}
+
+.ui-inline-edit__input:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-inline-edit__input::placeholder {
+	color: var(--fld-placeholder-fg);
+	font-weight: var(--fw-regular);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-inline-edit,
+	.ui-inline-edit__mark {
+		transition: none;
+	}
+}

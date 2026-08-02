@@ -29,8 +29,8 @@
 	z-index: 0;
 	pointer-events: none;
 	/* background: linear-gradient(to bottom,
-	        transparent 0%,
-	        var(--frame-surface, var(--surface)) 100%);
+	     transparent 0%,
+	     var(--frame-surface, var(--surface)) 100%);
 	backdrop-filter: blur(var(--glass-blur));
 	-webkit-backdrop-filter: blur(var(--glass-blur));
 	-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 48%);
@@ -50,7 +50,7 @@
 	gap: var(--space-2);
 	inline-size: 100%;
 	/* The shared chat measure (declared in chat-feed.css) — the composer and the message column are
-	   one column, not two. The literal fallback preserves today's width if the feed sheet is absent. */
+	one column, not two. The literal fallback preserves today's width if the feed sheet is absent. */
 	max-inline-size: var(--chat-measure, 56rem);
 	margin-inline: auto;
 }
@@ -323,9 +323,17 @@
 	background: var(--primary);
 }
 
-.chat-composer__btn--send:hover {
+.chat-composer__btn--send:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--primary) 88%, black);
 	transform: scale(1.04);
+}
+
+/* Unavailable Send (an oversize memo) steps down to a tonal control rather than a washed-out accent —
+   a 0.4-alpha fill on `--primary` is both illegible and still reads as the live primary action. */
+.chat-composer__btn--send:disabled {
+	color: var(--text-secondary);
+	background: var(--surface-2);
+	opacity: 1;
 }
 
 /* Stop — filled danger while recording. */
@@ -337,6 +345,26 @@
 
 .chat-composer__btn--stop:hover {
 	background: color-mix(in srgb, var(--danger) 88%, black);
+}
+
+/* A paused (or not-yet-started) take is not capturing — the pulse would claim otherwise. */
+.chat-composer__btn--stop[data-paused="true"] {
+	animation: none;
+}
+
+/* Pause / Resume — a tonal control between Cancel and Stop, subordinate to both. */
+.chat-composer__btn--pause {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.chat-composer__btn--pause:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), var(--surface-2));
+}
+
+/* An unavailable microphone stays pressable — the press is what explains why. */
+.chat-composer__btn--mic[data-blocked="true"] {
+	color: var(--warning);
 }
 
 @keyframes chat-rec-pulse {
@@ -375,6 +403,17 @@
 }
 
 .chat-composer__wave[data-phase="recorded"] {
+	color: var(--text-secondary);
+}
+
+/* Paused — the take is held, not finished; a dimmed accent says "still yours, not running". */
+.chat-composer__wave[data-phase="paused"] {
+	color: color-mix(in srgb, var(--primary) 55%, var(--text-secondary));
+}
+
+.chat-composer__connecting {
+	flex: none;
+	font-size: 0.78rem;
 	color: var(--text-secondary);
 }
 
@@ -444,12 +483,44 @@
 
 /* #endregion */
 
-/* #region Error + hidden input */
-.chat-composer__error {
-	margin: 0;
-	padding-inline: var(--space-2);
+/* #region Capture notice + hidden input */
+.chat-composer__notice {
+	margin-block-start: var(--space-2);
+}
+
+/* Statement, cause, then recovery — three registers so the eye can stop after the first line. */
+.chat-composer__notice-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.chat-composer__notice-title {
+	font-weight: var(--fw-medium, 500);
+}
+
+.chat-composer__notice-detail,
+.chat-composer__notice-help {
 	font-size: 0.74rem;
-	color: var(--danger);
+	color: var(--text-secondary);
+}
+
+.chat-composer__notice-help {
+	margin-block-start: 0.15rem;
+	color: var(--on-surface);
+}
+
+/* Announced-only status line for the capture phase transitions. */
+.chat-composer__sr {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
 }
 
 .chat-composer__file-input {
@@ -518,6 +589,19 @@
 
 	.chat-composer__btn--stop {
 		animation: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	/* The recording/paused distinction is carried by the pulse and the wave tint, both of which are
+	   lost here — the buttons keep their own borders so the control set stays legible. */
+	.chat-composer__btn--stop,
+	.chat-composer__btn--pause,
+	.chat-composer__btn--send {
+		border: 1px solid currentColor;
 	}
 }
 

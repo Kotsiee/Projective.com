@@ -38,6 +38,32 @@ export const StopIcon = (
 		<rect x="6" y="6" width="12" height="12" rx="3" />
 	</Svg>
 );
+
+/** Two bars — suspend the active recording (the encoder and the stream stay open). */
+export const PauseIcon = (
+	<Svg fill="currentColor" stroke="none">
+		<rect x="7" y="5" width="3.6" height="14" rx="1.4" />
+		<rect x="13.4" y="5" width="3.6" height="14" rx="1.4" />
+	</Svg>
+);
+
+/** Triangle — resume a paused recording. */
+export const ResumeIcon = (
+	<Svg fill="currentColor" stroke="none">
+		<path d="M8 5.4 18 12 8 18.6z" />
+	</Svg>
+);
+
+/** Struck-through microphone — capture is blocked or unavailable. */
+export const MicOffIcon = (
+	<Svg>
+		<path d="M9 9V6a3 3 0 0 1 5.9-.7" />
+		<path d="M15 11.2V9" />
+		<path d="M5 11a7 7 0 0 0 10.3 6.2M19 11a7 7 0 0 1-.6 2.8" />
+		<path d="M12 18v3" />
+		<path d="M4 4l16 16" />
+	</Svg>
+);
 // #endregion
 
 // #region Plus-menu leading icons

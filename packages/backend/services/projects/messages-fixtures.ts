@@ -101,7 +101,12 @@ function participantsOf(detail: ProjectDetail, channelId: string): MessageSender
 	// A DM channel keys off `dm-{handle}` — a 1:1 thread with that single party.
 	const dm = detail.channels.dms.find((d) => d.chatId === channelId);
 	if (dm) {
-		return [{ id: dm.chatId, name: dm.party.name, avatar: dm.party.avatar, handle: dm.party.handle }];
+		return [{
+			id: dm.chatId,
+			name: dm.party.name,
+			avatar: dm.party.avatar,
+			handle: dm.party.handle,
+		}];
 	}
 	// Otherwise a group channel — the non-viewer members are the cast.
 	const cast = detail.members
@@ -154,7 +159,11 @@ const SHOWCASE: Beat[] = [
 		gapMin: 1440,
 	},
 	{ from: { other: 0 }, text: "Morning! Kicking off the concepts stage 🎨", gapMin: 30 },
-	{ from: { other: 0 }, text: "Pulled together a moodboard overnight — sharing the direction below.", gapMin: 2 },
+	{
+		from: { other: 0 },
+		text: "Pulled together a moodboard overnight — sharing the direction below.",
+		gapMin: 2,
+	},
 	{ from: { other: 0 }, images: 3, gapMin: 1 },
 	{ from: "viewer", text: "These are gorgeous. The second palette is 🔥", gapMin: 6 },
 	{ from: "viewer", text: "Could we push the display type a notch bolder though?", gapMin: 1 },
@@ -184,10 +193,21 @@ const SHOWCASE: Beat[] = [
 	},
 	{
 		from: "system",
-		system: { type: "ticket_created", text: "opened a ticket · Export retina assets", target: "tasks", actor: 0 },
+		system: {
+			type: "ticket_created",
+			text: "opened a ticket · Export retina assets",
+			target: "tasks",
+			actor: 0,
+		},
 		gapMin: 5,
 	},
-	{ from: "viewer", text: "Final direction locked ✅ great work everyone.", pinned: true, favorited: true, gapMin: 4 },
+	{
+		from: "viewer",
+		text: "Final direction locked ✅ great work everyone.",
+		pinned: true,
+		favorited: true,
+		gapMin: 4,
+	},
 	{ from: { other: 2 }, text: "🙌", gapMin: 2 },
 	{ from: { other: 0 }, text: "Onwards to design 🚀", gapMin: 1 },
 ];

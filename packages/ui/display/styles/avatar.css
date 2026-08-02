@@ -65,10 +65,19 @@
 .ui-avatar-group > *:not(:first-child) {
 	margin-inline-start: calc(var(--avatar-size, 2.5rem) * -0.3);
 }
+/* The ring is the gap between overlapping faces, so it must be drawn in the colour BEHIND the stack.
+   `--avatar-ring` lets a tinted host override it; unset, it stays the page surface as before. */
 .ui-avatar-group > * {
-	box-shadow: 0 0 0 2px var(--surface);
+	box-shadow: 0 0 0 2px var(--avatar-ring, var(--surface));
 }
 .ui-avatar-group__overflow {
 	font-size: 0.75em;
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+	color: var(--text-secondary);
+}
+
+/* A stack sits inside dense chrome, so it overlaps harder than a standalone group. */
+.ui-avatar-stack > *:not(:first-child) {
+	margin-inline-start: calc(var(--avatar-size, 2.5rem) * -0.36);
 }
 /* #endregion */
