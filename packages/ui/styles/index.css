@@ -10,27 +10,27 @@
  */
 
 :root {
-	/* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
-	--radius-scale: 1;
-	--shadow-intensity: 1;
+    /* --- Global adjustment knobs (DESIGN_SYSTEM.md §A.2) --- */
+    --radius-scale: 1;
+    --shadow-intensity: 1;
 
-	/* --- Radius ramp (§A.3) --- */
-	--radius-xs: calc(4px * var(--radius-scale));
-	--radius-sm: calc(6px * var(--radius-scale));
-	--radius-base: calc(8px * var(--radius-scale));
-	/* `md` is the third step's ALIAS, not a step of its own. The ramp reads xs/sm/base/lg/xl, so an
+    /* --- Radius ramp (§A.3) --- */
+    --radius-xs: calc(4px * var(--radius-scale));
+    --radius-sm: calc(6px * var(--radius-scale));
+    --radius-base: calc(8px * var(--radius-scale));
+    /* `md` is the third step's ALIAS, not a step of its own. The ramp reads xs/sm/base/lg/xl, so an
 	author scanning it reads position three as "md" and writes `var(--radius-md)` — which resolved to
 	nothing and computed `border-radius` back to 0 (square corners) at 11 call sites. The alias closes
 	the naming trap at the contract rather than at each call site. Do NOT give it its own value: it
 	must stay indistinguishable from --radius-base, including under --radius-scale. */
-	--radius-md: var(--radius-base);
-	--radius-lg: calc(12px * var(--radius-scale));
-	--radius-xl: calc(16px * var(--radius-scale));
-	/* Luxury container curvatures — the enlarged end of the ramp for large panel intersections
+    --radius-md: var(--radius-base);
+    --radius-lg: calc(12px * var(--radius-scale));
+    --radius-xl: calc(16px * var(--radius-scale));
+    /* Luxury container curvatures — the enlarged end of the ramp for large panel intersections
 	(page body, nested frames, middle-nav columns). Both still ride --radius-scale. */
-	--radius-2xl: calc(24px * var(--radius-scale));
-	--radius-3xl: calc(32px * var(--radius-scale));
-	/*
+    --radius-2xl: calc(24px * var(--radius-scale));
+    --radius-3xl: calc(32px * var(--radius-scale));
+    /*
 	 * The terminal PILL step. One design decision the repo had been spelling three ways: 148 literal
 	 * pill declarations, 67 references to a `--radius-full` that was never defined (each carrying its
 	 * own literal fallback, which is what kept them working), and 73 `border-radius: 50%`. The first
@@ -44,31 +44,31 @@
 	 * half-sharp result nobody asked the knob for. The pill family and the circle family stay
 	 * together.
 	 */
-	--radius-full: 999px;
+    --radius-full: 999px;
 
-	/* --- Elevation ramp (§A.3) --- */
-	--elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
-	--elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
-	--elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
-	/* The upward-casting counterpart of --elevation-low, for chrome pinned to the BOTTOM edge (the
+    /* --- Elevation ramp (§A.3) --- */
+    --elevation-low: 0 2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
+    --elevation-medium: 0 4px 12px rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity)));
+    --elevation-high: 0 8px 24px rgba(0, 0, 0, calc(0.15 * var(--shadow-intensity)));
+    /* The upward-casting counterpart of --elevation-low, for chrome pinned to the BOTTOM edge (the
 	middle-nav footer band, the mobile bottom nav). Same weight, mirrored offset — a light source does
 	not move when a surface does, so a footer that overlays scrolling content has to cast toward it
 	rather than away. Without this the only honest option at the bottom edge is no shadow at all. */
-	--elevation-low-up: 0 -2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
+    --elevation-low-up: 0 -2px 4px rgba(0, 0, 0, calc(0.05 * var(--shadow-intensity)));
 
-	/* --- Motion (§B.5) --- */
-	--dur-fast: 150ms;
-	--dur-medium: 250ms;
-	--dur-slow: 350ms;
-	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
-	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
-	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
-	/* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
+    /* --- Motion (§B.5) --- */
+    --dur-fast: 150ms;
+    --dur-medium: 250ms;
+    --dur-slow: 350ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    /* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
 	reflow and any physics-flavoured motion; expressed as easing curves for CSS transitions. */
-	--spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
-	--spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
+    --spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
+    --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
 
-	/* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
+    /* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
 	layered surface stacks predictably.
 
 	The scale encodes a STRICT class hierarchy, lowest to highest:
@@ -81,32 +81,32 @@
 	(--z-popover / --z-modal / --z-draggable), stepping upward so later overlays of the same class
 	sit above earlier ones — and never below an overlay that is already open, so a dropdown opened
 	INSIDE a modal still renders above it. Raw `z-index: var(--z-*)` is for static layers only. --- */
-	--z-base: 0;
-	--z-raised: 10;
-	--z-sticky: 100;
-	--z-nav: 200;
-	--z-backdrop: 1000;
-	/* Class bases for the managed overlay stack — keep 200 apart so a class has room to step. */
-	--z-overlay: 1100;
-	/* legacy alias for --z-popover; kept so existing consumers stay valid */
-	--z-popover: 1100;
-	--z-modal: 1300;
-	--z-draggable: 1500;
-	--z-toast: 1600;
-	--z-tooltip: 1700;
-	--z-max: 2147483000;
+    --z-base: 0;
+    --z-raised: 10;
+    --z-sticky: 100;
+    --z-nav: 200;
+    --z-backdrop: 1000;
+    /* Class bases for the managed overlay stack — keep 200 apart so a class has room to step. */
+    --z-overlay: 1100;
+    /* legacy alias for --z-popover; kept so existing consumers stay valid */
+    --z-popover: 1100;
+    --z-modal: 1300;
+    --z-draggable: 1500;
+    --z-toast: 1600;
+    --z-tooltip: 1700;
+    --z-max: 2147483000;
 
-	/* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
+    /* --- Breakpoints (§C.3). Media queries cannot read custom properties, so these mirror the
 	literal px used in `@media`/container queries and are exposed for JS/container-query logic. --- */
-	--bp-sm: 480px;
-	--bp-md: 768px;
-	/* modal → bottom-sheet swap point (Part D.3) */
-	--bp-lg: 1024px;
-	--bp-xl: 1280px;
+    --bp-sm: 480px;
+    --bp-md: 768px;
+    /* modal → bottom-sheet swap point (Part D.3) */
+    --bp-lg: 1024px;
+    --bp-xl: 1280px;
 
-	/* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
-	--space-0: 0;
-	/*
+    /* --- Spacing scale (rem; §A / Part B.4 asymmetric spacing) --- */
+    --space-0: 0;
+    /*
 	 * The sub-ramp step, and the one value here that is deliberately NOT in `rem`.
 	 *
 	 * The ramp started at 4px, so dense chrome — segmented meters, chip rows, calendar cells, icon
@@ -120,22 +120,22 @@
 	 * middle of a bar that is supposed to read as one continuous object. Named `px` for that reason:
 	 * it is the pixel-grid step, the place where the ramp stops being typographic.
 	 */
-	--space-px: 2px;
-	--space-1: 0.25rem;
-	--space-2: 0.5rem;
-	--space-3: 0.75rem;
-	--space-4: 1rem;
-	--space-5: 1.5rem;
-	--space-6: 2rem;
-	--space-7: 3rem;
-	--space-8: 4rem;
+    --space-px: 2px;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
 
-	/* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
-	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
-	--font-reading: var(--font-sans);
+    /* --- Typography (§A.4) — --font-reading is accessibility-swappable (§A.5) --- */
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    --font-reading: var(--font-sans);
 
-	/*
+    /*
 	 * Type scale. §A.4 has always declared "scale defined in rem on a modular ramp"; until now this
 	 * file shipped three family names and no ramp, so 1,372 font-size declarations across 196
 	 * stylesheets settled on 107 distinct values — 45 of them used once or twice, with consecutive
@@ -154,37 +154,52 @@
 	 * --text-base is 1rem so the name keeps meaning what `rem` means. The product's dense body is
 	 * --text-md; a reading surface uses --text-base.
 	 */
-	--text-2xs: 0.6875rem; /* 11px — micro: timestamps, counts, unit suffixes */
-	--text-xs: 0.75rem; /* 12px — THE label register (see the note on --tracking-wide) */
-	--text-sm: 0.8125rem; /* 13px — dense UI: table cells, lane rows, chips */
-	--text-md: 0.875rem; /* 14px — product body */
-	--text-base: 1rem; /* 16px — reading body, and the document base */
-	--text-lg: 1.125rem; /* 18px — card and panel titles */
-	--text-xl: 1.375rem; /* 22px — section titles */
-	--text-2xl: 1.75rem; /* 28px — page titles */
-	--text-3xl: 2.25rem; /* 36px — display */
+    --text-2xs: 0.6875rem;
+    /* 11px — micro: timestamps, counts, unit suffixes */
+    --text-xs: 0.75rem;
+    /* 12px — THE label register (see the note on --tracking-wide) */
+    --text-sm: 0.8125rem;
+    /* 13px — dense UI: table cells, lane rows, chips */
+    --text-md: 0.875rem;
+    /* 14px — product body */
+    --text-base: 1rem;
+    /* 16px — reading body, and the document base */
+    --text-lg: 1.125rem;
+    /* 18px — card and panel titles */
+    --text-xl: 1.375rem;
+    /* 22px — section titles */
+    --text-2xl: 1.75rem;
+    /* 28px — page titles */
+    --text-3xl: 2.25rem;
+    /* 36px — display */
 
-	/*
+    /*
 	 * Line height. Unitless on purpose: a unitless value inherits as a RATIO and re-multiplies
 	 * against each descendant's own size, so a 0.75rem label nested in 1rem prose gets its own
 	 * leading. A `24px` or `1.5rem` line-height inherits as a fixed distance and crushes any child
 	 * that is larger than its parent.
 	 */
-	--leading-tight: 1.2; /* display and headings — set solid, they need no air */
-	--leading-snug: 1.35; /* wrapping UI labels, dense two-line rows */
-	--leading-normal: 1.5; /* body — the document default, set on <body> */
-	--leading-relaxed: 1.7; /* sustained prose at a 68ch measure */
+    --leading-tight: 1.2;
+    /* display and headings — set solid, they need no air */
+    --leading-snug: 1.35;
+    /* wrapping UI labels, dense two-line rows */
+    --leading-normal: 1.5;
+    /* body — the document default, set on <body> */
+    --leading-relaxed: 1.7;
+    /* sustained prose at a 68ch measure */
 
-	/*
+    /*
 	 * Tracking. Tighten as size grows (large text needs less), open up as it shrinks — and open up a
 	 * lot for the small-caps label register, where 0.08em is the value both feature ramps arrived at
 	 * independently. The floor is -0.04em; below that a system sans starts colliding.
 	 */
-	--tracking-tight: -0.02em; /* display, and tabular figures */
-	--tracking-normal: 0em;
-	--tracking-wide: 0.08em; /* uppercase labels — never applied to sentence-case body */
+    --tracking-tight: -0.02em;
+    /* display, and tabular figures */
+    --tracking-normal: 0em;
+    --tracking-wide: 0.08em;
+    /* uppercase labels — never applied to sentence-case body */
 
-	/*
+    /*
 	 * Weight. FIVE masters, and no intermediates — this is a decision, not an omission.
 	 *
 	 * The repo shipped 18 numeric weights, 13 of them between 500 and 800 (520, 550, 560, 580, 620,
@@ -202,27 +217,33 @@
 	 * Roboto Light) and marketing/editorial surfaces use it for large display text. 200/350 do not,
 	 * and were folded into it.
 	 */
-	--fw-light: 300; /* large display type on marketing surfaces only */
-	--fw-normal: 400;
-	--fw-medium: 500; /* the quiet emphasis step */
-	--fw-semibold: 600; /* the workhorse: labels, values, active states */
-	--fw-bold: 700; /* titles and strong emphasis */
+    --fw-light: 300;
+    /* large display type on marketing surfaces only */
+    --fw-normal: 400;
+    --fw-medium: 500;
+    /* the quiet emphasis step */
+    --fw-semibold: 600;
+    /* the workhorse: labels, values, active states */
+    --fw-bold: 700;
+    /* titles and strong emphasis */
 
-	/*
+    /*
 	 * Reading measure, in `ch` so it tracks the reader's own font size instead of freezing at a
 	 * pixel width. 68ch sits inside the 45–75 character comfort band; both feature token layers had
 	 * already arrived at exactly this value and unit, which is why it is hoisted here rather than
 	 * redecided.
 	 */
-	--measure: 68ch;
-	--measure-narrow: 52ch; /* form fields, callouts, single-column notes */
-	--measure-wide: 90ch; /* editorial page columns that hold media alongside the prose */
-	/* A form field's own ceiling, in `rem` rather than `ch` because a field's comfortable width is a
+    --measure: 68ch;
+    --measure-narrow: 52ch;
+    /* form fields, callouts, single-column notes */
+    --measure-wide: 90ch;
+    /* editorial page columns that hold media alongside the prose */
+    /* A form field's own ceiling, in `rem` rather than `ch` because a field's comfortable width is a
 	   function of the control, not of the text a user might type into it. Both feature layers had
 	   independently landed on 28rem. */
-	--field-max: 28rem;
+    --field-max: 28rem;
 
-	/*
+    /*
 	 * The MINOR-UNIT pair — the pence/cents run inside a money figure, de-emphasised by size and
 	 * tone but never raised: a superscript breaks tabular alignment and reads as a retail price tag
 	 * on a balance.
@@ -236,38 +257,38 @@
 	 * rejected as invalid-at-computed-value-time by engines whose `<alpha-value>` grammar predates
 	 * CSS Color 4 — which silently resets the property to `1` and undoes the de-emphasis entirely.
 	 */
-	--minor-size: 0.55em;
-	--minor-fade: 0.62;
+    --minor-size: 0.55em;
+    --minor-fade: 0.62;
 
-	/* --- Container max-widths (§C.3) --- */
-	--container-sm: 40rem;
-	--container-md: 48rem;
-	--container-lg: 64rem;
-	--container-xl: 80rem;
+    /* --- Container max-widths (§C.3) --- */
+    --container-sm: 40rem;
+    --container-md: 48rem;
+    --container-lg: 64rem;
+    --container-xl: 80rem;
 
-	/* --- Navigation shell (Part D) --- */
-	/* Enlarged, fluid nested-frame curvature. Grows with viewport between --radius-lg and the luxury
+    /* --- Navigation shell (Part D) --- */
+    /* Enlarged, fluid nested-frame curvature. Grows with viewport between --radius-lg and the luxury
 	--radius-2xl/-3xl so the corners where the sidebar, middle nav, and body panel cross read soft
 	and premium on wide screens without over-rounding compact ones. Both ride --radius-scale. */
-	--radius-container-lg: clamp(var(--radius-lg), 0.6vw + 8px, var(--radius-2xl));
-	--radius-container-xl: clamp(var(--radius-xl),
+    --radius-container-lg: clamp(var(--radius-lg), 0.6vw + 8px, var(--radius-2xl));
+    --radius-container-xl: clamp(var(--radius-xl),
             1.2vw + 10px,
             var(--radius-3xl));
-	/* main body panel */
-	--glass-blur: 18px;
-	/* backdrop-filter blur for guest/mobile glass header */
-	/* The ONE blur every modal scrim uses. Lighter than --glass-blur because the scrim also carries a
+    /* main body panel */
+    --glass-blur: 18px;
+    /* backdrop-filter blur for guest/mobile glass header */
+    /* The ONE blur every modal scrim uses. Lighter than --glass-blur because the scrim also carries a
 	real tonal tint, and because it filters the whole viewport rather than a chrome strip. Unifying it
 	here is what stops the same Backdrop component dimming at two different strengths depending on
 	which surface opened it. */
-	--scrim-blur: 8px;
-	/* Pre-hydration defaults for the modal scrim; the theme engine overwrites both per theme (dark
+    --scrim-blur: 8px;
+    /* Pre-hydration defaults for the modal scrim; the theme engine overwrites both per theme (dark
 	carries the heavier tint). Declared here so the first SSR paint of a scrim is never colourless. */
-	--scrim: #000;
-	--scrim-tint: 42%;
-	--on-scrim: #fff;
+    --scrim: #000;
+    --scrim-tint: 42%;
+    --on-scrim: #fff;
 
-	/*
+    /*
 	 * --- The glass veil scale ---
 	 *
 	 * The tint ramp above explicitly excludes veils ("a VEIL is not a tint … it belongs to the surface
@@ -288,36 +309,39 @@
 	 * at the full 18px blur. It does NOT rescue --text-secondary (that needs 84%, at which point the
 	 * effect is gone) — so the rule is the other half of this fix: secondary text does not go on glass.
 	 */
-	--glass-veil-chrome: 76%; /* header bars, frame bands, bottom nav — text-bearing chrome */
-	--glass-veil-panel: 80%; /* floating asides, megamenus, anchored panels over live content */
-	--glass-veil-sheet: 92%; /* drawers and sheets — near-opaque, they own the viewport */
-	/* Colour bleeding through the blur is the optical signature of glass; without it the surface reads
+    --glass-veil-chrome: 76%;
+    /* header bars, frame bands, bottom nav — text-bearing chrome */
+    --glass-veil-panel: 80%;
+    /* floating asides, megamenus, anchored panels over live content */
+    --glass-veil-sheet: 92%;
+    /* drawers and sheets — near-opaque, they own the viewport */
+    /* Colour bleeding through the blur is the optical signature of glass; without it the surface reads
 	as fog. 1.3 is the value the guest aside already shipped, so this consolidates rather than invents. */
-	--glass-saturate: 1.3;
+    --glass-saturate: 1.3;
 
-	/*
+    /*
 	 * --- Overlay geometry ---
 	 * Two named scales, so a panel's corner is a decision about its ROLE, not about who authored it.
 	 * `sm` is the anchored/system tier (popover, tooltip surface, confirm popup, toast, message); `lg`
 	 * is the workspace tier (dialog, drawer sheet, draggable window, full-canvas app modals). Widths
 	 * come from the same small set so a confirm and a create-flow never disagree by 1rem.
 	 */
-	--overlay-radius-sm: var(--radius-base);
-	--overlay-radius-lg: var(--radius-xl);
-	--overlay-w-sm: min(26rem, calc(100vw - var(--space-6)));
-	--overlay-w-md: min(34rem, calc(100vw - var(--space-6)));
-	--overlay-w-lg: min(48rem, calc(100vw - var(--space-6)));
-	--overlay-w-xl: min(68rem, 96vw);
-	--overlay-w-full: min(90rem, 96vw);
-	/* Block sizes always carry a viewport term, so a panel can never exceed the window it sits in. */
-	--overlay-h-md: min(48rem, 92vh);
-	--overlay-h-lg: min(60rem, 94vh);
-	/* One hit target for every overlay close/action glyph. The family had shipped four sizes, the
+    --overlay-radius-sm: var(--radius-base);
+    --overlay-radius-lg: var(--radius-xl);
+    --overlay-w-sm: min(26rem, calc(100vw - var(--space-6)));
+    --overlay-w-md: min(34rem, calc(100vw - var(--space-6)));
+    --overlay-w-lg: min(48rem, calc(100vw - var(--space-6)));
+    --overlay-w-xl: min(68rem, 96vw);
+    --overlay-w-full: min(90rem, 96vw);
+    /* Block sizes always carry a viewport term, so a panel can never exceed the window it sits in. */
+    --overlay-h-md: min(48rem, 92vh);
+    --overlay-h-lg: min(60rem, 94vh);
+    /* One hit target for every overlay close/action glyph. The family had shipped four sizes, the
 	smallest of which (24px) fails WCAG 2.5.8; 36px clears it with room for a comfortable icon. */
-	--overlay-action-size: 2.25rem;
-	/* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
+    --overlay-action-size: 2.25rem;
+    /* Razor-thin, low-contrast single-edge separator (§B.4). Used as a one-line border on a SINGLE
 	edge only (header/nav/body region seams) — never as a four-sided box on non-interactive content. */
-	/*
+    /*
 	 * --- The tint ramp ---
 	 *
 	 * `color-mix()` had quietly become the app's second colour system: 744 calls carrying 32 distinct
@@ -340,21 +364,26 @@
 	 * `color-mix(in srgb, red var(--t), blue)` computes byte-identically to the literal. That is NOT
 	 * true of a percentage delivered into `opacity`, which is why --minor-fade is unitless.
 	 */
-	--tint-subtle: 6%; /* barely-there wash: hover on a quiet row */
-	--tint-soft: 8%; /* the workhorse: resting tonal separation (§B.4's second tier) */
-	--tint: 12%; /* a state worth noticing: selected, active, current */
-	--tint-strong: 20%; /* a state that must be unmistakable at a glance */
-	--tint-heavy: 40%; /* structural: a filled meter track, a strong edge */
+    --tint-subtle: 6%;
+    /* barely-there wash: hover on a quiet row */
+    --tint-soft: 8%;
+    /* the workhorse: resting tonal separation (§B.4's second tier) */
+    --tint: 12%;
+    /* a state worth noticing: selected, active, current */
+    --tint-strong: 20%;
+    /* a state that must be unmistakable at a glance */
+    --tint-heavy: 40%;
+    /* structural: a filled meter track, a strong edge */
 
-	--hairline-color: color-mix(in srgb, var(--outline) 20%, transparent);
-	--hairline: 1px solid var(--hairline-color);
-	/* The visible sibling: a real border on an INTERACTIVE element (§B.4 permits full borders only
+    --hairline-color: color-mix(in srgb, var(--outline) 20%, transparent);
+    --hairline: 1px solid var(--hairline-color);
+    /* The visible sibling: a real border on an INTERACTIVE element (§B.4 permits full borders only
 	   there). Two features had independently re-derived exactly this as --lp-hair-strong and
 	   --ex-hair-strong, which is what earns it a name here. */
-	--hairline-strong-color: color-mix(in srgb, var(--outline) 40%, transparent);
-	--hairline-strong: 1px solid var(--hairline-strong-color);
+    --hairline-strong-color: color-mix(in srgb, var(--outline) 40%, transparent);
+    --hairline-strong: 1px solid var(--hairline-strong-color);
 
-	/*
+    /*
 	 * --- Iconography (§B.7) ---
 	 *
 	 * An icon's box is `1em` of the text beside it. On the 24-unit authoring grid with the artwork
@@ -370,14 +399,20 @@
 	 * The audit that produced this ramp found 47 distinct rendered icon sizes, nine of them landing
 	 * on fractional pixels (0.85rem → 13.6px, 1.05rem → 16.8px, 2.1rem → 33.6px …).
 	 */
-	--icon-2xs: 0.75rem; /* 12px — inline status pips, dense table marks (pairs --text-2xs/xs) */
-	--icon-xs: 0.875rem; /* 14px — lane rows, chips, table cells (pairs --text-sm) */
-	--icon-sm: 1rem; /* 16px — THE default: buttons, menu items, toolbars (pairs --text-md/base) */
-	--icon-md: 1.25rem; /* 20px — icon-only controls, tabs, header rigs (pairs --text-lg) */
-	--icon-lg: 1.5rem; /* 24px — nav rail, bottom nav, file-kind glyphs (pairs --text-xl) */
-	--icon-xl: 2rem; /* 32px — section and empty-state marks (pairs --text-2xl) */
+    --icon-2xs: 0.75rem;
+    /* 12px — inline status pips, dense table marks (pairs --text-2xs/xs) */
+    --icon-xs: 0.875rem;
+    /* 14px — lane rows, chips, table cells (pairs --text-sm) */
+    --icon-sm: 1rem;
+    /* 16px — THE default: buttons, menu items, toolbars (pairs --text-md/base) */
+    --icon-md: 1.25rem;
+    /* 20px — icon-only controls, tabs, header rigs (pairs --text-lg) */
+    --icon-lg: 1.5rem;
+    /* 24px — nav rail, bottom nav, file-kind glyphs (pairs --text-xl) */
+    --icon-xl: 2rem;
+    /* 32px — section and empty-state marks (pairs --text-2xl) */
 
-	/*
+    /*
 	 * Rendered stroke, in device pixels, CONSTANT at every step above.
 	 *
 	 * A fixed `stroke-width` on a fixed viewBox cannot hold a weight, because the stroke scales with
@@ -391,27 +426,27 @@
 	 * distribution, the value packages/ui/feedback already renders at its native scale, and it lands
 	 * on a whole device pixel at 1x and a clean 3 at 2x — so it stays crisp instead of straddling.
 	 */
-	--icon-stroke: 1.5;
+    --icon-stroke: 1.5;
 
-	--shell-gutter: var(--space-2);
-	/* parent-track thickness revealed between nested frames */
-	--shell-topbar-h: 48px;
-	--shell-midnav-header-h: 3rem;
-	/* configurable middle-nav content-pane header (PageCanvas header slot) */
-	--shell-midnav-footer-h: 3rem;
-	/* configurable middle-nav footer band (composer / View Control Rig) — used to stop the frame
+    --shell-gutter: var(--space-2);
+    /* parent-track thickness revealed between nested frames */
+    --shell-topbar-h: 48px;
+    --shell-midnav-header-h: 3rem;
+    /* configurable middle-nav content-pane header (PageCanvas header slot) */
+    --shell-midnav-footer-h: 3rem;
+    /* configurable middle-nav footer band (composer / View Control Rig) — used to stop the frame
 	surface at the band's top edge; symmetric with the header band height */
-	--shell-sidebar-w: 64px;
-	/* collapsed icon rail */
-	--shell-sidebar-w-expanded: 224px;
-	--shell-nav-block: 48px;
-	/* collapsed-rail square hit-target (icon block) */
-	--shell-lane-w: 280px;
-	/* middle-nav (Blue) lane default width */
-	--shell-bottomnav-h: 56px;
-	/* mobile thumb-nav bar height (Part D.3) */
+    --shell-sidebar-w: 64px;
+    /* collapsed icon rail */
+    --shell-sidebar-w-expanded: 224px;
+    --shell-nav-block: 48px;
+    /* collapsed-rail square hit-target (icon block) */
+    --shell-lane-w: 280px;
+    /* middle-nav (Blue) lane default width */
+    --shell-bottomnav-h: 56px;
+    /* mobile thumb-nav bar height (Part D.3) */
 
-	/*
+    /*
 	 * --- Surface structure (§A.3) ---
 	 *
 	 * Promoted from the wallet and workspaces token layers, and promoted for one reason only: those
@@ -426,29 +461,29 @@
 	 * consolidation.
 	 */
 
-	/* Recessed track behind a meter or a share bar, and the lighter meter well inside it. */
-	--track-recessed: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
-	--track-meter: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
-	/* Diagonal hatch — the non-colour channel that keeps a state legible when hue collapses. */
-	--hatch-color: color-mix(in srgb, var(--on-surface) 16%, transparent);
-	/*
+    /* Recessed track behind a meter or a share bar, and the lighter meter well inside it. */
+    --track-recessed: color-mix(in srgb, var(--on-surface) 10%, var(--surface-1));
+    --track-meter: color-mix(in srgb, var(--on-surface) 8%, var(--surface-1));
+    /* Diagonal hatch — the non-colour channel that keeps a state legible when hue collapses. */
+    --hatch-color: color-mix(in srgb, var(--on-surface) 16%, transparent);
+    /*
 	 * Track heights. Settles a drift: 16/22px (wallet) vs 18/24px (workspaces). 18/24 wins because
 	 * the workspaces split bar's dividers are real draggable controls with `role="slider"`, and two
 	 * extra pixels of pointer target is a functional gain, while the wallet's capital meter is
 	 * decorative (`aria-hidden`, every fact carried by its legend) and loses nothing at 18. `-hi` is
 	 * the taller hero variant, not the high-contrast one — contrast widens tone, never geometry.
 	 */
-	--track-h: 18px;
-	--track-h-hi: 24px;
-	/* The overhanging dot a sub-sliver segment gets instead of a minimum width that would lie. */
-	--pip-dot: 7px;
+    --track-h: 18px;
+    --track-h-hi: 24px;
+    /* The overhanging dot a sub-sliver segment gets instead of a minimum width that would lie. */
+    --pip-dot: 7px;
 
-	/* Full-bleed band rhythm — the vertical grid a stacked surface is built on. */
-	--band-gap: var(--space-6);
-	--band-pad-block-end: var(--space-6);
-	--band-pad-block-end-lg: var(--space-7);
+    /* Full-bleed band rhythm — the vertical grid a stacked surface is built on. */
+    --band-gap: var(--space-6);
+    --band-pad-block-end: var(--space-6);
+    --band-pad-block-end-lg: var(--space-7);
 
-	/*
+    /*
 	 * --- The card contract (§A.3 / §B.4) ---
 	 *
 	 * Card rhythm lives here rather than in `display/styles/card.css` because component CSS reaches a
@@ -468,17 +503,17 @@
 	 * two hand-tuned multipliers of the same token, 1.6px apart, neither reachable from the ramp.
 	 * `--radius-2xl` is 24px, so marketing was already on it by accident.
 	 */
-	--card-pad: var(--space-4);
-	--card-pad-media: var(--space-5);
-	--card-pad-tight: var(--space-3);
-	--card-gap: var(--space-3);
-	--card-gap-tight: var(--space-1);
-	--card-radius: var(--radius-lg);
-	--card-radius-media: var(--radius-2xl);
-	--card-media-ratio: 16 / 10;
-	--card-media-ratio-square: 1 / 1;
+    --card-pad: var(--space-4);
+    --card-pad-media: var(--space-5);
+    --card-pad-tight: var(--space-3);
+    --card-gap: var(--space-3);
+    --card-gap-tight: var(--space-1);
+    --card-radius: var(--radius-lg);
+    --card-radius-media: var(--radius-2xl);
+    --card-media-ratio: 16 / 10;
+    --card-media-ratio-square: 1 / 1;
 
-	/*
+    /*
 	 * The surface a chip takes when it floats on a card's MEDIA — a status pill on a listing cover, a
 	 * price on a product photograph, an engagement type on a service thumbnail.
 	 *
@@ -495,9 +530,9 @@
 	 * and the marketing landing all read it, and a token scoped to one feature's stylesheet resolves to
 	 * nothing on the surfaces that do not load that sheet — silently, since the chip still lays out.
 	 */
-	--chip-on-media: var(--surface);
+    --chip-on-media: var(--surface);
 
-	/*
+    /*
 	 * The card hover language. Four card families independently chose a lift (−2 / −4 / −6px) and a
 	 * media zoom (1.04 / 1.045 / 1.05); no rule distinguished them, so the same gesture read at three
 	 * different intensities depending on which page the user was on.
@@ -506,32 +541,32 @@
 	 * resting state is the untransformed element, so a card whose animation clock never runs is already
 	 * correct. Nothing here animates a property that encodes data or geometry.
 	 */
-	--card-hover-lift: -4px;
-	--card-media-zoom: 1.04;
+    --card-hover-lift: -4px;
+    --card-media-zoom: 1.04;
 
-	/* Row heights: the comfortable default, the dense variant, and the footer rig's control row
+    /* Row heights: the comfortable default, the dense variant, and the footer rig's control row
 	   (matched to the shared ZoomSlider's compact height so every rig band lines up). */
-	--row-h: 3rem;
-	--row-h-dense: 2.25rem;
-	--rig-row-h: 1.75rem;
+    --row-h: 3rem;
+    --row-h-dense: 2.25rem;
+    --rig-row-h: 1.75rem;
 
-	/*
+    /*
 	 * Chart heights. Settles a drift: 11rem/9rem (wallet) vs a single 10rem (workspaces). The PAIR
 	 * wins rather than the midpoint — a lone height has no answer for a narrow viewport, so adopting
 	 * it would have meant re-inventing the small step the first time a chart got cramped.
 	 */
-	--chart-h: 11rem;
-	--chart-h-sm: 9rem;
+    --chart-h: 11rem;
+    --chart-h-sm: 9rem;
 
-	/* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
+    /* Side-docked drawer: a comfortable reading column that still leaves the page visible behind it
 	   on a phone. The Drawer component consumes this directly, so the package default and the
 	   feature-layer aliases (--wlt-drawer-w, --wsp-drawer-w) are finally one number. */
-	--drawer-w: min(30rem, 92vw);
-	/* Top/bottom-docked drawer along the block axis — the counterpart the contract was missing, which
+    --drawer-w: min(30rem, 92vw);
+    /* Top/bottom-docked drawer along the block axis — the counterpart the contract was missing, which
 	   left drawer.css carrying a literal for the sheet case. */
-	--drawer-h: min(18rem, 80vh);
+    --drawer-h: min(18rem, 80vh);
 
-	/*
+    /*
 	 * --- The field contract (§C.1 fields) ---
 	 *
 	 * One state language and one geometry for every control in `@projective/ui/fields`.
@@ -550,63 +585,63 @@
 	 * Checkbox, a Slider, a Rating) keep its own shape and still speak the same states.
 	 */
 
-	/* Geometry ramp. One source for control shells, panels and every hand-rolled sibling. */
-	--fld-h-sm: 2rem;
-	--fld-h-md: 2.5rem;
-	--fld-h-lg: 3rem;
-	--fld-px-sm: var(--space-2);
-	--fld-px-md: var(--space-3);
-	--fld-px-lg: var(--space-4);
-	/*
+    /* Geometry ramp. One source for control shells, panels and every hand-rolled sibling. */
+    --fld-h-sm: 2rem;
+    --fld-h-md: 2.5rem;
+    --fld-h-lg: 3rem;
+    --fld-px-sm: var(--space-2);
+    --fld-px-md: var(--space-3);
+    --fld-px-lg: var(--space-4);
+    /*
 	 * Field type. `sm` is the scale's dense step exactly; `md`/`lg` sit a half-step above their
 	 * neighbours and stay that way deliberately — a value the user TYPED is read under different
 	 * conditions than a table cell they scan, and the taxonomy has been consistent about it at every
 	 * call site. What was drift is now a stated position.
 	 */
-	--fld-fs-sm: var(--text-sm);
-	--fld-fs-md: 0.9375rem;
-	--fld-fs-lg: 1.0625rem;
-	--fld-r-sm: var(--radius-sm);
-	--fld-r-md: var(--radius-base);
-	--fld-r-lg: var(--radius-lg);
-	--fld-bw: 1px;
-	/*
+    --fld-fs-sm: var(--text-sm);
+    --fld-fs-md: 0.9375rem;
+    --fld-fs-lg: 1.0625rem;
+    --fld-r-sm: var(--radius-sm);
+    --fld-r-md: var(--radius-base);
+    --fld-r-lg: var(--radius-lg);
+    --fld-bw: 1px;
+    /*
 	 * Minimum pointer target (WCAG 2.2 AA 2.5.8). Controls smaller than this — a 6px slider track, a
 	 * 12px zoom handle, a 20px checkbox — grow an invisible `::before` to this size rather than
 	 * inflating their artwork, so the visual density survives the accessibility floor.
 	 */
-	--fld-hit: 24px;
+    --fld-hit: 24px;
 
-	/* Label / hint / error. Replaces five parallel app-side label typographies. */
-	--fld-label-fs: 0.875rem;
-	--fld-label-fw: 600;
-	--fld-label-fg: var(--on-surface);
-	--fld-hint-fs: 0.8125rem;
-	--fld-hint-fg: var(--text-secondary);
-	/* Reserved, always: an error that appears must not shove the rest of the form down. */
-	--fld-hint-min-h: 1.25rem;
+    /* Label / hint / error. Replaces five parallel app-side label typographies. */
+    --fld-label-fs: 0.875rem;
+    --fld-label-fw: 600;
+    --fld-label-fg: var(--on-surface);
+    --fld-hint-fs: 0.8125rem;
+    --fld-hint-fg: var(--text-secondary);
+    /* Reserved, always: an error that appears must not shove the rest of the form down. */
+    --fld-hint-min-h: 1.25rem;
 
-	/* Panel + option. One dropdown geometry for Select/MultiSelect/AutoComplete/Cascade/Tree/Sort. */
-	--fld-panel-maxh: 18rem;
-	/* The rule the panels were missing: a panel MAY exceed its trigger. Matching a 71px trigger
+    /* Panel + option. One dropdown geometry for Select/MultiSelect/AutoComplete/Cascade/Tree/Sort. */
+    --fld-panel-maxh: 18rem;
+    /* The rule the panels were missing: a panel MAY exceed its trigger. Matching a 71px trigger
 	   ellipsised every option label to nothing. */
-	--fld-panel-minw: 12rem;
-	--fld-panel-radius: var(--radius-base);
-	--fld-panel-border: var(--border-subtle);
-	--fld-opt-h: 2.25rem;
-	--fld-opt-px: var(--space-3);
-	--fld-opt-fs: var(--fld-fs-md);
-	--fld-opt-radius: var(--radius-sm);
+    --fld-panel-minw: 12rem;
+    --fld-panel-radius: var(--radius-base);
+    --fld-panel-border: var(--border-subtle);
+    --fld-opt-h: 2.25rem;
+    --fld-opt-px: var(--space-3);
+    --fld-opt-fs: var(--fld-fs-md);
+    --fld-opt-radius: var(--radius-sm);
 
-	/* Rest / hover / focus. */
-	--fld-rest-bd: var(--outline);
-	--fld-rest-bg: var(--surface);
-	--fld-rest-fg: var(--on-surface);
-	--fld-hover-bd: var(--on-surface-variant);
-	--fld-focus-bd: var(--primary);
-	--fld-placeholder-fg: var(--text-secondary);
+    /* Rest / hover / focus. */
+    --fld-rest-bd: var(--fld-outline);
+    --fld-rest-bg: var(--surface);
+    --fld-rest-fg: var(--on-surface);
+    --fld-hover-bd: var(--on-surface-variant);
+    --fld-focus-bd: var(--primary);
+    --fld-placeholder-fg: var(--text-secondary);
 
-	/*
+    /*
 	 * Disabled — ONE alpha, everywhere. The taxonomy had five (0.40/0.45/0.50/0.55 plus a bare
 	 * colour swap), which measured 2.30:1 on a disabled calendar day and 3.26:1 on a disabled
 	 * placeholder. 0.55 measures 5.04:1 against --surface: legible enough to read, plainly inert.
@@ -619,37 +654,37 @@
 	 * 1.13:1, worse than the bug it replaced). So the MIX carries a literal percentage token and the
 	 * ALPHA stays unitless for the rare `opacity` consumer. Change them together.
 	 */
-	--fld-disabled-mix: 55%;
-	--fld-disabled-alpha: 0.55;
+    --fld-disabled-mix: 55%;
+    --fld-disabled-alpha: 0.55;
 
-	/* Read-only is not disabled: the value is authoritative and still selectable, so it keeps full
+    /* Read-only is not disabled: the value is authoritative and still selectable, so it keeps full
 	   ink and loses only the invitation to edit. */
-	--fld-readonly-bg: var(--surface-1);
-	--fld-readonly-bd: var(--outline);
+    --fld-readonly-bg: var(--surface-1);
+    --fld-readonly-bd: var(--outline);
 
-	/* Validation. `mark` is the icon/shape channel, never a second colour. */
-	--fld-invalid-bd: var(--danger);
-	--fld-invalid-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
-	--fld-invalid-mark: var(--danger);
-	--fld-valid-bd: var(--success);
-	--fld-valid-mark: var(--success);
-	--fld-warning-bd: var(--warning);
-	--fld-warning-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
-	--fld-warning-mark: var(--warning);
+    /* Validation. `mark` is the icon/shape channel, never a second colour. */
+    --fld-invalid-bd: var(--danger);
+    --fld-invalid-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+    --fld-invalid-mark: var(--danger);
+    --fld-valid-bd: var(--success);
+    --fld-valid-mark: var(--success);
+    --fld-warning-bd: var(--warning);
+    --fld-warning-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+    --fld-warning-mark: var(--warning);
 
-	/* The two-tier creation gate (root CLAUDE.md): RED = needed to create, AMBER = needed to
+    /* The two-tier creation gate (root CLAUDE.md): RED = needed to create, AMBER = needed to
 	   publish. Promoted out of `.ui-field` so a gated Checkbox or Rating is expressible. */
-	--fld-required-bd: var(--danger);
-	--fld-required-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
-	--fld-gate-bd: var(--warning);
-	--fld-gate-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
+    --fld-required-bd: var(--danger);
+    --fld-required-bg: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface));
+    --fld-gate-bd: var(--warning);
+    --fld-gate-bg: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface));
 
-	/* Loading — the state the taxonomy never had. An AutoComplete fetching suggestions had no way
+    /* Loading — the state the taxonomy never had. An AutoComplete fetching suggestions had no way
 	   to say so. Unitless (a percentage through var() into `opacity` is invalid). */
-	--fld-loading-alpha: 0.7;
-	--fld-loading-fg: var(--text-secondary);
+    --fld-loading-alpha: 0.7;
+    --fld-loading-fg: var(--text-secondary);
 
-	/* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
+    /* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
 }
 
@@ -660,14 +695,14 @@
  * Geometry is untouched — contrast is a tonal overlay, and a taller track is not more contrast.
  */
 :root[data-contrast="high"] {
-	--track-recessed: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
-	--hatch-color: color-mix(in srgb, var(--on-surface) 30%, transparent);
-	--minor-fade: 0.82;
-	/* Disabled still has to read as disabled, so this widens rather than disappearing: 0.55 → 0.78
+    --track-recessed: color-mix(in srgb, var(--on-surface) 20%, var(--surface-1));
+    --hatch-color: color-mix(in srgb, var(--on-surface) 30%, transparent);
+    --minor-fade: 0.82;
+    /* Disabled still has to read as disabled, so this widens rather than disappearing: 0.55 → 0.78
 	   lifts a disabled value from 5.04:1 to ~9:1 while the border and cursor keep carrying "inert". */
-	--fld-disabled-mix: 78%;
-	--fld-disabled-alpha: 0.78;
-	--fld-loading-alpha: 0.85;
+    --fld-disabled-mix: 78%;
+    --fld-disabled-alpha: 0.78;
+    --fld-loading-alpha: 0.85;
 }
 
 /*
@@ -703,42 +738,42 @@
  * helps, and it is the one such face installed nearly everywhere.
  */
 :root[data-font="dyslexic"] {
-	--font-sans:
-		"OpenDyslexic", "OpenDyslexicAlta", "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
-	--font-reading: var(--font-sans);
-	--font-mono: "OpenDyslexicMono", ui-monospace, "Cascadia Code", monospace;
+    --font-sans:
+        "OpenDyslexic", "OpenDyslexicAlta", "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
+    --font-reading: var(--font-sans);
+    --font-mono: "OpenDyslexicMono", ui-monospace, "Cascadia Code", monospace;
 
-	/* Wider tracking at every register; the label register opens furthest. */
-	--tracking-tight: 0em;
-	--tracking-normal: 0.03em;
-	--tracking-wide: 0.11em;
+    /* Wider tracking at every register; the label register opens furthest. */
+    --tracking-tight: 0em;
+    --tracking-normal: 0.03em;
+    --tracking-wide: 0.11em;
 
-	/* More air between lines so the eye can find the next one. */
-	--leading-tight: 1.4;
-	--leading-snug: 1.55;
-	--leading-normal: 1.7;
-	--leading-relaxed: 1.9;
+    /* More air between lines so the eye can find the next one. */
+    --leading-tight: 1.4;
+    --leading-snug: 1.55;
+    --leading-normal: 1.7;
+    --leading-relaxed: 1.9;
 
-	/* OpenDyslexic ships Regular and Bold only. Collapsing the five masters to those two prevents a
+    /* OpenDyslexic ships Regular and Bold only. Collapsing the five masters to those two prevents a
 	   synthesised faux-weight, which smears the very stroke asymmetry the face exists to provide. */
-	--fw-light: 400;
-	--fw-normal: 400;
-	--fw-medium: 400;
-	--fw-semibold: 700;
-	--fw-bold: 700;
+    --fw-light: 400;
+    --fw-normal: 400;
+    --fw-medium: 400;
+    --fw-semibold: 700;
+    --fw-bold: 700;
 
-	/* A shorter measure: fewer characters per line means fewer chances to lose your place. */
-	--measure: 55ch;
-	--measure-narrow: 45ch;
+    /* A shorter measure: fewer characters per line means fewer chances to lose your place. */
+    --measure: 55ch;
+    --measure-narrow: 45ch;
 }
 
 :root[data-font="dyslexic"] body,
 :root[data-font="dyslexic"] .ds-scope {
-	letter-spacing: var(--tracking-normal);
-	word-spacing: 0.16em;
-	line-height: var(--leading-normal);
-	font-variant-ligatures: none;
-	text-wrap: pretty;
+    letter-spacing: var(--tracking-normal);
+    word-spacing: 0.16em;
+    line-height: var(--leading-normal);
+    font-variant-ligatures: none;
+    text-wrap: pretty;
 }
 
 /* Emphasis moves from slant to weight — an obliqued weighted-bottom face loses its asymmetry. */
@@ -746,9 +781,9 @@
 :root[data-font="dyslexic"] em,
 :root[data-font="dyslexic"] cite,
 :root[data-font="dyslexic"] address {
-	font-style: normal;
-	font-synthesis-style: none;
-	font-weight: var(--fw-bold);
+    font-style: normal;
+    font-synthesis-style: none;
+    font-weight: var(--fw-bold);
 }
 
 /* Universal border-box reset — foundational layout contract (DESIGN_SYSTEM.md Part A). Padding and
@@ -758,7 +793,7 @@
 *,
 *::before,
 *::after {
-	box-sizing: border-box;
+    box-sizing: border-box;
 }
 
 /*
@@ -780,32 +815,33 @@
  * one and wins.
  */
 .ui-hit {
-	position: relative;
+    position: relative;
 }
+
 .ui-hit::before {
-	content: "";
-	position: absolute;
-	inset-block-start: 50%;
-	inset-inline-start: 50%;
-	inline-size: max(100%, var(--fld-hit));
-	block-size: max(100%, var(--fld-hit));
-	transform: translate(-50%, -50%);
-	background: transparent;
+    content: "";
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    inline-size: max(100%, var(--fld-hit));
+    block-size: max(100%, var(--fld-hit));
+    transform: translate(-50%, -50%);
+    background: transparent;
 }
 
 /* Visually-hidden utility — removes an element from the visual layout while keeping it in the
    accessibility tree (non-color status channels, dot labels, "Loading…" text). §A.5/§C.6. */
 .ui-visually-hidden {
-	position: absolute;
-	inline-size: 1px;
-	block-size: 1px;
-	margin: -1px;
-	padding: 0;
-	border: 0;
-	overflow: hidden;
-	clip: rect(0 0 0 0);
-	clip-path: inset(50%);
-	white-space: nowrap;
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 /* Anchored-overlay primitive — consumes the `--float-*` custom properties written by `useFloating` /
@@ -813,11 +849,11 @@
    `overflow: hidden`/`clip`/`auto` clip boundary, and the hook's boundary math keeps it clear of the
    higher-level nav. The `-9999px` fallbacks park it off-screen until the first measure (no flash). */
 .ui-anchored {
-	position: fixed;
-	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
-	inline-size: var(--float-width, auto);
-	z-index: var(--z-portal, var(--z-overlay));
+    position: fixed;
+    inset-block-start: var(--float-top, -9999px);
+    inset-inline-start: var(--float-left, -9999px);
+    inline-size: var(--float-width, auto);
+    z-index: var(--z-portal, var(--z-overlay));
 }
 
 /*
@@ -844,77 +880,77 @@
  * consumer that omits the island degrades gracefully to the hover-only reveal.
  */
 :not(html):not(body) {
-	scrollbar-width: thin;
-	/* thumb track — transparent thumb keeps it invisible at rest */
-	scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+    /* thumb track — transparent thumb keeps it invisible at rest */
+    scrollbar-color: transparent transparent;
 }
 
 :not(html):not(body):hover,
 :not(html):not(body)[data-ui-scrolling] {
-	scrollbar-color: color-mix(in srgb, var(--outline) 40%, transparent) transparent;
+    scrollbar-color: color-mix(in srgb, var(--outline) 40%, transparent) transparent;
 }
 
 :not(html):not(body)::-webkit-scrollbar {
-	inline-size: 10px;
-	block-size: 10px;
+    inline-size: 10px;
+    block-size: 10px;
 }
 
 :not(html):not(body)::-webkit-scrollbar-track {
-	background: transparent;
+    background: transparent;
 }
 
 :not(html):not(body)::-webkit-scrollbar-thumb {
-	background-color: transparent;
-	background-clip: padding-box;
-	border: 2px solid transparent;
-	border-radius: var(--radius-full);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    background-color: transparent;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: var(--radius-full);
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 /* Reveal on container hover or while scrolling (ScrollIdle island); deepen on grab/hover of the thumb. */
 :not(html):not(body):hover::-webkit-scrollbar-thumb,
 :not(html):not(body)[data-ui-scrolling]::-webkit-scrollbar-thumb {
-	background-color: color-mix(in srgb, var(--outline) 32%, transparent);
+    background-color: color-mix(in srgb, var(--outline) 32%, transparent);
 }
 
 :not(html):not(body)::-webkit-scrollbar-thumb:hover,
 :not(html):not(body)::-webkit-scrollbar-thumb:active {
-	background-color: color-mix(in srgb, var(--outline) 55%, transparent);
+    background-color: color-mix(in srgb, var(--outline) 55%, transparent);
 }
 
 /* Buttons/arrows and the corner are never drawn. */
 :not(html):not(body)::-webkit-scrollbar-button {
-	display: none;
-	inline-size: 0;
-	block-size: 0;
+    display: none;
+    inline-size: 0;
+    block-size: 0;
 }
 
 :not(html):not(body)::-webkit-scrollbar-corner {
-	background: transparent;
+    background: transparent;
 }
 
 /* Simultaneous, frame-coherent theme crossfade — one clock across the whole tree (§B.5). */
 *,
 *::before,
 *::after {
-	transition:
-		color var(--dur-slow) var(--ease-standard),
-		background-color var(--dur-slow) var(--ease-standard),
-		border-color var(--dur-slow) var(--ease-standard),
-		fill var(--dur-slow) var(--ease-standard);
+    transition:
+        color var(--dur-slow) var(--ease-standard),
+        background-color var(--dur-slow) var(--ease-standard),
+        border-color var(--dur-slow) var(--ease-standard),
+        fill var(--dur-slow) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	:root {
-		--dur-fast: 0ms;
-		--dur-medium: 0ms;
-		--dur-slow: 0ms;
-	}
+    :root {
+        --dur-fast: 0ms;
+        --dur-medium: 0ms;
+        --dur-slow: 0ms;
+    }
 
-	*,
-	*::before,
-	*::after {
-		transition-duration: 0ms !important;
-		animation: none !important;
-	}
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0ms !important;
+        animation: none !important;
+    }
 }

@@ -9,1078 +9,1096 @@
 
 /* #region Brand mark (1:1 icon, §C.4) */
 .shell-brand {
-	display: inline-flex;
-	align-items: center;
-	line-height: 0;
-	border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    line-height: 0;
+    border-radius: var(--radius-sm);
+    width: calc(var(--shell-sidebar-w) - var(--space-5));
 }
 
 .shell-brand__mark {
-	inline-size: 28px;
-	block-size: 28px;
+    inline-size: 28px;
+    block-size: 28px;
 }
 
 .shell-brand:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: 2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
 }
+
 /* #endregion */
 
 /* #region Header left block — brand fused to the integrated search */
 .shell-headlead {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex: 1 1 auto;
-	min-inline-size: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
+
 /* #endregion */
 
 /* #region Integrated search — mirrors the guest `site-header__search` 1:1 (root CLAUDE.md Decision #47) */
 .shell-search {
-	flex: 1 1 auto;
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	max-inline-size: 26rem;
-	margin-inline: auto;
-	padding-inline-end: var(--space-1);
-	/* The guest bar's height (`--site-bar-h - --space-4`), inlined so it needs no marketing-scoped token. */
-	block-size: calc(var(--space-7) + var(--space-2) - var(--space-4));
-	border-radius: var(--radius-lg);
-	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-	border: 1px solid var(--hairline-color);
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-inline-size: 26rem;
+    /* margin-inline: auto; */
+    padding-inline-end: var(--space-1);
+    block-size: calc(var(--space-7) + var(--space-2) - var(--space-4));
+    border-radius: var(--radius-lg);
+    /* background: color-mix(in srgb, var(--surface-2) 55%, transparent); */
+    /* border-bottom: 1px solid var(--hairline-color); */
+    box-shadow: 0 2px 2px #0006;
+}
+
+.shell-search:hover,
+.shell-search:focus-within {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 /* Scope/entity selector segment */
 .shell-search__entity {
-	position: relative;
-	flex: 0 0 auto;
-	block-size: 100%;
+    position: relative;
+    flex: 0 0 auto;
+    block-size: 100%;
 }
 
 .shell-search__entity-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	block-size: 100%;
-	padding-inline: var(--space-3);
-	border: 0;
-	border-inline-end: 1px solid var(--hairline-color);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 600;
-	cursor: pointer;
-	border-start-start-radius: var(--radius-lg);
-	border-end-start-radius: var(--radius-lg);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    block-size: 100%;
+    padding-inline: var(--space-3);
+    border: 0;
+    border-inline-end: 1px solid var(--hairline-color);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-start-start-radius: var(--radius-lg);
+    border-end-start-radius: var(--radius-lg);
 }
 
 .shell-search__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .shell-search__chevron {
-	inline-size: 6px;
-	block-size: 6px;
-	border-right: 2px solid currentColor;
-	border-bottom: 2px solid currentColor;
-	transform: translateY(-1px) rotate(45deg);
-	opacity: 0.6;
+    inline-size: 6px;
+    block-size: 6px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-1px) rotate(45deg);
+    opacity: 0.6;
 }
 
 .shell-search__entity-menu {
-	position: absolute;
-	inset-block-start: calc(100% + var(--space-2));
-	inset-inline-start: 0;
-	/* Guest uses z-index 5; the authed shell's glass chrome needs the overlay layer to sit above it. */
-	z-index: var(--z-overlay);
-	min-inline-size: 11rem;
-	margin: 0;
-	padding: var(--space-1);
-	list-style: none;
-	background: var(--surface-2);
-	border: 1px solid var(--hairline-color);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-high);
+    position: absolute;
+    inset-block-start: calc(100% + var(--space-2));
+    inset-inline-start: 0;
+    /* Guest uses z-index 5; the authed shell's glass chrome needs the overlay layer to sit above it. */
+    z-index: var(--z-overlay);
+    min-inline-size: 11rem;
+    margin: 0;
+    padding: var(--space-1);
+    list-style: none;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--elevation-high);
 }
 
 .shell-search__entity-option {
-	padding: 0.65rem 0.9rem;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	font-size: 0.875rem;
-	font-weight: 500;
+    padding: 0.65rem 0.9rem;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
 /* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
 .shell-search__entity-option:hover,
 .shell-search__entity-option[aria-selected="true"] {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
 }
 
 .shell-search__entity-option:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: -2px;
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
 }
 
 .shell-search__search-input {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	border: 0;
-	background: transparent;
-	color: inherit;
-	font: inherit;
-	font-size: 0.9rem;
-	outline: none;
-	padding-inline-start: var(--space-2);
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    padding-inline-start: var(--space-2);
 }
 
 .shell-search__search-go {
-	flex: 0 0 auto;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 28px;
-	block-size: 28px;
-	padding: 0;
-	border: 0;
-	background: transparent;
-	color: var(--on-surface-variant);
-	cursor: pointer;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 28px;
+    block-size: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--on-surface-variant);
+    cursor: pointer;
 }
 
 .shell-search__search-go svg {
-	inline-size: 16px;
-	block-size: 16px;
+    inline-size: 16px;
+    block-size: 16px;
 }
 
 .shell-search__search-go:hover {
-	color: var(--primary);
+    color: var(--primary);
 }
+
 /* #endregion */
 
 /* #region Trailing utility actions — circular hover highlights, vertically centered */
 .shell-util {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
 }
 
 .shell-util__btn {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 40px;
-	block-size: 40px;
-	/* Soft circular highlight (not a rounded square). */
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--on-surface-variant, var(--text-secondary));
-	text-decoration: none;
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 40px;
+    block-size: 40px;
+    /* Soft circular highlight (not a rounded square). */
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--on-surface-variant, var(--text-secondary));
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-util__btn svg {
-	inline-size: 20px;
-	block-size: 20px;
+    inline-size: 20px;
+    block-size: 20px;
 }
 
 .shell-util__btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
 }
 
 /* Open ≠ hovered. Both had resolved to the same `--tint-soft` neutral, so the trigger of a drawer
    currently covering a third of the screen looked exactly like one under the pointer. */
 .shell-util__btn[aria-expanded="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--primary);
 }
 
 .shell-util__btn:focus-visible,
 .shell-util__profile:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 /* Pulsing update indicator — a dot, never a count (Part D). */
 .shell-util__dot {
-	position: absolute;
-	inset-block-start: 8px;
-	inset-inline-end: 8px;
-	inline-size: 8px;
-	block-size: 8px;
-	border-radius: var(--radius-full);
-	background: var(--primary);
-	box-shadow: 0 0 0 2px var(--surface-2);
-	animation: shell-dot-pulse 2.4s var(--ease-standard) infinite;
+    position: absolute;
+    inset-block-start: 8px;
+    inset-inline-end: 8px;
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    box-shadow: 0 0 0 2px var(--surface-2);
+    animation: shell-dot-pulse 2.4s var(--ease-standard) infinite;
 }
 
 @keyframes shell-dot-pulse {
-	0%,
-	100% {
-		opacity: 1;
-	}
-	50% {
-		opacity: 0.4;
-	}
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.shell-util__dot {
-		animation: none;
-	}
+    .shell-util__dot {
+        animation: none;
+    }
 }
 
 .shell-util__profile {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	margin-inline-start: var(--space-1);
-	padding: 0;
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-inline-start: var(--space-1);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    cursor: pointer;
 }
 
 .shell-util__profile:hover {
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
+
 /* #endregion */
 
 /* #region Header Popover menus (Create + Account) */
 /* Tighten the shared Popover padding so full-bleed menu rows own their own hover surface. */
 .shell-pop .ui-popover__content {
-	padding: var(--space-1);
+    padding: var(--space-1);
 }
 
 .shell-menu {
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	min-inline-size: 12rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    min-inline-size: 12rem;
 }
 
 .shell-menu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: 0.9rem;
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
 }
 
 .shell-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-menu__item:disabled {
-	opacity: 0.6;
-	cursor: default;
+    opacity: 0.6;
+    cursor: default;
 }
 
 .shell-menu__item:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-menu__icon {
-	display: inline-flex;
-	flex: 0 0 auto;
-	inline-size: 18px;
-	block-size: 18px;
-	color: var(--text-secondary);
+    display: inline-flex;
+    flex: 0 0 auto;
+    inline-size: 18px;
+    block-size: 18px;
+    color: var(--text-secondary);
 }
 
 .shell-menu__icon svg {
-	inline-size: 18px;
-	block-size: 18px;
+    inline-size: 18px;
+    block-size: 18px;
 }
 
 .shell-menu__label {
-	min-inline-size: 0;
-	white-space: nowrap;
+    min-inline-size: 0;
+    white-space: nowrap;
 }
 
 .shell-menu__item--danger {
-	color: var(--danger);
+    color: var(--danger);
 }
 
 .shell-menu__item--danger .shell-menu__icon {
-	color: currentColor;
+    color: currentColor;
 }
 
 /* Single hairline divider — never a boxed rule (§B.4). */
 .shell-menu__sep {
-	block-size: 0;
-	margin: var(--space-1) var(--space-2);
-	border-block-start: var(--hairline);
+    block-size: 0;
+    margin: var(--space-1) var(--space-2);
+    border-block-start: var(--hairline);
 }
 
 /* Icon-only control (Settings) with a circular hover highlight. */
 .shell-icon-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 auto;
-	inline-size: 34px;
-	block-size: 34px;
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	text-decoration: none;
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    inline-size: 34px;
+    block-size: 34px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-icon-btn svg {
-	inline-size: 18px;
-	block-size: 18px;
+    inline-size: 18px;
+    block-size: 18px;
 }
 
 .shell-icon-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
 }
 
 .shell-icon-btn:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
+
 /* #endregion */
 
 /* #region Account menu */
 .shell-account {
-	min-inline-size: 14rem;
+    min-inline-size: 14rem;
 }
 
 .shell-account__id {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-sm);
-	color: var(--on-surface);
-	text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--on-surface);
+    text-decoration: none;
 }
 
 .shell-account__id:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-account__id:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-account__ident {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
 }
 
 .shell-account__name {
-	font-weight: 600;
-	font-size: 0.92rem;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    font-weight: 600;
+    font-size: 0.92rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .shell-account__sub {
-	font-size: 0.8rem;
-	color: var(--text-secondary);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Role badge + live status — the identity's dynamic state row. */
 .shell-account__meta {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-block-start: 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-start: 2px;
 }
 
 .shell-account__badge {
-	display: inline-flex;
-	align-items: center;
-	padding: 1px var(--space-2);
-	border-radius: var(--radius-full);
-	font-size: 0.7rem;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
+    display: inline-flex;
+    align-items: center;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--primary);
 }
 
 .shell-account__status {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35ch;
-	font-size: 0.72rem;
-	color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35ch;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
 }
 
 .shell-account__status-dot {
-	inline-size: 6px;
-	block-size: 6px;
-	border-radius: var(--radius-full);
-	background: var(--success);
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: var(--radius-full);
+    background: var(--success);
 }
 
 .shell-account__status[data-online="false"] .shell-account__status-dot {
-	background: var(--text-secondary);
+    background: var(--text-secondary);
 }
 
 /* Active workspace/team — a tonal-tinted row (§B.4: no boxed border), only when in a tenant context. */
 .shell-account__workspace {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	margin: var(--space-px) var(--space-1) 0;
-	padding: var(--space-1) var(--space-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: var(--space-px) var(--space-1) 0;
+    padding: var(--space-1) var(--space-3);
 }
 
 .shell-account__workspace-label {
-	font-size: 0.68rem;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-secondary);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
 }
 
 .shell-account__workspace-name {
-	min-inline-size: 0;
-	font-size: 0.85rem;
-	font-weight: 500;
-	color: var(--on-surface);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    min-inline-size: 0;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--on-surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .shell-account__row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	padding: var(--space-2) var(--space-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
 }
 
 .shell-account__row-label {
-	font-size: 0.9rem;
-	color: var(--on-surface);
+    font-size: 0.9rem;
+    color: var(--on-surface);
 }
 
 .shell-account__foot {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .shell-account__foot .shell-menu__item {
-	flex: 1 1 auto;
+    flex: 1 1 auto;
 }
+
 /* #endregion */
 
 /* #region Account popover — state-driven sub-views (identity · status · context) */
 /* Identity header row: the profile link grows; the context-switch icon sits at the trailing edge. */
 .shell-account__head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
 }
 
 .shell-account__head .shell-account__id {
-	flex: 1 1 auto;
-	min-inline-size: 0;
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
 
 .shell-account__switch {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 auto;
-	inline-size: 34px;
-	block-size: 34px;
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    inline-size: 34px;
+    block-size: 34px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-account__switch svg {
-	inline-size: 18px;
-	block-size: 18px;
+    inline-size: 18px;
+    block-size: 18px;
 }
 
 .shell-account__switch:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
 }
 
 .shell-account__switch:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 /* Become a Freelancer — a prominent tonal CTA shown only for a client context (§B.4: tint, no border). */
 .shell-account__cta {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin: var(--space-1) var(--space-1) 0;
-	padding: var(--space-2) var(--space-3);
-	border-radius: var(--radius-base);
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
-	font-size: 0.88rem;
-	font-weight: 600;
-	text-decoration: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-1) var(--space-1) 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-base);
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--primary);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-account__cta:hover {
-	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+    background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
 }
 
 .shell-account__cta:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-account__cta-icon {
-	inline-size: 18px;
-	block-size: 18px;
-	flex: 0 0 auto;
+    inline-size: 18px;
+    block-size: 18px;
+    flex: 0 0 auto;
 }
 
 /* Dedicated online-status row — clickable, opens the status picker. */
 .shell-status {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: calc(100% - 2 * var(--space-1));
-	margin: var(--space-1) var(--space-1) 0;
-	padding: var(--space-2) var(--space-3);
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: 0.88rem;
-	text-align: start;
-	cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: calc(100% - 2 * var(--space-1));
+    margin: var(--space-1) var(--space-1) 0;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: start;
+    cursor: pointer;
 }
 
 .shell-status:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-status:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-status__label {
-	flex: 1 1 auto;
-	min-inline-size: 0;
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
 
 .shell-status__chevron {
-	inline-size: 16px;
-	block-size: 16px;
-	color: var(--text-secondary);
-	transform: rotate(90deg);
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--text-secondary);
+    transform: rotate(90deg);
 }
 
 /* Shared presence dot — the tone is driven by the ancestor's data-status (row + picker option). */
 .shell-status__dot {
-	flex: 0 0 auto;
-	inline-size: 9px;
-	block-size: 9px;
-	border-radius: var(--radius-full);
-	background: var(--text-secondary);
+    flex: 0 0 auto;
+    inline-size: 9px;
+    block-size: 9px;
+    border-radius: var(--radius-full);
+    background: var(--text-secondary);
 }
 
 .shell-status[data-status="online"] .shell-status__dot,
 .shell-picker__item[data-status="online"] .shell-status__dot {
-	background: var(--success);
+    background: var(--success);
 }
 
 .shell-status[data-status="away"] .shell-status__dot,
 .shell-picker__item[data-status="away"] .shell-status__dot {
-	background: var(--warning);
+    background: var(--warning);
 }
 
 .shell-status[data-status="dnd"] .shell-status__dot,
 .shell-picker__item[data-status="dnd"] .shell-status__dot {
-	background: var(--danger);
+    background: var(--danger);
 }
 
 .shell-status[data-status="invisible"] .shell-status__dot,
 .shell-picker__item[data-status="invisible"] .shell-status__dot {
-	background: transparent;
-	box-shadow: inset 0 0 0 1.5px var(--text-secondary);
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--text-secondary);
 }
 
 /* Single Sun/Moon theme icon-button (replaces the footer ToggleSwitch). */
 .shell-theme-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 34px;
-	block-size: 34px;
-	border: 0;
-	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-	color: var(--on-surface);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 34px;
+    block-size: 34px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    color: var(--on-surface);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-theme-btn svg {
-	inline-size: 18px;
-	block-size: 18px;
+    inline-size: 18px;
+    block-size: 18px;
 }
 
 .shell-theme-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 
 .shell-theme-btn:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 /* Sub-view scaffold (status + context) — a titled header with a back affordance. */
 .shell-subview {
-	min-inline-size: 15rem;
+    min-inline-size: 15rem;
 }
 
 .shell-subview__head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 2px var(--space-1) var(--space-1);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-1) var(--space-1);
 }
 
 .shell-subview__back {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: 0 0 auto;
-	inline-size: 30px;
-	block-size: 30px;
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    inline-size: 30px;
+    block-size: 30px;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-subview__back svg {
-	inline-size: 18px;
-	block-size: 18px;
+    inline-size: 18px;
+    block-size: 18px;
 }
 
 .shell-subview__back:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
 }
 
 .shell-subview__back:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-subview__title {
-	font-weight: 600;
-	font-size: 0.92rem;
-	color: var(--on-surface);
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--on-surface);
 }
 
 /* Status picker list. */
 .shell-picker {
-	list-style: none;
-	margin: 0;
-	padding: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 .shell-picker__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	text-align: start;
-	cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
 }
 
 .shell-picker__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-picker__item:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-picker__text {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	flex: 1 1 auto;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
 
 .shell-picker__label {
-	font-size: 0.9rem;
-	font-weight: 500;
+    font-size: 0.9rem;
+    font-weight: 500;
 }
 
 .shell-picker__desc {
-	font-size: 0.76rem;
-	color: var(--text-secondary);
+    font-size: 0.76rem;
+    color: var(--text-secondary);
 }
 
 .shell-picker__check,
 .shell-ctx__check {
-	flex: 0 0 auto;
-	inline-size: 18px;
-	block-size: 18px;
-	color: var(--primary);
+    flex: 0 0 auto;
+    inline-size: 18px;
+    block-size: 18px;
+    color: var(--primary);
 }
 
 /* Context switcher — Teams ⁄ Businesses tabs + membership list + footer actions. */
 .shell-ctx__tabs {
-	display: flex;
-	gap: var(--space-4);
-	margin: 0 var(--space-3);
-	border-block-end: var(--hairline);
+    display: flex;
+    gap: var(--space-4);
+    margin: 0 var(--space-3);
+    border-block-end: var(--hairline);
 }
 
 .shell-ctx__tab {
-	position: relative;
-	padding: var(--space-2) 2px;
-	border: 0;
-	background: transparent;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: 0.86rem;
-	font-weight: 600;
-	cursor: pointer;
-	transition: color var(--dur-fast) var(--ease-standard);
+    position: relative;
+    padding: var(--space-2) 2px;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .shell-ctx__tab:hover {
-	color: var(--on-surface);
+    color: var(--on-surface);
 }
 
 .shell-ctx__tab[data-active="true"] {
-	color: var(--on-surface);
+    color: var(--on-surface);
 }
 
 /* Underlined active tab — sits on the tab-strip hairline (§B.4). */
 .shell-ctx__tab[data-active="true"]::after {
-	content: "";
-	position: absolute;
-	inset-inline: 0;
-	inset-block-end: -1px;
-	block-size: 2px;
-	border-radius: 2px 2px 0 0;
-	background: var(--primary);
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: -1px;
+    block-size: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--primary);
 }
 
 .shell-ctx__tab:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-ctx__list {
-	list-style: none;
-	margin: var(--space-1) 0;
-	padding: 0;
-	max-block-size: 15rem;
-	overflow-y: auto;
+    list-style: none;
+    margin: var(--space-1) 0;
+    padding: 0;
+    max-block-size: 15rem;
+    overflow-y: auto;
 }
 
 .shell-ctx__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: 0;
-	border-radius: var(--radius-sm);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	text-align: start;
-	cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
 }
 
 .shell-ctx__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .shell-ctx__item[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 
 .shell-ctx__item:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
 }
 
 .shell-ctx__body {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	flex: 1 1 auto;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
 
 .shell-ctx__name {
-	font-size: 0.9rem;
-	font-weight: 500;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .shell-ctx__detail {
-	font-size: 0.76rem;
-	color: var(--text-secondary);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .shell-ctx__empty {
-	padding: var(--space-3);
-	font-size: 0.85rem;
-	color: var(--text-secondary);
-	text-align: center;
+    padding: var(--space-3);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-align: center;
 }
 
 .shell-ctx__foot {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
+
 /* #endregion */
 
 /* #region Notifications + Basket drawers */
 .shell-drawer {
-	/* A premium glass panel over the base backdrop blur. */
-	background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    /* A premium glass panel over the base backdrop blur. */
+    background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .shell-feed,
 .shell-basket {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
 }
 
 .shell-feed__item {
-	position: relative;
-	display: flex;
-	gap: var(--space-3);
-	padding: var(--space-3);
-	border-radius: var(--radius-base);
+    position: relative;
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-base);
 }
 
 .shell-feed__item--unread {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
 
 .shell-feed__lead {
-	flex: 0 0 auto;
+    flex: 0 0 auto;
 }
 
 .shell-feed__body {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
 }
 
 .shell-feed__title {
-	font-weight: 600;
-	font-size: 0.9rem;
-	color: var(--on-surface);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--on-surface);
 }
 
 .shell-feed__text {
-	font-size: 0.85rem;
-	color: var(--text-secondary);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 .shell-feed__time {
-	font-size: 0.75rem;
-	color: var(--on-surface-variant, var(--text-secondary));
+    font-size: 0.75rem;
+    color: var(--on-surface-variant, var(--text-secondary));
 }
 
 .shell-feed__dot {
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-end: var(--space-3);
-	inline-size: 8px;
-	block-size: 8px;
-	border-radius: var(--radius-full);
-	background: var(--primary);
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-end: var(--space-3);
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: var(--radius-full);
+    background: var(--primary);
 }
 
 .shell-basket__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2);
-	border-radius: var(--radius-base);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2);
+    border-radius: var(--radius-base);
 }
 
 .shell-basket__thumb {
-	flex: 0 0 auto;
-	inline-size: 44px;
-	block-size: 44px;
-	border-radius: var(--radius-sm);
-	object-fit: cover;
+    flex: 0 0 auto;
+    inline-size: 44px;
+    block-size: 44px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
 }
 
 .shell-basket__body {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-inline-size: 0;
-	flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+    flex: 1 1 auto;
 }
 
 .shell-basket__title {
-	font-weight: 500;
-	font-size: 0.9rem;
-	color: var(--on-surface);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .shell-basket__seller {
-	font-size: 0.8rem;
-	color: var(--text-secondary);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 
 .shell-basket__price {
-	flex: 0 0 auto;
-	font-weight: 600;
-	font-size: 0.9rem;
-	color: var(--on-surface);
+    flex: 0 0 auto;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--on-surface);
 }
 
 .shell-drawer__all,
 .shell-drawer__cta {
-	display: block;
-	margin-block-start: var(--space-4);
-	padding: var(--space-3);
-	border-radius: var(--radius-base);
-	text-align: center;
-	text-decoration: none;
-	font-weight: 500;
-	font-size: 0.9rem;
+    display: block;
+    margin-block-start: var(--space-4);
+    padding: var(--space-3);
+    border-radius: var(--radius-base);
+    text-align: center;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
 }
 
 .shell-drawer__all {
-	color: var(--primary);
-	border: var(--hairline);
+    color: var(--primary);
+    border: var(--hairline);
 }
 
 .shell-drawer__cta {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 .shell-drawer__all:focus-visible,
 .shell-drawer__cta:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: 2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
 }
+
 /* #endregion */
 
 /* #region Responsive — desktop vs mobile action slots (Part D.3 "Mobile User") */
 /* The account side-sheet fills the mobile Drawer rather than the Popover's min width. */
 .shell-account--sheet {
-	min-inline-size: 0;
-	inline-size: 100%;
+    min-inline-size: 0;
+    inline-size: 100%;
 }
 
 /* Default (desktop): the mobile-only header actions (Messages, avatar-sheet trigger) are hidden. */
 .shell-util__slot--mobile {
-	display: none;
+    display: none;
 }
 
 @media (max-width: 767px) {
-	/* The integrated search is desktop-first; the mobile search overlay (Phase 3) supplies its own
+
+    /* The integrated search is desktop-first; the mobile search overlay (Phase 3) supplies its own
 	   trigger. Hide the lead search so the mobile header stays: brand · actions. */
-	.shell-headlead .shell-search {
-		display: none;
-	}
+    .shell-headlead .shell-search {
+        display: none;
+    }
 
-	.shell-util__btn {
-		inline-size: 36px;
-		block-size: 36px;
-	}
+    .shell-util__btn {
+        inline-size: 36px;
+        block-size: 36px;
+    }
 
-	/* Desktop-only tray actions (Create, Basket) + the Popover profile give way to the mobile set:
+    /* Desktop-only tray actions (Create, Basket) + the Popover profile give way to the mobile set:
 	   Messages · Notifications · avatar → account side-sheet. Create is a bottom-nav primary on mobile. */
-	.shell-util__slot--desktop {
-		display: none;
-	}
+    .shell-util__slot--desktop {
+        display: none;
+    }
 
-	.shell-util__slot--mobile {
-		display: inline-flex;
-	}
+    .shell-util__slot--mobile {
+        display: inline-flex;
+    }
 }
+
 /* #endregion */

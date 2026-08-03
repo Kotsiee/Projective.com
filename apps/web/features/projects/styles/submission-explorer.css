@@ -4,6 +4,11 @@
  * reuses the File Explorer's toolbar/workspace/empty (`fx-*`, imported alongside) and adds only the
  * submissions-specific layout. §B.4: the tree/workspace separation is a single hairline, never a box.
  * Native WINDOW scroll model (Decision #31) — the tree + header pin via `position: sticky`. Token-only.
+ *
+ * The control bar is the SHARED `.fx-toolbar` (`./fx-toolbar.css`) rendered unchanged — this surface and
+ * the File Explorer draw ONE toolbar, not lookalikes. The single difference is the breadcrumb pill this
+ * sheet stacks ABOVE it: `.subm-bar` is the sticky group, and the two pills inside it carry the same
+ * glass wash, so the toolbar keeps its own pill instead of being absorbed into a taller block.
  */
 .subm-explorer {
 	position: relative;
@@ -11,8 +16,9 @@
 	clears the channel-header band). */
 	--fx-chrome: var(--shell-topbar-h);
 	--subm-crumb-h: 2.5rem;
-	/* The combined header height (breadcrumbs + toolbar) — the offset the FileTable header sticks below. */
-	--fx-toolbar-h: calc(var(--subm-crumb-h) + 3rem);
+	/* The combined pinned height (breadcrumb pill + gap + toolbar) — the offset the FileTable header
+	sticks below. */
+	--fx-toolbar-h: calc(var(--subm-crumb-h) + var(--space-2) + 3rem);
 	min-block-size: 100%;
 	padding-inline: var(--space-4);
 	padding-block: var(--space-3) var(--space-6);
@@ -58,13 +64,42 @@
 
 /* #endregion */
 
-/* #region Breadcrumbs bar (sticky) — trail (left) + workflow action bar (right) */
+/* #region Sticky bar group — breadcrumb pill above the shared toolbar pill */
+
+/* The group owns the pin; the toolbar inside therefore drops its own `sticky` (below) so the two rows
+   travel as one unit. No background of its own — each pill carries the glass. */
+.subm-bar {
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
+	z-index: var(--z-sticky);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+/* Breadcrumbs bar — trail (left) + workflow action bar (right). Mirrors `.fx-toolbar`'s geometry and
+   glass so the two rows read as one control surface. */
 .subm-crumbbar {
+	position: relative;
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
 	min-block-size: var(--subm-crumb-h);
-	padding: 0 var(--space-2);
+	padding-inline: var(--space-3);
+}
+
+/* The glass wash rides a `::before` UNDERLAY, never `backdrop-filter` on the bar itself — the same
+   fixed-overlay trap the shared toolbar avoids (the action bar opens `position: fixed` panels). */
+.subm-crumbbar::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur, 18px));
+	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
+	pointer-events: none;
+	border-radius: 50px;
 }
 
 .subm-crumbbar__trail {
@@ -79,44 +114,13 @@
 	overflow: hidden;
 }
 
-.subm-bar {
-	position: sticky;
-	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
-	z-index: calc(var(--z-sticky) + 1);
-}
-
-.subm-bar::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	background: color-mix(in srgb, var(--surface) 62%, transparent);
-	backdrop-filter: blur(var(--glass-blur, 18px));
-	-webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-	pointer-events: none;
-	border-radius: 15px;
-}
-
-.fx-toolbar::before {
-	content: "";
+/* The shared toolbar is rendered verbatim; only its pin is released to the group above, and its height
+   is fixed at the File Explorer's 3rem so it never inflates to the combined `--fx-toolbar-h` it drives. */
+.subm-bar .fx-toolbar {
 	position: relative;
-	z-index: 0;
-	background: none;
-	backdrop-filter: none;
-	-webkit-backdrop-filter: none;
-	pointer-events: none;
-	border-radius: none;
-}
-
-/* #endregion */
-
-/* #region Toolbar (sticky below the breadcrumbs; height fixed so it never inflates to the FileTable
-   offset var it also drives) */
-.subm-main .fx-toolbar {
-	position: sticky;
-	inset-block-start: calc(var(--fx-chrome) + var(--subm-crumb-h));
+	inset-block-start: auto;
+	z-index: auto;
 	min-block-size: 3rem;
-	z-index: var(--z-sticky);
 }
 
 /* #endregion */

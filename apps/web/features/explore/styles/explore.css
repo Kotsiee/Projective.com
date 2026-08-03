@@ -21,17 +21,17 @@
  * `.ex` keeps only what is genuinely the Explore PAGE's: its fill, its background, its font stack.
  */
 :root {
-	--ex-r-sm: var(--radius-lg);
-	--ex-r-md: var(--radius-xl);
-	--ex-r-lg: var(--card-radius-media);
-	--ex-hair: var(--hairline-color);
-	--ex-hair-strong: var(--hairline-strong-color);
-	/*
+    --ex-r-sm: var(--radius-lg);
+    --ex-r-md: var(--radius-xl);
+    --ex-r-lg: var(--card-radius-media);
+    --ex-hair: var(--hairline-color);
+    --ex-hair-strong: var(--hairline-strong-color);
+    /*
 	 * Glass over THEME surfaces. 62% is fine here: whatever sits behind is a token-derived surface, so
 	 * the composite is knowable and every text pair on it was verified.
 	 */
-	--ex-glass: color-mix(in srgb, var(--surface) 62%, transparent);
-	/*
+    --ex-glass: color-mix(in srgb, var(--surface) 62%, transparent);
+    /*
 	 * Glass over CONTENT is a different problem wearing the same clothes, and the code used to treat
 	 * them identically. The promoted flag, the service-type chip and the price chip sit on the card
 	 * THUMBNAIL — arbitrary uploaded photography — so the composite is 62% surface plus 38% of an
@@ -55,439 +55,446 @@
 	 * nothing on any surface that does not load this sheet, silently, because the chip still lays out.
 	 * The `--ex-` name is kept as the local alias so no call site had to change.
 	 */
-	--ex-chip-on-media: var(--chip-on-media);
-	--ex-primary-tint: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	--ex-pad-x: clamp(1.25rem, 5vw, 5rem);
+    --ex-chip-on-media: var(--chip-on-media);
+    --ex-primary-tint: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    --ex-pad-x: clamp(1.25rem, 5vw, 5rem);
 }
 
 .ex {
-	display: block;
-	min-block-size: 100vh;
-	background: var(--surface);
-	color: var(--on-surface);
-	font-family: var(--font-sans);
-	-webkit-font-smoothing: antialiased;
+    display: block;
+    min-block-size: 100vh;
+    /* background: var(--surface); */
+    color: var(--on-surface);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
 }
 
 .ex *::selection {
-	background: var(--ex-primary-tint);
+    background: var(--ex-primary-tint);
 }
+
 /* #endregion */
 
 /* #region Search bar strip */
 /* Relative (never sticky/fixed): the query + trending header scrolls away with the page. Keeps a
    raised stacking context so the entity dropdown can overlay the results below it. */
 .ex__searchbar {
-	position: relative;
-	z-index: 20;
-	padding: var(--space-5) var(--ex-pad-x);
-	background: var(--surface);
-	border-block-end: 1px solid var(--ex-hair);
+    position: relative;
+    z-index: 20;
+    padding: var(--space-5) var(--ex-pad-x);
+    background: var(--surface);
+    border-block-end: 1px solid var(--ex-hair);
 }
 
 .ex__searchbar-inner {
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
 }
+
 /* #endregion */
 
 /* #region Shared atoms */
 .ex-eyebrow {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: 0.72rem;
-	font-weight: 600;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--on-surface-variant);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
 }
 
 .ex-eyebrow--rule::before {
-	content: "";
-	inline-size: 1.75rem;
-	block-size: 1px;
-	background: var(--primary);
+    content: "";
+    inline-size: 1.75rem;
+    block-size: 1px;
+    background: var(--primary);
 }
 
 .ex-muted {
-	font-size: 0.85rem;
-	color: var(--on-surface-variant);
+    font-size: 0.85rem;
+    color: var(--on-surface-variant);
 }
 
 /* Uniform, elegant thin-weight pricing everywhere (service floors, product chips, project budgets). */
 .ex-price {
-	font-weight: 300;
-	font-size: 1.05rem;
-	letter-spacing: -0.01em;
-	white-space: nowrap;
+    font-weight: 300;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
 }
 
 .ex-price--lg {
-	font-size: 1.3rem;
-	font-weight: 300;
-	letter-spacing: -0.02em;
+    font-size: 1.3rem;
+    font-weight: 300;
+    letter-spacing: -0.02em;
 }
 
 /* The billing unit after a service price (`/ ticket`, `/ session`) — muted, small, thin. */
 .ex-price__unit {
-	margin-inline-start: 0.3rem;
-	font-size: 0.8rem;
-	font-weight: 400;
-	color: var(--on-surface-variant);
-	letter-spacing: 0;
+    margin-inline-start: 0.3rem;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--on-surface-variant);
+    letter-spacing: 0;
 }
 
 .ex-cta {
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--primary);
-	white-space: nowrap;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--primary);
+    white-space: nowrap;
 }
 
 .ex-viewall {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-weight: 600;
-	font-size: 0.95rem;
-	color: var(--primary);
-	text-decoration: none;
-	white-space: nowrap;
-	transition: gap var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--primary);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: gap var(--dur-fast) var(--ease-standard);
 }
 
 .ex-viewall:hover {
-	gap: var(--space-3);
+    gap: var(--space-3);
 }
 
 .ex-viewall:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
-	border-radius: var(--radius-xs);
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+    border-radius: var(--radius-xs);
 }
 
 .ex-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-2);
-	padding: 0.7rem 1.3rem;
-	border-radius: var(--radius-xl);
-	font-size: 0.95rem;
-	font-weight: 600;
-	line-height: 1;
-	text-decoration: none;
-	cursor: pointer;
-	border: 1px solid transparent;
-	transition:
-		transform var(--dur-medium) var(--spring-standard),
-		background-color var(--dur-slow) var(--ease-standard),
-		border-color var(--dur-slow) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: 0.7rem 1.3rem;
+    border-radius: var(--radius-xl);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition:
+        transform var(--dur-medium) var(--spring-standard),
+        background-color var(--dur-slow) var(--ease-standard),
+        border-color var(--dur-slow) var(--ease-standard);
 }
 
 .ex-btn--solid {
-	background: var(--primary);
-	color: var(--on-primary);
-	box-shadow: var(--elevation-low);
+    background: var(--primary);
+    color: var(--on-primary);
+    box-shadow: var(--elevation-low);
 }
 
 .ex-btn--solid:hover {
-	transform: translateY(-2px);
+    transform: translateY(-2px);
 }
 
 .ex-btn--ghost {
-	background: var(--surface-1);
-	color: var(--on-surface);
-	border-color: var(--ex-hair-strong);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    border-color: var(--ex-hair-strong);
 }
 
 .ex-btn--ghost:hover {
-	border-color: var(--primary);
-	color: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .ex-btn:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
 }
+
 /* #endregion */
 
 /* #region Section heading */
 .ex-head {
-	display: flex;
-	align-items: flex-end;
-	justify-content: space-between;
-	gap: var(--space-5);
-	margin-block-end: clamp(1.5rem, 3vw, 2.5rem);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-5);
+    margin-block-end: clamp(1.5rem, 3vw, 2.5rem);
 }
 
 .ex-head__title {
-	margin: var(--space-3) 0 0;
-	font-size: clamp(1.75rem, 0.917rem + 2.778vw, 3rem);
-	line-height: 1;
-	letter-spacing: -0.03em;
+    margin: var(--space-3) 0 0;
+    font-size: clamp(1.75rem, 0.917rem + 2.778vw, 3rem);
+    line-height: 1;
+    letter-spacing: -0.03em;
 }
 
 .ex-head__title-thin {
-	font-weight: 300;
-	color: var(--on-surface-variant);
+    font-weight: 300;
+    color: var(--on-surface-variant);
 }
 
 .ex-head__title-strong {
-	font-weight: 600;
-	color: var(--on-surface);
+    font-weight: 600;
+    color: var(--on-surface);
 }
+
 /* #endregion */
 
 /* #region Owner badge */
 /* Container (NOT an anchor): profile navigation is bound only to the avatar + handle sub-anchors; the
    display name is inert text. Sits above the card's stretched link so the sub-anchors stay clickable. */
 .ex-owner {
-	position: relative;
-	z-index: 2;
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	max-inline-size: 100%;
-	color: var(--on-surface);
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-inline-size: 100%;
+    color: var(--on-surface);
 }
 
 .ex-owner__avatar-link {
-	display: inline-flex;
-	flex: 0 0 auto;
-	border-radius: 50%;
-	text-decoration: none;
+    display: inline-flex;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    text-decoration: none;
 }
 
 .ex-owner--md .ex-owner__avatar-link {
-	border-radius: var(--radius-lg);
+    border-radius: var(--radius-lg);
 }
 
 .ex-owner__avatar-link:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
-	border-radius: var(--radius-sm);
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
 }
 
 .ex-owner__id {
-	display: flex;
-	flex-direction: column;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
 }
 
 .ex-owner__name {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.3rem;
-	font-weight: 600;
-	font-size: 0.92rem;
-	line-height: 1.15;
-	min-inline-size: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: 600;
+    font-size: 0.92rem;
+    line-height: 1.15;
+    min-inline-size: 0;
 }
 
 .ex-owner--md .ex-owner__name {
-	font-size: 1.05rem;
+    font-size: 1.05rem;
 }
 
 .ex-owner__nametext {
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ex-owner__handle {
-	inline-size: fit-content;
-	font-size: 0.8rem;
-	color: var(--on-surface-variant);
-	text-decoration: none;
-	transition: color var(--dur-fast) var(--ease-standard);
+    inline-size: fit-content;
+    font-size: 0.8rem;
+    color: var(--on-surface-variant);
+    text-decoration: none;
+    transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-owner__handle:hover {
-	color: var(--primary);
+    color: var(--primary);
 }
 
 .ex-owner__handle:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
-	border-radius: var(--radius-xs);
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
 }
 
 /* Mini owner-row — the compact thumbnail attribution: a tiny circular avatar + `@handle`, inline. */
 .ex-owner--mini {
-	gap: var(--space-2);
+    gap: var(--space-2);
 }
 
 .ex-owner--mini .ex-owner__avatar {
-	inline-size: 1.5rem;
-	block-size: 1.5rem;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
 }
 
 .ex-owner--mini .ex-owner__handle {
-	font-size: 0.85rem;
+    font-size: 0.85rem;
 }
+
 /* #endregion */
 
 /* #region Verified badge */
 .ex-verified {
-	display: inline-flex;
-	flex: 0 0 auto;
-	color: var(--primary);
-	vertical-align: middle;
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--primary);
+    vertical-align: middle;
 }
 
 .ex-verified svg {
-	inline-size: 100%;
-	block-size: 100%;
+    inline-size: 100%;
+    block-size: 100%;
 }
 
 .ex-verified--sm {
-	inline-size: 1rem;
-	block-size: 1rem;
+    inline-size: 1rem;
+    block-size: 1rem;
 }
 
 .ex-verified--md {
-	inline-size: 1.2rem;
-	block-size: 1.2rem;
+    inline-size: 1.2rem;
+    block-size: 1.2rem;
 }
 
 .ex-verified--lg {
-	inline-size: 1.5rem;
-	block-size: 1.5rem;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
 }
 
 .ex-verified__seal {
-	fill: currentColor;
+    fill: currentColor;
 }
 
 .ex-verified__ring {
-	fill: none;
-	stroke: color-mix(in srgb, var(--on-primary) 55%, transparent);
-	stroke-width: 1.1;
+    fill: none;
+    stroke: color-mix(in srgb, var(--on-primary) 55%, transparent);
+    stroke-width: 1.1;
 }
 
 .ex-verified__tick {
-	stroke: var(--on-primary);
+    stroke: var(--on-primary);
 }
+
 /* #endregion */
 
 /* #region Rating tracks */
 .ex-ratings {
-	display: flex;
-	gap: var(--space-4) var(--space-5);
+    display: flex;
+    gap: var(--space-4) var(--space-5);
 }
 
 .ex-ratings--inline {
-	flex-wrap: wrap;
+    flex-wrap: wrap;
 }
 
 .ex-ratings--stack {
-	flex-direction: column;
-	gap: var(--space-3);
+    flex-direction: column;
+    gap: var(--space-3);
 }
 
 .ex-ratings__track {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.82rem;
 }
 
 .ex-ratings__label {
-	color: var(--on-surface-variant);
-	font-weight: 500;
+    color: var(--on-surface-variant);
+    font-weight: 500;
 }
 
 .ex-ratings__value {
-	font-weight: 600;
+    font-weight: 600;
 }
 
 .ex-ratings__count {
-	margin-inline-start: 0.15rem;
-	font-weight: 400;
-	color: var(--on-surface-variant);
+    margin-inline-start: 0.15rem;
+    font-weight: 400;
+    color: var(--on-surface-variant);
 }
 
 .ex-stars {
-	position: relative;
-	display: inline-flex;
-	color: var(--ex-hair-strong);
+    position: relative;
+    display: inline-flex;
+    color: var(--ex-hair-strong);
 }
 
 .ex-stars__track,
 .ex-stars__fill {
-	display: inline-flex;
-	gap: 1px;
+    display: inline-flex;
+    gap: 1px;
 }
 
 .ex-stars svg {
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
 }
 
 .ex-stars__fill {
-	position: absolute;
-	inset-block: 0;
-	inset-inline-start: 0;
-	inline-size: var(--ex-fill, 0%);
-	overflow: hidden;
-	color: var(--primary);
-	white-space: nowrap;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: var(--ex-fill, 0%);
+    overflow: hidden;
+    color: var(--primary);
+    white-space: nowrap;
 }
 
 /* Single-glyph indicator: one always-filled primary star (the numeric score sits beside it in the
    RatingTracks row), saving the horizontal space a five-star meter would cost on a dense card. */
 .ex-stars--single {
-	color: var(--primary);
+    color: var(--primary);
 }
 
 .ex-stars--single .ex-stars__fill {
-	position: static;
-	inline-size: auto;
-	overflow: visible;
+    position: static;
+    inline-size: auto;
+    overflow: visible;
 }
+
 /* #endregion */
 
 /* #region Skills (low-contrast text, not enclosed pills) */
 /* Skills read as simple, low-contrast clickable words — no enclosing chip frame. Clamped to at most
    two rows so a busy card never balloons; the SkillPills cap (≤5) + the `+N` handle the overflow. */
 .ex-pills {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-3);
-	align-items: center;
-	max-block-size: 2.6rem;
-	overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    align-items: center;
+    max-block-size: 2.6rem;
+    overflow: hidden;
 }
 
 .ex-pill {
-	position: relative;
-	z-index: 2;
-	display: inline-flex;
-	align-items: center;
-	gap: 0.3rem;
-	padding: 0;
-	border: 0;
-	background: none;
-	color: var(--on-surface-variant);
-	font-size: 0.76rem;
-	font-weight: 500;
-	line-height: 1.2;
-	text-decoration: none;
-	transition: color var(--dur-fast) var(--ease-standard);
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--on-surface-variant);
+    font-size: 0.76rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-decoration: none;
+    transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-pill__icon {
-	display: inline-flex;
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
-	color: color-mix(in srgb, var(--primary) 70%, var(--on-surface-variant));
+    display: inline-flex;
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
+    color: color-mix(in srgb, var(--primary) 70%, var(--on-surface-variant));
 }
 
 .ex-pill__icon svg {
-	inline-size: 100%;
-	block-size: 100%;
+    inline-size: 100%;
+    block-size: 100%;
 }
 
 /* On card hover the whole tag row warms toward the card's accent (a stand-in for the thumbnail's
@@ -495,33 +502,34 @@
    no reflow — so idle tags stay minimal plain words. */
 .ex-card:hover .ex-pill,
 .ex-card:focus-within .ex-pill {
-	color: color-mix(in srgb, var(--ex-accent) 62%, var(--on-surface-variant));
+    color: color-mix(in srgb, var(--ex-accent) 62%, var(--on-surface-variant));
 }
 
 .ex-card:hover .ex-pill .ex-pill__icon,
 .ex-card:focus-within .ex-pill .ex-pill__icon {
-	color: color-mix(in srgb, var(--ex-accent) 72%, var(--on-surface-variant));
+    color: color-mix(in srgb, var(--ex-accent) 72%, var(--on-surface-variant));
 }
 
 .ex-pill:hover,
 .ex-card:hover .ex-pill:hover {
-	color: var(--ex-accent);
+    color: var(--ex-accent);
 }
 
 .ex-pill:hover .ex-pill__icon {
-	color: var(--ex-accent);
+    color: var(--ex-accent);
 }
 
 .ex-pill:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
-	border-radius: var(--radius-xs);
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
 }
 
 .ex-pills__more {
-	font-size: 0.76rem;
-	color: var(--on-surface-variant);
+    font-size: 0.76rem;
+    color: var(--on-surface-variant);
 }
+
 /* #endregion */
 
 /* #region Card base */
@@ -542,28 +550,28 @@
  * replacing it.
  */
 .ex-card {
-	/* Per-card accent — a stand-in for the card's dominant thumbnail hue (see core/accent.ts). Cards
+    /* Per-card accent — a stand-in for the card's dominant thumbnail hue (see core/accent.ts). Cards
 	   with media/banners override it inline; tags tint to it on hover (Golden Blueprint §3). */
-	--ex-accent: var(--primary);
-	/* Resting ring: none, until the high-contrast overlay asks for one. */
-	--ex-card-ring: 0 0 0 0 transparent;
+    --ex-accent: var(--primary);
+    /* Resting ring: none, until the high-contrast overlay asks for one. */
+    --ex-card-ring: 0 0 0 0 transparent;
 
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	/* Fill the grid/rail/masonry cell on BOTH axes. Height equalises rows; width no longer relies on the
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* Fill the grid/rail/masonry cell on BOTH axes. Height equalises rows; width no longer relies on the
 	   card's text content being wide enough to stretch a flex cell (lean cards would otherwise shrink to
 	   their min-content and strand the cell). */
-	inline-size: 100%;
-	block-size: 100%;
-	color: inherit;
-	background: var(--surface-2);
-	border-radius: var(--ex-r-lg);
-	overflow: clip;
-	box-shadow: var(--ex-card-ring);
-	transition:
-		transform var(--dur-medium) var(--spring-standard),
-		box-shadow var(--dur-medium) var(--ease-standard);
+    inline-size: 100%;
+    block-size: 100%;
+    color: inherit;
+    background: var(--surface-2);
+    border-radius: var(--ex-r-lg);
+    overflow: clip;
+    box-shadow: var(--ex-card-ring);
+    transition:
+        transform var(--dur-medium) var(--spring-standard),
+        box-shadow var(--dur-medium) var(--ease-standard);
 }
 
 /* Hover: a smooth Y-axis lift + an expanded deep shadow — the background stays stable (Golden
@@ -571,8 +579,8 @@
    card keeps its boundary while it lifts. */
 .ex-card:hover,
 .ex-card:focus-within {
-	transform: translateY(var(--card-hover-lift));
-	box-shadow: var(--ex-card-ring), var(--elevation-high);
+    transform: translateY(var(--card-hover-lift));
+    box-shadow: var(--ex-card-ring), var(--elevation-high);
 }
 
 /*
@@ -581,19 +589,19 @@
  * `--hairline-strong-color` here: at 40% outline it is the widened edge this cohort actually needs.
  */
 :root[data-contrast="high"] .ex-card {
-	--ex-card-ring: inset 0 0 0 1px var(--hairline-strong-color);
+    --ex-card-ring: inset 0 0 0 1px var(--hairline-strong-color);
 }
 
 /* Reduced motion: keep the deepened shadow as the hover affordance, drop the lift. */
 @media (prefers-reduced-motion: reduce) {
-	.ex-card {
-		transition: box-shadow var(--dur-medium) var(--ease-standard);
-	}
+    .ex-card {
+        transition: box-shadow var(--dur-medium) var(--ease-standard);
+    }
 
-	.ex-card:hover,
-	.ex-card:focus-within {
-		transform: none;
-	}
+    .ex-card:hover,
+    .ex-card:focus-within {
+        transform: none;
+    }
 }
 
 /*
@@ -607,15 +615,15 @@
  * shave it — an outset ring on a clipped child is invisible on three edges.
  */
 .ex-card__link {
-	position: absolute;
-	inset: 0;
-	z-index: 1;
-	border-radius: inherit;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
 }
 
 .ex-card__link:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+    outline: none;
+    box-shadow: var(--focus-ring-shadow-inset);
 }
 
 /*
@@ -639,13 +647,13 @@
  * here varies by which card was written first.
  */
 .ex-card__body {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	flex: 1 1 auto;
-	gap: var(--card-gap);
-	padding: var(--card-pad-media);
-	min-inline-size: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: var(--card-gap);
+    padding: var(--card-pad-media);
+    min-inline-size: 0;
 }
 
 /*
@@ -658,24 +666,24 @@
  * clamp, which is how the catalogue title has been silently unbounded outside those engines.
  */
 .ex-card__title {
-	margin: 0;
-	font-size: 1.1rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-	/* Long unbroken strings (a URL, a run-on product code) would otherwise push the card wider than its
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    /* Long unbroken strings (a URL, a run-on product code) would otherwise push the card wider than its
 	   cell instead of wrapping into the clamp. */
-	overflow-wrap: anywhere;
+    overflow-wrap: anywhere;
 }
 
 /* The one sanctioned title step-down: a masonry product tile and a list article are read at a smaller
    optical size than a service card in a 4-up grid. Same weight, same tracking — size only. */
 .ex-card__title--sm {
-	font-size: 1rem;
+    font-size: 1rem;
 }
 
 /*
@@ -685,21 +693,21 @@
  * empty, so the composition is identical whether or not a rating exists.
  */
 .ex-card__byline {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	min-inline-size: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-inline-size: 0;
 }
 
 .ex-card__byline .ex-owner {
-	min-inline-size: 0;
-	flex: 1 1 auto;
+    min-inline-size: 0;
+    flex: 1 1 auto;
 }
 
 .ex-card__byline .ui-ratingstars,
 .ex-card__byline .ex-muted {
-	flex: 0 0 auto;
+    flex: 0 0 auto;
 }
 
 /*
@@ -713,77 +721,78 @@
  * silently spill.
  */
 .ex-card__foot {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-3);
-	margin-block-start: auto;
-	padding-block-start: var(--space-4);
-	min-inline-size: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin-block-start: auto;
+    padding-block-start: var(--space-4);
+    min-inline-size: 0;
 }
 
-.ex-card__foot > .ex-price {
-	flex: 0 1 auto;
-	min-inline-size: 0;
+.ex-card__foot>.ex-price {
+    flex: 0 1 auto;
+    min-inline-size: 0;
 }
 
-.ex-card__foot > .ex-muted {
-	flex: 0 1 auto;
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.ex-card__foot>.ex-muted {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
+
 /* #endregion */
 
 /* #region Media */
 .ex-media {
-	position: relative;
-	overflow: clip;
-	background: var(--surface-1);
+    position: relative;
+    overflow: clip;
+    background: var(--surface-1);
 }
 
 .ex-media--4x3 {
-	aspect-ratio: 4 / 3;
+    aspect-ratio: 4 / 3;
 }
 
 /* Wider, shorter service/article thumbnail — keeps the card from becoming half-image, half-metadata. */
 .ex-media--16x10 {
-	aspect-ratio: 16 / 10;
+    aspect-ratio: 16 / 10;
 }
 
 .ex-media img {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
-	display: block;
-	transition: transform var(--dur-slow) var(--ease-emphasized);
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform var(--dur-slow) var(--ease-emphasized);
 }
 
 /* On card hover the thumbnail grows gently WITHIN its clipped frame (the frame is fixed) — the classic
    premium media-zoom. Paired with the card lift; both revert cleanly on leave. */
 .ex-card:hover .ex-media img,
 .ex-card:focus-within .ex-media img {
-	transform: scale(var(--card-media-zoom));
+    transform: scale(var(--card-media-zoom));
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.ex-media img {
-		transition: none;
-	}
+    .ex-media img {
+        transition: none;
+    }
 
-	.ex-card:hover .ex-media img,
-	.ex-card:focus-within .ex-media img {
-		transform: none;
-	}
+    .ex-card:hover .ex-media img,
+    .ex-card:focus-within .ex-media img {
+        transform: none;
+    }
 }
 
 .ex-media__tag {
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-start: var(--space-3);
-	z-index: 2;
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-start: var(--space-3);
+    z-index: 2;
 }
 
 /*
@@ -802,24 +811,24 @@
  * actual control geometry.
  */
 .ex-flags {
-	/* 2 × 2rem controls + their gap + the gutter each side. */
-	--ex-actions-gutter: calc(2 * 2rem + var(--space-2) + var(--space-3));
+    /* 2 × 2rem controls + their gap + the gutter each side. */
+    --ex-actions-gutter: calc(2 * 2rem + var(--space-2) + var(--space-3));
 
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-start: var(--space-3);
-	z-index: 2;
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--space-2);
-	max-inline-size: calc(100% - var(--space-3) - var(--ex-actions-gutter));
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-start: var(--space-3);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    max-inline-size: calc(100% - var(--space-3) - var(--ex-actions-gutter));
 }
 
 .ex-flags--row {
-	flex-direction: row;
-	align-items: center;
-	flex-wrap: wrap;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 /*
@@ -839,51 +848,51 @@
 .ex-promoted,
 .ex-media__type,
 .ex-media__price {
-	--ex-chip-pad-inline: var(--space-2);
+    --ex-chip-pad-inline: var(--space-2);
 
-	max-inline-size: 100%;
-	padding: var(--space-1) var(--ex-chip-pad-inline);
-	border-radius: var(--radius-xl);
-	color: var(--on-surface);
-	background: var(--ex-chip-on-media);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+    max-inline-size: 100%;
+    padding: var(--space-1) var(--ex-chip-pad-inline);
+    border-radius: var(--radius-xl);
+    color: var(--on-surface);
+    background: var(--ex-chip-on-media);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Label register. */
 .ex-promoted,
 .ex-media__type {
-	font-size: 0.68rem;
-	font-weight: 600;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
 }
 
 /* Figure register — matches `.ex-price`'s thin money treatment. */
 .ex-media__price {
-	--ex-chip-pad-inline: var(--space-3);
-	font-size: 0.95rem;
-	font-weight: 300;
-	letter-spacing: -0.01em;
+    --ex-chip-pad-inline: var(--space-3);
+    font-size: 0.95rem;
+    font-weight: 300;
+    letter-spacing: -0.01em;
 }
 
 /* Promoted / sponsored marker. Reads as a gentle disclosure, not a loud ad: a muted label and one
    quiet primary dot. `inline-flex` for the dot's baseline; the label is two fixed words and never
    needs to truncate, so it keeps the full shell without an ellipsis case. */
 .ex-promoted {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex: 0 0 auto;
 }
 
 .ex-promoted__dot {
-	inline-size: 0.4rem;
-	block-size: 0.4rem;
-	border-radius: 50%;
-	background: var(--primary);
-	flex: 0 0 auto;
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
+    border-radius: 50%;
+    background: var(--primary);
+    flex: 0 0 auto;
 }
 
 /*
@@ -894,42 +903,44 @@
  * "Direct Deliverable" is the label that needs it.
  */
 .ex-media__type {
-	display: inline-block;
-	min-inline-size: 0;
+    display: inline-block;
+    min-inline-size: 0;
 }
 
 /* The tint is a second, redundant channel — the chip always prints the literal type name, so the
    colour is recognition speed, never the only carrier of the meaning. */
 .ex-media__type[data-type="Session"],
 .ex-media__type[data-type="Group Session"] {
-	color: var(--primary);
+    color: var(--primary);
 }
+
 .ex-media__type[data-type="Direct Deliverable"] {
-	color: var(--secondary);
+    color: var(--secondary);
 }
 
 /* Product price chip — lives in the top-left flag stack so it never collides with the top-right kebab. */
 .ex-media__price {
-	display: inline-block;
-	min-inline-size: 0;
+    display: inline-block;
+    min-inline-size: 0;
 }
+
 /* #endregion */
 
 /* #region Talent card (freelancers + teams) — banner layout + hover work strip */
 .ex-card--talent .ex-banner__body {
-	gap: var(--space-3);
+    gap: var(--space-3);
 }
 
 /* The single LinkedIn-style headline — one line, thin, no bio paragraph. */
 .ex-talent__headline {
-	margin: 0;
-	font-size: 0.9rem;
-	font-weight: 300;
-	line-height: 1.4;
-	color: var(--on-surface-variant);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 300;
+    line-height: 1.4;
+    color: var(--on-surface-variant);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /*
@@ -939,91 +950,92 @@
  * wrapping line at one weight. No information was dropped; it stopped being three separate reads.
  */
 .ex-talent__meta {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-3);
-	font-size: 0.82rem;
-	color: var(--on-surface-variant);
-	min-inline-size: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    font-size: 0.82rem;
+    color: var(--on-surface-variant);
+    min-inline-size: 0;
 }
 
 /* Languages spoken — plain metadata, e.g. "Speaks EN, FR". */
 .ex-talent__langs {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ex-talent__langs-label {
-	font-weight: 600;
-	color: var(--on-surface);
-	margin-inline-end: 0.15rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    margin-inline-end: 0.15rem;
 }
 
 /* Services + products sold (freelancers) or team size. Middot-separated, inline with the rest of the
    metadata line rather than a row of its own. */
 .ex-talent__count {
-	position: relative;
-	white-space: nowrap;
+    position: relative;
+    white-space: nowrap;
 }
 
-.ex-talent__count + .ex-talent__count::before,
-.ex-talent__langs + .ex-talent__count::before {
-	content: "·";
-	position: absolute;
-	inset-inline-start: calc(-1 * var(--space-2) + 0.1ch);
-	color: var(--ex-hair-strong);
+.ex-talent__count+.ex-talent__count::before,
+.ex-talent__langs+.ex-talent__count::before {
+    content: "·";
+    position: absolute;
+    inset-inline-start: calc(-1 * var(--space-2) + 0.1ch);
+    color: var(--ex-hair-strong);
 }
 
 /* Hover-revealed strip of top-rated / most-popular work — slides up over the foot from the base. */
 .ex-talent__highlights {
-	position: absolute;
-	inset-inline: 0;
-	inset-block-end: 0;
-	z-index: 2;
-	display: flex;
-	gap: var(--space-2);
-	padding: var(--space-3) var(--space-5);
-	background: color-mix(in srgb, var(--surface-2) 88%, var(--ex-accent));
-	border-block-start: 1px solid var(--ex-hair);
-	transform: translateY(100%);
-	opacity: 0;
-	transition:
-		transform var(--dur-medium) var(--spring-standard),
-		opacity var(--dur-fast) var(--ease-standard);
-	pointer-events: none;
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    z-index: 2;
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in srgb, var(--surface-2) 88%, var(--ex-accent));
+    border-block-start: 1px solid var(--ex-hair);
+    transform: translateY(100%);
+    opacity: 0;
+    transition:
+        transform var(--dur-medium) var(--spring-standard),
+        opacity var(--dur-fast) var(--ease-standard);
+    pointer-events: none;
 }
 
 .ex-card--talent:hover .ex-talent__highlights,
 .ex-card--talent:focus-within .ex-talent__highlights {
-	transform: translateY(0);
-	opacity: 1;
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .ex-talent__thumb {
-	inline-size: 2.75rem;
-	block-size: 2.75rem;
-	border-radius: var(--radius-base);
-	overflow: clip;
-	background: var(--surface-1);
-	flex: 0 0 auto;
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    border-radius: var(--radius-base);
+    overflow: clip;
+    background: var(--surface-1);
+    flex: 0 0 auto;
 }
 
 .ex-talent__thumb img {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
-	display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    display: block;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.ex-talent__highlights {
-		transition-property: opacity;
-		transform: none;
-	}
+    .ex-talent__highlights {
+        transition-property: opacity;
+        transform: none;
+    }
 }
+
 /* #endregion */
 
 /* #region Service card */
@@ -1035,15 +1047,15 @@
 
 /* #region Card actions (kebab + helper quick-action) */
 .ex-actions {
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-end: var(--space-3);
-	z-index: 3;
-	display: flex;
-	align-items: flex-start;
-	gap: var(--space-2);
-	opacity: 0;
-	transition: opacity var(--dur-fast) var(--ease-standard);
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-end: var(--space-3);
+    z-index: 3;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 /* Utility actions are revealed only on hover/focus of the card (or when the menu is engaged). */
@@ -1052,323 +1064,324 @@
 .ex-projrow:hover .ex-actions,
 .ex-projrow:focus-within .ex-actions,
 .ex-actions:focus-within {
-	opacity: 1;
+    opacity: 1;
 }
 
 @media (hover: none) {
-	.ex-actions {
-		opacity: 1;
-	}
+    .ex-actions {
+        opacity: 1;
+    }
 }
 
 .ex-actions__quick {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	padding: 0;
-	border-radius: 50%;
-	border: 1px solid transparent;
-	background: var(--primary);
-	color: var(--on-primary);
-	cursor: pointer;
-	text-decoration: none;
-	box-shadow: var(--elevation-low);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    background: var(--primary);
+    color: var(--on-primary);
+    cursor: pointer;
+    text-decoration: none;
+    box-shadow: var(--elevation-low);
 }
 
 .ex-actions__quick svg {
-	inline-size: 1rem;
-	block-size: 1rem;
+    inline-size: 1rem;
+    block-size: 1rem;
 }
 
 .ex-actions__quick:hover {
-	background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
+    background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
 }
 
 .ex-actions__kebab {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	padding: 0;
-	border: 1px solid var(--ex-hair-strong);
-	border-radius: 50%;
-	background: var(--ex-glass);
-	color: var(--on-surface);
-	cursor: pointer;
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+    border: 1px solid var(--ex-hair-strong);
+    border-radius: 50%;
+    background: var(--ex-glass);
+    color: var(--on-surface);
+    cursor: pointer;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .ex-actions__kebab svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
 }
 
 .ex-actions__quick:focus-visible,
 .ex-actions__kebab:focus-visible,
 .ex-actions__item:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .ex-actions__menu-wrap {
-	position: relative;
+    position: relative;
 }
 
 /* Positioning comes from `.ui-anchored` + `useEdgeDetection` (fixed, `--float-*`, `--z-portal`) —
    the panel is body-portalled out of `.ex-card`'s `overflow: clip`, so it must NOT re-declare
    `position`/`inset`/`z-index` here or it would fight the hook's resolved coordinates. */
 .ex-actions__menu {
-	min-inline-size: 12rem;
-	padding: var(--space-1);
-	background: var(--surface-2);
-	border: 1px solid var(--ex-hair);
-	border-radius: var(--ex-r-md);
-	box-shadow: var(--elevation-high);
+    min-inline-size: 12rem;
+    padding: var(--space-1);
+    background: var(--surface-2);
+    border: 1px solid var(--ex-hair);
+    border-radius: var(--ex-r-md);
+    box-shadow: var(--elevation-high);
 }
 
 .ex-actions__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: 0.55rem 0.65rem;
-	border: 0;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: 0.88rem;
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 0;
+    border-radius: var(--radius-base);
+    background: none;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-actions__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ex-actions__item svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: 0 0 auto;
-	color: var(--on-surface-variant);
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: 0 0 auto;
+    color: var(--on-surface-variant);
 }
 
 .ex-actions__item--danger {
-	color: var(--danger);
+    color: var(--danger);
 }
 
 .ex-actions__item--danger svg {
-	color: var(--danger);
+    color: var(--danger);
 }
 
 .ex-actions__item[aria-pressed="true"] svg {
-	color: var(--primary);
+    color: var(--primary);
 }
 
 .ex-actions__status {
-	position: absolute;
-	inset-inline-end: 0;
-	inset-block-start: calc(100% + var(--space-2));
-	max-inline-size: 14rem;
-	padding: var(--space-2) var(--space-3);
-	font-size: 0.75rem;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border-radius: var(--radius-base);
-	box-shadow: var(--elevation-low);
-	pointer-events: none;
+    position: absolute;
+    inset-inline-end: 0;
+    inset-block-start: calc(100% + var(--space-2));
+    max-inline-size: 14rem;
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.75rem;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border-radius: var(--radius-base);
+    box-shadow: var(--elevation-low);
+    pointer-events: none;
 }
 
 .ex-actions__status:empty {
-	display: none;
+    display: none;
 }
+
 /* #endregion */
 
 /* #region Banner card (users / teams / businesses) */
 .ex-card--banner {
-	display: flex;
-	flex-direction: column;
+    display: flex;
+    flex-direction: column;
 }
 
 .ex-banner__cover {
-	position: relative;
-	block-size: 9rem;
-	padding: var(--space-3);
-	background-image:
-		linear-gradient(
-		to bottom,
-		transparent 45%,
-		color-mix(in srgb, var(--surface-2) 92%, transparent)
-	),
-		var(--ex-cover);
-	background-size: cover;
-	background-position: center;
+    position: relative;
+    block-size: 9rem;
+    padding: var(--space-3);
+    background-image:
+        linear-gradient(to bottom,
+            transparent 45%,
+            color-mix(in srgb, var(--surface-2) 92%, transparent)),
+        var(--ex-cover);
+    background-size: cover;
+    background-position: center;
 }
 
 .ex-banner__cover .ui-tag {
-	position: relative;
-	z-index: 2;
+    position: relative;
+    z-index: 2;
 }
 
 .ex-banner__body {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding: 0 var(--space-5) var(--space-5);
-	flex: 1 1 auto;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: 0 var(--space-5) var(--space-5);
+    flex: 1 1 auto;
 }
 
 .ex-banner__id {
-	display: flex;
-	align-items: flex-end;
-	gap: var(--space-3);
-	margin-block-start: -2.25rem;
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin-block-start: -2.25rem;
 }
 
 .ex-banner__avatar {
-	border: 3px solid var(--surface-2);
-	box-shadow: var(--elevation-low);
+    border: 3px solid var(--surface-2);
+    box-shadow: var(--elevation-low);
 }
 
 .ex-banner__idtext {
-	display: flex;
-	flex-direction: column;
-	padding-block-end: 0.3rem;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    padding-block-end: 0.3rem;
+    min-inline-size: 0;
 }
 
 .ex-banner__name {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
-	font-weight: 600;
-	font-size: 1.1rem;
-	letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
 }
 
 .ex-banner__nametext {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ex-banner__handle {
-	font-size: 0.82rem;
-	color: var(--on-surface-variant);
+    font-size: 0.82rem;
+    color: var(--on-surface-variant);
 }
 
 .ex-banner__craft {
-	margin: 0;
-	font-size: 0.92rem;
-	color: var(--on-surface-variant);
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--on-surface-variant);
 }
+
 /* #endregion */
 
 /* #region Project row (no media, no box — a clean divider-separated list row) */
 .ex-projrow {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	padding: var(--space-4) var(--space-3);
-	border-block-end: 1px solid var(--ex-hair);
-	border-radius: 0;
-	transition: background-color var(--dur-medium) var(--ease-standard);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-3);
+    border-block-end: 1px solid var(--ex-hair);
+    border-radius: 0;
+    transition: background-color var(--dur-medium) var(--ease-standard);
 }
 
 .ex-projrow:hover,
 .ex-projrow:focus-within {
-	background: color-mix(in srgb, var(--on-surface) 3%, transparent);
+    background: color-mix(in srgb, var(--on-surface) 3%, transparent);
 }
 
 /* Top layer — creator attribution on the left, a thin budget (and plain "Promoted") pinned right. */
 .ex-projrow__top {
-	position: relative;
-	z-index: 2;
-	display: flex;
-	align-items: center;
-	gap: var(--space-4);
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
 }
 
 .ex-projrow__top .ex-owner {
-	margin-inline-end: auto;
+    margin-inline-end: auto;
 }
 
 /* "Promoted" reads as integrated native text — no tag frame, no chip outline. */
 .ex-projrow__promoted {
-	font-size: 0.72rem;
-	font-weight: 600;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--on-surface-variant);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
 }
 
 /* Thin-weight escrow budget value. */
 .ex-projrow__budget {
-	font-weight: 300;
-	font-size: 1.3rem;
-	letter-spacing: -0.02em;
-	white-space: nowrap;
+    font-weight: 300;
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
 }
 
 .ex-projrow__title {
-	margin: 0;
-	font-size: 1.25rem;
-	font-weight: 600;
-	letter-spacing: -0.015em;
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
 }
 
 /* Description spans the full width of the row — thin, quietly toned. */
 .ex-projrow__desc {
-	margin: 0;
-	font-size: 0.9rem;
-	font-weight: 300;
-	line-height: 1.55;
-	color: var(--on-surface-variant);
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 300;
+    line-height: 1.55;
+    color: var(--on-surface-variant);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 /* Bottom layer — the pipeline chain: stage names joined by arrows. No boxes, no progress meters. */
 .ex-projrow__phases {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--space-2) var(--space-3);
-	margin-block-start: var(--space-1);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    margin-block-start: var(--space-1);
 }
 
 .ex-phase {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-3);
-	font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: 0.82rem;
 }
 
 .ex-phase__name {
-	color: var(--on-surface-variant);
+    color: var(--on-surface-variant);
 }
 
 .ex-phase__arrow {
-	color: var(--ex-hair-strong);
+    color: var(--ex-hair-strong);
 }
+
 /* #endregion */
 
 /* #region Product / article modifiers */
 .ex-card--product .ex-eyebrow,
 .ex-card--article .ex-eyebrow {
-	color: var(--on-surface-variant);
+    color: var(--on-surface-variant);
 }
 
 /*
@@ -1380,460 +1393,473 @@
  * band of roughly the right size instead of vanishing.
  */
 .ex-card--product .ex-media {
-	min-block-size: 8rem;
+    min-block-size: 8rem;
 }
 
 .ex-card--article-list {
-	display: grid;
-	grid-template-columns: 9rem 1fr;
+    display: grid;
+    grid-template-columns: 9rem 1fr;
 }
 
 .ex-card--article-list .ex-media {
-	aspect-ratio: auto;
-	block-size: 100%;
+    aspect-ratio: auto;
+    block-size: 100%;
 }
 
 .ex-card--article-grid .ex-media {
-	aspect-ratio: var(--card-media-ratio);
+    aspect-ratio: var(--card-media-ratio);
 }
+
 /* #endregion */
 
 /* #region Collections: list / masonry / article combo */
 /* Projects render as a beautifully clean list separated by hairlines, never boxed cards. */
 .ex-list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .ex-list__item:last-child .ex-projrow {
-	border-block-end: 0;
+    border-block-end: 0;
 }
 
 .ex-masonry {
-	columns: 4 15rem;
-	column-gap: var(--space-5);
+    columns: 4 15rem;
+    column-gap: var(--space-5);
 }
 
 .ex-masonry__item {
-	break-inside: avoid;
-	margin-block-end: var(--space-5);
+    break-inside: avoid;
+    margin-block-end: var(--space-5);
 }
 
 .ex-artcombo {
-	display: grid;
-	grid-template-columns: 1.3fr 1fr;
-	gap: var(--space-5);
-	align-items: start;
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: var(--space-5);
+    align-items: start;
 }
 
 .ex-artcombo__rows {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
 }
+
 /* #endregion */
 
 /* #region Promos */
 .ex-sponsored {
-	position: relative;
-	display: grid;
-	grid-template-columns: 1.1fr 1.4fr;
-	gap: var(--space-6);
-	align-items: center;
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding: var(--space-5);
-	border: 1px solid var(--ex-hair-strong);
-	border-radius: var(--ex-r-lg);
-	background: var(--surface-1);
-	text-decoration: none;
-	color: inherit;
-	overflow: clip;
-	transition: border-color var(--dur-slow) var(--ease-standard);
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.1fr 1.4fr;
+    gap: var(--space-6);
+    align-items: center;
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
+    padding: var(--space-5);
+    border: 1px solid var(--ex-hair-strong);
+    border-radius: var(--ex-r-lg);
+    background: var(--surface-1);
+    text-decoration: none;
+    color: inherit;
+    overflow: clip;
+    transition: border-color var(--dur-slow) var(--ease-standard);
 }
 
 .ex-sponsored:hover {
-	border-color: var(--primary);
+    border-color: var(--primary);
 }
 
 .ex-sponsored:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
 }
 
 .ex-sponsored__media {
-	align-self: stretch;
-	min-block-size: 11rem;
-	border-radius: var(--ex-r-md);
-	background-image: var(--ex-cover);
-	background-size: cover;
-	background-position: center;
+    align-self: stretch;
+    min-block-size: 11rem;
+    border-radius: var(--ex-r-md);
+    background-image: var(--ex-cover);
+    background-size: cover;
+    background-position: center;
 }
 
 .ex-sponsored__body {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
 }
 
 /* "Promoted" reads as integrated native text — no tag frame. */
 .ex-sponsored__promoted {
-	font-size: 0.72rem;
-	font-weight: 600;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	color: var(--on-surface-variant);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
 }
 
 .ex-sponsored__title {
-	margin: var(--space-2) 0 0;
-	font-size: clamp(1.3rem, 0.934rem + 1.22vw, 1.9rem);
-	font-weight: 600;
-	letter-spacing: -0.015em;
+    margin: var(--space-2) 0 0;
+    font-size: clamp(1.3rem, 0.934rem + 1.22vw, 1.9rem);
+    font-weight: 600;
+    letter-spacing: -0.015em;
 }
 
 .ex-sponsored__text {
-	margin: 0;
-	font-size: 1rem;
-	line-height: 1.55;
-	font-weight: 300;
-	color: var(--on-surface-variant);
-	max-inline-size: 44ch;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.55;
+    font-weight: 300;
+    color: var(--on-surface-variant);
+    max-inline-size: 44ch;
 }
 
 .ex-sponsored__foot {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-4);
-	margin-block-start: var(--space-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-block-start: var(--space-2);
 }
 
 .ex-help {
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding: var(--space-6);
-	background: var(--surface-1);
-	border-radius: var(--ex-r-lg);
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
+    padding: var(--space-6);
+    background: var(--surface-1);
+    border-radius: var(--ex-r-lg);
 }
 
 .ex-help__head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-4);
-	padding-block-end: var(--space-4);
-	margin-block-end: var(--space-3);
-	border-block-end: 1px solid var(--ex-hair);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-block-end: var(--space-4);
+    margin-block-end: var(--space-3);
+    border-block-end: 1px solid var(--ex-hair);
 }
 
 .ex-help__title {
-	margin: 0;
-	font-size: 1.25rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 
 .ex-help__list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: var(--space-3);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
 }
 
 .ex-help__link {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-3);
-	border-radius: var(--radius-lg);
-	text-decoration: none;
-	color: var(--on-surface);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    text-decoration: none;
+    color: var(--on-surface);
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-help__link:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .ex-help__link:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .ex-help__glyph {
-	display: inline-flex;
-	inline-size: 1.6rem;
-	block-size: 1.6rem;
-	color: var(--primary);
-	flex: 0 0 auto;
+    display: inline-flex;
+    inline-size: 1.6rem;
+    block-size: 1.6rem;
+    color: var(--primary);
+    flex: 0 0 auto;
 }
 
 .ex-help__glyph svg {
-	inline-size: 100%;
-	block-size: 100%;
+    inline-size: 100%;
+    block-size: 100%;
 }
 
 .ex-help__text {
-	flex: 1 1 auto;
-	font-size: 0.95rem;
-	font-weight: 500;
+    flex: 1 1 auto;
+    font-size: 0.95rem;
+    font-weight: 500;
 }
 
 .ex-help__meta {
-	font-size: 0.8rem;
-	color: var(--on-surface-variant);
-	white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--on-surface-variant);
+    white-space: nowrap;
 }
 
 .ex-cta-banner {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	flex-wrap: wrap;
-	gap: var(--space-5);
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding: clamp(var(--space-5), 4vw, var(--space-7));
-	border-radius: var(--ex-r-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
+    padding: clamp(var(--space-5), 4vw, var(--space-7));
+    border-radius: var(--ex-r-lg);
 }
 
 .ex-cta-banner--primary {
-	background: var(--ex-primary-tint);
+    background: var(--ex-primary-tint);
 }
 
 .ex-cta-banner--neutral {
-	background: var(--surface-2);
+    background: var(--surface-2);
 }
 
 .ex-cta-banner__title {
-	margin: var(--space-2) 0 0;
-	font-size: clamp(1.4rem, 1.016rem + 1.279vw, 2rem);
-	font-weight: 600;
-	letter-spacing: -0.015em;
+    margin: var(--space-2) 0 0;
+    font-size: clamp(1.4rem, 1.016rem + 1.279vw, 2rem);
+    font-weight: 600;
+    letter-spacing: -0.015em;
 }
 
 .ex-cta-banner__body {
-	margin: var(--space-2) 0 0;
-	max-inline-size: 48ch;
-	font-size: 1rem;
-	line-height: 1.55;
-	font-weight: 300;
-	color: var(--on-surface-variant);
+    margin: var(--space-2) 0 0;
+    max-inline-size: 48ch;
+    font-size: 1rem;
+    line-height: 1.55;
+    font-weight: 300;
+    color: var(--on-surface-variant);
 }
+
 /* #endregion */
 
 /* #region Home premium header */
 /* A deep-primary illustrative band mirroring the auth side-panel language. Holds the ONE large search
    bar; the on-primary line-art backdrop recolours with theme (token-only). */
 .ex-hero {
-	position: relative;
-	overflow: clip;
-	isolation: isolate;
-	background: var(--primary);
-	color: var(--on-primary);
-	padding: clamp(2.75rem, 6vw, 5rem) var(--ex-pad-x) clamp(3rem, 6vw, 5.5rem);
+    position: relative;
+    overflow: clip;
+    isolation: isolate;
+    background: var(--primary);
+    color: var(--on-primary);
+    padding: clamp(2.75rem, 6vw, 5rem) var(--ex-pad-x) clamp(3rem, 6vw, 5.5rem);
+    margin: var(--space-6);
+    border-radius: var(--radius-3xl);
 }
 
 .ex-hero__art {
-	position: absolute;
-	inset: 0;
-	inline-size: 100%;
-	block-size: 100%;
-	z-index: -1;
-	pointer-events: none;
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    z-index: -1;
+    pointer-events: none;
 }
 
 .ex-hero__orbit {
-	transform-box: fill-box;
-	transform-origin: center;
-	animation: ex-hero-spin 80s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: ex-hero-spin 80s linear infinite;
 }
 
 /* The inner ring drifts the opposite way for parallax depth (mirrors the auth scene's layered rings). */
 .ex-hero__orbit--rev {
-	animation: ex-hero-spin 110s linear infinite reverse;
+    animation: ex-hero-spin 110s linear infinite reverse;
 }
 
 @keyframes ex-hero-spin {
-	to {
-		transform: rotate(360deg);
-	}
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.ex-hero__orbit,
-	.ex-hero__orbit--rev {
-		animation: none;
-	}
+
+    .ex-hero__orbit,
+    .ex-hero__orbit--rev {
+        animation: none;
+    }
 }
 
 .ex-hero__inner {
-	position: relative;
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	text-align: center;
-	gap: var(--space-4);
+    position: relative;
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--space-4);
 }
 
 .ex-hero__kicker {
-	margin: 0;
-	font-size: 0.78rem;
-	font-weight: 600;
-	letter-spacing: 0.18em;
-	text-transform: uppercase;
-	color: color-mix(in srgb, var(--on-primary) 78%, transparent);
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--on-primary) 78%, transparent);
 }
 
 .ex-hero__title {
-	margin: 0;
-	font-size: clamp(2.25rem, 1.021rem + 4.096vw, 4rem);
-	line-height: 1.02;
-	letter-spacing: -0.03em;
-	text-wrap: balance;
+    margin: 0;
+    font-size: clamp(2.25rem, 1.021rem + 4.096vw, 4rem);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
 }
 
 /* Auth-style two-tone hierarchy: a thin italic lead over a heavy strong line, each on its own row. */
 .ex-hero__title-lead {
-	display: block;
-	font-weight: 300;
-	font-style: italic;
-	color: color-mix(in srgb, var(--on-primary) 80%, transparent);
+    display: block;
+    font-weight: 300;
+    font-style: italic;
+    color: color-mix(in srgb, var(--on-primary) 80%, transparent);
 }
 
 .ex-hero__title-strong {
-	display: block;
-	font-weight: 600;
-	color: var(--on-primary);
+    display: block;
+    font-weight: 600;
+    color: var(--on-primary);
 }
 
 .ex-hero__lede {
-	margin: 0;
-	max-inline-size: 46ch;
-	font-size: clamp(1rem, 0.893rem + 0.358vw, 1.15rem);
-	line-height: 1.55;
-	font-weight: 300;
-	color: color-mix(in srgb, var(--on-primary) 82%, transparent);
+    margin: 0;
+    max-inline-size: 46ch;
+    font-size: clamp(1rem, 0.893rem + 0.358vw, 1.15rem);
+    line-height: 1.55;
+    font-weight: 300;
+    color: color-mix(in srgb, var(--on-primary) 82%, transparent);
 }
 
 .ex-hero__search {
-	inline-size: 100%;
-	margin-block-start: var(--space-4);
+    inline-size: 100%;
+    margin-block-start: var(--space-4);
 }
 
 /* Recolour the search's trending row for the deep-primary field (the glass bar itself stays legible). */
 .ex-hero__search .hero-search__trending-label {
-	color: color-mix(in srgb, var(--on-primary) 72%, transparent);
+    color: color-mix(in srgb, var(--on-primary) 72%, transparent);
 }
 
 .ex-hero__search .hero-search__tag {
-	color: var(--on-primary);
-	border-color: color-mix(in srgb, var(--on-primary) var(--tint-heavy), transparent);
-	background: color-mix(in srgb, var(--on-primary) var(--tint-soft), transparent);
+    color: var(--on-primary);
+    border-color: color-mix(in srgb, var(--on-primary) var(--tint-heavy), transparent);
+    background: color-mix(in srgb, var(--on-primary) var(--tint-soft), transparent);
+
+    border-bottom: 1px solid rgba(98, 98, 98, 0.6);
+    border-right: 1px solid rgba(98, 98, 98, 0.6);
 }
 
 .ex-hero__search .hero-search__tag:hover {
-	color: var(--on-primary);
-	border-color: var(--on-primary);
+    color: var(--on-primary);
+    border-color: var(--on-primary);
 }
+
 /* #endregion */
 
 /* #region Home layout */
 .ex-home {
-	display: flex;
-	flex-direction: column;
-	gap: clamp(2.25rem, 4vw, 3.75rem);
-	padding-block: clamp(2rem, 4vw, 3.5rem);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.25rem, 4vw, 3.75rem);
+    padding-block: clamp(2rem, 4vw, 3.5rem);
 }
 
 .ex-home__container {
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding-inline: var(--ex-pad-x);
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
+    padding-inline: var(--ex-pad-x);
 }
 
 /* Grid/list/masonry/combo sit inside the padded container width. */
-.ex-home__section > .ui-grid,
-.ex-home__section > .ex-list,
-.ex-home__section > .ex-masonry,
-.ex-home__section > .ex-artcombo {
-	max-inline-size: var(--container-xl);
-	margin-inline: auto;
-	padding-inline: var(--ex-pad-x);
-	box-sizing: border-box;
+.ex-home__section>.ui-grid,
+.ex-home__section>.ex-list,
+.ex-home__section>.ex-masonry,
+.ex-home__section>.ex-artcombo {
+    max-inline-size: var(--container-xl);
+    margin-inline: auto;
+    padding-inline: var(--ex-pad-x);
+    box-sizing: border-box;
 }
 
 /* Cards fill their grid cell so every card in a row shares the row's height. */
-.ex-home__section > .ui-grid > [role="listitem"] {
-	display: flex;
+.ex-home__section>.ui-grid>[role="listitem"] {
+    display: flex;
 }
 
 /* Profile teaser grids hold wide banner cards; below the tablet cusp a banner reads best one-per-row,
    so they drop to a single column (its 0,3,0 specificity overrides the generic two-up mobile grid). */
 @media (max-width: 900px) {
-	.ex-home .ex-profilegrid.ui-grid {
-		grid-template-columns: 1fr !important;
-	}
+    .ex-home .ex-profilegrid.ui-grid {
+        grid-template-columns: 1fr !important;
+    }
 }
+
 /* #endregion */
 
 /* #region Responsive */
 @media (max-width: 1100px) {
-	.ex-masonry {
-		columns: 3 14rem;
-	}
+    .ex-masonry {
+        columns: 3 14rem;
+    }
 }
 
 @media (max-width: 900px) {
-	.ex-sponsored {
-		grid-template-columns: 1fr;
-	}
+    .ex-sponsored {
+        grid-template-columns: 1fr;
+    }
 
-	.ex-artcombo {
-		grid-template-columns: 1fr;
-	}
+    .ex-artcombo {
+        grid-template-columns: 1fr;
+    }
 
-	.ex-help__list {
-		grid-template-columns: 1fr;
-	}
+    .ex-help__list {
+        grid-template-columns: 1fr;
+    }
 
-	.ex-masonry {
-		columns: 2 12rem;
-	}
+    .ex-masonry {
+        columns: 2 12rem;
+    }
 }
 
 @media (max-width: 767.98px) {
-	/* Mobile shows exactly two cards per grid row. */
-	.ex-home .ui-grid {
-		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-		gap: var(--space-3) !important;
-	}
 
-	/* Impact banners bleed to the viewport edges — no outline, no rounded corners. */
-	.ex-sponsored,
-	.ex-help,
-	.ex-cta-banner {
-		max-inline-size: none;
-		border-radius: 0;
-		border-inline: 0;
-		border-block-start: 0;
-	}
+    /* Mobile shows exactly two cards per grid row. */
+    .ex-home .ui-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: var(--space-3) !important;
+    }
 
-	.ex-cta-banner--neutral {
-		border-block: 1px solid var(--ex-hair);
-	}
+    /* Impact banners bleed to the viewport edges — no outline, no rounded corners. */
+    .ex-sponsored,
+    .ex-help,
+    .ex-cta-banner {
+        max-inline-size: none;
+        border-radius: 0;
+        border-inline: 0;
+        border-block-start: 0;
+    }
 
-	.ex-masonry {
-		columns: 2 8rem;
-		column-gap: var(--space-3);
-	}
+    .ex-cta-banner--neutral {
+        border-block: 1px solid var(--ex-hair);
+    }
+
+    .ex-masonry {
+        columns: 2 8rem;
+        column-gap: var(--space-3);
+    }
 }
+
 /* #endregion */

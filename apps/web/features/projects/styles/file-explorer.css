@@ -51,7 +51,7 @@
 	align-self: start;
 	max-block-size: calc(100dvh - var(--fx-chrome) - var(--space-4));
 	overflow-y: auto;
-	padding-block: var(--space-2);
+	padding-block: var(--space-4);
 }
 
 .fx-tree {

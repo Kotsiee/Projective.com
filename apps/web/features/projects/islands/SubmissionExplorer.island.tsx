@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/submission-explorer.css";
 import "../styles/submission-review.css";
@@ -537,7 +538,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	function toolbar(): JSX.Element {
 		return (
-			<div class="fx-toolbar subm-toolbar">
+			<div class="fx-toolbar">
 				<div class="fx-toolbar__search">
 					<InputText
 						type="search"
