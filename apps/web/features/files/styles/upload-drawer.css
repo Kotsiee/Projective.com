@@ -1,0 +1,376 @@
+/*
+ * upload-drawer — the `/files` upload queue (`.fh-upl`) and the duplicate question it asks
+ * (`.fh-dup`).
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY, so the panel and every row mirror under
+ * `dir="rtl"` without a directional override.
+ *
+ * §B.4: nothing non-interactive is boxed in four sides. The queue's rows are separated by ONE
+ * hairline between them, the duplicate prompt sits on a tonal surface tint, and the two sides of its
+ * comparison are divided by a single hairline — no cards, no nested panels.
+ *
+ * Motion decorates `transform`/`opacity` only. The one place that rule bites here is the progress
+ * track: `ProgressBar` transitions `inline-size`, which ENCODES the figure, and an upload is the
+ * transfer most likely to be running in a backgrounded tab where the animation clock is frozen —
+ * exactly the condition that left `/wallet`'s meter reading empty for a funded wallet (Decision
+ * #60). The transition is neutralised below rather than inherited.
+ *
+ * The prefix is `.fh-` (the files HUB's, already established by `QuotaMeter` and `AssetBreadcrumbs`)
+ * and deliberately NOT `.fx-`, which belongs to the projects File Explorer whose components this
+ * surface reuses.
+ */
+
+/* #region Panel frame */
+/*
+ * The drawer's own body is `overflow: auto`, which would scroll the action footer away with the
+ * queue. It becomes the frame instead: a flex column whose scrolling half is `.fh-upl__body` and
+ * whose fixed half is `.fh-upl__foot`.
+ *
+ * Written as a COMPOUND selector (`.ui-drawer.fh-upl`, 0,2,0) so it outranks the package's own
+ * `.ui-drawer__body` rule (0,1,0) regardless of stylesheet order — the same discipline the hub's
+ * splitter override documents.
+ */
+.ui-drawer.fh-upl .ui-drawer__body {
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.fh-upl__body {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-block-size: 0;
+	padding: var(--space-5);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.fh-upl__foot {
+	flex: none;
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-5);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Allowance + notices */
+.fh-upl__allowance {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.fh-upl__message {
+	margin: 0;
+}
+
+.fh-upl__summary {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.fh-upl__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+/* #endregion */
+
+/* #region Queue */
+.fh-upl__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.fh-upl__row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	gap: var(--space-2) var(--space-3);
+	align-items: start;
+	padding-block: var(--space-3);
+	min-inline-size: 0;
+}
+
+/* One device per boundary: the rows are divided by a single hairline and nothing else. */
+.fh-upl__row + .fh-upl__row {
+	border-block-start: var(--hairline);
+}
+
+/*
+ * The phase mark. Tone is the SECOND channel — the glyph shape differs per phase and the caption
+ * spells the phase out in words, so the state survives a colour-blindness overlay.
+ */
+.fh-upl__mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-block-start: var(--space-px);
+	color: var(--text-secondary);
+}
+.fh-upl__row[data-phase="done"] .fh-upl__mark {
+	color: var(--success);
+}
+.fh-upl__row[data-phase="error"] .fh-upl__mark {
+	color: var(--danger);
+}
+.fh-upl__row[data-phase="blocked"] .fh-upl__mark {
+	color: var(--warning);
+}
+
+.fh-upl__main {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.fh-upl__name {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+
+.fh-upl__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-upl__row[data-phase="done"] .fh-upl__phase {
+	color: var(--success);
+}
+.fh-upl__row[data-phase="error"] .fh-upl__phase {
+	color: var(--danger);
+}
+.fh-upl__row[data-phase="blocked"] .fh-upl__phase {
+	color: var(--warning);
+}
+.fh-upl__row[data-phase="ready"] .fh-upl__phase {
+	color: var(--on-surface);
+}
+
+/*
+ * THE FILL IS NEVER TRANSITIONED — it encodes the figure. See the sheet header.
+ * `.fh-upl__bar` lands on the `ProgressBar` root, so this is (0,2,0) against the package's (0,1,0).
+ */
+.fh-upl__bar .ui-progressbar__track::before {
+	transition: none;
+}
+
+.fh-upl__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: 1.5;
+}
+
+/*
+ * A failure and a refusal are tinted, not boxed — the same tonal treatment the hub's own error strip
+ * uses, so the two read as one vocabulary.
+ */
+.fh-upl__row[data-phase="error"] .fh-upl__note,
+.fh-upl__row[data-phase="blocked"] .fh-upl__note {
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-md);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	color: var(--on-surface);
+}
+.fh-upl__row[data-phase="blocked"] .fh-upl__note {
+	background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.fh-upl__rowactions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+/* #endregion */
+
+/* #region Duplicate prompt */
+/*
+ * A tonal surface tint sets the question apart from the row it belongs to. Not a border: the prompt
+ * is a passage of content inside an interactive list, and §B.4 spends the four-sided border on
+ * interactive elements only.
+ */
+.fh-dup {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-md);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	min-inline-size: 0;
+}
+
+.fh-dup__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+.fh-dup__mark {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+}
+.fh-dup[data-outcome="name_collision"] .fh-dup__mark {
+	color: var(--warning);
+}
+
+.fh-dup__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: 1.5;
+}
+
+.fh-dup__pair {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.fh-dup__side {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+.fh-dup__side + .fh-dup__side {
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.fh-dup__sidehead {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+}
+
+.fh-dup__name {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+.fh-dup__source {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.fh-dup__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+}
+.fh-dup__fact {
+	display: grid;
+	grid-template-columns: minmax(0, 7rem) minmax(0, 1fr);
+	gap: var(--space-2);
+	align-items: baseline;
+	min-inline-size: 0;
+}
+.fh-dup__factlabel {
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-dup__factvalue {
+	/* `dd` carries a UA inline-start margin; the grid owns the alignment here. */
+	margin: 0;
+	min-inline-size: 0;
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	overflow-wrap: anywhere;
+}
+
+.fh-dup__choices {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.fh-dup__choice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	min-inline-size: 0;
+}
+
+/*
+ * The recommendation is a WORD, not a fill. `--on-primary` on `--primary` measures 3.57:1 in dark
+ * mode (flagged by Decision #64, unresolved at the token layer), so the choice a person is being
+ * steered towards must not be the one whose label is hardest to read — and a recommendation carried
+ * by colour alone would not survive a colour-blindness overlay either.
+ */
+.fh-dup__recommended {
+	color: var(--primary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+}
+
+.fh-dup__hint {
+	flex-basis: 100%;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	line-height: 1.5;
+}
+/* #endregion */
+
+/* #region The rig's queue affordance */
+/*
+ * The footer rig's upload counter becomes the way BACK into this drawer once it has been closed, so
+ * it is a real button. Its resting appearance is unchanged (`files-chrome.css` still owns the type
+ * and the truncation); only the button's own UA chrome is removed and the interactive states added.
+ */
+.fh-rig__uploads {
+	border: none;
+	background: transparent;
+	padding: 0;
+	font: inherit;
+	color: var(--text-secondary);
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	text-decoration-color: var(--hairline-color);
+}
+.fh-rig__uploads:hover {
+	color: var(--on-surface);
+	text-decoration-color: currentColor;
+}
+.fh-rig__uploads:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */

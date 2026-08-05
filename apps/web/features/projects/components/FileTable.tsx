@@ -5,7 +5,12 @@ import { useRef } from "preact/hooks";
 import { Avatar } from "@projective/ui/display";
 import { useVirtualScroll } from "@projective/ui/hooks";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
-import type { FileItem, FileSortDir, FileSortKey } from "../types/projects-types.ts";
+import {
+	type AssetItem,
+	type FileSortDir,
+	type FileSortKey,
+	sourceLabel,
+} from "../types/projects-types.ts";
 import { listRowHeight, listShowsThumbnails, zoom } from "../core/view-state.ts";
 import { FileKindIcon } from "./file-glyphs.tsx";
 import { Icon } from "@projective/ui/icons";
@@ -22,13 +27,13 @@ import { Icon } from "@projective/ui/icons";
  * Rendered inside the FileExplorer island (its hooks run there); no data access of its own.
  */
 export interface FileTableProps {
-	items: FileItem[];
+	items: AssetItem[];
 	/** Shared sort key (a plain-string signal so it binds the same signal the toolbar SortControl uses). */
 	sortKey: Signal<string>;
 	sortDir: Signal<FileSortDir>;
 	/** Set/toggle the shared sort (owned by the island — it refetches). */
 	onSort: (key: FileSortKey) => void;
-	onOpen: (file: FileItem) => void;
+	onOpen: (file: AssetItem) => void;
 	onReachEnd?: () => void;
 	loading?: boolean;
 	/**
@@ -237,13 +242,19 @@ export function FileTable(props: FileTableProps): JSX.Element {
 									<span class="fx-row__name" title={file.name}>{file.name}</span>
 								</div>
 								<div class="fx-cell fx-cell--sender" role="cell">
-									<Avatar
-										image={file.sender.avatar ?? undefined}
-										label={file.sender.name}
-										size={20}
-										alt=""
-									/>
-									<span class="fx-row__sender">{file.sender.name}</span>
+									{file.sender
+										? (
+											<>
+												<Avatar
+													image={file.sender.avatar ?? undefined}
+													label={file.sender.name}
+													size={20}
+													alt=""
+												/>
+												<span class="fx-row__sender">{file.sender.name}</span>
+											</>
+										)
+										: <span class="fx-row__sender">{sourceLabel(file.source)}</span>}
 								</div>
 								<div class="fx-cell fx-cell--date" role="cell">{file.dateLabel}</div>
 								<div class="fx-cell fx-cell--size" role="cell">{file.sizeLabel}</div>

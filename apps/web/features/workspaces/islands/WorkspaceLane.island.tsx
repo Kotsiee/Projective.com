@@ -398,16 +398,6 @@ function IndexLane(props: IndexLaneProps): JSX.Element {
 					active={quick.value}
 					onToggle={onQuick}
 				/>
-
-				{/* Five partitions never fit a lane's inline size, so the strip scrolls rather than clipping. */}
-				<div class="wsp-lane__tabs">
-					<LaneTabs<RosterTab>
-						label={`${copy.Plural} partitions`}
-						value={tab.value}
-						options={options}
-						onSelect={selectTab}
-					/>
-				</div>
 			</LaneHead>
 
 			<LaneList label={`Your ${copy.plural}`} class="wsp-lane__nav">

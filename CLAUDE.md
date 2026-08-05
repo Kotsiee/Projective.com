@@ -2777,6 +2777,116 @@ core/{ticket-model,ticket-view}.ts,islands/ProjectBoard.island.tsx,
 styles/{ticket-view,ticket-pipeline}.css}`
 · Decisions #32 / #33 / #35 / #62 / #64 / #65 |
 
+| 67 | **Asset management — the `/files` hub, the universal Asset Picker, privacy scopes, quotas and
+the connector substrate (2026-08-05).** The 17th thin/fat vertical and the platform's first
+**cross-cutting** one: every file, image, recording and web link on the platform becomes one **asset**
+owned by one principal and reachable through one hub, so the same asset can be a submission
+deliverable, a profile banner and a channel attachment without being copied. **(A) THE WIDENING (the
+load-bearing change).** `projects/files.ts` `FileItemSchema` mandated message provenance —
+`channelId`/`channelName`/`channelKind`/`messageId`/`messageText`/`sender` — which is correct for a
+channel attachment and wrong for a hub upload, a drive mount and a link, none of which has a channel
+or a message. Rather than fork a second file shape (doubling every card, table, preview and modal),
+the files domain now owns `AssetItemSchema` — the SUPERSET with provenance **flat and nullable** —
+and `FileItemSchema` is re-expressed as `AssetItemSchema.extend({…})` re-mandating those fields.
+`FileItem` stays assignable to `AssetItem`, so all twelve existing consumers compiled unchanged while
+`FileCard`/`FileTable`/`FilePreview`/`AttachmentPreviewModal` needed their prop types widened exactly
+once. Flat-and-nullable over nested-optional deliberately: nesting forces an edit at every
+`file.sender` read, where flat is a pure widening the type-checker walks for you. `FileKind` moved
+down to a new leaf `files/kinds.ts` — `files/categories.ts` had been reaching UP into
+`projects/files.ts` for the vocabulary the files domain owns while `projects/files.ts` reached back
+for `FileCategory`, a mutual edge surviving only because one side was `import type`; the graph is now
+a one-way DAG (kinds ← categories ← assets ← projects), which matters because a cycle in a module
+whose corpus builds at import time is the TDZ crash class of Decision #49, not a style problem.
+`FileKind` gained `link`, which correctly broke four exhaustive `Record<FileKind,…>` maps. **(B) The
+`/files` hub** follows the §63 region contract exactly: LANE = the three-section tree (My library ·
+read-only **Mounted** engagements · **Connected drives**) with a collapsed rail and the quota meter;
+HEADER BAND = identity + search + kind/source filter + sort, at exactly `--shell-midnav-header-h`;
+FOOTER = Upload · New folder · Attach link · Connect drive · zoom · Export, `container-type:
+inline-size` with three container tiers where **the menu holds every action at every tier** (the
+`/wallet` defect where a `nth-child(n+3){display:none}` deleted three actions on four pages that had
+no menu to recover them); BODY = viewing and selecting only. Below 767px the lane is `display:none`
+and the section-switching duty **transfers** to a header-band "Browse" control — `/projects` still
+has no mobile answer and that failure was deliberately not inherited. File cards are `FileCard`
+VERBATIM and folder cards are the `/submissions` `SubmissionCard` VERBATIM (shaped through
+`shapeFolderAsNode`), which works only because `.fx-card__meta` and `.subm-card__meta` are both
+exactly 62px and one `rowHeight = w + 62 + 16` fits both in one grid. **(C) The Asset Picker** is one
+hand-rolled `BodyPortal` modal (NOT `Dialog`, whose `overflow:hidden` + `--overlay-w-lg` + body
+padding fight a two-pane workspace) over a single `<Splitter layout="horizontal">` — the modifier is
+mandatory, because `navigation/styles/splitter.css` ships a BARE `.ui-splitter` rule (0,1,0) forcing
+`inline-size: var(--shell-lane-w)` globally, and without it the picker collapses to 280px. Verified
+open at 1088×768 with panes 238/846 going to 238/583/259 the moment a file is selected (the Inspect
+panel is absent, not disabled, until then), `Attach Selected (N)` carrying a live count, and the
+`accept` filter naming itself in the empty state ("No images here", not "No files"). Window
+virtualization is correct in the hub body and WRONG in every overlay, so the picker uses a plain
+auto-fill grid and `FileTable virtualize={false}`. **(D) Privacy scopes** — `private` (default) ·
+`link` (auto-elevated inside a channel/DM/submission, because a recipient who can read the message
+must be able to open what it carries) · `public` (auto-elevated on a service/product/profile/banner);
+elevation is one-directional and automatic, de-escalation always explicit, so attaching can never
+silently narrow access something else depends on. A channel attachment is therefore `link`-visible
+BY CONSTRUCTION, which the fixtures now encode. `/share/[slug]` is anonymous-reachable with
+`X-Robots-Tag: noindex, nofollow` + `Referrer-Policy: no-referrer`, and every dead state — unknown,
+expired, revoked, exhausted — renders an IDENTICAL 404: measured, revoked-vs-unknown differ by
+**exactly one byte, the last character of the slug the caller supplied**, everything else being a
+per-request CSP nonce. **(E) Quotas are an ENTITLEMENT, not a parallel system** — a new
+`storage_megabytes` key resolved by the existing `fn_effective_limit`/`fn_footprint_usage`, which
+needed one `ELSIF`. Denominated in **MEBIBYTES** because `plan_entitlements.limit_value` and all
+three resolver return types are `integer`: 25 GB in bytes is 26,843,545,600 and overflows int4, and 1
+TB is off by ~512×. Ladder: free tiers 25600 · individual_pro 153600 · team/business_pro 512000 ·
+organisation unlimited (`NULL`, never a huge number that would eventually be rendered as a promise).
+Enforcement ships **fail-open** behind `storage_quota_enforced`, matching both existing footprint
+gates. **(F) Dedup** is a client fingerprint BEFORE the bytes move: full SHA-256 under 256 MiB,
+sampled (head ‖ tail ‖ size) above it — `crypto.subtle` has no streaming API, so a 2 GB file
+genuinely cannot be digested whole — with `sampled: boolean` carried in the schema so the server
+knows the STRENGTH of the claim and never collapses two objects on a hint. Outside a secure context
+it degrades to name+size and never fails the upload. **Four pre-existing security holes closed:**
+`files.items` SELECT was `USING (true)` (every signed-in user could read every row's filename, MIME,
+size, bucket and storage path, including verification documents), its UPDATE policy had `USING` with
+no `WITH CHECK` (a user could reassign `owner_user_id` or repoint `storage_path` at another tenant's
+object in the same statement), and `files.folders` had **RLS off entirely** while inheriting a
+blanket `authenticated` CRUD grant. **A fifth was introduced and caught in review:** the share-link
+policy's `WITH CHECK (created_by = auth.uid())` proved identity but never OWNERSHIP, so any signed-in
+user could mint a permanent share over any asset id they had ever seen — a member removed from a team
+keeps those ids. **Six Dev Context axes** (§5 gate) — `storageProvider` · `connectionState` ·
+`storageQuota` · `assetVisibility` · `linkScan` · `dedupState` — wired through all three files
+including both `reflect()` branches, travelling to the server as validated `sim*` query params.
+**Defects found by measurement, not inspection:** (1) `pg_catalog.substring(v_raw FROM 1 FOR 24)` —
+the SQL-standard `FROM/FOR` form is a bare-keyword grammar production and is a syntax error when
+schema-qualified; plpgsql defers parsing, so it would have created cleanly and failed the first time
+anyone minted a share slug; (2) a literal **NUL byte** in `fingerprint.ts` made an 11 KB file binary
+to git and invisible to grep, and it was the delimiter of a dedup lookup key — any transcoding
+round-trip would have turned "have you got one of these?" into a permanent silent miss; (3)
+`UserConnectionSchema.config` was required with no such column and no view projection, so every parse
+of a real row would have failed; (4) the `workspace` bucket was seeded with full RLS but absent from
+`StorageBucket`, leaving entity assets with no addressable bucket and no builder for the `{entity_id}`
+anchor its own policies key on; (5) `dedupState` was plumbed through six layers and **dropped at the
+route** — a panel control that changed nothing; (6) reads did not normalise the fixture owner while
+writes did, so SSR painted an empty hub with a 0-byte quota and a client refetch painted the full
+library over it — two answers for one screen. **Flagged (surface, do not silently resolve):** (a) the
+migrations are authored-not-applied AND **were not executed** — Docker's Linux engine was down, so
+unlike Decisions #57/#58 there is no throwaway-Postgres proof, only a structural audit (enum parity
+diffed member-by-member, category placement, dependency order, RLS coverage, `SECURITY DEFINER`/
+`search_path`); (b) connections stay **per-user** — `integrations.user_connections` has no owner axis,
+so a team's shared Drive is inexpressible (inherits Decision #59); (c) entity-owned assets cannot yet
+be shared by a non-owner member — the policy fails CLOSED pending (b); (d) `AssetListParams` has no
+`recursive` flag, so the picker's "Recent" is the library ROOT newest-first, not a cross-folder
+recency feed; (e) `accept` filters by category CLIENT-side, so `total`/`hasMore` describe the
+server's kind-narrowed set rather than the drawn one; (f) provider adapters, the OAuth consent
+handshake, the KMS token vault, favicon re-hosting and link scanning are all **stub-first behind the
+gate** — the payloads and interfaces are real, only the outbound calls wait on credentials; (g)
+`ENCRYPTION_KEY` in the env contract still contradicts the `connection_secrets.key_id` envelope
+design (inherits #59), and `token-vault.ts` deliberately REFUSES to seal while gated rather than
+return a reversible encoding that would survive the gate flip as plaintext; (h) `/api/wallet/*` reads
+the session on every route while `/api/files`, `/api/catalogue` and `/api/projects` do not — the read
+convention is not uniform and wants one human decision, not a third pattern. |
+`PRODUCT_SPEC.md` §Assets & Attachments + §Sitemap · `packages/types/files/*` ·
+`packages/types/projects/files.ts` · `packages/types/integrations/*` ·
+`packages/backend/services/{files,integrations}/*` · `packages/backend/core/{env,supabase}.ts` ·
+`apps/web/features/files/**` · `apps/web/routes/(dashboard)/files/**` ·
+`apps/web/routes/(public)/share/[slug].tsx` · `apps/web/routes/api/{files,integrations}/*` ·
+`supabase/migrations/{00000004,00000010,00000020,00000030,00001160,00001220,00001880,00002001,00002011,00002017,00003004,00004011,00005001,00005030,00005040,00005050}*`
+· `documentation/database/{files,integrations,finance}/*` · `.env.example` · Decisions #32 / #33 /
+#53 / #58 / #59 / #60 / #63 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

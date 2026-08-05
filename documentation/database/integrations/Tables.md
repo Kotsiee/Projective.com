@@ -100,10 +100,54 @@ policy, no `authenticated` grant); clients read [`v_my_connections`](#7-integrat
 | `sync_direction`                         | `sync_direction`        | `inbound` (MVP default), `outbound`, `bidirectional`.          |
 | `external_account_id` · `external_account_label` | text            | **Which** account is linked — modelling it lets one user connect two accounts (personal + work) per provider without a later migration. |
 | `broker_account_id`                      | text                    | The Nylas/Merge grant id when a unified broker fronts the provider. |
+| `config`                                 | jsonb `NOT NULL DEFAULT '{}'` | **Non-secret, per-connection mount settings**, projected to the client through `v_my_connections`. See below. |
 | `token_expires_at`                       | timestamptz             | **Cached, non-secret** expiry for the "reconnect soon" UI. Authoritative expiry is in `connection_secrets`. |
 | `last_synced_at` · `last_error` · `error_count` | timestamptz · text · int | Operational state.                                    |
 | `connected_at` · `revoked_at`            | timestamptz             | Lifecycle stamps.                                              |
 | UNIQUE                                   | —                       | `(user_id, provider_slug, external_account_id)` **NULLS NOT DISTINCT** — two pending rows collapse. |
+
+### `config` — non-secret mount settings, and why it is deliberately client-visible
+
+OAuth returns a **credential**, not a **configuration**. Several storage connectors need per-user
+settings the token does not carry and the provider catalogue cannot hold:
+
+| Provider     | What `config` carries                                                      |
+| :----------- | :-------------------------------------------------------------------------- |
+| `s3`         | `endpoint` (R2 / MinIO / Wasabi; `null` = AWS) · `region` · `bucket` · `prefix` · `pathStyle` |
+| `google_drive` | the shared-drive or root folder id the mount is scoped to                |
+| `frameio`    | the team / project id                                                      |
+
+None of this is **catalogue** config — `providers.auth_config` is global to a provider, while a bucket
+and a prefix are per *connection*, and two users of the same provider will have different ones.
+
+**It lives here rather than in `connection_secrets` for a reason that is about the UI, not
+convenience.** `connection_secrets` has RLS on, **no policy, no `authenticated` grant, and no
+client-facing view at all** — service-role only. Config placed there would be structurally unreadable
+from any client path, which would leave the settings screen unable to answer the most basic question a
+user has about a mount: *"which bucket did I actually connect?"* A connector you cannot describe is
+one nobody can debug or trust.
+
+So the split is drawn along **secrecy**, not along "everything about a connection":
+
+- **`user_connections.config`** — what the mount *is*. Projected by
+  [`v_my_connections`](#7-integrationsv_my_connections), which the client reads.
+- **`connection_secrets`** — what the mount can *do on your behalf*. Ciphertext, envelope-encrypted,
+  never projected by anything.
+
+> ⚠️ **Nothing secret may ever be written to `config`.** There is no access key, no secret key, no
+> token and no signed URL here — an S3 connection's `aws_secret_access_key` is a
+> `connection_secrets` row. This is not a convention a reviewer has to remember: a key written into
+> `config` would be handed to the browser by `v_my_connections` **on the very next read**, with no
+> policy anywhere in the path capable of stopping it. That is the same class of failure as the
+> `files.share_links` slug leak — a value whose only protection is that nobody thought to look.
+
+**Shape (Zod SSOT, `@projective/types/integrations/connections.ts`).** `UserConnectionSchema.config`
+is a deliberately **flat scalar record** (`Record<string, string | number | boolean> | null`), not a
+nested union of per-provider shapes: it is projected straight out of a `jsonb` column and every
+provider wants different keys, so a provider that needs structure parses this against **its own**
+schema (`S3ConnectionConfigSchema`) rather than widening the shared one. Widening it would force every
+future provider's keys to satisfy every previous provider's schema. There is, and can be, **no field
+for any `connection_secrets` column anywhere in that package.**
 
 ### The connection state machine (`connection_status`)
 
@@ -187,6 +231,17 @@ The **only** connection shape a client sees: a non-`security_invoker` view (runs
 un-policied base table) filtered to `user_id = auth.uid()`, joined to `providers` for label /
 category / capabilities. Token columns live on a **different table** this view never joins. Granted
 `SELECT` to `authenticated`; mirrored by `UserConnectionSchema`.
+
+It projects the connection's identity and operational state — `status`, `granted_kinds` /
+`granted_scopes`, `sync_direction`, the external account, **`config`** (the non-secret mount settings
+above), the cached `token_expires_at`, `last_synced_at` / `last_error` / `error_count`, and the
+lifecycle stamps.
+
+> **Column safety here is structural, not a policy.** The view is safe to expose *precisely because*
+> the credentials are in a table it cannot reach — not because someone remembered to omit a column
+> from the `SELECT` list. A projection that had to be kept correct by review would eventually be
+> extended by someone adding `c.*`. Adding a token column to `user_connections` itself would defeat
+> this, which is why the vault was split off in the first place.
 
 ## 8. `integrations.connection_audit`
 

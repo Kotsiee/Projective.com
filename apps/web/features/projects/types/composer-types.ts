@@ -10,19 +10,38 @@
 /** How an attachment preview renders: the real image, a video thumbnail, or a file-type glyph. */
 export type AttachmentKind = "image" | "video" | "file";
 
-/** A single staged file (drag-drop / device upload / paste) shown as a card above the input. */
+/**
+ * A single staged attachment shown as a card above the input.
+ *
+ * It arrives one of two ways, and the difference is real rather than cosmetic. A **device** file
+ * (drag-drop, the file input, a paste) carries actual bytes this browser holds and has to upload. A
+ * **library** pick carries none: the asset already exists on the platform, so attaching it is a
+ * reference, and re-uploading a copy of something the person already stores would spend their quota
+ * twice for one file.
+ *
+ * `file` and `assetId` are therefore exclusive — exactly one is non-null — and which one is set is
+ * what tells the send path whether there is anything to upload and the preview cleanup whether
+ * `previewUrl` is an object URL it minted (revocable) or a remote thumbnail it must leave alone.
+ */
 export interface DraftAttachment {
 	/** Stable client id (drives the keyed list + removal). */
 	id: string;
-	/** The underlying file (sent as-is when the live backend lands). */
-	file: File;
+	/** The underlying file (sent as-is when the live backend lands); `null` for a library pick. */
+	file: File | null;
+	/** The existing asset this card references; `null` for a device file. */
+	assetId: string | null;
 	name: string;
 	/** Size in bytes. */
 	size: number;
 	/** Lower-cased extension without the dot (e.g. `pdf`, `png`) — drives the file glyph. */
 	ext: string;
 	kind: AttachmentKind;
-	/** Object URL for image/video previews (`undefined` for generic files); revoked on removal. */
+	/**
+	 * The image/video preview source (`undefined` for generic files).
+	 *
+	 * For a device file this is an object URL the composer minted and must revoke; for a library pick
+	 * it is the asset's own thumbnail, which is not ours to revoke. `assetId` is the discriminator.
+	 */
 	previewUrl?: string;
 }
 // #endregion
@@ -126,8 +145,16 @@ export interface ComposerPayload {
 	channelId: string;
 	/** The typed body, with any collapsed paste blocks appended back in order. */
 	text: string;
-	/** Staged files, in the order they were queued. */
+	/** Staged DEVICE files, in the order they were queued — the only ones with bytes to upload. */
 	files: File[];
+	/**
+	 * Assets picked from the viewer's existing library, by id, in pick order.
+	 *
+	 * Kept apart from {@link ComposerPayload.files} rather than merged into it because the two need
+	 * opposite things from the send path: a file is uploaded, an asset id is linked. Flattening them
+	 * would make "attach something I already have" cost a second copy and a second slice of quota.
+	 */
+	libraryAssetIds: string[];
 	/** The recorded voice memo, or `null` when the draft is text/attachments. */
 	voice: VoicePayload | null;
 }

@@ -142,6 +142,41 @@ export type DevDisplayCurrency = "GBP" | "USD" | "EUR";
 /** The document layout direction the Context Switcher can simulate (RtL/LtR verification, independent of language). */
 export type DevLayoutDirection = "ltr" | "rtl" | "auto";
 
+/**
+ * The connected cloud-storage provider the Context Switcher can simulate for `/files` and the Asset
+ * Picker. `none` is the honest default — most accounts have connected nothing, and a picker that
+ * only ever renders with a drive attached hides its own empty state from the developer.
+ */
+export type DevStorageProvider = "none" | "google_drive" | "dropbox" | "frameio" | "s3";
+
+/**
+ * The lifecycle state of that simulated connection. `degraded` and `expired` are the two that matter
+ * and are hardest to reach for real: a token that still authenticates but has lost a scope, and one
+ * that has lapsed entirely. Both must degrade the browser to a re-consent prompt rather than an
+ * empty folder, which is indistinguishable from "this drive has no files" unless you can see it.
+ */
+export type DevConnectionState = "disconnected" | "pending" | "active" | "degraded" | "expired";
+
+/**
+ * The simulated storage-quota position. Drives the meter, the warning copy and the upload gate.
+ * `unlimited` is a genuinely different rendering (no meter fill, no remaining figure) rather than a
+ * very large number, so it needs its own value; `exceeded` is reachable only here, because reaching
+ * it for real means uploading 25 GB.
+ */
+export type DevStorageQuota = "empty" | "healthy" | "near_limit" | "exceeded" | "unlimited";
+
+/** The simulated privacy scope of the asset in view (drives the share control + the scope pip). */
+export type DevAssetVisibility = "private" | "link" | "public";
+
+/**
+ * The simulated verdict of the link-safety scan. `blocked` must be exercisable without sourcing an
+ * actually-malicious URL, which is the whole reason this axis exists.
+ */
+export type DevLinkScan = "pending" | "safe" | "suspicious" | "blocked";
+
+/** The simulated dedup verdict returned for the next upload (drives the duplicate-resolution panel). */
+export type DevDedupState = "none" | "exact_duplicate" | "name_collision";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -205,6 +240,18 @@ export interface DevSeamState {
 	displayCurrency: DevDisplayCurrency;
 	/** The simulated document layout direction (RtL/LtR). */
 	layoutDirection: DevLayoutDirection;
+	/** The simulated connected cloud-storage provider for `/files` + the Asset Picker. */
+	storageProvider: DevStorageProvider;
+	/** The lifecycle state of that simulated connection. */
+	connectionState: DevConnectionState;
+	/** The simulated storage-quota position (meter, warnings, upload gate). */
+	storageQuota: DevStorageQuota;
+	/** The simulated privacy scope of the asset in view. */
+	assetVisibility: DevAssetVisibility;
+	/** The simulated link-safety verdict for a link attachment. */
+	linkScan: DevLinkScan;
+	/** The simulated dedup verdict for the next upload. */
+	dedupState: DevDedupState;
 }
 // #endregion
 
@@ -315,6 +362,30 @@ const WORKSPACE_VERIFICATIONS: readonly DevWorkspaceVerification[] = [
 const ROSTER_STATES: readonly DevRosterState[] = ["populated", "empty", "single"];
 const DISPLAY_CURRENCIES: readonly DevDisplayCurrency[] = ["GBP", "USD", "EUR"];
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
+const STORAGE_PROVIDERS: readonly DevStorageProvider[] = [
+	"none",
+	"google_drive",
+	"dropbox",
+	"frameio",
+	"s3",
+];
+const CONNECTION_STATES: readonly DevConnectionState[] = [
+	"disconnected",
+	"pending",
+	"active",
+	"degraded",
+	"expired",
+];
+const STORAGE_QUOTAS: readonly DevStorageQuota[] = [
+	"empty",
+	"healthy",
+	"near_limit",
+	"exceeded",
+	"unlimited",
+];
+const ASSET_VISIBILITIES: readonly DevAssetVisibility[] = ["private", "link", "public"];
+const LINK_SCANS: readonly DevLinkScan[] = ["pending", "safe", "suspicious", "blocked"];
+const DEDUP_STATES: readonly DevDedupState[] = ["none", "exact_duplicate", "name_collision"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -366,6 +437,12 @@ export function readDevSeam(): DevSeamState | null {
 		rosterState: coerce(ds.devRosterState, ROSTER_STATES, "populated"),
 		displayCurrency: coerce(ds.devDisplayCurrency, DISPLAY_CURRENCIES, "GBP"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
+		storageProvider: coerce(ds.devStorageProvider, STORAGE_PROVIDERS, "none"),
+		connectionState: coerce(ds.devConnectionState, CONNECTION_STATES, "disconnected"),
+		storageQuota: coerce(ds.devStorageQuota, STORAGE_QUOTAS, "healthy"),
+		assetVisibility: coerce(ds.devAssetVisibility, ASSET_VISIBILITIES, "private"),
+		linkScan: coerce(ds.devLinkScan, LINK_SCANS, "safe"),
+		dedupState: coerce(ds.devDedupState, DEDUP_STATES, "none"),
 	};
 }
 

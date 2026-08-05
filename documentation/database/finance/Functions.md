@@ -154,6 +154,45 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
   **Drafts are never counted** â€” unlimited private drafting is the baseline promise.
   `published_listings` returns `0` until the `catalogue.*` listing tables land (Decision #53 keeps
   `/catalogue` on fixtures); its **cap already resolves**, only its usage count is pending.
+
+  **The `storage_megabytes` branch** (added with the asset-management pass) reads
+  **`files.storage_usage.bytes_used`** — the materialised per-owner rollup — and returns floored
+  mebibytes:
+
+  ```sql
+  SELECT COALESCE((u.bytes_used / 1048576)::integer, 0)
+  FROM files.storage_usage u
+  WHERE u.owner_type = (CASE p_subject_type WHEN 'freelancer' THEN 'user'
+                        ELSE p_subject_type END)::files.owner_kind
+    AND u.owner_id = p_subject_id;
+  ```
+
+  Three things in those five lines are load-bearing:
+
+  - **It reads the rollup, never a live `sum()` over `files.items`.** This function is called on the
+    **upload path**, and summing `size_bytes` across a growing library on every upload is exactly the
+    cost that only shows up once a tenant is successful. `files.fn_recompute_usage` keeps the rollup
+    true off a trigger; see [`../files/Functions.md`](../files/Functions.md).
+  - **Bytes in, mebibytes out.** The rollup is `bigint` (the honest unit for a byte total); this
+    function returns `integer` MiB, because that is the unit the whole entitlement ladder is
+    denominated in — 25 GB in bytes overflows `int4`. Integer division **floors**, so a subject is
+    never reported as having consumed a MiB they have not. The conversion back the other way happens
+    once, in `files.fn_check_storage_quota`.
+  - **`'freelancer'` folds to `'user'`.** A freelancer's bytes are their user's bytes, and
+    `files.owner_kind` deliberately omits the `freelancer` pseudo-owner that `scheduling.owner_type`
+    carries — a second quota key for the same human would double-count them against their own
+    allowance.
+
+  `fn_effective_limit`, `fn_has_entitlement` and `fn_footprint_remaining` needed **no** edits: they
+  are already generic over `finance.entitlement_key`, which is why adding a whole new metered resource
+  cost one `ELSIF`.
+
+  **Enforcement of this key lives outside this schema.** The gate is
+  `files.fn_check_storage_quota` (a `BEFORE INSERT OR UPDATE OF size_bytes` trigger on `files.items`),
+  and it is the **third** member of the fail-open family below — param
+  `security.platform_params.storage_quota_enforced`, seeded `false`. It inherits the same known
+  limit: once flipped, the `RAISE` aborts the transaction and rolls back any denial telemetry written
+  moments earlier, so the denial must be recorded by the app layer catching the `check_violation`.
 - **`finance.fn_footprint_remaining(...) â†’ integer`** â€” headroom, or `NULL` when unlimited.
 
 ---
@@ -191,6 +230,7 @@ the sole authority over how much work a freelancer may hold.
 | :---------------------------------- | :------ | :------------------------------------------------------------------- |
 | `proposal_allowance_enforced`       | `false` | Meter-only until flipped.                                           |
 | `footprint_caps_enforced`           | `false` | Meter-only until flipped.                                           |
+| `storage_quota_enforced`            | `false` | Meter-only until flipped. Gates `files.fn_check_storage_quota` (seeded in `00005001`); flipping it starts **refusing uploads**. |
 | `proposal_buffer_window_hours`      | `10`    | The "3 per 10 hours" drip window.                                   |
 | `proposal_buffer_hold_multiple`     | `4`     | Buffer hold cap as a multiple of the drip â€” how many may be banked. |
 | `subscription_grace_days`           | `7`     | Days a `past_due` subscription keeps its paid entitlements.         |

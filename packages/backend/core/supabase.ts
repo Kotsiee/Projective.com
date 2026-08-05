@@ -66,6 +66,22 @@ export function isFinanceBackendLive(): boolean {
 	return serverEnv().financeBackendLive && isSupabaseConfigured();
 }
 
+/** True when LIVE files/asset-hub backend behaviour is enabled AND Supabase is configured. */
+export function isFilesBackendLive(): boolean {
+	return serverEnv().filesBackendLive && isSupabaseConfigured();
+}
+
+/**
+ * True when LIVE integrations-backend behaviour is enabled AND Supabase is configured.
+ *
+ * Supabase configuration is part of the predicate even though the outbound calls go to a third party:
+ * every connector read starts by resolving the caller's `integrations.user_connections` row and its
+ * enveloped secret, so an unconfigured project cannot reach a provider regardless of the flag.
+ */
+export function isIntegrationsBackendLive(): boolean {
+	return serverEnv().integrationsBackendLive && isSupabaseConfigured();
+}
+
 /**
  * An RLS-scoped client bound to the caller's access token. Every query runs as that user, so their
  * policies decide what they can see/do. Pass the JWT lifted from the session cookie.

@@ -9,7 +9,7 @@ import type {
 	MessageSender,
 	ProjectDetail,
 } from "@projective/types/projects";
-import { categorizeFile } from "@projective/types/files";
+import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 
 /**
@@ -226,6 +226,7 @@ const NAMES: Record<FileKind, string[]> = {
 	doc: ["scope-of-work", "meeting-notes", "content-plan", "proposal"],
 	code: ["tokens", "theme", "button", "config", "schema", "index"],
 	archive: ["source-files", "export-pack", "assets-bundle", "deliverables"],
+	link: ["figma-board", "reference-site", "styleguide", "shared-doc"],
 	file: ["attachment", "file", "asset"],
 };
 
@@ -237,6 +238,7 @@ const EXTS: Record<FileKind, string[]> = {
 	doc: ["docx", "pages", "rtf"],
 	code: ["ts", "tsx", "css", "json"],
 	archive: ["zip", "rar"],
+	link: [""],
 	file: ["bin"],
 };
 
@@ -331,6 +333,9 @@ function filesForChannel(detail: ProjectDetail, chan: ChanDesc): FileItem[] {
 				dayLabel: fmtDay(created),
 				dateLabel: fmtDateTime(created),
 				starred: fseed % 11 === 0,
+				// A channel attachment is `link`-visible by construction — a channel is a semi-private
+				// context, and an attachment nobody in the thread can open is not an attachment.
+				...messageAttachmentFacets(sender.id, { canManage: sender.id === VIEWER.id }),
 			});
 		});
 	}

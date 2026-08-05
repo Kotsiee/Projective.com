@@ -54,6 +54,11 @@ CREATE TYPE finance.entitlement_key AS ENUM (
     'private_drafts',
     -- Footprint (seller side)
     'published_listings',
+    -- Footprint (stored bytes). Denominated in MEBIBYTES, never bytes: `plan_entitlements.limit_value`
+    -- and every resolver that reads it (fn_effective_limit / fn_footprint_usage /
+    -- fn_footprint_remaining) return `integer`, and 25 GB expressed in BYTES is 26,843,545,600 —
+    -- an int4 overflow. MiB keeps the whole ladder (25 GiB … 500 GiB) inside 2,147,483,647.
+    'storage_megabytes',
     -- Distribution
     'weekly_proposals',
     'proposal_buffer_per_10h',
@@ -167,7 +172,12 @@ CREATE TYPE integrations.provider_category AS ENUM (
 
 -- `auth_scheme` — how the platform obtains authorization at a provider. Drives the connect flow;
 -- the actual client secret always lives in env, never in a table.
-CREATE TYPE integrations.auth_scheme AS ENUM ('oauth2', 'oauth1', 'api_key', 'app_password', 'none');
+-- `aws_sigv4` is the S3-compatible object-store scheme: there is no OAuth dance and no bearer token
+-- to store — the connection holds an access-key pair and every request is REQUEST-SIGNED, so the
+-- connect flow, the refresh scheduler and the vault all behave differently from the OAuth family.
+CREATE TYPE integrations.auth_scheme AS ENUM (
+    'oauth2', 'oauth1', 'api_key', 'app_password', 'none', 'aws_sigv4'
+);
 
 -- `connection_status` — the connection STATE MACHINE. `pending` (consent started, not completed)
 -- → `active` → `degraded` (token refresh failing but recoverable) → `expired` (recoverable by a
@@ -256,4 +266,51 @@ CREATE TYPE files.file_category AS ENUM (
     'Data', 'Font', 'Security', 'System', 'Email', 'DiskImage', 'VMImage',
     'ContainerImage', 'CAD', 'GIS', 'Ebook', 'Config', 'Package', 'Other'
 );
+
+-- The asset-management vocabulary. Every enum below mirrors a Zod enum in @projective/types/files
+-- MEMBER-FOR-MEMBER, in the same order — the DB and the SSOT are one vocabulary, not two that agree
+-- today. Most live in `assets.ts` (`file_source`, `file_visibility`, `file_status`,
+-- `link_scan_status`, `owner_kind`); `download_via` lives in `downloads.ts` beside the event shape
+-- it describes, and `file_category` in `categories.ts` with its classifier.
+
+-- `file_source` — WHERE the bytes live. `supabase` is the only source we store and therefore the
+-- only one that consumes our quota; the four connector sources are MOUNTED (browsable and
+-- attachable in place, counted against the provider's quota); `link` is a URL stored as a
+-- first-class asset with no bytes at all.
+CREATE TYPE files.file_source AS ENUM (
+    'supabase', 'google_drive', 'dropbox', 'frameio', 's3', 'link'
+);
+
+-- `file_visibility` — the privacy scope hierarchy. `link` means "reachable by anyone holding the
+-- opaque, server-minted share slug, and ONLY through the share route"; it is NOT a licence for any
+-- signed-in user to enumerate the row (see files.fn_can_read, which deliberately does not honour
+-- `link` — the slug is the credential, not the item id).
+CREATE TYPE files.file_visibility AS ENUM ('private', 'link', 'public');
+
+-- `file_status` — the upload/scan lifecycle. Replaces the free-text `files.items.status` column,
+-- which had a DEFAULT but no domain, so a typo was storable. `scanning`/`quarantined` make the
+-- virus-scan landing zone (the `quarantine` bucket) a first-class state rather than an inference
+-- from `bucket_id`.
+CREATE TYPE files.file_status AS ENUM (
+    'pending_upload', 'scanning', 'uploaded', 'error', 'quarantined'
+);
+
+-- `link_scan_status` — the verdict of the link-safety pipeline. `unscannable` is deliberately
+-- distinct from `suspicious`: "we could not reach it" is not "we found something", and collapsing
+-- the two would either cry wolf on every transient timeout or wave through a host that refuses
+-- inspection.
+CREATE TYPE files.link_scan_status AS ENUM (
+    'pending', 'safe', 'suspicious', 'blocked', 'unscannable'
+);
+
+-- `owner_kind` — which class of principal owns an asset. This is the axis storage quota is metered
+-- against (files.storage_usage is keyed on it), so it deliberately does NOT include the
+-- `freelancer` pseudo-owner that scheduling.owner_type carries: a freelancer's bytes are their
+-- user's bytes, and a second key for the same human would double-count the quota.
+CREATE TYPE files.owner_kind AS ENUM ('user', 'team', 'business', 'organisation');
+
+-- `download_via` — the route a download was served through, recorded on every
+-- files.download_events row. `share` is the anonymous share-slug path (the only one an
+-- unauthenticated actor can reach), which is why the two are never collapsed into one flag.
+CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'api');
 -- #endregion

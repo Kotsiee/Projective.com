@@ -1551,6 +1551,64 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 > documents, UBO) remains deferred to verification Level 3 before a Business Wallet opens. This
 > onboarding **gathers** the identity/scale/IAM baselines up front; it does not itself complete KYB.
 
+## Assets & Attachments
+
+Every file, image, recording and web link on the platform is one **asset**, owned by one principal
+(a user, team, business or organisation) and reachable through one hub at `/files`. The same asset
+appears wherever it is used — a deliverable in a submission, a banner on a profile, an attachment in
+a channel — without being copied, so renaming or revoking it takes effect everywhere at once.
+
+### Privacy scopes
+
+Three scopes, ordered by reach. Elevation is **automatic and one-directional**; narrowing is always
+an explicit owner action, so attaching something can never silently revoke access another surface
+already depends on.
+
+| Scope         | Who can read it                                    | How it is reached                                                                              |
+| :------------ | :------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
+| **Private**   | The uploader only (plus entity members, for an entity-owned asset) | The default for everything.                                                    |
+| **Link only** | Anyone holding the opaque share slug                | Elevated automatically when attached inside a **semi-private** context — a channel, a direct message, a project submission. A recipient who can read the message must be able to open what it carries. |
+| **Public**    | Anyone                                              | Elevated automatically when attached to a **public** entity — a service, a product, a public profile, a banner. |
+
+A share link is **read-only** and revocable. Its slug is opaque, server-minted and high-entropy: it
+is a credential, so it is never enumerable, never derived from the asset id or the owner, and the
+share route is excluded from indexing. Every dead state — unknown, expired, revoked, or past its
+download limit — returns an **identical** not-found response, because a distinguishable failure
+tells a stranger that something is there.
+
+### Storage quotas
+
+Storage is a **stock**, not a periodic allowance: it is metered against the owning principal's plan
+and does not reset. Quotas apply only to assets the platform itself stores — a file mounted from a
+connected drive counts against that provider, and a web link stores no bytes at all.
+
+| Plan tier                                                       | Included storage |
+| :-------------------------------------------------------------- | :--------------- |
+| Free (individual, team, business, organisation)                 | 25 GB            |
+| Individual Pro                                                  | 150 GB           |
+| Team Pro · Business Pro                                         | 500 GB           |
+| Organisation                                                    | Unlimited        |
+
+Consistent with every other footprint cap, the quota **meters and warns before it refuses**:
+enforcement is gated by a platform parameter that ships off, so exceeding a quota is visible long
+before it is obstructive. Turning refusal on is a deliberate decision, never a side effect.
+
+### Links as assets
+
+A web link added by hand, or detected in a message or description, is stored as a first-class asset:
+its target, host, title, and a **re-hosted** favicon. Favicons are re-hosted rather than hotlinked
+because a hotlink would report every viewer's IP address to a host the link's author chose. Links
+are checked for safety before they are embedded or followed, and a link that fails that check is
+shown as blocked rather than quietly rendered.
+
+### Deduplication and download history
+
+A file is fingerprinted in the browser **before** its bytes are uploaded, so an exact duplicate is
+recognised without transferring it twice and without consuming quota twice. Downloads are recorded
+per person and per device, so someone who already has a file on the machine they are using is told
+so before it downloads again — a courtesy, not a restriction, and one that deliberately does not
+fire for the same person on a device that genuinely does not have the file.
+
 ## Sitemap and Route Overview
 
 | Category      | Path / Route              | Sub-Path                 | Description                                                                                    |
@@ -1578,7 +1636,10 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 |               |                           | `details`                | Message/Contact info                                                                           |
 |               |                           | `files/index`            | List shared files                                                                              |
 |               |                           | `files/[file id]`        | View specific file                                                                             |
+|               | `/files`                  | `index`                  | Asset hub — personal/entity library + read-only mounted project & channel attachments          |
+|               |                           | `[...path]`              | Folder navigation (deep-linkable; the tree, breadcrumbs and URL address the same node)         |
 |               | `/settings`               | `index`                  | General account settings                                                                       |
+|               |                           | `integrations`           | Connected cloud-storage drives (Google Drive, Dropbox, Frame.io, custom S3)                    |
 |               | `/teams`                  | `index`                  | Show all teams                                                                                 |
 |               | `/teams/create`           |                          | Create a new team                                                                              |
 |               | `/teams/[team id]`        | `index`                  | View team details                                                                              |
@@ -1623,6 +1684,7 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 |               |                           | `products`               | Products for sale                                                                              |
 |               |                           | `articles`               | Blog/Published posts                                                                           |
 |               |                           | `portfolio`              | Work portfolio items                                                                           |
+|               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
 |               | `/view/[entity type]`     | `index`                  | Public entity viewer                                                                           |
 

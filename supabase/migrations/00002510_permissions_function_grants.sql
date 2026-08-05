@@ -326,3 +326,34 @@ GRANT EXECUTE ON FUNCTION finance.fn_refund_allowance(text, uuid, integer, finan
 GRANT EXECUTE ON FUNCTION finance.fn_footprint_usage(text, uuid, finance.entitlement_key) TO authenticated;
 
 GRANT EXECUTE ON FUNCTION finance.fn_footprint_remaining(text, uuid, finance.entitlement_key) TO authenticated;
+
+
+-- --- files: asset management ---
+-- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on
+-- files.items, and a policy expression runs as the invoking role, so revoking it would deny every
+-- read. It is safe to expose — it answers one boolean about one id and returns false by default.
+--
+-- The rest are internal. fn_recompute_usage rewrites a metered rollup and the two trigger functions
+-- have no meaningful direct call, so none of them is a client entry point (the same discipline
+-- applied to the Standing mutators and the allowance meters above).
+REVOKE ALL ON FUNCTION files.fn_recompute_usage(files.owner_kind, uuid) FROM public;
+
+REVOKE ALL ON FUNCTION files.fn_usage_trigger() FROM public;
+
+REVOKE ALL ON FUNCTION files.fn_check_storage_quota() FROM public;
+
+REVOKE ALL ON FUNCTION files.fn_touch_updated_at() FROM public;
+
+GRANT EXECUTE ON FUNCTION files.fn_recompute_usage(files.owner_kind, uuid) TO service_role;
+
+-- fn_mint_share_slug mints the credential for a share link. Minting is a server decision (the fat
+-- backend writes files.share_links), so the client never calls it directly.
+REVOKE ALL ON FUNCTION files.fn_mint_share_slug() FROM public;
+
+GRANT EXECUTE ON FUNCTION files.fn_mint_share_slug() TO service_role;
+
+-- fn_resolve_share is the ONLY visitor-reachable door into files.share_links (the table itself has
+-- no anon grant on purpose — see 00002520). Executable by anon because an anonymous visitor holding
+-- a slug is exactly the case it exists for; it takes the slug as INPUT, so holding EXECUTE grants
+-- nothing without already holding a credential.
+GRANT EXECUTE ON FUNCTION files.fn_resolve_share(text) TO anon, authenticated, service_role;

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
-import type { FileItem } from "../types/projects-types.ts";
+import { type AssetItem, sourceLabel } from "../types/projects-types.ts";
 import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
 
 /**
@@ -9,10 +9,15 @@ import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
  * small sender avatar + name beneath, and the date/time revealed ONLY on hover (its space is always
  * reserved so the reveal can never clip or overlap adjacent cards). Transparent border + background at
  * rest; hover paints a subtle surface highlight (full border allowed — the card is interactive, §B.4).
+ *
+ * Takes the widened {@link AssetItem}, so the same cell serves a channel attachment (which has a
+ * sender) and a `/files` hub or drive-mounted asset (which does not). When `sender` is null the
+ * byline falls back to the storage SOURCE — the row is never dropped, because `.fx-card__meta` is
+ * exactly 62px and the shared grid's `rowHeight` formula is written against that constant.
  */
 export interface FileCardProps {
-	file: FileItem;
-	onOpen: (file: FileItem) => void;
+	file: AssetItem;
+	onOpen: (file: AssetItem) => void;
 }
 
 export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
@@ -23,7 +28,9 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 			type="button"
 			class="fx-card"
 			onClick={() => onOpen(file)}
-			aria-label={`${file.name} — ${file.sizeLabel}, from ${file.sender.name}`}
+			aria-label={`${file.name} — ${file.sizeLabel}, from ${
+				file.sender?.name ?? sourceLabel(file.source)
+			}`}
 		>
 			<span class="fx-card__thumb" data-kind={file.kind}>
 				{hasThumb
@@ -56,13 +63,26 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 			<span class="fx-card__meta">
 				<span class="fx-card__name" title={file.name}>{file.name}</span>
 				<span class="fx-card__by">
-					<Avatar
-						image={file.sender.avatar ?? undefined}
-						label={file.sender.name}
-						size={16}
-						alt=""
-					/>
-					<span class="fx-card__sender">{file.sender.name}</span>
+					{file.sender
+						? (
+							<>
+								<Avatar
+									image={file.sender.avatar ?? undefined}
+									label={file.sender.name}
+									size={16}
+									alt=""
+								/>
+								<span class="fx-card__sender">{file.sender.name}</span>
+							</>
+						)
+						: (
+							<>
+								<span class="fx-card__srcmark" aria-hidden="true">
+									<FileKindIcon kind={file.kind} size={12} />
+								</span>
+								<span class="fx-card__sender">{sourceLabel(file.source)}</span>
+							</>
+						)}
 				</span>
 				<span class="fx-card__date">{file.dateLabel}</span>
 			</span>

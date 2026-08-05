@@ -32,6 +32,9 @@ SELECT
     c.sync_direction,
     c.external_account_id,
     c.external_account_label,
+    -- Non-secret mount config (S3 endpoint/bucket/prefix, Drive root). Safe to project precisely
+    -- because credentials live in connection_secrets, which this view cannot reach.
+    c.config,
     c.token_expires_at,
     c.last_synced_at,
     c.last_error,

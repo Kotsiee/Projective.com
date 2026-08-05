@@ -57,6 +57,7 @@ function isActive(path: string, base: string): boolean {
  * pulled from `nav-fixtures`.
  *
  * Role/context tailoring (chrome only — never an access decision; the server re-checks under RLS):
+ *  - **Files** → everyone, ungated. An asset hub is not a side of the market.
  *  - **Products & Services** → freelancers and teams only (a seller surface).
  *  - **Teams** → freelancers and teams only.
  *  - **Businesses** → only when the account has enabled a business account (independent of seller
@@ -132,6 +133,17 @@ export function globalNav(
 			icon: "briefcase",
 			active: isActive(path, "/projects"),
 			children: workspaceSublinks("project"),
+		},
+		// Files — the personal/entity asset hub. Deliberately UNGATED: everyone has files, whichever
+		// side of the market they are on, so this destination carries no capability predicate at all —
+		// which also keeps it clear of the unresolved `is_operator` ⁄ `isFreelancer` gate inconsistency
+		// still flagged against the seller surfaces (Decisions #17 / #18 / #61).
+		{
+			key: "files",
+			label: "Files",
+			href: "/files",
+			icon: "files",
+			active: isActive(path, "/files"),
 		},
 		// Catalogue (Products & Services) — freelancers and teams only; the seller-side management
 		// surface, repointed from the `/services` placeholder to the `/catalogue` console (Decision #53);

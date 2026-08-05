@@ -1,0 +1,640 @@
+/*
+ * files-hub — the `/files` asset hub's own layer.
+ *
+ * Everything here dresses a REUSED component rather than replacing one: the asset cell is
+ * `.fx-card` (file-card.css), the folder cell is `.subm-card` (submission-card.css), the list is
+ * `.fx-table` (file-table.css) and the preview is `.fx-modal` (attachment-modal.css). This sheet adds
+ * only what the hub introduces — the source/privacy overlay marks, the drag grip, the quota meter, the
+ * breadcrumb bar, the tree's read-only lock, the Inspect pane and the workspace's own states.
+ *
+ * Token-only, strict BEM, logical properties throughout (the surface mirrors under `dir="rtl"` with no
+ * horizontal leak). §B.4: nothing non-interactive is boxed in four sides — separation is spacing, a
+ * tonal tint, or a single hairline. Motion decorates `transform`/`opacity` only; no property that
+ * ENCODES data is ever transitioned.
+ */
+
+/* #region Root */
+.fh-hub {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	/*
+	 * A container context, so the workspace's own breakpoints measure the CONTENT REGION rather than
+	 * the viewport — the shell can spend ~344px on chrome, and a viewport media query here would
+	 * reflow against a width this element never has.
+	 *
+	 * Safe despite the containment/`position: fixed` re-basing trap: every fixed layer this surface
+	 * mounts — the preview modal, the drag ghost, every Tooltip and every field panel — renders through
+	 * `BodyPortal`, so none of them resolves against this box.
+	 */
+	container-type: inline-size;
+	container-name: fh-hub;
+}
+/* #endregion */
+
+/* #region Breadcrumb bar */
+.fh-hub__crumbbar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2.25rem;
+	padding-block: var(--space-2);
+	padding-inline: var(--space-1);
+}
+.fh-crumbs {
+	min-inline-size: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.fh-crumbs::-webkit-scrollbar {
+	display: none;
+}
+.fh-crumbs__bar {
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Workspace */
+.fh-hub__workspace {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	min-block-size: 0;
+	padding-block-end: var(--space-6);
+}
+
+/*
+ * THE SPLIT MUST NOT BECOME A SCROLL CONTAINER.
+ *
+ * `.ui-splitter__pane` ships `overflow: auto` and the root ships `block-size: 100%` — correct for a
+ * modal's bounded split, wrong here: the workspace window-virtualizes (`VirtualGrid useWindow`, and
+ * `FileTable`'s default), so the scroller it measures has to be the one it is actually in. A pane that
+ * scrolls internally would leave the grid computing its window against a viewport it does not occupy —
+ * the same measurement mistake `virtualize={false}` exists to prevent inside a dialog.
+ *
+ * So the page keeps the single scroll, the panes flow, and the Inspect pane holds its place with
+ * `position: sticky` instead of with its own scrollbar.
+ *
+ * Each override is written as a COMPOUND selector (`.ui-splitter.fh-hub__split`, 0,2,0) for the reason
+ * `splitter.css` documents at length: the nav lane's globally-loaded bare `.ui-splitter` rule is also
+ * (0,1,0), so a single-class override here would merely TIE and be decided by stylesheet order.
+ */
+.ui-splitter.fh-hub__split {
+	flex: 1 1 auto;
+	block-size: auto;
+	min-block-size: 0;
+	align-items: flex-start;
+}
+.ui-splitter.fh-hub__split > .ui-splitter__pane {
+	overflow: visible;
+}
+
+/*
+ * Below the point at which a side-by-side split leaves neither half usable, the pane stacks under the
+ * workspace. A container query, not a media query — see the note on `.fh-hub`.
+ */
+@container fh-hub (max-width: 720px) {
+	.ui-splitter.fh-hub__split {
+		display: block;
+	}
+	.ui-splitter.fh-hub__split > .ui-splitter__pane {
+		flex-basis: auto;
+		inline-size: 100%;
+	}
+	.ui-splitter.fh-hub__split > .ui-splitter__gutter {
+		display: none;
+	}
+}
+
+.fh-hub__readonly,
+.fh-hub__error {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0 0 var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-md);
+	font-size: var(--text-sm);
+}
+.fh-hub__readonly {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+}
+.fh-hub__error {
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	color: var(--on-surface);
+}
+.fh-hub__error--tail {
+	margin-block: var(--space-3) 0;
+}
+/* #endregion */
+
+/* #region Cell (the drag/drop wrapper around a reused card) */
+.fh-cell {
+	position: relative;
+	block-size: 100%;
+	min-inline-size: 0;
+}
+
+/*
+ * The drag grip.
+ *
+ * Present at rest but transparent, and fully opaque on hover or keyboard focus. `display: none` would
+ * make it unreachable by keyboard, and `visibility: hidden` removes it from the tab order — an
+ * affordance that only exists after a pointer hover is not an affordance for everyone.
+ */
+.fh-cell__grip {
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-start: var(--space-1);
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border-radius: var(--radius-sm);
+	background: color-mix(in srgb, var(--surface) 78%, transparent);
+	color: var(--text-secondary);
+	cursor: grab;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.fh-cell:hover .fh-cell__grip,
+.fh-cell:focus-within .fh-cell__grip {
+	opacity: 1;
+}
+.fh-cell__grip:focus-visible {
+	opacity: 1;
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.fh-cell[data-dragging] {
+	opacity: 0.45;
+}
+/* #endregion */
+
+/* #region Asset cell overlays */
+.fh-asset {
+	position: relative;
+	block-size: 100%;
+	min-inline-size: 0;
+	border-radius: var(--card-radius);
+}
+.fh-asset[data-selected] {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.fh-asset[data-selected] .fx-card:hover {
+	background: transparent;
+}
+
+/*
+ * The overlay flag stack — the storage source and the privacy scope.
+ *
+ * Pinned to the thumbnail's trailing top corner and `pointer-events: none`, so it can never intercept
+ * the click that belongs to the card underneath it. Every fact it carries is also announced in text
+ * (the card's `aria-label` and the visually-hidden line), so the marks are decorative by construction
+ * and the state survives a colour-blindness overlay.
+ */
+.fh-asset__flags,
+.fh-folder .fh-asset__flags {
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-end: var(--space-1);
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	pointer-events: none;
+}
+.fh-asset__flag {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--surface) 82%, transparent);
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+.fh-asset__flag--scope[data-scope="link"] {
+	color: var(--warning);
+}
+.fh-asset__flag--scope[data-scope="public"] {
+	color: var(--info);
+}
+/* #endregion */
+
+/* #region Folder cell */
+.fh-folder {
+	position: relative;
+	block-size: 100%;
+	min-inline-size: 0;
+	border-radius: var(--card-radius);
+}
+/*
+ * The drop highlight is painted on the card's OWN box rather than as a ring floating around it, so the
+ * destination reads as the thing that will receive the files.
+ */
+.fh-folder[data-drop-over] {
+	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	outline: var(--hairline) solid var(--primary);
+	outline-offset: calc(var(--space-px) * -1);
+}
+/* #endregion */
+
+/* #region Link cell */
+.fh-linkcard__thumb {
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	text-align: center;
+}
+.fh-linkcard__favicon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	border-radius: var(--radius-md);
+	background: color-mix(in srgb, var(--surface) 70%, transparent);
+	color: var(--text-secondary);
+	overflow: hidden;
+}
+.fh-linkcard__favicon img {
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	object-fit: contain;
+}
+.fh-linkcard__domain {
+	max-inline-size: 100%;
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fh-linkcard__scan {
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-start: var(--space-1);
+	display: inline-flex;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+.fh-linkcard__scan[data-scan="suspicious"] {
+	color: var(--warning);
+}
+.fh-linkcard__scan[data-scan="blocked"] {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region List mode */
+.fh-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region States */
+.fh-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-8);
+	padding-inline: var(--space-4);
+	text-align: center;
+}
+.fh-state__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.fh-state__note {
+	max-inline-size: 34rem;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+/* #endregion */
+
+/* #region Drag ghost */
+.fh-ghost {
+	pointer-events: none;
+}
+.fh-ghost__chip {
+	display: inline-flex;
+	align-items: center;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	box-shadow: var(--elevation-medium);
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Tree */
+.fh-tree {
+	min-inline-size: 0;
+}
+.fh-tree__lock {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Inspect pane */
+/*
+ * The pane is set off from the workspace by ONE hairline on its leading edge — not a box. Its own
+ * scroll is local, so a long fact list never lengthens the page the grid is virtualizing against.
+ */
+.fh-inspect {
+	position: sticky;
+	inset-block-start: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	/* Bounded against the viewport rather than filled to the pane: the pane is as tall as the grid, and
+	   a pane-height panel would scroll away from the selection it is describing. */
+	max-block-size: calc(100dvh - var(--shell-topbar-h, 3.5rem) - var(--space-8));
+	min-inline-size: 0;
+	padding: var(--space-4);
+	border-inline-start: var(--hairline) solid var(--hairline-color);
+	overflow-y: auto;
+}
+
+/* Stacked under the workspace, "sticky to the top of a very tall column" is meaningless — and a
+   viewport-capped panel would clip. It becomes an ordinary block. */
+@container fh-hub (max-width: 720px) {
+	.fh-inspect {
+		position: static;
+		max-block-size: none;
+		border-inline-start: none;
+		border-block-start: var(--hairline) solid var(--hairline-color);
+	}
+}
+
+.fh-inspect__head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+.fh-inspect__title {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+}
+.fh-inspect__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fh-inspect__close:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+.fh-inspect__close:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.fh-inspect__preview {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	aspect-ratio: var(--card-media-ratio-square);
+	border-radius: var(--card-radius);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	overflow: hidden;
+}
+.fh-inspect__thumb {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+.fh-inspect__glyph {
+	color: var(--text-secondary);
+}
+
+.fh-inspect__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+}
+.fh-inspect__fact {
+	display: grid;
+	grid-template-columns: minmax(0, 7rem) minmax(0, 1fr);
+	gap: var(--space-2);
+	align-items: baseline;
+}
+.fh-inspect__factlabel {
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-inspect__factvalue {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+}
+.fh-inspect__factmark {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-inspect__facttext {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+.fh-inspect__person {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.fh-inspect__personlink {
+	color: inherit;
+	text-decoration: none;
+}
+.fh-inspect__personlink:hover {
+	text-decoration: underline;
+}
+.fh-inspect__hash {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: var(--text-xs);
+}
+.fh-inspect__hashnote {
+	padding: 0 var(--space-1);
+	border-radius: var(--radius-xs);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+	font-family: inherit;
+	font-size: var(--text-2xs);
+}
+
+.fh-inspect__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: 1.5;
+}
+
+.fh-inspect__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+.fh-inspect__manage {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline) solid var(--hairline-color);
+}
+.fh-inspect__managetitle {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-inspect__confirm {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.fh-inspect__confirmnote {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: 1.5;
+}
+.fh-inspect__confirmrow {
+	display: flex;
+	gap: var(--space-1);
+}
+/* #endregion */
+
+/* #region Quota meter */
+.fh-quota {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+.fh-quota__figure {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	margin: 0;
+}
+.fh-quota__used {
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.fh-quota__of,
+.fh-quota__pct {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-quota__pct {
+	margin-inline-start: auto;
+}
+
+/*
+ * The fill's width is NEVER transitioned. It encodes the figure, and a frozen animation clock (a
+ * backgrounded tab) would leave a full library reading as empty — the defect `/wallet` shipped and
+ * then fixed (Decision #60).
+ */
+.fh-quota__track {
+	block-size: 0.375rem;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	overflow: hidden;
+}
+.fh-quota__fill {
+	display: block;
+	inline-size: calc(var(--fh-quota-pct, 0) * 1%);
+	block-size: 100%;
+	border-radius: inherit;
+	background: var(--primary);
+}
+.fh-quota[data-band="warning"] .fh-quota__fill {
+	background: var(--warning);
+}
+.fh-quota[data-band="critical"] .fh-quota__fill,
+.fh-quota[data-band="exceeded"] .fh-quota__fill {
+	background: var(--danger);
+}
+
+.fh-quota__caption {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+.fh-quota__band {
+	color: var(--on-surface);
+}
+.fh-quota[data-band="critical"] .fh-quota__band,
+.fh-quota[data-band="exceeded"] .fh-quota__band {
+	color: var(--danger);
+}
+.fh-quota__tier {
+	margin-inline-start: auto;
+}
+.fh-quota__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: 1.5;
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.fh-cell__grip,
+	.fh-inspect__close {
+		transition: none;
+	}
+}
+/* #endregion */

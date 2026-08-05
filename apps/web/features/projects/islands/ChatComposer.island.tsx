@@ -3,6 +3,10 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/chat-composer.css";
 import { Message, Popover, Tooltip } from "@projective/ui/feedback";
+import { useId } from "@projective/ui/hooks";
+import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
+import { openPicker } from "@web/features/files/core/files-state.ts";
+import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { CloseIcon, PlusIcon, TrashIcon } from "../components/glyphs.tsx";
 import {
 	FileTypeGlyph,
@@ -130,6 +134,14 @@ export default function ChatComposer(
 	// #region State
 	const text = useSignal("");
 	const attachments = useSignal<DraftAttachment[]>([]);
+	/**
+	 * This composer's Asset Picker routing key.
+	 *
+	 * Per INSTANCE, not per channel: the pop-out chat popover and the in-frame footer composer can be
+	 * mounted at once on the same channel, and two pickers sharing a key would both open and both
+	 * receive the other's files.
+	 */
+	const pickerId = useId(undefined, "composer-picker");
 	const pasted = useSignal<PastedBlock[]>([]);
 	const dragActive = useSignal(false);
 	const plusOpen = useSignal(false);
@@ -175,6 +187,7 @@ export default function ChatComposer(
 			next.push({
 				id: makeId("att"),
 				file,
+				assetId: null,
 				name: file.name,
 				size: file.size,
 				ext: extOf(file.name),
@@ -185,13 +198,58 @@ export default function ChatComposer(
 		attachments.value = [...attachments.value, ...next];
 	}
 
+	/**
+	 * Stage assets the viewer already has, from the Asset Picker.
+	 *
+	 * **Nothing is uploaded and nothing is copied.** A library pick is a reference: the bytes are
+	 * already on the platform, and re-uploading them would spend the person's storage allowance twice
+	 * for one file and give the same content two identities.
+	 *
+	 * The same-file guard is by ASSET id rather than by name: two different files can share a name,
+	 * and the same file picked twice is the case worth refusing.
+	 */
+	function addLibraryAssets(assets: AssetItem[]): void {
+		if (assets.length === 0) return;
+		const room = MAX_ATTACHMENTS - attachments.value.length;
+		if (room <= 0) return;
+		const staged = new Set(
+			attachments.value.map((a) => a.assetId).filter((id): id is string => id !== null),
+		);
+		const next: DraftAttachment[] = [];
+		for (const asset of assets) {
+			if (next.length >= room) break;
+			if (staged.has(asset.id)) continue;
+			const kind = fileKindOf(asset.name, asset.ext);
+			next.push({
+				id: makeId("att"),
+				file: null,
+				assetId: asset.id,
+				name: asset.name,
+				size: asset.sizeBytes,
+				ext: asset.ext,
+				kind,
+				// The asset's OWN thumbnail. Not an object URL, which is why the revoke paths below check
+				// `assetId` first — revoking a remote URL is meaningless, and treating it as ours is how a
+				// preview that other cards also point at goes blank.
+				previewUrl: kind === "image" || kind === "video"
+					? asset.thumbnailUrl ?? asset.url
+					: undefined,
+			});
+		}
+		attachments.value = [...attachments.value, ...next];
+	}
+
+	/** Revoke a preview URL only when this composer minted it (see {@link addLibraryAssets}). */
+	function releasePreview(attachment: DraftAttachment): void {
+		if (attachment.assetId !== null || !attachment.previewUrl) return;
+		try {
+			URL.revokeObjectURL(attachment.previewUrl);
+		} catch { /* already revoked */ }
+	}
+
 	function removeAttachment(id: string): void {
 		const target = attachments.value.find((a) => a.id === id);
-		if (target?.previewUrl) {
-			try {
-				URL.revokeObjectURL(target.previewUrl);
-			} catch { /* already revoked */ }
-		}
+		if (target) releasePreview(target);
 		attachments.value = attachments.value.filter((a) => a.id !== id);
 	}
 
@@ -276,13 +334,7 @@ export default function ChatComposer(
 	// #region Send
 	function resetDraft(): void {
 		text.value = "";
-		for (const a of attachments.value) {
-			if (a.previewUrl) {
-				try {
-					URL.revokeObjectURL(a.previewUrl);
-				} catch { /* already revoked */ }
-			}
-		}
+		for (const a of attachments.value) releasePreview(a);
 		attachments.value = [];
 		pasted.value = [];
 		rec.discard();
@@ -316,7 +368,10 @@ export default function ChatComposer(
 			projectId,
 			channelId,
 			text: body,
-			files: attachments.value.map((a) => a.file),
+			// Device files carry bytes; library picks carry an id. They are separated HERE rather than by
+			// the send path, so nothing downstream has to know how a card got onto the tray.
+			files: attachments.value.flatMap((a) => (a.file ? [a.file] : [])),
+			libraryAssetIds: attachments.value.flatMap((a) => (a.assetId ? [a.assetId] : [])),
 			voice,
 		};
 	}
@@ -365,13 +420,7 @@ export default function ChatComposer(
 	// The recorder releases its own stream/graph on unmount and `pagehide` (see `useAudioRecorder`);
 	// this only has to clean up the attachment previews the island itself minted.
 	useEffect(() => () => {
-		for (const a of attachments.value) {
-			if (a.previewUrl) {
-				try {
-					URL.revokeObjectURL(a.previewUrl);
-				} catch { /* already revoked */ }
-			}
-		}
+		for (const a of attachments.value) releasePreview(a);
 	}, []);
 
 	// Expose the imperative handle so an external drop zone (the pop-out popover) can enqueue files.
@@ -385,9 +434,20 @@ export default function ChatComposer(
 		plusOpen.value = false;
 		fileInputRef.current?.click();
 	}
+	/**
+	 * Open the Asset Picker over the viewer's own library.
+	 *
+	 * `max` is the room LEFT on the tray, not the tray's capacity — a picker that let someone choose
+	 * ten while eight were already staged would silently drop two of the ten they chose.
+	 */
 	function openLibrary(): void {
-		// Placeholder — the media Library modal is a later build. Nothing staged for now.
 		plusOpen.value = false;
+		openPicker({
+			requesterId: pickerId,
+			title: "Attach from your files",
+			multiple: true,
+			max: Math.max(1, MAX_ATTACHMENTS - attachments.value.length),
+		});
 	}
 	function onFileInput(event: JSX.TargetedEvent<HTMLInputElement>): void {
 		const files = event.currentTarget.files;
@@ -724,6 +784,12 @@ export default function ChatComposer(
 			<div class="chat-composer__drop" aria-hidden="true">
 				<span class="chat-composer__drop-label">Drop files to attach</span>
 			</div>
+
+			{
+				/* Mounted unconditionally — an island is only in the page's island graph once it renders,
+			    and that graph is what carries its stylesheet. It draws nothing until it is opened. */
+			}
+			<AssetPicker requesterId={pickerId} onPick={addLibraryAssets} />
 		</div>
 	);
 }

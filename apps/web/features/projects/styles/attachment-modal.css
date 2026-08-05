@@ -395,6 +395,22 @@
 	color: inherit;
 	border-radius: var(--radius-sm);
 }
+/**
+ * The identity mark for an asset with no sender — a hub upload, a drive mount, a link. Occupies the
+ * same 40px box the `Avatar` does, so the aside's leading block is the same height whether the
+ * asset was posted by someone or simply exists somewhere.
+ */
+.fx-aside__srcmark {
+	display: grid;
+	place-items: center;
+	flex: none;
+	inline-size: 40px;
+	block-size: 40px;
+	border-radius: var(--radius-full);
+	background: var(--tint-soft);
+	color: var(--text-secondary);
+}
+
 a.fx-aside__senderlink:hover .fx-aside__name {
 	color: var(--primary);
 }

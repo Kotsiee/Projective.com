@@ -13,6 +13,7 @@ import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import type {
+	AssetItem,
 	FileItem,
 	FileKind,
 	FileSortDir,
@@ -119,7 +120,7 @@ interface WorkspaceViewProps {
 	sortKey: Signal<string>;
 	sortDir: Signal<FileSortDir>;
 	onSort: (key: FileSortKey) => void;
-	onOpen: (file: FileItem) => void;
+	onOpen: (file: AssetItem) => void;
 	onOpenNode: (node: SubmissionTreeNode) => void;
 	onReachEnd: () => void;
 	loadingMore: boolean;
@@ -258,6 +259,15 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const uploadOpen = useSignal(false);
 	const deleteOpen = useSignal(false);
 	const preSubmitOpen = useSignal(false);
+	/**
+	 * Deliverables picked from the freelancer's own library in the pre-submit review.
+	 *
+	 * Held HERE rather than inside the modal because this island owns what will be submitted: a modal
+	 * that staged its own picks would show a file the submission does not contain, and the count in its
+	 * summary would stop being a fact. Session-local and optimistic like every other write on this
+	 * surface, pending `PROJECTS_BACKEND_LIVE`.
+	 */
+	const libraryPicks = useSignal<AssetItem[]>([]);
 
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
@@ -386,7 +396,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// #endregion
 
 	// #region Preview modal
-	function open(file: FileItem): void {
+	function open(file: AssetItem): void {
 		openId.value = file.id;
 	}
 	function renameFile(id: string, name: string): void {
@@ -431,8 +441,23 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			navigate(path.value.slice(0, -1));
 		}
 	}
+	/** Stage picked library assets onto the pending submission, ignoring ones already staged. */
+	function addLibraryPicks(assets: AssetItem[]): void {
+		if (assets.length === 0) return;
+		const known = new Set([
+			...items.value.map((f) => f.id),
+			...libraryPicks.value.map((a) => a.id),
+		]);
+		const next = assets.filter((a) => !known.has(a.id));
+		if (next.length === 0) return;
+		libraryPicks.value = [...libraryPicks.value, ...next];
+	}
+
 	function onConfirmSubmit(): void {
 		preSubmitOpen.value = false;
+		// The picks travel with the submission on the live path; clearing them here keeps a second
+		// review of a different unit from inheriting the last one's staging.
+		libraryPicks.value = [];
 		if (localDraft.value) {
 			localDraft.value = { ...localDraft.value, status: "pending_review" };
 		} else {
@@ -679,11 +704,12 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			<PreSubmitModal
 				open={preSubmitOpen.value}
 				submissionName={draftName}
-				files={items.value}
+				files={[...items.value, ...libraryPicks.value]}
 				checklist={checklist.value}
 				onToggle={toggleTask}
 				onClose={() => (preSubmitOpen.value = false)}
 				onConfirm={onConfirmSubmit}
+				onAddFromLibrary={addLibraryPicks}
 			/>
 		</div>
 	);

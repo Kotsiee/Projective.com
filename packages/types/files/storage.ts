@@ -33,6 +33,7 @@ export const StorageBucket = z.enum([
 	"public_assets",
 	"avatars",
 	"catalogue",
+	"workspace",
 ]);
 export type StorageBucket = z.infer<typeof StorageBucket>;
 
@@ -136,6 +137,13 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		allowedMime: [...IMAGE_MIME],
 		anchor: "seller_id",
 		purpose: "Marketplace storefront media (products, service showcase).",
+	},
+	workspace: {
+		access: "private",
+		maxBytes: 50 * MiB,
+		allowedMime: null,
+		anchor: "entity_id",
+		purpose: "Entity-owned (team / business / organisation) library assets for the /files hub.",
 	},
 };
 
@@ -250,6 +258,20 @@ export function personalLocation(
 	...segments: Array<string | number>
 ): StorageLocation {
 	return { bucket: "personal", path: join("users", userId, ...segments) };
+}
+
+/**
+ * `workspace/{entityId}/...segments` — the entity-owned counterpart of {@link personalLocation}.
+ *
+ * The anchor is the TEAM / BUSINESS / ORGANISATION id, not a user id: the storage policies gate on
+ * active membership of that entity, so a personal-bucket path would both mis-name the object and
+ * resolve against the wrong predicate (`personal` is anchored on `auth.uid()`).
+ */
+export function workspaceLocation(
+	entityId: string,
+	...segments: Array<string | number>
+): StorageLocation {
+	return { bucket: "workspace", path: join(entityId, ...segments) };
 }
 
 /** `invoices/{ownerId}/{period}/{filename}` — owner read; service-role write. */

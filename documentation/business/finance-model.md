@@ -412,6 +412,7 @@ superset of a client. There is no separate buyer plan to reconcile.
 | Teams owned                        | 3                    | 6                     |
 | Businesses owned                   | 1                    | 3                     |
 | Teams / businesses **joined**      | **Uncapped**         | Uncapped              |
+| Stored assets (`storage_megabytes`) | **25 GiB** (25 600) | **150 GiB** (153 600) |
 | Promoted placement, full analytics | â€”                  | âœ…                   |
 
 **Entities** â€” attached to the team/business itself, not to its owner.
@@ -421,6 +422,7 @@ superset of a client. There is no separate buyer plan to reconcile.
 | Members / seats            | 4         | 15              |   | Concurrent public projects | 3             | 25           |
 | Concurrent public projects | 2         | 15              |   | PMs / Observers            | 2             | 15           |
 | Proposal pool              | members'  | dedicated       |   | Pooled wallet              | basic         | full + caps  |
+| Stored assets              | 25 GiB    | **500 GiB**     |   | Stored assets              | 25 GiB        | **500 GiB**  |
 | Advanced vault splits      | â€”       | âœ…             |   | Intervaled invoicing       | â€”           | âœ…          |
 | Promoted placement         | â€”       | âœ…             |   | Departments                | 0             | 5            |
 
@@ -501,3 +503,58 @@ downward as a silent side effect of someone upgrading a subscription.
   response, dispute-free runs), never presence. Guilt mechanics are hostile to freelancer wellbeing
   and attract the wrong behaviour.
 - **No metering of execution capacity.** Ever. See Â§1.1.
+
+### 16.6 Storage (the asset-management footprint lever)
+
+Schema: `finance.plan_entitlements` key **`storage_megabytes`** (seeded in
+`00005030_seed_billing_plans_entitlements.sql`), metered by `files.storage_usage`, gated by
+`files.fn_check_storage_quota`. Docs: `documentation/database/files/`.
+
+Stored bytes are the **third footprint lever**, alongside published listings and active public
+projects. It is a footprint, not a capability: it caps how much of a **shared, genuinely metered
+resource** one tenant occupies, which is the only category of thing this platform prices. It is
+**never** execution capacity (§1.1) and it can **never** buy reputation (§16.5).
+
+#### The ladder
+
+| Plan                | Limit (MiB) | Human   | Rationale                                                                 |
+| :------------------ | ----------: | :------ | :------------------------------------------------------------------------- |
+| `individual_free`   |      25 600 | 25 GiB  | Generous by intent — a freelancer's whole working library for years.       |
+| `individual_pro`    |     153 600 | 150 GiB | **6×** Free. Raises the ceiling; never removes it.                        |
+| `team_free`         |      25 600 | 25 GiB  | The team vault gets its **own** 25 GiB — see the metering rule below.      |
+| `team_pro`          |     512 000 | 500 GiB | Shared production assets: video, source files, delivery archives.         |
+| `business_free`     |      25 600 | 25 GiB  | The business pool gets its own 25 GiB, metered against the business.      |
+| `business_pro`      |     512 000 | 500 GiB | Matches Pro Team — a buyer accumulates briefs and deliverables comparably. |
+| `organisation_free` |      25 600 | 25 GiB  | Draft tier: enough to configure and evaluate.                             |
+| `organisation`      |  **`NULL`** | ∞       | `is_unlimited = true`. The enterprise tier is never asked to budget bytes. |
+
+#### Five rules that make those numbers mean something
+
+1. **Storage is metered per PRINCIPAL, not per person.** A user's personal library, each of their
+   teams, and each of their businesses hold **separate** allowances against their **own** plans. So a
+   freelancer on Free who belongs to three Pro teams has 25 GiB of their own and 500 GiB in each team
+   vault — and none of it borrows from the others. This is the same "ownership ≠ power" split that
+   governs seats: joining is uncapped, and each entity pays for its own muscle.
+2. **Only bytes WE store count.** A mounted Google Drive / Dropbox / S3 / Frame.io file consumes the
+   **provider's** quota, and an attached **link** consumes none at all. A 2 TB connected Drive can
+   therefore sit inside a 25 GiB plan without touching it — the alternative would charge a user twice
+   for storage they already pay someone else for, which is indefensible and would kill the connectors.
+3. **Nothing is hard-deleted, but a deleted asset stops counting.** The rollup sums only
+   `deleted_at IS NULL`, so freeing space is immediate for the user while the row survives for audit
+   and restore (§Nothing is hard-deleted, `PRODUCT_MANAGEMENT.md` §5.4).
+4. **Enforcement is fail-open until tuned** — `security.platform_params.storage_quota_enforced`
+   defaults to **`false`**, exactly like `proposal_allowance_enforced` and `footprint_caps_enforced`.
+   Every figure above is a **dial to be re-fitted against real usage** before anyone is ever refused,
+   and flipping the param starts **rejecting uploads on a live tenant**: a deliberate human decision,
+   never a migration side effect.
+5. **The unit is MEBIBYTES, never bytes** — `plan_entitlements.limit_value` is `integer`, and 25 GB in
+   bytes (26 843 545 600) overflows `int4`. See `documentation/database/finance/Tables.md`.
+
+**Overage is refusal, not a bill.** When enforcement is on, exceeding the cap **rejects the upload**
+with a message naming the ceiling; it never silently charges the wallet. Surprise storage invoices are
+how hosting products lose trust, and this platform's wallet moves **client money into escrow** — the
+one place a surprise platform-initiated debit would be least forgivable.
+
+Storage is deliberately **not sold à la carte**, for the same reason proposals are not (§16.2): the
+moment bytes can be topped up per-gigabyte, the plan ladder stops describing the product and starts
+describing a meter.

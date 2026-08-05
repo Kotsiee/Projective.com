@@ -10,6 +10,7 @@
 --   project       - projects.has_project_access({project_id}) for read AND write
 --   messages       - comms.dm_participants membership on {thread_id} for read AND write
 --   personal      - owner = auth.uid()
+--   workspace     - active membership of the {entity_id} anchor (team OR business OR organisation)
 --   invoices      - owner read on {owner_id}; NO authenticated write (service-role generates)
 --   verification  - NO authenticated policy at all → service-role ONLY (RLS-bypass)
 --   public_assets - public read; per-owner write on {owner_id}
@@ -138,6 +139,106 @@ WITH
         bucket_id = 'personal'
         AND auth.uid () = owner
     );
+
+-- #endregion
+
+
+-- #region workspace — entity-owned private drive, gated by ACTIVE MEMBERSHIP of the {entity_id} anchor
+--
+-- The entity counterpart of `personal`. Deliberately NOT `auth.uid() = owner`: an entity asset must
+-- outlive the member who uploaded it, so the gate is membership of the anchor, not ownership of the
+-- object. The three membership helpers are OR-ed because a single uuid anchor may name a team, a
+-- business or an organisation — the caller passes exactly one and the other two return false.
+--
+-- ⚠️ These are written as the SOLE policies for this bucket. Multiple permissive SELECT policies on
+-- storage.objects are OR-combined, so adding a broad "any authenticated" read here would not
+-- loosen `workspace` alone — do not add one (same warning as the project/messages buckets above).
+
+CREATE POLICY "Entity members can read workspace files" ON storage.objects FOR
+SELECT TO authenticated USING (
+        bucket_id = 'workspace'
+        AND (
+            org.is_active_team_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+            OR org.is_active_business_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+            OR org.is_organisation_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+        )
+    );
+
+CREATE POLICY "Entity members can upload workspace files" ON storage.objects FOR
+INSERT
+    TO authenticated
+WITH
+    CHECK (
+        bucket_id = 'workspace'
+        AND auth.uid () = owner
+        AND (
+            org.is_active_team_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+            OR org.is_active_business_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+            OR org.is_organisation_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+        )
+    );
+
+CREATE POLICY "Entity members can update workspace files" ON storage.objects FOR
+UPDATE TO authenticated USING (
+    bucket_id = 'workspace'
+    AND (
+        org.is_active_team_member (
+            (storage.foldername (name)) [1]::uuid
+        )
+        OR org.is_active_business_member (
+            (storage.foldername (name)) [1]::uuid
+        )
+        OR org.is_organisation_member (
+            (storage.foldername (name)) [1]::uuid
+        )
+    )
+)
+WITH
+    CHECK (
+        bucket_id = 'workspace'
+        AND (
+            org.is_active_team_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+            OR org.is_active_business_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+            OR org.is_organisation_member (
+                (storage.foldername (name)) [1]::uuid
+            )
+        )
+    );
+
+-- Delete is narrower than update, on purpose: any member may revise a shared asset, but only the
+-- uploader may destroy one. Entity-wide deletion authority belongs behind a capability check in the
+-- fat service, not in a blanket storage policy.
+CREATE POLICY "Workspace uploaders can delete their workspace files" ON storage.objects FOR DELETE TO authenticated USING (
+    bucket_id = 'workspace'
+    AND auth.uid () = owner
+    AND (
+        org.is_active_team_member (
+            (storage.foldername (name)) [1]::uuid
+        )
+        OR org.is_active_business_member (
+            (storage.foldername (name)) [1]::uuid
+        )
+        OR org.is_organisation_member (
+            (storage.foldername (name)) [1]::uuid
+        )
+    )
+);
 
 -- #endregion
 

@@ -28,7 +28,7 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | :------------- | :----: | :------: | :-------: | :----------------------------------------------------------------- |
 | `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24            |
 | `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                     |
-| `files`        |   ✅   |    —     |     —     | Plus [Storage.md](files/Storage.md) (9-bucket storage architecture) |
+| `files`        |   ✅   |    ✅    |    ✅     | Asset management, 2026-08-04. Plus [Storage.md](files/Storage.md) (10-bucket storage architecture) |
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation |
 | `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |
 | `marketplace`  |   —    |    —     |     —     | Not yet documented                                                 |
@@ -40,10 +40,18 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | `security`     |   ✅   |    —     |     —     |                                                                    |
 
 ✅ = populated with real schema detail. `—` = stub file stamped `_Not yet documented._` — this is an
-intentional placeholder, not a deletion or accident. `comms/`, `finance/`, `integrations/` and
-`scheduling/` have populated `Functions.md` (the notification engine; the escrow engine + the Wallet
-& Finance foundation; the OAuth capability predicates; the discovery-call booking gate); the
-remaining `Functions.md` files are still stubs — populate them as RPCs are implemented.
+intentional placeholder, not a deletion or accident. `comms/`, `files/`, `finance/`, `integrations/`
+and `scheduling/` have populated `Functions.md` (the notification engine; the asset hub's read
+predicate, quota gate, usage rollup and share resolver; the escrow engine + the Wallet & Finance
+foundation; the OAuth capability predicates; the discovery-call booking gate); the remaining
+`Functions.md` files are still stubs — populate them as RPCs are implemented.
+
+> **A `—` in the Policies column is a documentation gap, not a statement that the schema is
+> unpoliced — and the two were recently shown to diverge.** `files/Policies.md` was a stub while
+> `files.items` carried a live `USING (true)` `SELECT` policy and `files.folders` had no RLS at all
+> (both now closed, both written up in that file). Treat a stub Policies column as *unknown*, and
+> read the migration before assuming a table is safe. `projects/` and `security/` are the two
+> remaining stubs.
 
 ## For Future Agents
 

@@ -122,3 +122,21 @@ INSERT INTO security.platform_params (key, value, description) VALUES
     ('subscription_grace_days', '7'::jsonb,
         'Days a past_due subscription retains its paid entitlements before falling back to the free plan.')
 ON CONFLICT (key) DO NOTHING;
+
+-- files: the storage quota gate (00001160 files.fn_check_storage_quota).
+--
+-- ⚠️ SEEDED FALSE, DELIBERATELY, and FLIPPING IT IS A HUMAN DECISION — never a side effect of
+-- running a migration. It is the third member of the fail-open enforcement family
+-- (`proposal_allowance_enforced`, `footprint_caps_enforced`) and follows the same discipline: while
+-- false, an upload that would exceed the plan's `storage_megabytes` entitlement is allowed through
+-- untouched. Turning it on starts REFUSING uploads on a live tenant, which is a visible product
+-- behaviour change and needs the ladder tuned against real usage first.
+--
+-- It also carries the same known limit the other two do (Decision #58): once enforcement is on, the
+-- RAISE aborts the transaction, which would roll back any denial telemetry written moments earlier
+-- in the same statement — so a denial under active enforcement must be recorded by the APP layer
+-- catching the `check_violation`, not by the trigger.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('storage_quota_enforced', 'false'::jsonb,
+        'When false, storage quota is NOT enforced — files.fn_check_storage_quota returns without raising and every upload is allowed (fail-open). Flip to true only after the storage_megabytes ladder has been tuned against real usage; it is a deliberate human decision that starts refusing uploads.')
+ON CONFLICT (key) DO NOTHING;

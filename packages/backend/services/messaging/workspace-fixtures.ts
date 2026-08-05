@@ -12,7 +12,7 @@ import type {
 	MemberViewerCaps,
 	ProjectMemberRow,
 } from "@projective/types/projects";
-import { categorizeFile } from "@projective/types/files";
+import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import type { ConversationDetail } from "@projective/types/messaging";
 import { findConversationDetail } from "./conversation-fixtures.ts";
 import { findConversationMessagePage } from "./messages-fixtures.ts";
@@ -151,6 +151,8 @@ function filesOf(detail: ConversationDetail): FileItem[] {
 				dayLabel: m.dayLabel,
 				dateLabel: `${m.dayLabel} · ${m.timeLabel}`,
 				starred: false,
+				// A DM/conversation attachment is semi-private — `link`-visible by construction.
+				...messageAttachmentFacets(sender.id, { canManage: sender.id === "viewer" }),
 			});
 		}
 
@@ -182,6 +184,8 @@ function filesOf(detail: ConversationDetail): FileItem[] {
 				dayLabel: m.dayLabel,
 				dateLabel: `${m.dayLabel} · ${m.timeLabel}`,
 				starred: false,
+				// A DM/conversation attachment is semi-private — `link`-visible by construction.
+				...messageAttachmentFacets(sender.id, { canManage: sender.id === "viewer" }),
 			});
 		}
 	}

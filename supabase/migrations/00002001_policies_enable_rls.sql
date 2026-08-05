@@ -141,6 +141,22 @@ ALTER TABLE security.session_context ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE files.items ENABLE ROW LEVEL SECURITY;
 
+-- --- files: asset management ---
+-- ⚠️ files.folders had NEVER had RLS enabled. It has existed since 0002 holding `owner_user_id`,
+-- and because the schema-wide grant in 00002500 hands `authenticated` full DML on every table in
+-- `files`, every signed-in user could read, rename, re-parent and delete every other user's folder
+-- tree. This is a real, pre-existing hole being closed, not new hardening.
+ALTER TABLE files.folders ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE files.share_links ENABLE ROW LEVEL SECURITY;
+
+-- Download audit + the metered rollup: read-own, write-NEVER from a client (the server writes
+-- them, exactly like comms.notifications). RLS on + no INSERT/UPDATE policy is what makes the
+-- blanket schema grant harmless.
+ALTER TABLE files.download_events ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE files.storage_usage ENABLE ROW LEVEL SECURITY;
+
 
 -- --- from 0211_business.sql ---
 

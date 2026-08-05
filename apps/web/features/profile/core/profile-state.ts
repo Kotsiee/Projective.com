@@ -38,3 +38,19 @@ export const following = signal(false);
  * in different islands from the popover. Resets on navigation (new page = fresh module scope).
  */
 export const quickMessageOpen = signal(false);
+
+/**
+ * The OWNER's in-place image edits — the cover and the profile picture chosen through the Asset
+ * Picker, or `null` while the server's projection is still what everyone is looking at.
+ *
+ * Shared rather than local to the body header because the same avatar is drawn in TWO islands: the
+ * body header and the condensed `ProfileStickyHeader` in the middle-nav band. A local signal would
+ * change one of them, and the mismatch would surface at exactly the moment the owner scrolled to check
+ * their change had taken.
+ *
+ * `null` means "unchanged" rather than "empty", so a reader falls through to the server's value and
+ * nothing here can blank a profile picture that exists. Optimistic and session-local, like every other
+ * inline profile edit, pending the profile write path.
+ */
+export const editedBanner = signal<string | null>(null);
+export const editedAvatar = signal<string | null>(null);

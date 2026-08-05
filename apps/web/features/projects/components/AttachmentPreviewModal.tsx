@@ -6,7 +6,7 @@ import { Avatar, Carousel } from "@projective/ui/display";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { Popover } from "@projective/ui/feedback";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
-import type { FileItem } from "../types/projects-types.ts";
+import { type AssetItem, sourceLabel, visibilityLabel } from "../types/projects-types.ts";
 import { kindLabel } from "../core/file-model.ts";
 import { profileHref } from "../core/routing.ts";
 import { channelMessageHref } from "../core/chat-context.ts";
@@ -38,7 +38,7 @@ import {
 export interface AttachmentPreviewModalProps {
 	open: boolean;
 	/** The message group (siblings sharing a post) — the carousel + tray walk this set. */
-	files: FileItem[];
+	files: AssetItem[];
 	/** The index within `files` the modal opens on. */
 	startIndex: number;
 	/** The acting viewer's sender id — the filename is editable only on the viewer's own files. */
@@ -73,7 +73,10 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 	} = props;
 
 	const { mounted, state } = usePresence(open);
-	const stack = useOverlayStack({ active: mounted, lockScroll: true });
+	// `layer: "modal"` explicitly: the default is `"popover"` (z 1100), and a modal left on the
+	// popover layer is outranked by any correctly-declared sibling — including `PreSubmitModal`,
+	// which can open over this one from the same surface.
+	const stack = useOverlayStack({ active: mounted, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: mounted, containerRef: panelRef });
 	useDismiss({ open: mounted, onDismiss: onClose, panelRef, closeOnOutside: false });
@@ -100,7 +103,9 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 
 	const idx = Math.min(Math.max(0, page.value), files.length - 1);
 	const file = files[idx];
-	const canRename = file.sender.id === viewerId;
+	// A posted file keeps the original rule (own files only); an asset with no sender — a hub
+	// upload, a drive mount — defers to the server-derived capability instead of guessing.
+	const canRename = file.sender ? file.sender.id === viewerId : file.canManage;
 	const multi = files.length > 1;
 
 	const startEdit = () => {
@@ -250,7 +255,7 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 										showNavigators={false}
 										circular={false}
 										aria-label="Attachment preview"
-										itemTemplate={(f: FileItem, i: number) => (
+										itemTemplate={(f: AssetItem, i: number) => (
 											<FilePreview file={f} active={i === idx} />
 										)}
 									/>
@@ -305,46 +310,87 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 							<SplitterPanel size={32} minSize={18} maxSize={50} class="fx-modal__aside">
 								<div class="fx-aside">
 									<div class="fx-aside__sender">
-										{file.sender.handle
+										{file.sender
 											? (
-												<a class="fx-aside__senderlink" href={profileHref(file.sender.handle)}>
-													<Avatar
-														image={file.sender.avatar ?? undefined}
-														label={file.sender.name}
-														size={40}
-														alt=""
-													/>
-													<span class="fx-aside__id">
-														<span class="fx-aside__name">{file.sender.name}</span>
-														<span class="fx-aside__handle">@{file.sender.handle}</span>
-													</span>
-												</a>
+												<>
+													{file.sender.handle
+														? (
+															<a
+																class="fx-aside__senderlink"
+																href={profileHref(file.sender.handle)}
+															>
+																<Avatar
+																	image={file.sender.avatar ?? undefined}
+																	label={file.sender.name}
+																	size={40}
+																	alt=""
+																/>
+																<span class="fx-aside__id">
+																	<span class="fx-aside__name">{file.sender.name}</span>
+																	<span class="fx-aside__handle">@{file.sender.handle}</span>
+																</span>
+															</a>
+														)
+														: (
+															<div class="fx-aside__senderlink">
+																<Avatar
+																	image={file.sender.avatar ?? undefined}
+																	label={file.sender.name}
+																	size={40}
+																	alt=""
+																/>
+																<span class="fx-aside__id">
+																	<span class="fx-aside__name">{file.sender.name}</span>
+																</span>
+															</div>
+														)}
+													{file.channelName
+														? (
+															<p class="fx-aside__context">
+																Shared in <span class="fx-aside__chan">{file.channelName}</span> ·
+																{" "}
+																{file.dayLabel} {file.timeLabel}
+															</p>
+														)
+														: null}
+													{file.channelId && file.messageId
+														? (
+															<a
+																class="fx-aside__gotomsg"
+																href={channelMessageHref(projectId, file.channelId, file.messageId)}
+																aria-label={`Go to this message in ${
+																	file.channelName ?? "the channel"
+																}`}
+															>
+																<DmBubbleIcon size={16} />
+																<span>Go to Message</span>
+															</a>
+														)
+														: null}
+												</>
 											)
 											: (
-												<div class="fx-aside__senderlink">
-													<Avatar
-														image={file.sender.avatar ?? undefined}
-														label={file.sender.name}
-														size={40}
-														alt=""
-													/>
-													<span class="fx-aside__id">
-														<span class="fx-aside__name">{file.sender.name}</span>
-													</span>
-												</div>
+												/* No sender: the asset was uploaded or mounted, not posted. Say where it lives
+												   and who can see it — the two facts that replace "who shared this". */
+												<>
+													<div class="fx-aside__senderlink">
+														<span class="fx-aside__srcmark" aria-hidden="true">
+															<FileKindIcon kind={file.kind} size={20} />
+														</span>
+														<span class="fx-aside__id">
+															<span class="fx-aside__name">{sourceLabel(file.source)}</span>
+															<span class="fx-aside__handle">
+																{visibilityLabel(file.visibility)}
+															</span>
+														</span>
+													</div>
+													<p class="fx-aside__context">
+														{file.folderPath.length > 0
+															? file.folderPath.join(" / ")
+															: "Library root"} · {file.dayLabel} {file.timeLabel}
+													</p>
+												</>
 											)}
-										<p class="fx-aside__context">
-											Shared in <span class="fx-aside__chan">{file.channelName}</span> ·{" "}
-											{file.dayLabel} {file.timeLabel}
-										</p>
-										<a
-											class="fx-aside__gotomsg"
-											href={channelMessageHref(projectId, file.channelId, file.messageId)}
-											aria-label={`Go to this message in ${file.channelName}`}
-										>
-											<DmBubbleIcon size={16} />
-											<span>Go to Message</span>
-										</a>
 									</div>
 
 									{file.messageText

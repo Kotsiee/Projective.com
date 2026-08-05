@@ -1,0 +1,876 @@
+/*
+ * files-chrome — the `/files` LANE (expanded stack + collapsed rail), the HEADER band, and the FOOTER
+ * rig.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY (so the whole surface mirrors under `dir="rtl"`
+ * without a single directional override).
+ *
+ * The shared `.ui-lane-*` chrome from `@projective/ui/navigation`, the shared `.ui-treenav` and the
+ * shared `.ui-viewrig` are NOT restyled here. The `/files` lane is meant to read as the same control
+ * set as `/projects`, `/messages` and `/wallet`; only this surface's own additions carry rules, and
+ * the two scoped overrides that exist (the rail's compact meter, the rig's density padding) are
+ * clearly marked as such.
+ *
+ * The prefix is `.fh-` — the files HUB's, already established by `QuotaMeter` (`.fh-quota`) and
+ * `AssetBreadcrumbs` (`.fh-crumbs`). It is deliberately NOT `.fx-`: that belongs to the projects File
+ * Explorer (`.fx-card`, `.fx-rig`, `.fx-modal`), whose components this surface REUSES, so a shared
+ * prefix would have two owners styling one class.
+ */
+
+/* #region Tokens */
+/*
+ * On `:root`, not on a `.fh-` root — and that is the whole point.
+ *
+ * The lane, the header band, the footer rig and every `BodyPortal`-mounted overlay these regions open
+ * (the Popovers, the three Dialogs) render in FOUR different places in the document, three of which
+ * are outside any element this feature owns. A scoped token silently falls back for all of them —
+ * exactly the defect `/wallet` shipped when `--wlt-*` was scoped to `.wlt` (Decision #60) and the
+ * fields layer repeated (Decision #62). Every name is `--fh-`-prefixed, so `:root` costs nothing.
+ */
+:root {
+	/** The control row height shared by the rig's buttons, the band's icon buttons and the menu rows. */
+	--fh-row: 2rem;
+	/** The rig's own control height — one step taller, because these are the surface's primary actions. */
+	--fh-rig-row: 2.25rem;
+	--fh-fs-body: var(--text-md);
+	--fh-fs-micro: var(--text-xs);
+	/** The collapsed rail's width, matched to the global sidebar so the two rails read as one column. */
+	--fh-rail-w: var(--shell-sidebar-w);
+}
+/* #endregion */
+
+/* #region Lane — the dual presentation */
+.fh-lanewrap,
+.fh-lane {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+	inline-size: 100%;
+}
+
+/*
+ * Both presentations are always in the DOM and the splitter's density decides which paints. No width
+ * observer, so SSR and the hydrated island agree on the first frame — a navigation tree that flickers
+ * between two shapes on every load reads as a broken lane.
+ */
+.fh-rail {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .fh-lane {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .fh-rail {
+	display: flex;
+}
+
+/* Scoped with `:has` so only the FILES lane takes this width — every other lane keeps its own. */
+.ui-splitter[data-mode="collapsed"]:has(.fh-rail) {
+	inline-size: var(--fh-rail-w);
+}
+/* #endregion */
+
+/* #region Lane — expanded */
+.fh-lane__head {
+	padding: var(--space-3);
+}
+
+.fh-lane__tree {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+/*
+ * A section that is present but empty still gets a sentence. Its absence would be indistinguishable
+ * from "this library has no drives connected", and the empty state is where the reader learns the
+ * section exists at all.
+ */
+.fh-lane__sectionempty {
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	font-size: var(--fh-fs-micro);
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+/*
+ * A transport failure is stated, never swallowed. It sits above the tree it failed to replace — the
+ * previous tree is deliberately still standing, so this line is what tells the reader it is stale.
+ */
+.fh-lane__error {
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	font-size: var(--fh-fs-micro);
+	line-height: 1.5;
+	color: var(--warning);
+}
+
+/*
+ * The allowance, pinned at the foot. One hairline separates it from the scrolling tree (§B.4 — a
+ * single hairline, never a box), and it never scrolls away: it is a standing fact about this library
+ * rather than a row of it.
+ */
+.fh-lane__quota {
+	flex: none;
+	padding: var(--space-3);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Lane — collapsed rail */
+.fh-rail {
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-3);
+	block-size: 100%;
+	min-block-size: 0;
+}
+
+.fh-rail__items {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+/* Mirrors the global rail's collapsed `.ui-nav-item` exactly, so the two columns read as one control. */
+.fh-rail__item {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.fh-rail__item:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.fh-rail__item[data-active="true"] {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	color: var(--primary);
+}
+
+.fh-rail__item:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.fh-rail__bottom {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: auto;
+	flex: none;
+}
+
+/*
+ * A SCOPED override of the shared meter, not a second meter: at rail width the figures cannot be read,
+ * so the track survives and the words move into the Tooltip that already wraps it. The fill is still
+ * never transitioned — motion may decorate transform/opacity, never a property that ENCODES data.
+ */
+.fh-rail__quota {
+	display: block;
+	inline-size: calc(var(--fh-rail-w) - var(--space-5));
+}
+
+.fh-rail__quota .fh-quota__figure,
+.fh-rail__quota .fh-quota__caption {
+	display: none;
+}
+/* #endregion */
+
+/* #region Header band */
+/*
+ * The band contract, shared verbatim with `.chan-header` and `.wlt-headerband` (DESIGN_SYSTEM §D.4):
+ * exactly `--shell-midnav-header-h` tall, `--space-4` inline padding, and TRANSPARENT. The tonal
+ * surface is the shell band's own flush underlay (`.ui-middle-nav__header::before`) and the seam
+ * beneath it is the canvas frame's single hairline — painting a plate and a hairline here doubles both.
+ */
+.fh-headerband {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+	min-inline-size: 0;
+}
+
+.fh-headerband__identity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.fh-headerband__scope {
+	font-size: var(--fh-fs-body);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	white-space: nowrap;
+	flex: none;
+}
+
+/* The trail takes whatever the row has left and truncates from its own leading edge. */
+.fh-headerband__identity .fh-crumbs {
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.fh-headerband__controls {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+	flex: none;
+}
+
+.fh-headerband__icon {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fh-row);
+	block-size: var(--fh-row);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.fh-headerband__icon:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.fh-headerband__icon[data-on="true"] {
+	color: var(--primary);
+}
+
+.fh-headerband__icon:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* An engaged-filter signal is a dot, never a count (§D.1). */
+.fh-headerband__dot {
+	position: absolute;
+	inset-block-start: 3px;
+	inset-inline-end: 3px;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
+
+.fh-headerband__panel {
+	min-inline-size: 18rem;
+	padding: var(--space-2);
+}
+
+.fh-headerband__panel--filter {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 15rem;
+	max-block-size: 60vh;
+	overflow-y: auto;
+}
+
+.fh-headerband__panel-note {
+	margin: var(--space-2) 0 var(--space-1);
+	padding-inline: var(--space-2);
+	font-size: var(--fh-fs-micro);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.fh-headerband__panel-note:first-child {
+	margin-block-start: 0;
+}
+
+/* A filter row is an interactive control, so the engaged contour is earned (§B.4). */
+.fh-headerband__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	font: inherit;
+	font-size: var(--fh-fs-body);
+	text-align: start;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.fh-headerband__option:hover {
+	background: var(--surface-3);
+}
+
+.fh-headerband__option[aria-pressed="true"] {
+	border-color: var(--border-subtle);
+	background: var(--surface-2);
+}
+
+.fh-headerband__option:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/*
+ * The check is a SHAPE channel, revealed only when the row is engaged — so "selected" is carried by
+ * the mark, the border and the surface together, and survives a colour-blindness overlay.
+ */
+.fh-headerband__option-mark {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	color: var(--text-secondary);
+}
+
+.fh-headerband__option-mark > .ui-icon[data-icon="check"] {
+	opacity: 0;
+}
+
+.fh-headerband__option[aria-pressed="true"] .fh-headerband__option-mark {
+	color: var(--primary);
+}
+
+.fh-headerband__option[aria-pressed="true"] .fh-headerband__option-mark > .ui-icon[data-icon="check"] {
+	opacity: 1;
+}
+
+.fh-headerband__clear {
+	margin-block-start: var(--space-2);
+	font: inherit;
+	font-size: var(--fh-fs-micro);
+	text-align: start;
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--primary);
+	cursor: pointer;
+}
+
+.fh-headerband__clear:hover {
+	background: var(--surface-3);
+}
+
+.fh-headerband__clear:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.fh-headerband__sort {
+	display: inline-flex;
+	align-items: center;
+}
+
+/*
+ * The Browse switcher. Hidden wherever the lane renders, because tree navigation is the lane's job and
+ * two permanent routes to one destination is one too many. It appears at exactly the width the lane
+ * leaves (`middle-nav.css`, `max-width: 767px`), so the duty TRANSFERS rather than duplicating.
+ */
+.fh-headerband__browse {
+	display: none;
+}
+
+.fh-headerband__browse-trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--fh-fs-body);
+	font-weight: var(--fw-semibold);
+	block-size: var(--fh-row);
+	padding-inline: var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.fh-headerband__browse-trigger:hover {
+	background: var(--surface-3);
+}
+
+.fh-headerband__browse-trigger:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.fh-headerband__caret,
+.fh-headerband__menu-glyph {
+	color: var(--text-secondary);
+}
+
+.fh-headerband__menu {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 14rem;
+	max-block-size: 60vh;
+	overflow-y: auto;
+	padding: var(--space-1);
+}
+
+.fh-headerband__menu-item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	font: inherit;
+	font-size: var(--fh-fs-body);
+	text-align: start;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.fh-headerband__menu-item:hover {
+	background: var(--surface-3);
+}
+
+.fh-headerband__menu-item[aria-current="true"] {
+	background: var(--surface-2);
+	color: var(--primary);
+}
+
+.fh-headerband__menu-item[aria-current="true"] .fh-headerband__menu-glyph {
+	color: var(--primary);
+}
+
+.fh-headerband__menu-item:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* Below this width the scope NAME yields; the trail still answers "where am I". */
+@media (max-width: 1100px) {
+	.fh-headerband__scope {
+		display: none;
+	}
+}
+
+/*
+ * The lane is gone below this width (`middle-nav.css`), so the band picks up tree navigation. The
+ * trail is what truncates when the row runs out of room — Browse is the only route left between the
+ * library, the mounts and the drives, so it may not be the thing that yields.
+ */
+@media (max-width: 767px) {
+	.fh-headerband__browse {
+		display: inline-flex;
+		min-inline-size: 0;
+		flex: none;
+	}
+
+	.fh-headerband__identity {
+		min-inline-size: 0;
+	}
+}
+/* #endregion */
+
+/* #region Footer rig */
+/*
+ * `container-type: inline-size` is load-bearing twice over.
+ *
+ * (1) INLINE-SIZE CONTAINMENT. Without it, this `nowrap` cluster contributes its full min-content to
+ *     the middle-nav content column — a `1fr` grid track whose automatic minimum is `auto` — and the
+ *     band starves the nav lane at narrow viewports (measured on `/wallet`: 739px min-content collapsed
+ *     a 280px lane to 2px at 820px, and overflowed the frame's `clip` by 50px at 768px). The band may
+ *     not bid for the lane's space. (`middle-nav.css` carries the matching `minmax(0, 1fr)`; either
+ *     alone leaves the other's failure reachable.)
+ *
+ * (2) It makes the tier switch a CONTAINER QUERY on the band's real width, so the collapse is
+ *     deterministic CSS rather than a client width observer.
+ *
+ * The band itself is transparent with no hairline of its own: the seam is the canvas frame's.
+ */
+.fh-rig {
+	container-type: inline-size;
+	container-name: fhrig;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	min-inline-size: 0;
+}
+
+.fh-rig__actions,
+.fh-rig__menu {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The Tooltip anchor is an inline span; in the flex row it must carry the button's box, not wrap it. */
+.fh-rig .ui-tooltip__anchor {
+	display: inline-flex;
+	min-inline-size: 0;
+}
+
+/*
+ * The menu is pinned to the trailing edge, and the auto margin has to sit on the ANCHOR, not on the
+ * button: every rig control is wrapped in a `Tooltip`, so the span is the flex item and a margin on
+ * the button inside it moves nothing. `:has` is the only selector that can name "the anchor holding
+ * the more button" without the package exposing a hook for it, and it survives every tier — including
+ * the narrowest, where the inline cluster is gone and there is no sibling left to push against.
+ */
+.fh-rig > .ui-tooltip__anchor:has(.fh-rig__more) {
+	margin-inline-start: auto;
+}
+
+.fh-rig__menu {
+	flex-direction: column;
+	align-items: stretch;
+	min-inline-size: 13rem;
+	padding: var(--space-1);
+}
+
+/* A full contour here is correct: these are interactive controls (§B.4). */
+.fh-rig__action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--fh-fs-body);
+	white-space: nowrap;
+	block-size: var(--fh-rig-row);
+	padding-inline: var(--space-3);
+	padding-block: 0;
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.fh-rig__action:hover:not(:disabled) {
+	background: var(--surface-3);
+}
+
+.fh-rig__action:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/*
+ * The primary action is TONAL, not filled.
+ *
+ * `--on-primary` on `--primary` measures 3.57:1 in dark mode — a theme-engine pairing flagged against
+ * every filled primary control in the product (Decisions #64 / #65) and still unresolved at the token
+ * layer. This band's label is small text, which is exactly the case that pairing fails, so the control
+ * is routed around it rather than patched: a `--primary`-tinted surface with `--primary` ink and a
+ * `--primary` contour reads as unambiguously primary against four bare-tonal siblings, and every
+ * channel it uses (fill, border, ink) is one the theme already ships at text contrast.
+ */
+.fh-rig__action[data-variant="primary"] {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+	border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+	color: var(--primary);
+}
+
+.fh-rig__action[data-variant="primary"]:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--primary) 22%, transparent);
+	border-color: var(--primary);
+}
+
+/*
+ * Disabled steps DOWN to a tonal control rather than washing out a filled primary: a 0.4-alpha
+ * `--primary` plate reads as a broken button, and the reason a control is unavailable is carried by
+ * the state, not by a colour nobody can name.
+ */
+.fh-rig__action:disabled {
+	cursor: not-allowed;
+	background: none;
+	border-color: var(--border-subtle);
+	color: var(--text-secondary);
+	opacity: 0.72;
+}
+
+/* The menu lists every action at one weight — a filled row inside a list of five is a recommendation. */
+.fh-rig__menu .fh-rig__action {
+	justify-content: flex-start;
+	inline-size: 100%;
+	block-size: auto;
+	padding-block: var(--space-2);
+	background: none;
+	color: var(--on-surface);
+}
+
+.fh-rig__glyph {
+	display: inline-flex;
+	align-items: center;
+}
+
+/*
+ * A SCOPED override of the shared `.ui-viewrig`: it already owns the layout, the mode glyph and the
+ * slider cap; this only strips the padding it would add inside a band that already pads itself, and
+ * holds a floor so the track never collapses to nothing.
+ */
+.fh-rig .fh-rig__density {
+	padding: 0;
+	min-inline-size: 9rem;
+	flex: none;
+}
+
+.fh-rig__more {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--fh-fs-body);
+	block-size: var(--fh-rig-row);
+	padding-inline: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+	margin-inline-start: auto;
+	flex: none;
+}
+
+.fh-rig__more:hover {
+	background: var(--surface-3);
+}
+
+.fh-rig__more:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.fh-rig__note,
+.fh-rig__uploads {
+	font-size: var(--fh-fs-micro);
+	color: var(--text-secondary);
+	white-space: nowrap;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* The picker is driven entirely by the Upload button; it must never take focus or paint. */
+.fh-rig__file {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+/* #endregion */
+
+/* #region Footer rig — the action layer's dialogs */
+/*
+ * A real, associated `<label>` — matched to the fields layer's own label register (`--fld-label-*`)
+ * rather than restyled, so a dialog field reads identically to every other labelled control.
+ */
+.fh-rig__fieldlabel {
+	display: block;
+	margin-block-end: var(--space-1);
+	font-size: var(--fld-label-fs, var(--fh-fs-micro));
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.fh-rig__dialogfoot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.fh-rig__hint {
+	margin: var(--space-3) 0 0;
+	font-size: var(--fh-fs-micro);
+	line-height: 1.55;
+	color: var(--text-secondary);
+}
+
+.fh-rig__error {
+	margin: var(--space-3) 0 0;
+	font-size: var(--fh-fs-micro);
+	line-height: 1.55;
+	color: var(--danger);
+}
+
+.fh-rig__providers {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-start: var(--space-4);
+}
+
+.fh-rig__provider {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	font: inherit;
+	font-size: var(--fh-fs-body);
+	text-align: start;
+	padding: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.fh-rig__provider:hover:not(:disabled) {
+	background: var(--surface-3);
+}
+
+.fh-rig__provider:disabled {
+	cursor: progress;
+	opacity: 0.72;
+}
+
+.fh-rig__provider:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.fh-rig__provider-label {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.fh-rig__provider-mark,
+.fh-rig__provider-caret {
+	color: var(--text-secondary);
+	flex: none;
+}
+/* #endregion */
+
+/* #region Footer rig — tiers */
+/*
+ * Three tiers, and the MENU HOLDS EVERY ACTION AT EVERY TIER. Hiding the inline cluster can therefore
+ * never remove a path to getting a file into the library — which is precisely what `/wallet`'s old
+ * `nth-child(n + 3) { display: none }` mobile rule did on four pages with no menu to recover from.
+ */
+
+/* Tier 2 — the labels go, the glyphs stay; the name is relocated to the Tooltip, never deleted (§B.6.3). */
+@container fhrig (max-width: 44rem) {
+	.fh-rig__actions .fh-rig__label,
+	.fh-rig__more-label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.fh-rig__actions .fh-rig__action,
+	.fh-rig__more {
+		inline-size: var(--fh-rig-row);
+		padding-inline: 0;
+	}
+
+	/* The menu's rows keep their labels — that is what the menu is for. */
+	.fh-rig__menu .fh-rig__action {
+		inline-size: 100%;
+		padding-inline: var(--space-3);
+	}
+
+	.fh-rig__menu .fh-rig__label {
+		position: static;
+		inline-size: auto;
+		block-size: auto;
+		margin: 0;
+		clip-path: none;
+	}
+}
+
+/* Tier 2 also drops the standing notes before it drops any control. */
+@container fhrig (max-width: 36rem) {
+	.fh-rig__note {
+		display: none;
+	}
+}
+
+/* Tier 3 — the inline cluster collapses entirely into the menu, which already holds all of it. */
+@container fhrig (max-width: 26rem) {
+	.fh-rig__actions {
+		display: none;
+	}
+
+	.fh-rig .fh-rig__density {
+		min-inline-size: 6rem;
+	}
+
+	.fh-rig__more {
+		margin-inline-start: auto;
+	}
+}
+/* #endregion */
+
+/* #region Coarse pointer + the mobile band offset */
+/*
+ * A finger needs a bigger target than a cursor (WCAG 2.5.8). Applied on the POINTER, not the viewport:
+ * a touch laptop at 1440px needs it and a narrow desktop window does not.
+ */
+@media (pointer: coarse) {
+	.fh-rig__action,
+	.fh-rig__more {
+		block-size: 2.5rem;
+	}
+
+	.fh-headerband__icon {
+		inline-size: 2.5rem;
+		block-size: 2.5rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.fh-rail__item,
+	.fh-rig__action,
+	.fh-rig__provider,
+	.fh-headerband__icon {
+		transition: none;
+	}
+}
+/* #endregion */

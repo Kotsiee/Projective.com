@@ -33,6 +33,7 @@ export type IconName =
 	| "user"
 	| "logout"
 	| "briefcase"
+	| "files"
 	| "switch"
 	| "check"
 	| "arrowLeft"
@@ -140,6 +141,17 @@ const PATHS: Record<IconName, VNode> = {
 		<>
 			<path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3" />
 			<path d="M10 8l-4 4 4 4M6 12h9" />
+		</>
+	),
+	/**
+	 * Files — a tabbed folder. Added rather than borrowed: `article` is a document PAGE and `briefcase`
+	 * is Projects, so reusing either would give one glyph two destinations — the exact collision the
+	 * iconography audit resolved (§B.7, Decision #62). A folder is the one shape a person already reads
+	 * as "where my things are kept", and it agrees with the mark the hub's own tree gives a folder node.
+	 */
+	files: (
+		<>
+			<path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
 		</>
 	),
 	// Context switch — two counter-facing arrows (swap between workspaces).

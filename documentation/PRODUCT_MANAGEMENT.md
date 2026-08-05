@@ -186,11 +186,12 @@ and block taking precedence:
 > Rollup is computed, not stored authoritatively at the parent — the same "source of truth lives at
 > the leaf" discipline the platform uses for ticket→stage→project state.
 
-### 3.5 Domain lifecycles are NOT build-tracker states (finance, verification, scheduling & comms)
+### 3.5 Domain lifecycles are NOT build-tracker states (finance, verification, scheduling, comms & assets)
 
 The §3.1 state-machine governs **build Tasks** on the delivery tracker. The 2026-07-23 Wallet &
-Finance foundation, the 2026-07-24 Availability & Discovery Calls foundation and the 2026-07-24
-Notification Engine add several **product domain lifecycles** — these are **separate** finite state machines that live at the
+Finance foundation, the 2026-07-24 Availability & Discovery Calls foundation, the 2026-07-24
+Notification Engine and the 2026-08-04 Asset Management foundation add several **product domain
+lifecycles** — these are **separate** finite state machines that live at the
 schema/business layer, and they are recorded here **only so nobody mints a bespoke build-board
 column for them.** Their canonical definitions are the enum + doc listed:
 
@@ -210,6 +211,8 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Allowance period**       | Rolls weekly; `granted → consumed`, buffer drips back on a timer   | `finance.allowance_periods` · `finance-model.md` §16.2 |
 | **Notification delivery**  | `pending → queued → sent → delivered`; `failed` / `suppressed` (policy said no) / `skipped` (nothing to send to) | `comms.delivery_status` · `database/comms/Functions.md` |
 | **Scheduled notification** | `scheduled → processing → sent`; `cancelled` (the reason went away) / `failed` (3 attempts) | `comms.queue_status` · `database/comms/Tables.md` |
+| **Asset**                  | `pending_upload → scanning → uploaded → archived → deleted`; `error` / `quarantined` (terminal-until-resolved off `scanning`) | `files.file_status` + `files.items.is_archived` / `deleted_at` · `database/files/Tables.md` |
+| **Share link**             | `active → expired` (time) / `revoked` (**terminal**); also `exhausted` (download limit) | `files.share_links` (`expires_at` / `revoked_at` / `download_limit`) · `database/files/Functions.md` |
 
 > **The discovery call is the sharpest illustration of why this section exists.** A booked call is
 > not a unit of delivery: it creates no Project, Stage or Ticket, never appears on a board, and does
@@ -217,6 +220,33 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > the row to `proposed` and increments a counter, so a call that moved three times is still one
 > call, not three. Enforced by `scheduling.fn_enforce_call_transition`; mirrored for the client in
 > `packages/types/scheduling/calls.ts` (`CALL_TRANSITIONS`), where **the trigger is the authority**.
+
+> **The two asset lifecycles, and why neither is a build state.** An **asset** is a file somebody
+> uploaded; a **share link** is a capability URL somebody minted. Neither is a unit of work: neither
+> creates a Project, Stage or Ticket, neither appears on a board, and neither counts toward Workload
+> Intensity (§4). An uploaded file is an *input to* or an *output of* delivery — never delivery
+> itself. The nearest confusable thing is a **submission**, which _is_ tracked, and the distinction is
+> exactly the point: a stage submission moves a Ticket through §3.1 and releases escrow; the bytes it
+> carries move through the asset lifecycle underneath it, independently.
+>
+> **The asset lifecycle spans three columns, not one enum, and that is deliberate.**
+> `pending_upload → scanning → uploaded` are members of the closed `files.file_status` enum (plus the
+> two off-ramps `error` and `quarantined`, which are where a failed AV/MIME check parks a file rather
+> than deleting it). **`archived`** is `files.items.is_archived`, and **`deleted`** is
+> `deleted_at IS NOT NULL` — a *soft* delete. Folding archived/deleted into the status enum was
+> rejected because they are orthogonal to it: an archived file is still `uploaded` (its bytes are
+> intact and it can be restored), and a soft-deleted row must keep its last real status so the quota
+> rollup, the download audit and any share link that pointed at it stay explicable. **Nothing here is
+> ever hard-deleted** (§5.4) — `deleted` is a terminal *state*, not a `DELETE`.
+>
+> **A share link's states are computed, not stored.** There is no `share_status` column: `expired` is
+> `expires_at <= now()`, `revoked` is `revoked_at IS NOT NULL`, `exhausted` is
+> `download_count >= download_limit`. One predicate — `files.fn_resolve_share(slug)` — evaluates all
+> three, so no route can resurrect a revoked link by forgetting a check. **Revocation is terminal**: a
+> revoked slug is never re-armed, because a URL that came back to life would be un-un-forwardable.
+> And although the service distinguishes the four failure modes to log and meter them, the **route
+> maps all four to the same 404** — telling an anonymous caller *"this link expired"* rather than
+> *"no such link"* confirms a link existed, which is the fact a scanner is probing for.
 
 **Rules:** (1) these never appear as delivery-board columns (§6 maps only §3.1 states); (2) nothing
 is hard-deleted — a retired verification/invoice/dispute goes to a terminal state, never a `DELETE`

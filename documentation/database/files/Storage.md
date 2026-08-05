@@ -22,6 +22,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `project`       | Private      | 50 MiB · any              | `{project_id}`     | Project / channel / stage collaboration files.          |
 | `messages`      | Private      | 50 MiB · any              | `{thread_id}`      | Global DM / inbox attachments (not project-scoped).     |
 | `personal`      | Private      | 50 MiB · any              | owner (`auth.uid`) | Owner-only drive: drafts, personal templates, WIP.      |
+| `workspace`     | Private      | 50 MiB · any              | `{entity_id}`      | **Entity-owned** drive: the team / business / organisation counterpart of `personal`. |
 | `invoices`      | Private      | 20 MiB · pdf              | `{owner_id}`       | Wallet statements / invoices / receipts.                |
 | `verification`  | **Service**  | 20 MiB · img,pdf          | `{subject_id}`     | KYC / KYB identity documents — service-role only.       |
 | `public_assets` | Public       | 10 MiB · img              | `{owner_id}`       | Misc public assets (general/legacy).                    |
@@ -101,6 +102,49 @@ personal/
     └── templates/[template_id]/bundle.zip
 ```
 
+### `workspace` (Private)
+
+The **entity-owned** counterpart of `personal` — the shared drive behind a team / business /
+organisation library in the `/files` hub. Seeded alongside the other private buckets in `00005040`
+(private, **50 MiB**, any MIME); policies in `00002017`.
+
+```text
+workspace/
+└── [entity_id]/          -- a team_id OR a business_id OR an organisation_id
+    └── ...
+```
+
+**The anchor is the entity id, not the uploader's user id, and that is the whole design.** An entity
+asset must **outlive the member who uploaded it**: anchoring on the uploader would strand a departing
+member's files behind a personal gate, so a team would lose its own brand assets the day someone left.
+The gate is therefore **active membership of the anchor**, not object ownership:
+
+```sql
+bucket_id = 'workspace' AND (
+     org.is_active_team_member    ((storage.foldername(name))[1]::uuid)
+  OR org.is_active_business_member((storage.foldername(name))[1]::uuid)
+  OR org.is_organisation_member   ((storage.foldername(name))[1]::uuid)
+)
+```
+
+The three helpers are OR-ed because **one uuid anchor may name any of the three entity kinds** — the
+caller passes exactly one and the other two return `false`. (There is no discriminator in the path, by
+design: adding one would mean a folder rename whenever an entity changed class.)
+
+`DELETE` is **narrower than `UPDATE`** on purpose — any member may revise a shared asset, but only the
+uploader (`auth.uid() = owner`, *and* still a member) may destroy one. Entity-wide deletion authority
+belongs behind a capability check in the fat service, not in a blanket storage policy.
+
+> ⚠️ These four are written as the **sole** policies for this bucket. Multiple permissive `SELECT`
+> policies on `storage.objects` are **OR-combined**, so adding a broad "any authenticated" read would
+> not loosen `workspace` alone — it would loosen it *and* leave the intended rule looking correct. Do
+> not add one. (The same warning `00002017`'s header carries for `project` and `messages`.)
+
+Metering is the matching half: a `workspace` object's `files.items` row carries
+`owner_type ∈ {team, business, organisation}` with `owner_entity_id` = the anchor, so its bytes are
+charged to the **entity's** `storage_megabytes` allowance, never to the uploader's personal one. See
+[Tables.md](Tables.md#storage-quota).
+
 ### `invoices` (Private)
 
 Wallet statements, invoices, receipts. Owner read on the `{owner_id}` anchor; **no** authenticated
@@ -138,6 +182,39 @@ quarantine/
 
 ---
 
+## 🧭 Path builders (the typed SSOT)
+
+Never hardcode a bucket id or hand-build an object path. Every path is emitted by a builder in
+[`@projective/types/files/storage.ts`](../../../packages/types/files/storage.ts), and each one
+**emits the RLS anchor as its first segment** — so a path produced there is guaranteed to satisfy the
+matching policy's `WITH CHECK`. `BUCKETS` / `bucketMeta()` mirror the `00005040` seed field-for-field
+(access tier, `maxBytes`, `allowedMime`, anchor), and `rlsAnchor(path)` reads back what a policy would
+check.
+
+| Builder                                                    | Emits                                                      |
+| :---------------------------------------------------------- | :----------------------------------------------------------- |
+| `quarantineLocation(userId, sessionId, filename)`          | `quarantine/{userId}/{sessionId}/{filename}`               |
+| `projectLocation(projectId, ...segments)`                  | `project/{projectId}/…`                                    |
+| `stageSubmissionLocation(...)` · `channelAttachmentLocation(...)` | the two `project/` conventions above                 |
+| `messageAttachmentLocation(threadId, messageId, filename)` | `messages/{threadId}/{messageId}/{filename}`               |
+| `personalLocation(userId, ...segments)`                    | `personal/users/{userId}/…`                                |
+| **`workspaceLocation(entityId, ...segments)`**             | **`workspace/{entityId}/…`**                               |
+| `invoiceLocation(...)` · `verificationLocation(...)`       | `invoices/…` · `verification/…`                            |
+| `avatarLocation(...)` · `catalogueLocation(...)` · `publicAssetLocation(...)` | the three public buckets                 |
+
+> **`workspaceLocation()` is the one builder whose misuse is silent.** It takes the **team / business
+> / organisation id**, and is the entity counterpart of `personalLocation()`. Reaching for
+> `personalLocation()` for an entity asset does **two** wrong things at once: it mis-names the object
+> *and* it resolves against the wrong predicate — `personal` is gated on `auth.uid() = owner`, so the
+> write would still **succeed** for the uploader and then be invisible to every teammate, which is the
+> worst available failure mode (no error, no bytes lost, just an asset nobody else can ever see).
+>
+> The two also differ in shape, and the reason is worth knowing: `personalLocation()` interposes a
+> literal `users/` segment (`personal/users/{userId}/…`) — harmless, because that bucket's policy reads
+> `storage.objects.owner` and never looks at the path — whereas `workspaceLocation()` puts the entity
+> id **first**, because `workspace` **is** path-anchored and `(storage.foldername(name))[1]` is exactly
+> what its four policies check.
+
 ## 🔗 Database Integration
 
 Storage paths are mapped to the database through:
@@ -166,9 +243,11 @@ WHERE ss.id = :submission_id;
 
 - **Path anchor = RLS anchor.** Each policy checks `(storage.foldername(name))[1]` against the id in
   the table above. Uploading to the wrong prefix fails the `WITH CHECK`.
-- **Signed URLs.** All private buckets (`quarantine`, `project`, `messages`, `personal`, `invoices`,
-  `verification`) are downloaded via short-lived signed URLs; the public buckets (`avatars`,
-  `catalogue`, `public_assets`) serve directly from the edge cache.
+- **Signed URLs.** All private buckets (`quarantine`, `project`, `messages`, `personal`, `workspace`,
+  `invoices`, `verification`) are downloaded via short-lived signed URLs; the public buckets
+  (`avatars`, `catalogue`, `public_assets`) serve directly from the edge cache. A signed URL is a
+  **bearer capability**: it is minted per request by the fat service, never cached onto a row, and
+  never persisted into a projection the client reads.
 - **Per-bucket limits.** Each bucket sets its own `file_size_limit` and `allowed_mime_types` in the
   seed — nothing inherits the global 50 MiB / any-MIME default.
 - **Promote, don't cross.** Moving a file from `quarantine` to any destination bucket is an atomic

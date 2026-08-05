@@ -64,7 +64,28 @@ INSERT INTO analytics.event_catalogue (name, domain, description, subject_kinds,
     ('streak.extended', 'standing', 'A quality streak (on-time delivery, fast response) was extended.',
         '{user,freelancer,team}', '{kind,current_count,best_count}'),
     ('streak.broken', 'standing', 'A quality streak lapsed.',
-        '{user,freelancer,team}', '{kind,previous_count}')
+        '{user,freelancer,team}', '{kind,previous_count}'),
+    -- Storage & assets — the tuning substrate for the storage_megabytes ladder and the share funnel.
+    -- Every subject_kind that can own bytes is listed, because quota is metered on the OWNER axis
+    -- (files.owner_kind), not on the human who happened to press upload.
+    ('storage.uploaded', 'storage', 'An asset was stored against an owner''s quota.',
+        '{user,freelancer,team,business,organisation}',
+        '{item_id,source,category,mime_type,size_bytes,owner_type,bucket_id}'),
+    ('storage.dedup_hit', 'storage', 'A content hash matched an existing asset, so no new bytes were stored.',
+        '{user,freelancer,team,business,organisation}',
+        '{content_hash,hash_sampled,existing_item_id,size_bytes_saved}'),
+    ('storage.share_created', 'storage', 'A read-only share link was minted for an asset or folder.',
+        '{user,freelancer,team,business,organisation}',
+        '{share_id,item_id,folder_id,visibility,expires_at,download_limit}'),
+    ('storage.share_accessed', 'storage', 'A share slug was resolved — the anonymous half of the funnel.',
+        '{user,freelancer,team,business,organisation}',
+        '{share_id,item_id,folder_id,anonymous,referrer_domain}'),
+    ('storage.download', 'storage', 'An asset was downloaded. Mirrors a files.download_events row.',
+        '{user,freelancer,team,business,organisation}',
+        '{item_id,via,share_slug,anonymous,repeat_download,size_bytes}'),
+    ('link.scan_blocked', 'storage', 'The link-safety pipeline refused a URL asset.',
+        '{user,freelancer,team,business,organisation}',
+        '{item_id,link_domain,scan_status,reason}')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 
@@ -111,6 +132,19 @@ VALUES
     ('dropbox', 'Dropbox', 'storage',
         ARRAY['storage']::integrations.provider_kind[], 'oauth2',
         false, 'direct', true, ARRAY['files.content.read']),
+    -- Frame.io — review-and-approval storage for video/creative deliverables. Direct (no unified
+    -- broker models its comment/version graph), webhooks for asset + comment events.
+    ('frameio', 'Frame.io', 'storage',
+        ARRAY['storage']::integrations.provider_kind[], 'oauth2',
+        false, 'direct', true, ARRAY['offline', 'asset.read']),
+    -- S3-compatible object storage (AWS S3, R2, Backblaze B2, MinIO …). The ONE provider that is
+    -- not OAuth: there is no consent dance and no bearer token to refresh — the connection holds an
+    -- access-key pair and every request is REQUEST-SIGNED, which is why `aws_sigv4` exists as its
+    -- own auth_scheme rather than being folded into `api_key`. No webhooks (bucket notifications
+    -- are configured on the customer's side and delivered to their own endpoint, not ours).
+    ('s3', 'S3-compatible storage', 'storage',
+        ARRAY['storage']::integrations.provider_kind[], 'aws_sigv4',
+        false, 'direct', false, ARRAY[]::text[]),
     ('notion', 'Notion', 'productivity',
         ARRAY['docs', 'calendar']::integrations.provider_kind[], 'oauth2',
         false, 'direct', false, ARRAY[]::text[]),

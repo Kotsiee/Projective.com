@@ -55,8 +55,22 @@ export const ProviderCategory = z.enum([
 ]);
 export type ProviderCategory = z.infer<typeof ProviderCategory>;
 
-/** `integrations.auth_scheme` — how the platform obtains authorization at a provider. */
-export const AuthScheme = z.enum(["oauth2", "oauth1", "api_key", "app_password", "none"]);
+/**
+ * `integrations.auth_scheme` — how the platform obtains authorization at a provider.
+ *
+ * `aws_sigv4` is not an OAuth variant and does not fit the consent model the others share: there is no
+ * authorization server, no redirect and no refresh — the user supplies a key pair (or an assumable role)
+ * that the platform signs every request with. It is a distinct member precisely so the connect flow can
+ * branch on it instead of pretending a credential form is a consent screen.
+ */
+export const AuthScheme = z.enum([
+	"oauth2",
+	"oauth1",
+	"api_key",
+	"app_password",
+	"none",
+	"aws_sigv4",
+]);
 export type AuthScheme = z.infer<typeof AuthScheme>;
 
 /**
@@ -84,6 +98,8 @@ export const PROVIDER_SLUGS = [
 	"discord",
 	"google_drive",
 	"dropbox",
+	"frameio",
+	"s3",
 	"notion",
 	"github",
 	"slack",
@@ -134,6 +150,9 @@ export const PROVIDER_LABEL: Record<ProviderSlug, string> = {
 	discord: "Discord",
 	google_drive: "Google Drive",
 	dropbox: "Dropbox",
+	frameio: "Frame.io",
+	/** The vendor-neutral label: the connector speaks the S3 API, which is not only Amazon's. */
+	s3: "S3-compatible storage",
 	notion: "Notion",
 	github: "GitHub",
 	slack: "Slack",

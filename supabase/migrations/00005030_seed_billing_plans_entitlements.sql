@@ -38,7 +38,8 @@ FROM finance.plans p, (VALUES
     ('promoted_placement',        'flag',  NULL,          false, false, 'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, false, 'none',          10000, 'Basic analytics remain free.'),
     ('discovery_boost',           'flag',  NULL,          false, false, 'none',          10000, 'Free users still get the availability/new-talent Discovery Boost — that is EARNED, not sold.'),
-    ('instant_payouts_included',  'flag',  NULL,          false, false, 'none',          10000, 'Available pay-per-use on Free.')
+    ('instant_payouts_included',  'flag',  NULL,          false, false, 'none',          10000, 'Available pay-per-use on Free.'),
+    ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, '25 GiB of stored assets. MEBIBYTES, never bytes: limit_value is integer and 25 GB in bytes (26,843,545,600) overflows int4.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'individual_free'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -59,7 +60,8 @@ FROM finance.plans p, (VALUES
     ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('discovery_boost',           'flag',  NULL,          false, true,  'none',          10000, NULL),
-    ('instant_payouts_included',  'flag',  NULL,          false, true,  'none',          10000, 'Instant payout fee magnitude remains TBD platform-wide (Decision #55).')
+    ('instant_payouts_included',  'flag',  NULL,          false, true,  'none',          10000, 'Instant payout fee magnitude remains TBD platform-wide (Decision #55).'),
+    ('storage_megabytes',         'limit', 153600,        false, false, 'none',          10000, '150 GiB — 6x the free tier. Storage is a footprint lever, so Pro raises the ceiling rather than removing it.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'individual_pro'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -74,7 +76,8 @@ FROM finance.plans p, (VALUES
     ('weekly_proposals',          'limit', 50,            false, false, 'standing_bonus',10000, 'A free team draws on its members'' allowances rather than a dedicated pool.'),
     ('advanced_vault_splits',     'flag',  NULL,          false, false, 'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, false, 'none',          10000, NULL),
-    ('promoted_placement',        'flag',  NULL,          false, false, 'none',          10000, NULL)
+    ('promoted_placement',        'flag',  NULL,          false, false, 'none',          10000, NULL),
+    ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, 'The team vault gets its own 25 GiB — it is metered against the TEAM, not against its owner''s personal library.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'team_free'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -88,7 +91,8 @@ FROM finance.plans p, (VALUES
     ('weekly_proposals',          'limit', 150,           false, false, 'standing_bonus',10000, 'A dedicated pooled team quota, separate from members'' personal allowances.'),
     ('advanced_vault_splits',     'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('advanced_analytics',        'flag',  NULL,          false, true,  'none',          10000, NULL),
-    ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL)
+    ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL),
+    ('storage_megabytes',         'limit', 512000,        false, false, 'none',          10000, '500 GiB of shared team assets.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'team_pro'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -103,7 +107,8 @@ FROM finance.plans p, (VALUES
     ('pooled_wallet_full',        'flag',  NULL,          false, false, 'none',          10000, 'Basic pooled wallet only. KYB verification remains a SEPARATE gate — never sold.'),
     ('intervaled_invoicing',      'flag',  NULL,          false, false, 'none',          10000, NULL),
     ('departments',               'limit', 0,             false, false, 'none',          10000, NULL),
-    ('advanced_analytics',        'flag',  NULL,          false, false, 'none',          10000, NULL)
+    ('advanced_analytics',        'flag',  NULL,          false, false, 'none',          10000, NULL),
+    ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, 'The business pool gets its own 25 GiB, metered against the BUSINESS.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'business_free'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -118,7 +123,8 @@ FROM finance.plans p, (VALUES
     ('intervaled_invoicing',      'flag',  NULL,          false, true,  'none',          10000, 'Monthly consolidated invoicing (finance-model.md §Invoicing).'),
     ('departments',               'limit', 5,             false, false, 'none',          10000, 'Light departmental scoping; full isolation is the Organisation tier.'),
     ('advanced_analytics',        'flag',  NULL,          false, true,  'none',          10000, NULL),
-    ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL)
+    ('promoted_placement',        'flag',  NULL,          false, true,  'none',          10000, NULL),
+    ('storage_megabytes',         'limit', 512000,        false, false, 'none',          10000, '500 GiB — matches Pro Team; a buyer accumulates briefs and deliverables at a comparable rate.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'business_pro'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -131,7 +137,8 @@ FROM finance.plans p, (VALUES
     ('organisation_businesses',   'limit', 1,             false, false, 'none',          10000, NULL),
     ('departments',               'limit', 2,             false, false, 'none',          10000, NULL),
     ('private_drafts',            'limit', NULL,          true,  false, 'none',          10000, NULL),
-    ('active_public_projects',    'limit', 1,             false, false, 'none',          10000, NULL)
+    ('active_public_projects',    'limit', 1,             false, false, 'none',          10000, NULL),
+    ('storage_megabytes',         'limit', 25600,         false, false, 'none',          10000, 'Draft-tier storage: enough to configure and evaluate. The paid Organisation plan is unlimited.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'organisation_free'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;
@@ -154,7 +161,8 @@ FROM finance.plans p, (VALUES
     ('api_access',                'flag',  NULL,          false, true,  'none',          10000, NULL),
     ('audit_log_retention_days',  'limit', 730,           false, false, 'none',          10000, NULL),
     ('dedicated_support',         'flag',  NULL,          false, true,  'none',          10000, NULL),
-    ('negotiated_platform_fee',   'flag',  NULL,          false, true,  'none',          10000, 'The ONE place the 5% service fee may flex — via finance.negotiated_rates, admin-approved.')
+    ('negotiated_platform_fee',   'flag',  NULL,          false, true,  'none',          10000, 'The ONE place the 5% service fee may flex — via finance.negotiated_rates, admin-approved.'),
+    ('storage_megabytes',         'limit', NULL,          true,  false, 'none',          10000, 'Unlimited. is_unlimited=true resolves through fn_effective_limit to NULL, which files.fn_check_storage_quota treats as no ceiling — the enterprise tier is never asked to budget bytes.')
 ) AS v(k, kind, lim, unl, flg, scal, mult, note)
 WHERE p.code = 'organisation'
 ON CONFLICT (plan_id, entitlement_key) DO NOTHING;

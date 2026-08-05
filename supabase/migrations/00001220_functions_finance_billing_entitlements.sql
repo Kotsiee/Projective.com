@@ -480,6 +480,25 @@ BEGIN
         -- Businesses are not yet FK-linked to an organisation (Phase 2); counted as 0 until they are.
         v_count := 0;
 
+    ELSIF p_key = 'storage_megabytes' THEN
+        -- Stored bytes, read from the materialised rollup rather than summed from files.items: this
+        -- function is called on the upload path and a live sum over a growing library is exactly the
+        -- cost that only appears once a tenant succeeds. files.fn_recompute_usage keeps it true.
+        --
+        -- UNITS: the rollup is BYTES (bigint, the honest unit for a byte total) and this function
+        -- returns `integer` MEBIBYTES, because that is the unit the whole entitlement ladder is
+        -- denominated in — 25 GB expressed in bytes is 26,843,545,600 and overflows int4. Integer
+        -- division floors, so a subject is never reported as having consumed a MiB they have not.
+        SELECT COALESCE((u.bytes_used / 1048576)::integer, 0) INTO v_count
+        FROM files.storage_usage u
+        WHERE u.owner_type = (
+                CASE p_subject_type
+                    WHEN 'freelancer' THEN 'user'
+                    ELSE p_subject_type
+                END
+            )::files.owner_kind
+          AND u.owner_id = p_subject_id;
+
     -- `published_listings` intentionally returns 0: the catalogue.* listing tables are deferred
     -- (Decision #53 keeps /catalogue on fixtures). The cap RESOLVES today via fn_effective_limit;
     -- its live usage count lands with those tables.

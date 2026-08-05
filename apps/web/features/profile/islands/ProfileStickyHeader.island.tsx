@@ -3,7 +3,7 @@ import { Avatar } from "@projective/ui/display";
 import "../styles/profile.css";
 import { ProfileActions } from "../components/ProfileActions.tsx";
 import { ProfileIcon } from "../components/profile-glyphs.tsx";
-import { headerCondensed } from "../core/profile-state.ts";
+import { editedAvatar, headerCondensed } from "../core/profile-state.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 
 /**
@@ -39,7 +39,13 @@ export default function ProfileStickyHeader(
 			aria-hidden={condensed ? undefined : "true"}
 		>
 			<a class="pf-stickyhead__id" href={`/${profile.handle}`}>
-				<Avatar image={profile.avatar} label={profile.name} size={30} shape="circle" />
+				{/* The owner's in-place pick wins over the server's projection; `null` means unchanged. */}
+				<Avatar
+					image={editedAvatar.value ?? profile.avatar}
+					label={profile.name}
+					size={30}
+					shape="circle"
+				/>
 				<span class="pf-stickyhead__name">
 					{profile.name}
 					{profile.verified

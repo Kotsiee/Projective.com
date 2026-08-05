@@ -25,6 +25,7 @@ import {
 	ticketTotalCents,
 	workloadIntensity,
 } from "@projective/types/projects";
+import { messageAttachmentFacets } from "@projective/types/files";
 import type { ContextType } from "@projective/types/auth";
 import { findProjectDetail } from "./detail-fixtures.ts";
 
@@ -313,6 +314,9 @@ function makeFile(
 		dayLabel: fmtDateTime(at).split(" · ")[0] ?? "",
 		dateLabel: fmtDateTime(at),
 		starred: false,
+		// A ticket attachment / submitted deliverable sits in a semi-private review context, so it is
+		// `link`-visible by construction — the same rule a channel attachment follows.
+		...messageAttachmentFacets(sender.handle ?? sender.name),
 	};
 }
 

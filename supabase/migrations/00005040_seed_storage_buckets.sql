@@ -8,7 +8,7 @@
 --   - public_assets/{owner_id}/...        - avatars/{entity_id}/...
 --   - catalogue/{seller_id}/...           - messages/{thread_id}/...
 --   - invoices/{owner_id}/...             - verification/{subject_id}/...
---   - personal/{user_id}/...
+--   - personal/{user_id}/...              - workspace/{entity_id}/...
 --
 -- Additive per root CLAUDE.md §1: buckets are inserted ON CONFLICT DO NOTHING and never dropped.
 -- Byte sizes: 5 MiB = 5242880 · 10 MiB = 10485760 · 20 MiB = 20971520 · 50 MiB = 52428800.
@@ -57,6 +57,20 @@ INSERT INTO
 VALUES (
         'personal',
         'personal',
+        false,
+        52428800,
+        NULL
+    ) ON CONFLICT (id) DO NOTHING;
+
+-- ENTITY-owned private drive: the team / business / organisation counterpart of `personal`. Anchored
+-- on {entity_id} rather than {user_id}, because the whole point of an entity asset is that it
+-- OUTLIVES the member who uploaded it — anchoring on the uploader would strand a departing member's
+-- files behind a personal gate. Access is active membership of that entity, not object ownership.
+INSERT INTO
+    storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+        'workspace',
+        'workspace',
         false,
         52428800,
         NULL

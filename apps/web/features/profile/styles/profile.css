@@ -112,6 +112,12 @@
 .pf-header {
 	display: flex;
 	flex-direction: column;
+	/*
+	 * A positioning context for the owner's "change cover image" control, which sits over the banner.
+	 * `position: relative` does NOT re-base a fixed descendant (only transform/filter/backdrop-filter
+	 * and containment do), so the Asset Picker's portalled dialog is unaffected.
+	 */
+	position: relative;
 }
 
 /*
@@ -140,12 +146,67 @@
 }
 
 /* The avatar overlaps the banner's bottom edge with a thick page-background border. */
-.pf-header__avatar {
+/*
+ * The avatar's flex placement and its overlap moved OUT to the wrapper, so the wrapper can be the
+ * positioning context for the owner's "change profile picture" control while the disc keeps sitting
+ * exactly where it did. The disc's own negative margin is cleared here rather than removed from the
+ * rule below, so the responsive override still has one place to change the overlap.
+ */
+.pf-header__avatarwrap {
+	position: relative;
 	flex: none;
 	margin-block-start: -56px;
+}
+
+.pf-header__avatar {
+	flex: none;
+	margin-block-start: 0;
 	border: 4px solid var(--surface);
 	background: var(--surface);
 	box-shadow: var(--elevation-low);
+}
+
+/*
+ * The two image controls. Interactive, so a full border is allowed (§B.4). Each is a 2rem target — the
+ * WCAG 2.2 AA 2.5.8 floor — regardless of the glyph inside it.
+ */
+.pf-header__imgbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border: 1px solid var(--outline-variant);
+	border-radius: var(--radius-pill);
+	background: var(--surface);
+	color: var(--text-secondary);
+	cursor: pointer;
+	box-shadow: var(--elevation-low);
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.pf-header__imgbtn:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.pf-header__imgbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.pf-header__imgbtn--banner {
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-end: var(--space-3);
+}
+.pf-header__imgbtn--avatar {
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-end: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+	.pf-header__imgbtn {
+		transition: none;
+	}
 }
 
 .pf-header__id {
@@ -285,10 +346,14 @@
  * inverts. Scale the disc and its negative offset together against the CONTAINER.
  */
 @container pf (max-width: 34rem) {
+	/* The overlap lives on the wrapper (see `.pf-header__avatarwrap`); the disc keeps its own size. */
+	.pf-header .pf-header__avatarwrap {
+		margin-block-start: -36px;
+	}
+
 	.pf-header .pf-header__avatar {
 		inline-size: 72px;
 		block-size: 72px;
-		margin-block-start: -36px;
 		border-width: 3px;
 	}
 

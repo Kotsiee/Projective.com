@@ -22,8 +22,12 @@ import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
 	DEV_SEAM_EVENT,
+	type DevAssetVisibility,
+	type DevConnectionState,
+	type DevDedupState,
 	type DevDisplayCurrency,
 	type DevLayoutDirection,
+	type DevLinkScan,
 	type DevMemberRole,
 	type DevMembershipState,
 	type DevMessagingRole,
@@ -35,6 +39,8 @@ import {
 	type DevServiceType,
 	type DevSessionBookingStatus,
 	type DevStageAssignment,
+	type DevStorageProvider,
+	type DevStorageQuota,
 	type DevSubmissionState,
 	type DevWalletFundMix,
 	type DevWalletKyc,
@@ -181,6 +187,18 @@ export interface DevOverrides {
 	displayCurrency: DevDisplayCurrency;
 	/** Simulated document layout direction (LtR/RtL) — verifies the whole surface mirrors under `dir="rtl"`. */
 	layoutDirection: DevLayoutDirection;
+	/** Simulated connected cloud-storage provider — reaches the picker's Connected-drives tab states. */
+	storageProvider: DevStorageProvider;
+	/** Simulated connection lifecycle — `degraded`/`expired` must prompt re-consent, not show an empty folder. */
+	connectionState: DevConnectionState;
+	/** Simulated storage-quota position — the only way to reach `exceeded` without uploading 25 GB. */
+	storageQuota: DevStorageQuota;
+	/** Simulated privacy scope of the asset in view — drives the share control and the scope pip. */
+	assetVisibility: DevAssetVisibility;
+	/** Simulated link-safety verdict — reaches `blocked` without sourcing a genuinely malicious URL. */
+	linkScan: DevLinkScan;
+	/** Simulated dedup verdict for the next upload — drives the duplicate-resolution panel. */
+	dedupState: DevDedupState;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -222,6 +240,12 @@ export const DEV_DEFAULTS: DevOverrides = {
 	rosterState: "populated",
 	displayCurrency: "GBP",
 	layoutDirection: "ltr",
+	storageProvider: "none",
+	connectionState: "disconnected",
+	storageQuota: "healthy",
+	assetVisibility: "private",
+	linkScan: "safe",
+	dedupState: "none",
 };
 
 /** Account-type options in display order. */
@@ -392,6 +416,55 @@ export const DEV_LAYOUT_DIRECTIONS: ReadonlyArray<DevOption<DevLayoutDirection>>
 	{ value: "rtl", label: "RtL" },
 	{ value: "auto", label: "Auto" },
 ];
+
+/** Connected cloud-storage provider options for the `/files` hub + the Asset Picker. */
+export const DEV_STORAGE_PROVIDERS: ReadonlyArray<DevOption<DevStorageProvider>> = [
+	{ value: "none", label: "None" },
+	{ value: "google_drive", label: "Google Drive" },
+	{ value: "dropbox", label: "Dropbox" },
+	{ value: "frameio", label: "Frame.io" },
+	{ value: "s3", label: "S3" },
+];
+
+/** Connection lifecycle options. */
+export const DEV_CONNECTION_STATES: ReadonlyArray<DevOption<DevConnectionState>> = [
+	{ value: "disconnected", label: "Disconnected" },
+	{ value: "pending", label: "Pending" },
+	{ value: "active", label: "Active" },
+	{ value: "degraded", label: "Degraded" },
+	{ value: "expired", label: "Expired" },
+];
+
+/** Storage-quota position options. */
+export const DEV_STORAGE_QUOTAS: ReadonlyArray<DevOption<DevStorageQuota>> = [
+	{ value: "empty", label: "Empty" },
+	{ value: "healthy", label: "Healthy" },
+	{ value: "near_limit", label: "Near limit" },
+	{ value: "exceeded", label: "Exceeded" },
+	{ value: "unlimited", label: "Unlimited" },
+];
+
+/** Asset privacy-scope options. */
+export const DEV_ASSET_VISIBILITIES: ReadonlyArray<DevOption<DevAssetVisibility>> = [
+	{ value: "private", label: "Private" },
+	{ value: "link", label: "Link only" },
+	{ value: "public", label: "Public" },
+];
+
+/** Link-safety verdict options. */
+export const DEV_LINK_SCANS: ReadonlyArray<DevOption<DevLinkScan>> = [
+	{ value: "pending", label: "Pending" },
+	{ value: "safe", label: "Safe" },
+	{ value: "suspicious", label: "Suspicious" },
+	{ value: "blocked", label: "Blocked" },
+];
+
+/** Dedup-verdict options for the next simulated upload. */
+export const DEV_DEDUP_STATES: ReadonlyArray<DevOption<DevDedupState>> = [
+	{ value: "none", label: "New file" },
+	{ value: "exact_duplicate", label: "Exact duplicate" },
+	{ value: "name_collision", label: "Name collision" },
+];
 // #endregion
 
 // #region Store
@@ -455,6 +528,12 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devRosterState = next.rosterState;
 		root.dataset.devDisplayCurrency = next.displayCurrency;
 		root.dataset.devDirection = next.layoutDirection;
+		root.dataset.devStorageProvider = next.storageProvider;
+		root.dataset.devConnectionState = next.connectionState;
+		root.dataset.devStorageQuota = next.storageQuota;
+		root.dataset.devAssetVisibility = next.assetVisibility;
+		root.dataset.devLinkScan = next.linkScan;
+		root.dataset.devDedupState = next.dedupState;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the wallet (and the rest of the shell) mirror to the opposite edge.
 		root.dir = next.layoutDirection;
@@ -489,6 +568,12 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devRosterState;
 		delete root.dataset.devDisplayCurrency;
 		delete root.dataset.devDirection;
+		delete root.dataset.devStorageProvider;
+		delete root.dataset.devConnectionState;
+		delete root.dataset.devStorageQuota;
+		delete root.dataset.devAssetVisibility;
+		delete root.dataset.devLinkScan;
+		delete root.dataset.devDedupState;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}

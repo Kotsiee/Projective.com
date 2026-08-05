@@ -78,6 +78,13 @@ CREATE TABLE integrations.user_connections (
     external_account_label text,
     -- When a unified broker (Nylas/Merge) fronts this provider, its grant id for this connection.
     broker_account_id text,
+    -- NON-SECRET per-connection configuration, projected to the client through v_my_connections.
+    -- A custom S3 mount needs endpoint / region / bucket / prefix / path-style PER USER, and a Drive
+    -- mount a root folder id — none of which is provider-catalogue config (`providers.auth_config`
+    -- is global) and none of which is a credential. It is deliberately NOT in connection_secrets:
+    -- that table has no client-facing view at all, so config living there would leave the UI unable
+    -- to tell the user which bucket they actually mounted. Nothing secret may be written here.
+    config jsonb NOT NULL DEFAULT '{}'::jsonb,
     -- Cached, NON-secret expiry so the settings UI can show "reconnect soon" without touching the
     -- vault. The authoritative expiry is in integrations.connection_secrets.
     token_expires_at timestamptz,

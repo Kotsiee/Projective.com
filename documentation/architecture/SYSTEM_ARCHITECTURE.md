@@ -786,6 +786,146 @@ deferred live path behind the same gate. The wallet is the **finance face of the
 (Decisions #16/#17): the same route resolves a different wallet via a `?w=scope:id` switcher override.
 Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55.
 
+### Asset Management (`/files`) — two services, two gates
+
+The asset hub is **two** thin/fat slices that share one screen, deliberately kept apart because they
+have different trust models.
+
+| Half             | Client (thin)         | Routes (thin)             | Service (fat)                             | Gate                        |
+| :--------------- | :-------------------- | :------------------------- | :---------------------------------------- | :-------------------------- |
+| The hub          | `FilesService`        | `/api/files/*` (19)       | `services/files/FilesBackendService.ts`   | **`FILES_BACKEND_LIVE`**    |
+| The connectors   | `IntegrationsService` | `/api/integrations/*` (7) | `services/integrations/IntegrationsBackendService.ts` | **`INTEGRATIONS_BACKEND_LIVE`** |
+
+Both default **off** (`isFilesBackendLive()` / `isIntegrationsBackendLive()` in `core/supabase.ts`),
+both answer from deterministic fixtures, and both write into an in-module session store so every flow
+is exercisable with the gates down. Cross-boundary shapes are the Zod SSOT at
+**`@projective/types/files`** (`assets` · `folders` · `listing` · `upload` · `dedup` · `sharing` ·
+`downloads` · `quota` · `storage` · `categories` · `kinds` · `sim`) and
+**`@projective/types/integrations`**. Surfaces: `/files` + `/files/[...path]` (dashboard) and the
+reusable Asset Picker; feature code in `apps/web/features/files/`.
+
+**One method per method, one route per method.** Each `FilesService` method corresponds to exactly one
+fat method **under the same name** (`list` · `tree` · `item` · `quota` · `dedupCheck` · `uploadInit` ·
+`uploadComplete` · `attachLink` · `createFolder` · `rename` · `move` · `remove` · `setVisibility` ·
+`createShare` · `revokeShare` · `resolveShare` · `downloadGuard` · `recordDownload` · `history`), so a
+reader crossing the boundary never translates. Islands import the client service, never
+`@server/services/*` — that import edge is what keeps the credential-touching half out of the browser
+bundle.
+
+#### Why the gates are separate, and must stay separate
+
+`FILES_BACKEND_LIVE` going live means the platform touches **its own storage under the caller's RLS**.
+`INTEGRATIONS_BACKEND_LIVE` going live means the platform makes **outbound calls to a third party
+carrying somebody else's stored credential**. A single flag would make "turn on the file hub" silently
+mean "start acting at Google Drive on behalf of every connected user" — so the two are independent, and
+`INTEGRATIONS_BACKEND_LIVE` additionally gates the token vault: with it off, `seal()` **refuses**
+rather than returning a reversible encoding, because a stub that base64s a token and calls it sealed
+writes a row indistinguishable from a real one that would survive the gate flip as plaintext.
+
+#### Three invariants the fat service exists to hold
+
+- **`canManage` and `downloadedByViewer` are server-derived on every row.** `canManage` is an
+  *authority* decision (a mounted channel attachment is read-only in the hub by product rule, not by
+  ownership arithmetic) — a client computing it would be deciding its own permissions.
+  `downloadedByViewer` cannot come from `localStorage` at all: that store is per-browser, gets wiped,
+  and is wrong the moment the same person opens the asset on their phone.
+- **The owner of a write comes from the session, never the payload.** Every mutation takes a
+  `FilesActor` the route derived from `ctx.state.userContext`; a payload `ownerType`/`ownerId` is a
+  **request** to act as that principal, which `authoriseOwner()` (`services/files/acting-principal.ts`)
+  either evidences or refuses. This is **identity, not capability** — it decides who is calling, never
+  whether their persona or plan permits the operation, because a server-side capability bounce would
+  make every Dev Context Switcher axis inert (the switcher is a client seam the server cannot see,
+  §8 Decision #53(b)). Dev axes travel as separate validated `sim*` query params (`FilesSim`).
+- **Quota is metered always, enforced only when the param says so.** The service warns; refusal waits
+  on `security.platform_params.storage_quota_enforced` (seeded `false`). When it does refuse, the
+  `entitlement.denied` analytics event is emitted by the **app layer**, not by the trigger — a `RAISE`
+  inside Postgres rolls back the analytics row written moments earlier (§8 Decision #58).
+
+#### The connector adapter interface
+
+`StorageAdapter` (`services/integrations/adapters/StorageAdapter.ts`) is the seam that stops a
+connected Drive from becoming a second file model. Implementations ship for `google_drive`, `dropbox`,
+`frameio` and `s3`, each stub-first behind `INTEGRATIONS_BACKEND_LIVE` and each documenting the exact
+provider API surface its live branch will call.
+
+```ts
+interface StorageAdapter {
+  readonly slug: string;                 // integrations.providers.slug
+  readonly source: AssetSource;          // the source a produced row carries
+  list(path: DrivePath, cursor: string | null, limit: number): Promise<StorageListing>;
+  metadata(id: string): Promise<AssetItem | null>;
+  downloadUrl(id: string): Promise<string | null>;
+  thumbnailUrl(id: string): Promise<string | null>;
+}
+interface StorageAdapterContext { connection: UserConnection; accessToken: string | null; }
+```
+
+Four decisions in that shape carry weight:
+
+1. **It returns `AssetItem` / `AssetFolder`, never a provider row.** The picker, the grid, the table
+   and the preview modal are then *literally the same components* for a mounted Drive file and a
+   hub-native upload. A connector-shaped return type would need a second card family within a week.
+2. **Paging is the provider's.** `cursor` is their opaque continuation token echoed back **verbatim**;
+   a connector that pages by token cannot be resumed from an id we invented, and normalising one into
+   the other loses rows silently at the boundary.
+3. **A location is addressed two ways because the families genuinely differ.** Object stores (Drive,
+   Dropbox, Frame.io) have folder objects with ids; key-prefix stores (S3) have no folder objects at
+   all, only a delimiter convention. `DrivePath { folderId, path }` carries both rather than inventing
+   ids or discarding the prefix.
+4. **`downloadUrl` / `thumbnailUrl` are async and per-call.** Caching one on the asset row would
+   persist a credential-bearing URL into a projection the client reads, and a signed URL that outlives
+   its purpose is a leaked capability.
+
+Mounted rows are **read-only in the hub, always** (`canManage: false`) and **never consume our quota**
+— the provider meters them. The hub shows a connected drive so a person can find and attach what they
+already have, not so it becomes a second write path into someone else's system of record, where a
+rename here would silently rename a file their whole team depends on.
+
+#### Link ingest is the most dangerous path, and it is gated shut
+
+Attaching a link means **the server fetches a URL a stranger chose** — an SSRF primitive by
+construction. `services/files/link-scan.ts` writes the live path out so the requirements are auditable,
+and keeps the outbound fetch behind `FILES_BACKEND_LIVE`; until then it answers from a stub that
+touches no network. The live path must: allow `https:` only; **resolve DNS first and refuse** loopback,
+link-local (including `169.254.169.254`), private, CGNAT, unique-local and unspecified ranges; **pin the
+resolved address** and connect to the address that was checked (DNS rebinding); re-validate **every**
+redirect hop (max 2); enforce a hard timeout (5 s) and a **stream-enforced** response cap (512 KiB —
+`Content-Length` is attacker-supplied and a chunked response has none); carry **no** ambient credential
+(`credentials: "omit"`, `redirect: "manual"`); and **re-host the favicon** into `public_assets` rather
+than hotlinking it, because a hotlinked favicon sends every viewer's IP to a host the link's author
+chose. The verdict axis keeps `unscannable` distinct from `suspicious`: *"we could not reach it"* is
+not *"we found something"*.
+
+#### The token vault
+
+`services/integrations/token-vault.ts` implements **envelope encryption** for
+`integrations.connection_secrets`: a per-secret data key (DEK) encrypts the token, and the DEK is
+itself wrapped by a KMS-held key-encryption key (KEK) recorded on the row as `key_id`. Rotating the
+KEK re-wraps DEKs and never touches ciphertext; the plaintext KEK never exists in application memory;
+and old and new KEKs coexist during a rotation instead of it being a flag day. Service-role only —
+`connection_secrets` has RLS on, **no policy, no view, no `authenticated` grant**, so column safety is
+structural rather than a policy someone could loosen. Clients read
+`integrations.v_my_connections`, which physically cannot project a token column.
+
+> ⚠️ **Flagged contradiction, not resolved here (§8 Decision #59).** The Environment Variable Contract
+> below carries **`ENCRYPTION_KEY`** — a single, symmetric, process-wide secret. That is a *different*
+> design from the KMS envelope the `integrations` schema was built for (`connection_secrets.key_id`
+> exists precisely because the wrapping key is external and rotatable). They cannot both be right: if
+> `ENCRYPTION_KEY` is authoritative, `key_id` is decoration and rotation is a full-table rewrite; if
+> the envelope is authoritative, `ENCRYPTION_KEY` must be removed from the contract or redefined as a
+> local-development KEK never used in production. The module implements the **envelope** interface,
+> because that is what the schema requires and it is the one that can absorb the other. **A human
+> picks the winner, and updates the contract in the same change.**
+
+#### Database
+
+The schema is documented in [`documentation/database/files/`](../database/files/) — `Tables.md`,
+`Policies.md`, `Functions.md`, `Storage.md`. Migrations: `00000010` (tables), `00000030` (the one
+permitted trailing FK, to `integrations.user_connections`), `00001160` (seven functions), `00001880`
+(triggers), `00002001` + `00002011` (RLS + policies), `00002017` (the `workspace` bucket's
+`storage.objects` policies), `00004011` (indexes), `00005040` (buckets). Quota rides the existing
+entitlement resolver via the `storage_megabytes` key — no parallel billing path.
+
 ### Sessions & Google OAuth
 
 - **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue
@@ -1405,8 +1545,14 @@ Testing is mandatory and must use the native Deno test runner (`Deno.test`).
 
 ## Environment Variable Contract
 
-The application relies on a strict set of environment variables. The AI agent must scaffold a
-`.env.example` using exactly these keys:
+The application relies on a strict set of environment variables. The canonical scaffold is
+[`.env.example`](../../.env.example) at the repository root, which uses exactly these keys.
+
+> **Two value conventions, and they are not interchangeable.** Every secret is `XXXX-XXXX` (root
+> `CLAUDE.md` §6 — a real key is never committed). Every `*_BACKEND_LIVE` gate carries its literal
+> **default, `false`**, because it is a boolean parsed by `serverEnv()` as
+> `(value ?? "false").toLowerCase() === "true"` — an `XXXX-XXXX` there is not a redacted secret, it is
+> a value that silently parses as `false` while *looking* configured.
 
 ```env
 # Application
@@ -1433,6 +1579,23 @@ ZOOM_CLIENT_ID=XXXX-XXXX
 ZOOM_CLIENT_SECRET=XXXX-XXXX
 ZOOM_WEBHOOK_SECRET=XXXX-XXXX
 
+# Storage connectors (asset management) — each is a SEPARATE consent from sign-in and from the
+# calendar/conferencing grants above. Google Drive reuses GOOGLE_INTEGRATION_* (one connection,
+# two capabilities: `storage` + `calendar`); the rest need their own app credentials.
+DROPBOX_CLIENT_ID=XXXX-XXXX
+DROPBOX_CLIENT_SECRET=XXXX-XXXX
+FRAMEIO_CLIENT_ID=XXXX-XXXX
+FRAMEIO_CLIENT_SECRET=XXXX-XXXX
+# S3-compatible (AWS S3, R2, B2, MinIO …) — the one connector with NO authorization server, so the
+# credential is a static key pair. Endpoint / region / bucket / prefix are NOT secrets and are stored
+# per connection in integrations.user_connections.config, never here.
+S3_ACCESS_KEY_ID=XXXX-XXXX
+S3_SECRET_ACCESS_KEY=XXXX-XXXX
+
+# Link safety — the reputation feed a pasted link's verdict is drawn from. The provider is not yet
+# chosen; the key is read at call time and never inlined (files/link-scan.ts).
+LINK_SAFETY_API_KEY=XXXX-XXXX
+
 # Stripe (Finance)
 STRIPE_SECRET_KEY=XXXX-XXXX
 STRIPE_WEBHOOK_SECRET=XXXX-XXXX
@@ -1440,6 +1603,27 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=XXXX-XXXX
 
 # Security
 ENCRYPTION_KEY=XXXX-XXXX # 32-byte hex for Edge Function/Vault encryption
+# ⚠️ See §Asset Management → The token vault: ENCRYPTION_KEY (one symmetric process-wide secret) and
+# the KMS envelope the `integrations` schema was built for (connection_secrets.key_id) are two
+# different designs. Unresolved — a human picks one (§8 Decision #59).
+KMS_KEY_ALIAS=XXXX-XXXX          # the KEK the token vault wraps DEKs under
+
+# Backend live gates — booleans, default false. Each flips ONE fat service from its deterministic
+# fixtures to its live Supabase path. They are separate switches on purpose: a half-wired query, a
+# half-wired money mutation and a half-wired outbound call carrying someone else's token are three
+# different kinds of accident.
+AUTH_BACKEND_LIVE=false
+EXPLORE_BACKEND_LIVE=false
+NEWSLETTER_BACKEND_LIVE=false
+PROJECTS_BACKEND_LIVE=false
+PROFILE_BACKEND_LIVE=false
+MESSAGING_BACKEND_LIVE=false
+CATALOGUE_BACKEND_LIVE=false
+LOGGING_BACKEND_LIVE=false
+FINANCE_BACKEND_LIVE=false
+WORKSPACE_BACKEND_LIVE=false
+FILES_BACKEND_LIVE=false
+INTEGRATIONS_BACKEND_LIVE=false
 ```
 
 ---

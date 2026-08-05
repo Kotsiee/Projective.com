@@ -8,6 +8,9 @@ import "../styles/catalogue.css";
 import "@features/explore/styles/explore.css";
 import { RichTextEditor } from "@projective/ui/editor";
 import { Button, Chips, InputText, Select, Textarea } from "@projective/ui/fields";
+import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
+import { openPicker } from "@web/features/files/core/files-state.ts";
+import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { ServiceCard } from "@features/explore/components/cards/ServiceCard.tsx";
 import { ProductCard } from "@features/explore/components/cards/ProductCard.tsx";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
@@ -60,6 +63,8 @@ export interface ListingEditorProps {
 	initial: ListingDetail;
 }
 const SAVE_DEBOUNCE_MS = 800;
+/** The Asset Picker routing key for listing media — one editor is open at a time. */
+const MEDIA_PICKER_ID = "catalogue-media";
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 const SAMPLE_MEDIA = [
 	"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&h=600&q=72",
@@ -249,6 +254,25 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 		media.value = media.value.filter((m) => m !== url);
 		touch();
 	}
+
+	/**
+	 * Add listing media from the seller's own files.
+	 *
+	 * The picker is restricted to `image` because listing media is what a buyer SEES on the card and in
+	 * the gallery — the `kinds` restriction is the accept list, applied by the server rather than by the
+	 * grid hiding rows it already paid to fetch.
+	 *
+	 * A picked asset contributes its URL, so the media list stays one flat array of image sources and
+	 * the live preview keeps rendering the REAL `ServiceCard`/`ProductCard` with no second code path.
+	 * `addMedia` already refuses a duplicate, so picking the same image twice is a no-op rather than a
+	 * second cover candidate.
+	 */
+	function addLibraryMedia(assets: AssetItem[]): void {
+		for (const asset of assets) {
+			const url = asset.thumbnailUrl ?? asset.url;
+			if (url && url !== "#") addMedia(url);
+		}
+	}
 	function toggleWeekday(d: number): void {
 		const set = new Set(avWeekdays.value);
 		set.has(d) ? set.delete(d) : set.add(d);
@@ -365,6 +389,19 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 									addMedia(mediaUrl.value);
 									mediaUrl.value = "";
 								}}
+							/>
+							{/* The paste-a-URL path stays: a seller often has the image somewhere else first. */}
+							<Button
+								variant="outlined"
+								size="sm"
+								label="From your files"
+								onClick={() =>
+									openPicker({
+										requesterId: MEDIA_PICKER_ID,
+										title: "Choose listing media",
+										kinds: ["image"],
+										multiple: true,
+									})}
 							/>
 							<Button
 								variant="text"
@@ -566,6 +603,12 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 					</div>
 				</aside>
 			</div>
+
+			{
+				/* Mounted unconditionally — an island is only in the page's island graph once it renders,
+			    and that graph is what carries its stylesheet. It draws nothing until it is opened. */
+			}
+			<AssetPicker requesterId={MEDIA_PICKER_ID} onPick={addLibraryMedia} />
 		</div>
 	);
 }

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { AudioVisualizer } from "@projective/ui/display";
-import type { FileItem } from "../types/projects-types.ts";
+import type { AssetItem } from "../types/projects-types.ts";
 import { DownloadIcon, FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
 
 /**
@@ -11,7 +11,7 @@ import { DownloadIcon, FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
  * playback / streaming of stub assets lands with the live files backend.
  */
 export interface FilePreviewProps {
-	file: FileItem;
+	file: AssetItem;
 	active: boolean;
 }
 

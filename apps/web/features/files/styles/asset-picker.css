@@ -1,0 +1,785 @@
+/*
+ * asset-picker — the Asset Picker modal's own layer.
+ *
+ * Like `files-hub.css` this sheet dresses REUSED components rather than replacing them: the asset
+ * tile is `.fx-card` (file-card.css), the folder tile is `.subm-card` (submission-card.css), the
+ * directory tree is `.ui-treenav`, the detail pane is `.fh-inspect` and the allowance is `.fh-quota`.
+ * What it adds is only what the picker introduces — the modal shell, the source rail, the selection
+ * treatment, the bounded grid and the footer tray.
+ *
+ * **The shell is hand-rolled rather than `.ui-dialog`.** A dialog is a bounded, single-column reading
+ * surface (`overflow: hidden`, an `--overlay-w-*` cap, a padded body); a two-pane workspace with a
+ * resizable tree, a scrolling grid and a detail pane fights all three. Both shipped splitter modals
+ * bypass it for the same reason.
+ *
+ * **The grid is a plain `auto-fill` grid on purpose.** The hub window-virtualizes; a modal's scroller
+ * is its own body, so a window-virtualized grid inside a dialog measures a box the rows do not
+ * occupy. A picker shows a finder's worth of rows, not a library's.
+ *
+ * Token-only, strict BEM, logical properties throughout (the modal mirrors under `dir="rtl"` with no
+ * horizontal leak). §B.4: nothing non-interactive is boxed in four sides — regions are told apart by
+ * spacing, a tonal step and a single hairline. Motion decorates `transform`/`opacity` only, never a
+ * property that ENCODES data.
+ */
+
+/* #region Local tokens */
+/*
+ * On `:root`, not on `.apk`. The tray, the tooltips, the drag ghost and every field panel render
+ * OUTSIDE this subtree through `BodyPortal`, and a scoped custom property silently falls back for
+ * each of them — the `--wlt-*` lesson (Decision #60).
+ */
+:root {
+	/* The grid column floor. Deliberately smaller than the hub's: a picker pane is a third of a page. */
+	--apk-col: 9.5rem;
+	--apk-col-tight: 7.5rem;
+	/* The tray's thumbnail square. */
+	--apk-thumb: 1.75rem;
+}
+/* #endregion */
+
+/* #region Host */
+/*
+ * The always-mounted anchor.
+ *
+ * The island renders this even when closed, which is what keeps it in the page's island graph — and
+ * that graph is what carries this stylesheet. It occupies nothing.
+ */
+.apk-host {
+	display: contents;
+}
+/* #endregion */
+
+/* #region Shell */
+/*
+ * The z-index is driven in by `useOverlayStack` as a CUSTOM PROPERTY rather than as an inline
+ * `z-index`, so the only thing the island writes into the style attribute is a token value and the
+ * declaration itself stays in this sheet. The fallback is the modal band, so a server-rendered frame
+ * still layers correctly before the hook has claimed a live index.
+ */
+.apk {
+	position: fixed;
+	inset: 0;
+	z-index: var(--apk-z, var(--z-modal));
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: clamp(0px, 2vw, 28px);
+}
+
+.apk__panel {
+	position: relative;
+	inline-size: var(--overlay-w-xl);
+	block-size: var(--overlay-h-md);
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	background: var(--surface);
+	border-radius: var(--overlay-radius-lg);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	opacity: 0;
+	/*
+	 * The enter transform is SELF-CLEARING — it resolves to `none` while open — so descendant
+	 * `position: fixed` overlays (the portalled tooltips, the field panels, the drag ghost) still
+	 * resolve against the viewport instead of being re-based onto this panel.
+	 */
+	transform: translateY(12px) scale(0.985);
+	transition:
+		opacity var(--dur-medium) var(--ease-emphasized),
+		transform var(--dur-medium) var(--spring-standard);
+}
+.apk__panel[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+/* #endregion */
+
+/* #region Header */
+.apk__top {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.apk__ident {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.apk__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-bold);
+	line-height: var(--leading-tight);
+}
+
+.apk__sub {
+	margin: var(--space-1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.apk__act {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.apk__act:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+}
+.apk__act:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.apk__act[aria-pressed="true"] {
+	color: var(--primary);
+}
+/* #endregion */
+
+/* #region Body */
+.apk__body {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	/* One hairline tells the workspace from the header, and one from the footer. No boxes. */
+	border-block-start: var(--hairline);
+	border-block-end: var(--hairline);
+}
+.apk__body[data-busy] {
+	cursor: progress;
+}
+
+/*
+ * `layout="horizontal"` on the component gives the compound `.ui-splitter.ui-splitter--horizontal`
+ * (0,2,0) that outranks the globally-loaded bare `.ui-splitter` rule (0,1,0) pinning the nav lane's
+ * width. These are compounded for the SAME reason: a single-class override would merely tie with
+ * that rule and be decided by stylesheet order.
+ */
+.ui-splitter.apk__split {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	block-size: 100%;
+}
+
+.apk-nav,
+.apk-main,
+.apk-side {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	min-block-size: 0;
+	block-size: 100%;
+}
+/* #endregion */
+
+/* #region Source rail */
+.apk-nav__inner {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-block-size: 0;
+	block-size: 100%;
+	padding: var(--space-3) var(--space-2);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.apk-nav__sources,
+.apk-nav__drives {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px, 1px);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.apk-nav__source,
+.apk-nav__drive {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-block-size: 2.25rem;
+	padding-inline: var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.apk-nav__source > span,
+.apk-nav__drive > span {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.apk-nav__source:hover,
+.apk-nav__drive:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+}
+.apk-nav__source:focus-visible,
+.apk-nav__drive:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.apk-nav__source[aria-current="true"],
+.apk-nav__drive[aria-current="true"] {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	color: var(--on-surface);
+}
+
+/* The drive list is a continuation of its source row, so it is indented rather than re-titled. */
+.apk-nav__drives {
+	margin-inline-start: var(--space-5);
+}
+.apk-nav__drive {
+	min-block-size: 2rem;
+	font-weight: var(--fw-normal);
+}
+
+/*
+ * The tree is separated from the source list by ONE hairline — never a card. It is the same
+ * `.ui-treenav` the hub's lane paints, so nothing here restyles a row.
+ */
+.apk-nav__tree {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+/*
+ * The drop hover. Written by the picker onto the shared tree row while a drag is over it (see
+ * `TreeDropTarget`), and swept at the end of every drag — so it can never outlive the gesture.
+ */
+.apk-nav__tree .ui-treenav__row[data-dropover] {
+	background: color-mix(in srgb, var(--primary) 18%, transparent);
+	box-shadow: inset 0 0 0 1px var(--primary);
+}
+/* #endregion */
+
+/* #region Workspace */
+.apk-main__bar {
+	flex: none;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+}
+.apk-main__search {
+	flex: 1 1 14rem;
+	min-inline-size: 10rem;
+	margin-inline-start: auto;
+}
+.apk-main__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.apk-main__readonly {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0 var(--space-4) var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-md);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+/*
+ * The picker's own scroller — the region that grows inside the pane, so the trail and the search stay
+ * put while the results move. It is also the reason nothing here window-virtualizes.
+ */
+.apk-main__scroll {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	padding: 0 var(--space-4) var(--space-4);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/*
+	 * A container context so the grid's breakpoints measure the PANE, not the viewport: at 1440px the
+	 * centre pane is ~700px, and a viewport media query would be answering a question nobody asked.
+	 *
+	 * Safe despite the containment/`position: fixed` re-basing trap: every fixed layer reachable from
+	 * inside the picker (Tooltip, field panels, the drag ghost) renders through `BodyPortal`.
+	 */
+	container-type: inline-size;
+	container-name: apk-work;
+}
+
+.apk-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--apk-col), 1fr));
+	gap: var(--space-3);
+	align-content: start;
+}
+@container apk-work (max-width: 30rem) {
+	.apk-grid {
+		grid-template-columns: repeat(auto-fill, minmax(var(--apk-col-tight), 1fr));
+	}
+}
+
+.apk-cell {
+	position: relative;
+	block-size: 100%;
+	min-inline-size: 0;
+	border-radius: var(--card-radius);
+}
+
+/*
+ * The selection treatment is drawn on the WRAPPER, not by re-styling the shared card: the card is the
+ * same component the hub and the explorer render, and a picker-only variant of it is how two card
+ * families start.
+ */
+.apk-cell--asset > :first-child {
+	border-radius: var(--card-radius);
+	transition: box-shadow var(--dur-fast) var(--ease-standard);
+}
+.apk-cell[data-selected] > :first-child {
+	box-shadow: 0 0 0 2px var(--primary);
+}
+.apk-cell[data-blocked] > :first-child {
+	opacity: var(--fld-disabled-alpha, 0.55);
+}
+.apk-cell[data-dragging] {
+	opacity: 0.45;
+}
+
+/* Every focusable cell shows a ring, including the one focus arrived at by arrow key. */
+.apk-cell .fx-card:focus-visible,
+.apk-cell .subm-card:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The tick is a REDUNDANT channel, not the only one: the ring already says "chosen", the tray below
+ * names it, and a mark that is the sole carrier of a state fails for anyone who cannot separate the
+ * ring from the card edge.
+ */
+.apk-cell__tick {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	color: var(--on-primary);
+	pointer-events: none;
+}
+
+/* The grip inherits the hub's reveal-on-hover/focus behaviour; only its corner differs. */
+.apk-cell__grip {
+	inset-block-start: var(--space-1);
+	inset-inline-start: var(--space-1);
+}
+/* #endregion */
+
+/* #region Detail pane */
+.apk-side {
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	border-inline-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Link + upload */
+.apk-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	max-inline-size: 34rem;
+}
+.apk-form__label {
+	color: var(--text-secondary);
+	font-size: var(--fld-label-fs, var(--text-sm));
+	font-weight: var(--fw-medium);
+}
+.apk-form__hint {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+.apk-form__actions {
+	display: flex;
+	justify-content: flex-start;
+}
+
+/* A drop zone is interactive, so a four-sided (dashed) border is allowed — §B.4 permits it here. */
+.apk-drop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-8) var(--space-4);
+	border: 2px dashed var(--outline-variant);
+	border-radius: var(--radius-lg);
+	color: var(--text-secondary);
+	text-align: center;
+	transition: border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+.apk-drop[data-over] {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.apk-drop__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.apk-drop__note {
+	margin: 0;
+	font-size: var(--text-sm);
+}
+
+.apk-queue {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.apk-queue__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
+	font-size: var(--text-sm);
+	/* One hairline between rows — never a box per row. */
+	border-block-end: var(--hairline);
+}
+.apk-queue__row:last-child {
+	border-block-end: none;
+}
+.apk-queue__name {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--on-surface);
+}
+.apk-queue__size,
+.apk-queue__phase {
+	flex: none;
+	color: var(--text-secondary);
+}
+.apk-queue__row[data-phase="error"] .apk-queue__phase,
+.apk-queue__row[data-phase="blocked"] .apk-queue__phase {
+	color: var(--danger);
+}
+.apk-queue__row[data-phase="done"] .apk-queue__phase {
+	color: var(--success);
+}
+/* #endregion */
+
+/* #region States */
+.apk-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-8);
+	padding-inline: var(--space-4);
+	text-align: center;
+}
+.apk-state__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.apk-state__note {
+	max-inline-size: 30rem;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+.apk-state__link {
+	color: var(--primary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+.apk-state__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.apk-state--error .apk-state__title {
+	color: var(--danger);
+}
+
+.apk-tail-error {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block: var(--space-3) 0;
+	color: var(--danger);
+	font-size: var(--text-sm);
+}
+
+.apk-more {
+	display: flex;
+	justify-content: center;
+	padding-block: var(--space-4);
+}
+/* #endregion */
+
+/* #region Footer */
+.apk__foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	padding: var(--space-3) var(--space-4);
+	min-inline-size: 0;
+	/*
+	 * Inline-size containment, so one `nowrap` row of controls cannot export its min-content to the
+	 * panel and set the modal's minimum width — the failure `/wallet`'s footer band shipped.
+	 */
+	container-type: inline-size;
+	container-name: apk-foot;
+}
+
+.apk-tray {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+.apk-tray__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+.apk-tray__list {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0 0 var(--space-1);
+	list-style: none;
+	overflow-x: auto;
+	overscroll-behavior-inline: contain;
+	scrollbar-width: thin;
+}
+
+/* A chip is interactive (it carries a remove control), so a full border is allowed here. */
+.apk-tray__item {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	max-inline-size: 14rem;
+	padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+}
+.apk-tray__thumb {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--apk-thumb);
+	block-size: var(--apk-thumb);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	overflow: hidden;
+}
+.apk-tray__thumb img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+.apk-tray__name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+}
+.apk-tray__drop {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.apk-tray__drop:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+}
+.apk-tray__drop:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.apk__quota {
+	flex: none;
+	min-inline-size: 8rem;
+	max-inline-size: 12rem;
+}
+
+.apk__actions {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+.apk__notice {
+	margin: 0 var(--space-2) 0 0;
+	max-inline-size: 22rem;
+	color: var(--warning);
+	font-size: var(--text-sm);
+}
+/*
+ * The reason a disabled action is disabled, printed beside it. Never a tooltip alone: a disabled
+ * control takes no hover in several engines, so the explanation would be unreachable exactly when it
+ * is needed.
+ */
+.apk__why {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	max-inline-size: 12rem;
+}
+
+/* Below the width at which the tray and the actions can share a row, they stack. */
+@container apk-foot (max-width: 44rem) {
+	.apk__foot {
+		flex-wrap: wrap;
+	}
+	.apk__actions {
+		inline-size: 100%;
+		margin-inline-start: 0;
+		justify-content: flex-end;
+	}
+}
+
+/* The file input is reachable by script but takes no space and no tab stop. */
+.apk__file {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	border: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Drag ghost */
+.apk-ghost__chip {
+	display: inline-flex;
+	align-items: center;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	background: var(--surface);
+	box-shadow: var(--elevation-high);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+/* #endregion */
+
+/* #region Narrow panes */
+/*
+ * Below the width at which a three-pane split leaves no pane usable, the source rail and the detail
+ * pane stack under the workspace rather than squeezing it. A container query, not a media query — the
+ * panel is a fraction of the viewport and the viewport's width is not the one that is wrong.
+ */
+@media (max-width: 767px) {
+	.apk {
+		padding: 0;
+	}
+	.apk__panel {
+		inline-size: 100%;
+		block-size: 100%;
+		border-radius: 0;
+	}
+	.ui-splitter.apk__split {
+		display: block;
+		overflow-y: auto;
+	}
+	.ui-splitter.apk__split > .ui-splitter__pane {
+		flex-basis: auto;
+		inline-size: 100%;
+		block-size: auto;
+	}
+	.ui-splitter.apk__split > .ui-splitter__gutter {
+		display: none;
+	}
+	.apk-nav,
+	.apk-main,
+	.apk-side {
+		block-size: auto;
+	}
+	.apk-main__scroll {
+		overflow: visible;
+	}
+	.apk-side {
+		border-inline-start: none;
+		border-block-start: var(--hairline);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.apk__panel,
+	.apk__act,
+	.apk-nav__source,
+	.apk-nav__drive,
+	.apk-cell--asset > :first-child,
+	.apk-drop {
+		transition: none;
+	}
+	.apk__panel {
+		transform: none;
+	}
+}
+/* #endregion */

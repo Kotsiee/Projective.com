@@ -11,7 +11,9 @@ import { channelHeaderFor } from "@web/features/projects/core/channel-header-slo
 import { projectHeaderFor } from "@web/features/projects/core/project-header-slot.tsx";
 import { projectFooterFor } from "@web/features/projects/core/project-footer-slot.tsx";
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
-import { filesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
+// Aliased at the import site: the `/files` hub exports a `filesFooterFor` of its own, and this one is
+// the CHANNEL-scoped File Explorer rig (`/projects/…/files`), which the alias names more accurately.
+import { filesFooterFor as channelFilesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
 import { submissionsFooterFor } from "@web/features/projects/core/submissions-footer-slot.tsx";
 import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
@@ -30,6 +32,9 @@ import { walletHeaderFor } from "@web/features/wallet/core/wallet-header-slot.ts
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
+import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
+import { filesHeaderFor } from "@web/features/files/core/files-header-slot.tsx";
+import { filesFooterFor } from "@web/features/files/core/files-footer-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
@@ -83,12 +88,13 @@ function projectSlugOf(pathname: string): string | null {
  * navigation is a full page render, so this simply resolves fresh each time.
  */
 function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
-	return channelFooterFor(url, context) ?? filesFooterFor(url, context) ??
+	return channelFooterFor(url, context) ?? channelFilesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
 		projectFooterFor(url, context) ??
 		inboxFooterFor(url, context) ?? conversationFooterFor(url, context) ??
 		catalogueFooterFor(url, context) ??
-		walletFooterFor(url, context) ?? workspaceFooterFor(url, context);
+		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
+		filesFooterFor(url, context);
 }
 
 /**
@@ -100,7 +106,8 @@ function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
 	return channelHeaderFor(url, context) ?? projectHeaderFor(url, context) ??
 		inboxHeaderFor(url, context) ?? conversationHeaderFor(url, context) ??
 		catalogueHeaderFor(url, context) ??
-		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context);
+		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
+		filesHeaderFor(url, context);
 }
 
 /**
@@ -109,6 +116,11 @@ function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
  * default section switcher.
  */
 function laneFor(url: URL, context: UserContext): ComponentChildren {
+	// The asset hub (`/files`) hosts its directory tree, its scope map (library ⁄ mounted ⁄ drives) and
+	// the storage allowance. Resolved BEFORE the `/projects` fall-through — `/files` is its own
+	// top-level surface and must not inherit the projects feed.
+	if (url.pathname.startsWith("/files")) return filesLaneFor(url, context);
+
 	// The global inbox: the scope map on the `/messages` root, the conversation list beside an open one.
 	if (url.pathname.startsWith("/messages")) return messagesLaneFor(url, context);
 

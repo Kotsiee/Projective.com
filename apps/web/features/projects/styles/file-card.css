@@ -101,6 +101,23 @@
 	gap: var(--space-1);
 	min-inline-size: 0;
 }
+/**
+ * The byline's source mark — the fallback when an asset has no sender (a `/files` hub upload, a
+ * drive-mounted file, a link). Sized to exactly the 16px `Avatar` it replaces so the byline row, and
+ * therefore `.fx-card__meta`'s 62px, is identical either way: the shared grid's `rowHeight` formula
+ * is written against that constant and folder cards are measured by the same one.
+ */
+.fx-card__srcmark {
+	display: grid;
+	place-items: center;
+	flex: none;
+	inline-size: 16px;
+	block-size: 16px;
+	border-radius: var(--radius-full);
+	background: var(--tint-soft);
+	color: var(--text-secondary);
+}
+
 .fx-card__sender {
 	font-size: 0.75rem;
 	color: var(--text-secondary);

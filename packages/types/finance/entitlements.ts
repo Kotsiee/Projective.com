@@ -28,6 +28,10 @@ export const EntitlementKey = z.enum([
 	"private_drafts",
 	// Footprint (seller side)
 	"published_listings",
+	// Footprint (stored bytes). Denominated in MEBIBYTES, never bytes: `plan_entitlements.limit_value`
+	// and every resolver that reads it return `integer`, and 25 GB expressed in BYTES is
+	// 26,843,545,600 — an int4 overflow. MiB keeps the whole ladder (25 GiB … 500 GiB) in range.
+	"storage_megabytes",
 	// Distribution
 	"weekly_proposals",
 	"proposal_buffer_per_10h",

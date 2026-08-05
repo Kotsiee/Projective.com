@@ -249,6 +249,7 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `teams_owned`                        | 3                   | 6                       |
 | `businesses_owned`                   | 1                   | 3                       |
 | `teams_joined` / `businesses_joined` | **Uncapped**        | Uncapped                |
+| `storage_megabytes`                  | 25600 (25 GiB)      | 153600 (150 GiB)        |
 
 | Lever                     | Team Free | Pro Team (£29)  | Lever                      | Business Free | Business Pro |
 | :------------------------ | :-------- | :-------------- | :------------------------- | :------------ | :----------- |
@@ -257,9 +258,40 @@ The **PAID ladder**. Zod SSOT: `packages/types/finance/plans.ts` + `entitlements
 | `weekly_proposals` (pool) | 50        | 150 (dedicated) | `departments`              | 0             | 5            |
 | `advanced_vault_splits`   | —         | ✅              | `pooled_wallet_full`       | basic         | ✅           |
 | `promoted_placement`      | —         | ✅              | `intervaled_invoicing`     | —             | ✅           |
+| `storage_megabytes`       | 25600     | 512000          | `storage_megabytes`        | 25600         | 512000       |
 
 The Organisation tier is unlimited on seats/businesses/departments/projects and adds `sso_enabled`,
 `api_access`, `audit_log_retention_days` (730), `dedicated_support` and `negotiated_platform_fee`.
+`organisation_free` carries 25600 MiB of draft-tier storage; the paid `organisation` plan is the
+schema's only `storage_megabytes` row with `is_unlimited = true`.
+
+### `storage_megabytes` — the asset-management footprint lever
+
+The `/files` asset hub meters stored bytes as an entitlement like any other footprint cap. The full
+ladder, the enforcement gate and the reasoning are in
+[`../files/Tables.md`](../files/Tables.md#storage-quota) and
+[`../files/Functions.md`](../files/Functions.md); what belongs **here** is why it is denominated the
+way it is, because that constraint originates in this schema:
+
+> ### ⚠️ The unit is MEBIBYTES, and it has to be
+>
+> `finance.plan_entitlements.limit_value` is **`integer`**, and every resolver over it —
+> `fn_effective_limit`, `fn_footprint_usage`, `fn_footprint_remaining` — returns `integer` too.
+> **25 GB expressed in bytes is 26,843,545,600, which overflows `int4`** (max 2,147,483,647). A
+> bytes-denominated ladder would therefore fail at the *smallest* tier on the list, not at some
+> distant enterprise ceiling — the free plan would be unrepresentable.
+>
+> MiB keeps the whole ladder (25 GiB … 500 GiB → 25 600 … 512 000) comfortably inside `int4`, with
+> room for roughly a **2 PiB** ceiling before the question returns.
+>
+> Widening the column to `bigint` was rejected: `limit_value` is shared by every entitlement key, and
+> a proposal count, a seat count and a department count have no business being 64-bit because one
+> sibling key measures bytes. The unit conversion is cheaper and it happens **exactly once**, in
+> `files.fn_check_storage_quota` — nothing else in the system multiplies or divides by 1 048 576.
+>
+> The usage side is the mirror of this: `files.storage_usage.bytes_used` is **`bigint`**, the honest
+> unit for a byte total, and `fn_footprint_usage` floors it into MiB at the boundary. Integer division
+> floors, so a subject is never reported as having consumed a MiB they have not.
 
 > **Ownership ≠ power.** Raising `teams_owned`/`businesses_owned` on a _personal_ plan lets a user
 > spin up more entities; each entity still pays for its own muscle through its own plan. That split

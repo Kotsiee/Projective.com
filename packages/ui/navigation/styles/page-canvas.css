@@ -28,7 +28,7 @@
    corner rounds symmetrically with the top-inline-start corner. Shorten the fixed `::before` by the
    footer band's height (on top of the top-start inset) and round the matching corner. */
 .ui-shell-frame:has(.ui-middle-nav__footer) .ui-page-canvas::before {
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h) + var(--space-1));
+    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h) - var(--space-1));
     border-end-start-radius: var(--frame-radius);
     border-block-end: var(--hairline);
 }

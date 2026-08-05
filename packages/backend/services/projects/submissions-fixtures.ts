@@ -16,7 +16,7 @@ import type {
 	SubmissionUnit,
 	SubmissionUnitKind,
 } from "@projective/types/projects";
-import { categorizeFile } from "@projective/types/files";
+import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 
 /**
@@ -115,6 +115,7 @@ const NAMES: Record<FileKind, string[]> = {
 	doc: ["scope-of-work", "content-plan", "changelog"],
 	code: ["tokens", "theme", "component", "config"],
 	archive: ["source-files", "export-pack", "deliverables"],
+	link: ["reference-board", "shared-doc"],
 	file: ["attachment", "asset"],
 };
 const EXTS: Record<FileKind, string[]> = {
@@ -125,6 +126,7 @@ const EXTS: Record<FileKind, string[]> = {
 	doc: ["docx", "pages", "rtf"],
 	code: ["ts", "tsx", "css", "json"],
 	archive: ["zip", "rar"],
+	link: [""],
 	file: ["bin"],
 };
 
@@ -322,6 +324,9 @@ function makeFiles(
 				dayLabel: fmtDay(created),
 				dateLabel: fmtDateTime(created),
 				starred: fseed % 13 === 0,
+				// A submission deliverable lives in a semi-private review context — `link`-visible by
+				// construction, exactly like a channel attachment.
+				...messageAttachmentFacets(submitter.id, { canManage: submitter.id === VIEWER.id }),
 			});
 		});
 	}

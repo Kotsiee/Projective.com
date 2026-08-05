@@ -413,3 +413,23 @@ GRANT ALL ON TABLE finance.allowance_periods TO service_role;
 GRANT SELECT ON TABLE finance.allowance_ledger TO authenticated;
 
 GRANT ALL ON TABLE finance.allowance_ledger TO service_role;
+
+
+-- --- files: asset management (anon reach for the public tier) ---
+-- `anon` already holds USAGE on the `files` schema (00002500) but no table grant, so the anon
+-- policy in 00002011 would have been unreachable. This is the schema's ONLY anon table grant and it
+-- is SELECT-only; row-level exposure is still governed entirely by the policy, which admits nothing
+-- but `visibility = 'public'` and not-soft-deleted.
+GRANT SELECT ON TABLE files.items TO anon;
+
+-- ⚠️ files.share_links deliberately gets NO anon or authenticated table grant. A share SLUG is a
+-- credential, and RLS filters rows without being able to require that the caller already knew one —
+-- so a visitor grant here would permit `SELECT slug FROM files.share_links`, i.e. harvesting every
+-- live share credential on the platform. The one sanctioned visitor operation is the definer
+-- resolver files.fn_resolve_share(slug), which takes the slug as INPUT (00001160 / 00002510). Same
+-- structural discipline as integrations.connection_secrets. DO NOT add a grant here.
+
+-- `authenticated` and `service_role` already hold their grants on every files table through the
+-- schema-wide GRANT in 00002500 — deliberately not restated here. What keeps the audit and rollup
+-- tables safe is not a narrower grant, it is that RLS is on and no INSERT/UPDATE policy exists for
+-- them (00002011): the write path is the SECURITY DEFINER trigger and the fat backend, full stop.

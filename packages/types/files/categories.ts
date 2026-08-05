@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FileKind } from "../projects/files.ts";
+import type { FileKind } from "./kinds.ts";
 
 /**
  * files.categories — the Zod SSOT for classifying an uploaded file into a rich, searchable category.

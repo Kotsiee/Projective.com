@@ -9,6 +9,7 @@ import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import type {
+	AssetItem,
 	FileChannelRef,
 	FileItem,
 	FileKind,
@@ -69,7 +70,7 @@ interface WorkspaceViewProps {
 	sortKey: Signal<string>;
 	sortDir: Signal<FileSortDir>;
 	onSort: (key: FileSortKey) => void;
-	onOpen: (file: FileItem) => void;
+	onOpen: (file: AssetItem) => void;
 	onReachEnd: () => void;
 	loadingMore: boolean;
 }
@@ -228,7 +229,7 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	// #endregion
 
 	// #region Preview modal
-	function open(file: FileItem): void {
+	function open(file: AssetItem): void {
 		openId.value = file.id;
 	}
 	function renameFile(id: string, name: string): void {

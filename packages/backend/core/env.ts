@@ -114,6 +114,32 @@ export interface ServerEnv {
 	 * half-wired mutation must not be able to fire against a real project.
 	 */
 	workspaceBackendLive: boolean;
+	/**
+	 * Master switch for LIVE files-backend behaviour. Defaults **off**: {@link FilesBackendService}
+	 * answers the `/files` asset hub from deterministic fixtures and mutates an in-module session store
+	 * (upload · rename · move · delete · share · visibility) until the RLS-scoped `files.items` /
+	 * `files.folders` / `files.share_links` / `files.download_events` tables and the Supabase Storage
+	 * signed-URL handshake are wired, then flip per environment.
+	 *
+	 * Like the catalogue and finance gates it defaults off because the surface writes — and it writes
+	 * two things a half-wired mutation must never touch by accident: **stored bytes** (a signed upload
+	 * ticket authorises a real object write) and **reach** (a share link is a bearer capability that
+	 * cannot be un-forwarded once it leaks).
+	 */
+	filesBackendLive: boolean;
+	/**
+	 * Master switch for LIVE integrations-backend behaviour. Defaults **off**:
+	 * {@link IntegrationsBackendService} answers the connector catalogue, a user's connections and a
+	 * drive browse from deterministic fixtures until the OAuth consent handshake, the KMS-enveloped
+	 * `integrations.connection_secrets` vault and the per-provider storage adapters are wired, then flip
+	 * per environment.
+	 *
+	 * Separate from {@link filesBackendLive} on purpose: the two surfaces share a screen but not a trust
+	 * model. A live files backend touches only the platform's own storage under the caller's RLS, while
+	 * a live integrations backend acts at a THIRD party with a stored credential — so a single flag
+	 * would make enabling the hub silently enable outbound calls carrying someone else's token.
+	 */
+	integrationsBackendLive: boolean;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -135,5 +161,8 @@ export function serverEnv(): ServerEnv {
 		loggingBackendLive: (firstEnv("LOGGING_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		financeBackendLive: (firstEnv("FINANCE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		workspaceBackendLive: (firstEnv("WORKSPACE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		filesBackendLive: (firstEnv("FILES_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
+		integrationsBackendLive: (firstEnv("INTEGRATIONS_BACKEND_LIVE") ?? "false").toLowerCase() ===
+			"true",
 	};
 }

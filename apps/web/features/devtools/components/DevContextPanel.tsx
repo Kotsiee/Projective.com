@@ -4,8 +4,12 @@ import type { UserContext } from "@projective/types/auth";
 import {
 	ACCOUNT_TYPES,
 	applyDevContext,
+	DEV_ASSET_VISIBILITIES,
+	DEV_CONNECTION_STATES,
+	DEV_DEDUP_STATES,
 	DEV_DISPLAY_CURRENCIES,
 	DEV_LAYOUT_DIRECTIONS,
+	DEV_LINK_SCANS,
 	DEV_MEMBER_ROLES,
 	DEV_MEMBERSHIP_STATES,
 	DEV_MESSAGING_ROLES,
@@ -16,6 +20,8 @@ import {
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
 	DEV_STAGE_ASSIGNMENTS,
+	DEV_STORAGE_PROVIDERS,
+	DEV_STORAGE_QUOTAS,
 	DEV_SUBMISSION_STATES,
 	DEV_WALLET_FUND_MIXES,
 	DEV_WALLET_KYCS,
@@ -501,6 +507,70 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.layoutDirection}
 						disabled={!o.enabled}
 						onChange={(layoutDirection) => patchDevContext({ layoutDirection })}
+					/>
+				</Field>
+			</div>
+
+			<div class="dev-ctx__group">
+				<div class="dev-ctx__grouphead">Files / Storage</div>
+
+				<Field label="Cloud provider" hint="connected drive">
+					<Segment
+						name="Cloud provider"
+						options={DEV_STORAGE_PROVIDERS}
+						value={o.storageProvider}
+						disabled={!o.enabled}
+						onChange={(storageProvider) => patchDevContext({ storageProvider })}
+					/>
+				</Field>
+
+				<Field label="Connection" hint="token lifecycle">
+					<Segment
+						name="Connection"
+						options={DEV_CONNECTION_STATES}
+						value={o.connectionState}
+						disabled={!o.enabled}
+						onChange={(connectionState) => patchDevContext({ connectionState })}
+					/>
+				</Field>
+
+				<Field label="Storage quota" hint="usage position">
+					<Segment
+						name="Storage quota"
+						options={DEV_STORAGE_QUOTAS}
+						value={o.storageQuota}
+						disabled={!o.enabled}
+						onChange={(storageQuota) => patchDevContext({ storageQuota })}
+					/>
+				</Field>
+
+				<Field label="Asset scope" hint="privacy">
+					<Segment
+						name="Asset scope"
+						options={DEV_ASSET_VISIBILITIES}
+						value={o.assetVisibility}
+						disabled={!o.enabled}
+						onChange={(assetVisibility) => patchDevContext({ assetVisibility })}
+					/>
+				</Field>
+
+				<Field label="Link scan" hint="safety verdict">
+					<Segment
+						name="Link scan"
+						options={DEV_LINK_SCANS}
+						value={o.linkScan}
+						disabled={!o.enabled}
+						onChange={(linkScan) => patchDevContext({ linkScan })}
+					/>
+				</Field>
+
+				<Field label="Next upload" hint="dedup verdict">
+					<Segment
+						name="Next upload"
+						options={DEV_DEDUP_STATES}
+						value={o.dedupState}
+						disabled={!o.enabled}
+						onChange={(dedupState) => patchDevContext({ dedupState })}
 					/>
 				</Field>
 			</div>

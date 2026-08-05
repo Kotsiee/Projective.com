@@ -1,0 +1,927 @@
+/*
+ * share-drive — the `/files` hub's two overlay surfaces and the connection chip they share.
+ *
+ *   * `.fsh` — the ShareDialog: who can see an asset, and the read-only capability URL that follows
+ *     from that answer.
+ *   * `.drv` — the DriveBrowser: one level of a connected drive at a time, with the two ways of
+ *     bringing something back.
+ *   * `.prov-chip` — a connection's identity AND its health, as a mark rather than a sentence (§B.6).
+ *
+ * Both overlays are hand-rolled on `BodyPortal` rather than composed from `Dialog`, which layers
+ * through the in-tree `Portal`: the authed middle-nav lane is simultaneously an `overflow: clip`
+ * ancestor, a `backdrop-filter` ancestor and a sticky stacking context, and each of those defeats a
+ * fixed descendant independently. So the roots here are genuinely `position: fixed` against the
+ * viewport, and their z-index arrives as a custom property the stack allocator wrote.
+ *
+ * Token-only, strict BEM, logical properties throughout (both surfaces mirror under `dir="rtl"` with
+ * no horizontal leak). §B.4: nothing non-interactive is boxed on four sides — separation is spacing,
+ * a tonal tint, or a single hairline; a full border appears only on an interactive element or on an
+ * elevated panel. Motion decorates `transform`/`opacity` only, and never a property that ENCODES
+ * data. Reduced motion collapses globally through the duration tokens.
+ */
+
+/* #region Overlay roots */
+/*
+ * The scroller is the PANEL's own body, never the page: `useOverlayStack({ lockScroll: true })` has
+ * already frozen the document behind these, so a root that scrolled would move a page that is not
+ * supposed to move.
+ */
+.fsh,
+.drv {
+	position: fixed;
+	inset: 0;
+	z-index: var(--ovl-z, var(--z-modal));
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+	pointer-events: none;
+}
+
+.fsh__panel,
+.drv__panel {
+	pointer-events: auto;
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	max-block-size: calc(100dvh - var(--space-6));
+	color: var(--on-surface);
+	background: var(--surface);
+	/* An elevated interactive surface — the one place §B.4 permits a four-sided hairline. */
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-lg);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	opacity: 0;
+	transform: translateY(var(--space-2));
+	transition:
+		opacity var(--dur-medium) var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard);
+}
+
+/*
+ * The settled panel clears its transform entirely rather than resting at `translateY(0)`. A resting
+ * transform is still a transform, which would make the panel a containing block for any
+ * `position: fixed` descendant — re-basing every Tooltip and field panel opened from inside it.
+ */
+.fsh[data-state="open"] .fsh__panel,
+.drv[data-state="open"] .drv__panel {
+	opacity: 1;
+	transform: none;
+}
+
+.fsh__panel {
+	inline-size: var(--overlay-w-md);
+}
+.drv__panel {
+	inline-size: var(--overlay-w-lg);
+	block-size: var(--overlay-h-md);
+}
+/* #endregion */
+
+/* #region Shared chrome: head, body, foot */
+.fsh__head,
+.drv__head {
+	flex: none;
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-5);
+	border-block-end: var(--hairline);
+}
+
+.fsh__heading,
+.drv__heading {
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.fsh__title,
+.drv__title {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+.fsh__subject,
+.drv__lede {
+	margin-block: var(--space-1) 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.fsh__close,
+.drv__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.fsh__close:hover,
+.drv__close:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.fsh__close:focus-visible,
+.drv__close:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.fsh__body,
+.drv__body {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: var(--space-5);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/*
+	 * A container context so the surfaces below reflow against the PANEL rather than the viewport:
+	 * `--overlay-w-lg` resolves to ~48rem at 1440px, and a viewport media query here would be
+	 * answering a question about a box these rows never occupy.
+	 *
+	 * Safe despite the containment / fixed-descendant trap: every fixed layer reachable from inside
+	 * these panels (Tooltip, field panels) renders through `BodyPortal` of its own.
+	 */
+	container-type: inline-size;
+	container-name: fov-body;
+}
+.drv__body {
+	gap: var(--space-3);
+	/* The column owns the scroll, so the body must not also scroll and produce two scrollbars. */
+	overflow: hidden;
+}
+
+.fsh__foot,
+.drv__foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding: var(--space-4) var(--space-5);
+	border-block-start: var(--hairline);
+}
+.fsh__footnote,
+.drv__footnote {
+	margin: 0;
+	min-inline-size: 0;
+	flex: 1 1 12rem;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.4;
+}
+.fsh__footactions,
+.drv__footactions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+/* #endregion */
+
+/* #region Share: sections */
+.fsh-sec {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	/* A section is non-interactive content: it is set off by spacing and weight, never by a box. */
+	border: none;
+	margin: 0;
+	padding: 0;
+}
+.fsh-sec__legend {
+	padding: 0;
+	margin-block-end: var(--space-1);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+.fsh-sec__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+
+/* The one hairline between the two questions — who can see it, and what the link does. */
+.fsh-sec + .fsh-sec {
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+/* #endregion */
+
+/* #region Share: the visibility choice */
+.fsh-choices {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+/*
+ * A choice row is a real `<label>` around a NATIVE `<input type="radio">`.
+ *
+ * Native, deliberately, and not the package `RadioButton`: that control binds through
+ * `useControllable`, which seeds an internal signal ONCE from a raw prop and never re-reads it — so a
+ * write that the server refuses and this dialog reverts would leave the drawn radio showing a state
+ * the file is not in. Preact writes `checked` as a DOM property on every render, so a native input
+ * stays wherever the state says it is. The input is tokenized through `accent-color` rather than
+ * redrawn, so nothing here is a second radio family.
+ *
+ * The whole row is the target: a bare radio is ~14px, well under the 24px floor (WCAG 2.5.8), and a
+ * labelled control's target includes its label.
+ */
+.fsh-choice {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	column-gap: var(--space-3);
+	row-gap: var(--space-1);
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.fsh-choice:hover {
+	background: var(--surface-1);
+}
+/* The chosen row carries a tonal tint AND the radio's own mark — never tone alone. */
+.fsh-choice[data-chosen="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
+}
+.fsh-choice:has(.fsh-choice__input:focus-visible) {
+	box-shadow: var(--focus-ring-shadow);
+}
+.fsh-choice__input {
+	grid-column: 1;
+	grid-row: 1 / span 2;
+	inline-size: 1rem;
+	block-size: 1rem;
+	margin: 0;
+	margin-block-start: 0.15rem;
+	accent-color: var(--primary);
+	cursor: pointer;
+}
+.fsh-choice__label {
+	grid-column: 2;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.fsh-choice__glyph {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+.fsh-choice[data-chosen="true"] .fsh-choice__glyph {
+	color: var(--primary);
+}
+.fsh-choice__note {
+	grid-column: 2;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.45;
+}
+
+/* The read-only rendering for a viewer without `canManage` — a fact, with no control beside it. */
+.fsh-readonly {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.fsh-readonly__mark {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Share: the terms of a new link */
+.fsh-terms {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+/* Also the `<legend>` of the expiry set — hence the explicit `padding`, which a legend carries. */
+.fsh-terms__label {
+	margin: 0;
+	margin-block-end: var(--space-2);
+	padding: 0;
+	color: var(--text-secondary);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+}
+.fsh-terms__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+.fsh-terms__limit {
+	inline-size: 9rem;
+}
+
+/*
+ * The expiry presets. A wrapping row of native radios rather than a segmented control: four labels
+ * in a `--overlay-w-md` panel is exactly the width at which a `nowrap` segmented control becomes a
+ * hidden horizontal scroller (the defect Decision #65 measured at 375px), and a wrap costs nothing.
+ */
+.fsh-optset {
+	margin: 0;
+	padding: 0;
+	border: none;
+	min-inline-size: 0;
+}
+.fsh-opts {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1) var(--space-4);
+	flex-wrap: wrap;
+}
+.fsh-opt {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fld-hit);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	cursor: pointer;
+}
+.fsh-opt__input {
+	inline-size: 1rem;
+	block-size: 1rem;
+	margin: 0;
+	accent-color: var(--primary);
+	cursor: pointer;
+}
+/* #endregion */
+
+/* #region Share: the minted link */
+.fsh-link {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.fsh-link__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+}
+.fsh-link__url {
+	flex: 1 1 16rem;
+	min-inline-size: 0;
+	block-size: var(--fld-h-md);
+	padding-inline: var(--fld-px-md);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--fld-r-md);
+	background: var(--fld-readonly-bg);
+	color: var(--fld-rest-fg);
+	font-size: var(--fld-fs-md);
+	/* The slug is an opaque token, so it is read character by character or not at all. */
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	text-overflow: ellipsis;
+}
+.fsh-link__url:focus-visible {
+	outline: none;
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The credential statement. Calm, not an alarm: this is how a share link works, not a warning that
+ * something has gone wrong — and a page that shouts at every share teaches people to stop reading.
+ */
+.fsh-link__credential {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+.fsh-link__credential > :first-child {
+	flex: none;
+	margin-block-start: 0.15em;
+}
+
+.fsh-link__terms {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+.fsh-link__term {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.fsh-link__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	margin-block-start: var(--space-1);
+}
+/* #endregion */
+
+/* #region Provider chip */
+/*
+ * A connection's identity and its health in one mark.
+ *
+ * Three redundant channels carry the state: the pip's SHAPE, its tone, and the sentence in the
+ * Tooltip — which is also the control's accessible name, since the chip has no visible text (§B.6,
+ * and "label in name" for a control whose name is not on screen).
+ */
+.prov-chip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+	padding: 0;
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+.prov-chip:hover:not(:disabled) {
+	background: var(--surface-1);
+	border-color: var(--outline);
+}
+.prov-chip:active:not(:disabled) {
+	transform: scale(0.97);
+}
+.prov-chip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.prov-chip:disabled {
+	cursor: not-allowed;
+	border-color: color-mix(in srgb, var(--border-subtle) var(--fld-disabled-mix), transparent);
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), transparent);
+}
+.prov-chip[aria-pressed="true"] {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
+}
+
+/* The non-interactive presentation — same geometry, no affordance. */
+.prov-chip--static {
+	cursor: default;
+	border-style: dashed;
+}
+
+.prov-chip__mark {
+	display: inline-flex;
+	color: var(--on-surface);
+}
+
+/*
+ * The state pip. It overhangs the corner rather than sitting inside, so it never crops the brand
+ * mark it is qualifying.
+ */
+.prov-chip__pip {
+	position: absolute;
+	inset-block-start: -0.3rem;
+	inset-inline-end: -0.3rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+	border-radius: var(--radius-full);
+	border: 2px solid var(--surface);
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+.prov-chip[data-tone="ok"] .prov-chip__pip {
+	background: var(--success);
+	color: var(--on-success);
+}
+.prov-chip[data-tone="warn"] .prov-chip__pip {
+	background: var(--warning);
+	color: var(--on-warning);
+}
+.prov-chip[data-tone="off"] .prov-chip__pip {
+	background: var(--surface-3);
+	color: var(--text-secondary);
+}
+
+.prov-chips {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Drive: the connection rail */
+.drv__rail {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding-block-end: var(--space-3);
+	border-block-end: var(--hairline);
+}
+.drv__railnote {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+/* #endregion */
+
+/* #region Drive: the breadcrumb trail */
+/*
+ * Hand-rolled rather than the shared `AssetBreadcrumbs`.
+ *
+ * That component gives every crumb a real `url` as well as a `command`, which is exactly right for a
+ * hub folder — middle-click, Cmd-click and "copy link address" all keep working. A level inside a
+ * connected drive has no route on this origin, so there is no href to offer: a trail that rendered
+ * anchors here would advertise three interactions that cannot work.
+ */
+.drv-crumbs {
+	flex: none;
+	display: flex;
+	align-items: center;
+	min-inline-size: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.drv-crumbs::-webkit-scrollbar {
+	display: none;
+}
+.drv-crumbs__list {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	white-space: nowrap;
+}
+.drv-crumbs__item {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+.drv-crumbs__sep {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+.drv-crumbs__btn {
+	display: inline-flex;
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.drv-crumbs__btn:hover {
+	background: var(--surface-1);
+	color: var(--on-surface);
+}
+.drv-crumbs__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.drv-crumbs__here {
+	display: inline-flex;
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-2);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+}
+/* #endregion */
+
+/* #region Drive: the column */
+.drv__column {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding-inline-end: var(--space-1);
+}
+
+.drv-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*
+ * The row and its "open at the provider" link are SIBLINGS in one flex line, never nested. An anchor
+ * inside a button is invalid content and in practice unreachable, because the browser decides which
+ * of two nested interactive elements an activation belongs to and pointer and keyboard disagree.
+ */
+.drv-item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+.drv-item__out {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	border-radius: var(--radius-sm);
+	color: var(--text-secondary);
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.drv-item__out:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.drv-item__out:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.drv-row {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: 3rem;
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.drv-row:hover {
+	background: var(--surface-1);
+}
+.drv-row:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.drv-row[aria-pressed="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
+}
+.drv-row:disabled {
+	cursor: not-allowed;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), transparent);
+}
+
+.drv-row__glyph {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+.drv-row[aria-pressed="true"] .drv-row__glyph {
+	color: var(--primary);
+}
+
+.drv-row__body {
+	min-inline-size: 0;
+}
+.drv-row__name {
+	margin: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.drv-row__meta {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.drv-row__tail {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--text-secondary);
+}
+
+/* Below a narrow panel the secondary line drops rather than the name truncating to nothing. */
+@container fov-body (max-width: 26rem) {
+	.drv-row__meta {
+		display: none;
+	}
+}
+
+.drv__more {
+	display: flex;
+	justify-content: center;
+	padding-block: var(--space-4);
+}
+/* #endregion */
+
+/* #region Drive: the two ways back */
+.drv-modes {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+.drv-modes__legend {
+	padding: 0;
+	margin-block-end: var(--space-1);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+/* Same construction, and for the same reason, as `.fsh-choice` — see the note there. */
+.drv-mode {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: start;
+	column-gap: var(--space-3);
+	row-gap: var(--space-1);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.drv-mode:hover {
+	background: var(--surface-1);
+}
+.drv-mode[data-chosen="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
+}
+.drv-mode:has(.drv-mode__input:focus-visible) {
+	box-shadow: var(--focus-ring-shadow);
+}
+.drv-mode--blocked {
+	cursor: not-allowed;
+}
+.drv-mode__input {
+	grid-column: 1;
+	grid-row: 1 / span 2;
+	inline-size: 1rem;
+	block-size: 1rem;
+	margin: 0;
+	margin-block-start: 0.15rem;
+	accent-color: var(--primary);
+	cursor: inherit;
+}
+.drv-mode__label {
+	grid-column: 2;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.drv-mode__note {
+	grid-column: 2;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.45;
+}
+/*
+ * The quota consequence is the entire difference between the two flows, so it is set apart from the
+ * rest of the sentence by weight — never by a colour that a reader may not separate.
+ */
+.drv-mode__cost {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+/* #endregion */
+
+/* #region States */
+.fov-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-8);
+	padding-inline: var(--space-4);
+	text-align: center;
+}
+.fov-state__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+.fov-state__note {
+	max-inline-size: 34rem;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+}
+.fov-state__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	justify-content: center;
+	margin-block-start: var(--space-2);
+}
+
+/*
+ * A re-consent prompt is a state, not an error: the drive has not failed, the permission has lapsed.
+ * It gets the warning tone and a way forward, never a red wall.
+ */
+.fov-state--consent .fov-state__title {
+	color: var(--on-surface);
+}
+.fov-state--error .fov-state__title {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Narrow panels */
+@container fov-body (max-width: 30rem) {
+	.fsh-terms__row {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+	.fsh-terms__limit {
+		inline-size: 100%;
+	}
+}
+
+@media (max-width: 30rem) {
+	.fsh,
+	.drv {
+		padding: var(--space-2);
+	}
+	.fsh__panel,
+	.drv__panel {
+		inline-size: 100%;
+	}
+	.drv__panel {
+		block-size: calc(100dvh - var(--space-4));
+	}
+	.fsh__head,
+	.drv__head,
+	.fsh__body,
+	.drv__body,
+	.fsh__foot,
+	.drv__foot {
+		padding-inline: var(--space-4);
+	}
+}
+/* #endregion */

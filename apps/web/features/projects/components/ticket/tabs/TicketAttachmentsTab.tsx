@@ -2,6 +2,9 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
+import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
+import { openPicker } from "@web/features/files/core/files-state.ts";
+import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import type {
@@ -37,6 +40,15 @@ import { GridIcon, ListIcon } from "../../file-glyphs.tsx";
  * seat gets the grid and the downloads and no drop zone, and is told where its own uploads belong
  * rather than left to wonder.
  */
+/**
+ * The Asset Picker routing key.
+ *
+ * A module constant rather than a per-instance id, because exactly one ticket modal is open at a
+ * time — the modal STACK replaces a frame rather than covering it (Decision #65), so two attachment
+ * tabs cannot be mounted at once and there is nothing for a second key to disambiguate.
+ */
+const PICKER_ID = "ticket-attachments";
+
 export interface TicketAttachmentsTabProps {
 	card: BoardCard;
 	/** Whether the viewer may attach files here (client side). */
@@ -66,6 +78,19 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 		const names = Array.from(files ?? []).map((f) => f.name);
 		if (names.length === 0) return;
 		props.onPatch({ attachmentCount: card.attachmentCount + names.length });
+	}
+
+	/**
+	 * Attach reference material the client already has, from the Asset Picker.
+	 *
+	 * Counted the same way a device upload is, because at this stage of the board both are the same
+	 * kind of claim — a count that is honest about how many things were added and does not pretend the
+	 * bytes have gone anywhere. The library path will diverge when the backend lands: a pick is a
+	 * LINK to an existing asset and never a second copy, so it costs the client no additional storage.
+	 */
+	function stageAssets(assets: AssetItem[]): void {
+		if (assets.length === 0) return;
+		props.onPatch({ attachmentCount: card.attachmentCount + assets.length });
 	}
 
 	function applySort(key: FileSortKey): void {
@@ -103,6 +128,19 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 				{canUpload
 					? (
 						<>
+							<button
+								type="button"
+								class="tkv-addfile"
+								onClick={() =>
+									openPicker({
+										requesterId: PICKER_ID,
+										title: "Attach from your files",
+										multiple: true,
+									})}
+							>
+								<Icon name="folder" size="xs" />
+								From library
+							</button>
 							<button
 								type="button"
 								class="tkv-addfile"
@@ -172,6 +210,14 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 					</p>
 				)
 				: null}
+
+			{
+				/* Mounted unconditionally, and NOT behind `canUpload`: an island is only in the page's
+			    island graph once it renders, and that graph is what carries its stylesheet — a picker
+			    that appeared with the first client seat would paint its first frame unstyled. It draws
+			    nothing until it is opened, and only a client seat has a control that opens it. */
+			}
+			<AssetPicker requesterId={PICKER_ID} onPick={stageAssets} />
 		</div>
 	);
 }
