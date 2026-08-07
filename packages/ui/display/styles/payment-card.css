@@ -1,0 +1,862 @@
+/*
+ * payment-card — the saved-card instrument (`ui-paycard`) and its picker cell (`ui-paycard-option`).
+ * DESIGN_SYSTEM.md §B.4 (separation) · §B.5 (motion) · §B.7 (artwork is NOT the icon set) ·
+ * §B.9 (card geometry) · §C.1 (`@projective/ui/display` roster).
+ *
+ * TOKEN-ONLY. Every colour is a runtime token, a `color-mix()` of runtime tokens, or a token
+ * expression delivered by the component through `--pc-gradient` / `--pc-chip` / `--pc-sheen` /
+ * `--pc-fg`. There is no raw hex, no brand hex and no remote image anywhere in this file — a
+ * published surface runs under a strict CSP with no third-party origins, so card art is COMPUTED.
+ * No money-semantic token (`--success`/`--warning`/`--danger`) anchors a face either: a card is an
+ * instrument, not a status, and an alarm colour must never sit on one. The single `--warning`
+ * reference below is on the EXPIRED mark, which genuinely is a status.
+ *
+ * CSS LOGICAL PROPERTIES ONLY, so the whole instrument mirrors under `dir="rtl"` with zero
+ * horizontal overflow. The one physical direction on the face — the diagonal light sweep — flips
+ * wholesale by multiplying `--pc-dir`, so a card lit from the reading edge in one locale is lit from
+ * the reading edge in the other.
+ *
+ * GEOMETRY IS CONTAINER-DRIVEN, NOT VIEWPORT-DRIVEN. The shell eats ~344px of width on a laned
+ * surface, so a viewport media query here would measure a box the card does not live in. The root
+ * declares a named `@container`, and every interior step is asked of the CARD.
+ */
+
+/* #region Face tokens */
+.ui-paycard {
+	/*
+	 * ISO-7810 ID-1 (CR80): 85.60mm x 53.98mm = 1.5858:1. The real ratio, not a rounded 1.6 — at
+	 * `lg` the difference is a visible 3px on the block edge.
+	 */
+	--pc-ratio: 1.586;
+	--pc-max: 21.5rem;
+	--pc-radius: var(--radius-lg);
+	--pc-pad: var(--space-5);
+	--pc-gap: var(--space-3);
+
+	/* Interior type. Stepped by container query below rather than by a fluid `cqi` free-for-all. */
+	--pc-fs-pan: var(--text-xl);
+	--pc-fs-value: var(--text-sm);
+	--pc-fs-label: var(--text-2xs);
+	--pc-fs-mark: var(--text-2xs);
+	--pc-track-label: 0.14em;
+	--pc-track-pan: 0.08em;
+
+	/*
+	 * Artwork geometry. `--pc-wave-stroke` is the contactless mark's OWN weight: `icon.css` is
+	 * explicit that artwork does not join the icon set and must not be normalised to `--icon-stroke`,
+	 * so the arcs carry a weight tuned to the plate beside them rather than to a text label.
+	 */
+	--pc-chip-w: 2.75rem;
+	--pc-wave-h: 1.5rem;
+	--pc-wave-stroke: 1.6;
+	--pc-stripe-h: 2.75rem;
+	--pc-perspective: 1400px;
+
+	/*
+	 * Art, overridden per card by the component. The fallbacks are what a consumer sees if it forgets
+	 * to pass art at all, and they are deliberately a plain neutral plate rather than a guessed
+	 * brand: an unresolved card must look unresolved.
+	 */
+	--pc-gradient: linear-gradient(
+		140deg,
+		color-mix(in srgb, var(--on-surface) 12%, var(--surface-2)) 0%,
+		color-mix(in srgb, var(--on-surface) 4%, var(--surface-2)) 100%
+	);
+	--pc-chip: color-mix(in srgb, var(--on-surface) 28%, var(--surface-3));
+	--pc-sheen: color-mix(in srgb, var(--on-surface) 10%, transparent);
+	--pc-fg: var(--on-surface);
+
+	/*
+	 * Derived plate tones. The stripe and the signature panel are ABSTRACTIONS of a physical card,
+	 * not photographs of one, so they are mixed from the theme's own ink and ground and re-tone with
+	 * it — a stripe pinned to near-black would be a raw hex and would strand the face in dark mode.
+	 */
+	--pc-stripe-tone: color-mix(in srgb, var(--on-surface) 82%, var(--surface));
+	--pc-signature-tone: color-mix(in srgb, var(--surface) 88%, var(--on-surface));
+	--pc-signature-ink: color-mix(in srgb, var(--on-surface) 72%, var(--surface));
+
+	/* Sweep direction: +1 in LTR, -1 in RTL. Multiplied, never branched on. */
+	--pc-dir: 1;
+}
+
+[dir="rtl"] .ui-paycard {
+	--pc-dir: -1;
+}
+
+/*
+ * High contrast pulls the decorative layers off entirely rather than dimming them. The instrument
+ * stays identifiable by its wordmark, its geometry and its printed fields, which is exactly what the
+ * overlay is protecting.
+ */
+:root[data-contrast="high"] .ui-paycard {
+	--pc-sheen: transparent;
+}
+/* #endregion */
+
+/* #region Sizes */
+.ui-paycard--sm {
+	--pc-max: 15rem;
+	--pc-radius: var(--radius-base);
+	--pc-pad: var(--space-3);
+	--pc-gap: var(--space-2);
+	--pc-fs-pan: var(--text-base);
+	--pc-fs-value: var(--text-2xs);
+	--pc-chip-w: 1.875rem;
+	--pc-wave-h: 1rem;
+	--pc-stripe-h: 1.75rem;
+}
+
+.ui-paycard--md {
+	--pc-max: 21.5rem;
+}
+
+/*
+ * `--net-*` (visa · mastercard · amex · discover · unionpay · vault · unknown) carries no rule here
+ * BY DESIGN and is the file's one intentional styling hook. The face is already themed by the art
+ * expressions the component passes in, so a rule keyed on the network would be a second, competing
+ * source of truth for the same colour. The modifier exists so a CONSUMER can reach one network
+ * without re-deriving it from the brand string.
+ */
+
+.ui-paycard--lg {
+	--pc-max: 26.5rem;
+	--pc-radius: var(--radius-xl);
+	--pc-pad: var(--space-6);
+	--pc-fs-pan: var(--text-2xl);
+	--pc-fs-value: var(--text-md);
+	--pc-fs-label: var(--text-xs);
+	--pc-chip-w: 3.25rem;
+	--pc-wave-h: 1.75rem;
+	--pc-stripe-h: 3.25rem;
+}
+/* #endregion */
+
+/* #region The object */
+.ui-paycard {
+	position: relative;
+	display: block;
+	inline-size: 100%;
+	max-inline-size: var(--pc-max);
+	aspect-ratio: var(--pc-ratio);
+	/*
+	 * The card is its own measuring context. `inline-size` containment is safe alongside
+	 * `aspect-ratio` because the block size is resolved from the ratio, never from the contents.
+	 */
+	container: ui-paycard / inline-size;
+	perspective: var(--pc-perspective);
+	color: var(--pc-fg);
+	font-family: var(--font-sans);
+}
+
+.ui-paycard__flipper {
+	position: relative;
+	inline-size: 100%;
+	block-size: 100%;
+	transform-style: preserve-3d;
+	transform: rotateY(0deg);
+	transition: transform var(--dur-slow) var(--ease-emphasized);
+}
+
+.ui-paycard--flipped .ui-paycard__flipper {
+	transform: rotateY(180deg);
+}
+
+.ui-paycard__face {
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	display: grid;
+	padding: var(--pc-pad);
+	/*
+	 * No stroke. A card is the one object §B.4 would allow a contour and it declines: definition
+	 * comes from the gradient edge and the elevation, which is what makes it read as an OBJECT rather
+	 * than a boxed region.
+	 */
+	border: 0;
+	border-radius: var(--pc-radius);
+	overflow: clip;
+	background-color: var(--surface-2);
+	background-image: var(--pc-gradient);
+	box-shadow: var(--elevation-medium);
+	backface-visibility: hidden;
+	color: var(--pc-fg);
+}
+
+.ui-paycard__face--front {
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	gap: var(--pc-gap);
+}
+
+.ui-paycard__face--back {
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	gap: var(--pc-gap);
+	transform: rotateY(180deg);
+}
+/* #endregion */
+
+/* #region Light layers */
+/*
+ * The sheen sweep. CSS-only by construction: a gradient bar that crosses the face on hover/focus,
+ * driven entirely by a keyframe. Nothing here reads a pointer, so a card with no JS at all still
+ * has its highlight.
+ */
+.ui-paycard__sheen {
+	position: absolute;
+	inset-block: -30%;
+	inset-inline-start: 0;
+	inline-size: 100%;
+	pointer-events: none;
+	background-image: linear-gradient(
+		105deg,
+		transparent 40%,
+		var(--pc-sheen) 50%,
+		transparent 60%
+	);
+	opacity: 0;
+}
+
+.ui-paycard:hover .ui-paycard__sheen,
+.ui-paycard:focus-within .ui-paycard__sheen,
+.ui-paycard-option:hover .ui-paycard__sheen,
+.ui-paycard-option:focus-visible .ui-paycard__sheen {
+	animation: ui-paycard-sheen var(--dur-slow) var(--ease-standard);
+}
+
+@keyframes ui-paycard-sheen {
+	from {
+		opacity: 1;
+		transform: translate(calc(-130% * var(--pc-dir)));
+	}
+
+	to {
+		opacity: 1;
+		transform: translate(calc(130% * var(--pc-dir)));
+	}
+}
+
+/*
+ * The foil. Its PRESENCE encodes "this card spends an entity's money"; its MOVEMENT encodes nothing,
+ * which is why the layer stays fully visible under reduced motion and only the drift stops. The
+ * iridescence is three brand accents at low strength — never a semantic ramp.
+ */
+.ui-paycard__foil {
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	pointer-events: none;
+	background-image: repeating-linear-gradient(
+		calc(115deg * var(--pc-dir)),
+		color-mix(in srgb, var(--primary) 16%, transparent) 0%,
+		color-mix(in srgb, var(--secondary) 16%, transparent) 9%,
+		color-mix(in srgb, var(--tertiary) 16%, transparent) 18%,
+		transparent 30%
+	);
+	background-size: 220% 220%;
+	background-position: 0% 50%;
+}
+
+.ui-paycard--holo:hover .ui-paycard__foil,
+.ui-paycard--holo:focus-within .ui-paycard__foil {
+	animation: ui-paycard-foil var(--dur-slow) var(--ease-standard) both;
+}
+
+@keyframes ui-paycard-foil {
+	from {
+		background-position: 0% 50%;
+	}
+
+	to {
+		background-position: 100% 50%;
+	}
+}
+
+/*
+ * The OPTIONAL pointer-tracked highlight. Rendered only when the consumer opts in, and consuming
+ * nothing but the two custom properties the component writes. Under reduced motion it is removed
+ * outright — a highlight chasing a cursor IS motion, and there is no meaningful "final state" for it
+ * to jump to.
+ */
+.ui-paycard__glare {
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	pointer-events: none;
+	background-image: radial-gradient(
+		42% 62% at var(--pc-px, 50%) var(--pc-py, 50%),
+		var(--pc-sheen),
+		transparent 72%
+	);
+}
+
+/*
+ * A retired instrument loses its art under a neutral veil AND gains a hatch AND says the word — tone
+ * is the last of three channels here, never the first, so the state survives every colour-vision
+ * overlay and a greyscale print.
+ */
+.ui-paycard__veil {
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	pointer-events: none;
+	background-color: color-mix(in srgb, var(--surface-2) var(--tint-heavy), transparent);
+	background-image: repeating-linear-gradient(
+		calc(-45deg * var(--pc-dir)),
+		transparent 0 7px,
+		var(--hatch-color) 7px 8px
+	);
+}
+
+.ui-paycard--expired .ui-paycard__face {
+	box-shadow: none;
+}
+/* #endregion */
+
+/* #region Front — rows */
+.ui-paycard__row {
+	display: flex;
+	gap: var(--pc-gap);
+	min-inline-size: 0;
+}
+
+.ui-paycard__row--top {
+	align-items: flex-start;
+	justify-content: space-between;
+}
+
+.ui-paycard__row--bottom {
+	align-items: flex-end;
+	justify-content: space-between;
+}
+/* #endregion */
+
+/* #region Front — chip & contactless (ARTWORK, not the icon set) */
+/*
+ * `icon.css` is explicit that artwork does not take `.ui-icon` and must not be normalised to the
+ * icon stroke. A chip plate and a contactless mark are artwork: they carry their own geometry.
+ */
+.ui-paycard__emv {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex: none;
+}
+
+.ui-paycard__chip {
+	position: relative;
+	flex: none;
+	inline-size: var(--pc-chip-w);
+	/* 8.7:6.4 — the ISO-7816 contact plate is wider than it is tall by about 1.36. */
+	aspect-ratio: 1.36;
+	border-radius: var(--radius-xs);
+	background-image: linear-gradient(
+		150deg,
+		color-mix(in srgb, var(--pc-chip) 100%, transparent) 0%,
+		color-mix(in srgb, var(--pc-chip) 55%, var(--surface-3)) 100%
+	);
+}
+
+/* Contact traces drawn as gradient hairlines — a texture, not a border, so no contour is implied. */
+.ui-paycard__chip-trace {
+	position: absolute;
+	inset-block: 18%;
+	inset-inline: 16%;
+	background-image:
+		linear-gradient(
+		180deg,
+		transparent calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% + 0.5px),
+		transparent calc(50% + 0.5px)
+	),
+		linear-gradient(
+		90deg,
+		transparent calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% - 0.5px),
+		color-mix(in srgb, var(--on-surface) 24%, transparent) calc(50% + 0.5px),
+		transparent calc(50% + 0.5px)
+	);
+}
+
+.ui-paycard__wave {
+	flex: none;
+	block-size: var(--pc-wave-h);
+	inline-size: auto;
+	stroke-width: var(--pc-wave-stroke);
+	opacity: 0.75;
+	/* A contactless mark points away from the chip in both writing directions. */
+	transform: scaleX(var(--pc-dir));
+}
+/* #endregion */
+
+/* #region Front — status marks */
+.ui-paycard__marks {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-1);
+	flex: none;
+}
+
+.ui-paycard__mark {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: 2px;
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	font-size: var(--pc-fs-mark);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--pc-track-label);
+	text-transform: uppercase;
+	white-space: nowrap;
+	background-color: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--pc-fg);
+}
+
+.ui-paycard__mark-text {
+	white-space: nowrap;
+}
+
+.ui-paycard__mark--default {
+	background-color: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+}
+
+.ui-paycard__mark--expired {
+	background-color: color-mix(in srgb, var(--warning) var(--tint-strong), transparent);
+}
+/* #endregion */
+
+/* #region Front — the PAN zone */
+/*
+ * Only the trailing group holds a fact. The masked groups are the SHAPE of a card number and are
+ * hidden from assistive tech in the markup, so they can never be mistaken for digits we hold.
+ */
+.ui-paycard__pan {
+	display: flex;
+	align-items: center;
+	align-self: center;
+	gap: var(--space-3);
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--pc-fs-pan);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: var(--pc-track-pan);
+	/* Digits are a number, not prose: the group order is fixed in every locale. */
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+.ui-paycard__pan-group {
+	white-space: nowrap;
+}
+
+/*
+ * `opacity`, not `color-mix(… currentColor …)`. A `currentColor` mix that is itself defining `color`
+ * is legal per spec and dropped by engines in practice — the exact trap that once left three masked
+ * groups at full weight, competing with the one group that carries a fact.
+ */
+.ui-paycard__pan-group--masked {
+	opacity: 0.55;
+	letter-spacing: 0.06em;
+}
+
+/* The only real digits on the face carry the only full weight, so the hierarchy is legible before
+   it is read. */
+.ui-paycard__pan-group--live {
+	font-weight: var(--fw-bold);
+}
+
+.ui-paycard__pan--empty {
+	block-size: 0;
+}
+/* #endregion */
+
+/* #region Front — printed fields */
+.ui-paycard__fields {
+	display: flex;
+	align-items: flex-end;
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
+
+.ui-paycard__field {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.ui-paycard__field-label {
+	font-size: var(--pc-fs-label);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--pc-track-label);
+	text-transform: uppercase;
+	opacity: 0.72;
+	white-space: nowrap;
+}
+
+.ui-paycard__field-value {
+	font-size: var(--pc-fs-value);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums lining-nums;
+	letter-spacing: 0.06em;
+	white-space: nowrap;
+}
+
+.ui-paycard__field-value--name {
+	/* An embossed holder name is uppercase and tracked; the STORED value is never mutated. */
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	font-variant-numeric: normal;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* The date is four characters and a slash — it never shrinks; the name is the flexible one. */
+.ui-paycard__field--expiry {
+	flex: none;
+}
+
+.ui-paycard__field--holder {
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+/* #endregion */
+
+/* #region Front — network wordmark */
+/*
+ * A wordmark, not a logo. This component ships no third-party trademark artwork: there is no asset
+ * host under the CSP, and reproducing a network's mark is a licensing claim a design system should
+ * not make on its consumers' behalf.
+ */
+.ui-paycard__network {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	flex: none;
+	text-align: end;
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+.ui-paycard__network-name {
+	font-size: var(--pc-fs-value);
+	font-weight: var(--fw-bold);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.ui-paycard__network-hint {
+	font-size: var(--pc-fs-label);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--pc-track-label);
+	text-transform: uppercase;
+	white-space: nowrap;
+	opacity: 0.72;
+}
+/* #endregion */
+
+/* #region Back face */
+/* Bleeds to both edges by cancelling the face padding on the inline axis. */
+.ui-paycard__stripe {
+	block-size: var(--pc-stripe-h);
+	margin-inline: calc(var(--pc-pad) * -1);
+	margin-block-start: calc(var(--pc-pad) * -1 + var(--space-4));
+	background-color: var(--pc-stripe-tone);
+}
+
+.ui-paycard__sigrow {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	align-self: center;
+	min-inline-size: 0;
+}
+
+/*
+ * The signature panel: a pale plate ruled with hatching. The hatch is the shared `--hatch-color`
+ * token, so it holds up under the high-contrast and colour-vision overlays like every other
+ * non-colour shape channel on the platform.
+ */
+.ui-paycard__signature {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	block-size: 1.75rem;
+	border-radius: var(--radius-xs);
+	background-color: var(--pc-signature-tone);
+	background-image: repeating-linear-gradient(
+		calc(-45deg * var(--pc-dir)),
+		transparent 0 5px,
+		var(--hatch-color) 5px 6px
+	);
+}
+
+/*
+ * ORNAMENT. Three bullets in the shape of a security-code box. There is no input, no value, no
+ * reveal affordance and no label implying a stored code anywhere in this block or in the BEM
+ * inventory — the reverse's accessible name states outright that no code is held.
+ */
+.ui-paycard__cvv {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 3.25rem;
+	block-size: 1.75rem;
+	border-radius: var(--radius-xs);
+	background-color: var(--pc-signature-tone);
+	color: var(--pc-signature-ink);
+}
+
+.ui-paycard__cvv-dots {
+	font-size: var(--pc-fs-value);
+	letter-spacing: 0.12em;
+	line-height: 1;
+}
+
+.ui-paycard__backfoot {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.ui-paycard__note {
+	min-inline-size: 0;
+	font-size: var(--pc-fs-label);
+	letter-spacing: var(--pc-track-label);
+	text-transform: uppercase;
+	opacity: 0.72;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Flip control */
+/*
+ * Deliberately OUTSIDE the flipper. A face goes `aria-hidden` + `inert` the moment it turns away, so
+ * a control living on one would leave the accessibility tree exactly when it is needed. Out here it
+ * persists across the flip and is the card's only tab stop.
+ */
+.ui-paycard__flip {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	z-index: var(--z-raised);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background-color: color-mix(in srgb, var(--surface-2) 72%, transparent);
+	color: var(--pc-fg);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-paycard__flip:hover {
+	background-color: var(--surface-2);
+}
+
+.ui-paycard__flip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* The glyph turns with the card, so the control reads as the same object in both states. */
+.ui-paycard__flip .ui-icon {
+	transform: rotate(0deg);
+	transition: transform var(--dur-medium) var(--ease-emphasized);
+}
+
+.ui-paycard__flip[aria-pressed="true"] .ui-icon {
+	transform: rotate(180deg);
+}
+/* #endregion */
+
+/* #region Picker cell */
+/*
+ * The cell restates the size ceiling rather than reading it off the card inside it: a custom
+ * property set on `.ui-paycard` inherits DOWN, never up to its own wrapper, so a cell that trusted
+ * `--pc-max` from its child would silently render a 21.5rem focus ring around a 15rem card.
+ */
+.ui-paycard-option--sm {
+	--pc-max: 15rem;
+}
+
+.ui-paycard-option--md {
+	--pc-max: 21.5rem;
+}
+
+.ui-paycard-option--lg {
+	--pc-max: 26.5rem;
+}
+
+.ui-paycard-option {
+	position: relative;
+	display: block;
+	inline-size: 100%;
+	max-inline-size: var(--pc-max);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-xl);
+	background: none;
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-paycard-option:hover:not(:disabled) {
+	transform: translateY(-4px);
+}
+
+.ui-paycard-option:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * `opacity` on the whole cell is the one place this file departs from §A.7's "fade the ink, never
+ * the box". A card face is an IMAGE — a gradient, a chip plate, a stripe — with no ink/border pair
+ * to fade independently, so the alternative would be a second unavailable-face treatment invented
+ * here. The value is the same 0.55 the field contract measures at 5.04:1, and `pointer-events` is
+ * deliberately left alone: switching it off silently cancels the `not-allowed` cursor beside it.
+ */
+.ui-paycard-option:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+/*
+ * Selection spends THREE channels: a ring, a lift, and a drawn tick that appears. The tick is what
+ * survives a colour-vision overlay and a greyscale render, and `aria-checked` is what carries the
+ * fact itself.
+ */
+.ui-paycard-option--checked {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+}
+
+.ui-paycard-option__mark {
+	position: absolute;
+	inset-block-start: calc(var(--space-2) * -1);
+	inset-inline-start: calc(var(--space-2) * -1);
+	display: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border-radius: var(--radius-full);
+	background-color: var(--primary);
+	color: var(--on-primary);
+}
+
+.ui-paycard-option--checked .ui-paycard-option__mark {
+	display: inline-flex;
+}
+/* #endregion */
+
+/* #region Container steps */
+/*
+ * Asked of the CARD, never the viewport. Below ~250px the printed fields stop fitting on one line
+ * with the wordmark, so the wave and the programme hint drop first — they are the two elements whose
+ * absence costs the reader nothing (the network is still named, and the accessible name is intact).
+ */
+@container ui-paycard (max-width: 250px) {
+	.ui-paycard__face {
+		--pc-pad: var(--space-3);
+		--pc-gap: var(--space-2);
+		--pc-fs-pan: var(--text-base);
+		--pc-fs-value: var(--text-2xs);
+	}
+
+	.ui-paycard__wave,
+	.ui-paycard__network-hint {
+		display: none;
+	}
+
+	.ui-paycard__fields {
+		gap: var(--space-3);
+	}
+
+	.ui-paycard__pan {
+		gap: var(--space-2);
+	}
+}
+
+/*
+ * Under ~190px the card is a thumbnail: the holder name and the mark labels are unreadable rather
+ * than merely tight, and a truncated name printed on a card is worse than no name. The `last4`, the
+ * expiry and the network survive at every width, because those are the three facts that identify
+ * which instrument this is.
+ */
+@container ui-paycard (max-width: 190px) {
+	.ui-paycard__face {
+		--pc-pad: var(--space-2);
+		--pc-fs-pan: var(--text-sm);
+	}
+
+	.ui-paycard__field--holder,
+	.ui-paycard__mark-text {
+		display: none;
+	}
+
+	.ui-paycard__mark {
+		padding-inline: var(--space-1);
+	}
+
+	.ui-paycard__chip {
+		inline-size: 1.5rem;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+/*
+ * Jump to the FINAL state, never an in-between. The flip lands instantly; the sheen's final state is
+ * off-face (so no sweep); the foil holds its resting position but keeps its full opacity, because
+ * the foil's presence encodes "business card" and a state that ENCODES data may never be animated
+ * away. The pointer glare is removed outright — it has no final state to hold.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.ui-paycard__flipper,
+	.ui-paycard__flip,
+	.ui-paycard__flip .ui-icon,
+	.ui-paycard-option {
+		transition: none;
+	}
+
+	.ui-paycard:hover .ui-paycard__sheen,
+	.ui-paycard:focus-within .ui-paycard__sheen,
+	.ui-paycard-option:hover .ui-paycard__sheen,
+	.ui-paycard-option:focus-visible .ui-paycard__sheen {
+		animation: none;
+		opacity: 0;
+	}
+
+	.ui-paycard--holo:hover .ui-paycard__foil,
+	.ui-paycard--holo:focus-within .ui-paycard__foil {
+		animation: none;
+		background-position: 0% 50%;
+	}
+
+	.ui-paycard__glare {
+		display: none;
+	}
+
+	.ui-paycard-option:hover:not(:disabled) {
+		transform: none;
+	}
+}
+/* #endregion */

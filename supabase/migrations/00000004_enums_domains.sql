@@ -89,6 +89,54 @@ CREATE TYPE finance.entitlement_key AS ENUM (
     'dedicated_support',
     'negotiated_platform_fee'
 );
+
+-- The BASKET / checkout vocabulary (finance.baskets, finance.basket_items, finance.saved_cards).
+
+-- `purchasable_item_kind` — the closed vocabulary of everything that may be added to a basket. It is
+-- a real ENUM rather than a text CHECK because it is SHARED with the Zod SSOT
+-- (@projective/types/finance) member-for-member and in this exact order: the database and the types
+-- package are one vocabulary, not two that happen to agree today. Adding a kind is therefore a
+-- deliberate migration, which is the point — a typo'd literal must not be storable.
+--
+-- The three axes it encodes: WHAT is bought (a product, a ticket, a whole project/service, a
+-- session), WHO delivers it (a project the buyer owns vs a seller's catalogue service), and HOW it
+-- is delivered (pipeline ticket · one-off · single task · session · set of sessions · cohort).
+CREATE TYPE finance.purchasable_item_kind AS ENUM (
+    'digital_product',
+    'project_ticket',
+    'one_off_project',
+    'one_off_task',
+    'service_ticket',
+    'one_off_service',
+    'single_service_task',
+    'service_session',
+    'set_session',
+    'course_group_session'
+);
+
+-- `card_brand` — the safe DISPLAY fragment Stripe returns for a saved instrument. It is a display
+-- vocabulary, not a payment capability: nothing routes money by reading it.
+--
+-- ⚠️ Two axes are deliberately (and knowingly) collapsed here. Stripe returns the network in
+-- `card.brand` and the wallet wrapper separately in `card.wallet.type` — `apple_pay`/`google_pay`
+-- are wrappers around an underlying network card, not networks of their own. They are folded into
+-- this single enum because that is how the surface presents a saved instrument to a buyer ("Apple
+-- Pay" is what they recognise), at the cost of losing the underlying network when a wallet is used.
+--
+-- `vault` is the internal Projective Vault Card (platform-issued spend against a wallet balance,
+-- never a Stripe network card); `unknown` is the mandatory fallback so an unrecognised brand
+-- degrades to a neutral display fragment instead of failing the write.
+CREATE TYPE finance.card_brand AS ENUM (
+    'visa',
+    'mastercard',
+    'amex',
+    'discover',
+    'unionpay',
+    'apple_pay',
+    'google_pay',
+    'vault',
+    'unknown'
+);
 -- #endregion
 
 -- #region comms

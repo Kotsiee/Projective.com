@@ -1,0 +1,876 @@
+/*
+ * MoneyFlowPopover — the developer money-flow debugger, composed on DraggablePopover.
+ *
+ * Two blocks live here:
+ *   `ui-money-flow-popover` — the modifier applied to the DraggablePopover PANEL (glass + density).
+ *   `ui-money-flow`         — the content block rendered into that panel's body.
+ *
+ * Token-only, strict BEM, CSS logical properties throughout (so the whole window mirrors under
+ * `dir="rtl"` with no second rule set). Three rules in here are load-bearing and are called out at
+ * their site: the glass rides a ::before underlay, no property that ENCODES a value carries a
+ * transition, and secondary text never sits on the glass.
+ */
+
+/* #region Panel — glass + density */
+/*
+ * The blur is on a ::before underlay, NOT on `.ui-draggable-popover` itself. `backdrop-filter` on an
+ * element makes it the containing block for its `position: fixed` descendants, which would re-base
+ * every portalled overlay this window ever hosts to the window box (the glass-blur fixed-overlay
+ * trap this repo has hit repeatedly). The pseudo keeps the identical visual and leaves the panel
+ * transparent to fixed positioning.
+ */
+.ui-draggable-popover.ui-money-flow-popover {
+	background: transparent;
+}
+
+.ui-money-flow-popover::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--surface-1) var(--glass-veil-panel), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* The header takes the chrome veil — the computed floor at which `--on-surface` and
+   `--on-surface-variant` still clear 4.5:1 over an unknown backdrop. */
+.ui-money-flow-popover .ui-draggable-popover__header {
+	background: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
+}
+
+.ui-money-flow-popover .ui-draggable-popover__body {
+	padding: var(--space-2);
+}
+
+/* A quiet, non-numeric working indicator. It pulses `opacity` only — never a value channel. */
+.ui-money-flow-popover__busy {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
+}
+
+.ui-money-flow-popover__pulse {
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	/* Duration is derived from the ramp rather than authored: a literal would be a fifth timing
+	   value the motion contract does not know about, and it would not follow the a11y overlays. */
+	animation: ui-money-flow-pulse calc(var(--dur-slow) * 4) var(--ease-standard) infinite;
+}
+
+@keyframes ui-money-flow-pulse {
+	0%,
+	100% {
+		opacity: 0.35;
+	}
+
+	50% {
+		opacity: 1;
+	}
+}
+/* #endregion */
+
+/* #region Content shell */
+.ui-money-flow {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	/*
+	 * `--on-surface-variant`, never `--text-secondary`. The glass veil scale carries the variant tone
+	 * at 4.5:1 by construction; secondary text needs 84% opacity, at which point there is no glass
+	 * left. Secondary text does not go on glass (DESIGN_SYSTEM.md §A — the glass veil scale).
+	 */
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__subhead {
+	margin: 0;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__empty {
+	margin: 0;
+	padding-block: var(--space-2);
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__hint {
+	margin: 0;
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+/* #endregion */
+
+/* #region Scope strip */
+.ui-money-flow__scope {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	padding-block-end: var(--space-2);
+	/* One hairline on a single edge — a region seam, not a box (§B.4). */
+	border-block-end: var(--hairline);
+}
+
+.ui-money-flow__scopebadge {
+	flex: none;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-px);
+	border-radius: var(--radius-full);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	color: var(--primary);
+}
+
+.ui-money-flow__scopebadge[data-scope="team"] {
+	background: color-mix(in srgb, var(--secondary) var(--tint), transparent);
+	color: var(--secondary);
+}
+
+.ui-money-flow__scopebadge[data-scope="business"] {
+	background: color-mix(in srgb, var(--info) var(--tint), transparent);
+	color: var(--info);
+}
+
+.ui-money-flow__scopename {
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ui-money-flow__scopehandle {
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__scopeswitch {
+	margin-inline-start: auto;
+}
+/* #endregion */
+
+/* #region Wallet cards */
+.ui-money-flow__wallets {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+/*
+ * A tonal surface step + a selected accent bar — never a four-sided contour on a container (§B.4).
+ * The accent is `border-inline-start` alone: one edge, which is a seam, not a box.
+ */
+.ui-money-flow__wallet {
+	padding: var(--space-2);
+	border-radius: var(--radius-base);
+	border-inline-start: var(--space-px) solid transparent;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.ui-money-flow__wallet[data-selected="true"] {
+	border-inline-start-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+.ui-money-flow__wallethead {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+}
+
+/*
+ * The radio is visually hidden, so the ring is drawn on its label wrapper. `:has(:focus-visible)`
+ * rather than `:focus-within`: the latter also fires on a pointer click, painting a keyboard
+ * affordance at a moment the pointer already answered. Matches the `:focus-visible` idiom the
+ * `fields` radio/checkbox pair uses on the same hidden-input pattern.
+ */
+.ui-money-flow__wallethead:has(:focus-visible) {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-money-flow__pick {
+	flex: none;
+	inline-size: var(--space-3);
+	block-size: var(--space-3);
+	border-radius: var(--radius-full);
+	border: var(--fld-bw) solid var(--outline);
+	background: transparent;
+}
+
+.ui-money-flow__wallet[data-selected="true"] .ui-money-flow__pick {
+	border-color: var(--primary);
+	/* A ring, so the mark reads as filled without depending on an --on-primary pairing. */
+	box-shadow: inset 0 0 0 var(--space-px) var(--primary);
+}
+
+.ui-money-flow__walletname {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ui-money-flow__walletrole {
+	flex: none;
+	padding-inline: var(--space-2);
+	padding-block: var(--space-px);
+	border-radius: var(--radius-full);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__walletrole[data-role="platform"] {
+	background: color-mix(in srgb, var(--warning) var(--tint), transparent);
+	color: var(--warning);
+}
+
+.ui-money-flow__walletrole[data-role="escrow"] {
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	color: var(--primary);
+}
+
+.ui-money-flow__walletnote {
+	margin: 0;
+	padding-block-start: var(--space-1);
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+/* #endregion */
+
+/* #region The four-state meter */
+.ui-money-flow__meter {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+}
+
+.ui-money-flow__track {
+	position: relative;
+	display: flex;
+	inline-size: 100%;
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	overflow: hidden;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+/*
+ * THE RULE THIS FILE EXISTS TO HOLD.
+ *
+ * `--mf-seg` is the share, written by the island straight from the value. There is deliberately NO
+ * transition on `flex-basis` (or on any other property that encodes the datum). A meter that
+ * animates its own width tells the truth only while the animation clock is running: this codebase
+ * has already shipped one that animated `flex-grow` with a `backwards` fill and drew every share at
+ * zero width in a backgrounded tab, on a page about money. Motion here is confined to `opacity` and
+ * `transform`, neither of which carries a value.
+ *
+ * `min-inline-size: 0` is also deliberate: a sliver renders as a sliver. A minimum width would draw
+ * a share that does not exist, so a sub-1% segment gets an overhanging achromatic pip instead.
+ */
+.ui-money-flow__seg {
+	/* Longhands, not the `flex` shorthand: a shorthand carrying a `var()` is a pending-substitution
+	   value, so one bad custom property would take grow and shrink down with the basis. Here the
+	   basis is the datum, and it must fail alone if it fails at all. */
+	flex-grow: 0;
+	flex-shrink: 0;
+	flex-basis: var(--mf-seg, 0%);
+	min-inline-size: 0;
+	block-size: 100%;
+}
+
+.ui-money-flow__seg[data-bucket="available"] {
+	background: var(--primary);
+}
+
+/* Escrow is the same hue at a lower temperature: capital that is STORED, not blocked. */
+.ui-money-flow__seg[data-bucket="escrow"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-heavy), var(--surface-2));
+}
+
+.ui-money-flow__seg[data-bucket="pending"] {
+	background: color-mix(in srgb, var(--secondary) var(--tint-heavy), var(--surface-2));
+}
+
+.ui-money-flow__seg[data-sliver="true"] {
+	position: relative;
+	overflow: visible;
+}
+
+.ui-money-flow__seg[data-sliver="true"]::after {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--space-px);
+	background: var(--outline);
+}
+
+/*
+ * Projected payout is a FORECAST, not capital, so it is a marker on the rail rather than a fourth
+ * slice — summing a forecast into a 100% capital bar would state something untrue. Achromatic, and
+ * decorative: the legend row carries the figure.
+ */
+.ui-money-flow__tick {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: var(--mf-tick, 0%);
+	margin-inline-start: calc(var(--space-px) * -0.5);
+	inline-size: var(--space-px);
+	background: var(--on-surface);
+	opacity: 0.6;
+}
+
+.ui-money-flow__track[data-empty="true"] .ui-money-flow__tick {
+	display: none;
+}
+
+.ui-money-flow__legend {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+}
+
+.ui-money-flow__row {
+	display: contents;
+}
+
+.ui-money-flow__label {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+
+/*
+ * Channel three of four: a SHAPE, so the four states remain distinguishable with no colour vision
+ * at all. Colour, shape, the label itself and the printed proportion are all redundant.
+ */
+.ui-money-flow__mark {
+	flex: none;
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
+
+.ui-money-flow__row[data-bucket="escrow"] .ui-money-flow__mark {
+	border-radius: var(--radius-xs);
+	background: color-mix(in srgb, var(--primary) var(--tint-heavy), var(--surface-2));
+}
+
+.ui-money-flow__row[data-bucket="pending"] .ui-money-flow__mark {
+	border-radius: var(--radius-xs);
+	background: color-mix(in srgb, var(--secondary) var(--tint-heavy), var(--surface-2));
+	transform: rotate(45deg);
+}
+
+.ui-money-flow__row[data-bucket="projected"] .ui-money-flow__mark {
+	background: transparent;
+	border: var(--fld-bw) dashed var(--on-surface-variant);
+}
+
+.ui-money-flow__value {
+	display: flex;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.ui-money-flow__fig {
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.ui-money-flow__pct {
+	min-inline-size: 3ch;
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	text-align: end;
+	color: var(--on-surface-variant);
+}
+/* #endregion */
+
+/* #region Before / after */
+.ui-money-flow__preview {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+	margin-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.ui-money-flow__compare {
+	inline-size: 100%;
+	border-collapse: collapse;
+	font-size: var(--text-2xs);
+}
+
+.ui-money-flow__compare th,
+.ui-money-flow__compare td {
+	padding-block: var(--space-1);
+	padding-inline: 0;
+	text-align: start;
+	font-weight: var(--fw-normal);
+}
+
+.ui-money-flow__compare thead th {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__comparelabel {
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__before,
+.ui-money-flow__after {
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+	color: var(--on-surface);
+}
+
+.ui-money-flow__delta {
+	inline-size: var(--space-5);
+	text-align: center;
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__delta[data-dir="up"] {
+	color: var(--success);
+}
+
+.ui-money-flow__delta[data-dir="down"] {
+	color: var(--warning);
+}
+/* #endregion */
+
+/* #region Collapsible control sections */
+.ui-money-flow__section {
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.ui-money-flow__sectionhead {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+	border-radius: var(--radius-sm);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--on-surface);
+	cursor: pointer;
+	list-style: none;
+}
+
+.ui-money-flow__sectionhead::-webkit-details-marker {
+	display: none;
+}
+
+.ui-money-flow__sectionhead:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* A chevron drawn in `currentColor` — no asset, no hardcoded glyph. It only reinforces a state the
+   disclosed content and the native `details` semantics already carry, so animating it encodes
+   nothing. */
+.ui-money-flow__sectionhead::after {
+	content: "";
+	margin-inline-start: auto;
+	inline-size: 0.4em;
+	block-size: 0.4em;
+	border-inline-end: var(--fld-bw) solid currentColor;
+	border-block-end: var(--fld-bw) solid currentColor;
+	transform: rotate(45deg);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-money-flow__section[open] > .ui-money-flow__sectionhead::after {
+	transform: rotate(-135deg);
+}
+
+.ui-money-flow__sectionbody {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+}
+
+.ui-money-flow__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+	gap: var(--space-2);
+}
+/* #endregion */
+
+/* #region Controls — the --fld-* contract */
+.ui-money-flow__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ui-money-flow__flabel {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.ui-money-flow__unit {
+	font-weight: var(--fw-normal);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__input,
+.ui-money-flow__select {
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: var(--fld-h-sm);
+	padding-inline: var(--fld-px-sm);
+	font-family: inherit;
+	font-size: var(--fld-fs-sm);
+	color: var(--fld-rest-fg);
+	background: var(--fld-rest-bg);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--fld-r-sm);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.ui-money-flow__num {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}
+
+.ui-money-flow__input::placeholder {
+	color: var(--fld-placeholder-fg);
+}
+
+.ui-money-flow__input:hover:not(:disabled),
+.ui-money-flow__select:hover:not(:disabled) {
+	border-color: var(--fld-hover-bd);
+}
+
+.ui-money-flow__input:focus-visible,
+.ui-money-flow__select:focus-visible {
+	outline: none;
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-money-flow__input[aria-invalid="true"] {
+	border-color: var(--fld-invalid-bd);
+	background: var(--fld-invalid-bg);
+}
+
+.ui-money-flow__input:disabled,
+.ui-money-flow__select:disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: not-allowed;
+}
+
+.ui-money-flow__stages {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+/* The whole label is the target, so the sub-24px native checkbox never has to be one. */
+.ui-money-flow__stage {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-sm);
+	min-block-size: var(--fld-hit);
+	cursor: pointer;
+}
+
+.ui-money-flow__stage:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+/* Keyboard-only, for the reason given on `__wallethead` above. */
+.ui-money-flow__stage:has(:focus-visible) {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-money-flow__stage input {
+	flex: none;
+	margin: 0;
+	margin-block-start: var(--space-px);
+	accent-color: var(--primary);
+}
+
+.ui-money-flow__stagetext {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.ui-money-flow__stagename {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.ui-money-flow__stagehint {
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.ui-money-flow__err {
+	margin: 0;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	color: var(--danger);
+}
+
+.ui-money-flow__err--block {
+	padding: var(--space-2);
+	border-radius: var(--radius-sm);
+	background: color-mix(in srgb, var(--danger) var(--tint-subtle), transparent);
+}
+/* #endregion */
+
+/* #region Flow trace */
+.ui-money-flow__tracebox {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.ui-money-flow__tracehead {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.ui-money-flow__count {
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__iconbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-inline-start: auto;
+	padding: var(--space-1);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-money-flow__iconbtn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
+}
+
+.ui-money-flow__iconbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-money-flow__iconbtn:disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: not-allowed;
+}
+
+.ui-money-flow__trace {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ui-money-flow__leg {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-sm);
+	border-inline-start: var(--space-px) solid transparent;
+}
+
+.ui-money-flow__leg:nth-of-type(odd) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.ui-money-flow__leg[data-kind="hold"] {
+	border-inline-start-color: color-mix(in srgb, var(--primary) var(--tint-heavy), var(--surface-2));
+}
+
+.ui-money-flow__leg[data-kind="release"] {
+	border-inline-start-color: var(--primary);
+}
+
+.ui-money-flow__leg[data-kind="fee"] {
+	border-inline-start-color: var(--warning);
+}
+
+.ui-money-flow__leg[data-kind="split"] {
+	border-inline-start-color: var(--secondary);
+}
+
+.ui-money-flow__leg[data-failed="true"] {
+	border-inline-start-color: var(--danger);
+	background: color-mix(in srgb, var(--danger) var(--tint-subtle), transparent);
+}
+
+.ui-money-flow__seq {
+	flex: none;
+	min-inline-size: 1.5ch;
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+	text-align: end;
+}
+
+.ui-money-flow__legicon {
+	flex: none;
+	display: inline-flex;
+	color: var(--on-surface-variant);
+	padding-block-start: var(--space-px);
+}
+
+.ui-money-flow__legmain {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.ui-money-flow__leglabel {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.ui-money-flow__legmeta,
+.ui-money-flow__legnote {
+	font-size: var(--text-2xs);
+	color: var(--on-surface-variant);
+}
+
+.ui-money-flow__legmoney {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	flex: none;
+	text-align: end;
+}
+
+.ui-money-flow__amt {
+	font-variant-numeric: tabular-nums;
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.ui-money-flow__leg[data-kind="fee"] .ui-money-flow__amt {
+	color: var(--warning);
+}
+
+.ui-money-flow__leg[data-failed="true"] .ui-money-flow__amt {
+	color: var(--danger);
+	text-decoration: line-through;
+}
+
+.ui-money-flow__after {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-1);
+	font-family: var(--font-mono);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface-variant);
+}
+
+/* A word, not an arrow: an arrow glyph would point the wrong way under `dir="rtl"`, and the
+   resulting balance is a fact, not a direction. */
+.ui-money-flow__afterlabel {
+	font-family: var(--font-sans);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	opacity: 0.75;
+}
+/* #endregion */
+
+/* #region Reduced motion */
+/*
+ * Jump to the final state. Nothing in this block loses information when its transition is dropped —
+ * the meter never animated a width in the first place, which is precisely why that guarantee holds.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.ui-money-flow__sectionhead::after,
+	.ui-money-flow__input,
+	.ui-money-flow__select,
+	.ui-money-flow__iconbtn {
+		transition-duration: 0ms;
+	}
+
+	.ui-money-flow-popover__pulse {
+		animation: none;
+		opacity: 1;
+	}
+}
+/* #endregion */

@@ -160,6 +160,38 @@ export const LocalKeys = {
 	 */
 	BASKET: "pj.local.basket",
 	/**
+	 * The `/basket` list density (a `0`–`1` float) — the same zoom-driven list⇄grid model as the File
+	 * Explorer, owned by the footer band's View Control Rig and read by the body. Its own key so the
+	 * basket's density is independent of the file / catalogue / wallet densities.
+	 */
+	BASKET_ZOOM: "pj.local.basket.zoom",
+	/**
+	 * The basket the `/basket` lane last had selected (a `finance.baskets` id). An owner may keep
+	 * several named baskets, so a reload that always landed on the default would silently move the
+	 * reader off the wishlist they were working in.
+	 */
+	BASKET_LAST: "pj.local.basket.lastBasket",
+	/**
+	 * The in-progress checkout draft — a JSON blob of the buyer's UNSUBMITTED selections (chosen
+	 * provider, chosen card id, typed promo code) keyed by basket id. Deliberately **never** an amount
+	 * and **never** an instrument: every figure is server-computed and a card is an opaque Stripe
+	 * reference, so nothing persisted here can be replayed into a charge. Cleared once a checkout
+	 * succeeds.
+	 */
+	CHECKOUT_DRAFT: "pj.local.checkout.draft",
+	/**
+	 * DEV-ONLY. Persisted screen position of the Money Flow debugger window (`{x,y}` JSON), so it
+	 * reopens where the developer left it. Inert in production (the host is build-excluded).
+	 */
+	MONEY_FLOW_WINDOW_POS: "pj.local.dev.moneyFlowWindowPos",
+	/** DEV-ONLY. Persisted size of the Money Flow debugger window (`{w,h}` px JSON). */
+	MONEY_FLOW_WINDOW_SIZE: "pj.local.dev.moneyFlowWindowSize",
+	/**
+	 * DEV-ONLY. Whether the Money Flow debugger window is currently OPEN (`"1"`|`"0"`), so an open
+	 * window reappears (in its saved position) after a navigation or hard refresh. Inert in production.
+	 */
+	MONEY_FLOW_WINDOW_OPEN: "pj.local.dev.moneyFlowWindowOpen",
+	/**
 	 * The `/messages` inbox sidebar's applied search + partition + advanced-filter state — a single JSON
 	 * blob (`ConversationListParams`, sans cursor). Restores the last-left inbox filters across reloads
 	 * (the Continuity rule). Read after hydration only, so it never diverges from the SSR baseline.

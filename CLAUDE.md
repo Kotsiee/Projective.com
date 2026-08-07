@@ -2887,6 +2887,96 @@ convention is not uniform and wants one human decision, not a third pattern. |
 · `documentation/database/{files,integrations,finance}/*` · `.env.example` · Decisions #32 / #33 /
 #53 / #58 / #59 / #60 / #63 |
 
+| 68 | **Universal Basket, Checkout, the card visualizer and the money-flow debugger (2026-08-06).**
+The 18th thin/fat vertical and the platform's second write surface: one basket per acting context, a
+`/checkout` that pays for all **ten** `PurchasableItemKind`s, a portable card visualizer, and a
+dev-only money-flow debugger. **(A) Schema, folded in place** (root §1 — the brief asked for new
+timestamped migrations; the governing rule forbids them): `finance.baskets` · `finance.basket_items` ·
+`finance.saved_cards` into `00000017`, two enums (`purchasable_item_kind` 10 values,
+`card_brand` 9) into `00000004`, the `simulate_wallet_transaction` RPC + two predicates into
+`00001210`, RLS/policies/grants/indexes into their category files. **`owner_type` was widened** from
+the brief's `'user' | 'business'` to the existing 5-value finance CHECK — task §4.2 requires a Team
+basket, which the narrow pair cannot express. **Validated by execution, not inspection:** every
+statement applied to a live Postgres inside `BEGIN … ROLLBACK` plus a 32-case suite (enum order, the
+`split_payout` round trip, **all 13 simulator refusal paths**, every CHECK, RLS coverage, `EXECUTE` =
+`authenticated` only). **Authored, NOT applied to any live DB.** **(B) The simulator is dangerous and
+is gated like it.** It mutates real balances, so it fail-closes on a new `finance_simulation_enabled`
+param seeded **false**, refuses a NULL `auth.uid()`, and — **wider than the brief** — checks the
+DESTINATION wallet too, since `top_up`/`escrow_release`/`refund` would otherwise let any signed-in
+caller mint balance into a stranger's wallet. **(C) The card's custody conflict, resolved honestly.**
+Decision #60's `wlt-card` refuses expiry/name/CVV/flip on the thesis that "an affordance implying we
+hold data we do not is worse than an empty space" — but Stripe DOES return brand/last4/exp/name, and
+the brief's own `saved_cards` stores exactly those. So the NEW `@projective/ui/display` `PaymentCard`
+renders the real expiry, cardholder name and last4 with the PAN as `aria-hidden` mask groups (4-6-5
+on Amex) and the CVV as `•••` **ornament — never an input, never a value, never a reveal**; absent
+fields render as ABSENCE, never `--/--`. `SavedCardSchema` carries no `pan`/`cvv` key, not even
+optional. The wallet's card is untouched. `PaymentCardOption` is a **sibling, not an `interactive`
+prop**, because a flip `<button>` nested in a `role="radio"` button is invalid HTML that breaks both
+controls — a sibling wrapping a `decorative` face makes the combination unreachable rather than
+merely discouraged. **(D) Portability held at both boundaries.** `packages/ui` still imports only
+preact/signals/material: the card takes a structural `PaymentCardData` (proven assignable from
+`SavedCard` by typecheck, so the app passes real Zod types with no adapter), and `MoneyFlowPopover`
+is **fully controlled — zero fetch, zero arithmetic** — over `DraggablePopover`. Its balance meter
+sets geometry directly and confines motion to `transform`/`opacity`, so a backgrounded tab with a
+frozen animation clock still shows correct widths. **(E) One arithmetic path.** `basketSubtotal` →
+`applyDiscounts` → `platformFeeFor` → `checkoutTotals` live in the SSOT and are the ONLY
+implementation; the fat services wrap their integer minor units into `MoneyView`s and the client
+renders `display` strings — **zero** `toFixed`/`Intl.NumberFormat`/`reduce`-over-prices in any island.
+`explore/pricing.ts` was extracted so a basket line's unit price cannot disagree with the card that
+added it (Decision #45 parity). `create()` is idempotent on `idempotencyKey` and **re-verifies
+`expectedTotalMinor`** — a client-supplied total accepted blindly is a price-tampering hole.
+**(F) Region contract** (#60/#63) honoured: lane = scope, header band = identity/search, footer rig =
+every action with `container-type` tiers **whose menu holds every action at every tier**, body = views
+and selects only. **Nine defects found by measurement, not inspection**, four of them the same class —
+*a control that exists but cannot be reached*: the collapsed lane never narrowed (280px held, 216px of
+body lost) and dropped its own scope duty; header search was `display:none`d at the narrowest tier, so
+**every phone** lost find-in-basket (the `/wallet` `nth-child(n+3)` failure in a header's clothes); the
+same field was inert on `/checkout` at every width; BuyNow's `<li>` broke the radiogroup ownership
+chain; its card picker set `tabIndex={-1}` on **every** option when none was chosen, making the group
+un-enterable; `role="alert"` + `aria-live="polite"` demoted a REFUSED payment to the politeness of a
+successful one; and post-payment focus fell to `<body>` because the confirm dialog restored focus to a
+trigger that no longer existed, on an exit animation. Also fixed in the SSOT: `CheckoutBlockerCode`
+had no **`price_changed`** member, so the tamper refusal returned `blockers: []` and any surface
+explaining refusals by rendering blockers showed nothing on the refusal a buyer is most likely to hit.
+**(G) Dev parity (§5 gate):** four axes — `basketOwner` · `paymentProviders` · `walletCoverage` ·
+`savedCards` — through `dev-seam` + `DevOverrides`/`DEV_DEFAULTS`/`DevOption`/`reflect()` **set AND
+delete** + a panel group, travelling to the server as validated `sim*` query params and genuinely
+consumed (no plumbed-and-dropped param). Verified in-browser at 1440 and 390, LTR + RTL, **zero
+horizontal overflow in both directions at both widths**; full gate chain 3 blockers → 0 → Pay →
+`succeeded £1,366.15`; the drawer's CSS ships from a non-checkout page, closing the island-carrier
+trap. **Flagged — needs a human, do NOT silently resolve:** (a) **🚨 `authenticated` has no `USAGE` on
+the `finance` schema** — `00002500` revokes it and never re-grants; `finance` is the only schema in the
+revoke list without a matching grant, verified live (`42501`), so every finance policy old and new is
+latent. Granting it would expose the whole ledger to direct PostgREST reads wherever a permissive
+policy exists; deliberately NOT granted. (b) **`platform_fee_bp` is seeded `0`** while the SSOT says
+`500` and Decision #2 resolved 5% — the live DB charges nothing; a fee change across every reset is a
+money decision. (c) **Who bears the fee** — modelled as `PlatformFeeMode`, defaulted to the documented
+`seller_deducted`, so the buyer's total excludes it; checkout must render one of the two. (d) The
+simulator needs sign-off before its param is ever flipped. (e) **Three overlapping instrument tables**
+now (`payment_methods` + `payout_accounts` + `saved_cards`), mitigated by a nullable FK, not resolved
+(extends #54(f)). (f) `revision_id` has no FK — the target table is unsettled. (g)
+`CheckoutResult.orderId` is always `null`; no orders table exists. (h) **Item deep-links follow the
+canonical `/[handle]` + `/view/[id]` + `/projects/[projectId]/[channelId]`**, NOT the brief's
+`/[handle]/products/[id]` or `/projects/[id]/[stageId]`, which would 404. (i) "CDN card art" and
+"zero-JS pointer-reactive sheen" are not implementable (no external origin under the CSP; pointer
+tracking needs JS) — art is derived into token expressions and the sheen is CSS-only with pointer
+parallax an opt-in prop. (j) `bin_number` is usually NULL (Stripe entitlement-gated); every consumer
+degrades to `brand`. (k) Free-text is Zod-bounded but DB-unbounded — a **truncation contract** the
+resolving service must honour or the basket read 500s. (l) Mixed sim query vocabulary (four plain
+knobs vs four `sim*`-prefixed) wants one rename pass. (m) Bulk basket actions are N sequential writes.
+| root CLAUDE.md §1/§2/§3/§5 · `packages/types/finance/{basket,checkout,card-art}.ts` ·
+`packages/backend/services/finance/{Basket,Checkout,Cards}BackendService.ts` +
+`{basket,cards}-fixtures.ts` + `basket-query.ts` · `packages/backend/services/explore/pricing.ts` ·
+`packages/ui/display/components/PaymentCard.tsx` ·
+`packages/ui/overlay/islands/MoneyFlowPopover.island.tsx` · `apps/web/features/checkout/**` ·
+`apps/web/routes/(dashboard)/{basket,checkout}/**` ·
+`apps/web/routes/api/{basket,cards,checkout}/*` · `apps/web/routes/(dashboard)/_layout.tsx` ·
+`apps/web/features/shell/islands/UserActions.island.tsx` · `apps/web/utils/{dev-seam,storage-keys}.ts`
+· `apps/web/features/devtools/*` · `packages/types/profile/reserved.ts` ·
+`supabase/migrations/{00000004,00000017,00001210,00002001,00002013,00002510,00002520,00004005,00005001}*`
+· `documentation/database/finance/*` · `DESIGN_SYSTEM.md` §C.1 · Decisions #2 / #10 / #45 / #53 / #54
+/ #55 / #60 / #62 / #63 / #67 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

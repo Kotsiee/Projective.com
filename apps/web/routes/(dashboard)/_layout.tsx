@@ -32,12 +32,16 @@ import { walletHeaderFor } from "@web/features/wallet/core/wallet-header-slot.ts
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
+import { basketLaneFor } from "@web/features/checkout/core/basket-lane-slot.tsx";
+import { basketHeaderFor } from "@web/features/checkout/core/basket-header-slot.tsx";
+import { basketFooterFor } from "@web/features/checkout/core/basket-footer-slot.tsx";
 import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
 import { filesHeaderFor } from "@web/features/files/core/files-header-slot.tsx";
 import { filesFooterFor } from "@web/features/files/core/files-footer-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
+import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
 
 /**
  * Dashboard shell — the authenticated app surface. Delegates the full unified matrix (DESIGN_SYSTEM.md
@@ -94,7 +98,7 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
 		inboxFooterFor(url, context) ?? conversationFooterFor(url, context) ??
 		catalogueFooterFor(url, context) ??
 		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
-		filesFooterFor(url, context);
+		filesFooterFor(url, context) ?? basketFooterFor(url, context);
 }
 
 /**
@@ -107,7 +111,7 @@ function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
 		inboxHeaderFor(url, context) ?? conversationHeaderFor(url, context) ??
 		catalogueHeaderFor(url, context) ??
 		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
-		filesHeaderFor(url, context);
+		filesHeaderFor(url, context) ?? basketHeaderFor(url, context);
 }
 
 /**
@@ -120,6 +124,11 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 	// the storage allowance. Resolved BEFORE the `/projects` fall-through — `/files` is its own
 	// top-level surface and must not inherit the projects feed.
 	if (url.pathname.startsWith("/files")) return filesLaneFor(url, context);
+
+	// The basket + checkout: one lane across both steps, so a buyer can change basket mid-payment.
+	if (url.pathname.startsWith("/basket") || url.pathname.startsWith("/checkout")) {
+		return basketLaneFor(url, context);
+	}
 
 	// The global inbox: the scope map on the `/messages` root, the conversation list beside an open one.
 	if (url.pathname.startsWith("/messages")) return messagesLaneFor(url, context);
@@ -176,6 +185,11 @@ export default define.page(function DashboardLayout(ctx) {
 		>
 			{/* Global floating "Pop Out Chat" host — survives navigations, re-seeds from sessionStorage. */}
 			<ChatPopoutHost path={path} />
+			{
+				/* DEV-ONLY money-flow debugger — `MoneyFlowMount` returns null in production, so the host,
+			    the popover and its store are tree-shaken out of the shipped bundle. */
+			}
+			<MoneyFlowMount />
 			<ctx.Component />
 		</UserShell>
 	);

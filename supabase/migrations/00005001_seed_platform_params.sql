@@ -140,3 +140,20 @@ INSERT INTO security.platform_params (key, value, description) VALUES
     ('storage_quota_enforced', 'false'::jsonb,
         'When false, storage quota is NOT enforced — files.fn_check_storage_quota returns without raising and every upload is allowed (fail-open). Flip to true only after the storage_megabytes ladder has been tuned against real usage; it is a deliberate human decision that starts refusing uploads.')
 ON CONFLICT (key) DO NOTHING;
+
+-- finance: the developer wallet simulator gate (00001210 finance.simulate_wallet_transaction).
+--
+-- ⚠️ SEEDED FALSE, and unlike its three siblings above this one FAILS CLOSED: while it is false the
+-- simulator raises `42501` on every call and no balance can move. Turning it on hands every
+-- authenticated user a function that writes real finance.wallets balances and real
+-- finance.transactions lines on the wallets they control. It exists to make the ledger debuggable,
+-- not to be left on — it is a deliberate, reversible human decision requiring sign-off, never a
+-- side effect of running a migration, and it should be false in any environment holding real money.
+--
+-- Simulated movements are always identifiable after the fact (`transactions.reason` =
+-- 'simulated_<type>', `ref_table` = 'simulation', plus a finance.ledger_audit row per wallet), so
+-- an environment where it was switched on can be audited rather than merely suspected.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('finance_simulation_enabled', 'false'::jsonb,
+        'When false (the default), finance.simulate_wallet_transaction refuses every call. When true it lets an authenticated caller move REAL balances between wallets they control, for ledger debugging. Fail-closed; flipping it is a human decision and must stay false wherever real money is held.')
+ON CONFLICT (key) DO NOTHING;

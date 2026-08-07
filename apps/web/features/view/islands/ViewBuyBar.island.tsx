@@ -7,7 +7,10 @@ import { ProfileIcon } from "@features/profile/components/profile-glyphs.tsx";
 import { type ViewGlyph, ViewIcon } from "../components/view-glyphs.tsx";
 import { commerceFor, messageHrefFor, scheduleHrefFor, signInHref } from "../core/view-model.ts";
 import { setAvailabilityMode } from "../core/view-state.ts";
-import { basketIds, hydrateBasket, inBasket, toggleBasket } from "../core/basket-state.ts";
+import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";
+import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
+import { requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
+import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
 import type { EntityPricing, ExploreItem, TrustFact } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
@@ -48,17 +51,29 @@ export default function ViewBuyBar(
 	const scheduleHref = bookable ? scheduleHrefFor(item, ctx) : null;
 	const msgHref = authed ? messageHrefFor(item) : signInHref(item, ctx);
 
+	/** The purchasable kind this listing is bought as; `null` for anything not bought on its own. */
+	const purchaseKind = purchasableKindOf(item);
+
+	/** Buy now — the same instant-checkout panel the lane opens, over the same shared target signal. */
 	function onBuy(): void {
+		if (!purchaseKind) return;
+		requestBuyNow({
+			itemId: item.id,
+			itemType: purchaseKind,
+			title: item.title,
+			sellerName: item.owner.name,
+			signInHref: signInHref(item, ctx),
+		}, authed);
+	}
+
+	/** Add ⇄ remove, written through to the real basket; the server's answer settles the CTA. */
+	function onToggleBasket(): void {
 		if (!authed) {
 			globalThis.location.href = signInHref(item, ctx);
 			return;
 		}
-		if (!inBasket(item.id)) toggleBasket(item.id);
-		status.value = "Added to basket — checkout coming soon";
-	}
-
-	function onToggleBasket(): void {
-		status.value = toggleBasket(item.id) ? "Added to basket" : "Removed from basket";
+		status.value = added ? "Removing…" : "Adding…";
+		void toggleBasket(item).then((res) => (status.value = res.message));
 	}
 
 	return (
@@ -162,6 +177,9 @@ export default function ViewBuyBar(
 					</ul>
 				)
 				: null}
+
+			{/* The lane outranks this host; see the election note in `buy-now-state.ts`. */}
+			<BuyNowModal host="body" />
 		</section>
 	);
 }

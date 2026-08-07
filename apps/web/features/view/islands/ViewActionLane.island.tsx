@@ -18,7 +18,10 @@ import { ViewLaneHeader } from "../components/ViewLaneHeader.tsx";
 import { type ViewGlyph, ViewIcon } from "../components/view-glyphs.tsx";
 import { commerceFor, messageHrefFor, scheduleHrefFor, signInHref } from "../core/view-model.ts";
 import { availabilityMode, jumpToStage, setAvailabilityMode } from "../core/view-state.ts";
-import { basketIds, hydrateBasket, inBasket, toggleBasket } from "../core/basket-state.ts";
+import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";
+import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
+import { requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
+import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
 import type {
 	EntityPricing,
 	ExploreItem,
@@ -117,18 +120,37 @@ export default function ViewActionLane(
 	const scheduleHref = bookable ? scheduleHrefFor(item, ctx) : null;
 	const msgHref = authed ? messageHrefFor(item) : signInHref(item, ctx);
 
+	/** The purchasable kind this listing is bought as; `null` for anything not bought on its own. */
+	const purchaseKind = purchasableKindOf(item);
+
+	/**
+	 * Buy now — open the instant-checkout modal rather than navigating.
+	 *
+	 * A signed-out visitor is bounced to sign-in by {@link requestBuyNow} instead of being shown a panel
+	 * that could only ever refuse; the return path brings them back to this exact listing.
+	 */
 	function onBuy(): void {
+		if (!purchaseKind) return;
+		requestBuyNow({
+			itemId: item.id,
+			itemType: purchaseKind,
+			title: item.title,
+			sellerName: item.owner.name,
+			signInHref: signInHref(item, ctx),
+		}, authed);
+	}
+
+	/**
+	 * Add ⇄ remove, written through to the real basket. The CTA flips optimistically and the server's
+	 * answer settles it — including reverting the flip and saying why when the write is refused.
+	 */
+	function onToggleBasket(): void {
 		if (!authed) {
 			globalThis.location.href = signInHref(item, ctx);
 			return;
 		}
-		if (!inBasket(item.id)) toggleBasket(item.id);
-		// Checkout is a Phase-2 route; for now confirm the basket + intent.
-		announce("Added to basket — checkout coming soon");
-	}
-	function onToggleBasket(): void {
-		const now = toggleBasket(item.id);
-		announce(now ? "Added to basket" : "Removed from basket");
+		announce(added ? "Removing…" : "Adding…");
+		void toggleBasket(item).then((res) => announce(res.message));
 	}
 	// #endregion
 
@@ -456,6 +478,15 @@ export default function ViewActionLane(
 					</Tooltip>
 				</div>
 			</div>
+
+			{
+				/*
+			  The instant-checkout panel. Both purchase CTAs on this page mount one — they hide each other
+			  by `display`, which a `BodyPortal` panel escapes entirely — so the shared host election picks
+			  exactly one to render. The lane outranks the buy bar.
+			*/
+			}
+			<BuyNowModal host="lane" />
 		</div>
 	);
 }

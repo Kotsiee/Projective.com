@@ -5,6 +5,7 @@ import {
 	ACCOUNT_TYPES,
 	applyDevContext,
 	DEV_ASSET_VISIBILITIES,
+	DEV_BASKET_OWNERS,
 	DEV_CONNECTION_STATES,
 	DEV_DEDUP_STATES,
 	DEV_DISPLAY_CURRENCIES,
@@ -14,15 +15,18 @@ import {
 	DEV_MEMBERSHIP_STATES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_PAYMENT_PROVIDERS,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
 	DEV_ROSTER_STATES,
+	DEV_SAVED_CARDS,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_STORAGE_PROVIDERS,
 	DEV_STORAGE_QUOTAS,
 	DEV_SUBMISSION_STATES,
+	DEV_WALLET_COVERAGES,
 	DEV_WALLET_FUND_MIXES,
 	DEV_WALLET_KYCS,
 	DEV_WALLET_SMOOTHERS,
@@ -38,6 +42,7 @@ import {
 	setDevActiveEntity,
 	setDevEnabled,
 } from "../core/dev-context.ts";
+import { openMoneyFlow } from "@features/checkout/core/money-flow-state.ts";
 
 // #region Props
 /** Props for {@link DevContextPanel}. */
@@ -572,6 +577,60 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(dedupState) => patchDevContext({ dedupState })}
 					/>
+				</Field>
+			</div>
+
+			<div class="dev-ctx__group">
+				<div class="dev-ctx__grouphead">Basket / Checkout</div>
+
+				<Field label="Basket scope" hint="whose money">
+					<Segment
+						name="Basket scope"
+						options={DEV_BASKET_OWNERS}
+						value={o.basketOwner}
+						disabled={!o.enabled}
+						onChange={(basketOwner) => patchDevContext({ basketOwner })}
+					/>
+				</Field>
+
+				<Field label="Payment offer" hint="provider preset">
+					<Segment
+						name="Payment offer"
+						options={DEV_PAYMENT_PROVIDERS}
+						value={o.paymentProviders}
+						disabled={!o.enabled}
+						onChange={(paymentProviders) => patchDevContext({ paymentProviders })}
+					/>
+				</Field>
+
+				<Field label="Wallet position" hint="against the total">
+					<Segment
+						name="Wallet position"
+						options={DEV_WALLET_COVERAGES}
+						value={o.walletCoverage}
+						disabled={!o.enabled}
+						onChange={(walletCoverage) => patchDevContext({ walletCoverage })}
+					/>
+				</Field>
+
+				<Field label="Saved cards" hint="cards on file">
+					<Segment
+						name="Saved cards"
+						options={DEV_SAVED_CARDS}
+						value={o.savedCards}
+						disabled={!o.enabled}
+						onChange={(savedCards) => patchDevContext({ savedCards })}
+					/>
+				</Field>
+
+				{
+					/* Ungated by the master switch on purpose: the debugger reads LIVE balances, so it is
+				    useful precisely when nothing is being simulated. */
+				}
+				<Field label="Money Flow" hint="live balance debugger">
+					<button type="button" class="dev-ctx__reset" onClick={openMoneyFlow}>
+						Open debugger
+					</button>
 				</Field>
 			</div>
 

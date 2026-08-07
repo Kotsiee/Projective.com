@@ -385,6 +385,18 @@
 				"--strictPort"
 			],
 			"port": 8473
+		},
+		{
+			"name": "web-basket",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8673",
+				"--strictPort"
+			],
+			"port": 8673
 		}
 	]
 }

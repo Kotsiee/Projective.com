@@ -177,6 +177,38 @@ export type DevLinkScan = "pending" | "safe" | "suspicious" | "blocked";
 /** The simulated dedup verdict returned for the next upload (drives the duplicate-resolution panel). */
 export type DevDedupState = "none" | "exact_duplicate" | "name_collision";
 
+/**
+ * The principal whose basket `/basket` and `/checkout` are spending from.
+ *
+ * A distinct axis rather than a reuse of {@link DevWorkspaceKind} + {@link DevSeamState.actingContext}:
+ * that pair is `team | business` crossed with a boolean, so an **organisation** basket — the one scope
+ * with no vault in the wallet cast, and therefore the one whose payment offer differs most — is
+ * unreachable through it.
+ */
+export type DevBasketOwner = "personal" | "team" | "business" | "organisation";
+
+/**
+ * A preset over the checkout's payment offer. It moves the INPUTS the SSOT's `availableProviders` is
+ * evaluated against, never its verdict, so each preset still exercises the real eligibility rules:
+ * `no_wallet` empties the Projective balance, `card_only` withdraws the wallet and both device wallets,
+ * and `invoice` lifts the account to the KYB tier invoicing is gated on.
+ */
+export type DevPaymentProviders = "all" | "no_wallet" | "card_only" | "invoice";
+
+/**
+ * Whether the acting wallet covers the resolved total or falls short of it. Expressed as a
+ * RELATIONSHIP rather than a figure because a fixed balance covers one basket and not another — an
+ * axis that set a number would be inert on half the baskets it was pointed at.
+ */
+export type DevWalletCoverage = "covers" | "shortfall";
+
+/**
+ * The shape of the account's saved-card wallet. `expired` is cards-on-file-none-chargeable, which is a
+ * different state with a different remedy from `none` (add a card vs replace one) and is otherwise only
+ * reachable on the one personal scope that happens to seed an expired card.
+ */
+export type DevSavedCards = "seeded" | "none" | "expired";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -252,6 +284,14 @@ export interface DevSeamState {
 	linkScan: DevLinkScan;
 	/** The simulated dedup verdict for the next upload. */
 	dedupState: DevDedupState;
+	/** The simulated principal whose basket `/basket` + `/checkout` spend from. */
+	basketOwner: DevBasketOwner;
+	/** The simulated payment-offer preset for `/checkout`. */
+	paymentProviders: DevPaymentProviders;
+	/** Whether the simulated wallet covers the checkout total or falls short of it. */
+	walletCoverage: DevWalletCoverage;
+	/** The simulated saved-card wallet shape. */
+	savedCards: DevSavedCards;
 }
 // #endregion
 
@@ -386,6 +426,20 @@ const STORAGE_QUOTAS: readonly DevStorageQuota[] = [
 const ASSET_VISIBILITIES: readonly DevAssetVisibility[] = ["private", "link", "public"];
 const LINK_SCANS: readonly DevLinkScan[] = ["pending", "safe", "suspicious", "blocked"];
 const DEDUP_STATES: readonly DevDedupState[] = ["none", "exact_duplicate", "name_collision"];
+const BASKET_OWNERS: readonly DevBasketOwner[] = [
+	"personal",
+	"team",
+	"business",
+	"organisation",
+];
+const PAYMENT_PROVIDERS: readonly DevPaymentProviders[] = [
+	"all",
+	"no_wallet",
+	"card_only",
+	"invoice",
+];
+const WALLET_COVERAGES: readonly DevWalletCoverage[] = ["covers", "shortfall"];
+const SAVED_CARDS: readonly DevSavedCards[] = ["seeded", "none", "expired"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -443,6 +497,10 @@ export function readDevSeam(): DevSeamState | null {
 		assetVisibility: coerce(ds.devAssetVisibility, ASSET_VISIBILITIES, "private"),
 		linkScan: coerce(ds.devLinkScan, LINK_SCANS, "safe"),
 		dedupState: coerce(ds.devDedupState, DEDUP_STATES, "none"),
+		basketOwner: coerce(ds.devBasketOwner, BASKET_OWNERS, "personal"),
+		paymentProviders: coerce(ds.devPaymentProviders, PAYMENT_PROVIDERS, "all"),
+		walletCoverage: coerce(ds.devWalletCoverage, WALLET_COVERAGES, "covers"),
+		savedCards: coerce(ds.devSavedCards, SAVED_CARDS, "seeded"),
 	};
 }
 

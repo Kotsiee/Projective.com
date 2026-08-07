@@ -29,6 +29,31 @@ export type {
 	PopoverPosition,
 	PopoverSize,
 } from "./islands/DraggablePopover.tsx";
+
+/**
+ * {@link MoneyFlowPopover} — the developer money-flow debugger, composed on
+ * {@link DraggablePopover}. It is **fully controlled and data-driven**: wallets, legs and scope
+ * arrive as props described by this package's own structural shapes, money arrives pre-formatted,
+ * and the component performs no fetch and no arithmetic — it emits intent and the consuming app's
+ * fat service does every calculation. That is what keeps an app-specific debugger inside a
+ * copy-paste-portable package.
+ */
+export { MoneyFlowPopover } from "./islands/MoneyFlowPopover.island.tsx";
+export type {
+	FlowBalanceBucket,
+	FlowBalances,
+	FlowLeg,
+	FlowLegKind,
+	FlowMoney,
+	FlowScope,
+	FlowScopeKind,
+	FlowSetBalanceRequest,
+	FlowSimulateRequest,
+	FlowStage,
+	FlowWallet,
+	FlowWalletRole,
+	MoneyFlowPopoverProps,
+} from "./islands/MoneyFlowPopover.island.tsx";
 export { usePresence } from "./core/usePresence.ts";
 export type { Presence, PresenceState } from "./core/usePresence.ts";
 

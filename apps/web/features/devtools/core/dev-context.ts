@@ -23,6 +23,7 @@ import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/s
 import {
 	DEV_SEAM_EVENT,
 	type DevAssetVisibility,
+	type DevBasketOwner,
 	type DevConnectionState,
 	type DevDedupState,
 	type DevDisplayCurrency,
@@ -32,9 +33,11 @@ import {
 	type DevMembershipState,
 	type DevMessagingRole,
 	type DevMicPermission,
+	type DevPaymentProviders,
 	type DevPersona,
 	type DevProjectType,
 	type DevRosterState,
+	type DevSavedCards,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -42,6 +45,7 @@ import {
 	type DevStorageProvider,
 	type DevStorageQuota,
 	type DevSubmissionState,
+	type DevWalletCoverage,
 	type DevWalletFundMix,
 	type DevWalletKyc,
 	type DevWalletSmoother,
@@ -64,16 +68,20 @@ export type DevAccountType = DevPersona;
 export type DevRole = DevSeamRole;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
+	DevBasketOwner,
 	DevDisplayCurrency,
 	DevLayoutDirection,
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
+	DevPaymentProviders,
 	DevProjectType,
+	DevSavedCards,
 	DevServiceType,
 	DevSessionBookingStatus,
 	DevStageAssignment,
 	DevSubmissionState,
+	DevWalletCoverage,
 	DevWalletFundMix,
 	DevWalletKyc,
 	DevWalletSmoother,
@@ -199,6 +207,22 @@ export interface DevOverrides {
 	linkScan: DevLinkScan;
 	/** Simulated dedup verdict for the next upload — drives the duplicate-resolution panel. */
 	dedupState: DevDedupState;
+	/**
+	 * Simulated basket scope — which principal's money `/basket` and `/checkout` spend. Its own axis
+	 * because {@link workspaceKind} is `team | business` and {@link actingContext} is a boolean, so
+	 * neither reaches an **organisation** basket — the one scope with no vault in the cast, and so the
+	 * one whose payment offer differs most.
+	 */
+	basketOwner: DevBasketOwner;
+	/**
+	 * Simulated payment-offer preset. It moves the INPUTS the SSOT's eligibility rules are evaluated
+	 * against, never their verdict, so every preset still exercises the real rules.
+	 */
+	paymentProviders: DevPaymentProviders;
+	/** Simulated wallet position against the checkout total (covers it, or falls short). */
+	walletCoverage: DevWalletCoverage;
+	/** Simulated saved-card wallet shape — seeded, none on file, or all expired. */
+	savedCards: DevSavedCards;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -246,6 +270,10 @@ export const DEV_DEFAULTS: DevOverrides = {
 	assetVisibility: "private",
 	linkScan: "safe",
 	dedupState: "none",
+	basketOwner: "personal",
+	paymentProviders: "all",
+	walletCoverage: "covers",
+	savedCards: "seeded",
 };
 
 /** Account-type options in display order. */
@@ -465,6 +493,35 @@ export const DEV_DEDUP_STATES: ReadonlyArray<DevOption<DevDedupState>> = [
 	{ value: "exact_duplicate", label: "Exact duplicate" },
 	{ value: "name_collision", label: "Name collision" },
 ];
+
+/** Basket-scope options for `/basket` + `/checkout` (whose money is being spent). */
+export const DEV_BASKET_OWNERS: ReadonlyArray<DevOption<DevBasketOwner>> = [
+	{ value: "personal", label: "Personal" },
+	{ value: "team", label: "Team" },
+	{ value: "business", label: "Business" },
+	{ value: "organisation", label: "Organisation" },
+];
+
+/** Payment-offer presets for `/checkout`. */
+export const DEV_PAYMENT_PROVIDERS: ReadonlyArray<DevOption<DevPaymentProviders>> = [
+	{ value: "all", label: "All" },
+	{ value: "no_wallet", label: "No wallet" },
+	{ value: "card_only", label: "Card only" },
+	{ value: "invoice", label: "Invoiceable" },
+];
+
+/** Wallet-coverage options for `/checkout` (relative to the resolved total). */
+export const DEV_WALLET_COVERAGES: ReadonlyArray<DevOption<DevWalletCoverage>> = [
+	{ value: "covers", label: "Covers" },
+	{ value: "shortfall", label: "Shortfall" },
+];
+
+/** Saved-card wallet options for `/checkout`. */
+export const DEV_SAVED_CARDS: ReadonlyArray<DevOption<DevSavedCards>> = [
+	{ value: "seeded", label: "Has cards" },
+	{ value: "none", label: "None" },
+	{ value: "expired", label: "All expired" },
+];
 // #endregion
 
 // #region Store
@@ -534,6 +591,10 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devAssetVisibility = next.assetVisibility;
 		root.dataset.devLinkScan = next.linkScan;
 		root.dataset.devDedupState = next.dedupState;
+		root.dataset.devBasketOwner = next.basketOwner;
+		root.dataset.devPaymentProviders = next.paymentProviders;
+		root.dataset.devWalletCoverage = next.walletCoverage;
+		root.dataset.devSavedCards = next.savedCards;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the wallet (and the rest of the shell) mirror to the opposite edge.
 		root.dir = next.layoutDirection;
@@ -574,6 +635,10 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devAssetVisibility;
 		delete root.dataset.devLinkScan;
 		delete root.dataset.devDedupState;
+		delete root.dataset.devBasketOwner;
+		delete root.dataset.devPaymentProviders;
+		delete root.dataset.devWalletCoverage;
+		delete root.dataset.devSavedCards;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}

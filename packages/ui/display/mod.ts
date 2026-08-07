@@ -93,6 +93,14 @@ export { AvatarStack } from "./components/AvatarStack.tsx";
 export type { AvatarStackPerson, AvatarStackProps } from "./components/AvatarStack.tsx";
 export { Chip } from "./components/Chip.tsx";
 export type { ChipProps } from "./components/Chip.tsx";
+export { PaymentCard, paymentCardArt, PaymentCardOption } from "./components/PaymentCard.tsx";
+export type {
+	PaymentCardArt,
+	PaymentCardData,
+	PaymentCardOptionProps,
+	PaymentCardProps,
+	PaymentCardSize,
+} from "./components/PaymentCard.tsx";
 export { List } from "./components/List.tsx";
 export type { ListOrder, ListProps } from "./components/List.tsx";
 export { ListItem } from "./components/ListItem.tsx";

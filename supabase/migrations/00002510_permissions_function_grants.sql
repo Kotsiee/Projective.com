@@ -328,6 +328,27 @@ GRANT EXECUTE ON FUNCTION finance.fn_footprint_usage(text, uuid, finance.entitle
 GRANT EXECUTE ON FUNCTION finance.fn_footprint_remaining(text, uuid, finance.entitlement_key) TO authenticated;
 
 
+-- --- finance: basket, wishlist & saved cards ---
+-- The two predicates ARE the RLS policies on finance.baskets / finance.basket_items, and a policy
+-- expression runs as the invoking role, so revoking either would deny every basket read.
+
+GRANT EXECUTE ON FUNCTION finance.fn_can_manage_basket(text, uuid) TO authenticated;
+
+GRANT EXECUTE ON FUNCTION finance.fn_can_move_wallet_funds(uuid) TO authenticated;
+
+-- ⚠️ finance.simulate_wallet_transaction MOVES REAL MONEY (see 00001210 §7). EXECUTE is granted to
+-- `authenticated` and to NOBODY ELSE:
+--   * never `anon` — an unauthenticated caller has no wallet to be authorised against;
+--   * deliberately not `service_role` either. The whole safety model is "the caller must own the
+--     wallets", and service_role has no auth.uid(), so it could only ever be refused by gate 2.
+--     Granting it would advertise a door that is bolted shut and invite someone to unbolt it.
+-- Even with EXECUTE held, the function refuses unless security.platform_params
+-- finance_simulation_enabled is true — seeded false, and flipping it needs human sign-off.
+REVOKE ALL ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) FROM public;
+
+GRANT EXECUTE ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) TO authenticated;
+
+
 -- --- files: asset management ---
 -- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on
 -- files.items, and a policy expression runs as the invoking role, so revoking it would deny every

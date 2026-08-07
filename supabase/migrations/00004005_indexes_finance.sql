@@ -64,3 +64,18 @@ CREATE INDEX IF NOT EXISTS idx_allowance_periods_buffer_sweep
     ON finance.allowance_periods (period_end, buffer_refreshed_at);
 CREATE INDEX IF NOT EXISTS idx_allowance_ledger_period ON finance.allowance_ledger (period_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_allowance_ledger_ref ON finance.allowance_ledger (ref_table, ref_id);
+
+-- Basket, wishlist & saved cards.
+CREATE INDEX IF NOT EXISTS idx_baskets_owner ON finance.baskets (owner_type, owner_id);
+-- An owner has AT MOST ONE default basket. Partial, so the many named wishlists beside it are
+-- unconstrained — the uniqueness is a property of "default", not of the basket list.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_default_per_owner
+    ON finance.baskets (owner_type, owner_id) WHERE is_default;
+
+CREATE INDEX IF NOT EXISTS idx_basket_items_basket ON finance.basket_items (basket_id);
+-- Answers "is this listing already in one of my baskets?" without scanning every line.
+CREATE INDEX IF NOT EXISTS idx_basket_items_item ON finance.basket_items (item_type, item_id);
+
+CREATE INDEX IF NOT EXISTS idx_saved_cards_owner ON finance.saved_cards (owner_type, owner_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_saved_card_default_per_owner
+    ON finance.saved_cards (owner_type, owner_id) WHERE is_default;

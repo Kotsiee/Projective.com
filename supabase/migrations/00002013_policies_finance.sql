@@ -100,3 +100,61 @@ SELECT TO authenticated USING (
         security.is_admin ()
         OR (wallet_id IS NOT NULL AND finance.fn_can_view_wallet (wallet_id))
     );
+
+
+-- --- finance: basket, wishlist & saved cards ---
+
+-- READ and WRITE are deliberately different predicates on a basket. Any member of an entity may SEE
+-- what the entity is about to buy (fn_owner_visible — ordinary membership); only a member who could
+-- actually pay for it may CHANGE it (fn_can_manage_basket — the `spend` vault capability). A basket
+-- line is a proposed spend, so writing one is a spend-adjacent act, not a read.
+
+CREATE POLICY "View own baskets" ON finance.baskets FOR
+SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));
+
+CREATE POLICY "Manage own baskets" ON finance.baskets FOR ALL TO authenticated
+USING (finance.fn_can_manage_basket (owner_type, owner_id))
+WITH CHECK (finance.fn_can_manage_basket (owner_type, owner_id));
+
+-- Items inherit their basket's reach through an EXISTS over finance.baskets, which is itself
+-- filtered by the two policies above — so an item is exactly as reachable as the basket holding it,
+-- with no second copy of the ownership rule to drift.
+
+CREATE POLICY "View own basket items" ON finance.basket_items FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1 FROM finance.baskets b
+            WHERE b.id = basket_id
+              AND finance.fn_owner_visible (b.owner_type, b.owner_id)
+        )
+    );
+
+CREATE POLICY "Manage own basket items" ON finance.basket_items FOR ALL TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM finance.baskets b
+        WHERE b.id = basket_id
+          AND finance.fn_can_manage_basket (b.owner_type, b.owner_id)
+    )
+)
+WITH CHECK (
+    EXISTS (
+        SELECT 1 FROM finance.baskets b
+        WHERE b.id = basket_id
+          AND finance.fn_can_manage_basket (b.owner_type, b.owner_id)
+    )
+);
+
+-- Saved cards mirror finance.payment_methods EXACTLY (fn_owner_visible for both read and write)
+-- rather than inventing a third posture for the same concept — a saved card IS the display
+-- projection of a payment method, and two different answers to "who may manage this entity's
+-- instruments" would be a bug waiting to happen. The looseness that implies for a shared owner
+-- (any active member may manage the entity's cards) is inherited from that sibling, not introduced
+-- here, and is flagged for reconciliation (root CLAUDE.md §8).
+
+CREATE POLICY "View own saved cards" ON finance.saved_cards FOR
+SELECT TO authenticated USING (finance.fn_owner_visible (owner_type, owner_id));
+
+CREATE POLICY "Manage own saved cards" ON finance.saved_cards FOR ALL TO authenticated
+USING (finance.fn_owner_visible (owner_type, owner_id))
+WITH CHECK (finance.fn_owner_visible (owner_type, owner_id));

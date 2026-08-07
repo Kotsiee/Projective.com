@@ -155,8 +155,12 @@ function convertMinor(minor: number, from: string, to: string): number {
 /**
  * Build a {@link MoneyView}: convert an origin-currency amount into the viewer's display currency, format
  * it (server-side, deterministic), and attach the origin `(amount, currency, rate)` when they differ.
+ *
+ * Exported so the sibling finance fixtures (basket · checkout · cards) project money through the SAME
+ * FX snapshot and the SAME formatter. A second conversion table is how two finance surfaces come to
+ * quote one price two ways.
  */
-function toMoney(minor: number, origin: string, display: string, locale: string): MoneyView {
+export function toMoney(minor: number, origin: string, display: string, locale: string): MoneyView {
 	const conv = convertMinor(minor, origin, display);
 	const sameCcy = origin.toUpperCase() === display.toUpperCase();
 	return {

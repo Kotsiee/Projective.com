@@ -191,6 +191,22 @@ export function globalNav(
 				active: isActive(path, "/analytics"),
 			}
 			: null,
+		// Basket — the buying counterpart of Wallet, and UNGATED for the same reason Files is: everyone
+		// buys, whichever side of the market they are on.
+		//
+		// It belongs in the rail even though the header already carries a Basket utility, because the two
+		// answer different questions. The header control is a transient PEEK — a drawer with a dot and a
+		// "Go to basket" link — while `/basket` is a full middle-nav surface with a lane, two bands and a
+		// checkout step, in the same class as `/wallet` and `/files`. Without a rail entry it would be
+		// reachable only from inside an overlay, and not at all from the collapsed icon rail. The dot
+		// stays on the header control alone, so one signal has one owner.
+		{
+			key: "basket",
+			label: "Basket",
+			href: "/basket",
+			icon: "basket",
+			active: isActive(path, "/basket") || isActive(path, "/checkout"),
+		},
 		{
 			key: "wallet",
 			label: "Wallet",

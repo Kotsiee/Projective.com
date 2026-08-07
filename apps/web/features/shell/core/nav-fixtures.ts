@@ -89,19 +89,6 @@ export interface NotificationItem {
 	actor?: string;
 }
 
-/** A line item in the header Basket drawer. */
-export interface BasketLine {
-	/** Stable id. */
-	id: string;
-	/** Product/service title. */
-	title: string;
-	/** Seller display name. */
-	seller: string;
-	/** Pre-formatted price (display-only fixture; real money math is server-side). */
-	price: string;
-	/** Thumbnail image. */
-	image: string;
-}
 // #endregion
 
 // #region Fixtures
@@ -302,33 +289,6 @@ const NOTIFICATIONS: readonly NotificationItem[] = [
 	},
 ];
 
-/** Unsplash product crops used as basket thumbnails. */
-const SHOT = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=crop&w=96&h=96&q=80`;
-
-const BASKET_LINES: readonly BasketLine[] = [
-	{
-		id: "b1",
-		title: "Aurora UI Kit — Pro",
-		seller: "Monarch Labs",
-		price: "$68",
-		image: SHOT("photo-1618788372246-79faff0c3742"),
-	},
-	{
-		id: "b2",
-		title: "Brand identity sprint",
-		seller: "Northwind Studio",
-		price: "$1,200",
-		image: SHOT("photo-1626785774573-4b799315345d"),
-	},
-	{
-		id: "b3",
-		title: "640-icon line set",
-		seller: "Theo Marsh",
-		price: "$24",
-		image: SHOT("photo-1611162617213-7d7a39e9b1d7"),
-	},
-];
 // #endregion
 
 /** Most-recently-active workspaces for the Projects disclosure. Swap for `/api/workspaces/recent`. */
@@ -364,9 +324,4 @@ export function getBusinessMemberships(): readonly MembershipEntry[] {
 /** Header notifications. Swap for `/api/notifications`. */
 export function getNotifications(): readonly NotificationItem[] {
 	return NOTIFICATIONS;
-}
-
-/** Header basket lines. Swap for `/api/basket`. */
-export function getBasketItems(): readonly BasketLine[] {
-	return BASKET_LINES;
 }

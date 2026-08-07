@@ -1,0 +1,533 @@
+/**
+ * basket-drawer.css — the header Basket utility's right-side drawer (`.bskd-*`).
+ *
+ * **Every width rule here is a container query.** The drawer is `min(27rem, 94vw)`, so its content box
+ * never matches the viewport: a media query at 480px would fire on a phone whose panel is 352px wide
+ * and stay silent on a desktop whose panel is 432px — asking about the wrong box in both directions.
+ * `container-type: inline-size` on the root makes `@container` ask about the panel itself.
+ *
+ * **Separation is spacing and one hairline, never a box** (§B.4): a basket line is not interactive
+ * chrome, so it gets a single leading hairline between siblings and tonal weight on its group heading —
+ * not four-sided borders per row, which would turn a 27rem panel into a stack of cards with no room
+ * left for the fact each one states.
+ */
+
+/* #region Root */
+.bskd {
+	container-type: inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	inline-size: 100%;
+	padding-block-end: var(--space-4);
+}
+
+.bskd__error {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+.bskd__error-text {
+	flex: 1 1 12rem;
+	min-inline-size: 0;
+}
+
+.bskd__retry {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: inherit;
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	cursor: pointer;
+}
+
+.bskd__retry:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd__pending {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	justify-content: center;
+	padding-block: var(--space-6);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+/* #endregion */
+
+/* #region Empty state */
+.bskd__empty {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	align-items: center;
+	padding-block: var(--space-8);
+	color: var(--text-secondary);
+	text-align: center;
+}
+
+.bskd__empty-title {
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.bskd__empty-note {
+	max-inline-size: 22rem;
+	font-size: var(--text-sm);
+}
+
+.bskd__empty-cta {
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	color: var(--on-primary);
+	font-size: var(--text-sm);
+	text-decoration: none;
+}
+
+.bskd__empty-cta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Groups */
+.bskd__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.bskd__group-head {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	padding-block: var(--space-2);
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+}
+
+.bskd__group-icon {
+	display: flex;
+	color: var(--text-secondary);
+}
+
+.bskd__group-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.bskd__group-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bskd__group-caption {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+}
+
+.bskd__group-total {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+/* A parked shelf reads at a lower temperature than the payable list without changing its structure. */
+.bskd__group--saved .bskd__group-head {
+	color: var(--text-secondary);
+}
+
+.bskd__lines {
+	display: flex;
+	flex-direction: column;
+	list-style: none;
+}
+/* #endregion */
+
+/* #region Line */
+.bskd-line {
+	display: grid;
+	grid-template-areas:
+		"check link price"
+		"check sub  actions";
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	gap: var(--space-1) var(--space-2);
+	align-items: center;
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.bskd__lines > .bskd-line:first-child {
+	border-block-start: 0;
+}
+
+.bskd-line[data-busy="true"] {
+	opacity: var(--fld-disabled-alpha);
+	pointer-events: none;
+}
+
+.bskd-line[data-parked="true"] .bskd-line__title {
+	color: var(--text-secondary);
+}
+
+.bskd-line__check,
+.bskd-line__spacer {
+	grid-area: check;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+}
+
+.bskd-line__check:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd-line__link {
+	display: flex;
+	grid-area: link;
+	gap: var(--space-3);
+	align-items: center;
+	min-inline-size: 0;
+	color: inherit;
+	text-decoration: none;
+}
+
+.bskd-line__link:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd-line__thumb {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+}
+
+.bskd-line__thumb img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.bskd-line__body {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.bskd-line__title {
+	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bskd-line__meta {
+	display: flex;
+	gap: var(--space-2);
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	white-space: nowrap;
+}
+
+.bskd-line__kind {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.bskd-line__qty {
+	flex: none;
+	font-variant-numeric: tabular-nums;
+}
+
+.bskd-line__prices {
+	display: flex;
+	grid-area: price;
+	flex-direction: column;
+	align-items: flex-end;
+}
+
+.bskd-line__price {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.bskd-line__was {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Seller identity and the unavailable mark share one grid cell, so a template change moves both. */
+.bskd-line__sub {
+	display: flex;
+	grid-area: sub;
+	gap: var(--space-2);
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.bskd-line__seller {
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	text-decoration: none;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bskd-line__seller:hover {
+	color: var(--primary);
+	text-decoration: underline;
+}
+
+.bskd-line__seller:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd-line__flag {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	color: var(--warning);
+}
+
+.bskd-line__actions {
+	display: flex;
+	grid-area: actions;
+	gap: var(--space-1);
+	align-items: center;
+	justify-content: flex-end;
+}
+
+.bskd-line__btn {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.bskd-line__btn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+}
+
+.bskd-line__btn[aria-pressed="true"] {
+	color: var(--primary);
+}
+
+.bskd-line__btn--danger:hover:not(:disabled) {
+	color: var(--danger);
+}
+
+.bskd-line__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd-line__btn:disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: not-allowed;
+}
+/* #endregion */
+
+/* #region Move menu */
+/*
+ * The Popover already supplies the elevated surface, hairline, radius and shadow; this only tightens
+ * its content padding into a dense column (the `.pf-menu` precedent). Re-declaring the surface here is
+ * what produced the box-in-box the profile menus were unpicked from.
+ */
+.ui-popover.bskd-menu .ui-popover__content {
+	padding: var(--space-1);
+}
+
+.bskd-menu__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 12rem;
+	list-style: none;
+}
+
+.bskd-menu__item {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	inline-size: 100%;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-2);
+	border: 0;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	text-align: start;
+	cursor: pointer;
+}
+
+.bskd-menu__item:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bskd-menu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd-menu__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Footer */
+.bskd__foot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.bskd__totals {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.bskd__total-row {
+	display: flex;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.bskd__total-row dd {
+	font-variant-numeric: tabular-nums;
+}
+
+.bskd__total-row--net {
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.bskd__ctas {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+.bskd__cta {
+	display: inline-flex;
+	flex: none;
+	gap: var(--space-2);
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-4);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.bskd__cta:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bskd__cta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bskd__note {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+/*
+ * At the panel's own narrow tier the two CTAs stack rather than compete for a 20rem row: "Go to Basket"
+ * would otherwise ellipsise and the pay-path button would carry the whole width of a control the buyer
+ * has not chosen yet.
+ */
+@container (max-width: 20rem) {
+	.bskd__ctas {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.bskd__cta {
+		justify-content: center;
+	}
+
+	.bskd-line {
+		grid-template-areas:
+			"check link"
+			"check sub"
+			"check price"
+			"check actions";
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.bskd-line__prices {
+		flex-direction: row;
+		gap: var(--space-2);
+		align-items: baseline;
+	}
+
+	.bskd-line__actions {
+		justify-content: flex-start;
+	}
+}
+/* #endregion */

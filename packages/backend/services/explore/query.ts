@@ -11,6 +11,7 @@ import {
 	TEAMS,
 	USERS,
 } from "./fixtures.ts";
+import { parsePriceMajor, PIPELINE_LOW } from "./pricing.ts";
 import type {
 	ExploreEntity,
 	ExploreItem,
@@ -91,15 +92,15 @@ function priceValue(item: ExploreItem): number {
 	if (item.type === "services") {
 		// Sort a pipeline by its low-intensity ticket floor (0.5×) and a session by its per-session
 		// price, so the range/unit pricing shown on the card orders consistently.
-		if (item.serviceType === "Pipeline" && item.ticketPrice) return item.ticketPrice * 0.5;
+		if (item.serviceType === "Pipeline" && item.ticketPrice) return item.ticketPrice * PIPELINE_LOW;
 		// Session (per-session) and Group Session (per-seat) both order by their per-slot price.
 		if (
 			(item.serviceType === "Session" || item.serviceType === "Group Session") && item.sessionPrice
 		) return item.sessionPrice;
-		return Number(item.price.replace(/[^0-9.]/g, "")) || 0;
+		return parsePriceMajor(item.price);
 	}
 	if (item.type === "products") {
-		return Number(item.price.replace(/[^0-9.]/g, "")) || 0;
+		return parsePriceMajor(item.price);
 	}
 	if (item.type === "freelancers" && item.servicePrices?.length) {
 		return lowestActivePrice(item.servicePrices) ?? 0;

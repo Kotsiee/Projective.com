@@ -1,0 +1,382 @@
+/**
+ * basket-bands.css — the `/basket` + `/checkout` middle-nav HEADER and FOOTER bands.
+ *
+ * **Why every width rule here is a container query.** The shell eats roughly 344px, so at a 768px
+ * viewport the content region is about 424px: a viewport media query asked about the wrong box and
+ * would size these bands against a width they never have. `container-type: inline-size` on each band
+ * root makes `@container` ask about the band itself.
+ *
+ * The ONE deliberate exception is `.bsk-head__btn--browse`, which mirrors the shell's own
+ * `@media (max-width: 767px)` rule removing `.ui-middle-nav__lane`. The Browse control exists precisely
+ * because the lane is gone, so it must be decided by the same measurement the lane's own rule uses —
+ * a container query there could show Browse while the lane was still present, duplicating navigation
+ * instead of transferring it.
+ *
+ * `container-type: inline-size` also supplies the containment that stops a `nowrap` action row
+ * contributing its min-content width to the frame's `minmax(0, 1fr)` content track. `/wallet` shipped
+ * without it and one rig raised the whole surface's floor to 739px, crushing the lane to 2px.
+ */
+
+/* #region Header band */
+.bsk-head {
+	container-type: inline-size;
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	inline-size: 100%;
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+}
+
+.bsk-head__identity {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.bsk-head__names {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	line-height: var(--leading-normal);
+}
+
+.bsk-head__title {
+	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bsk-head__owner {
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bsk-head__search {
+	position: relative;
+	display: flex;
+	flex: 1;
+	gap: var(--space-2);
+	align-items: center;
+	min-inline-size: 0;
+	padding-inline: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+}
+
+.bsk-head__search:focus-within {
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-head__search-icon {
+	display: flex;
+	color: var(--text-secondary);
+}
+
+.bsk-head__search-input {
+	flex: 1;
+	min-inline-size: 0;
+	padding-block: var(--space-2);
+	border: 0;
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+}
+
+.bsk-head__search-input:focus-visible {
+	outline: none;
+}
+
+.bsk-head__controls {
+	display: flex;
+	gap: var(--space-1);
+	align-items: center;
+	margin-inline-start: auto;
+}
+
+.bsk-head__btn {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-3);
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-head__btn:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bsk-head__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * Below the band's own narrow tier the identity's secondary line goes first: the avatar still answers
+ * "whose money is this", which is the last fact allowed to leave a region whose controls precede a
+ * payment.
+ */
+@container (max-width: 34rem) {
+	.bsk-head__owner {
+		display: none;
+	}
+
+	.bsk-head__btn-label {
+		display: none;
+	}
+}
+
+/*
+ * The narrowest tier. The inline field has no room left, so the duty MOVES to the Find control beside
+ * the currency toggle — it does not evaporate. A `display: none` with nothing holding the capability
+ * is the `/wallet` footer bug wearing a header's clothes.
+ */
+.bsk-head__btn--find {
+	position: relative;
+	display: none;
+	padding-inline: var(--space-2);
+}
+
+/* The one signal that a filter is narrowing what the reader is looking at (§B.6 — a dot, not a count). */
+.bsk-head__btn-dot {
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-end: var(--space-1);
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
+
+/* Inside the popover the field is the whole panel, so it gets a real measure instead of a flex remnant. */
+.bsk-head__findfield {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	min-inline-size: 14rem;
+	padding-inline: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+}
+
+.bsk-head__findfield:focus-within {
+	box-shadow: var(--focus-ring-shadow);
+}
+
+@container (max-width: 26rem) {
+	.bsk-head__search {
+		display: none;
+	}
+
+	.bsk-head__btn--find {
+		display: flex;
+	}
+}
+
+/* The lane's own breakpoint — see the note at the top of this file. */
+.bsk-head__btn--browse {
+	display: none;
+}
+
+@media (max-width: 767px) {
+	.bsk-head__btn--browse {
+		display: flex;
+	}
+}
+/* #endregion */
+
+/* #region Footer rig */
+.bsk-rig {
+	container-type: inline-size;
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-4);
+}
+
+.bsk-rig__row {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	inline-size: 100%;
+}
+
+.bsk-rig__density {
+	flex: 0 1 14rem;
+	min-inline-size: 0;
+}
+
+.bsk-rig__actions {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin-inline-start: auto;
+}
+
+.bsk-rig__btn {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-3);
+	border-radius: var(--radius-full);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	text-decoration: none;
+}
+
+a.bsk-rig__btn[data-primary="true"] {
+	background: var(--primary);
+	color: var(--on-primary);
+	font-weight: var(--fw-medium);
+}
+
+a.bsk-rig__btn[aria-disabled="true"] {
+	opacity: var(--fld-disabled-alpha);
+	pointer-events: none;
+}
+
+a.bsk-rig__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-rig__more {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: var(--fld-hit);
+	min-block-size: var(--fld-hit);
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-rig__more:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bsk-rig__more:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * Tier 2 — the density control is a refinement, not a capability, so it is the first thing to go.
+ * Nothing that ACTS is ever removed by a tier: the menu beside these controls holds every action at
+ * every width, which is the rule `/wallet` broke.
+ */
+@container (max-width: 44rem) {
+	.bsk-rig__density {
+		display: none;
+	}
+}
+
+/* Tier 3 — labels collapse to glyphs. Each control keeps its `aria-label` and its portal Tooltip. */
+@container (max-width: 30rem) {
+	.bsk-rig__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.bsk-rig__btn {
+		padding-inline: var(--space-2);
+	}
+}
+
+/*
+ * The mobile bottom nav is `position: fixed` at the viewport's bottom edge, exactly where a footer band
+ * pinned to `inset-block-end: 0` lands. `/messages` shipped the two overlapping; the band clears it.
+ */
+@media (max-width: 767px) {
+	.bsk-rig {
+		padding-block-end: calc(var(--space-2) + var(--shell-bottomnav-h));
+	}
+}
+/* #endregion */
+
+/* #region Shared menu (the header's Browse + currency, the rig's overflow) */
+.bsk-menu {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 12rem;
+	padding: var(--space-1);
+}
+
+.bsk-menu__item {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	inline-size: 100%;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-3);
+	border: 0;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	text-align: start;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-menu__item:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bsk-menu__item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-menu__item[disabled] {
+	color: var(--text-secondary);
+	opacity: var(--fld-disabled-alpha);
+	cursor: default;
+}
+
+.bsk-menu__item[data-danger="true"] {
+	color: var(--danger);
+}
+
+.bsk-menu__count {
+	margin-inline-start: auto;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.bsk-menu__rule {
+	margin: var(--space-1) 0;
+	border: 0;
+	border-block-start: var(--hairline);
+}
+/* #endregion */

@@ -415,6 +415,28 @@ GRANT SELECT ON TABLE finance.allowance_ledger TO authenticated;
 GRANT ALL ON TABLE finance.allowance_ledger TO service_role;
 
 
+-- --- finance: basket, wishlist & saved cards ---
+-- DELETE is granted here, unlike every sibling finance table, and the reason is that these three
+-- hold PRE-transaction state. Root CLAUDE.md §5 ("nothing is hard-deleted, use Archived") governs
+-- lifecycle entities and financial records; a basket line is neither — it is an intent that has
+-- never moved money, and removing an item from a cart is genuinely a delete, not an archive. The
+-- soft path still exists where it means something: `saved_for_later` keeps a line without buying it.
+-- Nothing downstream of checkout is deletable: escrows, transactions and invoices keep their
+-- append-only posture untouched.
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE finance.baskets TO authenticated;
+
+GRANT ALL ON TABLE finance.baskets TO service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE finance.basket_items TO authenticated;
+
+GRANT ALL ON TABLE finance.basket_items TO service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE finance.saved_cards TO authenticated;
+
+GRANT ALL ON TABLE finance.saved_cards TO service_role;
+
+
 -- --- files: asset management (anon reach for the public tier) ---
 -- `anon` already holds USAGE on the `files` schema (00002500) but no table grant, so the anon
 -- policy in 00002011 would have been unreachable. This is the schema's ONLY anon table grant and it

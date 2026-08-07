@@ -530,3 +530,121 @@ CREATE TABLE finance.allowance_ledger (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 -- #endregion
+
+-- #region Basket, wishlist & saved cards (pre-transaction state)
+-- These three tables sit BEFORE the ledger, not inside it: a basket line is an INTENT to buy, not a
+-- movement of money. Nothing here debits, credits or reserves anything — checkout is the moment a
+-- basket becomes escrow, and that path stays in the SECURITY DEFINER money functions.
+--
+-- Order is dependency-driven: finance.baskets precedes finance.basket_items (FK), and
+-- finance.saved_cards follows finance.payment_methods (FK), so the file stays layered.
+
+-- A named collection of purchasable intents. A "wishlist" is not a separate table or a separate
+-- kind — it is simply a non-default basket with its own name ('3D Asset Wishlist'), which is why
+-- there is no `kind` column: one owner may hold many baskets and exactly one of them is the default.
+--
+-- ⚠️ `owner_type` is the WIDE finance owner axis, deliberately matching finance.payment_methods /
+-- finance.payout_schedules / finance.statements. A narrower ('user','business') pair could not
+-- express a TEAM basket, and the app's context switcher (root CLAUDE.md Decisions #16/#61) switches
+-- between personal / team / business / organisation — the basket must re-scope with it.
+CREATE TABLE finance.baskets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_id uuid NOT NULL,
+    name text NOT NULL DEFAULT 'Main Basket',      -- 'Main Basket' / '3D Asset Wishlist' / …
+    is_default boolean NOT NULL DEFAULT false,     -- at most one per owner (partial UNIQUE index, cat 4)
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()  -- app/service maintained; no touch trigger (schema convention)
+);
+
+COMMENT ON TABLE finance.baskets IS
+'A named collection of purchasable intents for one owner (personal, team, business or organisation).
+A wishlist is a non-default basket, not a separate entity. Holds no money and reserves no capacity.';
+
+-- One line in a basket. Polymorphic by (item_type, item_id) across the catalogue and the project
+-- graph, so `item_id` is deliberately NOT foreign-keyed — its target table is chosen by `item_type`
+-- (a digital product, a project, a service, a session) and no single FK can express that.
+CREATE TABLE finance.basket_items (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    basket_id uuid NOT NULL REFERENCES finance.baskets (id) ON DELETE CASCADE,
+    item_type finance.purchasable_item_kind NOT NULL,
+    item_id uuid NOT NULL,                         -- polymorphic target, resolved by item_type
+    -- A stage reference is only meaningful for the ticket kinds; every other kind leaves it NULL.
+    -- Because an FK only constrains NON-NULL values, keying it to the one unambiguous target is
+    -- both safe and correct — a ticket's stage IS a projects.project_stages row. CASCADE, not SET
+    -- NULL: if the stage is gone the line is no longer purchasable, and a stage-less ticket line
+    -- would be a silently wrong basket entry rather than an honest absence.
+    stage_id uuid REFERENCES projects.project_stages (id) ON DELETE CASCADE,
+    -- ⚠️ NOT foreign-keyed, unlike stage_id, because its target is genuinely ambiguous today:
+    -- `projects.stage_revision_requests` (a client-requested revision round) and a submission
+    -- revision are two different things and the purchasable one has not been settled. Left as a
+    -- bare uuid rather than guessing a table; flagged for a human (root CLAUDE.md §8).
+    revision_id uuid,
+    title text NOT NULL,                           -- display snapshot, so a renamed listing cannot rewrite history
+    subtitle text,
+    unit_price_minor bigint NOT NULL CHECK (unit_price_minor >= 0),
+    currency char(3) NOT NULL,
+    -- Bounded at both ends. The upper bound mirrors the Zod SSOT (`BasketItemSchema.quantity` is
+    -- `.min(1).max(999)`), so a quantity that validates is always storable and a quantity that is
+    -- stored always parses; it also keeps `unit_price_minor * quantity` in the discount CHECK below
+    -- inside bigint, which an unbounded int4 quantity against a bigint price does not.
+    quantity integer NOT NULL DEFAULT 1 CHECK (quantity BETWEEN 1 AND 999),
+    discount_code text,
+    discount_amount_minor bigint NOT NULL DEFAULT 0 CHECK (discount_amount_minor >= 0),
+    is_selected_for_checkout boolean NOT NULL DEFAULT true,
+    saved_for_later boolean NOT NULL DEFAULT false,
+    -- Gifting: deliver to someone other than the buyer. The structural CHECK is the same shape the
+    -- Zod SSOT enforces, so a stored address always parses back out — a read projection that throws
+    -- on a malformed address would take the whole basket read down with it.
+    destination_email text CHECK (
+        destination_email IS NULL OR destination_email ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+    ),
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    -- A discount may never exceed the line it discounts, so a basket total can never go negative.
+    CONSTRAINT basket_item_discount_within_line CHECK (
+        discount_amount_minor <= unit_price_minor * quantity
+    )
+);
+
+COMMENT ON TABLE finance.basket_items IS
+'One purchasable intent in a basket. Prices are a SNAPSHOT for display; checkout re-resolves the
+authoritative price server-side, so a stale or tampered line can never set what is actually charged.';
+
+-- The buyer-facing DISPLAY projection of a saved payment instrument.
+--
+-- ⚠️ Read the table comment below before adding a column here.
+CREATE TABLE finance.saved_cards (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_id uuid NOT NULL,
+    -- Ties the display projection back to the money-movement instrument so the two cannot diverge.
+    -- Nullable: a card may be saved before its finance.payment_methods row is provisioned, and the
+    -- instrument may be retired without erasing the buyer's saved-card list.
+    payment_method_id uuid REFERENCES finance.payment_methods (id) ON DELETE SET NULL,
+    stripe_payment_method_id text NOT NULL,        -- opaque Stripe PaymentMethod id; XXXX-XXXX in docs
+    brand finance.card_brand NOT NULL DEFAULT 'unknown',
+    last4 char(4),                                 -- safe display fragment only
+    exp_month integer CHECK (exp_month IS NULL OR exp_month BETWEEN 1 AND 12),
+    exp_year integer CHECK (exp_year IS NULL OR exp_year BETWEEN 2000 AND 2100),
+    cardholder_name text,
+    -- The 6-8 digit issuer identification number. Nullable and usually NULL: Stripe only returns an
+    -- IIN under an explicitly granted entitlement, so every consumer MUST degrade to `brand` alone.
+    bin_number text CHECK (bin_number IS NULL OR bin_number ~ '^[0-9]{6,8}$'),
+    is_business_card boolean NOT NULL DEFAULT false,
+    created_by_user_id uuid REFERENCES auth.users (id) ON DELETE SET NULL,
+    is_default boolean NOT NULL DEFAULT false,     -- at most one per owner (partial UNIQUE index, cat 4)
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_saved_card_owner_provider_ref UNIQUE (owner_type, owner_id, stripe_payment_method_id)
+);
+
+COMMENT ON TABLE finance.saved_cards IS
+'Display-only projection of a Stripe-held payment instrument. brand / last4 / exp_month / exp_year /
+cardholder_name / bin_number are values STRIPE RETURNS to us and are safe to store: they cannot be
+used to charge anything. The full card number (PAN) and the CVV are never received by this platform
+and are never stored — there is no column for either, and adding one is prohibited. The only thing
+here that can move money is stripe_payment_method_id, which is an opaque reference Stripe resolves
+against our account, not a credential. Overlaps finance.payment_methods (the funding/payout
+instrument registry) and finance.payout_accounts — see documentation/database/finance/Tables.md.';
+-- #endregion

@@ -14,12 +14,14 @@ import { dsConfig, toggleMode } from "@projective/ui/system";
 import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
 import {
-	getBasketItems,
 	getBusinessMemberships,
 	getNotifications,
 	getTeamMemberships,
 	type MembershipEntry,
 } from "@web/features/shell/core/nav-fixtures.ts";
+import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx";
+import { basketCount } from "@web/features/checkout/core/basket-state.ts";
+import { defaultOwnerParam } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
@@ -146,8 +148,15 @@ export default function UserActions(
 	const createOptions = createMenuOptions(effCtx);
 	const links = profileLinks(effCtx);
 	const notifications = getNotifications();
-	const basket = getBasketItems();
 	const hasUnread = notifications.some((n) => n.unread);
+
+	// The REAL basket line count, read by the drawer through the thin `BasketService` and published on
+	// the shared store. Drives the Basket control's state dot and its accessible name only — the figure
+	// itself never renders (see the control below).
+	const basketLines = basketCount.value;
+	// Whose basket the drawer opens. Follows the effective context, so a simulated persona flip
+	// re-scopes the drawer with the rest of the header rather than leaving it on the real session's.
+	const basketOwner = defaultOwnerParam(effCtx);
 
 	// Resolved account display — the live projection when present, else the context-derived fallback.
 	// A dev persona override wins over the fetched account for the role/identity display, so the
@@ -511,16 +520,28 @@ export default function UserActions(
 				{hasUnread ? <span class="shell-util__dot" aria-hidden="true" /> : null}
 			</button>
 
-			{/* Basket — right-side blurring drawer (desktop; not a mobile header action) */}
+			{
+				/*
+			  Basket — right-side blurring drawer (desktop; not a mobile header action).
+
+			  **A pulsing dot, never a count.** DESIGN_SYSTEM Part D.1 is explicit for this exact control
+			  ("Notifications and Basket … unseen state shows as a pulsing dot, never a count"), and the
+			  same section's Update-indicators rule folds the state a sighted reader loses into the
+			  `aria-label`. So the tally is announced and never printed — which is also the honest choice
+			  for a figure this control cannot keep live between reads.
+			*/
+			}
 			<button
 				type="button"
 				class="shell-util__btn shell-util__slot--desktop"
-				aria-label="Basket"
+				aria-label={basketLines > 0
+					? `Basket — ${basketLines} ${basketLines === 1 ? "item" : "items"}`
+					: "Basket"}
 				aria-haspopup="dialog"
 				onClick={() => (basketOpen.value = true)}
 			>
 				<NavIcon name="basket" />
-				{basket.length > 0 ? <span class="shell-util__dot" aria-hidden="true" /> : null}
+				{basketLines > 0 ? <span class="shell-util__dot" aria-hidden="true" /> : null}
 			</button>
 
 			{/* Profile (desktop) — circular avatar opening the account Popover */}
@@ -585,27 +606,16 @@ export default function UserActions(
 				<a class="shell-drawer__all" href="/notifications">View all notifications</a>
 			</Drawer>
 
-			<Drawer
-				visible={basketOpen}
-				position="right"
-				header="Basket"
-				class="shell-drawer"
-				size="min(25rem, 92vw)"
-			>
-				<ul class="shell-basket">
-					{basket.map((line) => (
-						<li key={line.id} class="shell-basket__item">
-							<img class="shell-basket__thumb" src={line.image} alt="" loading="lazy" />
-							<span class="shell-basket__body">
-								<span class="shell-basket__title">{line.title}</span>
-								<span class="shell-basket__seller">{line.seller}</span>
-							</span>
-							<span class="shell-basket__price">{line.price}</span>
-						</li>
-					))}
-				</ul>
-				<a class="shell-drawer__cta" href="/basket">Go to basket</a>
-			</Drawer>
+			{
+				/*
+			  The real basket, through the thin `BasketService`. It replaces the `nav-fixtures` list that
+			  used to sit inline here and drew three hard-coded rows with hard-coded prices that belonged
+			  to nothing anyone could pay for. Mounted unconditionally (not behind `basketOpen`) because
+			  it is what reads the count the control above indicates, and because its stylesheet reaches
+			  the page only through this island's client bundle.
+			*/
+			}
+			<BasketDrawer open={basketOpen} owner={basketOwner} />
 		</div>
 	);
 }

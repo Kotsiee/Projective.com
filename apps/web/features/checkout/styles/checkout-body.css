@@ -1,0 +1,1400 @@
+/**
+ * checkout-body.css — the `/checkout` BODY.
+ *
+ * The `/basket` body lives in `basket-body.css`; the two sheets share the money typography and the
+ * separation model but no selectors, so neither can quietly restyle the other.
+ *
+ * Four rules here are contractual rather than stylistic:
+ *
+ * - **Every width rule is a CONTAINER query.** The shell eats roughly 344px, so at a 768px viewport
+ *   the content region is about 424px: a viewport media query would ask about a box this body never
+ *   has. `.cko` carries `container-type: inline-size` and a name, and every breakpoint below asks the
+ *   body about itself. The one exception is the mobile bottom-nav clearance at the end, which mirrors
+ *   the shell's own `@media (max-width: 767px)` rule because it is about the VIEWPORT's furniture.
+ * - **No `max-inline-size` on a region carrying a figure** (Decision #60). The two measures in this
+ *   sheet are on running prose — an empty-state note and a disclosure sentence — and no amount, no
+ *   line list and no summary is a descendant of either.
+ * - **Separation by spacing, tint and one hairline** (§B.4). No non-interactive block on this surface
+ *   is boxed in a four-sided border; the interactive ones (a payment option, a card cell) are.
+ * - **Nothing animates a property that ENCODES data.** Prices, totals and the fee disclosure are
+ *   painted, never transitioned into place — a frozen animation clock in a background tab must not be
+ *   able to leave a figure stating something untrue (the `/wallet` defect class).
+ */
+
+/* #region Root & layout */
+.cko {
+	container-type: inline-size;
+	container-name: cko;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	padding: var(--space-5) var(--space-4) var(--space-6);
+}
+
+.cko__cols {
+	display: grid;
+	/* `minmax(0, …)` on both tracks: a long title or a wide card grid must not set the column floor. */
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-6);
+	align-items: start;
+}
+
+.cko__main,
+.cko__aside {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	min-inline-size: 0;
+}
+
+/*
+ * Two columns once the BODY — not the window — has room for them. Below this the pay column follows
+ * the lines, which is also the order the buyer reads in: what am I buying, then how am I paying.
+ */
+@container cko (min-width: 60rem) {
+	.cko__cols {
+		grid-template-columns: minmax(0, 1.4fr) minmax(22rem, 1fr);
+	}
+
+	.cko__aside {
+		position: sticky;
+		inset-block-start: var(--space-4);
+	}
+}
+
+.cko__section {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.cko__headrow {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.cko__head {
+	margin: 0 0 var(--space-3);
+	color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+}
+
+.cko__subhead {
+	margin: var(--space-5) 0 var(--space-3);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+
+.cko__sub {
+	margin: 0 0 var(--space-4);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko__handle {
+	margin-inline-start: var(--space-2);
+	color: var(--text-secondary);
+}
+
+.cko__chip {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko__error {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface-1));
+	color: var(--danger);
+	font-size: var(--text-sm);
+}
+
+/* #endregion */
+
+/* #region Money */
+/*
+ * The single money treatment on this surface. Tabular figures so a column of prices aligns on the
+ * decimal, and the minor units set a step down and slightly faded — baseline-aligned, never
+ * superscript, which would break the alignment and read as a retail price tag.
+ */
+.cko-money {
+	display: inline-flex;
+	gap: var(--space-1);
+	align-items: baseline;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.cko-money__amount {
+	display: inline-flex;
+	align-items: baseline;
+}
+
+/*
+ * The currency symbol sits tight to the number and never wraps away from it. A symbol that reflowed
+ * onto its own line would read as a different currency to the amount beneath it.
+ */
+.cko-money__symbol {
+	white-space: nowrap;
+}
+
+.cko-money__minor {
+	font-size: var(--minor-size);
+	opacity: var(--minor-fade);
+}
+
+.cko-money--body {
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-money--micro {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+}
+
+.cko-money--lead {
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-money--hero {
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-tight);
+}
+
+/* A hero figure's pence step down further: at display scale the small end's ratio is not a ratio. */
+.cko-money--hero .cko-money__minor {
+	font-size: 0.5em;
+}
+
+.cko-money--muted {
+	color: var(--text-secondary);
+}
+
+.cko-money--credit {
+	color: var(--success);
+}
+
+.cko-money--struck {
+	color: var(--text-secondary);
+	text-decoration: line-through;
+}
+/* #endregion */
+
+/* #region Narrowing note */
+.cko-note {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface-1));
+}
+
+.cko-note__icon {
+	display: flex;
+	color: var(--primary);
+}
+
+.cko-note__body {
+	flex: 1;
+	min-inline-size: 0;
+}
+
+.cko-note__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-note__text {
+	margin: var(--space-1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-note__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+	margin: var(--space-3) 0 0;
+}
+
+.cko-note__link {
+	color: var(--primary);
+	font-size: var(--text-sm);
+}
+
+.cko-note__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-note__dismiss {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: var(--fld-hit);
+	min-block-size: var(--fld-hit);
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.cko-note__dismiss:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.cko-note__dismiss:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Blockers */
+.cko-block {
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--warning) var(--tint-subtle), var(--surface-1));
+}
+
+.cko-block__head {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: 0 0 var(--space-3);
+	color: var(--warning);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-block__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cko-block__item {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: flex-start;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+}
+
+.cko-block__icon {
+	flex: none;
+	color: var(--warning);
+}
+
+.cko-block__text {
+	flex: 1;
+	min-inline-size: 0;
+}
+
+.cko-block__link {
+	color: var(--primary);
+	font-size: var(--text-xs);
+	white-space: nowrap;
+}
+
+.cko-block__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* A price that moved is the one blocker the buyer must re-read a figure for, so it reads louder. */
+.cko-block__item[data-code="price_changed"] .cko-block__icon,
+.cko-block__item[data-code="not_authorised"] .cko-block__icon {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Groups */
+.cko-group {
+	display: flex;
+	flex-direction: column;
+	margin-block-end: var(--space-6);
+}
+
+.cko-group__head {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	padding-block-end: var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.cko-group__icon {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+}
+
+.cko-group__names {
+	flex: 1;
+	min-inline-size: 0;
+}
+
+.cko-group__label {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-group__link {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	color: inherit;
+	text-decoration: none;
+}
+
+.cko-group__link:hover {
+	text-decoration: underline;
+}
+
+.cko-group__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-group__caption {
+	margin: var(--space-1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-group__total {
+	flex: none;
+}
+
+.cko-group__ladder {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: var(--space-3) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-group__lines {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+/* #endregion */
+
+/* #region Line */
+.cko-line {
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr);
+	gap: var(--space-3);
+	align-items: start;
+	padding-block: var(--space-4);
+	/* One hairline BETWEEN rows — a separator, never a box around each (§B.4). */
+	border-block-end: var(--hairline);
+}
+
+.cko-line:last-child {
+	border-block-end: 0;
+}
+
+/*
+ * A line left out of this payment recedes but stays legible: it is still in the basket, and a row
+ * faded to the point of unreadability reads as removed.
+ */
+.cko-line[data-included="false"] {
+	opacity: 0.82;
+}
+
+.cko-line[data-busy="true"] {
+	opacity: var(--fld-disabled-alpha);
+}
+
+.cko-line__lead {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+.cko-line__step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--icon-lg);
+	block-size: var(--icon-lg);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.cko-line__figure {
+	flex: none;
+}
+
+.cko-line__thumb,
+.cko-line__glyph {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 3.5rem;
+	block-size: 3.5rem;
+	border-radius: var(--radius-base);
+	object-fit: cover;
+}
+
+.cko-line__glyph {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+}
+
+.cko-line__body {
+	min-inline-size: 0;
+}
+
+.cko-line__headrow {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.cko-line__title {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: baseline;
+	min-inline-size: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+
+.cko-line__title:hover {
+	text-decoration: underline;
+}
+
+.cko-line__title:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-line__out {
+	flex: none;
+	color: var(--text-secondary);
+	font-size: var(--icon-xs);
+}
+
+.cko-line__price {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	align-items: flex-end;
+}
+
+/*
+ * The struck-through pre-discount price sits UNDER the charged one rather than beside it, so the
+ * figure the buyer is actually paying is always the one on the reading line.
+ */
+.cko-line__was {
+	display: inline-flex;
+	align-items: baseline;
+}
+
+.cko-line__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: baseline;
+	margin: var(--space-1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-line__kind {
+	color: var(--text-secondary);
+}
+
+.cko-line__qty {
+	display: inline-flex;
+	gap: var(--space-1);
+	align-items: baseline;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+/* A separator, not information — hidden from assistive tech at the call site. */
+.cko-line__dot {
+	color: var(--text-secondary);
+}
+
+.cko-line__seller {
+	color: var(--text-secondary);
+	text-decoration: none;
+}
+
+.cko-line__seller:hover {
+	text-decoration: underline;
+}
+
+.cko-line__seller:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-line__flag {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: var(--space-2) 0 0;
+	color: var(--warning);
+	font-size: var(--text-xs);
+}
+
+.cko-line__state {
+	margin: var(--space-2) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-style: italic;
+}
+/* #endregion */
+
+/* #region Tags */
+.cko-tagrow {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: var(--space-2) 0 0;
+}
+
+.cko-tag {
+	display: inline-flex;
+	gap: var(--space-1);
+	align-items: center;
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-sm);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+/* Tone carries a GLYPH as well as a hue in every case — a state never rides on colour alone (§A.5). */
+.cko-tag[data-tone="warning"] {
+	background: color-mix(in srgb, var(--warning) var(--tint-subtle), transparent);
+	color: var(--warning);
+}
+
+.cko-tag[data-tone="credit"] {
+	background: color-mix(in srgb, var(--success) var(--tint-subtle), transparent);
+	color: var(--success);
+}
+/* #endregion */
+
+/* #region Per-kind blocks (delivery · stage · booking) */
+.cko-deliver,
+.cko-stage,
+.cko-when {
+	margin-block-start: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.cko-stage,
+.cko-when {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+}
+
+.cko-deliver__label {
+	display: block;
+	margin-block-end: var(--space-2);
+	color: var(--fld-label-fg);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+}
+
+.cko-deliver__form {
+	max-inline-size: 22rem;
+}
+
+.cko-deliver__note {
+	margin: var(--space-2) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-deliver__note[data-invalid="true"] {
+	color: var(--danger);
+}
+
+.cko-deliver__suggest {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+	margin-block-start: var(--space-2);
+}
+
+.cko-deliver__suggest-label {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-deliver__chip {
+	padding: var(--space-1) var(--space-2);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.cko-deliver__chip:hover {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+.cko-deliver__chip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-stage__mark,
+.cko-when__mark {
+	display: flex;
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.cko-stage__body,
+.cko-when__body {
+	flex: 1;
+	min-inline-size: 0;
+}
+
+.cko-stage__label,
+.cko-when__slot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: baseline;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+.cko-stage__note {
+	margin: var(--space-1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-stage__link,
+.cko-when__link {
+	display: inline-flex;
+	gap: var(--space-1);
+	align-items: center;
+	color: var(--primary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+	text-decoration: none;
+}
+
+.cko-stage__link:hover,
+.cko-when__link:hover {
+	text-decoration: underline;
+}
+
+.cko-stage__link:focus-visible,
+.cko-when__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-when__link {
+	margin-block-start: var(--space-2);
+}
+
+.cko-when__zone {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+}
+
+.cko-when__local {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: var(--space-2) 0 0;
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+}
+
+.cko-when__seats {
+	margin: var(--space-1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-when__confirm {
+	margin-block-start: var(--space-3);
+}
+
+.cko-when__warn {
+	margin: var(--space-2) 0 0;
+	color: var(--warning);
+	font-size: var(--text-xs);
+}
+
+/* A confirmed booking gets a quiet, positive edge — the only signal on the block that changes. */
+.cko-when[data-confirmed="true"] {
+	background: color-mix(in srgb, var(--success) var(--tint-subtle), transparent);
+}
+
+.cko-when[data-confirmed="true"] .cko-when__mark {
+	color: var(--success);
+}
+/* #endregion */
+
+/* #region Payment routes */
+.cko-pay {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+/*
+ * A payment option IS interactive, so a four-sided border is correct here — that is exactly the
+ * distinction §B.4 draws, and it is what makes the refused ones read as controls rather than notes.
+ */
+.cko-pay__opt {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: var(--space-1) var(--space-3);
+	padding: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.cko-pay__opt:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.cko-pay__opt[data-checked="true"] {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+/*
+ * A refused route is DIMMED, never removed, and never so faint it cannot be read — the whole point
+ * of showing it is that its reason gets read. `pointer-events` stays live so the row is still
+ * hoverable and its text selectable; the radio itself carries the `disabled`.
+ */
+.cko-pay__opt[data-available="false"] {
+	background: transparent;
+}
+
+.cko-pay__opt[data-available="false"] .cko-pay__label,
+.cko-pay__opt[data-available="false"] .cko-pay__glyph {
+	color: var(--text-secondary);
+}
+
+.cko-pay__opt:focus-within {
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-pay__radio {
+	grid-row: 1;
+	align-self: center;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+	accent-color: var(--primary);
+}
+
+.cko-pay__main {
+	display: flex;
+	grid-row: 1;
+	gap: var(--space-2);
+	align-items: center;
+	cursor: pointer;
+}
+
+.cko-pay__opt[data-available="false"] .cko-pay__main {
+	cursor: default;
+}
+
+.cko-pay__glyph {
+	display: flex;
+	color: var(--on-surface);
+}
+
+.cko-pay__label {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+.cko-pay__note,
+.cko-pay__reason {
+	grid-column: 2;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-pay__reason {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	color: var(--warning);
+}
+
+.cko-pay__detail {
+	grid-column: 2;
+}
+
+.cko-pay__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+/* #endregion */
+
+/* #region Wallet detail */
+.cko-wallet {
+	margin-block-start: var(--space-2);
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.cko-wallet__row {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+	margin: 0 0 var(--space-1);
+}
+
+.cko-wallet__label {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-wallet__row[data-short="true"] .cko-wallet__label,
+.cko-wallet__row[data-short="true"] .cko-money {
+	color: var(--warning);
+}
+
+.cko-wallet__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin: var(--space-2) 0 0;
+}
+
+.cko-wallet__link {
+	display: inline-flex;
+	gap: var(--space-1);
+	align-items: center;
+	color: var(--primary);
+	font-size: var(--text-xs);
+	text-decoration: none;
+}
+
+.cko-wallet__link:hover {
+	text-decoration: underline;
+}
+
+.cko-wallet__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-wallet__note {
+	margin: var(--space-2) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+/* #endregion */
+
+/* #region Cards */
+.cko__cards {
+	display: flex;
+	flex-direction: column;
+}
+
+.cko-cards__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+	gap: var(--space-4);
+}
+
+.cko-cards__cell {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.cko-cards__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.cko-cards__empty {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-cards__empty a {
+	color: var(--primary);
+}
+/* #endregion */
+
+/* #region Invoice summary */
+.cko-sum {
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
+}
+
+.cko-sum__head {
+	display: flex;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+	margin: 0 0 var(--space-3);
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-sum__count {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+}
+
+.cko-sum__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+}
+
+.cko-sum__row {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.cko-sum__label {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-sum__note {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-sum__value {
+	margin: 0;
+	text-align: end;
+}
+
+/*
+ * The fee under `seller_deducted`. It is DISCLOSURE, not a charge, so it is set back from the rows
+ * the buyer is actually paying — and the words beside it say so, because a tone alone has never told
+ * anyone who is paying a fee.
+ */
+.cko-sum__row[data-kind="fee"][data-charged="false"] .cko-sum__label,
+.cko-sum__row[data-kind="fee"][data-charged="false"] .cko-sum__value {
+	color: var(--text-secondary);
+}
+
+.cko-sum__aside {
+	margin: var(--space-3) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-sum__total {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+	margin: var(--space-4) 0 0;
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.cko-sum__total-label {
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-sum__disclosure {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	max-inline-size: var(--measure-narrow);
+	margin: var(--space-3) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-sum__promo-error {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	margin: var(--space-3) 0 0;
+	color: var(--warning);
+	font-size: var(--text-xs);
+}
+/* #endregion */
+
+/* #region The gate reminder beside the money */
+.cko__gate {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	margin: 0;
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--warning) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+}
+/* #endregion */
+
+/* #region Outcome */
+.cko-result {
+	display: flex;
+	gap: var(--space-4);
+	align-items: flex-start;
+	padding: var(--space-5);
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
+}
+
+.cko-result:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-result__icon {
+	display: flex;
+	flex: none;
+	color: var(--text-secondary);
+	font-size: var(--icon-lg);
+}
+
+.cko-result[data-status="succeeded"] {
+	background: color-mix(in srgb, var(--success) var(--tint-subtle), var(--surface-1));
+}
+
+.cko-result[data-status="succeeded"] .cko-result__icon {
+	color: var(--success);
+}
+
+.cko-result[data-status="failed"] {
+	background: color-mix(in srgb, var(--danger) var(--tint-subtle), var(--surface-1));
+}
+
+.cko-result[data-status="failed"] .cko-result__icon {
+	color: var(--danger);
+}
+
+.cko-result[data-status="requires_action"] .cko-result__icon,
+.cko-result[data-status="pending"] .cko-result__icon {
+	color: var(--warning);
+}
+
+.cko-result__body {
+	flex: 1;
+	min-inline-size: 0;
+}
+
+.cko-result__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-result__figure {
+	margin: var(--space-2) 0 0;
+}
+
+.cko-result__text {
+	margin: var(--space-2) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-result__reasons {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: var(--space-3) 0 0;
+	padding: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	list-style: none;
+}
+
+.cko-result__jump {
+	margin-inline-start: var(--space-2);
+	color: var(--primary);
+	font-size: var(--text-xs);
+}
+
+.cko-result__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: center;
+	margin: var(--space-4) 0 0;
+}
+
+.cko-result__cta {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	min-block-size: var(--fld-hit);
+	padding-inline: var(--space-4);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	color: var(--on-primary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+
+.cko-result__cta:focus-visible,
+.cko-result__jump:focus-visible,
+.cko-result__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-result__link {
+	color: var(--primary);
+	font-size: var(--text-sm);
+}
+/* #endregion */
+
+/* #region Empty state */
+.cko__empty {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	align-items: center;
+	padding-block: var(--space-7);
+	color: var(--text-secondary);
+	text-align: center;
+}
+
+.cko__empty-title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+}
+
+/* One of the two legal measures on this surface: running prose, carrying no figure. */
+.cko__empty-note {
+	max-inline-size: 42ch;
+	margin: 0;
+	font-size: var(--text-sm);
+}
+
+.cko__empty-link {
+	color: var(--primary);
+	font-size: var(--text-sm);
+}
+/* #endregion */
+
+/* #region Confirmation dialog */
+/*
+ * The panel is narrow on purpose. It carries one figure, four facts and two buttons, and a wide
+ * dialog would scatter them — the whole point of this step is that everything it says is read.
+ */
+.cko-confirm {
+	inline-size: min(var(--overlay-w-sm), 100%);
+}
+
+.cko-confirm__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.cko-confirm__figure {
+	margin: 0;
+}
+
+.cko-confirm__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.cko-confirm__row {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.cko-confirm__label {
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-confirm__value {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	text-align: end;
+}
+
+.cko-confirm__hint {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-confirm__warn {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-confirm__foot {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	justify-content: flex-end;
+}
+/* #endregion */
+
+/* #region Narrow tiers (container-measured — see the note at the top of this file) */
+@container cko (max-width: 34rem) {
+	.cko-line {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	/* The thumbnail is the first thing to go: it identifies nothing the title does not. */
+	.cko-line__figure {
+		display: none;
+	}
+
+	.cko-line__headrow {
+		flex-direction: column;
+		gap: var(--space-1);
+		align-items: flex-start;
+	}
+
+	.cko-line__price {
+		align-items: flex-start;
+	}
+
+	.cko-deliver__form {
+		max-inline-size: none;
+	}
+}
+/* #endregion */
+
+/* #region Motion */
+/*
+ * Reduced motion jumps to the final state. Nothing on this surface animates a property that ENCODES
+ * data — a price, a total or a fee disclosure — so a frozen animation clock cannot leave a figure
+ * stating something untrue (the `/wallet` defect class).
+ */
+@media (prefers-reduced-motion: reduce) {
+	.cko *,
+	.cko-confirm * {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+	}
+}
+/* #endregion */
+
+/*
+ * The mobile bottom nav is `position: fixed` at the viewport's bottom edge and the footer band pins
+ * above it, so the body's own trailing space is measured against the VIEWPORT's furniture rather than
+ * against its own width — the one rule in this sheet that is correctly a media query.
+ */
+@media (max-width: 767px) {
+	.cko {
+		padding-block-end: calc(var(--space-6) + var(--shell-bottomnav-h));
+	}
+}

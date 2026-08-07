@@ -391,3 +391,15 @@ ALTER TABLE finance.negotiated_rates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finance.allowance_periods ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.allowance_ledger ENABLE ROW LEVEL SECURITY;
+
+
+-- --- finance: basket, wishlist & saved cards ---
+-- All three are user-facing (unlike most of the hidden ledger) and therefore ship with real
+-- policies in 00002013 — RLS on with zero policies is default-deny and is a bug, not a lock
+-- (root CLAUDE.md, Decision #57).
+
+ALTER TABLE finance.baskets ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.basket_items ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.saved_cards ENABLE ROW LEVEL SECURITY;

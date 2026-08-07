@@ -1,5 +1,6 @@
 import { allItems } from "./query.ts";
 import { lowestActivePrice } from "./query.ts";
+import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { resolveSkills } from "./skills.ts";
 import { findProfile } from "../profile/profile-fixtures.ts";
 import type {
@@ -65,9 +66,8 @@ function money(n: number): string {
 	return `$${n.toLocaleString("en-US")}`;
 }
 
-/** Workload-intensity multipliers bracketing a Pipeline service's per-ticket price (mirrors pricing.ts). */
-const PIPELINE_LOW = 0.5;
-const PIPELINE_HIGH = 2.0;
+// The workload-intensity multipliers come from the shared numeric pricing primitives
+// (`./pricing.ts`) so the card, this view, and a basket line cannot bracket a pipeline differently.
 
 /** Fixed reference clock — keeps derived review dates deterministic (SSR == island, resume-safe). */
 const NOW = new Date("2026-07-01T00:00:00Z");
