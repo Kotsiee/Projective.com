@@ -39,8 +39,23 @@
 	"tasks": {
 		"dev": "vite --port 3000",
 		"build": "vite build",
-		"preview": "vite preview"
+		"preview": "vite preview",
+		"$comment:check": "Entry points, not `deno check .`: the latter walks build output and any stray git worktree under .claude/, which is not this repo's code.",
+		"check": "deno check packages/types/mod.ts packages/ui/mod.ts packages/backend/services/ServiceResult.ts apps/web/main.ts",
+		"lint": "deno lint",
+		"$comment:test": "The merge gate. `--allow-env` is needed because the backend env reader is pulled in transitively by anything touching a service; `--allow-read` for module loading.",
+		"test:unit": "deno test --allow-env --allow-read packages/",
+		"test": "deno task check && deno task lint && deno task test:unit",
+		"$comment:fmt": "Deliberately NOT part of `test`, for two reasons that are facts about this repo rather than preferences. (1) `core.autocrlf=true` means a Windows checkout has CRLF in the working tree while `deno fmt` wants LF, so `--check` reports every file as unformatted there no matter what anyone commits. (2) ~280 files predate the formatter, and reformatting them wholesale would bury real diffs. Format the files you touch (`deno fmt <paths>`) rather than the tree.",
+		"fmt:check": "deno fmt --check"
 	},
+	"exclude": [
+		"_fresh",
+		"dist",
+		"coverage",
+		"node_modules",
+		".claude"
+	],
 	"fmt": {
 		"useTabs": true,
 		"lineWidth": 100,

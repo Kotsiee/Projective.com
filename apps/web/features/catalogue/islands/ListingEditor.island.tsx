@@ -19,7 +19,6 @@ import {
 	buildPreviewItem,
 	MODEL_OPTIONS,
 	publicListingHref,
-	statusMeta,
 } from "../core/catalogue-model.ts";
 import { EyeIcon, ImageIcon } from "../components/catalogue-glyphs.tsx";
 import {

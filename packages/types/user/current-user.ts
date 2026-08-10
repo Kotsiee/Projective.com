@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { UserContext } from "../auth/mod.ts";
+import { DisplayPreferencesSchema } from "../org/preferences.ts";
 
 /**
  * user/current-user — the Zod SSOT for the **acting user's account projection**.
@@ -65,6 +66,17 @@ export const CurrentUserSchema = z.object({
 	online: z.boolean(),
 	/** The active workspace/team, or `null` for the neutral personal space. */
 	workspace: ActiveWorkspaceSchema.nullable(),
+	/**
+	 * The viewer's **resolved** presentation preferences — the currency and locale every money figure
+	 * on the platform is formatted with (`org.user_preferences.preferred_display_currency` / `locale`).
+	 *
+	 * Resolved, so the nullable "follow the origin" column state has already been collapsed to a
+	 * concrete code by the server: the popover renders a currency switcher, and a switcher whose
+	 * current value is `null` has nothing truthful to check. This is the AUTHORITATIVE value the
+	 * client reconciles its optimistic switch against — the same read that survives a page load, so a
+	 * switch that failed server-side cannot masquerade as one that stuck.
+	 */
+	preferences: DisplayPreferencesSchema,
 });
 export type CurrentUser = z.infer<typeof CurrentUserSchema>;
 // #endregion

@@ -30,8 +30,6 @@ type Mode = "handle" | "email" | "link";
 
 export default function InviteModal(props: InviteModalProps): JSX.Element {
 	const ws = props.workspace;
-	const copy = kindCopy(ws.kind);
-
 	const mode = useSignal<Mode>("handle");
 	const target = useSignal("");
 	const roleId = useSignal<string>(

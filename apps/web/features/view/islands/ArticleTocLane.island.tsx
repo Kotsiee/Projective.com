@@ -96,7 +96,7 @@ export default function ArticleTocLane({ toc, readLabel }: ArticleTocLaneProps):
 							class="pf-railbtn pf-railbtn--toggle"
 							data-collapsed="true"
 							aria-label="Expand contents"
-							aria-pressed={true}
+							aria-pressed="true"
 							onClick={() => setLaneCollapsed(false)}
 						>
 							<SidebarToggleIcon />

@@ -58,6 +58,48 @@ const PIPELINE_HIGH = 2.0;
  *
  * `unit`, when present, is rendered as a muted `/ ticket` · `/ session` suffix by the caller.
  */
+/** One structured money figure — integer minor units plus the currency it is quoted in. */
+export interface PriceAmount {
+	minor: number;
+	currency: string;
+}
+
+/**
+ * The same pricing decision as {@link servicePricing}, but resolved to STRUCTURED amounts so a card
+ * can render `MoneyView` and follow the viewer's display currency.
+ *
+ * It deliberately mirrors `servicePricing`'s branches one-for-one rather than replacing it: the
+ * string form is still what every not-yet-migrated surface renders, and two functions that disagree
+ * about which figure a Pipeline service shows would be worse than one that is merely duplicated.
+ * Both read the same fields and apply the same multipliers, so they resolve to the same money.
+ *
+ * `null` when the item carries no structured price (a fixture without `priceMinor`, a "Contact us"
+ * listing) — the caller falls back to the formatted string rather than to a fabricated zero.
+ */
+export function servicePriceParts(
+	item: ServiceItem,
+): { from: PriceAmount; to: PriceAmount | null; unit?: string } | null {
+	const currency = item.currency ?? "USD";
+
+	if (item.serviceType === "Pipeline" && item.ticketPrice) {
+		return {
+			from: { minor: Math.round(item.ticketPrice * PIPELINE_LOW) * 100, currency },
+			to: { minor: Math.round(item.ticketPrice * PIPELINE_HIGH) * 100, currency },
+			unit: "ticket",
+		};
+	}
+	if (item.serviceType === "Session" && item.sessionPrice) {
+		return { from: { minor: item.sessionPrice * 100, currency }, to: null, unit: "session" };
+	}
+	if (item.serviceType === "Group Session" && item.sessionPrice) {
+		return { from: { minor: item.sessionPrice * 100, currency }, to: null, unit: "seat" };
+	}
+	if (typeof item.priceMinor === "number") {
+		return { from: { minor: item.priceMinor, currency }, to: null };
+	}
+	return null;
+}
+
 export function servicePricing(item: ServiceItem): { amount: string; unit?: string } {
 	if (item.serviceType === "Pipeline" && item.ticketPrice) {
 		const lo = money(Math.round(item.ticketPrice * PIPELINE_LOW));

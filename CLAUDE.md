@@ -2977,6 +2977,88 @@ knobs vs four `sim*`-prefixed) wants one rename pass. (m) Bulk basket actions ar
 · `documentation/database/finance/*` · `DESIGN_SYSTEM.md` §C.1 · Decisions #2 / #10 / #45 / #53 / #54
 / #55 / #60 / #62 / #63 / #67 |
 
+| 69 | **Global multi-currency — the FX engine, `MoneyView`, and the header switcher (2026-08-10).**
+Money presentation becomes global: one FX engine, one component, and a currency switch that re-renders
+every visible figure with no page load. **The rule the whole pass protects:** a conversion is a
+**read-time projection over an immutable origin**. Every stored amount keeps its origin
+`(amount_minor, currency)`; settlement always reproduces the `(fx_rate, fx_base, fx_as_of)` snapshot
+committed on its own row; nothing on any read path rewrites a ledger amount. **(A) Schema, folded in
+place** (root §1 — no new timestamped migrations): `preferred_display_currency` gains `DEFAULT 'GBP'`
++ a `^[A-Z]{3}$` CHECK; `finance.transactions`/`escrows`.`fx_base` gains `DEFAULT 'GBP'` so a stamped
+rate is never orphaned from its base; `custom_access_token_hook` stamps `displayCurrency` + `locale`
+into `app_metadata.active_context` — on the SAME claim, because a figure that paints in one currency
+and corrects itself after hydration is worse than a stale symbol. `finance.fx_rates` gains a **seeded
+floor** for all 12 offerable currencies with **both directions of every pair written explicitly** (a
+reader that divides by the forward rate and one that multiplies by the inverse disagree in the last
+minor unit) at a FIXED `as_of` so a reset is reproducible. Authored, **not applied to any live DB**.
+**(B) Zod SSOT** — new leaf `@projective/types/finance/fx.ts` (`FxRateTable`/`FxQuote`/
+`ConvertedAmount`, the curated `DISPLAY_CURRENCIES`, pure `resolveRate`/`convertMinorUnits`);
+`UserPreferencesUpdate` + `DisplayPreferences` on `org/preferences`; `displayCurrency`/`locale` on
+`UserContext` + `ActiveContextClaim`; `preferences` on `CurrentUser`; `toMoneyView()` bridging the
+engine to the existing money shape. `org/preferences` **re-exports** the currency defaults from the FX
+SSOT rather than restating them. **(C) `FxService`** is the only thing on the platform that converts: a
+per-base table cached 15 min in **Deno KV** → a per-isolate memory cache → the seeded fixtures, with
+`convertAmount()` returning the value **and** its `asOf` snapshot instant. It never throws and never
+returns "no answer": an unresolvable pair returns the **origin unchanged** with `converted: false`,
+because assuming a rate of 1 or relabelling an amount with a symbol it was not priced in turns a
+missing number into a WRONG one — the only FX failure a reader cannot detect. **(D) `MoneyView`** in
+`@projective/ui/display`, plus a portable signal store, on a narrow `./display/money` sub-path (the
+barrel re-exports Table/Tree/Galleria/GMap, and the globally-mounted bridge would have dragged all of
+them into every route's bundle to render a price). ONE component, three ways of learning the currency
+— props → request context → the host's ambient resolver → the signal store — so it is correct as a
+zero-JS server component AND reactive inside a hydrated island, with no second renderer to drift.
+**(E) Live switching** without a reload: the store re-renders hydrated figures, and a DOM sweep
+re-projects every server-rendered `[data-money]` node from its own IMMUTABLE origin attributes (never
+from the previous conversion, which would compound a rounding error on each switch). Islands flag
+themselves `data-money-live` from an effect — which only runs on hydration, so "is this reactive" is
+answered by the one signal that knows. **Adopted on the Explore service + product cards** (additive
+`priceMinor`/`currency` on the explore SSOT, parsed ONCE server-side at fixture construction — parsing
+a localised currency string in the browser is how "$1,800" becomes 1.8). **Four findings, all by
+measurement:** (1) **a Preact context provider at the document root is NOT visible to a server
+component deeper in the page** — an island boundary sits between them and island subtrees render in a
+pass that drops the outer context (an app-side probe beside a price returned `null`; the same probe
+under the provider returned the real value). A module signal would reach everywhere but is shared
+across concurrent requests, i.e. a data race over money that passes every manual test. Resolved with
+`AsyncLocalStorage`, which is request-scoped and survives every await and render pass. (2) The DOM
+sweep seeded `display: ""`, and `projectMoney`'s "target is already this currency" branch returns
+`display` **verbatim** by design — so switching TO the origin currency **blanked every figure**. (3)
+The currency PATCH went through `apiFetch`, whose unrecoverable-401 path **navigates to `/login`** —
+throwing someone off the page they were reading because a formatting preference could not be saved;
+now a plain `fetch`, where a 401 leaves the local choice in place and the surface says it saved on
+this device only. (4) Vite caches the package `exports` map at startup, so a new sub-path needs a
+dev-server restart — as does any `packages/*` edit, since HMR does not pick them up (two false
+negatives during this pass). **Verified in-browser:** SSR paints the viewer's currency in the first
+byte from the cookie/JWT (GBP · EUR · JPY all correct, JPY exponent-aware with no phantom decimals);
+the header picker changed **all 19** figures on `/explore` at once with the URL unchanged;
+GBP→EUR→JPY→USD→AED→GBP round-trips to the exact starting figure; the choice survives a reload; a
+guest PATCH 401s cleanly with no redirect; `deno task test` (check · lint · 33 unit tests) green.
+**Flagged (surface, do not silently resolve):** (a) `preferred_display_currency` now has a DEFAULT
+while `NULL` still means "follow the origin" — distinguishable, but subtle enough to deserve a human's
+confirmation. (b) **Adoption is one surface, not a migration**: ~180 other money sites (wallet,
+checkout, workspaces, tickets) still render through their surface-local components and do not respond
+to a currency switch; each now has a `MoneyView`-shaped target. (c) The brief's `£78.50 (~€90.00 EUR)`
+puts the `~` on the ORIGIN, which is the exact figure, while the converted primary is the estimate —
+implemented literally as specified, with the honest full statement in the accessible label and
+`title`. (d) **`deno fmt --check` is deliberately NOT in `deno task test`**: `core.autocrlf=true` makes
+it fail on any Windows checkout regardless of what is committed, and ~280 files predate the formatter.
+(e) FX spread / conversion-fee economics remain OPEN (finance-model §11) — the surface renders origin,
+converted and rate, and never a fee. (f) `finance.fx_rates` is read with the service-role client
+because SSR converts for signed-out visitors too; the rows are public reference data (`USING (true)`),
+but the read bypasses RLS and wants revisiting if that table ever carries anything else. |
+`SYSTEM_ARCHITECTURE.md` §Internationalization · `DESIGN_SYSTEM.md` §C.1 ·
+`packages/types/finance/fx.ts` ·
+`packages/types/{org/preferences,auth/user-context,user/current-user}.ts` ·
+`packages/backend/services/finance/{FxService,fx-fixtures}.ts` ·
+`packages/backend/services/user/UserBackendService.ts` ·
+`packages/ui/display/{money.ts,core/currency-store.ts,components/MoneyView.tsx,styles/money-view.css}`
+· `apps/web/utils/{currency-context,state,storage-keys}.ts` ·
+`apps/web/routes/{_app,_middleware}.tsx` · `apps/web/routes/api/{user/preferences,finance/fx}.ts` ·
+`apps/web/features/shell/{core/{CurrencyService,currency-state},islands/{CurrencyBridge,UserActions}}`
+· `apps/web/features/explore/{core/pricing,components/cards/{Service,Product}Card}` ·
+`supabase/migrations/{00000011,00000017,00001700,00005050}*` ·
+`documentation/database/{org,finance,security}/*` · Decisions #2 / #10 / #16 / #17 / #54 / #55 / #60 /
+#68 |
+
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit
 — `PRODUCT_SPEC.md` wins per the hierarchy._

@@ -1230,6 +1230,39 @@ from **one source of preference** (`org.user_preferences`) and applied at read t
   row. The rate used at **commit** (settlement) is a separate, snapshotted value (`fx_*` columns)
   and is authoritative for money movement. See `finance-model.md` §11.
 
+#### The implemented pipeline
+
+One engine, one component, one direction. `rate` always converts BASE into QUOTE
+(`amount_quote = amount_base × rate`), stated once in `@projective/types/finance/fx.ts` and never
+re-derived — a caller that divides by a forward rate and one that multiplies by its inverse disagree
+in the last minor unit, and a figure that changes with which direction the caller asked in is worse
+than one that is merely stale.
+
+| Layer            | Owner                                                        | Responsibility                                                                                                                                                              |
+| :--------------- | :----------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rates            | `finance.fx_rates` (+ a seeded floor, both directions)       | Append-only observations. `FxService` is the only reader.                                                                                                                   |
+| Engine           | `@server/services/finance/FxService.ts`                      | Per-base rate table cached 15 min in **Deno KV**, falling through to a per-isolate memory cache then to the seeded fixtures. `convertAmount()` returns the value **and** its `asOf` snapshot instant. Never throws; an unresolvable pair returns the ORIGIN unchanged. |
+| Preference       | `org.user_preferences.preferred_display_currency` / `locale` | Stamped into the JWT by `custom_access_token_hook`; a guest's choice rides the `pj.currency` cookie so SSR can read it. `PATCH /api/user/preferences` writes it under RLS.  |
+| Request scope    | `apps/web/utils/currency-context.ts`                         | Resolves the request's `(currency, locale, table)` and carries it through the whole render via `AsyncLocalStorage`.                                                        |
+| Presentation     | `@projective/ui/display` `MoneyView`                         | Renders it. Formats with `Intl.NumberFormat` on the viewer's locale; discloses the origin inline when the currencies differ.                                               |
+
+**Why `AsyncLocalStorage` and not a context provider or a module signal.** Both alternatives were
+tried and measured. A Preact context provider at the document root is **not** visible to a server
+component deeper in the page — an island boundary sits between them and island subtrees render in a
+pass that does not carry the outer context (an app-side probe beside a price returned `null` while
+the same probe directly under the provider returned the real value). A module-level signal is
+visible everywhere but is shared across concurrently-rendered requests, so one viewer's currency
+could change what another is midway through rendering. `AsyncLocalStorage` is request-scoped and
+survives every `await` and every render pass, so it has neither failure. The context provider is
+still mounted as the first, portable link in the chain; the ambient resolver is the backstop.
+
+**Switching currency does not reload the page.** A change writes the shared signal store (which
+re-renders every figure inside a hydrated island), sweeps every server-rendered `[data-money]` node
+in the document from its own immutable origin attributes, persists to `localStorage` + the cookie,
+then PATCHes the durable preference and reconciles against what the server actually stored. The
+sweep converts from the ORIGIN every time, never from the previous conversion, so flipping
+GBP → EUR → GBP returns the exact starting figure rather than one rounding away from it.
+
 ### Financial idempotency
 
 Every money-mutating operation is idempotent: the service presents an operation key recorded in

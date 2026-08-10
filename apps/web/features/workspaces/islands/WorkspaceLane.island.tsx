@@ -13,8 +13,6 @@ import {
 	LaneSearch,
 	LaneSection,
 	LaneSections,
-	type LaneTabOption,
-	LaneTabs,
 	type LaneToggleOption,
 	LaneToggleRow,
 } from "@projective/ui/navigation";
@@ -46,7 +44,6 @@ import {
 	countLabel,
 	filterRoster,
 	pendingMembers,
-	ROSTER_TABS,
 	type RosterQuickFilter,
 	type RosterTab,
 	rosterTabCounts,
@@ -287,17 +284,6 @@ function IndexLane(props: IndexLaneProps): JSX.Element {
 		roles.value = roles.value.includes(role)
 			? roles.value.filter((r) => r !== role)
 			: [...roles.value, role];
-	};
-
-	const options: LaneTabOption<RosterTab>[] = ROSTER_TABS.map((t) => ({
-		value: t.value,
-		label: counts[t.value] > 0 ? `${t.label} ${counts[t.value]}` : t.label,
-	}));
-
-	const selectTab = (next: RosterTab) => {
-		tab.value = next;
-		const href = next === "all" ? copy.base : `${copy.base}?tab=${next}`;
-		globalThis.location.assign(href);
 	};
 
 	return (

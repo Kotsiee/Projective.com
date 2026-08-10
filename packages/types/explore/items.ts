@@ -176,6 +176,20 @@ export const ServiceItemSchema = z.object({
 	 * session`; a **Group Session** shows it as `$X / seat` (billed per attendee seat).
 	 */
 	sessionPrice: z.number().optional(),
+	/**
+	 * The headline price as STRUCTURED money — integer minor units plus its ISO-4217 currency.
+	 *
+	 * Additive alongside the pre-formatted `price` string, not a replacement: `price` is what a
+	 * surface that has not yet adopted `MoneyView` still renders, while this is what makes the figure
+	 * convertible into the viewer's display currency. A formatted string cannot be converted without
+	 * being parsed back into a number, and parsing a localised currency string is exactly the kind of
+	 * round-trip that turns "$1,800" into 1.8 in some locale.
+	 *
+	 * Optional so a fixture or a legacy row without it degrades to the string rather than to zero.
+	 */
+	priceMinor: z.number().int().optional(),
+	/** The ISO-4217 currency the priced fields are quoted in. Defaults to USD across the corpus. */
+	currency: z.string().min(3).max(3).optional(),
 });
 export type ServiceItem = z.infer<typeof ServiceItemSchema>;
 
@@ -209,6 +223,20 @@ export const ProductItemSchema = z.object({
 	category: z.string(),
 	/** Masonry cell weight — drives the staggered column rhythm (1 = short, 3 = tall). */
 	span: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+	/**
+	 * The headline price as STRUCTURED money — integer minor units plus its ISO-4217 currency.
+	 *
+	 * Additive alongside the pre-formatted `price` string, not a replacement: `price` is what a
+	 * surface that has not yet adopted `MoneyView` still renders, while this is what makes the figure
+	 * convertible into the viewer's display currency. A formatted string cannot be converted without
+	 * being parsed back into a number, and parsing a localised currency string is exactly the kind of
+	 * round-trip that turns "$1,800" into 1.8 in some locale.
+	 *
+	 * Optional so a fixture or a legacy row without it degrades to the string rather than to zero.
+	 */
+	priceMinor: z.number().int().optional(),
+	/** The ISO-4217 currency the priced fields are quoted in. Defaults to USD across the corpus. */
+	currency: z.string().min(3).max(3).optional(),
 });
 export type ProductItem = z.infer<typeof ProductItemSchema>;
 

@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { RatingStars } from "@projective/ui/display";
+import { MoneyView } from "@projective/ui/display/money";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
 import { PromotedBadge } from "../PromotedBadge.tsx";
@@ -40,7 +41,11 @@ export function ProductCard(
 				<img src={item.media} alt="" loading="lazy" decoding="async" />
 				<span class="ex-flags">
 					{item.sponsored && <PromotedBadge />}
-					<span class="ex-media__price">{item.price}</span>
+					<span class="ex-media__price">
+						{typeof item.priceMinor === "number"
+							? <MoneyView minor={item.priceMinor} currency={item.currency ?? "USD"} />
+							: item.price}
+					</span>
 				</span>
 			</div>
 			<div class="ex-card__body">

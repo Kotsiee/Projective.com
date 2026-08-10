@@ -1,4 +1,4 @@
-import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import 'jsr:@supabase/functions-js@2/edge-runtime.d.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.90.1';
 
 console.log('Scan File Function Loaded');
@@ -11,7 +11,9 @@ const corsHeaders = {
 // --- [CONFIGURATION] ---
 // If you have a real API key, set it in Supabase secrets:
 // supabase secrets set VIRUSTOTAL_API_KEY="your-key"
-const VIRUSTOTAL_API_KEY = Deno.env.get('VIRUSTOTAL_API_KEY');
+// Read, but not yet consumed: the scan below is still a mock. Kept so the secret this function
+// will need is named in one obvious place, and so a rename surfaces here rather than at cutover.
+const _VIRUSTOTAL_API_KEY = Deno.env.get('VIRUSTOTAL_API_KEY');
 
 Deno.serve(async (req) => {
 	// Handle CORS preflight
@@ -75,7 +77,7 @@ Deno.serve(async (req) => {
 		// sending a URL to VirusTotal if the file is publicly accessible.
 		// Here we use a Mock function to demonstrate the logic flow.
 
-		const scanResult = await mockScanWithVirusTotal(file, supabaseClient);
+		const scanResult = await mockScanWithVirusTotal(file);
 
 		// --- [CRITICAL] HANDLE INFECTED FILES ---
 		if (!scanResult.clean) {
@@ -177,9 +179,10 @@ Deno.serve(async (req) => {
 		return new Response(JSON.stringify(cleanRecord), {
 			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 		});
-	} catch (error: any) {
-		console.error('Scan/Move Error:', error.message);
-		return new Response(JSON.stringify({ error: error.message }), {
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error('Scan/Move Error:', message);
+		return new Response(JSON.stringify({ error: message }), {
 			status: 400,
 			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 		});
@@ -192,7 +195,20 @@ Deno.serve(async (req) => {
  * Mocks a VirusTotal Scan.
  * Replace this with actual API calls to VirusTotal or ClamAV.
  */
-async function mockScanWithVirusTotal(file: any, supabase: any) {
+interface ScannableFile {
+	display_name?: string;
+	original_name?: string;
+	size_bytes?: number;
+}
+
+interface ScanVerdict {
+	clean: boolean;
+	threat: string | null;
+}
+
+// Not `async`: there is nothing to await while the scan is simulated. The call site awaits it either
+// way, so the signature can become a Promise again without touching the caller.
+function mockScanWithVirusTotal(file: ScannableFile): ScanVerdict {
 	console.log(`Scanning ${file.display_name} (${file.size_bytes} bytes)...`);
 
 	// SIMULATION LOGIC:

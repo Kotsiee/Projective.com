@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useComputed } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/inbox.css";
 import { Button } from "@projective/ui/fields";
@@ -22,7 +22,6 @@ import {
 	inboxFilter,
 	inboxHasMore,
 	inboxLoading,
-	inboxMerged,
 	inboxNarrowed,
 	inboxPrefs,
 	inboxQuery,

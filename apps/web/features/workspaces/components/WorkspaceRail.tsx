@@ -142,7 +142,7 @@ export function WorkspaceRail(props: WorkspaceRailProps): JSX.Element {
 						class="wsp-rail__toggle"
 						data-collapsed="true"
 						aria-label="Expand lane"
-						aria-pressed={true}
+						aria-pressed="true"
 						onClick={props.onExpand}
 					>
 						<SidebarToggleIcon />

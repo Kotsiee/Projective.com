@@ -93,6 +93,36 @@ export { AvatarStack } from "./components/AvatarStack.tsx";
 export type { AvatarStackPerson, AvatarStackProps } from "./components/AvatarStack.tsx";
 export { Chip } from "./components/Chip.tsx";
 export type { ChipProps } from "./components/Chip.tsx";
+export { MoneyView } from "./components/MoneyView.tsx";
+export type { MoneySize, MoneyTone, MoneyViewProps } from "./components/MoneyView.tsx";
+export {
+	BASE_CURRENCY,
+	BASE_LOCALE,
+	bootstrapCurrency,
+	convertMinorUnits,
+	CurrencyContext,
+	currencyExponent,
+	displayCurrency,
+	displayLocale,
+	formatMoney,
+	fxTable,
+	hydrateFromDom,
+	projectMoney,
+	resolveRate,
+	setAmbientCurrencyResolver,
+	setDisplayCurrency,
+	setDisplayLocale,
+	setRateTable,
+	useCurrencyView,
+} from "./core/currency-store.ts";
+export type {
+	CurrencyBootstrap,
+	CurrencyRateTable,
+	CurrencyView,
+	MoneyOriginValue,
+	MoneyValue,
+	ProjectedMoney,
+} from "./core/currency-store.ts";
 export { PaymentCard, paymentCardArt, PaymentCardOption } from "./components/PaymentCard.tsx";
 export type {
 	PaymentCardArt,

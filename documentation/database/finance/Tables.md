@@ -127,8 +127,20 @@ reproduces the exact rate used at commit.
 | `provider` | text           | Rate source (`stripe`/`ecb`/…; `XXXX-XXXX` in placeholders). |
 | UNIQUE     | —              | `(base, quote, as_of)`.                                      |
 
+**Seeded floor (`00005050_seed_reference_data.sql`).** A baseline observation for every supported
+display currency ships as reference data (`provider = 'seed'`, a FIXED `as_of`, never `now()`, so a
+reset is reproducible) — a from-scratch database can resolve any display currency immediately
+instead of silently rendering unconverted origin amounts. **Both directions of every pair are seeded
+explicitly**, never derived: a reader that divides by the forward rate and a reader that multiplies
+by the inverse disagree in the last minor unit, and a figure that changes with which direction the
+caller asked in is worse than one that is merely stale. `FxService`
+(`@server/services/finance/FxService.ts`) is the only reader — it caches per base for 15 minutes and
+reports `provider`/`asOf` so a seeded or stale rate is always distinguishable from a live one.
+
 > The FX **snapshot columns** on `finance.transactions` and `finance.escrows` are listed with those
-> tables above. **Store-in-origin is already satisfied everywhere** — every priced entity already
+> tables above. `fx_base` carries `DEFAULT 'GBP'` so a stamped `fx_rate` is never orphaned from the
+> currency it was quoted against; both snapshots are **immutable once written** — a statement or
+> invoice reprints the rate that was actually applied, never today's. **Store-in-origin is already satisfied everywhere** — every priced entity already
 > carries a `currency` (`finance.*`, `projects.projects`, `projects.tickets`/`project_stages` via
 > the project, `marketplace.service_blueprints`), so **no** currency column is added to a priced
 > entity here. ⚠️ **FX economics (who bears the spread / how the conversion fee is charged) is

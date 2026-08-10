@@ -6,9 +6,10 @@ import type { State } from "@web/utils/state.ts";
 // Variable Contract (packages/backend/core/env.ts). Without this the server only sees vars already
 // exported in the launching shell, so the live flags + Supabase config silently degrade to their
 // stub paths. `export: true` never overwrites vars the platform already injected, so production —
-// where real values arrive via the environment, not a file — is unaffected; `examplePath: null`
-// disables std-dotenv's strict `.env.example` presence check.
-await load({ export: true, examplePath: null });
+// where real values arrive via the environment, not a file — is unaffected. (`examplePath` was
+// dropped from `LoadOptions` in @std/dotenv 0.221; the strict `.env.example` check it disabled no
+// longer exists, so passing it is now a type error rather than a no-op.)
+await load({ export: true });
 
 /**
  * Projective server entry (Fresh 2.x + Vite).

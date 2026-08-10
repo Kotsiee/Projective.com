@@ -71,6 +71,16 @@ export const LocalKeys = {
 	 * after hydration so it never diverges from the SSR-painted default.
 	 */
 	ACCOUNT_STATUS: "pj.local.account.status",
+	/**
+	 * The viewer's chosen money DISPLAY currency (ISO-4217) — mirrors
+	 * `org.user_preferences.preferred_display_currency`.
+	 *
+	 * Local storage is the fast read for a returning viewer; the durable copy is the preferences row
+	 * (for a signed-in user) or the `pj.currency` cookie (for a guest, since a cookie is the only one
+	 * of the two the SERVER can read, and SSR has to know the currency to paint the first byte in it).
+	 * The three are written together by the switcher and reconciled against the server's answer.
+	 */
+	DISPLAY_CURRENCY: "pj.local.currency",
 	/** Durable cache of onboarding progress metadata (see {@link CacheKeys.ONBOARDING_STAGE_CACHE}). */
 	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
 	/** Recent Explore search terms (most-recent-first, capped) — powers the search recall list. */

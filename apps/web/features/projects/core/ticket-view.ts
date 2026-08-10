@@ -12,7 +12,6 @@ import {
 	executionBands,
 	formatTicketMoney,
 	stageCostCents,
-	ticketCostLines,
 	ticketSpentCents,
 	workloadIntensity,
 } from "../types/projects-types.ts";

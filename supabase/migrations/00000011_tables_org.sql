@@ -74,7 +74,13 @@ CREATE TABLE org.user_preferences (
     locale text DEFAULT 'en-GB',
     ui_settings jsonb NOT NULL DEFAULT '{}'::jsonb,
     -- Folded (20260723090000): presentational display-conversion target + document layout direction.
-    preferred_display_currency char(3),
+    -- The DEFAULT seeds a new row with the platform base ('GBP'); NULL remains meaningful and means
+    -- "follow the origin currency" (an explicitly cleared preference), so the two are not the same
+    -- state. Presentational ONLY: nothing here converts a stored ledger amount.
+    preferred_display_currency char(3) DEFAULT 'GBP' CHECK (
+        preferred_display_currency IS NULL
+        OR preferred_display_currency ~ '^[A-Z]{3}$'
+    ),
     layout_direction org.layout_direction NOT NULL DEFAULT 'auto',
     CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id),
     CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE

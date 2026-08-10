@@ -85,7 +85,7 @@ export default function ProjectViewLane(
 							class="pf-railbtn pf-railbtn--toggle"
 							data-collapsed="true"
 							aria-label="Expand lane"
-							aria-pressed={true}
+							aria-pressed="true"
 							onClick={() => setLaneCollapsed(false)}
 						>
 							<SidebarToggleIcon />

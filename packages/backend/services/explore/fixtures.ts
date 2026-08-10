@@ -411,6 +411,31 @@ const SERVICE_UNIT_PRICE: Record<string, { ticketPrice?: number; sessionPrice?: 
 	"design-systems-workshop": { sessionPrice: 90 },
 };
 
+/**
+ * The corpus's quoted currency. Every seeded `price` string is a plain USD figure, so this is stated
+ * once here rather than repeated on each row — and stated at all, because "the number with a dollar
+ * sign in front" is not a currency until something says which dollar.
+ */
+const CORPUS_CURRENCY = "USD";
+
+/**
+ * Parse a seeded price string ("$1,800") into integer minor units.
+ *
+ * Done ONCE, at fixture construction, on the server — never at render time. A formatted currency
+ * string is a presentation artefact, and parsing one back into a number in the browser is how a
+ * locale that groups with "." turns 1,800 into 1.8. When the live catalogue lands, these rows carry
+ * real minor-unit columns and this function goes away with the seed strings it exists to read.
+ *
+ * Returns `undefined` for anything that is not a plain amount ("Free", "Contact us"), so the card
+ * falls back to rendering the string as written rather than to a confident zero.
+ */
+function priceMinorOf(price: string): number | undefined {
+	const digits = price.replace(/[^\d.]/g, "");
+	if (!digits) return undefined;
+	const major = Number.parseFloat(digits);
+	return Number.isFinite(major) ? Math.round(major * 100) : undefined;
+}
+
 export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 	([id, title, owner, price, delivery, category, serviceType, blurb, photo], i) => ({
 		id: `sv-${id}`,
@@ -422,6 +447,8 @@ export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 		category,
 		serviceType,
 		...SERVICE_UNIT_PRICE[id],
+		priceMinor: priceMinorOf(price),
+		currency: CORPUS_CURRENCY,
 		summary: blurb,
 		skills: resolveSkills([category, "design"]),
 		rating: OWNERS[owner].kind === "team" ? helperOnly(4.8, 40 + i) : dual([4.9, 30 + i], [4.7, 8]),
@@ -602,6 +629,8 @@ export const PRODUCTS: ProductItem[] = PRODUCT_SEED.map(
 		price,
 		category,
 		span,
+		priceMinor: priceMinorOf(price),
+		currency: CORPUS_CURRENCY,
 		summary: `${title} — a ready-to-buy download from ${OWNERS[owner].name}.`,
 		skills: resolveSkills([category === "3d" ? "3D" : "design"]),
 		rating: helperOnly(4.8, 25 + i),

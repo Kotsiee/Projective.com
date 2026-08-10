@@ -9,7 +9,6 @@ import type {
 	CategorySlice,
 	DepositRuleView,
 	FlowPoint,
-	FlowRange,
 	FundingSource,
 	FundingView,
 	IncomeSmootherState,

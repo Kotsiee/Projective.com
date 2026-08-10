@@ -1,7 +1,9 @@
 import { define } from "@web/utils/state.ts";
 import { buildScheme, schemeToCss } from "@projective/ui/system";
+import { CurrencyContext } from "@projective/ui/display/money";
 import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.island.tsx";
 import ScrollIdle from "@web/features/shell/islands/ScrollIdle.island.tsx";
+import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
@@ -50,13 +52,36 @@ const TOKENS_CSS = [
 ].join("\n");
 
 /**
+ * Serialise a value for embedding inside a `<script>` block.
+ *
+ * `JSON.stringify` alone is not enough: an HTML parser terminates a script element at the literal
+ * `</` sequence regardless of JSON quoting, so a string containing `</script>` would break out of the
+ * block. The `provider` field on a rate table comes from the database, which makes this reachable in
+ * principle rather than only in theory. Escaping `<` as `<` is JSON-legal and parses back to the
+ * identical string.
+ */
+function jsonForScript(value: unknown): string {
+	return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+/**
  * Root document shell. Renders the <html> skeleton, injects the SSR token stylesheet, sets the
  * pre-paint theme (avoids flash), and mounts the DesignSystemProvider (via DesignSystemRoot). The
  * page's group `_layout` provides the navigation shell (AppShell → MiddleNav → PageCanvas).
  */
 export default define.page(function App({ Component, state }) {
+	// The money-presentation context, resolved site-wide by the global middleware. Written onto the
+	// <html> element and into an inert JSON script so `@projective/ui/display`'s currency store can
+	// seed itself from the DOM the instant any money-bearing island hydrates — the same pre-paint
+	// discipline `data-theme` gets above, for the same reason. `state.currency` is always set in a
+	// real request; the fallbacks only cover a render outside the middleware (tests, error pages).
+	const currency = state.currency;
 	return (
-		<html lang="en">
+		<html
+			lang="en"
+			data-currency={currency?.displayCurrency ?? "GBP"}
+			data-currency-locale={currency?.locale ?? "en-GB"}
+		>
 			<head>
 				<meta charset="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -90,6 +115,21 @@ export default define.page(function App({ Component, state }) {
 							`(()=>{try{const c=localStorage.getItem("pj.local.shell.guestNavCollapsed");document.documentElement.dataset.guestNav=c==="1"?"collapsed":"expanded";}catch(_){/* noop */}})();`,
 					}}
 				/>
+				{currency
+					? (
+						<script
+							id="pj-fx-rates"
+							type="application/json"
+							// `type="application/json"` is inert — the browser never executes it — so the rate
+							// table travels as DATA rather than as a global the page could be tricked into
+							// running. It is public reference data (see `/api/finance/fx`), so nothing here is
+							// sensitive; the reason it is embedded rather than fetched is latency: a figure
+							// must be able to re-project the instant the viewer switches currency, and a
+							// round-trip at that moment is exactly when it would be felt.
+							dangerouslySetInnerHTML={{ __html: jsonForScript(currency.table) }}
+						/>
+					)
+					: null}
 			</head>
 			<body>
 				{
@@ -97,9 +137,34 @@ export default define.page(function App({ Component, state }) {
 				    self-hiding custom scrollbar in @projective/ui/styles (DESIGN_SYSTEM.md Part D scroll model). */
 				}
 				<ScrollIdle />
-				<DesignSystemRoot>
-					<Component />
-				</DesignSystemRoot>
+				{
+					/* Money presentation: seeds the shared currency store from SSR and re-projects every
+				    server-rendered figure when the viewer switches currency. Renders nothing. Mounted here
+				    (not in the authed shell) so guest surfaces with prices on them stay in sync too. */
+				}
+				<CurrencyBridge
+					displayCurrency={currency?.displayCurrency ?? "GBP"}
+					locale={currency?.locale ?? "en-GB"}
+					table={currency?.table ?? null}
+				/>
+				{
+					/* The per-request currency for SERVER-rendered money. Context, not the module-level
+				    signal store: a server process renders many viewers concurrently, and a shared signal
+				    would let one request's currency change what another is midway through rendering.
+				    Islands read the store instead (context does not cross a hydration root), which is
+				    what makes a switch instant — see `@projective/ui/display` `CurrencyContext`. */
+				}
+				<CurrencyContext.Provider
+					value={{
+						displayCurrency: currency?.displayCurrency ?? "GBP",
+						locale: currency?.locale ?? "en-GB",
+						table: currency?.table ?? null,
+					}}
+				>
+					<DesignSystemRoot>
+						<Component />
+					</DesignSystemRoot>
+				</CurrencyContext.Provider>
 				{
 					/* DEV-ONLY developer tools (speed dial + context switcher + log inspector). Renders null
 				    in production and is excluded from the production island manifest — see DevMount. */

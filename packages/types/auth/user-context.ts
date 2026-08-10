@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_LOCALE, PLATFORM_BASE_CURRENCY, toDisplayCurrency } from "../finance/fx.ts";
 
 /**
  * auth/user-context — the Zod SSOT for the **User Context Hydration** shape.
@@ -58,6 +59,20 @@ export const UserContextSchema = z.object({
 	handle: z.string().max(40).nullable(),
 	/** The authenticated user's id (`sub`), or `null` for guests. */
 	userId: z.string().max(64).nullable(),
+	/**
+	 * The ISO-4217 currency this viewer's money figures are **formatted** in
+	 * (`org.user_preferences.preferred_display_currency`, stamped into the JWT by the access-token
+	 * hook). Always a supported display currency — an unknown or absent claim resolves to the platform
+	 * base, never to a code the rate table cannot price.
+	 *
+	 * Presentation only, and in the strongest sense: it changes the symbol a figure is drawn with and
+	 * nothing else. Origin amounts stay in their origin currency on every row, and settlement always
+	 * reproduces the `(fx_rate, fx_base, fx_as_of)` snapshot committed with the transaction. A viewer
+	 * who tampers with this claim changes what their own browser draws, never what they are charged.
+	 */
+	displayCurrency: z.string().min(3).max(3),
+	/** The BCP-47 locale (`org.user_preferences.locale`) `Intl` formats dates and money with. */
+	locale: z.string().max(20),
 });
 export type UserContext = z.infer<typeof UserContextSchema>;
 // #endregion
@@ -95,6 +110,10 @@ export interface ActiveContextClaim {
 	handle?: string;
 	isClient?: boolean;
 	isFreelancer?: boolean;
+	/** `org.user_preferences.preferred_display_currency` — the viewer's money FORMATTING target. */
+	displayCurrency?: string;
+	/** `org.user_preferences.locale` — the BCP-47 locale `Intl` formats with. */
+	locale?: string;
 }
 // #endregion
 
@@ -108,6 +127,8 @@ export const GUEST_CONTEXT: UserContext = Object.freeze({
 	isFreelancer: false,
 	handle: null,
 	userId: null,
+	displayCurrency: PLATFORM_BASE_CURRENCY,
+	locale: DEFAULT_LOCALE,
 });
 
 /**
@@ -124,6 +145,8 @@ export const PERSONAL_MEMBER_CONTEXT: UserContext = Object.freeze({
 	isFreelancer: false,
 	handle: null,
 	userId: null,
+	displayCurrency: PLATFORM_BASE_CURRENCY,
+	locale: DEFAULT_LOCALE,
 });
 
 /**
@@ -184,9 +207,10 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 	const app = claims.app_metadata ?? {};
 	const user = claims.user_metadata ?? {};
 
-	const active = (typeof app.active_context === "object" && app.active_context !== null
-		? app.active_context
-		: {}) as ActiveContextClaim;
+	const active =
+		(typeof app.active_context === "object" && app.active_context !== null
+			? app.active_context
+			: {}) as ActiveContextClaim;
 
 	const contextType = normaliseContextType(str(active.type));
 	// The active tenant id for an entity context; the user's own id for a personal space.
@@ -207,6 +231,12 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 
 	const handle = str(active.handle) ?? str(user.username) ?? null;
 
+	// Presentation preferences. `toDisplayCurrency` is total: an absent, malformed or unsupported
+	// claim collapses to the platform base rather than to a code the FX table cannot price — the one
+	// failure that would render an unconverted amount under the wrong symbol.
+	const displayCurrency = toDisplayCurrency(str(active.displayCurrency));
+	const locale = str(active.locale) ?? str(user.locale) ?? DEFAULT_LOCALE;
+
 	return {
 		contextType,
 		contextId,
@@ -215,6 +245,8 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		isFreelancer,
 		handle,
 		userId,
+		displayCurrency,
+		locale,
 	};
 }
 // #endregion

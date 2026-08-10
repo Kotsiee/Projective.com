@@ -11,7 +11,6 @@ import {
 	InviteOutIcon,
 	LinkIcon,
 	memberProfileHref,
-	PersonAvatar,
 	ResendIcon,
 } from "./MemberCard.tsx";
 

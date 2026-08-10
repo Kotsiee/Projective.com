@@ -23,13 +23,15 @@ import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx
 import { basketCount } from "@web/features/checkout/core/basket-state.ts";
 import { defaultOwnerParam } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
+import { commitDisplayCurrency, displayCurrency } from "@web/features/shell/core/currency-state.ts";
+import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 
 // #region Popover sub-views + presence model
-/** The three states the account popover's `ui-popover__content` can render (task §2). */
-type AccountView = "main" | "status" | "context";
+/** The states the account popover's `ui-popover__content` can render (task §2 + the currency picker). */
+type AccountView = "main" | "status" | "context" | "currency";
 
 /** A presence status the user can select from the status picker (task §2B). */
 type StatusKey = "online" | "away" | "dnd" | "invisible";
@@ -110,6 +112,10 @@ export default function UserActions(
 	const ctxTab = useSignal<"teams" | "businesses">("teams");
 	// The selected presence status — a durable local preference (task §2B), hydrated after mount.
 	const status = useSignal<StatusKey>("online");
+	// The currency being written, and whether the last write failed to persist server-side. Both are
+	// about the SAVE, never about what is displayed — the display already changed optimistically.
+	const savingCurrency = useSignal<string | null>(null);
+	const currencySaveFailed = useSignal(false);
 
 	// Reset to the main view whenever both account surfaces are closed, so reopening always starts on
 	// the identity screen (never a stale status/context sub-view). Reads only the open signals — never
@@ -174,6 +180,12 @@ export default function UserActions(
 	const isClient = roleKey === "client";
 	const activeStatus = STATUS_OPTIONS.find((o) => o.key === status.value) ?? STATUS_OPTIONS[0];
 
+	// The live display currency, read straight from the shared store — the SAME signal every
+	// `MoneyView` on the page reads. So the menu's current value and the figures it governs cannot
+	// drift apart, and a switch made from anywhere is reflected here without a refetch.
+	const activeCurrency = DISPLAY_CURRENCIES.find((c) => c.code === displayCurrency.value) ??
+		DISPLAY_CURRENCIES[0];
+
 	/**
 	 * Smart logout — revoke + clear the session, then route-aware redirect: leave a protected route for
 	 * the public landing; reload a public route in place so the user continues as a guest. The fetch
@@ -195,6 +207,26 @@ export default function UserActions(
 		status.value = next;
 		writeStored("local", LocalKeys.ACCOUNT_STATUS, next);
 		view.value = "main";
+	}
+
+	/**
+	 * Apply a display-currency change and return to the identity view.
+	 *
+	 * The store moves first, inside {@link commitDisplayCurrency}, so every figure on the page has
+	 * already changed by the time this returns to `main` — the switch reads as instant because it IS
+	 * instant; the PATCH settles behind it. The menu closes on the optimistic step rather than waiting,
+	 * because a menu that hangs open on a network round-trip makes a cheap preference feel expensive.
+	 *
+	 * `currencySaveFailed` surfaces the one case that must not pass silently: the choice applied to
+	 * this browser but did not persist, so it will not follow the viewer to another device.
+	 */
+	async function pickCurrency(code: string): Promise<void> {
+		if (savingCurrency.value) return;
+		savingCurrency.value = code;
+		view.value = "main";
+		const saved = await commitDisplayCurrency(code);
+		savingCurrency.value = null;
+		currencySaveFailed.value = !saved;
 	}
 
 	/**
@@ -277,6 +309,35 @@ export default function UserActions(
 				<NavIcon name="chevron" class="shell-status__chevron" />
 			</button>
 
+			{/* Currency — the global display-currency switcher; opens the picker sub-view. */}
+			<button
+				type="button"
+				class="shell-currency"
+				aria-haspopup="menu"
+				onClick={() => (view.value = "currency")}
+			>
+				<span class="shell-currency__symbol" aria-hidden="true">{activeCurrency.symbol}</span>
+				<span class="shell-currency__text">
+					<span class="shell-currency__label">Currency</span>
+					<span class="shell-currency__value">
+						{activeCurrency.code} · {activeCurrency.label}
+					</span>
+				</span>
+				<NavIcon name="chevron" class="shell-status__chevron" />
+			</button>
+			{
+				/* The display changed either way; this says only that it did not SAVE. Surfacing it is the
+				   difference between "your currency is X everywhere" and "your currency is X on this
+				   browser until you clear it", and the viewer cannot tell those apart by looking. */
+			}
+			{currencySaveFailed.value
+				? (
+					<p class="shell-account__note" role="status">
+						Showing {activeCurrency.code} on this device — we couldn’t save it to your account.
+					</p>
+				)
+				: null}
+
 			<div class="shell-menu__sep" role="separator" />
 
 			<a class="shell-menu__item" href={links.viewProfile} role="menuitem" onClick={onNavigate}>
@@ -356,6 +417,61 @@ export default function UserActions(
 								<span class="shell-picker__text">
 									<span class="shell-picker__label">{opt.label}</span>
 									<span class="shell-picker__desc">{opt.desc}</span>
+								</span>
+								{selected ? <NavIcon name="check" class="shell-picker__check" /> : null}
+							</button>
+						</li>
+					);
+				})}
+			</ul>
+		</div>
+	);
+
+	/**
+	 * The display-currency picker.
+	 *
+	 * A `radiogroup`, not a menu: these are mutually-exclusive states of one setting, and only a
+	 * radiogroup lets a screen reader announce "3 of 12, selected". Each row shows the code as the
+	 * primary token — a viewer scanning for their currency looks for "EUR", not for "Euro" — with the
+	 * name as the qualifier, and the symbol in a fixed-width leading column so the codes line up.
+	 */
+	const currencyView = (): JSX.Element => (
+		<div class="shell-subview">
+			<div class="shell-subview__head">
+				<button
+					type="button"
+					class="shell-subview__back"
+					aria-label="Back"
+					onClick={() => (view.value = "main")}
+				>
+					<NavIcon name="arrowLeft" />
+				</button>
+				<span class="shell-subview__title">Display currency</span>
+			</div>
+			{
+				/* States the one thing a currency switcher must never leave ambiguous on a marketplace:
+				   that this changes what you SEE, not what you are charged. */
+			}
+			<p class="shell-subview__note">
+				Prices are converted for display. You’re always charged in the listing’s own currency.
+			</p>
+			<ul class="shell-picker" role="radiogroup" aria-label="Display currency">
+				{DISPLAY_CURRENCIES.map((option) => {
+					const selected = option.code === activeCurrency.code;
+					return (
+						<li key={option.code} role="none">
+							<button
+								type="button"
+								role="radio"
+								aria-checked={selected}
+								class="shell-picker__item"
+								disabled={savingCurrency.value !== null}
+								onClick={() => pickCurrency(option.code)}
+							>
+								<span class="shell-currency__symbol" aria-hidden="true">{option.symbol}</span>
+								<span class="shell-picker__text">
+									<span class="shell-picker__label">{option.code}</span>
+									<span class="shell-picker__desc">{option.label}</span>
 								</span>
 								{selected ? <NavIcon name="check" class="shell-picker__check" /> : null}
 							</button>
@@ -462,6 +578,7 @@ export default function UserActions(
 	/** The view-driven account body — shared by the desktop Popover and the mobile side-sheet Drawer. */
 	const accountBody = (onNavigate: () => void): JSX.Element => {
 		if (view.value === "status") return statusView();
+		if (view.value === "currency") return currencyView();
 		if (view.value === "context") return contextView(onNavigate);
 		return mainView(onNavigate);
 	};

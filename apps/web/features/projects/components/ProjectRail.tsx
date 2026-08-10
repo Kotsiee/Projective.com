@@ -126,7 +126,7 @@ export function ProjectRail(
 						class="proj-railbtn proj-railbtn--toggle"
 						data-collapsed="true"
 						aria-label="Expand lane"
-						aria-pressed={true}
+						aria-pressed="true"
 						onClick={onExpand}
 					>
 						<SidebarToggleIcon />

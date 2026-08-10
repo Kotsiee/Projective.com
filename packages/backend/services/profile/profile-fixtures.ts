@@ -471,7 +471,7 @@ function reown<T extends { owner: ExploreOwner; id: string }>(
 	return items.map((it, i) => ({ ...it, id: `${tag}-${bareHandle(owner.handle)}-${i}`, owner }));
 }
 
-function educationFor(name: string, seed: number): EducationEntry[] {
+function educationFor(_name: string, seed: number): EducationEntry[] {
 	return [
 		{
 			id: `edu-${seed}-0`,
@@ -494,7 +494,7 @@ function educationFor(name: string, seed: number): EducationEntry[] {
 	];
 }
 
-function experienceFor(name: string, seed: number): ExperienceEntry[] {
+function experienceFor(_name: string, seed: number): ExperienceEntry[] {
 	const pool = [...TEAMS, ...BUSINESSES];
 	return pick(pool, 3, seed).map((r, i) => ({
 		id: `exp-${seed}-${i}`,

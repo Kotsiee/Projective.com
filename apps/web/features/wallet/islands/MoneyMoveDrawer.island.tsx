@@ -10,7 +10,6 @@ import { ACTION_LABEL } from "../core/capability.ts";
 import {
 	activeAction,
 	closeWalletAction,
-	currentWalletContext,
 	moveFlow,
 } from "../core/wallet-state.ts";
 import { formatMoney } from "../types/wallet-types.ts";

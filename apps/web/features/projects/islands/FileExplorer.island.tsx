@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/file-card.css";

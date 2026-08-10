@@ -1,12 +1,13 @@
 import type { JSX } from "preact";
 import { RatingStars } from "@projective/ui/display";
+import { MoneyView } from "@projective/ui/display/money";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
 import { PromotedBadge } from "../PromotedBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
-import { servicePricing } from "../../core/pricing.ts";
+import { servicePriceParts, servicePricing } from "../../core/pricing.ts";
 import { itemHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ServiceItem } from "../../types/explore-types.ts";
@@ -28,6 +29,9 @@ export function ServiceCard(
 ): JSX.Element {
 	const review = item.rating?.asHelper ?? item.rating?.asClient;
 	const pricing = servicePricing(item);
+	// Structured minor units when the item carries them; the pre-formatted string stays the fallback
+	// for a listing that has none ("Contact us"), which must never become a confident zero.
+	const parts = servicePriceParts(item);
 	return (
 		<article class="ex-card ex-card--service" style={vars({ "--ex-accent": cardAccent(item.id) })}>
 			<CardLink
@@ -40,21 +44,48 @@ export function ServiceCard(
 			<div class="ex-media ex-media--16x10">
 				<img src={item.media} alt="" loading="lazy" decoding="async" />
 				<span class="ex-flags">
-						{item.sponsored && <PromotedBadge />}
-						<span class="ex-media__type" data-type={item.serviceType}>{item.serviceType}</span>
-					</span>
+					{item.sponsored && <PromotedBadge />}
+					<span class="ex-media__type" data-type={item.serviceType}>{item.serviceType}</span>
+				</span>
 			</div>
 			<div class="ex-card__body">
 				<h3 class="ex-card__title">{item.title}</h3>
 				<div class="ex-card__byline">
 					<OwnerBadge owner={item.owner} variant="mini" />
-					{review && (
-						<RatingStars value={review.value} count={review.count} size="sm" compact />
-					)}
+					{review && <RatingStars value={review.value} count={review.count} size="sm" compact />}
 				</div>
 				<div class="ex-card__foot">
 					<span class="ex-price ex-price--lg">
-						{pricing.amount}
+						{
+							/*
+						  Structured money when the item carries it — so the figure follows the viewer's
+						  display currency (the CurrencyBridge re-projects it live; this card is a server
+						  component with no island of its own). A Pipeline renders TWO MoneyViews around an
+						  en dash rather than one pre-joined string, because a range is two amounts and each
+						  has to convert independently. `hideOrigin` on the low end: one origin disclosure
+						  per range is the fact, two is noise.
+						*/
+						}
+						{parts
+							? (
+								<>
+									<MoneyView
+										minor={parts.from.minor}
+										currency={parts.from.currency}
+										hideOrigin={parts.to !== null}
+									/>
+									{parts.to && (
+										<>
+											{" – "}
+											<MoneyView
+												minor={parts.to.minor}
+												currency={parts.to.currency}
+											/>
+										</>
+									)}
+								</>
+							)
+							: pricing.amount}
 						{pricing.unit && <span class="ex-price__unit">/ {pricing.unit}</span>}
 					</span>
 					<span class="ex-muted">{item.delivery}</span>

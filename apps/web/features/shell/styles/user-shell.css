@@ -746,6 +746,93 @@
     color: var(--on-surface);
 }
 
+/*
+ * A qualifying note inside a sub-view. Used by the currency picker to state that conversion is a
+ * display concern — the one thing a currency control on a marketplace must not leave ambiguous.
+ * Quiet, but present in the flow rather than behind a hover: a reassurance nobody can find is not one.
+ */
+.shell-subview__note,
+.shell-account__note {
+    margin: var(--space-1) var(--space-3) var(--space-2);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+/* #region Currency switcher
+ * The row mirrors `.shell-status` exactly — same box, same hover, same chevron — because they are
+ * siblings in the same menu doing the same job (open a picker), and two near-identical controls that
+ * differ by a few pixels read as a mistake.
+ */
+.shell-currency {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: calc(100% - 2 * var(--space-1));
+    margin: var(--space-1) var(--space-1) 0;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: start;
+    cursor: pointer;
+}
+
+.shell-currency:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.shell-currency:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: -2px;
+}
+
+/*
+ * Fixed-width so the codes beside it align down the picker list. `ch` rather than `rem`: the column
+ * has to fit glyphs of very different widths ("£" vs "CHF"), and `ch` tracks the font's own digit
+ * advance, so the alignment survives a type-scale change.
+ */
+.shell-currency__symbol {
+    flex: 0 0 auto;
+    inline-size: 2.5ch;
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-semibold);
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.shell-currency__text {
+    display: flex;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.shell-currency__label {
+    line-height: 1.2;
+}
+
+/* The current value, truncated rather than wrapped — the row must stay one line tall beside its peers. */
+.shell-currency__value {
+    overflow: hidden;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    line-height: 1.2;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* A currency row is mid-write: dimmed and inert, but the label stays fully legible. */
+.shell-picker__item:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+/* #endregion */
+
 /* Status picker list. */
 .shell-picker {
     list-style: none;

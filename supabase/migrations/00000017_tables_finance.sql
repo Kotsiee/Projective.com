@@ -39,8 +39,11 @@ CREATE TABLE finance.transactions (
     balance_after_cents bigint NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
+    -- Immutable once written: a statement/invoice reprints the rate that was actually applied, never
+    -- today's. `fx_base` defaults to the platform base so a stamped rate is never orphaned from the
+    -- currency it was quoted against.
     fx_rate numeric(20, 10),
-    fx_base char(3),
+    fx_base char(3) DEFAULT 'GBP',
     fx_as_of timestamptz
 );
 
@@ -58,8 +61,9 @@ CREATE TABLE finance.escrows (
     status text NOT NULL DEFAULT 'funded',
     created_at timestamptz NOT NULL DEFAULT now(),
     -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
+    -- Immutable once written — settlement reproduces the escrow at the rate it was funded at.
     fx_rate numeric(20, 10),
-    fx_base char(3),
+    fx_base char(3) DEFAULT 'GBP',
     fx_as_of timestamptz
 );
 

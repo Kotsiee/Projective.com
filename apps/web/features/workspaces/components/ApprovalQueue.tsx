@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
-import { Button } from "@projective/ui/fields";
 import type { SpendRequest } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
 import { ApproveIcon, CrossIcon } from "./MemberCard.tsx";

@@ -34,6 +34,11 @@ DECLARE
   v_is_freelancer boolean := false;
   v_is_operator boolean := false;
 
+  -- Presentation preferences (org.user_preferences). Chrome-only: they decide which currency and
+  -- locale the viewer's figures are FORMATTED in, never what any ledger row stores or settles at.
+  v_display_currency text;
+  v_locale text;
+
   -- Resolved chrome context.
   v_type text := 'personal';
   v_id uuid;
@@ -57,6 +62,16 @@ BEGIN
     INTO v_profile_type, v_profile_id, v_team_id, v_org_id
   FROM security.session_context sc
   WHERE sc.user_id = v_user_id;
+
+  -- Presentation preferences. A row may not exist yet (the seed trigger runs AFTER INSERT on
+  -- org.users_public), so both fall back to the platform defaults rather than a NULL claim.
+  SELECT UPPER(NULLIF(TRIM(pr.preferred_display_currency), '')), NULLIF(TRIM(pr.locale), '')
+    INTO v_display_currency, v_locale
+  FROM org.user_preferences pr
+  WHERE pr.user_id = v_user_id;
+
+  v_display_currency := COALESCE(v_display_currency, 'GBP');
+  v_locale := COALESCE(v_locale, 'en-GB');
 
   -- Resolve the four-context matrix (organisation > team > business > personal). role collapses to
   -- admin when the actor owns the entity or holds an owner/admin membership; else member.
@@ -126,6 +141,13 @@ BEGIN
   v_claims := jsonb_set(v_claims, '{active_organisation_id}', COALESCE(to_jsonb(v_org_id), 'null'::jsonb), true);
 
   -- 2. Resolved chrome context for the web app (@projective/types/auth).
+  --
+  -- `displayCurrency` + `locale` ride the SAME claim rather than a second one because they are read
+  -- at the same moment and by the same consumer: the app decodes this object (unverified) to decide
+  -- which currency and locale the first SSR byte formats money in, so shipping them apart would mean
+  -- a figure could paint in one currency and correct itself to another after hydration. They grant
+  -- nothing — a tampered claim only changes the symbol the tamperer's own browser draws, while every
+  -- stored amount keeps its origin currency and every settlement uses the snapshot on its own row.
   v_app_meta := jsonb_set(
     v_app_meta,
     '{active_context}',
@@ -135,7 +157,9 @@ BEGIN
       'role', v_role,
       'handle', v_handle,
       'isClient', v_ctx_is_client,
-      'isFreelancer', v_ctx_is_freelancer
+      'isFreelancer', v_ctx_is_freelancer,
+      'displayCurrency', v_display_currency,
+      'locale', v_locale
     ),
     true
   );

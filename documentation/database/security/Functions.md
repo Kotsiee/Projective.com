@@ -42,11 +42,22 @@ the token's claims:
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
    `active_organisation_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
-   `{ type, id, role, handle, isClient, isFreelancer }` the web app decodes for chrome
-   (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`). `type` is the four-context
-   matrix (`personal` | `team` | `business` | `organisation`); `role` collapses ownership/admin
-   membership to `admin`, else `member`; `isClient`/`isFreelancer` are resolved authoritatively from
-   `org.users_public.is_freelancer` / `is_operator` and the active context.
+   `{ type, id, role, handle, isClient, isFreelancer, displayCurrency, locale }` the web app decodes
+   for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`). `type` is the
+   four-context matrix (`personal` | `team` | `business` | `organisation`); `role` collapses
+   ownership/admin membership to `admin`, else `member`; `isClient`/`isFreelancer` are resolved
+   authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active context.
+   `displayCurrency` + `locale` are read from `org.user_preferences`
+   (`preferred_display_currency` / `locale`, defaulting to `GBP` / `en-GB` when no preferences row
+   exists yet) so the very first SSR byte formats every money figure in the viewer's own currency —
+   they ride this claim rather than a second one because a figure that paints in one currency and
+   corrects itself after hydration is a worse failure than a stale symbol.
+
+> **Presentation, never settlement.** `displayCurrency` selects a **formatting** target only. Every
+> stored amount keeps its origin `(amount_minor, currency)`, and every settlement reproduces the
+> `(fx_rate, fx_base, fx_as_of)` snapshot written on its own `finance.transactions` /
+> `finance.escrows` row. Nothing in this hook — and nothing on any read path — rewrites a ledger
+> amount.
 
 `SECURITY DEFINER` (reads org/security tables past RLS), `SET search_path = ''` (fully-qualified
 identifiers, hijack-hardened), and wrapped so it **never raises** — any failure returns the event

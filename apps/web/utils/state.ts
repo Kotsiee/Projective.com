@@ -1,5 +1,6 @@
 import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
+import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileView } from "@projective/types/profile";
 
 /**
@@ -29,6 +30,22 @@ export interface State {
 	 * Hydration). Read-only visual guide: RLS + the `(dashboard)` guard remain the real gates.
 	 */
 	userContext?: UserContext;
+	/**
+	 * The resolved money-presentation context — the currency + locale every figure is formatted in,
+	 * plus the FX rate table needed to re-project one. Set site-wide by `routes/_middleware.ts`.
+	 *
+	 * It ships into SSR (and into the document's pre-paint attributes in `_app.tsx`) so the very first
+	 * byte already carries the viewer's own currency: a price that paints in GBP and corrects itself
+	 * to EUR after hydration is a worse experience than one that takes a moment to arrive, and on a
+	 * money surface it is actively alarming.
+	 *
+	 * Presentation only. Nothing derived from this changes a stored amount or a settlement.
+	 */
+	currency?: {
+		displayCurrency: string;
+		locale: string;
+		table: FxRateTable;
+	};
 	/** Active persona/profile handle, when resolved. */
 	handle?: string;
 	/**

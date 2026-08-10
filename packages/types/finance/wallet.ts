@@ -9,6 +9,7 @@ import {
 	timestamp,
 } from "./common.ts";
 import { TransactionDirection, WalletBalancesSchema } from "./ledger.ts";
+import { type ConvertedAmount, DEFAULT_LOCALE } from "./fx.ts";
 import { KycStatus, VerificationTier } from "./verification.ts";
 import { DepositInterval, MethodRole, PayoutMode, PotPurpose } from "./methods.ts";
 import {
@@ -931,6 +932,35 @@ export function formatMoney(minor: number, code: string, locale = "en-GB"): stri
 		// Unknown currency code — fall back to a plain grouped number with the code suffix.
 		return `${major.toFixed(exp)} ${code.toUpperCase()}`;
 	}
+}
+
+/**
+ * Build the canonical {@link MoneyView} for a {@link ConvertedAmount}.
+ *
+ * This is the ONE bridge between the FX engine and the money shape every surface renders, so a
+ * converted figure is assembled identically wherever it is produced. Both `display` strings are
+ * formatted here, server-side, in the viewer's locale — the client renders them verbatim so SSR and
+ * a hydrated island are byte-identical.
+ *
+ * `origin` is populated only when a conversion actually happened. A same-currency figure carries
+ * `origin: null` and therefore renders with no FX disclosure at all, which is correct: there is
+ * nothing approximate about it, and a "(~£12.00 GBP)" tail beside £12.00 would manufacture doubt
+ * about an exact number.
+ */
+export function toMoneyView(amount: ConvertedAmount, locale = DEFAULT_LOCALE): MoneyView {
+	return {
+		minor: amount.minor,
+		currency: amount.currency,
+		display: formatMoney(amount.minor, amount.currency, locale),
+		origin: amount.converted
+			? {
+				minor: amount.origin.minor,
+				currency: amount.origin.currency,
+				display: formatMoney(amount.origin.minor, amount.origin.currency, locale),
+				fxRate: amount.rate,
+			}
+			: null,
+	};
 }
 
 /** The capability preset a coarse {@link VaultRole} grants. Owner ⊇ Admin ⊇ PM ⊇ Member. */

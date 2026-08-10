@@ -207,3 +207,47 @@ VALUES
     ('read:wallet', 'Read wallet', 'Read wallet balances and transactions (never move funds).', 'finance', 'high')
 ON CONFLICT (key) DO NOTHING;
 -- #endregion
+
+-- #region finance.fx_rates — baseline reference observations (platform base GBP)
+-- A FLOOR, not a feed. The live rate table is refreshed from the configured provider; these rows
+-- exist so a from-scratch reset can resolve every supported display currency immediately instead of
+-- silently rendering unconverted origin amounts on a fresh database.
+--
+-- Direction is fixed and non-negotiable: `rate` converts BASE into QUOTE
+-- (`amount_quote = amount_base * rate`). The inverse pair is seeded explicitly rather than derived at
+-- read time, because a reader that divides by the forward rate and a reader that multiplies by the
+-- inverse disagree in the last minor unit, and a money figure that differs by which direction the
+-- caller happened to ask in is worse than one that is merely stale.
+--
+-- `as_of` is a fixed reference instant, not `now()`: the seed must be byte-identical across resets so
+-- a snapshot captured in a test database is reproducible. `provider = 'seed'` marks these as
+-- reference data — never mistake them for a live observation (see FxService's staleness handling).
+INSERT INTO
+    finance.fx_rates (base, quote, rate, as_of, provider)
+VALUES
+    ('GBP', 'GBP', 1.0000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'USD', 1.2700000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'EUR', 1.1700000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'CAD', 1.7300000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'AUD', 1.9300000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'JPY', 192.0000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'INR', 106.0000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'SGD', 1.7000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'CHF', 1.1200000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'ZAR', 23.1000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'NGN', 1980.0000000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('GBP', 'AED', 4.6600000000, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    -- Inverse pairs (QUOTE → GBP), seeded explicitly. See the direction note above.
+    ('USD', 'GBP', 0.7874015748, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('EUR', 'GBP', 0.8547008547, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('CAD', 'GBP', 0.5780346821, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('AUD', 'GBP', 0.5181347150, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('JPY', 'GBP', 0.0052083333, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('INR', 'GBP', 0.0094339623, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('SGD', 'GBP', 0.5882352941, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('CHF', 'GBP', 0.8928571429, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('ZAR', 'GBP', 0.0432900433, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('NGN', 'GBP', 0.0005050505, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed'),
+    ('AED', 'GBP', 0.2145922747, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed')
+ON CONFLICT (base, quote, as_of) DO NOTHING;
+-- #endregion

@@ -11,6 +11,7 @@
 		"./services/messaging/MessagingBackendService.ts": "./services/messaging/MessagingBackendService.ts",
 		"./services/catalogue/CatalogueBackendService.ts": "./services/catalogue/CatalogueBackendService.ts",
 		"./services/context/ContextBackendService.ts": "./services/context/ContextBackendService.ts",
+		"./services/finance/FxService.ts": "./services/finance/FxService.ts",
 		"./services/files/FilesBackendService.ts": "./services/files/FilesBackendService.ts",
 		"./services/files/link-scan.ts": "./services/files/link-scan.ts",
 		"./services/integrations/IntegrationsBackendService.ts": "./services/integrations/IntegrationsBackendService.ts",

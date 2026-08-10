@@ -100,7 +100,9 @@ export default function SearchBar({
 		let i = 0;
 		let ch = 0;
 		let deleting = false;
-		let timer = 0;
+		// `ReturnType<typeof setTimeout>`, not `number`: under Deno's node-compat typings `setTimeout`
+		// returns a `Timeout` object, so a `number` handle fails to typecheck.
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		const loop = () => {
 			const word = phrases[i % phrases.length];
 			ch += deleting ? -1 : 1;

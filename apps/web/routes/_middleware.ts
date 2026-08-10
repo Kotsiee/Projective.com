@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { hasSessionCookie } from "@web/utils/auth-cookies.ts";
 import { resolveRequestContext } from "@web/utils/user-context.ts";
+import { resolveCurrencyContext, runWithCurrency } from "@web/utils/currency-context.ts";
 
 /**
  * Global middleware — runs for every request. Resolves auth **site-wide** (chrome only) and adds
@@ -26,7 +27,14 @@ import { resolveRequestContext } from "@web/utils/user-context.ts";
 export default define.middleware(async (ctx) => {
 	ctx.state.isAuthenticated = hasSessionCookie(ctx.req);
 	ctx.state.userContext = resolveRequestContext(ctx.req);
-	const res = await ctx.next();
+	// The money-presentation context (currency · locale · rate table), resolved for EVERY route
+	// including public ones — a signed-out visitor browsing Explore needs prices in their currency
+	// exactly as much as a signed-in one. Cached for 15 minutes inside the FX engine, and total: it
+	// never throws and never blocks, so an unavailable rate table costs a conversion, not a request.
+	ctx.state.currency = await resolveCurrencyContext(ctx.req, ctx.state.userContext);
+	// Opened around the WHOLE chain, not just the render: `AsyncLocalStorage` is what carries the
+	// currency past every island boundary and every await to the deepest server-rendered price.
+	const res = await runWithCurrency(ctx.state.currency, () => ctx.next());
 	res.headers.set("x-frame-options", "DENY");
 	res.headers.set("x-content-type-options", "nosniff");
 	if (!res.headers.has("referrer-policy")) {
