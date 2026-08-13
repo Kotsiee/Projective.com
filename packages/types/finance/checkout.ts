@@ -12,6 +12,12 @@ import {
 	PurchaseOwnerType,
 	reference,
 } from "./basket.ts";
+import {
+	BillingContextSchema,
+	buyerDetailsComplete,
+	BuyerDetailsSchema,
+	MonthlyInvoicingSchema,
+} from "./buyer.ts";
 
 /**
  * finance checkout — the Zod SSOT for the payment surface: saved cards, the payment-provider offer,
@@ -414,6 +420,21 @@ export interface CheckoutTotalsInput {
 	platformFeeBp?: number;
 	/** Who bears the fee; defaults to `seller_deducted`, the documented platform rule. */
 	feeMode?: PlatformFeeMode;
+	/**
+	 * The buyer's **voluntary** contribution toward third-party gateway costs, in minor units; `0`
+	 * when they have not opted in.
+	 *
+	 * Passed in, never derived — for the same reason {@link CheckoutTotalsInput.taxMinor} is. The
+	 * gateway's actual cost on a given charge depends on the instrument, the issuing country and the
+	 * scheme, none of which this module knows; a percentage invented here would be presented to the
+	 * buyer as *the* processing cost and would be wrong. The server resolves it and the surface
+	 * renders the resolved figure.
+	 *
+	 * It always **adds** to the buyer's total, under either {@link PlatformFeeMode}. That is what
+	 * makes it a contribution rather than a fee: the buyer chose to pay something they did not owe,
+	 * so it can never be quietly absorbed into a line they were already paying.
+	 */
+	processingContributionMinor?: number;
 }
 
 /** The resolved totals in integer minor units — the service wraps these into `MoneyView`s. */
@@ -427,7 +448,11 @@ export interface CheckoutTotalsMinor {
 	platformFeeBp: number;
 	feeMode: PlatformFeeMode;
 	taxMinor: number;
-	/** `net + tax`, plus the fee only when {@link feeMode} is `buyer_added`. */
+	/** The buyer's voluntary gateway contribution; `0` when they did not opt in. */
+	processingContributionMinor: number;
+	/**
+	 * `net + tax + contribution`, plus the platform fee only when {@link feeMode} is `buyer_added`.
+	 */
 	totalMinor: number;
 }
 
@@ -435,14 +460,20 @@ export interface CheckoutTotalsMinor {
  * The one place a checkout total is computed. Integer minor units end to end; no float ever enters the
  * chain, and rounding happens once, inside {@link platformFeeFor}.
  *
- * Order of operations: gross subtotal → creator discounts → promo → fee on the discounted base → tax →
- * total. The fee is added to the buyer's total **only** under `buyer_added`; under the default
- * `seller_deducted` it is reported for disclosure and the buyer pays `net + tax`.
+ * Order of operations: gross subtotal → creator discounts → promo → fee on the discounted base → tax
+ * → voluntary contribution → total. The platform fee is added to the buyer's total **only** under
+ * `buyer_added`; under the default `seller_deducted` it is reported for disclosure and the buyer pays
+ * `net + tax + contribution`.
+ *
+ * The contribution is added last and is **never** part of the base the platform fee is charged on:
+ * charging a percentage of a voluntary gift would make the buyer's generosity revenue, which is not
+ * what the checkbox offers them.
  */
 export function checkoutTotals(input: CheckoutTotalsInput): CheckoutTotalsMinor {
 	const feeBp = input.platformFeeBp ?? PLATFORM_FEE_BP;
 	const feeMode = input.feeMode ?? "seller_deducted";
 	const taxMinor = Math.max(input.taxMinor ?? 0, 0);
+	const processingContributionMinor = Math.max(input.processingContributionMinor ?? 0, 0);
 
 	const subtotalMinor = basketSubtotal(input.items);
 	const discounts = applyDiscounts(input.items, input.promoDiscountMinor ?? 0);
@@ -457,7 +488,8 @@ export function checkoutTotals(input: CheckoutTotalsInput): CheckoutTotalsMinor 
 		platformFeeBp: feeBp,
 		feeMode,
 		taxMinor,
-		totalMinor: discounts.netMinor + taxMinor +
+		processingContributionMinor,
+		totalMinor: discounts.netMinor + taxMinor + processingContributionMinor +
 			(feeMode === "buyer_added" ? platformFeeMinor : 0),
 	};
 }
@@ -481,9 +513,79 @@ export const CheckoutTotalsSchema = z.object({
 	taxes: MoneyViewSchema,
 	/** How the tax was determined ("VAT 20% · United Kingdom"); `null` when no tax applies. */
 	taxNote: z.string().max(160).nullable(),
+	/**
+	 * The buyer's voluntary gateway contribution, as charged. Zero-valued rather than `null` when
+	 * they declined, so the totals block has one shape and the line simply does not render.
+	 */
+	processingContribution: MoneyViewSchema,
 	total: MoneyViewSchema,
 });
 export type CheckoutTotals = z.infer<typeof CheckoutTotalsSchema>;
+// #endregion
+
+// #region Processing contribution
+/**
+ * The voluntary "help cover gateway costs" offer.
+ *
+ * Three things this shape refuses to do, each for the same reason — the buyer is being asked for
+ * money they do not owe, so every fact around the ask has to be true:
+ *
+ *  - It carries a server-computed {@link amount}, never a rate the client multiplies. The real cost
+ *    depends on the instrument and the issuing country, so a client-side percentage would be a
+ *    plausible number that is not the cost.
+ *  - It carries {@link optedIn} explicitly rather than inferring it from a non-zero amount, so the
+ *    surface can render an unchecked box beside a real figure ("adds £0.42") before the buyer agrees.
+ *  - It carries its own {@link note}, so the tooltip's wording lives with the offer rather than
+ *    being retyped on each surface that shows it.
+ */
+export const ProcessingContributionOfferSchema = z.object({
+	/** Whether to render the offer at all. Some providers (a wallet payment) incur no gateway cost. */
+	offered: z.boolean(),
+	optedIn: z.boolean(),
+	/** What opting in adds, server-computed. Zero-valued when not offered. */
+	amount: MoneyViewSchema,
+	/** The explanation shown in the control's tooltip. */
+	note: z.string().max(240),
+});
+export type ProcessingContributionOffer = z.infer<typeof ProcessingContributionOfferSchema>;
+// #endregion
+
+// #region Spending limit
+/**
+ * How the acting member's spending limit bears on THIS basket.
+ *
+ * A projection over `finance.spending_limits` (`cap_cents`, `period_interval`, `spent_cents`,
+ * `resets_at`) — no new storage, and deliberately **no arithmetic**.
+ *
+ * **The verdict is carried, never computed here.** The rule lives in `evaluateSpend`
+ * (`@projective/types/workspace`), and this schema cannot call it: `workspace` already imports
+ * `finance/wallet.ts`, so importing it back would close a cycle in the type graph. The FAT SERVICE
+ * calls the one rule (it may import both domains freely) and puts its answer in this field — which
+ * keeps a single implementation of the ceiling logic without making `finance` stop being a leaf.
+ * There are already three views of this rule in the codebase; a fourth would be drift.
+ *
+ * `needs_approval` is a first-class outcome, which is why this is a verdict rather than a boolean:
+ * a purchase over the ceiling is not refused, it is routed — and a boolean could not say so.
+ */
+export const SpendLimitBlockSchema = z.object({
+	/** Whether a limit applies at all. `false` for a personal wallet — no cap, so no control. */
+	applies: z.boolean(),
+	/** `evaluateSpend`'s verdict for this basket's total, computed server-side. */
+	verdict: z.enum(["allowed", "needs_approval", "blocked"]),
+	/** The verdict's own sentence, so the surface never invents a reason. `null` when allowed. */
+	reason: z.string().max(200).nullable(),
+	/** `cap_cents` as money. */
+	cap: MoneyViewSchema,
+	/** `spent_cents` in the current window. */
+	spent: MoneyViewSchema,
+	/** What remains before the cap. Zero-valued, never negative. */
+	remaining: MoneyViewSchema,
+	/** `period_interval` as a phrase ("this month"); `null` when the cap is a lifetime total. */
+	periodLabel: z.string().max(60).nullable(),
+	/** Where a `needs_approval` request is raised; `null` otherwise. */
+	requestHref: z.string().max(200).nullable(),
+});
+export type SpendLimitBlock = z.infer<typeof SpendLimitBlockSchema>;
 // #endregion
 
 // #region Checkout session projection
@@ -531,6 +633,19 @@ export const CheckoutBlockerCode = z.enum([
 	"insufficient_funds",
 	"verification_required",
 	"price_changed",
+	/**
+	 * Delivery or billing details are incomplete.
+	 *
+	 * The mirror of {@link canSkipDetails}: a session that may not SKIP the Details step must also
+	 * refuse Pay, or a deep link straight to `/checkout/payment` becomes a way around the form.
+	 */
+	"missing_details",
+	/**
+	 * The acting member's spending limit refuses or defers this purchase. Carries the verdict from
+	 * {@link SpendLimitBlockSchema}, so `needs_approval` reaches the surface as a route forward
+	 * rather than as a wall.
+	 */
+	"spend_limit",
 ]);
 export type CheckoutBlockerCode = z.infer<typeof CheckoutBlockerCode>;
 
@@ -579,8 +694,37 @@ export const CheckoutSessionContextSchema = z.object({
 	requiresStage: z.boolean(),
 	/** Everything currently preventing payment; empty means Pay is live. */
 	blockers: z.array(CheckoutBlockerSchema).max(20),
+
+	/**
+	 * The buyer's saved delivery + billing details for the ACTIVE billing identity.
+	 *
+	 * Carried on the session rather than fetched separately by the Details page so that every step
+	 * asks the same question of the same record: the auto-skip, the "Change details" summary on the
+	 * payment step, and the invoice's billed-to block all read this one value. Two reads would be two
+	 * answers, and the one that decided the skip would not be the one that printed the invoice.
+	 */
+	buyer: BuyerDetailsSchema,
+	/** Every identity the buyer may bill through — the Details page's context switcher. */
+	billingContexts: z.array(BillingContextSchema).max(20),
+	/** The monthly-invoicing offer for the active identity, with its refusal reason when closed. */
+	invoicing: MonthlyInvoicingSchema,
+	/** The voluntary gateway-contribution offer. */
+	processingOffer: ProcessingContributionOfferSchema,
+	/** How the acting member's spending limit bears on this basket. */
+	spendLimit: SpendLimitBlockSchema,
 });
 export type CheckoutSessionContext = z.infer<typeof CheckoutSessionContextSchema>;
+
+/**
+ * Whether this session may skip `/checkout/details`.
+ *
+ * Delegates to {@link buyerDetailsComplete} rather than re-testing the fields, so the redirect and
+ * the form are one rule. Exported here because the ROUTE asks the question of a *session*, and
+ * making it reach into the buyer record to ask it is how a second, subtly different test appears.
+ */
+export function canSkipDetails(session: CheckoutSessionContext): boolean {
+	return buyerDetailsComplete(session.buyer);
+}
 
 /**
  * Which collection steps a set of lines demands, derived from {@link itemKindMeta}. Pure, so the
@@ -629,6 +773,19 @@ export const CreateCheckoutSchema = z.object({
 	 * is caught rather than silently charged.
 	 */
 	expectedTotalMinor: minorUnitsNonNeg,
+	/**
+	 * The buyer's voluntary gateway contribution, echoed from the offer they accepted.
+	 *
+	 * **This must travel with the write or every payment fails.** `create()` recomputes the total
+	 * with {@link checkoutTotals} and refuses on any mismatch with {@link expectedTotalMinor}. The
+	 * contribution is part of that total, so a client that added it to what it showed the buyer but
+	 * did not send it here would produce a server total lower by exactly the contribution — and the
+	 * refusal would be `price_changed`, on every single attempt, for a reason nothing on the surface
+	 * could explain.
+	 */
+	processingContributionMinor: minorUnitsNonNeg.default(0),
+	/** Which billing identity to invoice — `personal`, or the entity key (`business:{id}`). */
+	billingContextId: reference.optional(),
 	idempotencyKey: z.string().min(8).max(120),
 });
 export type CreateCheckout = z.infer<typeof CreateCheckoutSchema>;

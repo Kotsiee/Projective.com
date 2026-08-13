@@ -4,45 +4,34 @@
  * flush to the far viewport edges. No layout `display` here — each zone sets its own.
  */
 .ui-shell-frame {
-    /* Per-frame curvature knob — defaults to the fluid nested-frame radius; a specific frame (e.g. the
-	Green body panel) can raise it to --radius-container-xl by setting --frame-radius locally. */
-    --frame-radius: var(--radius-container-lg);
-    --frame-bl-radius: 0;
-    flex: 1 1 auto;
-    min-block-size: 0;
-    min-inline-size: 0;
-    /* background: var(--frame-surface, var(--surface)); */
-    color: var(--on-surface);
-    /* border-start-start-radius: var(--frame-radius);
-	border-end-start-radius: var(--frame-bl-radius); */
-    /* Organic flowing seam (Part D): a single razor-thin --hairline on the two EXPOSED edges (top +
-	inline-start). Sharing the rounded top-left corner, the seam curves cleanly along the frame's
-	large radius instead of reading as two mechanical straight lines. The far (right/bottom) edges
-	stay flush to the viewport and carry no line. */
-    /* border-block-start: var(--hairline);
-	border-inline-start: var(--hairline); */
-    overflow: clip;
+	--frame-radius: var(--radius-container-lg);
+	--frame-bl-radius: 0;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	min-inline-size: 0;
+	color: var(--on-surface);
+	overflow: clip;
 }
 
 .ui-app-shell__content::before {
-    content: "";
-    display: block;
-    position: fixed;
-    inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
-    inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
-    block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
-    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
-    border-start-start-radius: var(--frame-radius, var(--radius-container-lg));
-    border-end-start-radius: var(--frame-bl-radius, 0);
-    z-index: 0;
-    pointer-events: none;
-    background: var(--surface-1);
+	content: "";
+	display: block;
+	position: fixed;
+	inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
+	inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
+	block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
+	inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+	border-start-start-radius: var(--frame-radius, var(--radius-container-lg));
+	border-end-start-radius: var(--frame-bl-radius, 0);
+	z-index: 0;
+	pointer-events: none;
+	background: var(--surface-1);
 }
 
 /* No middle-nav (a bare canvas): the seam at this origin is the Green body panel's own, larger curve,
    so the track beneath it must round to the SAME radius or it reappears as a sliver in the corner. */
 .ui-app-shell:not(:has(.ui-middle-nav)) .ui-app-shell__content::before {
-    border-start-start-radius: var(--radius-container-xl);
+	border-start-start-radius: var(--radius-container-xl);
 }
 
 /*
@@ -61,8 +50,8 @@
 
 /* When a parent track remains beneath, the bottom-left also curves — extend the flowing seam there. */
 .ui-shell-frame[data-flush-bottom="false"] {
-    --frame-bl-radius: var(--frame-radius);
-    border-block-end: var(--hairline);
+	--frame-bl-radius: var(--frame-radius);
+	border-block-end: var(--hairline);
 }
 
 /*
@@ -72,19 +61,18 @@
  * beneath the header (DESIGN_SYSTEM.md Part D.3).
  */
 @media (max-width: 767px) {
+	.ui-shell-frame,
+	.ui-shell-frame[data-flush-bottom="false"] {
+		--frame-radius: 0;
+		--frame-bl-radius: 0;
+		border-block-start: 0;
+		border-inline-start: 0;
+		border-block-end: 0;
+	}
 
-    .ui-shell-frame,
-    .ui-shell-frame[data-flush-bottom="false"] {
-        --frame-radius: 0;
-        --frame-bl-radius: 0;
-        border-block-start: 0;
-        border-inline-start: 0;
-        border-block-end: 0;
-    }
-
-    /* The fixed corner seam is a desktop-only affordance — a full-width mobile column has no nested
+	/* The fixed corner seam is a desktop-only affordance — a full-width mobile column has no nested
 	inline-start edge to trace, so the L would draw a stray hairline down the viewport. */
-    .ui-shell-frame::after {
-        display: none;
-    }
+	.ui-shell-frame::after {
+		display: none;
+	}
 }

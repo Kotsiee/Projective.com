@@ -77,6 +77,55 @@ const WALLET_COVERAGES: readonly BasketWalletCoverage[] = ["covers", "shortfall"
 const CARD_STATES: readonly BasketCardState[] = ["seeded", "none", "expired"];
 
 /**
+ * Whether the buyer already has complete saved delivery + billing details.
+ *
+ * The axis that makes the Details step's AUTO-SKIP reachable at runtime. Without it a developer can
+ * only see one of the two branches, and the one they cannot see is the one that silently sends a
+ * buyer past a form — which is exactly the branch worth being able to look at.
+ */
+export type BasketDetailsState = "saved" | "missing";
+/** Which billing identity the Details form opens on — a natural person or a company. */
+export type BasketBillingContext = "personal" | "business";
+/** The acting entity's invoicing mode (`org.business_profiles.invoicing_mode`). */
+export type BasketInvoicingMode = "per_transaction" | "intervaled_monthly";
+/**
+ * Whether this purchase exceeds the acting member's spending limit.
+ *
+ * `finance.spending_limits` is the real authority; this axis reaches the OVER state without having to
+ * construct a basket that happens to cross a seeded cap.
+ */
+export type BasketSpendLimit = "within" | "over";
+/** Which fulfilment routes the confirmation hub has to render. */
+export type BasketFulfilmentMix = "mixed" | "products" | "tickets" | "sessions" | "pending";
+/**
+ * Which conferencing provider a booked session's join link resolves to.
+ *
+ * Separate from the calendar exports on purpose: conferencing (the room) and calendar sync (Google ·
+ * Outlook · `.ics`) are two capability axes on `integrations.providers`, never one chip set
+ * (CLAUDE.md Decision #56). Google appears in both only because it genuinely does both. `none` is a
+ * real state — a room is minted by the provider, and until one exists there is nothing to join.
+ */
+export type BasketConferencing = "zoom" | "google" | "microsoft_teams" | "none";
+
+const DETAILS_STATES: readonly BasketDetailsState[] = ["saved", "missing"];
+const BILLING_CONTEXTS: readonly BasketBillingContext[] = ["personal", "business"];
+const INVOICING_MODES: readonly BasketInvoicingMode[] = ["per_transaction", "intervaled_monthly"];
+const SPEND_LIMITS: readonly BasketSpendLimit[] = ["within", "over"];
+const FULFILMENT_MIXES: readonly BasketFulfilmentMix[] = [
+	"mixed",
+	"products",
+	"tickets",
+	"sessions",
+	"pending",
+];
+const CONFERENCING: readonly BasketConferencing[] = [
+	"zoom",
+	"google",
+	"microsoft_teams",
+	"none",
+];
+
+/**
  * The fixture-shaping simulation knobs (dev-only; ignored on the live path).
  *
  * Device-wallet and PayPal availability are **not** dev axes — they are genuine capability the client
@@ -106,6 +155,18 @@ export interface BasketSim {
 	applePay?: boolean;
 	/** Whether PayPal is configured for this deployment (deployment config, not a simulation). */
 	paypalEnabled?: boolean;
+	/** Simulated saved-details state — drives the Details step's auto-skip (`simDetails`). */
+	details?: BasketDetailsState;
+	/** Simulated billing identity the Details form opens on (`simBilling`). */
+	billing?: BasketBillingContext;
+	/** Simulated entity invoicing mode (`simInvoicing`). */
+	invoicing?: BasketInvoicingMode;
+	/** Simulated position against the member spending limit (`simSpendLimit`). */
+	spendLimit?: BasketSpendLimit;
+	/** Simulated fulfilment mix on the confirmation hub (`simFulfilment`). */
+	fulfilment?: BasketFulfilmentMix;
+	/** Simulated conferencing provider for a booked session (`simConferencing`). */
+	conferencing?: BasketConferencing;
 }
 // #endregion
 
@@ -125,6 +186,16 @@ export interface BasketQuery extends CheckoutQuery {
 	viewerId?: string | null;
 	/** Whether the acting user offers services — decides the personal basket's `PurchaseOwnerType`. */
 	isFreelancer?: boolean;
+	/**
+	 * The payment route the buyer has selected, when they have.
+	 *
+	 * Read only to decide whether the gateway-contribution offer applies at all: a wallet or invoice
+	 * payment moves no money through a card scheme, so asking the buyer to help cover a scheme fee
+	 * would be asking against a cost that does not exist.
+	 */
+	provider?: string | null;
+	/** Whether the buyer has opted into the voluntary gateway contribution. */
+	processingContribution?: boolean;
 	sim?: BasketSim;
 }
 // #endregion
@@ -172,6 +243,18 @@ export function parseBasketSim(sp: URLSearchParams): BasketSim | undefined {
 	if (apay !== undefined) sim.applePay = apay;
 	const paypal = flag(sp.get("paypal"));
 	if (paypal !== undefined) sim.paypalEnabled = paypal;
+	const details = oneOf(sp.get("simDetails"), DETAILS_STATES);
+	if (details) sim.details = details;
+	const billing = oneOf(sp.get("simBilling"), BILLING_CONTEXTS);
+	if (billing) sim.billing = billing;
+	const invoicing = oneOf(sp.get("simInvoicing"), INVOICING_MODES);
+	if (invoicing) sim.invoicing = invoicing;
+	const spendLimit = oneOf(sp.get("simSpendLimit"), SPEND_LIMITS);
+	if (spendLimit) sim.spendLimit = spendLimit;
+	const fulfilment = oneOf(sp.get("simFulfilment"), FULFILMENT_MIXES);
+	if (fulfilment) sim.fulfilment = fulfilment;
+	const conferencing = oneOf(sp.get("simConferencing"), CONFERENCING);
+	if (conferencing) sim.conferencing = conferencing;
 	return Object.keys(sim).length > 0 ? sim : undefined;
 }
 
@@ -210,6 +293,8 @@ export function basketQueryFrom(sp: URLSearchParams, context: UserContext): Bask
 		viewerHandle: context.handle,
 		viewerId: context.userId,
 		isFreelancer: context.isFreelancer,
+		provider: sp.get("provider"),
+		processingContribution: flag(sp.get("contribute")) ?? false,
 		sim: parseBasketSim(sp),
 	};
 }
@@ -240,6 +325,14 @@ export function basketQueryFromBody(
 			"googlePay",
 			"applePay",
 			"paypal",
+			"provider",
+			"contribute",
+			"simDetails",
+			"simBilling",
+			"simInvoicing",
+			"simSpendLimit",
+			"simFulfilment",
+			"simConferencing",
 		]
 	) {
 		const value = body[key];

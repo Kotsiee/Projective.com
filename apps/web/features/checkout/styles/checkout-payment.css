@@ -1,0 +1,1056 @@
+/**
+ * checkout-payment.css — step 3 of the checkout flow.
+ *
+ * Layered ON TOP of `checkout-body.css`, which already owns the money typography, the blocker list,
+ * the provider radio group and the gate reminder. Nothing here restyles those; this sheet adds the
+ * step's own two-column frame and the blocks that exist only on it — the wallet's instrument block,
+ * the saved-card LIST, the action row beneath it, the monthly-invoicing action, the summary rail,
+ * the voluntary contribution, the spending-limit position and the add-method modal.
+ *
+ * **Cascade note.** `checkout.css` imports this sheet BEFORE `checkout-body.css`, so a body rule of
+ * equal specificity wins. Every override of a shared class here is therefore written at a higher
+ * specificity than the body's, never left to source order.
+ *
+ * Six rules here are contractual rather than stylistic:
+ *
+ * - **Every width rule is a CONTAINER query.** The shell eats roughly 344px, so at a 768px viewport
+ *   the content region is about 424px: a viewport media query would ask about a box this body never
+ *   has. The root reuses `.cko`'s named `inline-size` container; the card list and the summary rail
+ *   declare their OWN, because each is far narrower than the body and a body-width breakpoint would
+ *   reflow them at the wrong moment.
+ * - **The 302:192 card is a call-site TOKEN override, never a package edit and never an inline
+ *   style.** `PaymentCard` overwrites `style` with its own art variables, so an inline `--pc-ratio`
+ *   is dropped silently and reviews as correct. One plate width (`--cko-plate-w`) is declared at the
+ *   step root and read by the list, the rail and the fallback tile alike — an instrument that changes
+ *   proportion between the picker and the summary is an instrument the buyer has to re-identify.
+ * - **§B.4 separation.** Non-interactive blocks separate by spacing, a tonal ground and at most one
+ *   hairline. The only four-sided enclosures on this step are genuinely interactive: a provider
+ *   option, and the saved-card list, which is one `role="radiogroup"` control.
+ * - **Pill actions.** Every commit and every quiet action on this surface is fully rounded — the
+ *   product owner's approved shape for the checkout, applied through `ui-button--rounded` (or the
+ *   `Button` `rounded` prop) and scoped to these files.
+ * - **Nothing animates a property that ENCODES data.** No figure, total or fee is transitioned into
+ *   place; a frozen animation clock in a background tab must never be able to leave an amount
+ *   stating something untrue.
+ * - **Logical properties only**, so the whole step mirrors under `dir="rtl"` with no physical edge
+ *   left behind.
+ */
+
+/* #region Step frame */
+/*
+ * `.cko-pstep` composes onto `.cko`, so it inherits the surface's padding, gap and — importantly —
+ * its `container-name: cko`. Declaring a second container here would shadow it and quietly change
+ * which box every inherited breakpoint in `checkout-body.css` was asking about.
+ */
+.cko-pstep {
+	/* The one plate width this step draws an instrument at, in the picker and in the summary alike. */
+	--cko-plate-w: 115px;
+}
+
+.cko-pstep__cols {
+	display: grid;
+	/* `minmax(0, …)`: a long provider note or a wide instrument must never set the column floor. */
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-6);
+	align-items: start;
+}
+
+.cko-pstep__main,
+.cko-pstep__aside {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	min-inline-size: 0;
+}
+
+/*
+ * Roughly 62 / 38 once the BODY — not the window — has room for both. Below this the summary follows
+ * the methods, which is also the order the buyer reads in: how am I paying, then what will it cost.
+ *
+ * The rail is deliberately NOT sticky. It now carries the details, the composition, the arithmetic
+ * and two commits, so it is routinely taller than the viewport — and a `sticky` block taller than
+ * its viewport pins its top and puts its bottom permanently out of reach, which on this surface is
+ * the Buy Now button.
+ */
+@container cko (min-width: 62rem) {
+	.cko-pstep__cols {
+		grid-template-columns: minmax(0, 62fr) minmax(22rem, 38fr);
+	}
+}
+/* #endregion */
+
+/* #region The wallet's instrument block */
+/*
+ * The brief's card geometry, applied at the CALL SITE.
+ *
+ * Both hooks are required and neither is redundant:
+ *
+ * - `.cko-card.ui-paycard-option` is (0,2,0) and beats `.ui-paycard-option--sm`'s (0,1,0), which
+ *   deliberately RESTATES `--pc-max` on the wrapper. Overriding only the card would leave a 15rem
+ *   focus ring around a 302px face.
+ * - `.cko-card .ui-paycard` reaches the face itself. `PaymentCardOption` forwards `class` to its
+ *   button only, and `.ui-paycard` declares `--pc-ratio` on its OWN element — where a declaration
+ *   always beats an inherited value — so the descendant selector is the only route to it.
+ *
+ * The ratio is written in `<ratio>` form because `--pc-ratio`'s single consumer is `aspect-ratio`,
+ * where `302 / 192` is valid. Any future `calc()` consumer needs the decimal 1.5729 instead.
+ */
+.cko-card.ui-paycard,
+.cko-card.ui-paycard-option,
+.cko-card .ui-paycard {
+	--pc-ratio: 302 / 192;
+	--pc-max: 302px;
+}
+
+/* The face, the balance and the top-up sit on one row and wrap together when the column narrows. */
+.cko-wallet__instrument {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4) var(--space-5);
+	align-items: center;
+	margin-block-start: var(--space-2);
+}
+
+.cko-wallet__face {
+	flex: 0 1 auto;
+}
+
+.cko-wallet__standing {
+	display: flex;
+	flex: 1 1 12rem;
+	flex-direction: column;
+	gap: var(--space-3);
+	align-items: flex-start;
+	min-inline-size: 0;
+}
+
+.cko-wallet__figure {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+}
+
+.cko-wallet__figure-label {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+/*
+ * An anchor wearing the shared button styles, so the pill matches the real controls beside it. The
+ * one thing the shared rules do not do for a link is drop the underline.
+ */
+.cko-wallet__topup {
+	text-decoration: none;
+}
+/* #endregion */
+
+/* #region The saved-card list */
+/*
+ * ONE bordered container holding a row per card, rows separated by a single hairline.
+ *
+ * The four-sided border is the legitimate kind: this element is a `role="radiogroup"`, an
+ * interactive control, which is exactly the distinction §B.4 draws. It is deliberately NOT clipped —
+ * the package draws the checked option's ring at a 3px outset and its tick at a negative inset, and
+ * `overflow: clip` would swallow both selection channels.
+ */
+.cko-cardlist {
+	container-type: inline-size;
+	container-name: cko-cardlist;
+	display: flex;
+	flex-direction: column;
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+}
+
+.cko-cardlist__row {
+	display: grid;
+	/*
+	 * The plate track is an EXPLICIT width, not `auto`.
+	 *
+	 * `.ui-paycard` is a block whose height comes from `aspect-ratio` and whose width comes from
+	 * filling its parent — `--pc-max` only CAPS it. In an `auto` track that is circular: the track
+	 * sizes to the item, the item has no intrinsic width of its own, and both resolve to zero. The
+	 * plates were in the DOM at 0x0 and invisible. Naming the track `--cko-plate-w` gives the card
+	 * something to fill and keeps one plate width for the picker, the rail and the tile.
+	 */
+	grid-template-columns: var(--cko-plate-w) minmax(0, 1fr) auto;
+	gap: var(--space-2) var(--space-4);
+	align-items: center;
+	/* The inline padding is what gives the checked option's outset tick room inside the container. */
+	padding: var(--space-3) var(--space-4);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.cko-cardlist__row + .cko-cardlist__row {
+	border-block-start: var(--hairline);
+}
+
+.cko-cardlist__row:first-child {
+	border-start-start-radius: var(--radius-lg);
+	border-start-end-radius: var(--radius-lg);
+}
+
+.cko-cardlist__row:last-child {
+	border-end-start-radius: var(--radius-lg);
+	border-end-end-radius: var(--radius-lg);
+}
+
+.cko-cardlist__row:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.cko-cardlist__row[data-checked="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+/*
+ * An expired card stays legible and stays in the list — "my card isn't listed" and "my card is out
+ * of date" are different problems — so only the cursor changes. The package already fades the plate.
+ */
+.cko-cardlist__row[data-expired="true"] {
+	cursor: not-allowed;
+}
+
+.cko-cardlist__row[data-expired="true"]:hover {
+	background: none;
+}
+
+/*
+ * The thumbnail plate: the same 302:192 proportion as the wallet's, narrowed by `--pc-max`. Both
+ * selectors are required for the reason documented on `.cko-card` above.
+ */
+.cko-cardlist__face.ui-paycard-option,
+.cko-cardlist__face .ui-paycard {
+	--pc-ratio: 302 / 192;
+	--pc-max: var(--cko-plate-w);
+	--pc-radius: var(--radius-sm);
+}
+
+.cko-cardlist__face.ui-paycard-option {
+	border-radius: var(--radius-sm);
+}
+
+/*
+ * The package's hover lift is a 4px translate. On a full-size card it reads as depth; on a 115px
+ * plate inside a dense row it jitters the whole line, and the row's own tint already answers hover.
+ * Selection is untouched — it is carried by the ring, the drawn tick and `aria-checked`.
+ */
+.cko-cardlist__face.ui-paycard-option:hover:not(:disabled) {
+	transform: none;
+}
+
+.cko-cardlist__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cko-cardlist__brand {
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	overflow-wrap: anywhere;
+}
+
+.cko-cardlist__holder {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	overflow-wrap: anywhere;
+}
+
+.cko-cardlist__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+/* A card with no badge and no tag must not leave a gap where a row of them would have been. */
+.cko-cardlist__tags:empty {
+	display: none;
+}
+
+.cko-cardlist__ident {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	gap: var(--space-1);
+	align-items: flex-end;
+	text-align: end;
+}
+
+.cko-cardlist__pan {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: baseline;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.cko-cardlist__mask {
+	letter-spacing: 0.06em;
+}
+
+.cko-cardlist__exp {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The identity block stops fitting beside the plate long before the BODY runs out of room. */
+@container cko-cardlist (max-width: 26rem) {
+	.cko-cardlist__row {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.cko-cardlist__ident {
+		grid-column: 2;
+		align-items: flex-start;
+		text-align: start;
+	}
+}
+
+.cko-cards__addlink {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--primary);
+	font: inherit;
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.cko-cards__addlink:focus-visible {
+	outline: none;
+	border-radius: var(--radius-xs);
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region The instrument fallback tile */
+/*
+ * A route with no plate — PayPal, a device wallet, an invoice — gets its own registry glyph on a
+ * plain tile at the plate's proportion. Drawing a card for a buyer paying by PayPal would put an
+ * instrument in front of them that has nothing to do with the payment.
+ */
+.cko-instrument__tile {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--pc-max, var(--cko-plate-w));
+	aspect-ratio: 302 / 192;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	font-size: var(--icon-md);
+}
+/* #endregion */
+
+/* #region The step's action row */
+.cko-pstep__acts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin-block-start: var(--space-5);
+}
+
+.cko-pstep__acts-primary {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: flex-start;
+}
+
+/* Its own line, at the far reading edge: adding a card is a detour from paying, not a step in it. */
+.cko-pstep__addcard {
+	align-self: flex-end;
+}
+
+/*
+ * The focus ring must be VISIBLE on the filled control, which is why it is stated here rather than
+ * left to the shared button rule: this is the last control before money moves, and a keyboard buyer
+ * who cannot see where they are is a keyboard buyer who presses it by accident.
+ */
+.cko-pstep__buy:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Monthly invoicing */
+.cko-invact {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+/* The eligible form is an anchor wearing the button styles; only the underline needs removing. */
+.cko-invact__btn {
+	text-decoration: none;
+}
+
+/*
+ * The refusal, or the current state, in the server's own words. It sits directly beneath the control
+ * it describes and is bound to it with `aria-describedby` — a disabled control whose reason lives
+ * elsewhere on the page is indistinguishable from a broken one.
+ */
+.cko-invact__reason {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+/* #endregion */
+
+/* #region The summary rail */
+/*
+ * A tonal ground and spacing — no border. The rail is a reading surface: the only interactive things
+ * in it are the "Change Details" link, the contribution checkbox and the two commits, and each of
+ * those carries its own outline (§B.4).
+ */
+.cko-rail {
+	container-type: inline-size;
+	container-name: cko-rail;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: var(--space-5);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+}
+
+.cko-rail__changerow {
+	display: flex;
+	justify-content: flex-end;
+	margin: 0;
+}
+
+.cko-rail__change {
+	color: var(--primary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+
+.cko-rail__change:hover {
+	text-decoration: underline;
+}
+
+.cko-rail__change:focus-visible {
+	outline: none;
+	border-radius: var(--radius-xs);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-rail__sec {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.cko-rail__head {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-rail__pair {
+	display: flex;
+	gap: var(--space-4);
+	align-items: flex-start;
+	justify-content: space-between;
+}
+
+.cko-rail__name {
+	min-inline-size: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	overflow-wrap: anywhere;
+}
+
+.cko-rail__stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	align-items: flex-end;
+	min-inline-size: 0;
+	text-align: end;
+}
+
+.cko-rail__line {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	overflow-wrap: anywhere;
+}
+
+/* An unfilled field says so in words. "Change Details" is one line above it. */
+.cko-rail__line[data-empty="true"] {
+	font-style: italic;
+}
+
+.cko-rail__line[data-quiet="true"] {
+	font-variant-numeric: tabular-nums;
+}
+
+/* The summary's plate. Both selectors, for the reason documented on `.cko-card`. */
+.cko-rail__face {
+	flex: none;
+	--pc-max: var(--cko-plate-w);
+}
+
+.cko-rail__face.ui-paycard,
+.cko-rail__face .ui-paycard {
+	--pc-ratio: 302 / 192;
+	--pc-max: var(--cko-plate-w);
+	--pc-radius: var(--radius-sm);
+}
+
+/* §B.4 rung 4 — one hairline, and the rail's only drawn separation. */
+.cko-rail__divider {
+	margin: 0;
+	border: 0;
+	border-block-start: var(--hairline);
+}
+
+.cko-rail__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-rail__items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cko-rail__item {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+}
+
+.cko-rail__thumb {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 3rem;
+	block-size: 3rem;
+	overflow: clip;
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	font-size: var(--icon-sm);
+}
+
+.cko-rail__thumbimg {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.cko-rail__itembody {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cko-rail__itemtitle {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	overflow-wrap: anywhere;
+}
+
+.cko-rail__slots {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cko-rail__slot {
+	display: flex;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.cko-rail__slotlabel {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: baseline;
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	overflow-wrap: anywhere;
+}
+
+.cko-rail__qty {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+}
+
+/* The line's own total, at the reading edge and a step up from the details it sums. */
+.cko-rail__linetotal {
+	align-self: flex-end;
+}
+
+/*
+ * The contribution sits inside the rail, which shares its tonal ground — so it steps one rung up to
+ * stay legible as a distinct ask rather than dissolving into the panel behind it.
+ */
+.cko-rail .cko-contrib {
+	background: var(--surface-2);
+}
+
+.cko-rail__totals {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.cko-rail__rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.cko-rail__row {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.cko-rail__label {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-rail__note {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.cko-rail__value {
+	flex: none;
+	margin: 0;
+}
+
+.cko-rail__grand {
+	display: flex;
+	gap: var(--space-4);
+	align-items: baseline;
+	justify-content: space-between;
+	margin: 0;
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.cko-rail__grand-label {
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-bold);
+}
+
+.cko-rail__commit {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cko-rail__buy:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-rail__reassure {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+/*
+ * The alternative. Two hairlines meeting a word is one separation device drawn across the row, not a
+ * box — and the word stays in the accessibility tree because "these two are alternatives" is a fact
+ * a reader needs, not decoration.
+ */
+.cko-rail__or {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	margin: 0;
+}
+
+.cko-rail__or::before,
+.cko-rail__or::after {
+	flex: 1 1 auto;
+	block-size: 0;
+	border-block-start: var(--hairline);
+	content: "";
+}
+
+.cko-rail__or-word {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.08em;
+}
+
+/*
+ * Asked of the RAIL, never the viewport. Below this the label and its value stop fitting on one
+ * line, so each pair stacks — nothing is hidden, because every fact here is either an identity, a
+ * destination or money.
+ */
+@container cko-rail (max-width: 20rem) {
+	.cko-rail__pair {
+		flex-direction: column;
+		gap: var(--space-1);
+	}
+
+	.cko-rail__stack {
+		align-items: flex-start;
+		text-align: start;
+	}
+}
+/* #endregion */
+
+/* #region Voluntary gateway contribution */
+/*
+ * §B.4 rung 2 — a tonal tint, no border. The block is a question, not a control panel, and boxing it
+ * would give an optional ask the same weight as the payment method above it.
+ */
+.cko-contrib {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-4);
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+}
+
+.cko-contrib__row {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+}
+
+.cko-contrib__label {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+}
+
+/* A ≥24px hit target on a 1em glyph — WCAG 2.2 AA 2.5.8, the same floor `.ui-hit` sets. */
+.cko-contrib__info {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: none;
+	color: var(--text-secondary);
+	cursor: help;
+}
+
+.cko-contrib__info:hover {
+	color: var(--on-surface);
+}
+
+.cko-contrib__info:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-contrib__amount {
+	margin-inline-start: auto;
+}
+
+.cko-contrib__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+/* #endregion */
+
+/* #region Spending limit */
+.cko-limit {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.cko-limit[data-verdict="allowed"] {
+	padding: var(--space-4);
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+}
+
+.cko-limit__head {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-limit__reason {
+	margin: 0 0 var(--space-3);
+	font-size: var(--text-sm);
+}
+
+.cko-limit__facts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-5);
+	margin: 0;
+}
+
+.cko-limit__fact {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cko-limit__key {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+.cko-limit__val {
+	margin: 0;
+}
+
+.cko-limit__request {
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	color: var(--primary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+
+.cko-limit__request:hover {
+	text-decoration: underline;
+}
+
+.cko-limit__request:focus-visible {
+	outline: none;
+	border-radius: var(--radius-xs);
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Add a payment method */
+.cko-addpm__tabs {
+	display: flex;
+	gap: var(--space-2);
+	/* One hairline under the strip; the selected tab's underline lands ON it, spending one device. */
+	border-block-end: var(--hairline);
+}
+
+.cko-addpm__tab {
+	position: relative;
+	display: inline-flex;
+	gap: var(--space-2);
+	align-items: center;
+	padding: var(--space-3) var(--space-3);
+	border: 0;
+	background: none;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: var(--text-sm);
+	cursor: pointer;
+}
+
+.cko-addpm__tab[aria-selected="true"] {
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-addpm__tab[aria-selected="true"]::after {
+	position: absolute;
+	inset-block-end: -1px;
+	inset-inline: 0;
+	block-size: 2px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	content: "";
+}
+
+.cko-addpm__tab:focus-visible {
+	outline: none;
+	border-radius: var(--radius-xs);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cko-addpm__panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding-block-start: var(--space-4);
+}
+
+.cko-addpm__lede {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+/*
+ * The Stripe mount point. A dashed, LABELLED frame rather than a disabled-looking input: an input
+ * that appears to want a card number is a custody claim this product spends its whole design
+ * refusing to make, and there is no field here — or anywhere in the payload — to put one in.
+ */
+.cko-addpm__mount {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	justify-content: center;
+	min-block-size: 4.5rem;
+	padding: var(--space-4);
+	border: 1px dashed var(--hairline-color);
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.cko-addpm__mount-mark {
+	display: inline-flex;
+	color: var(--text-secondary);
+}
+
+.cko-addpm__mount-note {
+	margin: calc(var(--space-3) * -1) 0 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-addpm__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cko-addpm__label {
+	color: var(--on-surface);
+	font-size: var(--fld-label-fs, var(--text-xs));
+	font-weight: var(--fw-medium);
+}
+
+.cko-addpm__hint {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-addpm__row {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+}
+
+.cko-addpm__aside {
+	display: flex;
+	gap: var(--space-2);
+	align-items: flex-start;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-addpm__foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: center;
+	justify-content: space-between;
+	inline-size: 100%;
+}
+
+/*
+ * The refusal sits BESIDE the control it refuses, and is bound to it with `aria-describedby`. A
+ * disabled primary whose reason is elsewhere on the page is indistinguishable from a broken one.
+ */
+.cko-addpm__gate {
+	display: flex;
+	flex: 1 1 14rem;
+	gap: var(--space-2);
+	align-items: flex-start;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.cko-addpm__acts {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+}
+/* #endregion */
+
+/* #region Narrow body */
+/*
+ * At phone width the limit facts sit three abreast on a track that cannot hold them, and the action
+ * row's two commits stop fitting side by side. Both relax rather than shrink: nothing is hidden,
+ * because every control here either moves money or explains why it cannot.
+ */
+@container cko (max-width: 34rem) {
+	.cko-limit__facts {
+		gap: var(--space-4);
+	}
+
+	.cko-pstep__acts-primary {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.cko-pstep__acts-primary .cko-invact {
+		inline-size: 100%;
+	}
+}
+/* #endregion */

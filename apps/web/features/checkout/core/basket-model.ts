@@ -4,11 +4,17 @@ import type {
 	BasketItem,
 	BasketOwnerScope,
 	BasketSim,
+	BillingContextKind,
+	BuyerDetailsState,
 	CheckoutContext,
 	CheckoutPreselect,
 	CheckoutView,
+	ConferencingChoice,
+	FulfilmentMix,
+	InvoicingMode,
 	PaymentOfferPreset,
 	SavedCardState,
+	SpendLimitState,
 	WalletCoverage,
 } from "../types/checkout-types.ts";
 
@@ -22,9 +28,63 @@ import type {
  */
 
 // #region Surface vocabulary
-/** The route a pathname addresses (`/basket` → basket, `/checkout` → checkout). */
+/**
+ * The four steps of the checkout flow, in order.
+ *
+ * They are **four routes, not four modes of one route**, which is what makes the browser's own Back
+ * button work through the flow and makes each step a link a buyer can be sent. It is also why the
+ * stepper is a row of real anchors rather than a controlled `Steps` widget: the URL is already the
+ * state, and a second copy of it in a signal is a second thing that can be wrong.
+ */
+export const CHECKOUT_STEPS = [
+	{ step: "basket", label: "Basket", path: "/checkout" },
+	{ step: "details", label: "Details", path: "/checkout/details" },
+	{ step: "payment", label: "Payment", path: "/checkout/payment" },
+	{ step: "confirmation", label: "Confirmation", path: "/checkout/confirmation" },
+] as const satisfies readonly { step: CheckoutStep; label: string; path: string }[];
+
+/** One step of the flow. */
+export type CheckoutStep = "basket" | "details" | "payment" | "confirmation";
+
+/** Zero-based position of a step, used to compare "before"/"after" without a second ordering. */
+export function checkoutStepIndex(step: CheckoutStep): number {
+	return CHECKOUT_STEPS.findIndex((entry) => entry.step === step);
+}
+
+/**
+ * The step a pathname addresses.
+ *
+ * `/basket` resolves to `basket` so an old link, a bookmark or a shared URL still lands on the right
+ * step rather than on the flow's default; the route itself redirects (see `(dashboard)/basket`).
+ */
+export function checkoutStepOf(pathname: string): CheckoutStep {
+	if (pathname === "/checkout/details" || pathname.startsWith("/checkout/details/")) {
+		return "details";
+	}
+	if (pathname === "/checkout/payment" || pathname.startsWith("/checkout/payment/")) {
+		return "payment";
+	}
+	if (pathname === "/checkout/confirmation" || pathname.startsWith("/checkout/confirmation/")) {
+		return "confirmation";
+	}
+	return "basket";
+}
+
+/**
+ * Whether a step runs in the distraction-free chrome (DESIGN_SYSTEM.md Part D.6).
+ *
+ * Details and Payment only. The basket is a place a buyer legitimately leaves — to add one more
+ * thing, to check a listing — so removing its exits would trap them in a flow they have not committed
+ * to. Confirmation is *after* the commitment, and its whole job is to send the buyer somewhere
+ * (a download, a project board, a calendar), so it restores the full shell.
+ */
+export function isFocusStep(step: CheckoutStep): boolean {
+	return step === "details" || step === "payment";
+}
+
+/** The `CheckoutView` a step belongs to — kept so the existing lane/band vocabulary is unchanged. */
 export function checkoutViewOf(pathname: string): CheckoutView {
-	return pathname === "/checkout" || pathname.startsWith("/checkout/") ? "checkout" : "basket";
+	return checkoutStepOf(pathname) === "basket" ? "basket" : "checkout";
 }
 
 /** Whether a URL belongs to this feature at all — the guard every slot resolver opens with. */
@@ -33,28 +93,48 @@ export function isCheckoutPath(pathname: string): boolean {
 		pathname === "/checkout" || pathname.startsWith("/checkout/");
 }
 
-/** The `/basket` href for a named basket, preserving the acting owner scope. */
+/**
+ * The basket-and-lists step's href, preserving the acting owner scope.
+ *
+ * **Points at `/checkout`, not `/basket`.** The basket overview IS the first step of the flow, and
+ * two URLs for one surface is two places a link can rot; `/basket` survives only as a redirect.
+ */
 export function basketHref(basketId?: string | null, owner?: string | null): string {
-	return withParams("/basket", { basket: basketId ?? null, owner: ownerParamOf(owner) });
+	return withParams("/checkout", { basket: basketId ?? null, owner: ownerParamOf(owner) });
 }
 
 /**
- * The `/checkout` href for a basket, optionally narrowed to one project or service.
+ * The href for a given step of the flow, optionally narrowed to one project or service.
  *
  * The narrowing params keep the SSOT's documented snake_case spelling (`project_id` / `service_id`,
  * per `CheckoutPreselect`) because a checkout link is written by hand as often as it is generated.
  */
+export function checkoutStepHref(
+	step: CheckoutStep,
+	basketId?: string | null,
+	owner?: string | null,
+	preselect?: Partial<CheckoutPreselect>,
+	orderId?: string | null,
+): string {
+	const entry = CHECKOUT_STEPS.find((e) => e.step === step) ?? CHECKOUT_STEPS[0];
+	return withParams(entry.path, {
+		basket: basketId ?? null,
+		owner: ownerParamOf(owner),
+		project_id: preselect?.projectId ?? null,
+		service_id: preselect?.serviceId ?? null,
+		// Only the confirmation step reads it, but carrying it here keeps one href builder rather than
+		// a second one that exists solely to append a query param.
+		order: step === "confirmation" ? orderId ?? null : null,
+	});
+}
+
+/** The payment step's href — the destination of every "Checkout" / "Proceed" control. */
 export function checkoutHref(
 	basketId?: string | null,
 	owner?: string | null,
 	preselect?: Partial<CheckoutPreselect>,
 ): string {
-	return withParams("/checkout", {
-		basket: basketId ?? null,
-		owner: ownerParamOf(owner),
-		project_id: preselect?.projectId ?? null,
-		service_id: preselect?.serviceId ?? null,
-	});
+	return checkoutStepHref("payment", basketId, owner, preselect);
 }
 
 /** Append the non-empty params to a path, or return it unchanged. */
@@ -232,6 +312,14 @@ export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	if (s?.googlePay !== undefined) qs.set("googlePay", s.googlePay ? "1" : "0");
 	if (s?.applePay !== undefined) qs.set("applePay", s.applePay ? "1" : "0");
 	if (s?.paypalEnabled !== undefined) qs.set("paypal", s.paypalEnabled ? "1" : "0");
+	if (s?.details) qs.set("simDetails", s.details);
+	if (s?.billing) qs.set("simBilling", s.billing);
+	if (s?.invoicing) qs.set("simInvoicing", s.invoicing);
+	if (s?.spendLimit) qs.set("simSpendLimit", s.spendLimit);
+	if (s?.fulfilment) qs.set("simFulfilment", s.fulfilment);
+	if (s?.conferencing) qs.set("simConferencing", s.conferencing);
+	if (ctx.provider) qs.set("provider", ctx.provider);
+	if (ctx.contribute !== undefined) qs.set("contribute", ctx.contribute ? "1" : "0");
 	return qs.toString();
 }
 
@@ -259,6 +347,14 @@ export function withContext<T extends Record<string, unknown>>(
 		...(s?.providers ? { simProviders: s.providers } : {}),
 		...(s?.walletCover ? { simWalletCover: s.walletCover } : {}),
 		...(s?.cards ? { simCards: s.cards } : {}),
+		...(s?.details ? { simDetails: s.details } : {}),
+		...(s?.billing ? { simBilling: s.billing } : {}),
+		...(s?.invoicing ? { simInvoicing: s.invoicing } : {}),
+		...(s?.spendLimit ? { simSpendLimit: s.spendLimit } : {}),
+		...(s?.fulfilment ? { simFulfilment: s.fulfilment } : {}),
+		...(s?.conferencing ? { simConferencing: s.conferencing } : {}),
+		...(ctx.provider ? { provider: ctx.provider } : {}),
+		...(ctx.contribute !== undefined ? { contribute: ctx.contribute } : {}),
 	};
 }
 
@@ -289,6 +385,32 @@ export function simFromParams(sp: URLSearchParams): BasketSim | undefined {
 	if (cover) sim.walletCover = cover;
 	const cards = oneOf<SavedCardState>(sp.get("simCards"), ["seeded", "none", "expired"]);
 	if (cards) sim.cards = cards;
+	const details = oneOf<BuyerDetailsState>(sp.get("simDetails"), ["saved", "missing"]);
+	if (details) sim.details = details;
+	const billing = oneOf<BillingContextKind>(sp.get("simBilling"), ["personal", "business"]);
+	if (billing) sim.billing = billing;
+	const invoicing = oneOf<InvoicingMode>(sp.get("simInvoicing"), [
+		"per_transaction",
+		"intervaled_monthly",
+	]);
+	if (invoicing) sim.invoicing = invoicing;
+	const spendLimit = oneOf<SpendLimitState>(sp.get("simSpendLimit"), ["within", "over"]);
+	if (spendLimit) sim.spendLimit = spendLimit;
+	const fulfilment = oneOf<FulfilmentMix>(sp.get("simFulfilment"), [
+		"mixed",
+		"products",
+		"tickets",
+		"sessions",
+		"pending",
+	]);
+	if (fulfilment) sim.fulfilment = fulfilment;
+	const conferencing = oneOf<ConferencingChoice>(sp.get("simConferencing"), [
+		"zoom",
+		"google",
+		"microsoft_teams",
+		"none",
+	]);
+	if (conferencing) sim.conferencing = conferencing;
 	return Object.keys(sim).length > 0 ? sim : undefined;
 }
 

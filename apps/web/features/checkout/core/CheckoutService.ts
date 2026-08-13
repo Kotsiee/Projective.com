@@ -2,10 +2,15 @@ import { getCheckout, postCheckout } from "./api.ts";
 import { buildCheckoutQuery, withContext } from "./basket-model.ts";
 import type { CheckoutResponse } from "../types/results.ts";
 import type {
+	BillingContext,
+	BuyerDetails,
 	CheckoutContext,
 	CheckoutResult,
 	CheckoutSessionContext,
 	CreateCheckout,
+	MonthlyInvoicing,
+	OrderPage,
+	SaveBuyerDetails,
 } from "../types/checkout-types.ts";
 
 /**
@@ -20,6 +25,19 @@ import type {
  * a computation, it is a witness statement — the server recomputes and refuses on mismatch, so a price
  * that moved between render and submit is caught instead of silently charged.
  */
+
+/**
+ * The Details step's payload — one saved record, every identity it could belong to, and the
+ * monthly-invoicing offer for the active one.
+ *
+ * `invoicing` is the active record's OWN block rather than a second resolution of it, so the control
+ * and the record it edits can never disagree about which mode is set.
+ */
+export interface BuyerDetailsPayload {
+	buyer: BuyerDetails;
+	billingContexts: BillingContext[];
+	invoicing: MonthlyInvoicing;
+}
 
 export const CheckoutService = {
 	/**
@@ -48,5 +66,53 @@ export const CheckoutService = {
 		ctx: CheckoutContext,
 	): Promise<CheckoutResponse<{ result: CheckoutResult }>> {
 		return postCheckout("/api/checkout/create", withContext({ ...input }, ctx));
+	},
+
+	/**
+	 * The buyer's saved delivery + billing record for the active identity, the identities they may
+	 * bill through, and the monthly-invoicing offer.
+	 *
+	 * The same three values the session already carries. They are read separately so the Details page
+	 * can refresh after a save without re-resolving a whole checkout — and both paths read the ONE
+	 * record server-side, so the answer that decided the auto-skip is the answer that prints on the
+	 * invoice.
+	 */
+	details(ctx: CheckoutContext): Promise<CheckoutResponse<BuyerDetailsPayload>> {
+		const q = buildCheckoutQuery(ctx);
+		return getCheckout(`/api/checkout/details${q ? `?${q}` : ""}`);
+	},
+
+	/**
+	 * Save the whole record as one atomic edit.
+	 *
+	 * The response carries the refreshed record AND the whole session, because saving is what clears
+	 * the `missing_details` blocker: a caller handed only the record would still be holding a stale
+	 * gate, and would need a second round trip to find out that Pay had opened.
+	 *
+	 * Sent as a `POST` rather than the route's canonical `PUT` only because the shared transport
+	 * publishes no `PUT`; the route answers to both and the payload is identical either way.
+	 */
+	saveDetails(
+		input: SaveBuyerDetails,
+		ctx: CheckoutContext,
+	): Promise<CheckoutResponse<BuyerDetailsPayload & { session: CheckoutSessionContext }>> {
+		return postCheckout("/api/checkout/details", withContext({ ...input }, ctx));
+	},
+
+	/**
+	 * The confirmation hub's read: a completed order and the account's other recent ones.
+	 *
+	 * A `null` `orderId` resolves the account's most recent, which is what keeps the page usable from
+	 * a link that lost its query string. This is always a READ — the charge was written once, when it
+	 * was attempted, and re-submitting it from a confirmation page is how one payment becomes two.
+	 */
+	order(
+		orderId: string | null,
+		ctx: CheckoutContext,
+	): Promise<CheckoutResponse<{ page: OrderPage }>> {
+		const qs = new URLSearchParams(buildCheckoutQuery(ctx));
+		if (orderId) qs.set("order", orderId);
+		const q = qs.toString();
+		return getCheckout(`/api/checkout/order${q ? `?${q}` : ""}`);
 	},
 };

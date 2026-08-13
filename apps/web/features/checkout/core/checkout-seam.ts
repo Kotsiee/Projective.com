@@ -73,6 +73,12 @@ export function simFromSeam(seam: DevSeamState | null): BasketSim | undefined {
 		providers: seam.paymentProviders,
 		walletCover: seam.walletCoverage,
 		cards: seam.savedCards,
+		details: seam.buyerDetails,
+		billing: seam.billingContext,
+		invoicing: seam.invoicingMode,
+		spendLimit: seam.spendLimit,
+		fulfilment: seam.fulfilmentMix,
+		conferencing: seam.conferencing,
 	};
 }
 

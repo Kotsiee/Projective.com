@@ -30,6 +30,7 @@ export {
 	setDisplayCurrency,
 	setDisplayLocale,
 	setRateTable,
+	splitMoney,
 	useCurrencyView,
 } from "./core/currency-store.ts";
 export type {
@@ -37,6 +38,7 @@ export type {
 	CurrencyRateTable,
 	CurrencyView,
 	MoneyOriginValue,
+	MoneyParts,
 	MoneyValue,
 	ProjectedMoney,
 } from "./core/currency-store.ts";

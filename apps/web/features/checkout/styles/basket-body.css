@@ -9,9 +9,13 @@
  * 2. **No `max-inline-size` on anything carrying a figure, a row or a total** (Decision #60). The
  *    measure exists in exactly one place here — `.bsk-empty__note`, running prose — and nothing with a
  *    price in it may ever be its descendant.
- * 3. **Separation is spacing → tonal step → type weight → ONE hairline** (§B.4). There is no
- *    four-sided border on any non-interactive block. The card presentation is a tonal surface with a
- *    radius, never a boxed outline.
+ * 3. **Separation is spacing → type weight → ONE hairline** (§B.4), and NEVER a nested surface. No
+ *    block on this surface carries a background: not a category, not an engagement, not the shelf, not
+ *    a shelf card. Major sections are divided by one hairline, items within a section by one hairline,
+ *    and everything inside an item by whitespace alone. A card inside a card was the single most
+ *    common defect this sheet shipped, and the rule that forbids it is absolute rather than a
+ *    preference — the two surfaces that DO carry a tint (the summary and the promo cards) are
+ *    top-level peers in the right rail, nested in nothing.
  * 4. **Nothing that ENCODES data is animated.** Prices, savings and counts have no transition at all;
  *    the only motion on this surface is a hover lift and a media zoom, both purely decorative, and both
  *    dropped under `prefers-reduced-motion`.
@@ -24,182 +28,743 @@
  * `.bsk` carries `container-type: inline-size`, which makes it a containing block for `position: fixed`
  * descendants. **No portalled overlay (Popover, Tooltip, Select, DatePicker) may be mounted inside the
  * basket body** without moving its panel through `BodyPortal` first.
+ *
+ * **The right rail is the only place a tint survives.** `.bsk__aside` is a stack, not a box: the
+ * summary card answers what the buyer is about to pay and carries the one control that advances the
+ * flow, and the promo card is its peer beneath it. Both are a tonal step with a radius and no border,
+ * and neither is nested inside anything — which is what makes them legal under rule 3.
+ *
+ * **Selector discipline (the defect this sheet shipped once).** Every rule below names a class the
+ * body's components actually render. The category / engagement / row regions were once written against
+ * a `.bsk-group__*` markup that no longer existed, and the consequence was not a missing tint:
+ * `.bsk-row` declares `display: grid` and its children declare `grid-area`, so with the template rules
+ * unmatched every named area resolved to an implicit line of the same name and the row's blocks landed
+ * on top of one another. A grid template and the markup it places are ONE contract — change either and
+ * both move.
  */
 
 /* #region Tokens */
 :root {
-	/* Column widths, so the list rows of every group align down the whole surface. */
-	--bsk-media-w: 4.5rem;
-	--bsk-media-w-sm: 3.25rem;
-	--bsk-qty-w: 7rem;
-	--bsk-price-w: 9.5rem;
-	--bsk-gap: var(--space-4);
-	--bsk-row-pad: var(--space-4);
-	/* The tonal step a card presentation sits on — one container tone, not a box. */
-	--bsk-card-surface: var(--surface-2);
-	--bsk-fact-fg: var(--text-secondary);
+    /* Column widths, so the list rows of every group align down the whole surface. */
+    --bsk-media-w: 4.5rem;
+    --bsk-media-w-sm: 3.25rem;
+    --bsk-qty-w: 7rem;
+    --bsk-price-w: 9.5rem;
+    --bsk-gap: var(--space-4);
+    --bsk-row-pad: var(--space-4);
+    --bsk-fact-fg: var(--text-secondary);
+    /*
+	 * The shelf card's FIXED dimensions.
+	 *
+	 * Width is a track FLOOR: 12rem lands 5 cards across the ~1090px content column a 1440px desktop
+	 * leaves with the lane open, and 4 across the ~890px of a 1280px one — the 4–5 the design asks for,
+	 * at both of the widths this surface is actually read at.
+	 *
+	 * Height is derived from the viewport minus the two bands that overlay it (the shell top bar and
+	 * the middle-nav header), divided so that between 2.25 and 3 rows fall inside the visible region.
+	 * `2.62` is the middle of that range once the grid gap is accounted for. `clamp` stops a very short
+	 * window collapsing the card to unreadable and a very tall one inflating it into a poster.
+	 */
+    --bsk-shelf-card-w: 12rem;
+    --bsk-shelf-card-w-sm: 10.5rem;
+    --bsk-shelf-card-h: clamp(13rem,
+            calc((100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--card-gap) * 2) / 2.62),
+            17rem);
+    /* The cover, as a share of the card, leaving room for two title lines, the price and the actions. */
+    --bsk-shelf-media-h: calc(var(--bsk-shelf-card-h) * 0.46);
 }
+
 /* #endregion */
 
 /* #region Surface root */
 .bsk {
-	container-type: inline-size;
-	container-name: bsk;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-6);
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding: var(--space-5) var(--space-4) var(--space-7);
-	color: var(--on-surface);
-}
-
-.bsk__feedback {
-	inline-size: 100%;
-	min-inline-size: 0;
-}
-/* #endregion */
-
-/* #region Group section */
-.bsk-group {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	min-inline-size: 0;
-}
-
-.bsk-group__head {
-	display: flex;
-	gap: var(--space-3);
-	align-items: flex-start;
-	padding-block-end: var(--space-3);
-	/* The one device this boundary spends: a single hairline on a single edge. */
-	border-block-end: var(--hairline);
-}
-
-.bsk-group__icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: var(--icon-lg);
-	block-size: var(--icon-lg);
-	border-radius: var(--radius-sm);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-	color: var(--text-secondary);
-}
-
-.bsk-group__heading {
-	flex: 1;
-	min-inline-size: 0;
-}
-
-.bsk-group__title {
-	margin: 0;
-	color: var(--on-surface);
-	font-size: var(--text-lg);
-	font-weight: var(--fw-semibold);
-	line-height: var(--leading-snug);
-}
-
-.bsk-group__link {
-	color: inherit;
-	text-decoration: none;
-}
-
-.bsk-group__link:hover {
-	text-decoration: underline;
-}
-
-.bsk-group__link:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
-}
-
-.bsk-group__caption {
-	margin: var(--space-1) 0 0;
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
-}
-
-.bsk-group__subtotal {
-	display: flex;
-	flex-direction: column;
-	flex: none;
-	gap: var(--space-px);
-	margin: 0;
-	text-align: end;
-}
-
-.bsk-group__subtotal-label {
-	color: var(--text-secondary);
-	font-size: var(--text-2xs);
-}
-
-.bsk-group__subtotal-value {
-	color: var(--on-surface);
-	font-size: var(--text-md);
-	font-variant-numeric: tabular-nums;
-	font-weight: var(--fw-semibold);
+    container-type: inline-size;
+    container-name: bsk;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding: var(--space-5) var(--space-4) var(--space-7);
+    color: var(--on-surface);
 }
 
 /*
- * The leftover bucket is a fallback container, not a peer of "Project Alpha tickets", and it reads as
- * one: a step down in size and tone, so a reader is never invited to believe the server named it.
+ * The notices, in the ordinary document flow at the top of the body — never fixed and never sticky.
+ * A banner that follows the reader down the page would cover a row exactly when they went to look at
+ * it, which is the one thing the flagged-lines notice exists to stop them doing.
  */
-.bsk-group[data-orphan="true"] .bsk-group__title {
-	color: var(--text-secondary);
-	font-size: var(--text-md);
+.bsk__feedback {
+    inline-size: 100%;
+    min-inline-size: 0;
 }
 
-/* A narrowed group says so, rather than showing two rows beneath a five-row subtotal in silence. */
-.bsk-group__filtered {
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
+/* The notice's body: its sentence, and the control that takes the reader to what it is about. */
+.bsk__notice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: baseline;
+    min-inline-size: 0;
 }
 
-.bsk-group__items {
-	display: flex;
-	flex-direction: column;
-	margin: 0;
-	padding: 0;
-	list-style: none;
+.bsk__notice-text {
+    min-inline-size: 0;
 }
 
-@container bsk (max-width: 30rem) {
-	.bsk-group__head {
-		flex-wrap: wrap;
-	}
-
-	.bsk-group__subtotal {
-		align-items: flex-start;
-		inline-size: 100%;
-		text-align: start;
-	}
+/*
+ * A text button inside a warning block, so it inherits the block's ink rather than introducing a
+ * second accent into a region that is already carrying one (§B.8.3). Underlined because it is a
+ * navigation, and the underline is the only channel left once the colour is spoken for.
+ */
+.bsk__notice-jump {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    flex: none;
+    min-block-size: var(--fld-hit);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
 }
+
+.bsk__notice-jump:hover {
+    text-decoration-thickness: 2px;
+}
+
+.bsk__notice-jump:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The list's own name, at the top of the page.
+ *
+ * A **light** display step, which is a deliberate inversion of the usual "bigger means bolder": at
+ * `--text-3xl` (36px, the top of the scale) a semibold heading is the loudest thing on a surface
+ * whose loudest thing must be the payable total. Size alone carries the rank; the weight steps DOWN
+ * so the heading names the page without competing with the figure in the summary card beside it.
+ *
+ * `--fw-light` collapses to 400 under the open-dyslexic overlay, where a 300 weight is the first
+ * thing to become unreadable — so the token is doing real work here rather than being a synonym for
+ * 300.
+ */
+.bsk__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: baseline;
+    min-inline-size: 0;
+}
+
+.bsk__title {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--on-surface);
+    font-size: var(--text-3xl);
+    font-weight: var(--fw-light);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight);
+}
+
+/* A shelf says what it is, because "3D Asset Wishlist" alone does not say "nothing here is charged". */
+.bsk__kicker {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+@container bsk (max-width: 34rem) {
+    .bsk__title {
+        font-size: var(--text-2xl);
+    }
+}
+
+/*
+ * The lines and the summary that prices them.
+ *
+ * A CONTAINER query, not a viewport one: the shell eats roughly 344px, so at a 768px viewport the
+ * content region is about 424px, and a viewport breakpoint here would put a two-column layout into a
+ * box that cannot hold one. The summary drops BELOW the lines when the region is narrow rather than
+ * being squeezed — a total in a 12rem column is a total that wraps mid-figure.
+ */
+.bsk__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    min-inline-size: 0;
+}
+
+.bsk__main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-inline-size: 0;
+}
+
+/* The rail is a STACK of two peer cards, separated by spacing alone. */
+.bsk__aside {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+@container bsk (min-width: 58rem) {
+    .bsk__layout {
+        grid-template-columns: minmax(0, 1fr) 22rem;
+        align-items: start;
+    }
+
+    /*
+	 * Sticky against the page's own scroller. `.bsk` carries `container-type: inline-size`, which
+	 * makes it a containing block for FIXED descendants but leaves sticky resolving against the
+	 * scrollport, which is what this needs.
+	 *
+	 * The offset clears BOTH pinned bands above it — the shell top bar and the middle-nav stepper —
+	 * exactly as the wallet ledger's sticky head and the profile's meta rail do. Pinning to `0` would
+	 * slide the summary under the stepper and hide the total behind it.
+	 */
+    .bsk__aside {
+        position: sticky;
+        inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4));
+    }
+}
+
+/* #endregion */
+
+/* #region Category — Products · Tickets · Sessions */
+/*
+ * A category is SPACING, TYPE WEIGHT and ONE divider (§B.4 tiers 1 → 3 → 4). No box, no border, no
+ * tint — it is non-interactive content, and the surface's own rule forbids a card here outright.
+ *
+ * The heading takes the same light display treatment as the page title one step down, so title,
+ * category and engagement read as one editorial ramp rather than as three unrelated labels.
+ */
+.bsk-cat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+    padding-block-end: var(--space-6);
+}
+
+/*
+ * The single device separating one major section from the next. On the LAST section it is removed —
+ * a trailing rule under the final block draws a boundary with nothing on the far side of it.
+ */
+.bsk-cat+.bsk-cat,
+.bsk-saved {
+    padding-block-start: var(--space-6);
+    border-block-start: var(--hairline);
+}
+
+.bsk-cat:last-child {
+    padding-block-end: 0;
+}
+
+.bsk-cat__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    min-inline-size: 0;
+}
+
+.bsk-cat__title {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--on-surface);
+    font-size: var(--text-2xl);
+    font-weight: var(--fw-light);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-snug);
+}
+
+/* A narrowed category says so, rather than showing two rows beneath a five-row subtotal in silence. */
+.bsk-cat__filtered {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+.bsk-cat__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+/*
+ * The items in a category — a product row, or a whole engagement. ONE hairline between adjacent
+ * items and none around them: an item's boundary with its neighbour is a shared edge, so it is drawn
+ * once, by the second of the pair (§B.9 — one boundary, one device).
+ */
+.bsk-cat__lines {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.bsk-cat__lines>*+* {
+    padding-block-start: var(--space-5);
+    border-block-start: var(--hairline);
+}
+
+.bsk-cat__lines>* {
+    padding-block-end: var(--space-5);
+}
+
+.bsk-cat__lines>*:last-child {
+    padding-block-end: 0;
+}
+
+/* #endregion */
+
+/* #region Engagement — one project or service, with its tickets or sessions inside it */
+/*
+ * NO background, NO border, NO radius. The engagement is one item in a list of items, and the only
+ * separation it spends is the divider `.bsk-cat__lines` already draws between it and its neighbour.
+ *
+ * Its INTERNAL hierarchy — header, rows, footer — is carried by whitespace alone. A rule between the
+ * header and the rows it introduces would say those two things are separate, which is the opposite of
+ * what the component exists to say.
+ */
+.bsk-eng {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.bsk-eng__head {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "select media ident tags";
+    gap: var(--space-3);
+    align-items: start;
+    min-inline-size: 0;
+}
+
+/* A project has no cover of its own, so its header simply has no media column to fill. */
+.bsk-eng[data-family="project"] .bsk-eng__head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "select ident tags";
+}
+
+.bsk-eng__select {
+    grid-area: select;
+    align-self: center;
+}
+
+.bsk-eng__media {
+    grid-area: media;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: clip;
+    flex: none;
+    inline-size: var(--bsk-media-w);
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bsk-eng__media img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+}
+
+.bsk-eng__glyph {
+    display: inline-flex;
+    color: var(--text-secondary);
+}
+
+.bsk-eng__ident {
+    grid-area: ident;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+.bsk-eng__title {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--on-surface);
+    font-size: var(--text-lg);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+}
+
+.bsk-eng__link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.bsk-eng__link:hover {
+    text-decoration: underline;
+}
+
+.bsk-eng__link:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-eng__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    align-items: baseline;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+/*
+ * The separator between the owner and the count is a hairline on the following item's leading edge,
+ * never a `::before` dot: a pseudo-element inside the seller anchor would inherit its hover underline
+ * and join its hit area. A border does neither, and mirrors under `dir="rtl"` for free.
+ */
+.bsk-eng__meta>*+* {
+    padding-inline-start: var(--space-2);
+    border-inline-start: var(--hairline);
+}
+
+.bsk-eng__seller {
+    color: inherit;
+    text-decoration: none;
+}
+
+a.bsk-eng__seller:hover {
+    text-decoration: underline;
+}
+
+a.bsk-eng__seller:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-eng__alert {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0;
+    color: var(--warning);
+    font-size: var(--text-xs);
+}
+
+.bsk-eng__alert[data-tone="quiet"] {
+    color: var(--text-secondary);
+}
+
+/* The engagement's own two moves, set flush under the identity they act on. */
+.bsk-eng__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    align-items: center;
+    margin-block-start: var(--space-1);
+    min-inline-size: 0;
+}
+
+.bsk-eng__tags {
+    grid-area: tags;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    justify-content: flex-end;
+    margin: 0;
+}
+
+/*
+ * The rows, INSET from the header so the nesting is legible without a rule drawing it. The inset is
+ * the checkbox column plus its gap, so a child row's own checkbox lands under the parent's — one
+ * continuous control axis down the engagement.
+ */
+.bsk-eng__items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    padding-inline-start: var(--space-6);
+    list-style: none;
+}
+
+/* The engagement's closing figure, flush to the inline end beneath its own rows. */
+.bsk-eng__foot {
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    justify-content: flex-end;
+    margin: 0;
+}
+
+.bsk-eng__foot-label {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+@container bsk (max-width: 34rem) {
+    .bsk-eng__head {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+            "select ident"
+            "select tags";
+    }
+
+    /* The cover is the first thing to go: the title names the engagement, the picture only decorates it. */
+    .bsk-eng__media {
+        display: none;
+    }
+
+    .bsk-eng__tags {
+        justify-content: flex-start;
+    }
+
+    .bsk-eng__items {
+        padding-inline-start: var(--space-3);
+    }
+}
+
+/* #endregion */
+
+/* #region Child row — one ticket, one booked session */
+.bsk-sub {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-3);
+    align-items: start;
+    min-inline-size: 0;
+}
+
+.bsk-sub[data-busy="true"] {
+    opacity: var(--fld-disabled-alpha);
+}
+
+.bsk-sub[data-available="false"] .bsk-sub__title {
+    text-decoration: line-through;
+    text-decoration-color: var(--text-secondary);
+}
+
+.bsk-sub__select {
+    align-self: center;
+}
+
+.bsk-sub__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+/*
+ * The title is a BUTTON that opens the ticket in place, so it is styled as the text it is rather than
+ * as a control: no padding, no box, the row's own ink, and an underline on hover — the one channel a
+ * text affordance has left once colour is spoken for.
+ */
+.bsk-sub__title {
+    align-self: flex-start;
+    max-inline-size: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--on-surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+    text-align: start;
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-sub__title:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.bsk-sub__title:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-sub__title[disabled] {
+    cursor: default;
+}
+
+.bsk-sub__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    align-items: center;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+.bsk-sub__fact {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    min-inline-size: 0;
+}
+
+/* An outstanding fact is what will refuse the checkout: warning ramp AND its own words. */
+.bsk-sub__fact[data-pending="true"] {
+    color: var(--warning);
+}
+
+.bsk-sub__fact[data-tone="revision"] {
+    color: var(--warning);
+    font-weight: var(--fw-medium);
+}
+
+.bsk-sub__flag {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0;
+    color: var(--warning);
+    font-size: var(--text-xs);
+}
+
+.bsk-sub__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    margin-block-start: var(--space-1);
+    min-inline-size: 0;
+}
+
+.bsk-sub__price {
+    margin: 0;
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+}
+
+/* #endregion */
+
+/* #region The quiet action link (Remove · Save for later · Add to List) */
+/*
+ * Zero padding, so the label sits optically flush under the text it acts on at every one of the four
+ * nesting depths this appears at. The hit target is restored by `.ui-hit`'s overlay rather than by
+ * growing the box — the package's own answer to exactly this trade (WCAG 2.2 AA 2.5.8).
+ *
+ * Colour is the ONLY hover channel: no background, no transform, no underline that would make it read
+ * as a link to somewhere. A frozen animation clock leaves a fully legible control.
+ */
+.bsk-act {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    flex: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-act[data-compact="true"] {
+    font-size: var(--text-2xs);
+}
+
+.bsk-act:hover {
+    color: var(--on-surface);
+}
+
+.bsk-act[data-danger="true"]:hover {
+    color: var(--danger);
+}
+
+.bsk-act:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-act[disabled] {
+    opacity: var(--fld-disabled-alpha);
+    cursor: default;
+}
+
+.bsk-act[disabled]:hover {
+    color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Subtotal — the line that closes a priced unit */
+/*
+ * One hairline above it and one server figure on it. It closes whichever unit has exactly ONE server
+ * total behind it — the category when the category holds a single group, each engagement otherwise —
+ * so the rule is written once and placed by the markup rather than duplicated per level.
+ */
+.bsk-subtotal {
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    justify-content: flex-end;
+    margin: 0;
+    padding-block-start: var(--space-3);
+    border-block-start: var(--hairline);
+}
+
+.bsk-subtotal__label {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.bsk-subtotal__value {
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
 /* #endregion */
 
 /* #region Row — shared */
 .bsk-row {
-	position: relative;
-	display: grid;
-	gap: var(--space-2) var(--bsk-gap);
-	align-items: start;
-	min-inline-size: 0;
-	padding-block: var(--bsk-row-pad);
-	border-block-end: var(--hairline);
+    position: relative;
+    display: grid;
+    gap: var(--space-2) var(--bsk-gap);
+    align-items: start;
+    min-inline-size: 0;
+    padding-block: var(--bsk-row-pad);
+    border-block-end: var(--hairline);
 }
 
 .bsk-row:last-child {
-	border-block-end: 0;
+    border-block-end: 0;
 }
 
 /* A line that is not counted toward the total reads as set aside, not as broken. */
 .bsk-row[data-counted="false"] .bsk-row__media,
 .bsk-row[data-counted="false"] .bsk-row__main {
-	opacity: 0.72;
+    opacity: 0.72;
 }
 
 /*
@@ -211,7 +776,7 @@
 .bsk-row[data-available="false"] .bsk-row__main,
 .bsk-row[data-parked="true"] .bsk-row__media,
 .bsk-row[data-parked="true"] .bsk-row__main {
-	opacity: 1;
+    opacity: 1;
 }
 
 /*
@@ -220,167 +785,251 @@
  * its seller link, which stay perfectly valid destinations while a quantity is saving.
  */
 .bsk-row[data-busy="true"] {
-	opacity: var(--fld-disabled-alpha);
-}
-
-.bsk-row__select {
-	grid-area: select;
-	align-self: center;
-}
-
-.bsk-row__media {
-	grid-area: media;
-	display: block;
-	overflow: clip;
-	inline-size: var(--bsk-media-w);
-	aspect-ratio: 1;
-	border-radius: var(--radius-sm);
-	background: var(--surface-1);
-}
-
-.bsk-row__media img {
-	display: block;
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
-	transition: transform var(--dur-slow) var(--ease-emphasized);
-}
-
-.bsk-row:hover .bsk-row__media img {
-	transform: scale(var(--card-media-zoom));
-}
-
-.bsk-row__glyph {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 100%;
-	block-size: 100%;
-	color: var(--text-secondary);
-}
-
-.bsk-row__main {
-	grid-area: main;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	min-inline-size: 0;
-}
-
-.bsk-row__heading {
-	margin: 0;
-	font-size: var(--text-md);
-	font-weight: var(--fw-medium);
-	line-height: var(--leading-snug);
-}
-
-.bsk-row__title {
-	color: var(--on-surface);
-	text-decoration: none;
-}
-
-.bsk-row__title:hover {
-	text-decoration: underline;
-}
-
-.bsk-row__title:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
-}
-
-.bsk-row__meta {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-2);
-	align-items: baseline;
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
-}
-
-.bsk-row__kind {
-	color: var(--on-surface-variant);
-	font-weight: var(--fw-medium);
+    opacity: var(--fld-disabled-alpha);
 }
 
 /*
- * The separator between facets is a hairline on the following item's leading edge, NOT a `::before`
- * dot. A pseudo-element on the seller anchor would sit inside the link — inheriting its hover
- * underline (which no descendant can cancel) and joining its hit area. A border does neither, needs no
- * text a screen reader would have to skip, and mirrors under `dir="rtl"` for free.
+ * The row the flagged-lines notice just sent the reader to.
+ *
+ * A tint plus a leading accent bar — two channels, so the destination survives a colour-vision
+ * deficiency (§B.6). Both are drawn OUTSIDE the row's own padding box so the mark reads as a margin
+ * marker rather than as a border on the content, keeping the §B.4 rule that non-interactive content is
+ * never boxed.
+ *
+ * **`transition: none` is the correctness rule, not a preference.** The mark is the only thing saying
+ * "this is the row you asked for", and it lives for 2.4 seconds. Measured in a backgrounded tab: with
+ * a `background-color` transition the tint stayed at its start value — fully transparent — for the
+ * whole life of the mark, so the jump landed with no visible destination. The row also inherits the
+ * theme engine's ambient 0.35s `background-color` crossfade, which would do the same on its own, so
+ * the transition is refused outright rather than merely not declared. This is the `/wallet` defect
+ * class: a fact must never depend on an animation clock that may not be running.
+ *
+ * `--tint-soft` rather than `--tint-subtle`: at 6% over the row's own surface the tint is below the
+ * threshold at which it reads as deliberate, and this one is meant to be found at a glance.
  */
-.bsk-row__meta > * + * {
-	padding-inline-start: var(--space-2);
-	border-inline-start: var(--hairline);
+.bsk-row[data-flagged="true"] {
+    background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+    transition: none;
+}
+
+.bsk-row[data-flagged="true"]::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: calc(var(--space-2) * -1);
+    inset-block: var(--space-2);
+    inline-size: 3px;
+    border-radius: var(--radius-full);
+    background: var(--warning);
+}
+
+.bsk-row__select {
+    grid-area: select;
+    align-self: center;
+}
+
+.bsk-row__media {
+    grid-area: media;
+    display: block;
+    overflow: clip;
+    inline-size: var(--bsk-media-w);
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+}
+
+.bsk-row__media img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    transition: transform var(--dur-slow) var(--ease-emphasized);
+}
+
+.bsk-row:hover .bsk-row__media img {
+    transform: scale(var(--card-media-zoom));
+}
+
+.bsk-row__glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 100%;
+    block-size: 100%;
+    color: var(--text-secondary);
+}
+
+.bsk-row__main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-inline-size: 0;
+}
+
+/*
+ * The seller, a step ABOVE the title and in the quietest type on the row — the reading order the row
+ * doc describes (who made it, then what it is). It is a `<p>` wrapper whose optional child is the
+ * link, so the underline belongs to the anchor alone and an unlinked seller name never looks
+ * clickable.
+ */
+.bsk-row__seller {
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bsk-row__seller-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.bsk-row__seller-link:hover {
+    text-decoration: underline;
+}
+
+.bsk-row__seller-link:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-row__heading {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+}
+
+.bsk-row__title {
+    color: var(--on-surface);
+    text-decoration: none;
+}
+
+.bsk-row__title:hover {
+    text-decoration: underline;
+}
+
+.bsk-row__title:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
 }
 
 .bsk-row__subtitle {
-	color: var(--text-secondary);
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
 }
 
-.bsk-row__seller {
-	color: var(--text-secondary);
-	text-decoration: none;
+/*
+ * The row's top-right MARK STACK: the categorical chip, and the saving directly beneath it.
+ *
+ * The saving used to sit in the price block, which put a pill between the charged figure and the row
+ * below it and knocked the price off the baseline its neighbours share. Grouping the two here leaves
+ * the bottom-right corner to the one thing a buyer scans a basket for.
+ */
+/*
+ * WIDTH-PINNED to the price column, and that is load-bearing rather than tidy.
+ *
+ * Every `.bsk-row` is its OWN grid, so an `auto` trailing track is sized per row: measured, a row
+ * carrying a wide discount pill resolved its last column to 224px while its neighbour resolved to 152,
+ * and the prices beneath them went ragged down the section — the one column a basket exists to let a
+ * reader compare. Pinning both blocks to `--bsk-price-w` makes the track identical in every row, and
+ * the pill wraps to its second line inside it (which is what the 2-line clamp below is for).
+ */
+.bsk-row__marks {
+    grid-area: tags;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    align-items: flex-end;
+    inline-size: var(--bsk-price-w);
+    min-inline-size: 0;
 }
 
-.bsk-row__seller:hover {
-	text-decoration: underline;
+/*
+ * The kind chip. Outlined, because it is the row's one categorical mark and §B.4 reserves a full
+ * outline for something that is genuinely a token. A revision is a second, rarer mark and takes the
+ * warning ramp — money spent again on work already delivered — and it carries its own WORD, so the
+ * tone is the second channel rather than the only one.
+ */
+.bsk-row__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    justify-content: flex-end;
+    margin: 0;
 }
 
-.bsk-row__seller:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+.bsk-row__tag {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    padding: var(--space-px) var(--space-2);
+    border: var(--hairline);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    white-space: nowrap;
 }
+
+.bsk-row__tag[data-tone="revision"] {
+    border-color: var(--warning);
+    color: var(--warning);
+}
+
 /* #endregion */
 
 /* #region Row — kind facts */
 .bsk-row__facts {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-4);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .bsk-row__fact {
-	display: inline-flex;
-	gap: var(--space-2);
-	align-items: center;
-	min-inline-size: 0;
-	color: var(--bsk-fact-fg);
-	font-size: var(--text-xs);
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-inline-size: 0;
+    color: var(--bsk-fact-fg);
+    font-size: var(--text-xs);
 }
 
 .bsk-row__fact-label {
-	color: var(--text-secondary);
+    color: var(--text-secondary);
 }
 
 .bsk-row__fact-label::after {
-	content: ":";
+    content: ":";
 }
 
 .bsk-row__fact-value {
-	color: var(--on-surface);
-	text-decoration: none;
+    color: var(--on-surface);
+    text-decoration: none;
 }
 
 a.bsk-row__fact-value {
-	text-decoration: underline;
-	text-decoration-color: var(--outline);
-	text-underline-offset: 0.2em;
+    text-decoration: underline;
+    text-decoration-color: var(--outline);
+    text-underline-offset: 0.2em;
 }
 
 a.bsk-row__fact-value:hover {
-	text-decoration-color: currentcolor;
+    text-decoration-color: currentcolor;
 }
 
 a.bsk-row__fact-value:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
 }
 
 /*
@@ -388,130 +1037,123 @@ a.bsk-row__fact-value:focus-visible {
  * the warning ramp AND its own words AND a glyph, so no single channel is load-bearing.
  */
 .bsk-row__fact[data-pending="true"] {
-	--bsk-fact-fg: var(--warning);
+    --bsk-fact-fg: var(--warning);
 }
 
 .bsk-row__fact[data-pending="true"] .bsk-row__fact-label,
 .bsk-row__fact[data-pending="true"] .bsk-row__fact-value {
-	color: var(--warning);
+    color: var(--warning);
 }
 
 .bsk-row__flag {
-	display: flex;
-	gap: var(--space-2);
-	align-items: flex-start;
-	margin: 0;
-	color: var(--warning);
-	font-size: var(--text-xs);
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    margin: 0;
+    color: var(--warning);
+    font-size: var(--text-xs);
 }
+
 /* #endregion */
 
 /* #region Row — delivery address */
 .bsk-email {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	min-inline-size: 0;
-	/* The one measure permitted beside prose: a form field (Decision #60, RULE L-1). */
-	max-inline-size: var(--field-max);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+    /* The one measure permitted beside prose: a form field (Decision #60, RULE L-1). */
+    max-inline-size: var(--field-max);
 }
 
 .bsk-email__label {
-	color: var(--fld-label-fg);
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fld-label-fw);
+    color: var(--fld-label-fg);
+    font-size: var(--fld-label-fs);
+    font-weight: var(--fld-label-fw);
 }
 
 .bsk-email__note {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--fld-hint-fs);
-	min-block-size: var(--fld-hint-min-h);
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--fld-hint-fs);
+    min-block-size: var(--fld-hint-min-h);
 }
 
 .bsk-email__note[data-outstanding="true"] {
-	color: var(--warning);
+    color: var(--warning);
 }
 
 .bsk-email__note--error {
-	color: var(--danger);
+    color: var(--danger);
 }
+
 /* #endregion */
 
 /* #region Row — quantity, price, actions */
-.bsk-row__qty {
-	grid-area: qty;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	inline-size: var(--bsk-qty-w);
-	min-inline-size: 0;
-}
-
 /*
- * A visible name for the stepper, because "Quantity" and "Seats" are genuinely different facts and a
- * row that shows a bare number leaves the reader to guess which one they are changing. The control's
- * `aria-label` CONTAINS this word and then disambiguates by title (WCAG 2.5.3).
+ * The row's trailing line: what can be CHANGED about the line (its quantity) beside what can be DONE
+ * with it (remove, park). Both are set below the identity block rather than beside it, so the eye
+ * reaches the title and the price before it reaches a destructive control.
  */
-.bsk-row__qty-label {
-	color: var(--fld-label-fg);
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fld-label-fw);
+.bsk-row__foot {
+    grid-area: foot;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: flex-end;
+    align-self: end;
+    min-inline-size: 0;
 }
 
 .bsk-price {
-	grid-area: price;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	align-items: flex-end;
-	margin: 0;
-	inline-size: var(--bsk-price-w);
-	text-align: end;
+    grid-area: price;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    align-items: flex-end;
+    align-self: end;
+    margin: 0;
+    inline-size: var(--bsk-price-w);
+    text-align: end;
 }
 
 .bsk-price__total {
-	color: var(--on-surface);
-	font-size: var(--text-lg);
-	font-variant-numeric: tabular-nums;
-	font-weight: var(--fw-semibold);
-	line-height: var(--leading-tight);
+    color: var(--on-surface);
+    font-size: var(--text-lg);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-semibold);
+    line-height: var(--leading-tight);
 }
 
 .bsk-price__unit {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	align-items: baseline;
-	justify-content: flex-end;
-	color: var(--text-secondary);
-	font-size: var(--text-2xs);
-	font-variant-numeric: tabular-nums;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: baseline;
+    justify-content: flex-end;
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    font-variant-numeric: tabular-nums;
 }
 
 .bsk-price__rrp-label {
-	text-transform: uppercase;
-	letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
 }
 
 /* Holds the unit figure and its "each" together, so the pair never breaks across a line. */
 .bsk-price__each {
-	display: inline-flex;
-	gap: var(--space-px);
-	align-items: baseline;
-	white-space: nowrap;
+    display: inline-flex;
+    gap: var(--space-px);
+    align-items: baseline;
+    white-space: nowrap;
 }
 
 .bsk-price__was {
-	color: var(--text-secondary);
-}
-
-.bsk-price__qty {
-	color: var(--text-secondary);
-	font-size: var(--text-2xs);
+    color: var(--text-secondary);
 }
 
 /*
@@ -520,370 +1162,916 @@ a.bsk-row__fact-value:focus-visible {
  * statement above it survives a screen reader.
  */
 .bsk-price__save {
-	display: inline-flex;
-	gap: var(--space-1);
-	align-items: center;
-	padding: var(--space-px) var(--space-2);
-	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--success) var(--tint-subtle), var(--surface));
-	color: var(--success);
-	font-size: var(--text-2xs);
-	font-weight: var(--fw-medium);
+    display: inline-flex;
+    max-inline-size: 100%;
+    gap: var(--space-1);
+    align-items: center;
+    margin: 0;
+    padding: var(--space-px) var(--space-2);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--success) var(--tint-subtle), var(--surface));
+    color: var(--success);
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-medium);
+    text-align: end;
+}
+
+/*
+ * ONE line where it fits, never more than TWO.
+ *
+ * The pill carries three facts — the amount, its converted origin, and the code — so on a narrow
+ * column it genuinely needs a second line; a third is a paragraph wearing a pill's shape, and it would
+ * push the price block out of alignment with every other row in the section. `line-clamp` bounds it
+ * without a fixed height, so at one line the pill is one line tall.
+ */
+.bsk-price__save-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    min-inline-size: 0;
 }
 
 .bsk-row__actions {
-	grid-area: actions;
-	display: flex;
-	gap: var(--space-1);
-	align-items: center;
-	justify-content: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    min-inline-size: 0;
 }
+
 /* #endregion */
 
-/* #region List density — the default */
-.bsk[data-density="list"] .bsk-group__items .bsk-row {
-	grid-template-columns:
-		auto var(--bsk-media-w) minmax(0, 1fr)
-		var(--bsk-qty-w) var(--bsk-price-w) auto;
-	grid-template-areas: "select media main qty price actions";
-}
-
-/* Below the wide tier the row folds under its own title rather than crushing six columns. */
-@container bsk (max-width: 52rem) {
-	.bsk[data-density="list"] .bsk-group__items .bsk-row {
-		grid-template-columns: auto var(--bsk-media-w-sm) minmax(0, 1fr);
-		grid-template-areas:
-			"select media main"
-			"select media price"
-			"select media qty"
-			"select media actions";
-	}
-
-	.bsk[data-density="list"] .bsk-group__items .bsk-row__media {
-		inline-size: var(--bsk-media-w-sm);
-	}
-
-	.bsk[data-density="list"] .bsk-group__items .bsk-price {
-		align-items: flex-start;
-		inline-size: 100%;
-		text-align: start;
-	}
-
-	.bsk[data-density="list"] .bsk-group__items .bsk-price__unit {
-		justify-content: flex-start;
-	}
-
-	.bsk[data-density="list"] .bsk-group__items .bsk-row__actions {
-		justify-content: flex-start;
-	}
-}
-
-@container bsk (max-width: 26rem) {
-	.bsk-row__action-label {
-		display: none;
-	}
-}
-/* #endregion */
-
-/* #region Card density */
+/* #region Row layout */
 /*
- * Cards are a tonal surface with a radius — never an outlined box (§B.4). The whole card is one grid
- * column, so the same six areas stack instead of moving.
+ * Two reading lines, sharing one leading column pair.
+ *
+ * Line 1 answers "what is it" (`main`) with its categorical mark flush to the inline end (`tags`);
+ * line 2 answers "what does it cost and what can I do about it" — the moves at the inline start
+ * (`foot`), the figure at the inline end (`price`). `select` and `media` are named on both rows, so
+ * they span the pair without an explicit `grid-row` and stay aligned whatever either line grows to.
+ *
+ * `align-items: start` is set on the row, and `price`/`foot` opt back out with `align-self: end`, so
+ * a two-line title lengthens the first row and the second row's baseline follows it down rather than
+ * the price floating in the middle of the gap.
  */
-.bsk[data-density="card"] .bsk-group__items {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-	gap: var(--card-gap);
+.bsk-row {
+    grid-template-columns: auto var(--bsk-media-w) minmax(0, 1fr) auto;
+    grid-template-areas:
+        "select media main tags"
+        "select media foot price";
 }
 
-.bsk[data-density="card"] .bsk-group__items .bsk-row {
-	grid-template-columns: minmax(0, 1fr);
-	grid-template-areas:
-		"media"
-		"main"
-		"qty"
-		"price"
-		"actions";
-	gap: var(--space-3);
-	overflow: clip;
-	padding-block: 0 var(--card-pad);
-	border-block-end: 0;
-	border-radius: var(--card-radius);
-	background: var(--bsk-card-surface);
-	transition:
-		transform var(--dur-medium) var(--spring-standard),
-		box-shadow var(--dur-medium) var(--ease-standard);
+/* Below the wide tier the row folds under its own title rather than crushing four columns. */
+@container bsk (max-width: 52rem) {
+    .bsk-row {
+        grid-template-columns: auto var(--bsk-media-w-sm) minmax(0, 1fr);
+        grid-template-areas:
+            "select media main"
+            "select media tags"
+            "select media price"
+            "select media foot";
+    }
+
+    .bsk-row__media {
+        inline-size: var(--bsk-media-w-sm);
+    }
+
+    .bsk-row__marks {
+        align-items: flex-start;
+    }
+
+    .bsk-row__tags {
+        justify-content: flex-start;
+    }
+
+    .bsk-price {
+        align-items: flex-start;
+        inline-size: 100%;
+        text-align: start;
+    }
+
+    .bsk-price__unit {
+        justify-content: flex-start;
+    }
 }
 
-.bsk[data-density="card"] .bsk-group__items .bsk-row:hover {
-	transform: translateY(var(--card-hover-lift));
-	box-shadow: var(--elevation-high);
-}
-
-/* The selection control floats onto the media, on its own legible plate. */
-.bsk[data-density="card"] .bsk-group__items .bsk-row__select {
-	position: absolute;
-	z-index: var(--z-raised);
-	inset-block-start: var(--space-2);
-	inset-inline-start: var(--space-2);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-1);
-	border-radius: var(--radius-sm);
-	background: var(--chip-on-media);
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-row__media {
-	inline-size: 100%;
-	aspect-ratio: var(--card-media-ratio);
-	border-radius: 0;
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-row__main,
-.bsk[data-density="card"] .bsk-group__items .bsk-row__qty,
-.bsk[data-density="card"] .bsk-group__items .bsk-price,
-.bsk[data-density="card"] .bsk-group__items .bsk-row__actions {
-	padding-inline: var(--card-pad);
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-row__qty,
-.bsk[data-density="card"] .bsk-group__items .bsk-price {
-	inline-size: 100%;
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-price {
-	align-items: flex-start;
-	text-align: start;
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-price__unit {
-	justify-content: flex-start;
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-row__actions {
-	justify-content: space-between;
-}
-
-.bsk[data-density="card"] .bsk-group__items .bsk-email {
-	max-inline-size: 100%;
-}
 /* #endregion */
 
 /* #region Saved-for-later shelf */
 /*
- * Visually separate, and separated by a tonal step rather than by a box: the shelf is content the
- * basket is NOT going to charge for, and a reader must be able to tell that at a glance.
+ * A major section like Products or Tickets, and separated the same way: spacing and ONE divider,
+ * which `.bsk-cat + .bsk-cat, .bsk-saved` already draws. No background and no box — the shelf used to
+ * be a tinted card holding a grid of tinted cards, which is the card-in-card this surface forbids.
+ *
+ * What tells a reader nothing here is being charged for is the sentence beside the heading, not a
+ * tint. That was always the honest channel: a tonal step says "different", never "not billed".
  */
 .bsk-saved {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	min-inline-size: 0;
-	padding: var(--space-4);
-	border-radius: var(--radius-lg);
-	background: var(--surface-1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
 }
 
 .bsk-saved__head {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-3);
-	align-items: center;
-	padding-block-end: var(--space-3);
-	border-block-end: var(--hairline);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: baseline;
+    min-inline-size: 0;
 }
 
 .bsk-saved__icon {
-	display: inline-flex;
-	color: var(--text-secondary);
+    display: inline-flex;
+    align-self: center;
+    color: var(--text-secondary);
 }
 
+/* The same light display step as a category heading — the shelf is their peer, not a sub-block. */
 .bsk-saved__title {
-	margin: 0;
-	color: var(--on-surface);
-	font-size: var(--text-md);
-	font-weight: var(--fw-semibold);
+    margin: 0;
+    color: var(--on-surface);
+    font-size: var(--text-2xl);
+    font-weight: var(--fw-light);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-snug);
 }
 
 .bsk-saved__note {
-	flex: 1;
-	min-inline-size: 0;
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
+    flex: 1;
+    min-inline-size: 0;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
 }
 
-.bsk-saved__items {
-	display: flex;
-	flex-direction: column;
-	margin: 0;
-	padding: 0;
-	list-style: none;
+/*
+ * The shelf grid, sized in BOTH axes on purpose.
+ *
+ * **Horizontally** the track floor is `--bsk-shelf-card-w` (12rem), which lands 5 cards across the
+ * ~1090px content column a 1440px desktop leaves once the shell and the open lane have taken theirs,
+ * and 4 across the ~890px a 1280px one leaves. `auto-fill` keeps that honest as the lane is dragged
+ * or collapsed rather than freezing a column count that only suited one width.
+ *
+ * **Vertically** every card is `--bsk-shelf-card-h`, derived from the viewport MINUS the two bands
+ * that overlay it, so between 2.25 and 3 rows land inside the region the reader can actually see. The
+ * fraction is the point: a shelf whose last visible row is cleanly cut looks like the end of the
+ * shelf, and a partial row is what says "keep scrolling". `clamp` stops a very short window
+ * collapsing the cards to unreadable and a very tall one inflating them into posters.
+ *
+ * A FIXED height, not a min: cards in one row must bottom out on a shared baseline so the prices form
+ * one edge across the shelf. That is also why the card's own internals clamp rather than wrap freely.
+ */
+.bsk-saved__items,
+.bsk[data-shelf="true"] .bsk-cat__lines {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--bsk-shelf-card-w), 1fr));
+    grid-auto-rows: var(--bsk-shelf-card-h);
+    gap: var(--card-gap);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
-/* A parked row keeps its shape but never claims a selection or a quantity it does not have. */
-.bsk-saved .bsk-row {
-	grid-template-columns: var(--bsk-media-w-sm) minmax(0, 1fr) auto auto;
-	grid-template-areas: "media main price actions";
+/* A shelf's cards are their own items: the category's row dividers would draw a rule through a grid. */
+.bsk[data-shelf="true"] .bsk-cat__lines>*+* {
+    padding-block-start: 0;
+    border-block-start: 0;
 }
 
-.bsk-saved .bsk-row__media {
-	inline-size: var(--bsk-media-w-sm);
+.bsk[data-shelf="true"] .bsk-cat__lines>* {
+    padding-block-end: 0;
 }
 
-@container bsk (max-width: 40rem) {
-	.bsk-saved .bsk-row {
-		grid-template-columns: var(--bsk-media-w-sm) minmax(0, 1fr);
-		grid-template-areas:
-			"media main"
-			"media price"
-			"media actions";
-	}
+@container bsk (max-width: 44rem) {
 
-	.bsk-saved .bsk-price {
-		align-items: flex-start;
-		inline-size: 100%;
-		text-align: start;
-	}
+    .bsk-saved__items,
+    .bsk[data-shelf="true"] .bsk-cat__lines {
+        grid-template-columns: repeat(auto-fill, minmax(var(--bsk-shelf-card-w-sm), 1fr));
+    }
 }
+
+@container bsk (max-width: 26rem) {
+
+    .bsk-saved__items,
+    .bsk[data-shelf="true"] .bsk-cat__lines {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* #endregion */
 
-/* #region Promo */
-.bsk-promo {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	min-inline-size: 0;
-	padding-block-start: var(--space-4);
-	border-block-start: var(--hairline);
+/* #region Shelf card — a named list's lines, and the parked shelf's */
+/*
+ * NO background. The card used to be a tonal card inside a tonal shelf inside a category — three
+ * nested surfaces — which is exactly the card-in-card this surface now forbids. What separates one
+ * card from the next is the grid gap; what holds it together is its own cover image.
+ *
+ * A fixed-height column with a growing body, so the buy row bottoms out on the same baseline across
+ * the whole shelf. A price that floats at a different height in every card is a price a reader has to
+ * hunt for, and it is the single fact these cards exist to compare.
+ */
+.bsk-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    overflow: clip;
+    min-inline-size: 0;
+    block-size: 100%;
 }
 
-.bsk-promo__head {
-	margin: 0;
-	color: var(--on-surface);
-	font-size: var(--text-md);
-	font-weight: var(--fw-semibold);
+.bsk-card[data-busy="true"] {
+    opacity: var(--fld-disabled-alpha);
+}
+
+/*
+ * A fixed BLOCK size, not an aspect ratio. With `auto-fill` the tracks are elastic, so a ratio would
+ * make every column width produce a different image height and the titles beneath them would land on
+ * a different line in each card — the thing a uniform grid exists to prevent.
+ */
+.bsk-card__media {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: clip;
+    flex: none;
+    inline-size: 100%;
+    block-size: var(--bsk-shelf-media-h);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.bsk-card__media img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    transition: transform var(--dur-slow) var(--ease-emphasized);
+}
+
+.bsk-card:hover .bsk-card__media img {
+    transform: scale(var(--card-media-zoom));
+}
+
+.bsk-card__glyph {
+    display: inline-flex;
+    color: var(--text-secondary);
+}
+
+/* The growing region: it absorbs the card's slack so the foot stays pinned to the bottom edge. */
+.bsk-card__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-px);
+    overflow: hidden;
+    min-block-size: 0;
+    min-inline-size: 0;
+}
+
+.bsk-card__kind {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+}
+
+.bsk-card__heading {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+}
+
+/* Up to two lines: a long title must not push the buy row out of step with its neighbours. */
+.bsk-card__title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    color: var(--on-surface);
+    text-decoration: none;
+}
+
+.bsk-card__title:hover {
+    text-decoration: underline;
+}
+
+.bsk-card__title:focus-visible {
+    outline: none;
+    border-radius: var(--radius-xs);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-card__fact {
+    display: flex;
+    gap: var(--space-1) var(--space-2);
+    align-items: baseline;
+    overflow: hidden;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    white-space: nowrap;
+}
+
+/* The same hairline separator the row's meta spends, for the same reason: no dot inside a link. */
+.bsk-card__seller {
+    padding-inline-start: var(--space-2);
+    border-inline-start: var(--hairline);
+}
+
+.bsk-card__flag {
+    margin: 0;
+    color: var(--warning);
+    font-size: var(--text-2xs);
+}
+
+/* The two quiet moves, flush to the card's own edge — the action links carry no padding to back out of. */
+.bsk-card__quiet {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    flex: none;
+    min-inline-size: 0;
+}
+
+/*
+ * The one committing move at the inline start, the price flush to the inline END — the bottom-right
+ * corner of the card, which is where this shelf's one comparable figure has to be.
+ *
+ * `nowrap`: on a 12rem card a wrapping row would put the price on its own line in some cards and not
+ * others, and the shared baseline is the whole point of the fixed height.
+ */
+.bsk-card__buy {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: space-between;
+    flex: none;
+    min-inline-size: 0;
+}
+
+.bsk-card__action-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bsk-card__price {
+    margin: 0;
+    color: var(--on-surface);
+    font-size: var(--text-md);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-semibold);
+}
+
+/* #endregion */
+
+/* #region Ticket stages + session slots */
+/*
+ * Both are RE-STATEMENTS of facts the rows below already carry, hoisted to the head of the category
+ * because they are what a buyer scans a basket for. Neither is a box: a tonal inset and one type step
+ * is the whole treatment.
+ */
+.bsk-stages,
+.bsk-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.bsk-stages__item,
+.bsk-slots__item {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: baseline;
+    min-inline-size: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+/* Words as well as a mark: a tick alone is a shape-and-colour channel a screen reader never sees. */
+.bsk-stages__mark {
+    display: inline-flex;
+    align-self: center;
+    color: var(--text-secondary);
+}
+
+.bsk-stages__item[data-on="true"] {
+    color: var(--on-surface);
+}
+
+.bsk-stages__item[data-on="true"] .bsk-stages__mark {
+    color: var(--primary);
+}
+
+.bsk-slots__icon {
+    display: inline-flex;
+    align-self: center;
+    color: var(--text-secondary);
+}
+
+.bsk-slots__title {
+    color: var(--on-surface);
+    font-weight: var(--fw-medium);
+}
+
+.bsk-slots__when {
+    font-variant-numeric: tabular-nums;
+}
+
+.bsk-slots__where::before {
+    content: "·";
+    margin-inline-end: var(--space-2);
+}
+
+/* #endregion */
+
+/* #region Order summary — the rail's first card */
+/*
+ * A tonal tint, one radius, no border — the same treatment the invoice summary takes on the payment
+ * step (§F.6). It holds where the digital goods are going, the basket's own headline figure and what
+ * that figure is a price FOR, the arithmetic behind it, and the one control that advances the flow.
+ */
+.bsk-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+    padding: var(--space-5) var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+}
+
+/*
+ * The delivery chip. A disclosure, not an edit — the address belongs to a line — so it is a quiet
+ * tonal pill rather than a field, sized to the 24px hit-target floor (WCAG 2.2 AA 2.5.8).
+ */
+.bsk-summary__dest {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    align-self: flex-start;
+    max-inline-size: 100%;
+    min-block-size: var(--fld-hit);
+    min-inline-size: 0;
+    padding: var(--space-1) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-summary__dest:hover {
+    color: var(--on-surface);
+}
+
+.bsk-summary__dest:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-summary__dest-value {
+    overflow: hidden;
+    min-inline-size: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bsk-summary__dest-more {
+    flex: none;
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-medium);
+}
+
+/* The panel behind the chip: every distinct address, and how many lines go to each. */
+.bsk-dest__note {
+    margin: 0 0 var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+.bsk-dest__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.bsk-dest__item {
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    justify-content: space-between;
+    min-inline-size: 0;
+    font-size: var(--text-xs);
+}
+
+.bsk-dest__email {
+    overflow: hidden;
+    min-inline-size: 0;
+    color: var(--on-surface);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bsk-dest__count {
+    flex: none;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The headline figure on the inline-START, what it is a price FOR on the inline-END. Two blocks on one
+ * row, wrapping rather than crushing: a total that shares a line with a tally it has squeezed to two
+ * characters is worse than a total on a line of its own.
+ */
+.bsk-summary__figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-4);
+    align-items: flex-start;
+    justify-content: space-between;
+    min-inline-size: 0;
+    padding: var(--space-6) 0;
+}
+
+.bsk-summary__total {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+    min-inline-size: 0;
+    margin: 0;
+}
+
+.bsk-summary__total-label {
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+}
+
+/*
+ * One step above the checkout's own hero, because on this card it is the only figure at that rank.
+ *
+ * Set on `.ui-money__amount`, not on the `.cko-money` wrapper: the amount declares its own size, so a
+ * wrapper override is inherited-then-overridden and renders nothing.
+ */
+.bsk-summary__total .cko-money--hero .ui-money__amount {
+    font-size: var(--text-3xl);
+    line-height: var(--leading-tight);
+}
+
+.bsk-summary__tally {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+    align-items: flex-end;
+    min-inline-size: 0;
+    text-align: end;
+}
+
+.bsk-summary__count {
+    margin: 0;
+    color: var(--on-surface);
+    font-size: var(--text-lg);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-semibold);
+    line-height: var(--leading-snug);
+}
+
+.bsk-summary__parts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The arithmetic BEHIND the headline figure — subtotal, creator discounts, and any promo landing at
+ * the next step. Its own restatement of `net` is suppressed: the hero states the same number under its
+ * own label two blocks above, and one figure printed twice under two names reads as an error rather
+ * than as emphasis. Every other row it carries is a fact the hero cannot state.
+ */
+.bsk-summary__detail {
+    min-inline-size: 0;
+}
+
+.bsk-summary__detail .bsk-totals__row--net {
+    display: none;
+}
+
+.bsk-summary__cta {
+    justify-content: center;
+    text-decoration: none;
+}
+
+.bsk-summary__reassure {
+    margin: calc(var(--space-2) * -1) 0 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    text-align: center;
+}
+
+/* #endregion */
+
+/* #region Processing contribution */
+/*
+ * A voluntary ask, and it reads as one: no fill, no accent, no badge. The mark beside the label
+ * carries the server's own sentence as its accessible name AND as a portal Tooltip, so the
+ * explanation is reachable by pointer, by keyboard and by screen reader rather than by hover alone.
+ */
+.bsk-contrib {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-inline-size: 0;
+    padding-block-start: var(--space-3);
+    border-block-start: var(--hairline);
+}
+
+.bsk-contrib__info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    inline-size: var(--fld-hit);
+    block-size: var(--fld-hit);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+}
+
+.bsk-contrib__info:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* #endregion */
+
+/* #region Promo — the rail's second card */
+/*
+ * A peer of the summary, not a footnote inside it. Applying a code is a decision ABOUT the basket, and
+ * folding it into the summary put a text field between the figure and the control that commits to it.
+ * Same device as its neighbour: one tonal step and a radius, no border.
+ */
+.bsk-promo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
 }
 
 .bsk-promo__form {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	/* A form field may carry a measure; nothing with a figure in it is a descendant. */
-	max-inline-size: var(--field-max);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-inline-size: 0;
 }
 
 .bsk-promo__label {
-	color: var(--fld-label-fg);
-	font-size: var(--fld-label-fs);
-	font-weight: var(--fld-label-fw);
+    color: var(--fld-label-fg);
+    font-size: var(--fld-label-fs);
+    font-weight: var(--fld-label-fw);
 }
 
+/*
+ * The field and its commit control are ONE object, so they are sized from one place.
+ *
+ * `--bsk-promo-h` and `--bsk-promo-r` are declared here and read by both halves: the input through
+ * the field primitive's own box, the button through the `.ui-button` overrides below. A promo row
+ * where the button is two pixels shorter than the field it commits reads as a control that has come
+ * loose from its input, and matching them by eye in two places is how that drift starts.
+ */
 .bsk-promo__controls {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
+    --bsk-promo-h: 2.75rem;
+    --bsk-promo-r: var(--radius-full);
+    display: flex;
+    gap: var(--space-2);
+    align-items: stretch;
+    min-inline-size: 0;
 }
 
 .bsk-promo__field {
-	flex: 1;
-	min-inline-size: 0;
+    flex: 1;
+    min-inline-size: 0;
+}
+
+/*
+ * Both halves are re-sized through the primitives' OWN channels — `--field-*` on the control and
+ * `--btn-*` on the button — rather than by over-writing `block-size`/`padding` on their boxes. Those
+ * variables are what the size ramps set, so an override lands in the same place the ramp would and
+ * every descendant that reads them (the editable element's own `block-size: 100%`, the focus ring's
+ * radius) follows. Setting the box directly leaves those reading the ramp's value and the control
+ * comes apart from the inside.
+ *
+ * A discount code is typed rarely and read back carefully, so the pair sits a step above the dense
+ * `sm` ramp the rail's other controls use.
+ */
+.bsk-promo__controls .bsk-promo__field {
+    --field-height: var(--bsk-promo-h);
+    --field-px: var(--space-4);
+    --field-font: var(--text-md);
+    --field-radius: var(--bsk-promo-r);
+}
+
+/*
+ * The Apply button, matched to the field it commits: same height, same radius, same type step, with
+ * an inline padding that gives the word room rather than the ramp's minimum.
+ *
+ * It wears the filled SECONDARY ramp — the neutral pill the footer rig's own Checkout control uses —
+ * so a commit reads the same everywhere on this surface, and so it never competes with the amber CTA
+ * one card above it (§B.8.2: one filled accent per decision region).
+ */
+.bsk-promo__controls .ui-button {
+    --btn-height: var(--bsk-promo-h);
+    --btn-px: var(--space-5);
+    --btn-font: var(--text-md);
+    --btn-radius: var(--bsk-promo-r);
+    flex: none;
 }
 
 .bsk-promo__applied {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
-	align-items: center;
-	margin: 0;
-	font-size: var(--text-sm);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    align-items: center;
+    margin: 0;
+    font-size: var(--text-xs);
 }
 
 .bsk-promo__applied[data-valid="true"] {
-	color: var(--success);
+    color: var(--success);
 }
 
 .bsk-promo__applied[data-valid="false"] {
-	color: var(--warning);
+    color: var(--warning);
+}
+
+/*
+ * The applied code as one OBJECT — a tonal pill carrying its own dismissal — rather than as a sentence
+ * with a "Remove" verb parked at the end of it. The tint is mixed from `currentcolor`, which the row
+ * above has already set to the valid/refused ramp, so the chip states the same thing its own text does.
+ */
+.bsk-promo__chip {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    min-inline-size: 0;
+    padding-block: var(--space-px);
+    padding-inline: var(--space-3) var(--space-1);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, currentcolor var(--tint-subtle), var(--surface-1));
+    font-weight: var(--fw-medium);
+}
+
+.bsk-promo__chip-code {
+    overflow: hidden;
+    min-inline-size: 0;
+    letter-spacing: var(--tracking-wide);
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/*
+ * Icon-only, so it carries a portal Tooltip and an `aria-label`, and its box meets the 24px hit-target
+ * floor (WCAG 2.2 AA 2.5.8) even though the glyph inside it is smaller.
+ */
+.bsk-promo__clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    inline-size: var(--fld-hit);
+    block-size: var(--fld-hit);
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.bsk-promo__clear:hover {
+    background: color-mix(in srgb, currentcolor var(--tint-subtle), transparent);
+}
+
+.bsk-promo__clear:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.bsk-promo__clear[disabled] {
+    opacity: var(--fld-disabled-alpha);
+    cursor: default;
 }
 
 .bsk-promo__applied-label {
-	font-weight: var(--fw-medium);
+    color: var(--text-secondary);
 }
 
 .bsk-promo__applied-amount {
-	font-variant-numeric: tabular-nums;
-	font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-semibold);
 }
 
 .bsk-promo__applied-message {
-	color: var(--text-secondary);
+    min-inline-size: 0;
+    color: var(--text-secondary);
 }
+
 /* #endregion */
 
 /* #region Totals */
 .bsk-totals {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	min-inline-size: 0;
-	padding-block-start: var(--space-4);
-	border-block-start: var(--hairline);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    padding-block-start: var(--space-4);
+    border-block-start: var(--hairline);
 }
 
 .bsk-totals__head {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-3);
-	align-items: baseline;
-	margin: 0;
-	color: var(--on-surface);
-	font-size: var(--text-md);
-	font-weight: var(--fw-semibold);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: baseline;
+    margin: 0;
+    color: var(--on-surface);
+    font-size: var(--text-md);
+    font-weight: var(--fw-semibold);
 }
 
 .bsk-totals__count {
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
-	font-weight: var(--fw-normal);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-normal);
 }
 
 .bsk-totals__list {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
 }
 
 .bsk-totals__row {
-	display: flex;
-	gap: var(--space-4);
-	align-items: baseline;
-	justify-content: space-between;
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    justify-content: space-between;
 }
 
 .bsk-totals__row dt {
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
 }
 
 .bsk-totals__row dd {
-	margin: 0;
-	color: var(--on-surface);
-	font-size: var(--text-md);
-	font-variant-numeric: tabular-nums;
+    margin: 0;
+    color: var(--on-surface);
+    font-size: var(--text-md);
+    font-variant-numeric: tabular-nums;
 }
 
 .bsk-totals__row[data-saving="true"] dd {
-	color: var(--success);
+    color: var(--success);
 }
 
 .bsk-totals__row--net dt,
 .bsk-totals__row--net dd {
-	color: var(--on-surface);
-	font-size: var(--text-xl);
-	font-weight: var(--fw-semibold);
+    color: var(--on-surface);
+    font-size: var(--text-xl);
+    font-weight: var(--fw-semibold);
 }
 
 /*
@@ -892,74 +2080,79 @@ a.bsk-row__fact-value:focus-visible {
  * column above would print an arithmetic the server did not perform.
  */
 .bsk-totals__pending {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-1);
-	align-items: baseline;
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: baseline;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
 }
 
 .bsk-totals__pending-label {
-	color: var(--on-surface);
-	font-weight: var(--fw-medium);
+    color: var(--on-surface);
+    font-weight: var(--fw-medium);
 }
 
 .bsk-totals__note {
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
 }
+
 /* #endregion */
 
 /* #region Empty state */
 .bsk-empty {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	align-items: center;
-	padding-block: var(--space-7);
-	color: var(--text-secondary);
-	text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: center;
+    padding-block: var(--space-7);
+    color: var(--text-secondary);
+    text-align: center;
 }
 
 .bsk-empty__icon {
-	color: var(--text-secondary);
-	opacity: 0.6;
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 .bsk-empty__title {
-	margin: 0;
-	color: var(--on-surface);
-	font-size: var(--text-lg);
-	font-weight: var(--fw-medium);
+    margin: 0;
+    color: var(--on-surface);
+    font-size: var(--text-lg);
+    font-weight: var(--fw-medium);
 }
 
 /* The ONE measure on this surface: running prose, carrying no figure and no row. */
 .bsk-empty__note {
-	max-inline-size: var(--measure-narrow);
-	margin: 0;
-	font-size: var(--text-sm);
+    max-inline-size: var(--measure-narrow);
+    margin: 0;
+    font-size: var(--text-sm);
 }
+
 /* #endregion */
 
 /* #region Motion */
 /*
- * Jump to the final state, and drop the two decorative transforms outright rather than running them
+ * Jump to the final state, and drop the decorative transforms outright rather than running them
  * instantly — a hover lift that teleports is worse than no lift. Nothing that encodes data animates on
  * this surface at all, so there is nothing a frozen animation clock could leave stating something
  * untrue (the `/wallet` defect class).
  */
 @media (prefers-reduced-motion: reduce) {
-	.bsk-row__media img,
-	.bsk[data-density="card"] .bsk-group__items .bsk-row {
-		transition: none;
-	}
 
-	.bsk-row:hover .bsk-row__media img,
-	.bsk[data-density="card"] .bsk-group__items .bsk-row:hover {
-		transform: none;
-	}
+    .bsk-row__media img,
+    .bsk-card__media img {
+        transition: none;
+    }
+
+    .bsk-row:hover .bsk-row__media img,
+    .bsk-card:hover .bsk-card__media img {
+        transform: none;
+    }
+
 }
+
 /* #endregion */

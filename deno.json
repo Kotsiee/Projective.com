@@ -38,8 +38,13 @@
 	},
 	"tasks": {
 		"dev": "vite --port 3000",
+		"$comment:build": "One pass builds everything. The workspace members (packages/types, packages/ui, packages/backend) have NO separate compile step — they are consumed as TypeScript source through the import map, so Vite type-strips and bundles them alongside the app. `vite build` drives both Fresh environments: the client environment emits the island bundles into _fresh/client, the ssr environment emits the route chunks + _fresh/server.js. There is nothing to build before it and nothing to build after it.",
 		"build": "vite build",
 		"preview": "vite preview",
+		"$comment:serve": "Runs an EXISTING production build. `_fresh/server.js` is written by @fresh/plugin-vite and default-exports { fetch }, which is exactly the shape `deno serve` expects. `--unstable-kv` is not required — FxService feature-detects `Deno.openKv` and falls back to a per-isolate memory cache — but without it the 15-minute FX rate cache is lost on every isolate.",
+		"serve": "deno serve -A --unstable-kv --port 3000 apps/web/_fresh/server.js",
+		"$comment:start": "Build, then start the production SSR server. This is the single self-contained entry point: `deno task start`.",
+		"start": "deno task build && deno task serve",
 		"$comment:check": "Entry points, not `deno check .`: the latter walks build output and any stray git worktree under .claude/, which is not this repo's code.",
 		"check": "deno check packages/types/mod.ts packages/ui/mod.ts packages/backend/services/ServiceResult.ts apps/web/main.ts",
 		"lint": "deno lint",

@@ -127,6 +127,52 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   the file is served. It is never a handle, a user id or an email — a share URL is forwarded and
   pasted into public places, and personal data must not travel in a query string.
 
+- **The checkout is four routes, not four modes of one route.** Each step is its own file under
+  `(dashboard)/checkout/`, which is what makes the browser's own Back button work through the flow and
+  makes every step a link a buyer can be sent. It is also why the stepper is a row of real anchors
+  rather than a controlled widget: the URL is already the state, and a second copy of it in a signal
+  is a second thing that can be wrong. Builders: `checkoutStepHref()` / `basketHref()` /
+  `checkoutHref()` in `apps/web/features/checkout/core/basket-model.ts` — never a hand-written path.
+
+  | Step | File                                     | URL                      | Chrome (Part D.6) |
+  | :--- | :--------------------------------------- | :----------------------- | :---------------- |
+  | 1    | `(dashboard)/checkout/index.tsx`         | `/checkout`              | `full` — basket + the list explorer in the lane |
+  | 2    | `(dashboard)/checkout/details.tsx`       | `/checkout/details`      | **`focus`** |
+  | 3    | `(dashboard)/checkout/payment.tsx`       | `/checkout/payment`      | **`focus`** |
+  | 4    | `(dashboard)/checkout/confirmation.tsx`  | `/checkout/confirmation` | `full` — restored, its job is to send the buyer onward |
+
+  **`/basket` is retired to a `302`, and the file is kept.** `(dashboard)/basket/index.tsx` redirects
+  to `/checkout` **preserving the query string** — `?basket=` and `?owner=` are load-bearing, and
+  dropping them lands an entity buyer on their personal basket. It is not deleted (root `CLAUDE.md`
+  §5 — nothing is hard-deleted) because the URL is reachable from the globally-mounted basket drawer
+  and from persisted client state, so a 404 there is a dead end reachable from the header. It is a
+  **302, not a 308**: a permanent redirect is cached by the browser indefinitely with no server-side
+  way to invalidate it, and the flow's first step is still *called* "Basket", so the route may
+  legitimately return. `isCheckoutPath()` keeps matching `/basket`, so the slot resolvers still claim
+  it during the redirect hop.
+
+  **Query params, all optional.** `?basket=` selects a named basket (a list is a named
+  `finance.baskets` row, not a separate table); `?owner=` selects the acting principal's scope
+  (`personal` · `team:{id}` · `business:{id}` · `organisation:{id}`); `?order=` names the order the
+  confirmation resolves (absent → the account's most recent); `?project_id=` / `?service_id=` narrow
+  the flow to one engagement; `?edit=1` on Details forces the form open. Dev Context Switcher axes
+  travel as separate validated `sim*` params (`simOwnerScope` · `simProviders` · `simWalletCover` ·
+  `simCards` · `simDetails` · `simBilling` · `simInvoicing` · `simSpendLimit` · `simFulfilment` ·
+  `simConferencing`) and are ignored on the live path.
+
+  **Two redirects govern the Details step, and one predicate governs both.** Details **auto-skips** to
+  `/checkout/payment` when `canSkipDetails(session)` holds and `?edit=1` is absent; Payment **bounces
+  back** to `/checkout/details` when `buyerDetailsComplete(session.buyer)` does not — a buyer who deep
+  links past the form must be sent back, not shown a Pay button the server will refuse. Because both
+  directions delegate to the same predicate (`@projective/types/finance/checkout`), they cannot
+  disagree and produce a redirect loop. `?edit=1` is mandatory rather than polish: without it a buyer
+  whose details are complete can never reach the form again, since every route into it redirects away.
+
+  ⚠ **Both redirects are returned from `define.handlers`, never from `define.page`.** A `Response`
+  returned from a page component is **dead code** — it is a render function, not a handler; the page
+  renders anyway and nothing errors. Root `CLAUDE.md` §8 Decision #61 records a whole surface lost to
+  exactly this.
+
 ## Reserved-handle precedence
 
 Static routes win over `[handle]`. `/about`, `/explore`, `/login`, `/help/*`, `/view/*`, `/share/*`

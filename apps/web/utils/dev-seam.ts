@@ -196,6 +196,47 @@ export type DevBasketOwner = "personal" | "team" | "business" | "organisation";
 export type DevPaymentProviders = "all" | "no_wallet" | "card_only" | "invoice";
 
 /**
+ * Whether the buyer already has complete saved delivery + billing details.
+ *
+ * The axis that makes the Details step's AUTO-SKIP reachable. Without it a developer can only ever
+ * see one of the two branches — and the one they cannot see is the branch that silently sends a
+ * buyer past a form, which is precisely the branch worth being able to inspect.
+ */
+export type DevBuyerDetails = "saved" | "missing";
+
+/** Which billing identity the Details form opens on — a natural person or a company. */
+export type DevBillingContext = "personal" | "business";
+
+/**
+ * The acting entity's invoicing mode (`org.business_profiles.invoicing_mode`).
+ *
+ * A real column with a real CHECK, not a new concept: `intervaled_monthly` is what the brief calls
+ * "Intervaled Monthly Invoicing", and `finance.invoices.invoice_type` already carries the matching
+ * `consolidated_monthly`.
+ */
+export type DevInvoicingMode = "per_transaction" | "intervaled_monthly";
+
+/**
+ * Whether this purchase clears the acting member's spending limit.
+ *
+ * `over` reaches the `needs_approval` verdict without having to construct a basket that happens to
+ * cross a seeded cap — the state whose whole point is that it offers a route forward rather than a
+ * refusal.
+ */
+export type DevSpendLimit = "within" | "over";
+
+/**
+ * Which fulfilment routes the confirmation hub has to render.
+ *
+ * The four routes look nothing alike — a download button, a project deep link, a calendar export, and
+ * an honest "not ready yet" — so a mix that only ever contains one of them leaves three untested.
+ */
+export type DevFulfilmentMix = "mixed" | "products" | "tickets" | "sessions" | "pending";
+
+/** Which conferencing provider a booked session's join link resolves to. */
+export type DevConferencing = "zoom" | "google" | "microsoft_teams" | "none";
+
+/**
  * Whether the acting wallet covers the resolved total or falls short of it. Expressed as a
  * RELATIONSHIP rather than a figure because a fixed balance covers one basket and not another — an
  * axis that set a number would be inert on half the baskets it was pointed at.
@@ -292,6 +333,18 @@ export interface DevSeamState {
 	walletCoverage: DevWalletCoverage;
 	/** The simulated saved-card wallet shape. */
 	savedCards: DevSavedCards;
+	/** Whether the buyer's saved details are complete — drives the Details step's auto-skip. */
+	buyerDetails: DevBuyerDetails;
+	/** The billing identity the Details form opens on. */
+	billingContext: DevBillingContext;
+	/** The acting entity's invoicing mode. */
+	invoicingMode: DevInvoicingMode;
+	/** Whether this purchase clears the acting member's spending limit. */
+	spendLimit: DevSpendLimit;
+	/** Which fulfilment routes the confirmation hub renders. */
+	fulfilmentMix: DevFulfilmentMix;
+	/** Which conferencing provider a booked session resolves to. */
+	conferencing: DevConferencing;
 }
 // #endregion
 
@@ -438,6 +491,18 @@ const PAYMENT_PROVIDERS: readonly DevPaymentProviders[] = [
 	"card_only",
 	"invoice",
 ];
+const BUYER_DETAILS: readonly DevBuyerDetails[] = ["saved", "missing"];
+const BILLING_CONTEXTS: readonly DevBillingContext[] = ["personal", "business"];
+const INVOICING_MODES: readonly DevInvoicingMode[] = ["per_transaction", "intervaled_monthly"];
+const SPEND_LIMITS: readonly DevSpendLimit[] = ["within", "over"];
+const FULFILMENT_MIXES: readonly DevFulfilmentMix[] = [
+	"mixed",
+	"products",
+	"tickets",
+	"sessions",
+	"pending",
+];
+const CONFERENCING: readonly DevConferencing[] = ["zoom", "google", "microsoft_teams", "none"];
 const WALLET_COVERAGES: readonly DevWalletCoverage[] = ["covers", "shortfall"];
 const SAVED_CARDS: readonly DevSavedCards[] = ["seeded", "none", "expired"];
 
@@ -501,6 +566,12 @@ export function readDevSeam(): DevSeamState | null {
 		paymentProviders: coerce(ds.devPaymentProviders, PAYMENT_PROVIDERS, "all"),
 		walletCoverage: coerce(ds.devWalletCoverage, WALLET_COVERAGES, "covers"),
 		savedCards: coerce(ds.devSavedCards, SAVED_CARDS, "seeded"),
+		buyerDetails: coerce(ds.devBuyerDetails, BUYER_DETAILS, "missing"),
+		billingContext: coerce(ds.devBillingContext, BILLING_CONTEXTS, "personal"),
+		invoicingMode: coerce(ds.devInvoicingMode, INVOICING_MODES, "per_transaction"),
+		spendLimit: coerce(ds.devSpendLimit, SPEND_LIMITS, "within"),
+		fulfilmentMix: coerce(ds.devFulfilmentMix, FULFILMENT_MIXES, "mixed"),
+		conferencing: coerce(ds.devConferencing, CONFERENCING, "zoom"),
 	};
 }
 

@@ -2,7 +2,13 @@ import type { ComponentChildren, JSX } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import "../styles/user-shell.css";
-import { AppShell, BottomNav, MiddleNav, PageCanvas } from "@projective/ui/navigation";
+import {
+	AppShell,
+	BottomNav,
+	MiddleNav,
+	PageCanvas,
+	type ShellChrome,
+} from "@projective/ui/navigation";
 import ShellSidebar from "@web/features/shell/islands/ShellSidebar.island.tsx";
 import MiddleNavSplitter from "@web/features/shell/islands/MiddleNavSplitter.island.tsx";
 import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
@@ -48,6 +54,20 @@ export interface UserShellProps {
 	 * to the middle-nav frame); ignored when the canvas renders bare.
 	 */
 	middleNavFooter?: ComponentChildren;
+	/**
+	 * Chrome density (DESIGN_SYSTEM.md Part D.6). `full` is the standard L-shell; `focus` is the
+	 * distraction-free mode for a linear, committing flow (checkout's Details and Payment steps).
+	 *
+	 * In `focus` the shell renders **no global sidebar, no lane, no search and no utility bar** — the
+	 * header keeps only the brand mark. It does not "hide" them: they are not constructed, so they
+	 * cost no grid track and take no part in the frame-inset accumulator. The middle-nav frame still
+	 * renders when a {@link middleNavHeader} is supplied, which is how the checkout stepper spans the
+	 * top of the canvas with nothing beside it.
+	 *
+	 * The mode is resolved per-URL by a slot resolver in the layout, exactly like the lane and the
+	 * bands — so it paints correctly in the first byte with no client flash.
+	 */
+	chrome?: ShellChrome;
 	/** The page body. */
 	children: ComponentChildren;
 }
@@ -78,27 +98,41 @@ export function UserShell(
 		lane,
 		middleNavHeader,
 		middleNavFooter,
+		chrome = "full",
 		children,
 	}: UserShellProps,
 ): JSX.Element {
 	const canvas = <PageCanvas>{children}</PageCanvas>;
+	const focus = chrome === "focus";
+	// In focus mode every navigational exit is withheld, so the lane is not constructed at all — but
+	// the middle-nav FRAME still renders whenever a band was registered, because the checkout stepper
+	// lives in the header band and must span the canvas with no lane beside it. The frame's grid is
+	// `auto minmax(0, 1fr)`, so an absent lane resolves column 1 to 0px and the bands simply start at
+	// the frame's inline edge (measured: `0px 1265px`, header flush at x=0, zero overflow).
+	const activeLane = focus ? undefined : lane;
+	const framed = activeLane || middleNavHeader || middleNavFooter;
 	return (
 		<>
 			<AppShell
 				persona="user"
+				chrome={chrome}
 				brand={
 					<div class="shell-headlead">
 						<BrandMark />
-						{showSearch ? <NavSearchBar /> : null}
+						{showSearch && !focus ? <NavSearchBar /> : null}
 					</div>
 				}
-				utilityBar={<UserActions context={context} protectedRoute={protectedRoute} />}
-				sidebar={<ShellSidebar path={path} context={context} />}
+				utilityBar={focus
+					? null
+					: <UserActions context={context} protectedRoute={protectedRoute} />}
+				sidebar={focus ? undefined : <ShellSidebar path={path} context={context} />}
 			>
-				{lane
+				{framed
 					? (
 						<MiddleNav
-							lane={<MiddleNavSplitter>{lane}</MiddleNavSplitter>}
+							lane={activeLane
+								? <MiddleNavSplitter>{activeLane}</MiddleNavSplitter>
+								: undefined}
 							header={middleNavHeader}
 							footer={middleNavFooter}
 						>
@@ -107,8 +141,16 @@ export function UserShell(
 					)
 					: canvas}
 			</AppShell>
-			{/* Ergonomic mobile thumb-nav (Part D.3) — fixed, mobile-only (hidden ≥ --bp-md by CSS). */}
-			<BottomNav items={bottomNavItems(path)} label="Primary" />
+			{
+				/* Ergonomic mobile thumb-nav (Part D.3) — fixed, mobile-only (hidden ≥ --bp-md by CSS).
+				   Withheld in focus chrome: on mobile it IS the side navigation, so leaving it would
+				   reinstate on a phone every exit the mode removes on a desktop.
+				   NOTE: withholding it does NOT by itself free the bottom edge. `middle-nav.css` lifts
+				   the footer band by `--shell-bottomnav-h` unconditionally at ≤767px, so removing the
+				   bar leaves a 56px dead gap under the step's commit action until the paired focus
+				   rules in `middle-nav.css` / `page-canvas.css` drop the reservation too. */
+			}
+			{focus ? null : <BottomNav items={bottomNavItems(path)} label="Primary" />}
 		</>
 	);
 }

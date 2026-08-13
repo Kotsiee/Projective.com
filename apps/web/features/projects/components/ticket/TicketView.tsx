@@ -1,5 +1,20 @@
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
+/*
+ * The ticket surface carries its OWN stylesheet.
+ *
+ * Shared CSS reaches a page only through an ISLAND's module graph (root CLAUDE.md §8 Decision #39), and
+ * this sheet used to be imported by `ProjectBoard.island.tsx` alone. That was invisible for as long as
+ * the board was the only thing that opened a ticket — and the moment a second surface mounted one (the
+ * basket, from a ticket row) the modal rendered with NO styles at all: `.tkv` computed as a bare
+ * `display: block` div at static position with no background, measured.
+ *
+ * Importing it HERE makes the component self-contained, so any island that mounts a ticket gets the
+ * ticket's appearance with it and no call site has to know the list. Vite dedupes, so the board's own
+ * import of the same sheet costs nothing. The tabs do the same for the `/files` and `/submissions`
+ * sheets they mount.
+ */
+import "../../styles/ticket-view.css";
 import { Backdrop, BodyPortal, useFrameScroll, useFrameState } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";

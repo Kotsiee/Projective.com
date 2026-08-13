@@ -10,6 +10,7 @@ import {
 	resolveRate,
 	setDisplayCurrency,
 	setRateTable,
+	splitMoney,
 } from "@projective/ui/display/money";
 import { toDisplayCurrency } from "@projective/types/finance";
 import { LocalKeys, writeStored } from "@web/utils/storage-keys.ts";
@@ -127,6 +128,17 @@ export function reprojectServerMoney(
 		};
 		const projected = projectMoney(value, code, locale, table);
 
+		/*
+		 * Rebuild the SAME part structure `MoneyView` renders (symbol / major / minor / suffix), not a
+		 * bare text node.
+		 *
+		 * The minor units are styled a step smaller and raised, and that styling hangs off
+		 * `.ui-money__minor`. Writing the whole projected string as one text node would silently strip
+		 * the treatment from every SERVER-rendered figure the moment a viewer changed currency — while
+		 * the hydrated figure beside it, which re-renders through the component, kept it. Two
+		 * typographies for the same kind of number, appearing only after an interaction, is exactly
+		 * the class of divergence this sweep exists to prevent.
+		 */
 		amountEl.textContent = "";
 		if (sign) {
 			const span = document.createElement("span");
@@ -134,7 +146,17 @@ export function reprojectServerMoney(
 			span.textContent = sign;
 			amountEl.append(span);
 		}
-		amountEl.append(document.createTextNode(projected.display));
+		const parts = splitMoney(projected.display, projected.currency);
+		const part = (cls: string, text: string) => {
+			const span = document.createElement("span");
+			span.className = cls;
+			span.textContent = text;
+			return span;
+		};
+		if (parts.symbol) amountEl.append(part("ui-money__symbol", parts.symbol));
+		amountEl.append(part("ui-money__major", parts.major));
+		if (parts.minor) amountEl.append(part("ui-money__minor", parts.minor));
+		if (parts.suffix) amountEl.append(part("ui-money__symbol", parts.suffix));
 
 		const wantOrigin = projected.origin !== null && node.dataset.moneyHideOrigin !== "1";
 		let originEl = node.querySelector<HTMLElement>(".ui-money__origin");

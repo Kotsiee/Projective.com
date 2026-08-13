@@ -1213,16 +1213,15 @@ body:has(.auth) {
 	box-shadow: 0 0 0 3px color-mix(in srgb, var(--on-primary) 55%, transparent);
 }
 
+/* Was a gradient-filled rounded square standing in for a logo the project did not have yet. Now the
+   real mark, in `--on-primary` because this aside is the deep-primary field. `drop-shadow` rather
+   than `box-shadow`: the glyph is a transparent-background SVG, so a box shadow would trace the
+   element's rectangle instead of the letterform. */
 .join-aside__mark {
-	inline-size: 1.6rem;
 	block-size: 1.6rem;
-	border-radius: var(--radius-sm);
-	background: radial-gradient(
-		120% 120% at 30% 20%,
-		color-mix(in srgb, var(--on-primary) 92%, transparent),
-		color-mix(in srgb, var(--on-primary) 60%, transparent)
-	);
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+	inline-size: auto;
+	color: var(--on-primary);
+	filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.18));
 }
 
 /* The single, large, adaptive illustration — the focal point of the whole panel. */

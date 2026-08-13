@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext, type UserContext } from "@projective/types/auth";
-import { NavItem } from "@projective/ui/navigation";
+import { NavItem, type ShellChrome } from "@projective/ui/navigation";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { resolveProjectsFeed } from "@web/features/projects/core/feed-ssr.ts";
@@ -33,6 +33,7 @@ import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-s
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
 import { basketLaneFor } from "@web/features/checkout/core/basket-lane-slot.tsx";
+import { checkoutChromeFor } from "@web/features/checkout/core/checkout-chrome.ts";
 import { basketHeaderFor } from "@web/features/checkout/core/basket-header-slot.tsx";
 import { basketFooterFor } from "@web/features/checkout/core/basket-footer-slot.tsx";
 import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
@@ -171,6 +172,15 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 	);
 }
 
+/**
+ * Resolve the shell's chrome density for a request. Composed exactly like the lane and the bands, so
+ * the correct chrome ships in the first byte; `full` is the default every surface but the checkout's
+ * two committing steps runs in (DESIGN_SYSTEM.md Part D.6).
+ */
+function chromeFor(url: URL): ShellChrome {
+	return checkoutChromeFor(url) ?? "full";
+}
+
 export default define.page(function DashboardLayout(ctx) {
 	const path = ctx.url.pathname;
 	const context = asAuthenticatedContext(ctx.state.userContext);
@@ -179,6 +189,7 @@ export default define.page(function DashboardLayout(ctx) {
 			path={path}
 			context={context}
 			protectedRoute
+			chrome={chromeFor(ctx.url)}
 			lane={laneFor(ctx.url, context)}
 			middleNavHeader={middleNavHeaderFor(ctx.url, context)}
 			middleNavFooter={middleNavFooterFor(ctx.url, context)}

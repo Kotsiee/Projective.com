@@ -23,6 +23,12 @@ import { ROOT_KEY, SubmissionTree } from "../../SubmissionTree.tsx";
 import { SubmissionBreadcrumbs } from "../../SubmissionBreadcrumbs.tsx";
 import { GridIcon, ListIcon } from "../../file-glyphs.tsx";
 
+// This tab mounts the SAME submission tree, cards and file cards `/submissions` does — see the note in
+// `TicketView` for why the component carries them rather than its host island.
+import "../../../styles/submission-explorer.css";
+import "../../../styles/submission-card.css";
+import "../../../styles/file-card.css";
+
 /**
  * TicketSubmissionsTab — the `/submissions` explorer, scoped strictly to one ticket.
  *

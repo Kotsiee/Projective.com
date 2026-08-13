@@ -46,6 +46,36 @@ export type {
 	SavedCard,
 	UpdateBasketItem,
 } from "@projective/types/finance";
+export type {
+	BasketListEntry,
+	BasketListKind,
+	BasketLists,
+	BillingContext,
+	BillingContextKind,
+	BuyerDetails,
+	CalendarLinks,
+	CreateBasketList,
+	DeliveryDetails,
+	FulfilmentKind,
+	InvoicingMode,
+	MonthlyInvoicing,
+	Order,
+	OrderInvoice,
+	OrderLine,
+	OrderPage,
+	OrderStatus,
+	PersonalBilling,
+	PostalAddress,
+	ProcessingContributionOffer,
+	SaveBuyerDetails,
+	SpendLimitBlock,
+	TaxBreakdown,
+} from "@projective/types/finance";
+export type { BusinessBilling } from "@projective/types/finance";
+
+// Re-exporting a type does not bind it in THIS module's scope, and the two below are referenced by
+// the `BasketSim` mirror further down — so they are imported as well as re-exported.
+import type { BillingContextKind, InvoicingMode } from "@projective/types/finance";
 // #endregion
 
 // #region Simulation axes (the CLIENT mirror of `@server/services/finance/basket-query.ts`)
@@ -80,7 +110,28 @@ export interface BasketSim {
 	applePay?: boolean;
 	/** Whether PayPal is configured for this deployment — deployment config, not a simulation. */
 	paypalEnabled?: boolean;
+	/** Whether the buyer's saved details are complete (`simDetails`) — drives the Details auto-skip. */
+	details?: BuyerDetailsState;
+	/** Which billing identity the Details form opens on (`simBilling`). */
+	billing?: BillingContextKind;
+	/** The acting entity's invoicing mode (`simInvoicing`). */
+	invoicing?: InvoicingMode;
+	/** Whether this purchase clears the acting member's spending limit (`simSpendLimit`). */
+	spendLimit?: SpendLimitState;
+	/** Which fulfilment routes the confirmation hub renders (`simFulfilment`). */
+	fulfilment?: FulfilmentMix;
+	/** Which conferencing provider a booked session resolves to (`simConferencing`). */
+	conferencing?: ConferencingChoice;
 }
+
+/** Whether the buyer already has complete saved delivery + billing details. */
+export type BuyerDetailsState = "saved" | "missing";
+/** Whether this purchase clears the acting member's spending limit. */
+export type SpendLimitState = "within" | "over";
+/** Which fulfilment routes the confirmation hub has to render. */
+export type FulfilmentMix = "mixed" | "products" | "tickets" | "sessions" | "pending";
+/** Which conferencing provider a booked session's join link resolves to. */
+export type ConferencingChoice = "zoom" | "google" | "microsoft_teams" | "none";
 
 /** Which principal's money a basket spends. */
 export type BasketOwnerScope = "personal" | "team" | "business" | "organisation";
@@ -113,12 +164,33 @@ export interface CheckoutContext {
 	serviceId?: string | null;
 	/** The live dev-simulation knobs; `undefined` in production and whenever no override is active. */
 	sim?: BasketSim;
+	/**
+	 * The payment route the buyer has selected, when they have. Read server-side only to decide
+	 * whether the gateway-contribution offer applies — a wallet or invoice payment touches no card
+	 * scheme, so there is no third-party cost to offer to help cover.
+	 */
+	provider?: string | null;
+	/** Whether the buyer has opted into the voluntary gateway contribution. */
+	contribute?: boolean;
 }
 // #endregion
 
 // #region Surface vocabulary
-/** The two routes this feature owns. */
+/**
+ * The coarse two-route split the lane and the bands were originally written against.
+ *
+ * KEPT, not retired: the lane's dual presentation and the footer rig both branch on it, and the
+ * finer {@link CheckoutStep} is a refinement of it rather than a replacement — `basket` is step 1,
+ * `checkout` is steps 2–4. Both are resolved from the pathname by `basket-model.ts`, so they cannot
+ * disagree.
+ */
 export type CheckoutView = "basket" | "checkout";
+
+/**
+ * One step of the four-step flow. Re-exported from the pure model so a component imports its types
+ * from one place, exactly as every other shape on this surface does.
+ */
+export type { CheckoutStep } from "../core/basket-model.ts";
 
 /** A `/basket` lane destination — a named basket, or the parked shelf. */
 export interface BasketLaneEntry {

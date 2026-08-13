@@ -52,13 +52,17 @@ import type {
 } from "@projective/types/finance";
 import {
 	capabilitiesForRole,
+	convertMinorUnits,
+	currencyExponent,
 	formatMoney,
 	type FundState,
+	resolveRate,
 	type SplitRuleType,
 	type VaultCapability,
 	type VaultRole,
 	walletVariant,
 } from "@projective/types/finance";
+import { FX_FIXTURE_BASE, FX_FIXTURE_RATES } from "./fx-fixtures.ts";
 
 /**
  * wallet fixtures — the fat {@link WalletBackendService}'s deterministic finance world while
@@ -130,25 +134,55 @@ function clearingLabel(ms: number): string {
 }
 // #endregion
 
-// #region FX (snapshot table, GBP base) + money projection
+// #region FX (the seeded snapshot table, GBP base) + money projection
 /**
- * Units of each currency per 1 GBP — the fixture FX snapshot (finance-model.md §11: store-in-origin,
- * GBP base, snapshot-at-commit). **Who bears the FX spread is an OPEN business question (root §8) — we
- * display the rate + converted amount only and NEVER model a conversion fee here.**
+ * The fixture FX snapshot every finance surface projects money through.
+ *
+ * **This used to be a private three-entry table (`{ GBP: 1, USD: 1.27, EUR: 1.17 }`) with a `?? 1`
+ * fallback, and it was silently wrong for nine of the twelve offerable display currencies.** An
+ * unknown code resolved to a rate of exactly 1, so a $95.00 product rendered as `AED 74.80` where the
+ * real rate makes it AED 348.58 — a 4.7× understatement presented with full confidence, on a price a
+ * buyer was about to pay. It was invisible in review because the three currencies it did cover are
+ * the three anyone tests with.
+ *
+ * It now reads {@link FX_FIXTURE_RATES} — the SAME twelve-currency table `FxService` serves to the
+ * client and `00005050_seed_reference_data.sql` seeds into `finance.fx_rates`. That is the point:
+ * the server's figure and the client's re-projection of it are now derived from one table, so they
+ * cannot disagree. (finance-model.md §11: store-in-origin, GBP base, snapshot-at-commit. **Who bears
+ * the FX spread is an OPEN business question (root §8) — we display the rate and the converted
+ * amount only and NEVER model a conversion fee here.**)
  */
-const FX_PER_GBP: Record<string, number> = { GBP: 1, USD: 1.27, EUR: 1.17 };
+const FX_TABLE = { base: FX_FIXTURE_BASE, rates: FX_FIXTURE_RATES };
 
-/** The FX multiplier `to = from × rate`. */
+/**
+ * The FX multiplier `to = from × rate`, resolved through the SSOT's own {@link resolveRate}.
+ *
+ * Delegating rather than dividing two lookups matters for a pair where NEITHER side is the base:
+ * `resolveRate` triangulates through it (`from → GBP → to`), which is the arithmetic the client runs.
+ * A local `t / f` happens to agree today, but a table that ever gained a non-triangulable pair would
+ * split the two answers, and only one of them is what the buyer is charged.
+ *
+ * Returns `1` only for a genuinely unresolvable pair, and that case can no longer arise for an
+ * offerable currency — every one of the twelve has an entry.
+ */
 function fxRate(from: string, to: string): number {
-	const f = FX_PER_GBP[from.toUpperCase()] ?? 1;
-	const t = FX_PER_GBP[to.toUpperCase()] ?? 1;
-	return t / f;
+	return resolveRate(FX_TABLE, from, to) ?? 1;
 }
 
-/** Convert a minor-unit amount between currencies (2dp fixture set — exponent-stable). */
+/**
+ * Convert a minor-unit amount between currencies.
+ *
+ * **Exponent-aware, which the previous implementation was not.** It multiplied minor units by the
+ * rate directly, with a comment asserting the fixture set was "2dp — exponent-stable". JPY has
+ * exponent 0. So ¥ figures were wrong by a further factor of 100 on top of the rate error: the two
+ * bugs compounded, and the more plausible the result looked the harder it was to notice.
+ * {@link convertMinorUnits} is the SSOT's converter and takes both exponents explicitly.
+ */
 function convertMinor(minor: number, from: string, to: string): number {
-	if (from.toUpperCase() === to.toUpperCase()) return minor;
-	return Math.round(minor * fxRate(from, to));
+	const src = from.toUpperCase();
+	const dst = to.toUpperCase();
+	if (src === dst) return minor;
+	return convertMinorUnits(minor, fxRate(src, dst), currencyExponent(src), currencyExponent(dst));
 }
 
 /**

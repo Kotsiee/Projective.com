@@ -128,74 +128,140 @@
 
 /* #region Money */
 /*
- * The single money treatment on this surface. Tabular figures so a column of prices aligns on the
- * decimal, and the minor units set a step down and slightly faded — baseline-aligned, never
- * superscript, which would break the alignment and read as a retail price tag.
+ * The single money treatment on this surface — a THIN wrapper over `@projective/ui`'s `MoneyView`,
+ * which is what `Amount` renders.
+ *
+ * **This block used to be wrong in a way that produced no error.** It styled `.cko-money__amount`,
+ * `.cko-money__symbol` and `.cko-money__minor` — the classes `Amount` emitted back when it printed
+ * `value.display` itself. Since it began delegating (Decision #69, so a currency switch can re-project
+ * a server-rendered figure) the emitted classes are `.ui-money__amount`, `.ui-money__num`,
+ * `.ui-money__symbol`, `.ui-money__major` and `.ui-money__minor`, and every rule below the wrapper
+ * matched nothing. The checkout's `--hero` step in particular set a size on a wrapper whose child
+ * declares its own, so the shared component's ramp silently decided the figure and the surface's own
+ * type scale was inert.
+ *
+ * The rule that follows from that: **size and weight are set on `.ui-money__amount`**, which is the
+ * element that carries the glyphs, and never on `.cko-money`, which only groups the amount with its
+ * origin disclosure. `--num` carries the tabular figures for both runs.
  */
 .cko-money {
 	display: inline-flex;
 	gap: var(--space-1);
 	align-items: baseline;
 	color: var(--on-surface);
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
-
-.cko-money__amount {
-	display: inline-flex;
-	align-items: baseline;
 }
 
 /*
- * The currency symbol sits tight to the number and never wraps away from it. A symbol that reflowed
- * onto its own line would read as a different currency to the amount beneath it.
+ * Tabular figures on the numeric runs, so a column of prices aligns on the decimal. Declared here as
+ * well as in the package sheet because this surface renders money inside table-like rows where the
+ * package's own `.ui-money__num` may be the only carrier — one declaration, two sheets, same value.
  */
-.cko-money__symbol {
+.cko-money .ui-money__num {
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: "tnum" 1;
+}
+
+/* The amount is one unbreakable object: a symbol that reflowed onto its own line would read as a
+   different currency to the number beneath it. */
+.cko-money .ui-money__amount {
 	white-space: nowrap;
 }
 
-.cko-money__minor {
-	font-size: var(--minor-size);
-	opacity: var(--minor-fade);
-}
-
-.cko-money--body {
-	font-size: var(--text-md);
-	font-weight: var(--fw-semibold);
-}
-
-.cko-money--micro {
+/*
+ * The four checkout steps. Each sets the size on the amount itself, so it beats
+ * `.ui-money--<size> .ui-money__amount` on specificity (0,2,0 against 0,2,0, decided by source order —
+ * this sheet loads after the package's) and the surface's ramp is the one that renders.
+ */
+.cko-money--micro .ui-money__amount {
 	font-size: var(--text-xs);
 	font-weight: var(--fw-normal);
 }
 
-.cko-money--lead {
+.cko-money--body .ui-money__amount {
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.cko-money--lead .ui-money__amount {
 	font-size: var(--text-lg);
 	font-weight: var(--fw-semibold);
 }
 
-.cko-money--hero {
+.cko-money--hero .ui-money__amount {
 	font-size: var(--text-2xl);
 	font-weight: var(--fw-semibold);
 	letter-spacing: var(--tracking-tight);
 }
 
-/* A hero figure's pence step down further: at display scale the small end's ratio is not a ratio. */
-.cko-money--hero .cko-money__minor {
-	font-size: 0.5em;
+/*
+ * The pence run.
+ *
+ * A step down and slightly faded, and — unlike the package default — **baseline-aligned rather than
+ * raised**: this surface stacks prices in columns (a line price over a unit price, a row of subtotals
+ * over a total), and a raised tail breaks the shared baseline that makes a column scannable, as well
+ * as reading like a retail price tag on a figure the buyer is about to be charged.
+ *
+ * `--minor-fade` is unitless on purpose — it feeds `opacity`, and a percentage delivered through
+ * `var()` is rejected by engines whose `<alpha-value>` grammar predates CSS Color 4, which silently
+ * resets it to 1 and undoes the de-emphasis.
+ */
+.cko-money .ui-money__minor {
+	align-self: baseline;
+	font-size: var(--minor-size);
+	line-height: inherit;
+	opacity: var(--minor-fade);
 }
 
-.cko-money--muted {
+/*
+ * At display scale the small end's ratio stops being a ratio: `--minor-size` of `--text-2xl` is ~15px,
+ * loud enough to compete with the body copy around it. `/wallet` measured exactly this (Decision #63:
+ * pence at 0.55em of a 72px figure rendered 39.6px, larger than the commission rate beside it).
+ */
+.cko-money--hero .ui-money__minor {
+	font-size: 0.42em;
+}
+
+/*
+ * The stacked form: the converted figure on the reading line, the price the seller actually set
+ * beneath it.
+ *
+ * A pure direction flip on the wrapper `MoneyView` already emits — the amount and the origin are its
+ * two flex children — so no second markup path exists to drift, and the currency bridge, which rebuilds
+ * exactly that subtree when it re-projects a server-rendered figure, keeps working untouched.
+ *
+ * `align-items: flex-end` rather than `baseline`: two stacked rows have no shared baseline to align on,
+ * and the figures are read as a right-hand column.
+ */
+.cko-money--stacked {
+    flex-direction: column;
+    gap: 0;
+    align-items: flex-end;
+}
+
+.cko-money--stacked .ui-money__origin {
+    font-size: var(--text-xs);
+}
+
+.cko-money--muted .ui-money__amount,
+.cko-money--struck .ui-money__amount {
 	color: var(--text-secondary);
 }
 
-.cko-money--credit {
+.cko-money--credit .ui-money__amount {
 	color: var(--success);
 }
 
+/* Drawn on the wrapper so the strike runs through the symbol, the major run and the pence as one
+   line — a strike on the amount alone stops at each inline-flex child's own box. */
 .cko-money--struck {
-	color: var(--text-secondary);
 	text-decoration: line-through;
+}
+
+/* The origin disclosure never takes the amount's weight: it qualifies the figure, it is not the
+   figure. Its size is the package's `0.8125em`, which tracks whichever step it sits beside. */
+.cko-money .ui-money__origin {
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
 }
 /* #endregion */
 
@@ -927,8 +993,10 @@
 	font-size: var(--text-xs);
 }
 
+/* The amount as well as the label: the figure's own tone rule sets `color` on `.ui-money__amount`, so
+   a warning painted on the wrapper alone would be inherited and then overridden. */
 .cko-wallet__row[data-short="true"] .cko-wallet__label,
-.cko-wallet__row[data-short="true"] .cko-money {
+.cko-wallet__row[data-short="true"] .cko-money .ui-money__amount {
 	color: var(--warning);
 }
 

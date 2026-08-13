@@ -31,7 +31,7 @@ import type { ThemeInput } from "../types/mod.ts";
  */
 const SEMANTIC_SEEDS: Record<string, string> = {
 	success: "#268C66",
-	warning: "#D98216",
+	warning: "#F19C13",
 	danger: "#D94141",
 	info: "#3D7BD9",
 };
@@ -180,7 +180,7 @@ export function buildScheme(
 	// overlay entirely.
 	for (const [name, hex] of Object.entries(SEMANTIC_SEEDS)) {
 		const sc = CorePalette.of(argbFromHex(hex));
-		vars[`--${name}`] = hx(sc.a1.tone(dark ? fg(80) : fg(40)));
+		vars[`--${name}`] = hx(sc.a1.tone(dark ? fg(70) : fg(60)));
 		vars[`--on-${name}`] = hx(sc.a1.tone(dark ? on(20) : on(100)));
 	}
 

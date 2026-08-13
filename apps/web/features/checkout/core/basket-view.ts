@@ -26,21 +26,6 @@ import type {
  * to prevent.
  */
 
-// #region Density
-/** The two presentations the footer rig's density slider switches between. */
-export type BasketDensity = "list" | "card";
-
-/**
- * The presentation a density value resolves to.
- *
- * The threshold mirrors the footer rig's own `formatValue` (`v < 0.5 → "List view"`), so the label the
- * reader is shown and the layout they get are decided by one number in one place.
- */
-export function densityOf(zoom: number): BasketDensity {
-	return zoom < 0.5 ? "list" : "card";
-}
-// #endregion
-
 // #region Narrowing
 /**
  * Whether a line survives the header band's find-in-basket query.

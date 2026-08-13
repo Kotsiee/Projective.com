@@ -2779,40 +2779,42 @@ styles/{ticket-view,ticket-pipeline}.css}`
 
 | 67 | **Asset management — the `/files` hub, the universal Asset Picker, privacy scopes, quotas and
 the connector substrate (2026-08-05).** The 17th thin/fat vertical and the platform's first
-**cross-cutting** one: every file, image, recording and web link on the platform becomes one **asset**
-owned by one principal and reachable through one hub, so the same asset can be a submission
-deliverable, a profile banner and a channel attachment without being copied. **(A) THE WIDENING (the
-load-bearing change).** `projects/files.ts` `FileItemSchema` mandated message provenance —
-`channelId`/`channelName`/`channelKind`/`messageId`/`messageText`/`sender` — which is correct for a
-channel attachment and wrong for a hub upload, a drive mount and a link, none of which has a channel
-or a message. Rather than fork a second file shape (doubling every card, table, preview and modal),
-the files domain now owns `AssetItemSchema` — the SUPERSET with provenance **flat and nullable** —
-and `FileItemSchema` is re-expressed as `AssetItemSchema.extend({…})` re-mandating those fields.
-`FileItem` stays assignable to `AssetItem`, so all twelve existing consumers compiled unchanged while
-`FileCard`/`FileTable`/`FilePreview`/`AttachmentPreviewModal` needed their prop types widened exactly
-once. Flat-and-nullable over nested-optional deliberately: nesting forces an edit at every
-`file.sender` read, where flat is a pure widening the type-checker walks for you. `FileKind` moved
-down to a new leaf `files/kinds.ts` — `files/categories.ts` had been reaching UP into
-`projects/files.ts` for the vocabulary the files domain owns while `projects/files.ts` reached back
-for `FileCategory`, a mutual edge surviving only because one side was `import type`; the graph is now
-a one-way DAG (kinds ← categories ← assets ← projects), which matters because a cycle in a module
-whose corpus builds at import time is the TDZ crash class of Decision #49, not a style problem.
-`FileKind` gained `link`, which correctly broke four exhaustive `Record<FileKind,…>` maps. **(B) The
-`/files` hub** follows the §63 region contract exactly: LANE = the three-section tree (My library ·
-read-only **Mounted** engagements · **Connected drives**) with a collapsed rail and the quota meter;
-HEADER BAND = identity + search + kind/source filter + sort, at exactly `--shell-midnav-header-h`;
-FOOTER = Upload · New folder · Attach link · Connect drive · zoom · Export, `container-type:
-inline-size` with three container tiers where **the menu holds every action at every tier** (the
-`/wallet` defect where a `nth-child(n+3){display:none}` deleted three actions on four pages that had
-no menu to recover them); BODY = viewing and selecting only. Below 767px the lane is `display:none`
-and the section-switching duty **transfers** to a header-band "Browse" control — `/projects` still
-has no mobile answer and that failure was deliberately not inherited. File cards are `FileCard`
-VERBATIM and folder cards are the `/submissions` `SubmissionCard` VERBATIM (shaped through
-`shapeFolderAsNode`), which works only because `.fx-card__meta` and `.subm-card__meta` are both
-exactly 62px and one `rowHeight = w + 62 + 16` fits both in one grid. **(C) The Asset Picker** is one
-hand-rolled `BodyPortal` modal (NOT `Dialog`, whose `overflow:hidden` + `--overlay-w-lg` + body
-padding fight a two-pane workspace) over a single `<Splitter layout="horizontal">` — the modifier is
-mandatory, because `navigation/styles/splitter.css` ships a BARE `.ui-splitter` rule (0,1,0) forcing
+**cross-cutting** one: every file, image, recording and web link on the platform becomes one
+**asset** owned by one principal and reachable through one hub, so the same asset can be a
+submission deliverable, a profile banner and a channel attachment without being copied. **(A) THE
+WIDENING (the load-bearing change).** `projects/files.ts` `FileItemSchema` mandated message
+provenance — `channelId`/`channelName`/`channelKind`/`messageId`/`messageText`/`sender` — which is
+correct for a channel attachment and wrong for a hub upload, a drive mount and a link, none of which
+has a channel or a message. Rather than fork a second file shape (doubling every card, table,
+preview and modal), the files domain now owns `AssetItemSchema` — the SUPERSET with provenance
+**flat and nullable** — and `FileItemSchema` is re-expressed as `AssetItemSchema.extend({…})`
+re-mandating those fields. `FileItem` stays assignable to `AssetItem`, so all twelve existing
+consumers compiled unchanged while `FileCard`/`FileTable`/`FilePreview`/`AttachmentPreviewModal`
+needed their prop types widened exactly once. Flat-and-nullable over nested-optional deliberately:
+nesting forces an edit at every `file.sender` read, where flat is a pure widening the type-checker
+walks for you. `FileKind` moved down to a new leaf `files/kinds.ts` — `files/categories.ts` had been
+reaching UP into `projects/files.ts` for the vocabulary the files domain owns while
+`projects/files.ts` reached back for `FileCategory`, a mutual edge surviving only because one side
+was `import type`; the graph is now a one-way DAG (kinds ← categories ← assets ← projects), which
+matters because a cycle in a module whose corpus builds at import time is the TDZ crash class of
+Decision #49, not a style problem. `FileKind` gained `link`, which correctly broke four exhaustive
+`Record<FileKind,…>` maps. **(B) The `/files` hub** follows the §63 region contract exactly: LANE =
+the three-section tree (My library · read-only **Mounted** engagements · **Connected drives**) with
+a collapsed rail and the quota meter; HEADER BAND = identity + search + kind/source filter + sort,
+at exactly `--shell-midnav-header-h`; FOOTER = Upload · New folder · Attach link · Connect drive ·
+zoom · Export, `container-type:
+inline-size` with three container tiers where **the menu holds every
+action at every tier** (the `/wallet` defect where a `nth-child(n+3){display:none}` deleted three
+actions on four pages that had no menu to recover them); BODY = viewing and selecting only. Below
+767px the lane is `display:none` and the section-switching duty **transfers** to a header-band
+"Browse" control — `/projects` still has no mobile answer and that failure was deliberately not
+inherited. File cards are `FileCard` VERBATIM and folder cards are the `/submissions`
+`SubmissionCard` VERBATIM (shaped through `shapeFolderAsNode`), which works only because
+`.fx-card__meta` and `.subm-card__meta` are both exactly 62px and one `rowHeight = w + 62 + 16` fits
+both in one grid. **(C) The Asset Picker** is one hand-rolled `BodyPortal` modal (NOT `Dialog`,
+whose `overflow:hidden` + `--overlay-w-lg` + body padding fight a two-pane workspace) over a single
+`<Splitter layout="horizontal">` — the modifier is mandatory, because
+`navigation/styles/splitter.css` ships a BARE `.ui-splitter` rule (0,1,0) forcing
 `inline-size: var(--shell-lane-w)` globally, and without it the picker collapses to 280px. Verified
 open at 1088×768 with panes 238/846 going to 238/583/259 the moment a file is selected (the Inspect
 panel is absent, not disabled, until then), `Attach Selected (N)` carrying a live count, and the
@@ -2820,32 +2822,33 @@ panel is absent, not disabled, until then), `Attach Selected (N)` carrying a liv
 virtualization is correct in the hub body and WRONG in every overlay, so the picker uses a plain
 auto-fill grid and `FileTable virtualize={false}`. **(D) Privacy scopes** — `private` (default) ·
 `link` (auto-elevated inside a channel/DM/submission, because a recipient who can read the message
-must be able to open what it carries) · `public` (auto-elevated on a service/product/profile/banner);
-elevation is one-directional and automatic, de-escalation always explicit, so attaching can never
-silently narrow access something else depends on. A channel attachment is therefore `link`-visible
-BY CONSTRUCTION, which the fixtures now encode. `/share/[slug]` is anonymous-reachable with
-`X-Robots-Tag: noindex, nofollow` + `Referrer-Policy: no-referrer`, and every dead state — unknown,
-expired, revoked, exhausted — renders an IDENTICAL 404: measured, revoked-vs-unknown differ by
-**exactly one byte, the last character of the slug the caller supplied**, everything else being a
-per-request CSP nonce. **(E) Quotas are an ENTITLEMENT, not a parallel system** — a new
-`storage_megabytes` key resolved by the existing `fn_effective_limit`/`fn_footprint_usage`, which
-needed one `ELSIF`. Denominated in **MEBIBYTES** because `plan_entitlements.limit_value` and all
-three resolver return types are `integer`: 25 GB in bytes is 26,843,545,600 and overflows int4, and 1
-TB is off by ~512×. Ladder: free tiers 25600 · individual_pro 153600 · team/business_pro 512000 ·
-organisation unlimited (`NULL`, never a huge number that would eventually be rendered as a promise).
-Enforcement ships **fail-open** behind `storage_quota_enforced`, matching both existing footprint
-gates. **(F) Dedup** is a client fingerprint BEFORE the bytes move: full SHA-256 under 256 MiB,
-sampled (head ‖ tail ‖ size) above it — `crypto.subtle` has no streaming API, so a 2 GB file
-genuinely cannot be digested whole — with `sampled: boolean` carried in the schema so the server
-knows the STRENGTH of the claim and never collapses two objects on a hint. Outside a secure context
-it degrades to name+size and never fails the upload. **Four pre-existing security holes closed:**
-`files.items` SELECT was `USING (true)` (every signed-in user could read every row's filename, MIME,
-size, bucket and storage path, including verification documents), its UPDATE policy had `USING` with
-no `WITH CHECK` (a user could reassign `owner_user_id` or repoint `storage_path` at another tenant's
-object in the same statement), and `files.folders` had **RLS off entirely** while inheriting a
-blanket `authenticated` CRUD grant. **A fifth was introduced and caught in review:** the share-link
-policy's `WITH CHECK (created_by = auth.uid())` proved identity but never OWNERSHIP, so any signed-in
-user could mint a permanent share over any asset id they had ever seen — a member removed from a team
+must be able to open what it carries) · `public` (auto-elevated on a
+service/product/profile/banner); elevation is one-directional and automatic, de-escalation always
+explicit, so attaching can never silently narrow access something else depends on. A channel
+attachment is therefore `link`-visible BY CONSTRUCTION, which the fixtures now encode.
+`/share/[slug]` is anonymous-reachable with `X-Robots-Tag: noindex, nofollow` +
+`Referrer-Policy: no-referrer`, and every dead state — unknown, expired, revoked, exhausted —
+renders an IDENTICAL 404: measured, revoked-vs-unknown differ by **exactly one byte, the last
+character of the slug the caller supplied**, everything else being a per-request CSP nonce. **(E)
+Quotas are an ENTITLEMENT, not a parallel system** — a new `storage_megabytes` key resolved by the
+existing `fn_effective_limit`/`fn_footprint_usage`, which needed one `ELSIF`. Denominated in
+**MEBIBYTES** because `plan_entitlements.limit_value` and all three resolver return types are
+`integer`: 25 GB in bytes is 26,843,545,600 and overflows int4, and 1 TB is off by ~512×. Ladder:
+free tiers 25600 · individual_pro 153600 · team/business_pro 512000 · organisation unlimited
+(`NULL`, never a huge number that would eventually be rendered as a promise). Enforcement ships
+**fail-open** behind `storage_quota_enforced`, matching both existing footprint gates. **(F) Dedup**
+is a client fingerprint BEFORE the bytes move: full SHA-256 under 256 MiB, sampled (head ‖ tail ‖
+size) above it — `crypto.subtle` has no streaming API, so a 2 GB file genuinely cannot be digested
+whole — with `sampled: boolean` carried in the schema so the server knows the STRENGTH of the claim
+and never collapses two objects on a hint. Outside a secure context it degrades to name+size and
+never fails the upload. **Four pre-existing security holes closed:** `files.items` SELECT was
+`USING (true)` (every signed-in user could read every row's filename, MIME, size, bucket and storage
+path, including verification documents), its UPDATE policy had `USING` with no `WITH CHECK` (a user
+could reassign `owner_user_id` or repoint `storage_path` at another tenant's object in the same
+statement), and `files.folders` had **RLS off entirely** while inheriting a blanket `authenticated`
+CRUD grant. **A fifth was introduced and caught in review:** the share-link policy's
+`WITH CHECK (created_by = auth.uid())` proved identity but never OWNERSHIP, so any signed-in user
+could mint a permanent share over any asset id they had ever seen — a member removed from a team
 keeps those ids. **Six Dev Context axes** (§5 gate) — `storageProvider` · `connectionState` ·
 `storageQuota` · `assetVisibility` · `linkScan` · `dedupState` — wired through all three files
 including both `reflect()` branches, travelling to the server as validated `sim*` query params.
@@ -2855,34 +2858,35 @@ schema-qualified; plpgsql defers parsing, so it would have created cleanly and f
 anyone minted a share slug; (2) a literal **NUL byte** in `fingerprint.ts` made an 11 KB file binary
 to git and invisible to grep, and it was the delimiter of a dedup lookup key — any transcoding
 round-trip would have turned "have you got one of these?" into a permanent silent miss; (3)
-`UserConnectionSchema.config` was required with no such column and no view projection, so every parse
-of a real row would have failed; (4) the `workspace` bucket was seeded with full RLS but absent from
-`StorageBucket`, leaving entity assets with no addressable bucket and no builder for the `{entity_id}`
-anchor its own policies key on; (5) `dedupState` was plumbed through six layers and **dropped at the
-route** — a panel control that changed nothing; (6) reads did not normalise the fixture owner while
-writes did, so SSR painted an empty hub with a 0-byte quota and a client refetch painted the full
-library over it — two answers for one screen. **Flagged (surface, do not silently resolve):** (a) the
-migrations are authored-not-applied AND **were not executed** — Docker's Linux engine was down, so
-unlike Decisions #57/#58 there is no throwaway-Postgres proof, only a structural audit (enum parity
-diffed member-by-member, category placement, dependency order, RLS coverage, `SECURITY DEFINER`/
-`search_path`); (b) connections stay **per-user** — `integrations.user_connections` has no owner axis,
-so a team's shared Drive is inexpressible (inherits Decision #59); (c) entity-owned assets cannot yet
-be shared by a non-owner member — the policy fails CLOSED pending (b); (d) `AssetListParams` has no
-`recursive` flag, so the picker's "Recent" is the library ROOT newest-first, not a cross-folder
-recency feed; (e) `accept` filters by category CLIENT-side, so `total`/`hasMore` describe the
-server's kind-narrowed set rather than the drawn one; (f) provider adapters, the OAuth consent
-handshake, the KMS token vault, favicon re-hosting and link scanning are all **stub-first behind the
-gate** — the payloads and interfaces are real, only the outbound calls wait on credentials; (g)
-`ENCRYPTION_KEY` in the env contract still contradicts the `connection_secrets.key_id` envelope
-design (inherits #59), and `token-vault.ts` deliberately REFUSES to seal while gated rather than
-return a reversible encoding that would survive the gate flip as plaintext; (h) `/api/wallet/*` reads
-the session on every route while `/api/files`, `/api/catalogue` and `/api/projects` do not — the read
-convention is not uniform and wants one human decision, not a third pattern. |
-`PRODUCT_SPEC.md` §Assets & Attachments + §Sitemap · `packages/types/files/*` ·
-`packages/types/projects/files.ts` · `packages/types/integrations/*` ·
-`packages/backend/services/{files,integrations}/*` · `packages/backend/core/{env,supabase}.ts` ·
-`apps/web/features/files/**` · `apps/web/routes/(dashboard)/files/**` ·
-`apps/web/routes/(public)/share/[slug].tsx` · `apps/web/routes/api/{files,integrations}/*` ·
+`UserConnectionSchema.config` was required with no such column and no view projection, so every
+parse of a real row would have failed; (4) the `workspace` bucket was seeded with full RLS but
+absent from `StorageBucket`, leaving entity assets with no addressable bucket and no builder for the
+`{entity_id}` anchor its own policies key on; (5) `dedupState` was plumbed through six layers and
+**dropped at the route** — a panel control that changed nothing; (6) reads did not normalise the
+fixture owner while writes did, so SSR painted an empty hub with a 0-byte quota and a client refetch
+painted the full library over it — two answers for one screen. **Flagged (surface, do not silently
+resolve):** (a) the migrations are authored-not-applied AND **were not executed** — Docker's Linux
+engine was down, so unlike Decisions #57/#58 there is no throwaway-Postgres proof, only a structural
+audit (enum parity diffed member-by-member, category placement, dependency order, RLS coverage,
+`SECURITY DEFINER`/ `search_path`); (b) connections stay **per-user** —
+`integrations.user_connections` has no owner axis, so a team's shared Drive is inexpressible
+(inherits Decision #59); (c) entity-owned assets cannot yet be shared by a non-owner member — the
+policy fails CLOSED pending (b); (d) `AssetListParams` has no `recursive` flag, so the picker's
+"Recent" is the library ROOT newest-first, not a cross-folder recency feed; (e) `accept` filters by
+category CLIENT-side, so `total`/`hasMore` describe the server's kind-narrowed set rather than the
+drawn one; (f) provider adapters, the OAuth consent handshake, the KMS token vault, favicon
+re-hosting and link scanning are all **stub-first behind the gate** — the payloads and interfaces
+are real, only the outbound calls wait on credentials; (g) `ENCRYPTION_KEY` in the env contract
+still contradicts the `connection_secrets.key_id` envelope design (inherits #59), and
+`token-vault.ts` deliberately REFUSES to seal while gated rather than return a reversible encoding
+that would survive the gate flip as plaintext; (h) `/api/wallet/*` reads the session on every route
+while `/api/files`, `/api/catalogue` and `/api/projects` do not — the read convention is not uniform
+and wants one human decision, not a third pattern. | `PRODUCT_SPEC.md` §Assets & Attachments +
+§Sitemap · `packages/types/files/*` · `packages/types/projects/files.ts` ·
+`packages/types/integrations/*` · `packages/backend/services/{files,integrations}/*` ·
+`packages/backend/core/{env,supabase}.ts` · `apps/web/features/files/**` ·
+`apps/web/routes/(dashboard)/files/**` · `apps/web/routes/(public)/share/[slug].tsx` ·
+`apps/web/routes/api/{files,integrations}/*` ·
 `supabase/migrations/{00000004,00000010,00000020,00000030,00001160,00001220,00001880,00002001,00002011,00002017,00003004,00004011,00005001,00005030,00005040,00005050}*`
 · `documentation/database/{files,integrations,finance}/*` · `.env.example` · Decisions #32 / #33 /
 #53 / #58 / #59 / #60 / #63 |
@@ -2891,70 +2895,72 @@ convention is not uniform and wants one human decision, not a third pattern. |
 The 18th thin/fat vertical and the platform's second write surface: one basket per acting context, a
 `/checkout` that pays for all **ten** `PurchasableItemKind`s, a portable card visualizer, and a
 dev-only money-flow debugger. **(A) Schema, folded in place** (root §1 — the brief asked for new
-timestamped migrations; the governing rule forbids them): `finance.baskets` · `finance.basket_items` ·
-`finance.saved_cards` into `00000017`, two enums (`purchasable_item_kind` 10 values,
+timestamped migrations; the governing rule forbids them): `finance.baskets` · `finance.basket_items`
+· `finance.saved_cards` into `00000017`, two enums (`purchasable_item_kind` 10 values,
 `card_brand` 9) into `00000004`, the `simulate_wallet_transaction` RPC + two predicates into
 `00001210`, RLS/policies/grants/indexes into their category files. **`owner_type` was widened** from
 the brief's `'user' | 'business'` to the existing 5-value finance CHECK — task §4.2 requires a Team
 basket, which the narrow pair cannot express. **Validated by execution, not inspection:** every
 statement applied to a live Postgres inside `BEGIN … ROLLBACK` plus a 32-case suite (enum order, the
-`split_payout` round trip, **all 13 simulator refusal paths**, every CHECK, RLS coverage, `EXECUTE` =
-`authenticated` only). **Authored, NOT applied to any live DB.** **(B) The simulator is dangerous and
-is gated like it.** It mutates real balances, so it fail-closes on a new `finance_simulation_enabled`
-param seeded **false**, refuses a NULL `auth.uid()`, and — **wider than the brief** — checks the
-DESTINATION wallet too, since `top_up`/`escrow_release`/`refund` would otherwise let any signed-in
-caller mint balance into a stranger's wallet. **(C) The card's custody conflict, resolved honestly.**
-Decision #60's `wlt-card` refuses expiry/name/CVV/flip on the thesis that "an affordance implying we
-hold data we do not is worse than an empty space" — but Stripe DOES return brand/last4/exp/name, and
-the brief's own `saved_cards` stores exactly those. So the NEW `@projective/ui/display` `PaymentCard`
-renders the real expiry, cardholder name and last4 with the PAN as `aria-hidden` mask groups (4-6-5
-on Amex) and the CVV as `•••` **ornament — never an input, never a value, never a reveal**; absent
-fields render as ABSENCE, never `--/--`. `SavedCardSchema` carries no `pan`/`cvv` key, not even
-optional. The wallet's card is untouched. `PaymentCardOption` is a **sibling, not an `interactive`
-prop**, because a flip `<button>` nested in a `role="radio"` button is invalid HTML that breaks both
-controls — a sibling wrapping a `decorative` face makes the combination unreachable rather than
-merely discouraged. **(D) Portability held at both boundaries.** `packages/ui` still imports only
-preact/signals/material: the card takes a structural `PaymentCardData` (proven assignable from
-`SavedCard` by typecheck, so the app passes real Zod types with no adapter), and `MoneyFlowPopover`
-is **fully controlled — zero fetch, zero arithmetic** — over `DraggablePopover`. Its balance meter
-sets geometry directly and confines motion to `transform`/`opacity`, so a backgrounded tab with a
-frozen animation clock still shows correct widths. **(E) One arithmetic path.** `basketSubtotal` →
-`applyDiscounts` → `platformFeeFor` → `checkoutTotals` live in the SSOT and are the ONLY
-implementation; the fat services wrap their integer minor units into `MoneyView`s and the client
-renders `display` strings — **zero** `toFixed`/`Intl.NumberFormat`/`reduce`-over-prices in any island.
-`explore/pricing.ts` was extracted so a basket line's unit price cannot disagree with the card that
-added it (Decision #45 parity). `create()` is idempotent on `idempotencyKey` and **re-verifies
-`expectedTotalMinor`** — a client-supplied total accepted blindly is a price-tampering hole.
-**(F) Region contract** (#60/#63) honoured: lane = scope, header band = identity/search, footer rig =
-every action with `container-type` tiers **whose menu holds every action at every tier**, body = views
-and selects only. **Nine defects found by measurement, not inspection**, four of them the same class —
-*a control that exists but cannot be reached*: the collapsed lane never narrowed (280px held, 216px of
-body lost) and dropped its own scope duty; header search was `display:none`d at the narrowest tier, so
-**every phone** lost find-in-basket (the `/wallet` `nth-child(n+3)` failure in a header's clothes); the
-same field was inert on `/checkout` at every width; BuyNow's `<li>` broke the radiogroup ownership
-chain; its card picker set `tabIndex={-1}` on **every** option when none was chosen, making the group
-un-enterable; `role="alert"` + `aria-live="polite"` demoted a REFUSED payment to the politeness of a
-successful one; and post-payment focus fell to `<body>` because the confirm dialog restored focus to a
-trigger that no longer existed, on an exit animation. Also fixed in the SSOT: `CheckoutBlockerCode`
-had no **`price_changed`** member, so the tamper refusal returned `blockers: []` and any surface
-explaining refusals by rendering blockers showed nothing on the refusal a buyer is most likely to hit.
-**(G) Dev parity (§5 gate):** four axes — `basketOwner` · `paymentProviders` · `walletCoverage` ·
-`savedCards` — through `dev-seam` + `DevOverrides`/`DEV_DEFAULTS`/`DevOption`/`reflect()` **set AND
-delete** + a panel group, travelling to the server as validated `sim*` query params and genuinely
-consumed (no plumbed-and-dropped param). Verified in-browser at 1440 and 390, LTR + RTL, **zero
-horizontal overflow in both directions at both widths**; full gate chain 3 blockers → 0 → Pay →
-`succeeded £1,366.15`; the drawer's CSS ships from a non-checkout page, closing the island-carrier
-trap. **Flagged — needs a human, do NOT silently resolve:** (a) **🚨 `authenticated` has no `USAGE` on
-the `finance` schema** — `00002500` revokes it and never re-grants; `finance` is the only schema in the
-revoke list without a matching grant, verified live (`42501`), so every finance policy old and new is
-latent. Granting it would expose the whole ledger to direct PostgREST reads wherever a permissive
-policy exists; deliberately NOT granted. (b) **`platform_fee_bp` is seeded `0`** while the SSOT says
-`500` and Decision #2 resolved 5% — the live DB charges nothing; a fee change across every reset is a
-money decision. (c) **Who bears the fee** — modelled as `PlatformFeeMode`, defaulted to the documented
+`split_payout` round trip, **all 13 simulator refusal paths**, every CHECK, RLS coverage, `EXECUTE`
+= `authenticated` only). **Authored, NOT applied to any live DB.** **(B) The simulator is dangerous
+and is gated like it.** It mutates real balances, so it fail-closes on a new
+`finance_simulation_enabled` param seeded **false**, refuses a NULL `auth.uid()`, and — **wider than
+the brief** — checks the DESTINATION wallet too, since `top_up`/`escrow_release`/`refund` would
+otherwise let any signed-in caller mint balance into a stranger's wallet. **(C) The card's custody
+conflict, resolved honestly.** Decision #60's `wlt-card` refuses expiry/name/CVV/flip on the thesis
+that "an affordance implying we hold data we do not is worse than an empty space" — but Stripe DOES
+return brand/last4/exp/name, and the brief's own `saved_cards` stores exactly those. So the NEW
+`@projective/ui/display` `PaymentCard` renders the real expiry, cardholder name and last4 with the
+PAN as `aria-hidden` mask groups (4-6-5 on Amex) and the CVV as `•••` **ornament — never an input,
+never a value, never a reveal**; absent fields render as ABSENCE, never `--/--`. `SavedCardSchema`
+carries no `pan`/`cvv` key, not even optional. The wallet's card is untouched. `PaymentCardOption`
+is a **sibling, not an `interactive` prop**, because a flip `<button>` nested in a `role="radio"`
+button is invalid HTML that breaks both controls — a sibling wrapping a `decorative` face makes the
+combination unreachable rather than merely discouraged. **(D) Portability held at both boundaries.**
+`packages/ui` still imports only preact/signals/material: the card takes a structural
+`PaymentCardData` (proven assignable from `SavedCard` by typecheck, so the app passes real Zod types
+with no adapter), and `MoneyFlowPopover` is **fully controlled — zero fetch, zero arithmetic** —
+over `DraggablePopover`. Its balance meter sets geometry directly and confines motion to
+`transform`/`opacity`, so a backgrounded tab with a frozen animation clock still shows correct
+widths. **(E) One arithmetic path.** `basketSubtotal` → `applyDiscounts` → `platformFeeFor` →
+`checkoutTotals` live in the SSOT and are the ONLY implementation; the fat services wrap their
+integer minor units into `MoneyView`s and the client renders `display` strings — **zero**
+`toFixed`/`Intl.NumberFormat`/`reduce`-over-prices in any island. `explore/pricing.ts` was extracted
+so a basket line's unit price cannot disagree with the card that added it (Decision #45 parity).
+`create()` is idempotent on `idempotencyKey` and **re-verifies `expectedTotalMinor`** — a
+client-supplied total accepted blindly is a price-tampering hole. **(F) Region contract** (#60/#63)
+honoured: lane = scope, header band = identity/search, footer rig = every action with
+`container-type` tiers **whose menu holds every action at every tier**, body = views and selects
+only. **Nine defects found by measurement, not inspection**, four of them the same class — _a
+control that exists but cannot be reached_: the collapsed lane never narrowed (280px held, 216px of
+body lost) and dropped its own scope duty; header search was `display:none`d at the narrowest tier,
+so **every phone** lost find-in-basket (the `/wallet` `nth-child(n+3)` failure in a header's
+clothes); the same field was inert on `/checkout` at every width; BuyNow's `<li>` broke the
+radiogroup ownership chain; its card picker set `tabIndex={-1}` on **every** option when none was
+chosen, making the group un-enterable; `role="alert"` + `aria-live="polite"` demoted a REFUSED
+payment to the politeness of a successful one; and post-payment focus fell to `<body>` because the
+confirm dialog restored focus to a trigger that no longer existed, on an exit animation. Also fixed
+in the SSOT: `CheckoutBlockerCode` had no **`price_changed`** member, so the tamper refusal returned
+`blockers: []` and any surface explaining refusals by rendering blockers showed nothing on the
+refusal a buyer is most likely to hit. **(G) Dev parity (§5 gate):** four axes — `basketOwner` ·
+`paymentProviders` · `walletCoverage` · `savedCards` — through `dev-seam` +
+`DevOverrides`/`DEV_DEFAULTS`/`DevOption`/`reflect()` **set AND delete** + a panel group, travelling
+to the server as validated `sim*` query params and genuinely consumed (no plumbed-and-dropped
+param). Verified in-browser at 1440 and 390, LTR + RTL, **zero horizontal overflow in both
+directions at both widths**; full gate chain 3 blockers → 0 → Pay → `succeeded £1,366.15`; the
+drawer's CSS ships from a non-checkout page, closing the island-carrier trap. **Flagged — needs a
+human, do NOT silently resolve:** (a) **🚨 `authenticated` has no `USAGE` on the `finance` schema**
+— `00002500` revokes it and never re-grants; `finance` is the only schema in the revoke list without
+a matching grant, verified live (`42501`), so every finance policy old and new is latent. Granting
+it would expose the whole ledger to direct PostgREST reads wherever a permissive policy exists;
+deliberately NOT granted. (b) **`platform_fee_bp` is seeded `0`** while the SSOT says `500` and
+Decision #2 resolved 5% — the live DB charges nothing; a fee change across every reset is a money
+decision. (c) **Who bears the fee** — modelled as `PlatformFeeMode`, defaulted to the documented
 `seller_deducted`, so the buyer's total excludes it; checkout must render one of the two. (d) The
-simulator needs sign-off before its param is ever flipped. (e) **Three overlapping instrument tables**
-now (`payment_methods` + `payout_accounts` + `saved_cards`), mitigated by a nullable FK, not resolved
-(extends #54(f)). (f) `revision_id` has no FK — the target table is unsettled. (g)
+simulator needs sign-off before its param is ever flipped. (e) **Three overlapping instrument
+tables** now (`payment_methods` + `payout_accounts` + `saved_cards`), mitigated by a nullable FK,
+not resolved (extends #54(f)). (f) `revision_id` has no FK — the target table is unsettled. (g)
 `CheckoutResult.orderId` is always `null`; no orders table exists. (h) **Item deep-links follow the
 canonical `/[handle]` + `/view/[id]` + `/projects/[projectId]/[channelId]`**, NOT the brief's
 `/[handle]/products/[id]` or `/projects/[id]/[stageId]`, which would 404. (i) "CDN card art" and
@@ -2963,101 +2969,210 @@ tracking needs JS) — art is derived into token expressions and the sheen is CS
 parallax an opt-in prop. (j) `bin_number` is usually NULL (Stripe entitlement-gated); every consumer
 degrades to `brand`. (k) Free-text is Zod-bounded but DB-unbounded — a **truncation contract** the
 resolving service must honour or the basket read 500s. (l) Mixed sim query vocabulary (four plain
-knobs vs four `sim*`-prefixed) wants one rename pass. (m) Bulk basket actions are N sequential writes.
-| root CLAUDE.md §1/§2/§3/§5 · `packages/types/finance/{basket,checkout,card-art}.ts` ·
+knobs vs four `sim*`-prefixed) wants one rename pass. (m) Bulk basket actions are N sequential
+writes. | root CLAUDE.md §1/§2/§3/§5 · `packages/types/finance/{basket,checkout,card-art}.ts` ·
 `packages/backend/services/finance/{Basket,Checkout,Cards}BackendService.ts` +
 `{basket,cards}-fixtures.ts` + `basket-query.ts` · `packages/backend/services/explore/pricing.ts` ·
 `packages/ui/display/components/PaymentCard.tsx` ·
 `packages/ui/overlay/islands/MoneyFlowPopover.island.tsx` · `apps/web/features/checkout/**` ·
-`apps/web/routes/(dashboard)/{basket,checkout}/**` ·
-`apps/web/routes/api/{basket,cards,checkout}/*` · `apps/web/routes/(dashboard)/_layout.tsx` ·
-`apps/web/features/shell/islands/UserActions.island.tsx` · `apps/web/utils/{dev-seam,storage-keys}.ts`
-· `apps/web/features/devtools/*` · `packages/types/profile/reserved.ts` ·
+`apps/web/routes/(dashboard)/{basket,checkout}/**` · `apps/web/routes/api/{basket,cards,checkout}/*`
+· `apps/web/routes/(dashboard)/_layout.tsx` ·
+`apps/web/features/shell/islands/UserActions.island.tsx` ·
+`apps/web/utils/{dev-seam,storage-keys}.ts` · `apps/web/features/devtools/*` ·
+`packages/types/profile/reserved.ts` ·
 `supabase/migrations/{00000004,00000017,00001210,00002001,00002013,00002510,00002520,00004005,00005001}*`
-· `documentation/database/finance/*` · `DESIGN_SYSTEM.md` §C.1 · Decisions #2 / #10 / #45 / #53 / #54
-/ #55 / #60 / #62 / #63 / #67 |
+· `documentation/database/finance/*` · `DESIGN_SYSTEM.md` §C.1 · Decisions #2 / #10 / #45 / #53 /
+#54 / #55 / #60 / #62 / #63 / #67 |
 
 | 69 | **Global multi-currency — the FX engine, `MoneyView`, and the header switcher (2026-08-10).**
-Money presentation becomes global: one FX engine, one component, and a currency switch that re-renders
-every visible figure with no page load. **The rule the whole pass protects:** a conversion is a
-**read-time projection over an immutable origin**. Every stored amount keeps its origin
-`(amount_minor, currency)`; settlement always reproduces the `(fx_rate, fx_base, fx_as_of)` snapshot
-committed on its own row; nothing on any read path rewrites a ledger amount. **(A) Schema, folded in
-place** (root §1 — no new timestamped migrations): `preferred_display_currency` gains `DEFAULT 'GBP'`
-+ a `^[A-Z]{3}$` CHECK; `finance.transactions`/`escrows`.`fx_base` gains `DEFAULT 'GBP'` so a stamped
-rate is never orphaned from its base; `custom_access_token_hook` stamps `displayCurrency` + `locale`
-into `app_metadata.active_context` — on the SAME claim, because a figure that paints in one currency
-and corrects itself after hydration is worse than a stale symbol. `finance.fx_rates` gains a **seeded
-floor** for all 12 offerable currencies with **both directions of every pair written explicitly** (a
-reader that divides by the forward rate and one that multiplies by the inverse disagree in the last
-minor unit) at a FIXED `as_of` so a reset is reproducible. Authored, **not applied to any live DB**.
-**(B) Zod SSOT** — new leaf `@projective/types/finance/fx.ts` (`FxRateTable`/`FxQuote`/
-`ConvertedAmount`, the curated `DISPLAY_CURRENCIES`, pure `resolveRate`/`convertMinorUnits`);
-`UserPreferencesUpdate` + `DisplayPreferences` on `org/preferences`; `displayCurrency`/`locale` on
-`UserContext` + `ActiveContextClaim`; `preferences` on `CurrentUser`; `toMoneyView()` bridging the
-engine to the existing money shape. `org/preferences` **re-exports** the currency defaults from the FX
-SSOT rather than restating them. **(C) `FxService`** is the only thing on the platform that converts: a
-per-base table cached 15 min in **Deno KV** → a per-isolate memory cache → the seeded fixtures, with
-`convertAmount()` returning the value **and** its `asOf` snapshot instant. It never throws and never
-returns "no answer": an unresolvable pair returns the **origin unchanged** with `converted: false`,
-because assuming a rate of 1 or relabelling an amount with a symbol it was not priced in turns a
-missing number into a WRONG one — the only FX failure a reader cannot detect. **(D) `MoneyView`** in
-`@projective/ui/display`, plus a portable signal store, on a narrow `./display/money` sub-path (the
-barrel re-exports Table/Tree/Galleria/GMap, and the globally-mounted bridge would have dragged all of
-them into every route's bundle to render a price). ONE component, three ways of learning the currency
-— props → request context → the host's ambient resolver → the signal store — so it is correct as a
-zero-JS server component AND reactive inside a hydrated island, with no second renderer to drift.
-**(E) Live switching** without a reload: the store re-renders hydrated figures, and a DOM sweep
-re-projects every server-rendered `[data-money]` node from its own IMMUTABLE origin attributes (never
-from the previous conversion, which would compound a rounding error on each switch). Islands flag
-themselves `data-money-live` from an effect — which only runs on hydration, so "is this reactive" is
-answered by the one signal that knows. **Adopted on the Explore service + product cards** (additive
-`priceMinor`/`currency` on the explore SSOT, parsed ONCE server-side at fixture construction — parsing
-a localised currency string in the browser is how "$1,800" becomes 1.8). **Four findings, all by
-measurement:** (1) **a Preact context provider at the document root is NOT visible to a server
-component deeper in the page** — an island boundary sits between them and island subtrees render in a
-pass that drops the outer context (an app-side probe beside a price returned `null`; the same probe
-under the provider returned the real value). A module signal would reach everywhere but is shared
-across concurrent requests, i.e. a data race over money that passes every manual test. Resolved with
-`AsyncLocalStorage`, which is request-scoped and survives every await and render pass. (2) The DOM
-sweep seeded `display: ""`, and `projectMoney`'s "target is already this currency" branch returns
-`display` **verbatim** by design — so switching TO the origin currency **blanked every figure**. (3)
-The currency PATCH went through `apiFetch`, whose unrecoverable-401 path **navigates to `/login`** —
-throwing someone off the page they were reading because a formatting preference could not be saved;
-now a plain `fetch`, where a 401 leaves the local choice in place and the surface says it saved on
-this device only. (4) Vite caches the package `exports` map at startup, so a new sub-path needs a
-dev-server restart — as does any `packages/*` edit, since HMR does not pick them up (two false
-negatives during this pass). **Verified in-browser:** SSR paints the viewer's currency in the first
-byte from the cookie/JWT (GBP · EUR · JPY all correct, JPY exponent-aware with no phantom decimals);
-the header picker changed **all 19** figures on `/explore` at once with the URL unchanged;
-GBP→EUR→JPY→USD→AED→GBP round-trips to the exact starting figure; the choice survives a reload; a
-guest PATCH 401s cleanly with no redirect; `deno task test` (check · lint · 33 unit tests) green.
-**Flagged (surface, do not silently resolve):** (a) `preferred_display_currency` now has a DEFAULT
-while `NULL` still means "follow the origin" — distinguishable, but subtle enough to deserve a human's
-confirmation. (b) **Adoption is one surface, not a migration**: ~180 other money sites (wallet,
-checkout, workspaces, tickets) still render through their surface-local components and do not respond
-to a currency switch; each now has a `MoneyView`-shaped target. (c) The brief's `£78.50 (~€90.00 EUR)`
-puts the `~` on the ORIGIN, which is the exact figure, while the converted primary is the estimate —
-implemented literally as specified, with the honest full statement in the accessible label and
-`title`. (d) **`deno fmt --check` is deliberately NOT in `deno task test`**: `core.autocrlf=true` makes
-it fail on any Windows checkout regardless of what is committed, and ~280 files predate the formatter.
-(e) FX spread / conversion-fee economics remain OPEN (finance-model §11) — the surface renders origin,
-converted and rate, and never a fee. (f) `finance.fx_rates` is read with the service-role client
-because SSR converts for signed-out visitors too; the rows are public reference data (`USING (true)`),
-but the read bypasses RLS and wants revisiting if that table ever carries anything else. |
-`SYSTEM_ARCHITECTURE.md` §Internationalization · `DESIGN_SYSTEM.md` §C.1 ·
-`packages/types/finance/fx.ts` ·
-`packages/types/{org/preferences,auth/user-context,user/current-user}.ts` ·
-`packages/backend/services/finance/{FxService,fx-fixtures}.ts` ·
-`packages/backend/services/user/UserBackendService.ts` ·
-`packages/ui/display/{money.ts,core/currency-store.ts,components/MoneyView.tsx,styles/money-view.css}`
-· `apps/web/utils/{currency-context,state,storage-keys}.ts` ·
-`apps/web/routes/{_app,_middleware}.tsx` · `apps/web/routes/api/{user/preferences,finance/fx}.ts` ·
-`apps/web/features/shell/{core/{CurrencyService,currency-state},islands/{CurrencyBridge,UserActions}}`
-· `apps/web/features/explore/{core/pricing,components/cards/{Service,Product}Card}` ·
-`supabase/migrations/{00000011,00000017,00001700,00005050}*` ·
-`documentation/database/{org,finance,security}/*` · Decisions #2 / #10 / #16 / #17 / #54 / #55 / #60 /
-#68 |
+Money presentation becomes global: one FX engine, one component, and a currency switch that
+re-renders every visible figure with no page load. **The rule the whole pass protects:** a
+conversion is a **read-time projection over an immutable origin**. Every stored amount keeps its
+origin `(amount_minor, currency)`; settlement always reproduces the `(fx_rate, fx_base, fx_as_of)`
+snapshot committed on its own row; nothing on any read path rewrites a ledger amount. **(A) Schema,
+folded in place** (root §1 — no new timestamped migrations): `preferred_display_currency` gains
+`DEFAULT 'GBP'`
+
+- a `^[A-Z]{3}$` CHECK; `finance.transactions`/`escrows`.`fx_base` gains `DEFAULT 'GBP'` so a
+  stamped rate is never orphaned from its base; `custom_access_token_hook` stamps
+  `displayCurrency` + `locale` into `app_metadata.active_context` — on the SAME claim, because a
+  figure that paints in one currency and corrects itself after hydration is worse than a stale
+  symbol. `finance.fx_rates` gains a **seeded floor** for all 12 offerable currencies with **both
+  directions of every pair written explicitly** (a reader that divides by the forward rate and one
+  that multiplies by the inverse disagree in the last minor unit) at a FIXED `as_of` so a reset is
+  reproducible. Authored, **not applied to any live DB**. **(B) Zod SSOT** — new leaf
+  `@projective/types/finance/fx.ts` (`FxRateTable`/`FxQuote`/ `ConvertedAmount`, the curated
+  `DISPLAY_CURRENCIES`, pure `resolveRate`/`convertMinorUnits`); `UserPreferencesUpdate` +
+  `DisplayPreferences` on `org/preferences`; `displayCurrency`/`locale` on `UserContext` +
+  `ActiveContextClaim`; `preferences` on `CurrentUser`; `toMoneyView()` bridging the engine to the
+  existing money shape. `org/preferences` **re-exports** the currency defaults from the FX SSOT
+  rather than restating them. **(C) `FxService`** is the only thing on the platform that converts: a
+  per-base table cached 15 min in **Deno KV** → a per-isolate memory cache → the seeded fixtures,
+  with `convertAmount()` returning the value **and** its `asOf` snapshot instant. It never throws
+  and never returns "no answer": an unresolvable pair returns the **origin unchanged** with
+  `converted: false`, because assuming a rate of 1 or relabelling an amount with a symbol it was not
+  priced in turns a missing number into a WRONG one — the only FX failure a reader cannot detect.
+  **(D) `MoneyView`** in `@projective/ui/display`, plus a portable signal store, on a narrow
+  `./display/money` sub-path (the barrel re-exports Table/Tree/Galleria/GMap, and the
+  globally-mounted bridge would have dragged all of them into every route's bundle to render a
+  price). ONE component, three ways of learning the currency — props → request context → the host's
+  ambient resolver → the signal store — so it is correct as a zero-JS server component AND reactive
+  inside a hydrated island, with no second renderer to drift. **(E) Live switching** without a
+  reload: the store re-renders hydrated figures, and a DOM sweep re-projects every server-rendered
+  `[data-money]` node from its own IMMUTABLE origin attributes (never from the previous conversion,
+  which would compound a rounding error on each switch). Islands flag themselves `data-money-live`
+  from an effect — which only runs on hydration, so "is this reactive" is answered by the one signal
+  that knows. **Adopted on the Explore service + product cards** (additive `priceMinor`/`currency`
+  on the explore SSOT, parsed ONCE server-side at fixture construction — parsing a localised
+  currency string in the browser is how "$1,800" becomes 1.8). **Four findings, all by
+  measurement:** (1) **a Preact context provider at the document root is NOT visible to a server
+  component deeper in the page** — an island boundary sits between them and island subtrees render
+  in a pass that drops the outer context (an app-side probe beside a price returned `null`; the same
+  probe under the provider returned the real value). A module signal would reach everywhere but is
+  shared across concurrent requests, i.e. a data race over money that passes every manual test.
+  Resolved with `AsyncLocalStorage`, which is request-scoped and survives every await and render
+  pass. (2) The DOM sweep seeded `display: ""`, and `projectMoney`'s "target is already this
+  currency" branch returns `display` **verbatim** by design — so switching TO the origin currency
+  **blanked every figure**. (3) The currency PATCH went through `apiFetch`, whose unrecoverable-401
+  path **navigates to `/login`** — throwing someone off the page they were reading because a
+  formatting preference could not be saved; now a plain `fetch`, where a 401 leaves the local choice
+  in place and the surface says it saved on this device only. (4) Vite caches the package `exports`
+  map at startup, so a new sub-path needs a dev-server restart — as does any `packages/*` edit,
+  since HMR does not pick them up (two false negatives during this pass). **Verified in-browser:**
+  SSR paints the viewer's currency in the first byte from the cookie/JWT (GBP · EUR · JPY all
+  correct, JPY exponent-aware with no phantom decimals); the header picker changed **all 19**
+  figures on `/explore` at once with the URL unchanged; GBP→EUR→JPY→USD→AED→GBP round-trips to the
+  exact starting figure; the choice survives a reload; a guest PATCH 401s cleanly with no redirect;
+  `deno task test` (check · lint · 33 unit tests) green. **Flagged (surface, do not silently
+  resolve):** (a) `preferred_display_currency` now has a DEFAULT while `NULL` still means "follow
+  the origin" — distinguishable, but subtle enough to deserve a human's confirmation. (b) **Adoption
+  is one surface, not a migration**: ~180 other money sites (wallet, checkout, workspaces, tickets)
+  still render through their surface-local components and do not respond to a currency switch; each
+  now has a `MoneyView`-shaped target. (c) The brief's `£78.50 (~€90.00 EUR)` puts the `~` on the
+  ORIGIN, which is the exact figure, while the converted primary is the estimate — implemented
+  literally as specified, with the honest full statement in the accessible label and `title`. (d)
+  **`deno fmt --check` is deliberately NOT in `deno task test`**: `core.autocrlf=true` makes it fail
+  on any Windows checkout regardless of what is committed, and ~280 files predate the formatter. (e)
+  FX spread / conversion-fee economics remain OPEN (finance-model §11) — the surface renders origin,
+  converted and rate, and never a fee. (f) `finance.fx_rates` is read with the service-role client
+  because SSR converts for signed-out visitors too; the rows are public reference data
+  (`USING (true)`), but the read bypasses RLS and wants revisiting if that table ever carries
+  anything else. | `SYSTEM_ARCHITECTURE.md` §Internationalization · `DESIGN_SYSTEM.md` §C.1 ·
+  `packages/types/finance/fx.ts` ·
+  `packages/types/{org/preferences,auth/user-context,user/current-user}.ts` ·
+  `packages/backend/services/finance/{FxService,fx-fixtures}.ts` ·
+  `packages/backend/services/user/UserBackendService.ts` ·
+  `packages/ui/display/{money.ts,core/currency-store.ts,components/MoneyView.tsx,styles/money-view.css}`
+  · `apps/web/utils/{currency-context,state,storage-keys}.ts` ·
+  `apps/web/routes/{_app,_middleware}.tsx` · `apps/web/routes/api/{user/preferences,finance/fx}.ts`
+  ·
+  `apps/web/features/shell/{core/{CurrencyService,currency-state},islands/{CurrencyBridge,UserActions}}`
+  · `apps/web/features/explore/{core/pricing,components/cards/{Service,Product}Card}` ·
+  `supabase/migrations/{00000011,00000017,00001700,00005050}*` ·
+  `documentation/database/{org,finance,security}/*` · Decisions #2 / #10 / #16 / #17 / #54 / #55 /
+  #60 / #68 |
+
+| 70 | **Checkout redesigned into a four-step flow + the FOCUS chrome (2026-08-10).** `/checkout`
+becomes a four-route linear flow — **Basket → Details → Payment → Confirmation** — and `/basket`
+retires to a 302 redirect, so one surface has one URL. New
+**`packages/types/finance/{buyer,order}.ts`**: buyer delivery + billing (personal AND business), the
+completeness predicate `missingBuyerFields()` / `buyerDetailsComplete()` / `canSkipDetails(session)`
+that the auto-skip, the form, the Pay refusal and the invoice all ask ONCE; and the order /
+fulfilment / invoice projection with `calendarLinksFor()` + an RFC-5545 `buildIcsCalendar()`.
+**`CheckoutResult.orderId` is no longer permanently `null`** — the hole logged as Decision #68(g) —
+because a charge now records an order the confirmation reads back. `checkoutTotals()` gained
+`processingContributionMinor`, added LAST and never part of the platform-fee base: charging a
+percentage of a voluntary gift would make the buyer's generosity revenue. Plus `SpendLimitBlock` and
+the `missing_details` / `spend_limit` blocker codes. **Reuse over invention:** monthly invoicing is
+the EXISTING `org.business_profiles.invoicing_mode` + `billing_day` (1–28 CHECK), the department
+allocation is `org.organisations.departments`, a user "list" is a named `finance.baskets` row (that
+table's own comment says a wishlist is not a separate kind), and the invoice's FX record COMPOSES
+`ledger.ts`'s `FxSnapshotSchema` rather than restating `fx_rate`/`fx_base`/`fx_as_of`. **No DB
+migration** — a read+write projection over fixtures like every sibling, behind the existing
+`FINANCE_BACKEND_LIVE`. **(A) FOCUS CHROME (new `DESIGN_SYSTEM.md` Part D.6).** A fifth shell mode
+for a linear, committing flow: `AppShell` gains `chrome?: "full" | "focus"`, resolved per-URL by
+`checkoutChromeFor()` so it paints in the FIRST byte rather than flashing chrome and removing it
+under the buyer's cursor. It removes chrome by **not constructing it**, never by hiding it — hidden
+chrome still holds a grid track and still feeds the `--shell-frame-inset-inline` seam accumulator.
+Verified by measurement: with no lane the frame's `auto minmax(0,1fr)` grid resolves column 1 to
+`0px` and the header band renders flush at x=0 (1265px wide, zero overflow); and `--frame-radius`
+must be set on **`.ui-app-shell__content`**, not on a descendant, because the pseudo-element that
+reads it belongs to that element (setting it on `.ui-middle-nav` left the curve at 15.68px). The
+basket and the confirmation deliberately keep FULL chrome — the basket is a page a buyer
+legitimately leaves, and the confirmation's whole job is to send them onward. **(B) Two defects
+caught before shipping, both invisible in source.** `middle-nav.css` lifts the footer band by
+`--shell-bottomnav-h` unconditionally at ≤767px, so withholding `BottomNav` left a **56px dead gap
+under the Pay button on every phone** (now measured at `0`); and `user-shell.css` reached a page
+ONLY through the `ShellSidebar` / `UserActions` island bundles, both of which focus mode suppresses
+— so Details and Payment would have rendered an **unstyled header**. Moved to `client.ts`. **(C) A
+pre-existing money bug fixed at the root.** `wallet-fixtures.ts` held a private THREE-entry FX table
+(`GBP`/`USD`/`EUR`) with a `?? 1` fallback while `fx-fixtures.ts` / `FxService` carry all twelve
+offerable currencies — so nine of twelve converted at a rate of exactly 1, and the converter also
+ignored currency exponents, compounding it by a further 100× for JPY. Measured: a $95.00 product
+rendered `JP¥7,480` where the seeded table says `JP¥14,362`, and `AED 74.80` against a true AED
+348.58. It now reads `FX_FIXTURE_RATES` through the SSOT's own
+`resolveRate`/`convertMinorUnits`/`currencyExponent`, so the server's figure and the client's
+re-projection derive from ONE table; **five regression tests** iterate the full offerable set rather
+than a sample, because a GBP→USD test would have passed throughout the entire period both bugs were
+live. This also corrects `/wallet`. **(D) `Amount` was a correctness bug, not a style choice.** It
+printed `value.display` and emitted no `data-money-*`, so the currency sweep (Decision #69) could
+not see it: **every figure on the checkout kept the old currency after a switch**, on the number the
+buyer was about to pay. It now delegates to `MoneyView` — 0 money nodes before, 29 after, and
+switching to JPY converts all 21 visible figures with each disclosing its immutable origin. **Six
+new Dev axes** (`buyerDetails` · `billingContext` · `invoicingMode` · `spendLimit` · `fulfilmentMix`
+· `conferencing`), each with BOTH `reflect()` branches, travelling as validated `sim*` query params
+because the seam is a CLIENT surface the server cannot see. **Verified in-browser** at
+1440/1024/768/375, LTR + RTL, light + dark: all four routes hold zero horizontal overflow in both
+directions at every width; the payment cards measure **exactly 302×192 (ratio 1.5729)** on BOTH the
+option wrapper and the card (both selectors are required — `.ui-paycard-option--*` restates
+`--pc-max`); the "Selected" badge renders once as an `aria-hidden` sibling of the radio, never
+nested inside it; the details form's 12 controls are all labelled with **zero** premature
+`aria-invalid`; the contribution threads £1,366.15 → £1,385.48 exactly; the `.ics` is valid RFC 5545
+with CRLF and a deterministic `DTSTAMP`. One defect of my own, found by measurement: the stepper's
+`upcoming` ink measured **3.33:1** — it had been treated as a disabled control, but these labels are
+the only thing telling a reader what the rest of the flow consists of, so they carry the full 4.5:1
+floor (now 10.36:1; the recession is carried by weight and the un-filled mark instead). **CONFLICTS
+FLAGGED, NOT SILENTLY RESOLVED — each needs a human:** (a) **the brief's hexes do not exist in this
+theme.** Colours are Material-You generated at request time, so `--primary` is `#00929e` dark /
+`#007680` light (NOT `#288690`, which is the SEED), `#F5A623` appears nowhere in the repo, and
+**`--text-main` and `--text-disabled` are never declared at all**. The tokens the brief NAMES were
+used and the hexes ignored, per §3. (b) **The amber CTA re-purposes a status token as the action
+colour.** §A.1 assigns `--primary` to "primary action" and `--warning` to "in progress /
+time-sensitive", and §B.8.3 forbids inventing a severity by re-tinting. Built as the brief specifies
+(`variant="filled"
+severity="warning"`), and **measured: `--warning` is amber `#ffb872` in dark but
+`#8c5000`, a dark ochre, in light** — so the brief's visual intent is unreachable in light mode
+through any token. Literal amber platform-wide is a `theme-engine.ts` tone change that repaints
+every warning surface, plus an §A.1 role-table amendment. (c) **The pill shape on every checkout CTA
+is an owner-approved, surface-scoped deviation from §B.8.4**, which otherwise reserves
+`--radius-full` for chip-like and floating controls. Approved 2026-08-10 because the design draws
+the flow's actions as pills throughout and one rounded rectangle among them reads as a mistake;
+documented as an explicit exception in §B.8.4 rather than left to be rediscovered, and deliberately
+NOT extended to any other surface. (d) **Two `filled` CTAs vs §B.8.2** — the desktop lane footer
+owns the commitment and the duty transfers to the footer rig ≤767px, so exactly one is ever on
+screen; logged rather than resolved. (e) **The brief's "replace the disabled Use button" describes a
+state that never existed** — selection has always been a `role="radiogroup"`; the badge was added,
+nothing was removed. (f) **302:192 contradicts the package's documented ISO-7810 CR80 rationale**
+(`1.586`, "the real ratio, not a rounded 1.6"); applied as a call-site token override only, never a
+package edit. (g) The currency flag is a **data mark, not an icon** (`aria-hidden`, off `.ui-icon`,
+the ISO code carries the name) — the §B.7.7 exemption Decision #63 established for the wallet's
+fund-state marks. (h) Deep links use the canonical `/projects/[projectId]/[channelId]`, NOT the
+brief's `/projects/[id]/[stageId]`, which has no route and would 404. (i) **No blanket "escrow hold"
+copy was added**: `PRODUCT_SPEC.md` locks escrow at checkout for SESSIONS only — a pipeline ticket
+escrows at the freelancer's Claim, and a digital product has no documented escrow at all. (i)
+`finance.orders` / `finance.buyer_details` are the deferred live-path tables; field names were
+chosen so they can adopt them verbatim. (j) Inherited and untouched: Decision #68's `authenticated`
+has no `USAGE` on the `finance` schema, `platform_fee_bp` seeded `0`, and the three overlapping
+instrument tables. | `DESIGN_SYSTEM.md` **Part D.6** · `ROUTING.md` · `PRODUCT_SPEC.md` §Sitemap ·
+`SYSTEM_ARCHITECTURE.md` §Backend Services ·
+`packages/types/finance/{buyer,order,checkout,basket,fx}.ts` ·
+`packages/backend/services/finance/{buyer,order,basket,wallet}-fixtures.ts` +
+`{Checkout,Basket,Order}BackendService.ts` + `wallet-fixtures_test.ts` ·
+`packages/ui/navigation/{components/AppShell.tsx,styles/{app-shell,middle-nav,page-canvas}.css}` ·
+`apps/web/features/shell/components/UserShell.tsx` · `apps/web/client.ts` ·
+`apps/web/features/checkout/**` · `apps/web/routes/(dashboard)/{checkout/*,basket}` ·
+`apps/web/routes/api/{checkout/*,basket/lists}` · `apps/web/utils/dev-seam.ts` ·
+`apps/web/features/devtools/*` · Decisions #2 / #45 / #60 / #62 / #63 / #68 / #69 |
 
 _Second-order conflicts noted but out of this pass (surface if you touch them): `finance-model.md`
 §4 session late-cancel says a 50% penalty while `PRODUCT_SPEC.md`'s Session table says full forfeit

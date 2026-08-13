@@ -1,6 +1,7 @@
 import type { JSX, VNode } from "preact";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { HeroScene } from "./JoinArt.tsx";
+import { Logo } from "@web/components/Logo.tsx";
 
 /**
  * SummaryPanel — the reimagined left column of the onboarding experience: a deep-primary field with
@@ -128,7 +129,7 @@ export function SummaryPanel({ store }: { store: JoinStore }): JSX.Element {
 	return (
 		<div class="join-aside">
 			<a class="join-aside__brand" href="/" aria-label="Projective — home">
-				<span class="join-aside__mark" aria-hidden="true" />
+				<Logo class="join-aside__mark" />
 				<span>Projective</span>
 			</a>
 

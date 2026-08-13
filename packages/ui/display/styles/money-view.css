@@ -32,6 +32,11 @@
 }
 
 .ui-money__amount {
+	/* `inline-flex`, not plain inline: the raised minor run is positioned with `align-self`, which
+	   only means anything to a flex child. `baseline` keeps the whole figure sitting on the text
+	   baseline of whatever contains it, exactly as it did when it was one text node. */
+	display: inline-flex;
+	align-items: baseline;
 	white-space: nowrap;
 	font-weight: var(--fw-semibold);
 	line-height: 1.15;
@@ -40,6 +45,58 @@
 .ui-money__sign {
 	margin-inline-end: 0.0625em;
 }
+
+/*
+ * #region The split figure — symbol / major / minor
+ *
+ * The design sets the minor units a step smaller and raised, so a price reads as its major run with
+ * the pence as a quiet tail. The parts are produced by `splitMoney`, which SPLITS the string `Intl`
+ * already produced rather than re-formatting it.
+ *
+ * Three deliberate choices:
+ *
+ * - The ratio is EM-relative but capped per step. `hero` sits at 0.42em rather than the 0.62em the
+ *   smaller steps use: at `--text-3xl` a 0.62em tail is ~22px, which is larger than most body copy
+ *   on the page and starts competing with the figure it belongs to. (The wallet hit exactly this,
+ *   Decision #63 — pence at 0.55em of a 72px figure rendered 39.6px.)
+ * - `align-self: flex-start` raises the tail rather than `vertical-align: super`, which adds leading
+ *   and would push the line box around inside a table cell.
+ * - The minor run is NOT dimmed with `opacity` or a second colour. It is part of the amount, and a
+ *   greyed tail reads as "estimated" or "disabled" beside a figure that is neither. Size and
+ *   position carry the de-emphasis on their own.
+ */
+.ui-money__symbol,
+.ui-money__major,
+.ui-money__minor {
+	white-space: nowrap;
+}
+
+.ui-money__minor {
+	font-size: 0.62em;
+	align-self: flex-start;
+	line-height: 1.5;
+	letter-spacing: 0;
+}
+
+.ui-money--hero .ui-money__minor {
+	font-size: 0.42em;
+	line-height: 1.9;
+}
+
+.ui-money--figure .ui-money__minor {
+	font-size: 0.5em;
+	line-height: 1.7;
+}
+
+/* At the two smallest steps the split would be pure noise — a 13px figure with an 8px tail is harder
+   to read than the plain string. They keep the tail at the same size as the major run. */
+.ui-money--body .ui-money__minor,
+.ui-money--micro .ui-money__minor {
+	font-size: 1em;
+	align-self: baseline;
+	line-height: inherit;
+}
+/* #endregion */
 
 /*
  * The estimate indicator. Sized and toned DOWN from the amount, never hidden: it is the fact that

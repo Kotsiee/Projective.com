@@ -21,7 +21,7 @@
  */
 
 // #region Components
-export { AppShell, type AppShellProps } from "./components/AppShell.tsx";
+export { AppShell, type AppShellProps, type ShellChrome } from "./components/AppShell.tsx";
 export { ShellTopBar, type ShellTopBarProps } from "./components/ShellTopBar.tsx";
 export { ShellSidebar, type ShellSidebarProps } from "./components/ShellSidebar.tsx";
 export { ShellFrame, type ShellFrameProps } from "./components/ShellFrame.tsx";

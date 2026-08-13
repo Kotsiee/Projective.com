@@ -4,6 +4,8 @@ import type {
 	Basket,
 	BasketGroup,
 	BasketItem,
+	BasketListEntry,
+	BasketLists,
 	BasketSummary,
 	KycStatus,
 	MoneyView,
@@ -23,6 +25,7 @@ import {
 } from "@projective/types/finance";
 import type { ExploreItem, ProjectItem } from "@projective/types/explore";
 import { PRODUCTS, PROJECTS, SERVICES } from "../explore/fixtures.ts";
+import { allProjects } from "../projects/fixtures.ts";
 import { parsePriceMajor, PIPELINE_LOW, unitPriceMajor } from "../explore/pricing.ts";
 import { switcher, toMoney } from "./wallet-fixtures.ts";
 import type { BasketQuery, BasketSim } from "./basket-query.ts";
@@ -417,6 +420,29 @@ function unitMajorFor(kind: PurchasableItemKind, item: ExploreItem): number {
 
 /** How many bookings a `set_session` package holds. */
 const SET_SESSION_COUNT = 4;
+
+/**
+ * The `/projects` board a ticket line's engagement corresponds to — a **fixtures-only bridge**.
+ *
+ * `/checkout` derives its corpus from `@server/services/explore` (ids like `sv-brand-identity-sprint`),
+ * while `/projects` keeps an independent one keyed by slug (`aurora-rebrand`). The two never overlap,
+ * so with nothing joining them a basket ticket could not resolve the board its own modal opens: the
+ * fetch answered 404 for every line, which reads as a broken feature rather than as two demo datasets
+ * that were never introduced.
+ *
+ * On the LIVE path this function disappears. A real `finance.basket_items` row for a ticket carries
+ * the project it routes through, because it was created against a real stage — the id is data, not a
+ * derivation. Until then the mapping is deterministic (a slug hash over the engagement id) so a given
+ * engagement always opens the same board, and it is stamped under its own metadata key rather than
+ * overwriting `projectId`, which the server's own grouping reads.
+ */
+function boardSlugFor(engagementId: string): string {
+	const slugs = allProjects().map((p) => p.slug);
+	if (slugs.length === 0) return engagementId;
+	let h = 2166136261;
+	for (let i = 0; i < engagementId.length; i++) h = (h * 31 + engagementId.charCodeAt(i)) >>> 0;
+	return slugs[h % slugs.length];
+}
 // #endregion
 
 // #region Line + basket seeds
@@ -816,6 +842,7 @@ function storedFromSeed(seed: LineSeed, basketId: string): StoredLine {
 				? { serviceId: parent.parentId }
 				: {}),
 			...(seed.itemType === "set_session" ? { sessions: SET_SESSION_COUNT } : {}),
+			...(meta.needsStage && parent ? { boardProjectId: boardSlugFor(parent.parentId) } : {}),
 		},
 		createdAtMs,
 		updatedAtMs: createdAtMs,
@@ -1055,12 +1082,293 @@ export function getBasket(query: BasketQuery): Basket {
 
 /** The resolved basket for an already-resolved owner — the checkout service's entry point. */
 export function basketFor(owner: ResolvedOwner, basketId?: string | null): Basket {
+	// A derived id is a VIEW across every basket, not a row to look up — see `derivedBasketOf`.
+	if (isDerivedListId(basketId)) return derivedBasketOf(owner, basketId as string);
 	return toBasket(resolveBasket(owner, basketId), owner);
 }
 
 /** The promo code currently attached to a basket, if any. */
 export function activePromoCode(owner: ResolvedOwner, basketId?: string | null): string | null {
 	return resolveBasket(owner, basketId).promoCode;
+}
+// #endregion
+
+// #region Lists (the lane's navigation projection)
+/**
+ * The id of the parked shelf.
+ *
+ * A reserved word rather than a row, because the shelf is not a basket: it is every `savedForLater`
+ * line across the account's baskets, which is a VIEW over rows that still belong to the baskets they
+ * sit in. Giving it a real id would invite a buyer to "delete" it.
+ */
+export const SAVED_LIST_ID = "saved";
+
+/** `4 tickets` / `1 booking` — the caption a derived group counts in. */
+function countNoun(count: number, one: string): string {
+	return `${count} ${one}${count === 1 ? "" : "s"}`;
+}
+
+/** A `/checkout*` destination carrying the scope a list is read under. */
+function listHref(
+	path: string,
+	owner: ResolvedOwner,
+	params: Record<string, string | null>,
+): string {
+	const qs = new URLSearchParams();
+	// A `personal` owner is the default, and an explicit default is noise in a shareable URL.
+	if (owner.key !== "personal") qs.set("owner", owner.key);
+	for (const [key, value] of Object.entries(params)) if (value) qs.set(key, value);
+	const q = qs.toString();
+	return clip(q ? `${path}?${q}` : path, 200);
+}
+
+/** Which engagement a line groups under, and which narrowing param addresses it. */
+function engagementOf(item: BasketItem): { id: string; param: "project_id" | "service_id" } {
+	const projectId = typeof item.metadata.projectId === "string" ? item.metadata.projectId : null;
+	if (projectId) return { id: projectId, param: "project_id" };
+	const serviceId = typeof item.metadata.serviceId === "string" ? item.metadata.serviceId : null;
+	return serviceId
+		? { id: serviceId, param: "service_id" }
+		: { id: item.itemId, param: "service_id" };
+}
+
+/**
+ * The engagement-derived entries for one kind of line.
+ *
+ * `ticket` and `session` membership is read from the SSOT's {@link itemKindMeta} (`needsStage` /
+ * `needsSchedule`) rather than from a second list of kinds — a purchasable added to the contract is
+ * grouped here without an edit, and it cannot end up in one section on this surface and another one
+ * on the basket body.
+ */
+function derivedLists(
+	items: readonly BasketItem[],
+	owner: ResolvedOwner,
+	kind: "ticket" | "session",
+): BasketListEntry[] {
+	const display = owner.display;
+	const order: string[] = [];
+	const buckets = new Map<string, BasketItem[]>();
+
+	for (const item of items) {
+		if (item.savedForLater) continue;
+		const meta = itemKindMeta(item.itemType);
+		const belongs = kind === "ticket" ? meta.needsStage : meta.needsSchedule;
+		if (!belongs) continue;
+		const engagement = engagementOf(item);
+		if (!buckets.has(engagement.id)) {
+			buckets.set(engagement.id, []);
+			order.push(engagement.id);
+		}
+		buckets.get(engagement.id)!.push(item);
+	}
+
+	return order.slice(0, 40).map((parentId) => {
+		const rows = buckets.get(parentId)!;
+		const parent = CORPUS.get(parentId);
+		const seller = parent?.owner.name ?? rows[0].sellerName;
+		const noun = countNoun(rows.length, kind === "ticket" ? "ticket" : "booking");
+		const id = `${kind}:${parentId}`;
+		return {
+			id,
+			kind,
+			label: clip(parent?.title ?? rows[0].title, 120),
+			caption: clip(seller ? `${noun} · ${seller}` : noun, 160),
+			itemCount: rows.length,
+			subtotal: derived(basketSubtotal(rows), display),
+			/*
+			 * The entry's OWN standalone route, not an anchor into the basket that happens to be open.
+			 *
+			 * A derived list is a view across every basket and shelf the account holds for one engagement,
+			 * so it can hold lines the current basket does not — which is precisely what an in-page anchor
+			 * cannot express: it can only scroll to what is already on screen. `?basket=<id>` hands the id
+			 * to {@link basketFor}, which resolves the view (see {@link derivedBasketOf}).
+			 */
+			href: listHref("/checkout", owner, { basket: id }),
+			isDefault: false,
+			checkoutable: true,
+			/*
+			 * The engagement's own face: a service's cover art, or — for a project, which by definition
+			 * carries none (`ExploreItem.media` is documented ABSENT on projects) — the owner's avatar.
+			 * Falls through to `null`, and the lane then draws its category glyph: an entry never invents
+			 * an image.
+			 */
+			thumbnail: engagementFace(parent),
+		};
+	});
+}
+
+/**
+ * The image that stands for an engagement in the lane.
+ *
+ * A **service** or **product** has cover art and is recognised by it. A **project** does not — the
+ * SSOT documents `media` as absent on projects — so it falls back to the owner's avatar, which is the
+ * next most recognisable thing about it. `null` when the corpus knows neither, and the lane draws its
+ * category glyph rather than a placeholder box.
+ *
+ * Written as a function with an explicit return type rather than inline: `media` is declared optional
+ * on the shared item base, so a nested ternary chained into `??` reads to the compiler as provably
+ * nullish and it refuses the fallback (TS2871).
+ */
+function engagementFace(parent: ExploreItem | undefined): string | null {
+	if (!parent) return null;
+	const media = "media" in parent ? parent.media : undefined;
+	if (typeof media === "string" && media !== "") return media;
+	return parent.owner.avatar !== "" ? parent.owner.avatar : null;
+}
+
+/**
+ * Whether an id addresses a SERVER-DERIVED list rather than a stored basket.
+ *
+ * The namespace is the contract between the lane, the route and the body — the app's
+ * `CheckoutBasketScreen` tests the same two prefixes to decide whether to draw a Save-for-later
+ * section — so it is declared once, here, beside the code that mints them.
+ */
+export function isDerivedListId(id: string | null | undefined): boolean {
+	return typeof id === "string" && (id.startsWith("ticket:") || id.startsWith("session:"));
+}
+
+/**
+ * A derived list AS a basket: every line for one engagement, across every basket and shelf.
+ *
+ * This is a **view**, and three of its properties follow from that rather than from taste:
+ *
+ * - It spans **all** of the owner's baskets and includes **parked** lines, because the question the
+ *   entry answers is "what have I got for this project", and a line the buyer set aside is still an
+ *   answer to it.
+ * - Those parked lines are surfaced with `savedForLater: false`. They are not being un-parked — the
+ *   row still belongs to the basket it sits in and the write path still addresses it there — but a
+ *   view has no shelf of its own to file them under, and a line rendered into a section the view then
+ *   hides is a line that vanishes.
+ * - It is **not checkout-eligible as a basket**: `isDefault` is false and the id is not a
+ *   `finance.baskets` row, so nothing here can be paid for directly. The lane's own checkout href
+ *   already routes an engagement through the real basket with a narrowing param.
+ */
+export function derivedBasketOf(owner: ResolvedOwner, listId: string): Basket {
+	const display = owner.display;
+	const [kind, parentId] = [listId.slice(0, listId.indexOf(":")), listId.slice(listId.indexOf(":") + 1)];
+
+	const items = basketsFor(owner.key)
+		.flatMap((row) => liveLines(row).map((line) => toItem(line, display)))
+		.filter((item) => {
+			const meta = itemKindMeta(item.itemType);
+			const belongs = kind === "ticket" ? meta.needsStage : meta.needsSchedule;
+			return belongs && engagementOf(item).id === parentId;
+		})
+		// A view has no shelf; see the doc above.
+		.map((item) => (item.savedForLater ? { ...item, savedForLater: false } : item));
+
+	const parent = CORPUS.get(parentId);
+	const discounts = applyDiscounts(items, 0);
+	const now = iso(NOW);
+
+	return {
+		id: listId,
+		ownerType: owner.ownerType,
+		ownerId: owner.ownerId,
+		name: clip(parent?.title ?? items[0]?.title ?? "Everything for this engagement", 120),
+		isDefault: false,
+		currency: display,
+		items,
+		groups: buildGroups(items, display),
+		subtotal: derived(basketSubtotal(items), display),
+		creatorDiscounts: derived(discounts.creatorDiscountMinor, display),
+		net: derived(discounts.netMinor, display),
+		itemCount: items.length,
+		selectedCount: items.filter(isCheckoutEligible).length,
+		savedForLaterCount: 0,
+		unavailableCount: items.filter((i) => !i.available).length,
+		createdAt: now,
+		updatedAt: now,
+	};
+}
+
+/**
+ * The basket lane's whole navigation model, computed in ONE pass so the three sections cannot
+ * disagree about a line's membership — a ticket shown under its project is the same row the basket
+ * counts and the same row the total includes.
+ *
+ * Every subtotal is the SSOT's {@link basketSubtotal} over that section's lines, so the shelf reads
+ * zero (a parked line is not checkout-eligible, which is exactly why it also cannot be checked out)
+ * rather than advertising a figure the CTA beside it would refuse to charge.
+ */
+export function buildLists(
+	owner: ResolvedOwner,
+	basket: Basket,
+	activeId?: string | null,
+): BasketLists {
+	const display = owner.display;
+	const stored = basketsFor(owner.key);
+
+	const lists: BasketListEntry[] = stored
+		.map((row) => {
+			const items = liveLines(row).map((line) => toItem(line, display));
+			const live = items.filter((item) => !item.savedForLater);
+			return {
+				id: row.id,
+				kind: "basket" as const,
+				label: clip(row.name, 120),
+				caption: clip(countNoun(live.length, "item"), 160),
+				itemCount: live.length,
+				subtotal: derived(basketSubtotal(items), display),
+				href: listHref("/checkout", owner, { basket: row.id }),
+				isDefault: row.isDefault,
+				checkoutable: true,
+				thumbnail: null,
+			};
+		})
+		.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+
+	const parked = stored
+		.flatMap((row) => liveLines(row).map((line) => toItem(line, display)))
+		.filter((item) => item.savedForLater);
+	lists.push({
+		id: SAVED_LIST_ID,
+		kind: "saved",
+		label: "Saved for later",
+		caption: clip(countNoun(parked.length, "item"), 160),
+		itemCount: parked.length,
+		// Nothing parked is checkout-eligible, so this is zero by construction rather than by rule.
+		subtotal: derived(basketSubtotal(parked), display),
+		href: listHref("/checkout", owner, { basket: basket.id, list: SAVED_LIST_ID }),
+		isDefault: false,
+		checkoutable: false,
+		thumbnail: null,
+	});
+
+	const tickets = derivedLists(basket.items, owner, "ticket");
+	const sessions = derivedLists(basket.items, owner, "session");
+
+	const every = [...lists, ...tickets, ...sessions];
+	const active = every.find((entry) => entry.id === activeId) ??
+		lists.find((entry) => entry.id === basket.id) ?? lists[0];
+
+	return {
+		lists: lists.slice(0, 40),
+		tickets,
+		sessions,
+		activeId: active?.id ?? null,
+		activeSubtotal: active?.subtotal ?? derived(0, display),
+		// The step AFTER the basket, not the payment step: Details is where the flow continues, and it
+		// redirects itself onward for a buyer whose details are already saved.
+		activeCheckoutHref: checkoutHrefFor(owner, basket.id, active),
+	};
+}
+
+/** Where the lane footer's CTA goes for the active list — the next step, carrying the same narrowing. */
+function checkoutHrefFor(
+	owner: ResolvedOwner,
+	basketId: string,
+	active: BasketListEntry | undefined,
+): string {
+	if (!active || active.kind === "basket" || active.kind === "saved") {
+		return listHref("/checkout/details", owner, { basket: basketId });
+	}
+	// The narrowing param follows the ENGAGEMENT's own type, not the section it is filed under: a
+	// `service_ticket` groups under Tickets but is addressed by `service_id`, and using the section to
+	// pick the param would hand the checkout a project id that matches nothing.
+	const parentId = active.id.slice(active.id.indexOf(":") + 1);
+	const param = CORPUS.get(parentId)?.type === "projects" ? "project_id" : "service_id";
+	return listHref("/checkout/details", owner, { basket: basketId, [param]: parentId });
 }
 // #endregion
 

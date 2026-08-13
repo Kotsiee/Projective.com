@@ -4,7 +4,9 @@ import type {
 	AppliedPromo,
 	ApplyPromoCode,
 	Basket,
+	BasketLists,
 	BasketSummary,
+	CreateBasketList,
 	MoveBasketItem,
 	RemoveBasketItem,
 	UpdateBasketItem,
@@ -79,6 +81,53 @@ export class BasketBackendService {
 			// caller's JWT (RLS scopes it) — not yet implemented; fall back to fixtures.
 		}
 		return ok({ baskets: fx.listBaskets(query) });
+	}
+
+	/**
+	 * The basket lane's navigation model: the account's named lists (default first, the parked shelf
+	 * trailing), plus the engagement-derived Tickets and Sessions groups over the ACTIVE basket.
+	 *
+	 * Computed in ONE pass so the three sections cannot disagree about a line's membership, and every
+	 * subtotal is the SSOT's `basketSubtotal` over that section's own lines — the lane footer's figure
+	 * is therefore the same arithmetic the basket body and the checkout total run through.
+	 *
+	 * `activeId` is the entry the URL addresses. It is passed in rather than inferred so the lane
+	 * paints its active row on the FIRST byte, without a client round trip to discover which list it
+	 * is looking at.
+	 */
+	static lists(
+		query: BasketQuery,
+		activeId?: string | null,
+	): ServiceResult<{ lists: BasketLists }> {
+		if (isFinanceBackendLive()) {
+			// LIVE: one read of `finance.baskets` + `finance.basket_items` under the caller's JWT, then
+			// the SAME grouping — not yet implemented; fall back to fixtures.
+		}
+		const owner = fx.resolveOwner(query);
+		const basket = fx.basketFor(owner, query.basketId);
+		return ok({ lists: fx.buildLists(owner, basket, activeId ?? query.basketId ?? null) });
+	}
+
+	/**
+	 * Create a further named list — which is simply a non-default `finance.baskets` row.
+	 *
+	 * Answers with the refreshed lane model rather than the created basket alone, with the new list
+	 * already ACTIVE, so the lane can select what the buyer just made in one round trip instead of
+	 * creating and then re-reading to find out where it landed.
+	 */
+	static createList(
+		input: CreateBasketList,
+		query: BasketQuery,
+	): ServiceResult<{ lists: BasketLists }> {
+		const outcome = fx.createBasket(input.name, query);
+		if (!outcome.ok || !outcome.basket) {
+			return fail(outcome.status ?? 422, { message: outcome.message });
+		}
+		const owner = fx.resolveOwner(query);
+		return ok(
+			{ lists: fx.buildLists(owner, outcome.basket, outcome.basket.id) },
+			{ message: outcome.message },
+		);
 	}
 
 	/**

@@ -1651,6 +1651,10 @@ fire for the same person on a device that genuinely does not have the file.
 |               | `/wallet`                 | `index`                  | Overview of wallets                                                                            |
 |               |                           | `create`                 | Setup new wallet                                                                               |
 |               |                           | `[wallet id]`            | View specific wallet                                                                           |
+|               | `/checkout`               | `index`                  | **Step 1 — Basket & lists.** The acting principal's basket plus its named lists (a list is a named basket row, not a separate table). `/basket` **302→** here, query string preserved |
+|               |                           | `details`                | **Step 2 — Delivery & billing.** Distraction-free chrome (DESIGN_SYSTEM Part D.6). Auto-skips to `payment` when the saved details are already complete; `?edit=1` forces the form open |
+|               |                           | `payment`                | **Step 3 — Method & commit.** Distraction-free chrome. Bounces back to `details` when the details are incomplete, so a deep link can never reach a Pay button the server would refuse |
+|               |                           | `confirmation`           | **Step 4 — Post-purchase hub.** Full chrome restored: per-item fulfilment (download · project deep link · calendar export), the invoice, the order record (`?order=`) |
 |               | `/projects`               | `index`                  | List all projects                                                                              |
 |               | `/projects/create`        |                          | Start a new project                                                                            |
 |               | `/projects/[project id]`  | `index` / `details`      | Project overview                                                                               |

@@ -19,4 +19,6 @@ export * from "./entitlements.ts";
 export * from "./wallet.ts";
 export * from "./card-art.ts";
 export * from "./basket.ts";
+export * from "./buyer.ts";
 export * from "./checkout.ts";
+export * from "./order.ts";

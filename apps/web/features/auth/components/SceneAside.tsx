@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { HeroScene } from "./JoinArt.tsx";
+import { Logo } from "@web/components/Logo.tsx";
 import type { StepId } from "../core/wizardStore.ts";
 
 /**
@@ -59,7 +60,7 @@ export function SceneAside({ variant }: { variant: SceneVariant }): JSX.Element 
 	return (
 		<div class="join-aside">
 			<a class="join-aside__brand" href="/" aria-label="Projective — home">
-				<span class="join-aside__mark" aria-hidden="true" />
+				<Logo class="join-aside__mark" />
 				<span>Projective</span>
 			</a>
 

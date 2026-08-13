@@ -24,9 +24,14 @@ import {
 	DEV_SEAM_EVENT,
 	type DevAssetVisibility,
 	type DevBasketOwner,
+	type DevBillingContext,
+	type DevBuyerDetails,
+	type DevConferencing,
 	type DevConnectionState,
 	type DevDedupState,
 	type DevDisplayCurrency,
+	type DevFulfilmentMix,
+	type DevInvoicingMode,
 	type DevLayoutDirection,
 	type DevLinkScan,
 	type DevMemberRole,
@@ -41,6 +46,7 @@ import {
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
+	type DevSpendLimit,
 	type DevStageAssignment,
 	type DevStorageProvider,
 	type DevStorageQuota,
@@ -69,7 +75,12 @@ export type DevRole = DevSeamRole;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevBasketOwner,
+	DevBillingContext,
+	DevBuyerDetails,
+	DevConferencing,
 	DevDisplayCurrency,
+	DevFulfilmentMix,
+	DevInvoicingMode,
 	DevLayoutDirection,
 	DevMemberRole,
 	DevMessagingRole,
@@ -79,6 +90,7 @@ export type {
 	DevSavedCards,
 	DevServiceType,
 	DevSessionBookingStatus,
+	DevSpendLimit,
 	DevStageAssignment,
 	DevSubmissionState,
 	DevWalletCoverage,
@@ -223,6 +235,35 @@ export interface DevOverrides {
 	walletCoverage: DevWalletCoverage;
 	/** Simulated saved-card wallet shape — seeded, none on file, or all expired. */
 	savedCards: DevSavedCards;
+	/**
+	 * Whether the buyer already has complete saved delivery + billing details.
+	 *
+	 * The axis that makes the Details step's **auto-skip** reachable. Without it a developer only ever
+	 * sees one of the two branches — and the unreachable one is the branch that silently sends a buyer
+	 * past a form, which is precisely the branch worth being able to inspect.
+	 */
+	buyerDetails: DevBuyerDetails;
+	/** Simulated billing identity the Details form opens on — a natural person or a company. */
+	billingContext: DevBillingContext;
+	/**
+	 * Simulated invoicing mode (`org.business_profiles.invoicing_mode`) — a real column with a real
+	 * CHECK, not a new concept: `intervaled_monthly` is the brief's "Intervaled Monthly Invoicing".
+	 */
+	invoicingMode: DevInvoicingMode;
+	/**
+	 * Whether this purchase clears the acting member's spending limit. `over` reaches the
+	 * `needs_approval` verdict without having to construct a basket that happens to cross a seeded cap
+	 * — the state whose whole point is that it offers a route forward rather than a refusal.
+	 */
+	spendLimit: DevSpendLimit;
+	/**
+	 * Which fulfilment routes the confirmation hub has to render. The four look nothing alike — a
+	 * download button, a project deep link, a calendar export, and an honest "not ready yet" — so a mix
+	 * that only ever contains one of them leaves three untested.
+	 */
+	fulfilmentMix: DevFulfilmentMix;
+	/** Simulated conferencing provider a booked session's join link resolves to. */
+	conferencing: DevConferencing;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -274,6 +315,12 @@ export const DEV_DEFAULTS: DevOverrides = {
 	paymentProviders: "all",
 	walletCoverage: "covers",
 	savedCards: "seeded",
+	buyerDetails: "missing",
+	billingContext: "personal",
+	invoicingMode: "per_transaction",
+	spendLimit: "within",
+	fulfilmentMix: "mixed",
+	conferencing: "zoom",
 };
 
 /** Account-type options in display order. */
@@ -522,6 +569,47 @@ export const DEV_SAVED_CARDS: ReadonlyArray<DevOption<DevSavedCards>> = [
 	{ value: "none", label: "None" },
 	{ value: "expired", label: "All expired" },
 ];
+
+/** Saved-details options — the Details step's auto-skip branch selector. */
+export const DEV_BUYER_DETAILS: ReadonlyArray<DevOption<DevBuyerDetails>> = [
+	{ value: "missing", label: "Missing" },
+	{ value: "saved", label: "Saved" },
+];
+
+/** Billing-identity options — which form the Details step opens on. */
+export const DEV_BILLING_CONTEXTS: ReadonlyArray<DevOption<DevBillingContext>> = [
+	{ value: "personal", label: "Personal" },
+	{ value: "business", label: "Business" },
+];
+
+/** Invoicing-mode options (`org.business_profiles.invoicing_mode`). */
+export const DEV_INVOICING_MODES: ReadonlyArray<DevOption<DevInvoicingMode>> = [
+	{ value: "per_transaction", label: "Per purchase" },
+	{ value: "intervaled_monthly", label: "Monthly" },
+];
+
+/** Spending-limit options — `over` is what reaches the `needs_approval` verdict. */
+export const DEV_SPEND_LIMITS: ReadonlyArray<DevOption<DevSpendLimit>> = [
+	{ value: "within", label: "Within cap" },
+	{ value: "over", label: "Over cap" },
+];
+
+/** Fulfilment-mix options — which routes the confirmation hub has to render. */
+export const DEV_FULFILMENT_MIXES: ReadonlyArray<DevOption<DevFulfilmentMix>> = [
+	{ value: "mixed", label: "Mixed" },
+	{ value: "products", label: "Products" },
+	{ value: "tickets", label: "Tickets" },
+	{ value: "sessions", label: "Sessions" },
+	{ value: "pending", label: "Pending" },
+];
+
+/** Conferencing-provider options for a booked session's join link. */
+export const DEV_CONFERENCING: ReadonlyArray<DevOption<DevConferencing>> = [
+	{ value: "zoom", label: "Zoom" },
+	{ value: "google", label: "Meet" },
+	{ value: "microsoft_teams", label: "Teams" },
+	{ value: "none", label: "None" },
+];
 // #endregion
 
 // #region Store
@@ -595,6 +683,12 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devPaymentProviders = next.paymentProviders;
 		root.dataset.devWalletCoverage = next.walletCoverage;
 		root.dataset.devSavedCards = next.savedCards;
+		root.dataset.devBuyerDetails = next.buyerDetails;
+		root.dataset.devBillingContext = next.billingContext;
+		root.dataset.devInvoicingMode = next.invoicingMode;
+		root.dataset.devSpendLimit = next.spendLimit;
+		root.dataset.devFulfilmentMix = next.fulfilmentMix;
+		root.dataset.devConferencing = next.conferencing;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the wallet (and the rest of the shell) mirror to the opposite edge.
 		root.dir = next.layoutDirection;
@@ -639,6 +733,12 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devPaymentProviders;
 		delete root.dataset.devWalletCoverage;
 		delete root.dataset.devSavedCards;
+		delete root.dataset.devBuyerDetails;
+		delete root.dataset.devBillingContext;
+		delete root.dataset.devInvoicingMode;
+		delete root.dataset.devSpendLimit;
+		delete root.dataset.devFulfilmentMix;
+		delete root.dataset.devConferencing;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}

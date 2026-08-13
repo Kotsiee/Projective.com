@@ -1,120 +1,119 @@
 /* Link + NavItem — nav atoms. Full borders reserved for interactive elements only (§B.4). */
 .ui-link {
-    color: var(--primary);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
+	color: var(--primary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
 }
 
 .ui-link:hover {
-    text-decoration: underline;
+	text-decoration: underline;
 }
 
 .ui-link--active {
-    font-weight: 600;
+	font-weight: 600;
 }
 
 .ui-link:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: 2px;
+	outline: 3px solid var(--focus-ring);
+	outline-offset: 2px;
 }
 
 .ui-nav-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    block-size: 40px;
-    margin-inline: var(--space-2);
-    padding-inline: var(--space-2);
-    border-radius: var(--radius-base);
-    color: var(--text-secondary);
-    text-decoration: none;
-    white-space: nowrap;
-    overflow: hidden;
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: 40px;
+	margin-inline: var(--space-2);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
 }
 
 .ui-nav-item:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-nav-item--active {
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    color: var(--on-surface);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	color: var(--on-surface);
 }
 
 .ui-nav-item:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+	outline: 3px solid var(--focus-ring);
+	outline-offset: -2px;
 }
 
 .ui-nav-item__icon {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 24px;
-    block-size: 24px;
-    flex: 0 0 auto;
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 24px;
+	block-size: 24px;
+	flex: 0 0 auto;
 }
 
 .ui-nav-item__icon svg {
-    inline-size: 22px;
-    block-size: 22px;
+	inline-size: 22px;
+	block-size: 22px;
 }
 
 .ui-nav-item__label {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /* Medium-weight labels beside the oversized icons — readable, high-end (Part D.1). The active
-	   destination steps up once more so the current page reads at a glance. */
-    font-weight: 500;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	/* Medium-weight labels beside the oversized icons — readable, high-end (Part D.1). The active
+	destination steps up once more so the current page reads at a glance. */
+	font-weight: 500;
 }
 
 .ui-nav-item--active .ui-nav-item__label {
-    font-weight: 600;
+	font-weight: 600;
 }
 
 /* Update indicator — a small pulsing dot on the icon corner. A visual color state, never a count
    (Part D). The visually-hidden sibling text carries the meaning for assistive tech (§B.4). */
 .ui-nav-item__dot {
-    position: absolute;
-    inset-block-start: -1px;
-    inset-inline-end: -1px;
-    inline-size: 8px;
-    block-size: 8px;
-    border-radius: var(--radius-full);
-    background: var(--primary);
-    box-shadow: 0 0 0 2px var(--surface-2);
-    /* ring against the sidebar surface */
-    animation: ui-nav-dot-pulse 2.4s var(--ease-standard) infinite;
+	position: absolute;
+	inset-block-start: -1px;
+	inset-inline-end: -1px;
+	inline-size: 8px;
+	block-size: 8px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	box-shadow: 0 0 0 2px var(--surface-2);
+	/* ring against the sidebar surface */
+	animation: ui-nav-dot-pulse 2.4s var(--ease-standard) infinite;
 }
 
 @keyframes ui-nav-dot-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
 
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.4;
-    }
+	50% {
+		opacity: 0.4;
+	}
 }
 
 /* Collapsed rail: square blocks (--shell-nav-block) with one large centered icon, labels hidden,
    icons on the shared vertical axis (Part D.1). Driven by the root attribute (FOUC-safe). */
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item {
-    inline-size: var(--shell-nav-block);
-    block-size: var(--shell-nav-block);
-    margin-inline: auto;
-    padding-inline: 0;
-    justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	margin-inline: auto;
+	padding-inline: 0;
+	justify-content: center;
 }
 
 /* Collapsed: hide the visible label (the anchor's `aria-label` carries the accessible name). */
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__label {
-    display: none;
+	display: none;
 }
 
 /*
@@ -125,16 +124,16 @@
  * two collapsed rails in the product read identically.
  */
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item--active::after {
-    content: "";
-    position: absolute;
-    inset-block-end: 6px;
-    inset-inline: 12px;
-    block-size: 2px;
-    border-radius: var(--radius-full);
-    background: var(--primary);
+	content: "";
+	position: absolute;
+	inset-block-end: 6px;
+	inset-inline: 12px;
+	block-size: 2px;
+	border-radius: var(--radius-full);
+	background: var(--primary);
 }
 
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__icon svg {
-    inline-size: 24px;
-    block-size: 24px;
+	inline-size: 24px;
+	block-size: 24px;
 }

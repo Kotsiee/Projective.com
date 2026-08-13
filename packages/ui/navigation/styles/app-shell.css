@@ -19,31 +19,31 @@
  * container, so every sticky descendant resolves against the window — one scrollbar, no nested traps.
  */
 .ui-app-shell {
-	/* Base of the nested-frame seam accumulator (see shell-frame.css `::after`): a frame nested
+    /* Base of the nested-frame seam accumulator (see shell-frame.css `::after`): a frame nested
 	directly in the shell sits below the top bar and to the inline-start-side of the global rail.
 	`.ui-middle-nav` augments these for the Green canvas it wraps (middle-nav.css). */
-	--shell-frame-inset-inline: var(--shell-sidebar-cur-w);
-	--shell-frame-inset-block: var(--shell-topbar-h);
-	display: grid;
-	grid-template-rows: var(--shell-topbar-h) 1fr;
-	grid-template-columns: auto 1fr;
-	grid-template-areas:
-		"topbar topbar"
-		"sidebar content";
-	/* Grow past the viewport and let the document scroll natively, while short pages still fill the
+    --shell-frame-inset-inline: var(--shell-sidebar-cur-w);
+    --shell-frame-inset-block: var(--shell-topbar-h);
+    display: grid;
+    grid-template-rows: var(--shell-topbar-h) 1fr;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+        "topbar topbar"
+        "sidebar content";
+    /* Grow past the viewport and let the document scroll natively, while short pages still fill the
 	viewport. Every profile shares this — the chrome is pinned via sticky, not by a viewport lock. */
-	min-block-size: 100dvh;
-	background: var(--surface-2);
-	color: var(--on-surface);
+    min-block-size: 100dvh;
+    background: var(--surface-2);
+    color: var(--on-surface);
 }
 
 .ui-app-shell--no-sidebar {
-	/* No global rail (guest / sidebar-less) — the nested frame reaches the viewport inline-start edge. */
-	--shell-frame-inset-inline: 0px;
-	grid-template-columns: 1fr;
-	grid-template-areas:
-		"topbar"
-		"content";
+    /* No global rail (guest / sidebar-less) — the nested frame reaches the viewport inline-start edge. */
+    --shell-frame-inset-inline: 0px;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+        "topbar"
+        "content";
 }
 
 /*
@@ -61,13 +61,13 @@
  * tooltip intentionally tops for its brief hover.
  */
 .ui-app-shell__sidebar {
-	grid-area: sidebar;
-	position: sticky;
-	inset-block-start: var(--shell-topbar-h);
-	align-self: start;
-	block-size: calc(100dvh - var(--shell-topbar-h));
-	min-block-size: 0;
-	z-index: var(--z-sticky);
+    grid-area: sidebar;
+    position: sticky;
+    inset-block-start: var(--shell-topbar-h);
+    align-self: start;
+    block-size: calc(100dvh - var(--shell-topbar-h));
+    min-block-size: 0;
+    z-index: var(--z-sticky);
 }
 
 /*
@@ -92,36 +92,71 @@
  * the flatter one was the surface users live in. Blur alone is a weak occlusion cue: it says "this
  * region is frosted", not "this region is in front". `--elevation-low` (0 2px 4px at 5%) is the
  * lightest rung there is, so the plate reads as a plate without adding weight to a resting page.
- *
- * The shadow goes on the ELEMENT, never on the `::before` glass underlay: that underlay is
- * `z-index: -1; inset: 0`, so a shadow drawn there is occluded by its own parent and renders weaker
- * than the same token does elsewhere (the defect `.guest-shell__subheader` already demonstrates).
  */
 .ui-app-shell--user .ui-shell-topbar {
-	background: transparent;
-	box-shadow: var(--elevation-low);
+    background: transparent;
 }
 
 .ui-app-shell--user .ui-shell-topbar::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	background: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	pointer-events: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    pointer-events: none;
 }
 
 .ui-app-shell__content {
-	grid-area: content;
-	display: flex;
-	min-inline-size: 0;
-	min-block-size: 0;
+    grid-area: content;
+    display: flex;
+    min-inline-size: 0;
+    min-block-size: 0;
 }
 
 .ui-app-shell__mobile-menu {
-	display: none;
+    display: none;
+}
+
+/*
+ * FOCUS CHROME (Part D.6) — the distraction-free mode a linear, committing flow runs in.
+ *
+ * The mode removes chrome by NOT RENDERING IT (the caller passes no sidebar and no lane, and
+ * `AppShell` drops the `sidebar` track when there is nothing to put in it). These rules only clean up
+ * the two geometry facts that removal leaves behind, both of which are custom properties rather than
+ * layout:
+ *
+ *  1. `--shell-frame-inset-inline` is a *seam accumulator*, and `.ui-middle-nav` unconditionally adds
+ *     the lane's width to it. With no lane rendered, the fixed corner seam drawn by
+ *     `.ui-app-shell__content::before` would sit `--shell-lane-w` (280px) inboard of the frame it is
+ *     supposed to trace — a stray hairline and a stray tint running down the middle of the page.
+ *  2. The frame's top-left curve is the mark of a NESTED region. In focus mode the content is not
+ *     nested inside anything — there is no rail and no lane beside it — so the curve would be
+ *     describing a relationship that is not on screen. It flattens against the top edge instead.
+ *
+ * `--frame-radius` is set on `.ui-app-shell__content`, NOT on `.ui-middle-nav`: the pseudo-element
+ * that reads it belongs to the content element, and a custom property set on a descendant cannot
+ * reach its ancestor's `::before`. (Measured: setting it on the middle-nav left the seam at 15.68px.)
+ */
+.ui-app-shell[data-chrome="focus"] .ui-app-shell__content {
+    --frame-radius: 0px;
+    --frame-bl-radius: 0px;
+    --shell-frame-inset-inline: 0px;
+}
+
+.ui-app-shell[data-chrome="focus"] .ui-middle-nav,
+.ui-app-shell[data-chrome="focus"] .ui-page-canvas {
+    --frame-radius: 0px;
+    --frame-bl-radius: 0px;
+    --shell-frame-inset-inline: 0px;
+}
+
+/* The `:not(:has(.ui-middle-nav))` override in shell-frame.css sets the corner DIRECTLY rather than
+   through the variable, so a bare-canvas focus route needs the direct rule too. */
+.ui-app-shell[data-chrome="focus"] .ui-app-shell__content::before {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
 }
 
 /* Mobile viewport isolation (≤ --bp-md): drop the desktop sidebar entirely and strip the gutter that
@@ -129,23 +164,23 @@
    window-scroll model is shared with desktop — the body scrolls with the native window scrollbar
    beneath the sticky glass header; only the pinned rail is dropped here. */
 @media (max-width: 767px) {
-	.ui-app-shell {
-		grid-template-columns: 1fr;
-		grid-template-areas:
-			"topbar"
-			"content";
-	}
+    .ui-app-shell {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "topbar"
+            "content";
+    }
 
-	.ui-app-shell__sidebar {
-		display: none;
-	}
+    .ui-app-shell__sidebar {
+        display: none;
+    }
 
-	.ui-app-shell--user .ui-app-shell__mobile-menu {
-		display: inline-flex;
-	}
+    .ui-app-shell--user .ui-app-shell__mobile-menu {
+        display: inline-flex;
+    }
 
-	.ui-app-shell__content {
-		padding-block-start: 0;
-		padding-inline-start: 0;
-	}
+    .ui-app-shell__content {
+        padding-block-start: 0;
+        padding-inline-start: 0;
+    }
 }

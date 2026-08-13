@@ -1,21 +1,30 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
-import BasketFooterRig from "../islands/BasketFooterRig.island.tsx";
-import { checkoutViewOf, isCheckoutPath } from "./basket-model.ts";
+import CheckoutFooterRig from "../islands/CheckoutFooterRig.island.tsx";
+import { checkoutStepOf, isCheckoutPath } from "./basket-model.ts";
 import { resolveBasket, resolveCheckoutSession } from "./checkout-ssr.ts";
 
 /**
- * basket-footer-slot — the middle-nav FOOTER band on EVERY `/basket` and `/checkout` route.
+ * basket-footer-slot — the middle-nav FOOTER band on **every** checkout route, all four steps.
  *
  * Like `walletFooterFor` and unlike the page-scoped channel/board rigs, this is not narrowed to one
- * page: the footer holds every action on the surface, so a route without it would be a basket with no
- * way to check out and a checkout with no way to pay.
+ * page: the footer holds every action on the surface, so a step without it would be a basket with no
+ * way forward and a payment with no way to commit.
  *
- * It resolves the checkout session even on `/basket` for one reason: the rig's primary control carries
- * the server-formatted TOTAL, and a Checkout button that showed a stale figure — or none — would be
- * asking the buyer to commit to an amount the surface could not state. It also resolves the blockers,
- * so the Pay control is refused in the FIRST byte rather than painted live and then disabled, which is
- * the sequence that teaches a reader their payment failed when it was never offered.
+ * **It resolves exactly one projection per step**, chosen by what the rig's controls actually print:
+ *
+ * - **Basket** — the basket, for the CTA's running total. Nothing on this step can be blocked, so
+ *   there is no session to read.
+ * - **Details / Payment** — the session, for the payable total and the blockers. The blockers matter
+ *   in the FIRST byte: a Pay control painted live and then disabled is the sequence that teaches a
+ *   reader their payment failed when it was never offered.
+ * - **Confirmation** — the session too, but only for the acting identity and the currency. There is no
+ *   figure to commit to after the purchase, so the rig is passed no total and renders no filled
+ *   control.
+ *
+ * The currency is threaded from the same read the header band uses, deliberately: both bands seed the
+ * shared display-currency signal on mount, and two regions seeding it with different values would
+ * leave the surface arguing with itself about what the buyer is reading.
  *
  * Composed after the wallet/workspace/files footer resolvers in `middleNavFooterFor`, so exactly one
  * owns the band per URL. Server-only — never imported by an island.
@@ -23,21 +32,36 @@ import { resolveBasket, resolveCheckoutSession } from "./checkout-ssr.ts";
 export function basketFooterFor(url: URL, context: UserContext): ComponentChildren {
 	if (!isCheckoutPath(url.pathname)) return null;
 
-	const view = checkoutViewOf(url.pathname);
-	const { basket, owner, display } = resolveBasket(context, url);
-	const checkout = resolveCheckoutSession(context, url);
+	const step = checkoutStepOf(url.pathname);
 
+	if (step === "basket") {
+		const { basket, owner, display } = resolveBasket(context, url);
+		return (
+			<CheckoutFooterRig
+				step={step}
+				basketId={basket.id || null}
+				owner={owner}
+				display={display}
+				// Server-computed and server-formatted. The rig renders this figure; it never assembles one.
+				total={basket.net}
+				blocked={false}
+			/>
+		);
+	}
+
+	const { session, owner, display } = resolveCheckoutSession(context, url);
 	return (
-		<BasketFooterRig
-			view={view}
-			basketId={basket.id || null}
+		<CheckoutFooterRig
+			step={step}
+			basketId={session.basketId || null}
 			owner={owner}
 			display={display}
-			// Server-computed and server-formatted. The rig prints this string; it never assembles one.
-			totalDisplay={view === "checkout"
-				? checkout.session.totals.total.display
-				: basket.net.display}
-			blocked={checkout.session.blockers.length > 0}
+			total={step === "confirmation" ? null : session.totals.total}
+			blocked={session.blockers.length > 0}
+			orderId={url.searchParams.get("order")}
+			// No invoice document is served yet, so the download action is ABSENT rather than offered and
+			// refused. It appears the moment a resolver can supply an href.
+			invoiceHref={null}
 		/>
 	);
 }

@@ -6,9 +6,14 @@ import {
 	applyDevContext,
 	DEV_ASSET_VISIBILITIES,
 	DEV_BASKET_OWNERS,
+	DEV_BILLING_CONTEXTS,
+	DEV_BUYER_DETAILS,
+	DEV_CONFERENCING,
 	DEV_CONNECTION_STATES,
 	DEV_DEDUP_STATES,
 	DEV_DISPLAY_CURRENCIES,
+	DEV_FULFILMENT_MIXES,
+	DEV_INVOICING_MODES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_LINK_SCANS,
 	DEV_MEMBER_ROLES,
@@ -22,6 +27,7 @@ import {
 	DEV_SAVED_CARDS,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
+	DEV_SPEND_LIMITS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_STORAGE_PROVIDERS,
 	DEV_STORAGE_QUOTAS,
@@ -581,7 +587,7 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 			</div>
 
 			<div class="dev-ctx__group">
-				<div class="dev-ctx__grouphead">Basket / Checkout</div>
+				<div class="dev-ctx__grouphead">Checkout</div>
 
 				<Field label="Basket scope" hint="whose money">
 					<Segment
@@ -590,6 +596,36 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.basketOwner}
 						disabled={!o.enabled}
 						onChange={(basketOwner) => patchDevContext({ basketOwner })}
+					/>
+				</Field>
+
+				<Field label="Saved details" hint="Details auto-skip">
+					<Segment
+						name="Saved details"
+						options={DEV_BUYER_DETAILS}
+						value={o.buyerDetails}
+						disabled={!o.enabled}
+						onChange={(buyerDetails) => patchDevContext({ buyerDetails })}
+					/>
+				</Field>
+
+				<Field label="Billing identity" hint="person / company">
+					<Segment
+						name="Billing identity"
+						options={DEV_BILLING_CONTEXTS}
+						value={o.billingContext}
+						disabled={!o.enabled}
+						onChange={(billingContext) => patchDevContext({ billingContext })}
+					/>
+				</Field>
+
+				<Field label="Invoicing" hint="business only">
+					<Segment
+						name="Invoicing"
+						options={DEV_INVOICING_MODES}
+						value={o.invoicingMode}
+						disabled={!o.enabled || o.billingContext !== "business"}
+						onChange={(invoicingMode) => patchDevContext({ invoicingMode })}
 					/>
 				</Field>
 
@@ -620,6 +656,37 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.savedCards}
 						disabled={!o.enabled}
 						onChange={(savedCards) => patchDevContext({ savedCards })}
+					/>
+				</Field>
+
+				<Field label="Spending limit" hint="needs approval">
+					<Segment
+						name="Spending limit"
+						options={DEV_SPEND_LIMITS}
+						value={o.spendLimit}
+						disabled={!o.enabled}
+						onChange={(spendLimit) => patchDevContext({ spendLimit })}
+					/>
+				</Field>
+
+				<Field label="Fulfilment mix" hint="confirmation routes">
+					<Segment
+						name="Fulfilment mix"
+						options={DEV_FULFILMENT_MIXES}
+						value={o.fulfilmentMix}
+						disabled={!o.enabled}
+						onChange={(fulfilmentMix) => patchDevContext({ fulfilmentMix })}
+					/>
+				</Field>
+
+				<Field label="Conferencing" hint="session join link">
+					<Segment
+						name="Conferencing"
+						options={DEV_CONFERENCING}
+						value={o.conferencing}
+						disabled={!o.enabled ||
+							(o.fulfilmentMix !== "mixed" && o.fulfilmentMix !== "sessions")}
+						onChange={(conferencing) => patchDevContext({ conferencing })}
 					/>
 				</Field>
 

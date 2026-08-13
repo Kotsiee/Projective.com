@@ -5,8 +5,10 @@ import type {
 	AddBasketItem,
 	AppliedPromo,
 	Basket,
+	BasketLists,
 	BasketSummary,
 	CheckoutContext,
+	CreateBasketList,
 	MoveBasketItem,
 	RemoveBasketItem,
 	UpdateBasketItem,
@@ -59,6 +61,37 @@ export const BasketService = {
 		ctx: CheckoutContext,
 	): Promise<CheckoutResponse<BasketPayload>> {
 		return postCheckout("/api/basket", withContext({ ...input }, ctx));
+	},
+
+	/**
+	 * The lane's navigation model: the account's named lists (default first, the parked shelf
+	 * trailing) plus the engagement-derived Tickets and Sessions groups over the active basket.
+	 *
+	 * `activeId` names the entry the URL addresses, so a refetch keeps the lane pointing at what the
+	 * body is showing. Every subtotal is server-computed — the lane footer's figure runs through the
+	 * same arithmetic as the basket body and the checkout total.
+	 */
+	lists(
+		ctx: CheckoutContext,
+		activeId?: string | null,
+	): Promise<CheckoutResponse<{ lists: BasketLists }>> {
+		const qs = new URLSearchParams(buildCheckoutQuery(ctx));
+		if (activeId) qs.set("list", activeId);
+		const q = qs.toString();
+		return getCheckout(`/api/basket/lists${q ? `?${q}` : ""}`);
+	},
+
+	/**
+	 * Create a further named list — which is a non-default basket, not a new concept.
+	 *
+	 * Answers with the refreshed lane model with the new list already active, so the lane selects what
+	 * the buyer just made without a second read to discover where it landed.
+	 */
+	createList(
+		input: CreateBasketList,
+		ctx: CheckoutContext,
+	): Promise<CheckoutResponse<{ lists: BasketLists }>> {
+		return postCheckout("/api/basket/lists", withContext({ ...input }, ctx));
 	},
 
 	/**

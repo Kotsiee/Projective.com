@@ -170,12 +170,6 @@ export const LocalKeys = {
 	 */
 	BASKET: "pj.local.basket",
 	/**
-	 * The `/basket` list density (a `0`–`1` float) — the same zoom-driven list⇄grid model as the File
-	 * Explorer, owned by the footer band's View Control Rig and read by the body. Its own key so the
-	 * basket's density is independent of the file / catalogue / wallet densities.
-	 */
-	BASKET_ZOOM: "pj.local.basket.zoom",
-	/**
 	 * The basket the `/basket` lane last had selected (a `finance.baskets` id). An owner may keep
 	 * several named baskets, so a reload that always landed on the default would silently move the
 	 * reader off the wishlist they were working in.

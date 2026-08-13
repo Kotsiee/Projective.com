@@ -128,6 +128,55 @@ export function currencyExponent(code: string): number {
 	return EXPONENTS[(code ?? "").toUpperCase()] ?? 2;
 }
 
+/** The parts of a formatted amount, so minor units can be de-emphasised without re-composing it. */
+export interface MoneyParts {
+	/** Everything before the first digit — `"£"`, `"US$"`, or `""` in a suffix-currency locale. */
+	symbol: string;
+	/** The major units WITH their group separators, e.g. `"1,246"`. */
+	major: string;
+	/** The minor units and their separator, e.g. `".29"`. `null` for a zero-decimal currency. */
+	minor: string | null;
+	/** Anything trailing the numeric run — a suffixed code or symbol, e.g. `" kr"`. */
+	suffix: string;
+}
+
+/**
+ * Split a formatted currency string into symbol / major / minor / suffix.
+ *
+ * **A string SPLIT, never a re-format.** `Intl` has already applied the locale's grouping, symbol
+ * position and decimal separator; re-deriving any of that on the client is how a server-rendered
+ * figure and its hydrated twin come to disagree. The minor run is recognised as the last separator
+ * followed by exactly `currencyExponent(code)` digits at the END of the numeric run, so a
+ * zero-decimal currency (JPY, KRW) correctly yields `minor: null` and a thousands separator is never
+ * mistaken for a decimal one.
+ *
+ * Total: an unparseable string returns itself as `major`, which renders identically to not splitting
+ * at all.
+ */
+export function splitMoney(display: string, code: string): MoneyParts {
+	const exp = currencyExponent(code);
+	// The numeric run: digits plus the separators a locale may place inside a number (including the
+	// narrow no-break space several locales group with).
+	const match = /[\d][\d\s.,  ']*[\d]|\d/.exec(display);
+	if (!match) return { symbol: "", major: display, minor: null, suffix: "" };
+
+	const start = match.index;
+	const end = start + match[0].length;
+	const symbol = display.slice(0, start);
+	const suffix = display.slice(end);
+	let major = match[0];
+	let minor: string | null = null;
+
+	if (exp > 0) {
+		const tail = new RegExp(`[.,]\\d{${exp}}$`).exec(major);
+		if (tail) {
+			minor = tail[0];
+			major = major.slice(0, tail.index);
+		}
+	}
+	return { symbol, major, minor, suffix };
+}
+
 /**
  * Format an integer minor-unit amount as a currency string via `Intl.NumberFormat`.
  *

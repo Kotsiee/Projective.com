@@ -86,6 +86,14 @@ export default define.page(function App({ Component, state }) {
 				<meta charset="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 				<title>{state.title ?? "Projective"}</title>
+				{
+					/* Brand mark. The SVG is self-contained (it carries the brand background and a literal
+					   white glyph) because a favicon renders outside the document and can inherit neither
+					   `currentColor` nor a token — unlike the inline `@web/components/Logo.tsx` used in the
+					   page, which does. `sizes="any"` lets it win over a legacy `/favicon.ico` probe. */
+				}
+				<link rel="icon" href="/logo.svg" type="image/svg+xml" sizes="any" />
+				<link rel="apple-touch-icon" href="/logo.svg" />
 				{state.description ? <meta name="description" content={state.description} /> : null}
 				<style id="ds-tokens" dangerouslySetInnerHTML={{ __html: TOKENS_CSS }} />
 				<script

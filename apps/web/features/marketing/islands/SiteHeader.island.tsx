@@ -10,6 +10,7 @@ import {
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { MEGA_MENUS, SECONDARY_LINKS } from "../core/megamenu-data.ts";
 import { Icon } from "@projective/ui/icons";
+import { Logo } from "@web/components/Logo.tsx";
 
 /**
  * SiteHeader — the public navigation. Full-width and **completely transparent/borderless at the top
@@ -149,7 +150,7 @@ export default function SiteHeader({ authenticated = false }: { authenticated?: 
 		>
 			<div class="site-header__bar" data-authed={authenticated ? "true" : "false"}>
 				<a class="site-header__brand" href="/" data-magnetic data-magnetic-strength="0.2">
-					<span class="site-header__mark" aria-hidden="true" />
+					<Logo class="site-header__mark" />
 					<span class="site-header__brand-text">Projective</span>
 				</a>
 

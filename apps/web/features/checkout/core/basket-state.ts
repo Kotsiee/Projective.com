@@ -342,21 +342,11 @@ export function clearDraft(): void {
 // #endregion
 
 // #region Body ⇄ band bridges
-/** The `/basket` list density (`0`–`1`), owned by the footer rig and read by the body. */
-export const basketZoom = signal<number>(0.34);
-
-/** Persist the density the footer rig set. */
-export function persistZoom(value: number): void {
-	basketZoom.value = value;
-	writeStored("local", LocalKeys.BASKET_ZOOM, String(value));
-}
-
-/** Restore the persisted density after hydration (never during SSR). */
-export function restoreZoom(): void {
-	const raw = readStored("local", LocalKeys.BASKET_ZOOM);
-	const parsed = raw === null ? Number.NaN : Number(raw);
-	if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) basketZoom.value = parsed;
-}
+/*
+ * The `/basket` row density signal that used to live here is gone with the footer rig's density
+ * slider: with no control to move it, a persisted zoom value could only ever hold the body in a
+ * presentation nobody could get out of. The basket draws one row presentation.
+ */
 
 /** The header band's find-in-basket query, narrowing the lines the body draws. */
 export const basketSearch = signal<string>("");

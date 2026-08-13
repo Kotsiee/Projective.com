@@ -1,0 +1,707 @@
+/**
+ * checkout-details.css — step 2 of the checkout: delivery and billing.
+ *
+ * Five rules here are contractual rather than stylistic:
+ *
+ * - **Every width rule is a CONTAINER query.** The shell eats roughly 344px, so at a 768px viewport
+ *   the content region is about 424px: a viewport media query would ask about a box this form never
+ *   has. Two containers are declared, and the distinction matters: `ckod` is the whole step (it
+ *   decides whether the summary rail sits beside the form or under it), while `ckodform` is the FORM
+ *   COLUMN (it decides how many fields fit in a row). Once the rail appears the two boxes differ by
+ *   the rail's whole width, so asking `ckod` about the field grid would put three fields across a
+ *   column that no longer has room for them.
+ * - **No section is boxed** (§B.4). Delivery, Billing and Invoicing separate by spacing, by heading
+ *   weight and — between sections only — by a single hairline. The summary rail carries a tonal
+ *   surface tint rather than an outline, for the same reason: full four-sided borders belong to
+ *   interactive elements, which on this surface means the controls themselves and nothing else.
+ * - **The measure applies to the FORM, never to a figure.** Decision #60 forbids a `max-inline-size`
+ *   on a region carrying an amount, a chart or a table; a stack of text inputs is exactly the case
+ *   that rule exempts, because a 90-character-wide address line is harder to read, not easier. The
+ *   rail, which is all figures, carries no measure.
+ * - **The pill shape on this surface is owner-approved and scoped here.** The checkout's commitments
+ *   and its quiet actions are pills; nothing outside `/checkout` inherits that from this sheet.
+ * - **Logical properties only.** Every offset, padding and border side is written in the logical
+ *   axes, so the form mirrors whole under `dir="rtl"` with no second stylesheet.
+ *
+ * Delivered through the client bundles of `CheckoutDetailsScreen` and `SaveDetailsModal`: a sheet
+ * imported by a server component alone never reaches the page, and the modal is mounted from the
+ * payment step, which does not otherwise load this file.
+ */
+
+/* #region Root */
+/*
+ * Two container names on one box. Inside the page form, `ckodform` resolves to the narrower form
+ * COLUMN; inside the modal — which renders the field grids as direct children of `.ckod` — the same
+ * name resolves here, so both presentations get the same breakpoints against their own real width.
+ */
+.ckod {
+	container-type: inline-size;
+	container-name: ckod ckodform;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	padding: var(--space-6) var(--space-4) var(--space-8);
+}
+
+/*
+ * Inside the dialog the surrounding chrome already supplies the padding and the measure, so the
+ * form drops both rather than nesting a second frame inside the first.
+ */
+.ckod--modal {
+	gap: var(--space-5);
+	padding: 0;
+}
+
+.ckod__cols {
+	display: grid;
+	/* `minmax(0, …)`: a long line title in the rail must never set the column floor. */
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-6);
+	align-items: start;
+}
+
+.ckod__form {
+	container-type: inline-size;
+	container-name: ckodform;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	inline-size: 100%;
+	/* A reading measure for a column of fields — see the header note; nothing here is a figure. */
+	max-inline-size: 44rem;
+	margin-inline: auto;
+	min-inline-size: 0;
+}
+
+/*
+ * Roughly 65 / 35 once the STEP — not the window — has room for both, matching the payment step's
+ * split so the two read as one flow. Below it the rail follows the form, which is also the order the
+ * buyer reads in: who is being billed, then what it comes to.
+ */
+@container ckod (min-width: 62rem) {
+	.ckod__cols {
+		grid-template-columns: minmax(0, 1fr) minmax(19rem, 22rem);
+	}
+
+	.ckod__form {
+		margin-inline: 0;
+	}
+}
+/* #endregion */
+
+/* #region Page head */
+.ckod__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ckod__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-xl);
+	font-weight: var(--fw-semibold);
+	line-height: 1.2;
+}
+
+.ckod__lede {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+	max-inline-size: 52ch;
+}
+/* #endregion */
+
+/* #region Sections */
+/*
+ * One hairline between sections, drawn on the leading edge of each section after the first, so a
+ * boundary spends exactly one device. No section is enclosed.
+ */
+.ckod__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block-start: var(--space-6);
+	border-block-start: 1px solid var(--hairline);
+	min-inline-size: 0;
+}
+
+.ckod--modal .ckod__section {
+	padding-block-start: var(--space-5);
+}
+
+.ckod__legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: baseline;
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.ckod__legend-sub {
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+}
+
+.ckod__hint {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: 1.5;
+	max-inline-size: 56ch;
+}
+/* #endregion */
+
+/* #region Billing shape tabs */
+/*
+ * The underlined text tab, mirroring `.chan-tab`: no pill, no box, a 2px `--primary` rule that
+ * lands ON the strip's own hairline so the boundary and the selection share one device (§B.4).
+ */
+.ckod-kindtabs {
+	display: flex;
+	gap: var(--space-5);
+	align-items: stretch;
+	border-block-end: 1px solid var(--hairline);
+}
+
+.ckod-kindtab {
+	position: relative;
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	margin: 0;
+	padding: var(--space-2) 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ckod-kindtab::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px 2px 0 0;
+	background: var(--primary);
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ckod-kindtab:hover {
+	color: var(--on-surface);
+}
+
+.ckod-kindtab:hover::after {
+	background: color-mix(in srgb, var(--on-surface) 32%, transparent);
+	transform: scaleX(1);
+}
+
+.ckod-kindtab[data-active="true"] {
+	color: var(--primary);
+	font-weight: var(--fw-semibold);
+}
+
+.ckod-kindtab[data-active="true"]::after {
+	background: var(--primary);
+	transform: scaleX(1);
+}
+
+.ckod-kindtab:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ckod-kindtab:disabled {
+	cursor: not-allowed;
+	opacity: var(--fld-disabled-alpha);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ckod-kindtab,
+	.ckod-kindtab::after {
+		transition: none;
+	}
+}
+/* #endregion */
+
+/* #region Field grid */
+/*
+ * Six tracks, so a row can ask for a half (three) or a third (two) without a second grid nested
+ * inside the first. Below the first breakpoint every row is full width — at that size two fields
+ * side by side are two fields nobody can read.
+ */
+.ckod__grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-4) var(--space-4);
+	margin-block-start: var(--space-2);
+}
+
+@container ckodform (min-width: 34rem) {
+	.ckod__grid {
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+	}
+
+	.ckod-field[data-span="full"] {
+		grid-column: span 6;
+	}
+
+	/*
+	 * A third only becomes a third once the COLUMN can carry three legible fields. Until then it
+	 * shares the two-across rhythm, and the odd one wraps — which is the honest failure mode, since a
+	 * 7rem postcode field beside a 7rem city field is narrower than the values they hold.
+	 */
+	.ckod-field[data-span="half"],
+	.ckod-field[data-span="third"] {
+		grid-column: span 3;
+	}
+}
+
+@container ckodform (min-width: 46rem) {
+	.ckod-field[data-span="third"] {
+		grid-column: span 2;
+	}
+}
+/* #endregion */
+
+/* #region Field row */
+.ckod-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	min-inline-size: 0;
+}
+
+.ckod-field__label {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: baseline;
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+}
+
+/*
+ * The asterisk is decorative and `aria-hidden` in the markup: the control carries the requirement
+ * through the SSOT's own missing-field list and its verdict, not through a glyph a reader has to
+ * know the convention for.
+ */
+.ckod-field__req {
+	color: var(--danger);
+	font-size: var(--text-xs);
+	line-height: 1;
+}
+
+.ckod-field__opt {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+}
+
+.ckod-field__note {
+	display: flex;
+	gap: var(--space-1);
+	align-items: center;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	line-height: 1.4;
+}
+
+.ckod-field__note--error {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Phone — dial prefix joined to a national number */
+/*
+ * Two real controls that READ as one field: the shared edge is drawn once (the trailing control
+ * pulls back over its neighbour's border by exactly one border width) and the inner corners are
+ * squared, so the pair has one outline rather than two touching ones.
+ */
+.ckod-phone {
+	display: flex;
+	align-items: stretch;
+	min-inline-size: 0;
+}
+
+.ckod-phone__dial.ui-field {
+	flex: none;
+	inline-size: 8rem;
+	border-start-end-radius: 0;
+	border-end-end-radius: 0;
+}
+
+.ckod-phone__number.ui-field {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin-inline-start: calc(var(--fld-bw) * -1);
+	border-start-start-radius: 0;
+	border-end-start-radius: 0;
+}
+
+/* The focused half owns the shared edge, so a focus ring is never half-covered by its neighbour. */
+.ckod-phone > .ui-field:focus-within,
+.ckod-phone > .ui-field:hover {
+	position: relative;
+	z-index: 1;
+}
+
+.ckod-dial {
+	display: inline-flex;
+	gap: var(--space-1);
+	align-items: center;
+	min-inline-size: 0;
+}
+
+/* Decoration only — `aria-hidden` in the markup; the dial code and the name carry the meaning. */
+.ckod-dial__flag {
+	flex: none;
+	font-size: var(--text-md);
+	line-height: 1;
+}
+
+.ckod-dial__code {
+	flex: none;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.ckod-dial__name {
+	min-inline-size: 0;
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region Billing identity switcher */
+.ckod-switch {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ckod-switch__label {
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+}
+
+.ckod-switch__row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+.ckod-switch__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	line-height: 1.5;
+	max-inline-size: 60ch;
+}
+/* #endregion */
+
+/* #region Invoicing */
+.ckod-inv {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.ckod-inv__row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+/*
+ * The lock is the one permitted gate mark: a verification gate is rendered and locked, never hidden,
+ * so the route to unlocking it stays visible (the `/wallet` rule). It is decorative — the reason
+ * beneath carries the fact, and the control's own `disabled` carries the state.
+ */
+.ckod-inv__lock {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+}
+
+.ckod-inv__note {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	line-height: 1.5;
+	max-inline-size: 60ch;
+}
+
+.ckod-inv__day {
+	margin-block-start: var(--space-2);
+	max-inline-size: 20rem;
+}
+/* #endregion */
+
+/* #region Outstanding-fields summary */
+.ckod-missing__lede {
+	display: block;
+	font-weight: var(--fw-medium);
+}
+
+.ckod-missing__list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	margin: var(--space-1) 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*
+ * Each outstanding field is a real control that moves focus to the input responsible — naming what
+ * is missing without offering a way to reach it makes the reader hunt for it.
+ */
+.ckod-missing__jump {
+	appearance: none;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: var(--text-2xs);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+}
+
+.ckod-missing__jump:focus-visible {
+	border-radius: var(--radius-xs);
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Summary rail */
+/*
+ * A tonal surface, not an outline (§B.4 rung 2): the rail is read, not operated, and the only
+ * four-sided boxes on this step are the controls. It carries no `max-inline-size` — Decision #60
+ * forbids a measure on a region whose whole content is figures.
+ */
+.ckod-rail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+	padding: var(--space-5);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+}
+
+@container ckod (min-width: 62rem) {
+	.ckod-rail {
+		position: sticky;
+		inset-block-start: var(--space-4);
+	}
+}
+
+.ckod-rail__headrow {
+	display: flex;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+	padding-block-end: var(--space-2);
+	/* §B.4 rung 4 — ONE hairline, and the block's only separation device. */
+	border-block-end: 1px solid var(--hairline);
+}
+
+.ckod-rail__head {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.ckod-rail__edit {
+	flex: none;
+	color: var(--primary);
+	font-size: var(--text-xs);
+	text-decoration: none;
+}
+
+.ckod-rail__edit:hover {
+	text-decoration: underline;
+}
+
+.ckod-rail__edit:focus-visible {
+	outline: none;
+	border-radius: var(--radius-xs);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ckod-rail__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Rows are non-interactive content: spacing separates them, nothing draws a box (§B.4). */
+.ckod-rail__row {
+	display: flex;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.ckod-rail__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ckod-rail__title {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	overflow-wrap: anywhere;
+}
+
+.ckod-rail__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	align-items: center;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.ckod-rail__dot {
+	color: var(--text-secondary);
+}
+
+.ckod-rail__price {
+	flex: none;
+}
+
+.ckod-rail__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.ckod-rail__totals {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding-block-start: var(--space-3);
+	border-block-start: 1px solid var(--hairline);
+}
+
+.ckod-rail__total {
+	display: flex;
+	gap: var(--space-3);
+	align-items: baseline;
+	justify-content: space-between;
+}
+
+.ckod-rail__total dt {
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}
+
+.ckod-rail__total dd {
+	flex: none;
+	margin: 0;
+}
+
+/*
+ * The payable figure. Weight and scale carry it — nothing here transitions a property that ENCODES
+ * data, so a frozen animation clock in a background tab can never leave an amount stating something
+ * untrue.
+ */
+.ckod-rail__total--grand {
+	padding-block-start: var(--space-2);
+	border-block-start: 1px solid var(--hairline);
+}
+
+.ckod-rail__total--grand dt {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+}
+
+/* The rail's own contribution block sits between the lines and the totals, unboxed. */
+.ckod-rail .cko-contrib {
+	gap: var(--space-1);
+}
+/* #endregion */
+
+/* #region Actions */
+/*
+ * The commitment leads at the inline START; the quieter save-and-stay is pushed to the inline END,
+ * with the save-state note between them so the sentence sits beside the thing it describes.
+ */
+.ckod__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: center;
+	padding-block-start: var(--space-6);
+	border-block-start: 1px solid var(--hairline);
+}
+
+.ckod__actionnote {
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+}
+
+.ckod__save {
+	margin-inline-start: auto;
+}
+
+/*
+ * On a narrow form the actions stack full-width, in the order they are read: commit first, then the
+ * note, then the quieter save. The auto margin is released so the save does not float alone.
+ */
+@container ckodform (max-width: 26rem) {
+	.ckod__actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.ckod__save {
+		margin-inline-start: 0;
+	}
+}
+/* #endregion */
+
+/* #region Dialog */
+.ckod-modal__foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	justify-content: flex-end;
+}
+/* #endregion */

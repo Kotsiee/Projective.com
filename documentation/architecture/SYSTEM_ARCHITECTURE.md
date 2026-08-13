@@ -926,6 +926,66 @@ permitted trailing FK, to `integrations.user_connections`), `00001160` (seven fu
 `storage.objects` policies), `00004011` (indexes), `00005040` (buckets). Quota rides the existing
 entitlement resolver via the `storage_megabytes` key — no parallel billing path.
 
+### Basket, Checkout & Orders — the four-step flow
+
+The universal basket and the four-step `/checkout` are **three fat services on one gate**, all
+`services/finance/` and all behind the **existing `FINANCE_BACKEND_LIVE`** (`isFinanceBackendLive()`
+in `core/supabase.ts`). **No new env key, and no DB migration** — like `/wallet` this is a read+write
+projection over deterministic fixtures plus an in-module session store, and the RLS-scoped
+`finance.baskets` / `basket_items` / `saved_cards` tables (already authored and documented) are the
+deferred live path behind the same gate with zero shape churn.
+
+| Half        | Client (thin)      | Routes (thin)                                                        | Service (fat)                |
+| :---------- | :----------------- | :-------------------------------------------------------------------- | :--------------------------- |
+| The basket  | `BasketService`    | `/api/basket/{index,item,move,promo,lists}`                          | `BasketBackendService`       |
+| The flow    | `CheckoutService`  | `/api/checkout/{session,create,details,order,calendar/[orderId]/[lineId]}` | `CheckoutBackendService` |
+| The wallet of cards | `CardsService` | `/api/cards/{index,[id],default}`                                  | `CardsBackendService`        |
+
+Cross-boundary shapes are the Zod SSOT at **`@projective/types/finance`** — `basket.ts` (items,
+lists, the `BasketLists` projection), `checkout.ts` (the session context, `CheckoutTotals`,
+`CheckoutBlockerCode`, `CreateCheckout`), **`buyer.ts`** (`PostalAddress` · `DeliveryDetails` ·
+`PersonalBilling` / `BusinessBilling` · `BillingContext` · `MonthlyInvoicing` · `BuyerDetails` +
+the completeness predicates `missingBuyerFields()` / `buyerDetailsComplete()`), and **`order.ts`**
+(`Order` · `OrderPage` · `OrderLine` · `FulfilmentKind` + `fulfilmentKindOf()` · `OrderInvoice` ·
+`TaxBreakdown` · `CalendarLinks` + `calendarLinksFor()` / `buildIcsCalendar()`).
+
+**Two reads were added for the flow's new steps, and both are projections, not new storage.**
+
+- **Buyer details** — `CheckoutBackendService.details(query)` and `saveDetails(input, query)` over
+  `services/finance/buyer-fixtures.ts`. `saveDetails` returns the refreshed **session** alongside the
+  saved record, so a save that clears the `missing_details` blocker updates the gate in one round trip
+  instead of leaving the client to re-derive it.
+- **Orders** — `CheckoutBackendService.order(query)` over `services/finance/order-fixtures.ts`, whose
+  `createOrder()` is called from `create()` so `CheckoutResult.orderId` is finally non-null (this is
+  what closes §8 Decision #68 flag (g)). The confirmation step is therefore a **GET over the order
+  projection, never a re-POST of `create()`** — the idempotency ledger is a process-local `Map` with
+  no TTL, so a page that re-charged on refresh would work in dev and double-charge in production.
+
+**The ICS route is the one exception to the JSON envelope.** `/api/checkout/calendar/[orderId]/[lineId]`
+returns `text/calendar; charset=utf-8` with a `content-disposition: attachment` filename and
+`X-Content-Type-Options: nosniff`; it is reached by a plain anchor `href`/`download`, not through
+`apiFetch`. It delegates to the SSOT's `buildIcsCalendar()` — there is no second RFC 5545 builder.
+
+**All money arithmetic stays server-side and single-pathed:** `basketSubtotal` → `applyDiscounts` →
+`platformFeeFor` → `checkoutTotals`, executed by the fat service, which wraps integer minor units into
+`MoneyView`s the client only renders. No `toFixed`, no `Intl.NumberFormat` and no `reduce`-over-prices
+in any island. `create()` is idempotent on its `idempotencyKey` and **re-verifies `expectedTotalMinor`**
+against a freshly computed total, so a client-supplied total is never accepted on trust — which is why
+every input to the total (the voluntary `processingContributionMinor`, the chosen `billingContextId`)
+must be threaded through **both** `session()` and `charge()` or every payment refuses with
+`price_changed`.
+
+**No server capability guard**, for the same reason as `/catalogue` and `/files`: the `(dashboard)`
+middleware bounces guests, the deferred `finance.*` RLS is the real gate, and a server-side capability
+bounce would make half the Dev Context Switcher unreachable (the switcher is a client seam the server
+cannot see). The ten checkout dev axes travel as validated `sim*` query params (`BasketSim`, parsed by
+`services/finance/basket-query.ts`) and are ignored on the live path.
+
+⚠ **Inherited and unresolved (§8 Decision #68):** `authenticated` has no `USAGE` on the `finance`
+schema, so every finance policy — old and new — is latent and nothing here can be verified against a
+live database; and `platform_fee_bp` is seeded `0` while the SSOT says `500`. Both are money decisions
+awaiting a human, and both are why this surface stays on fixtures behind a gate that defaults off.
+
 ### Sessions & Google OAuth
 
 - **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue

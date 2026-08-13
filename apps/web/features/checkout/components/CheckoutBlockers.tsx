@@ -57,6 +57,10 @@ function blockerIcon(code: CheckoutBlockerCode): IconName {
 			return "verified";
 		case "price_changed":
 			return "refresh";
+		case "missing_details":
+			return "user";
+		case "spend_limit":
+			return "shield";
 		default:
 			return "info";
 	}

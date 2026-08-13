@@ -18,6 +18,12 @@ import { FileCard } from "../../FileCard.tsx";
 import { FileTable } from "../../FileTable.tsx";
 import { GridIcon, ListIcon } from "../../file-glyphs.tsx";
 
+// This tab mounts the `/files` cards, table and empty state, so it carries their sheets — see the note
+// in `TicketView` for why a component and not its host island is the right carrier.
+import "../../../styles/file-explorer.css";
+import "../../../styles/file-table.css";
+import "../../../styles/file-card.css";
+
 /**
  * TicketAttachmentsTab — the reference material the CLIENT hung on the ticket, read the way
  * `/projects/[id]/files` reads.

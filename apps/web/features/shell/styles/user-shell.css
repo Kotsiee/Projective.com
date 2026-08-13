@@ -14,11 +14,16 @@
     line-height: 0;
     border-radius: var(--radius-sm);
     width: calc(var(--shell-sidebar-w) - var(--space-5));
+    /* The mark draws in `currentColor`, so the brand tint is set once here and inherited. */
+    color: var(--primary);
 }
 
+/* Height-driven, with `inline-size: auto` deriving the width from the mark's own aspect ratio —
+   the glyph is not square (520:485), so pinning both axes to 28px would letterbox it inside a
+   square box and render it visually smaller than every other 28px control on the row. */
 .shell-brand__mark {
-    inline-size: 28px;
     block-size: 28px;
+    inline-size: auto;
 }
 
 .shell-brand:focus-visible {

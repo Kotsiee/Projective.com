@@ -5,26 +5,11 @@ import type { JSX } from "preact";
  * submit, help affordance, live-status dot). Each inherits `currentColor` and is `aria-hidden` (the
  * accessible name lives on the wrapping control), so they carry zero dependency and theme with the
  * surrounding text. Kept beside `PublicFooter` as feature-local presentation, not a `@projective/ui`
- * primitive (brand marks are marketing-scoped).
+ * primitive. The brand mark itself is NOT here — it is shared across the shell, the guest header and
+ * the auth aside, so it lives in `@web/components/Logo.tsx`.
  */
 
 type IconProps = { class?: string };
-
-/** The Projective brand glyph (1:1 icon mark, per the §8 Decision-4 brand ratios). */
-export function BrandMark(props: IconProps): JSX.Element {
-	return (
-		<svg class={props.class} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-			<rect x="2" y="2" width="20" height="20" rx="6" fill="currentColor" />
-			<path
-				d="M8 17V8.5A1.5 1.5 0 0 1 9.5 7H13a3.5 3.5 0 0 1 0 7h-2.2"
-				stroke="var(--on-primary)"
-				stroke-width="1.9"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			/>
-		</svg>
-	);
-}
 
 export function LinkedInIcon(props: IconProps): JSX.Element {
 	return (

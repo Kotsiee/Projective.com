@@ -9,6 +9,7 @@ import {
 	type MoneyValue,
 	type ProjectedMoney,
 	projectMoney,
+	splitMoney,
 	useCurrencyView,
 } from "../core/currency-store.ts";
 
@@ -116,6 +117,18 @@ export function MoneyView(props: MoneyViewProps): JSX.Element {
 
 	const { size = "body", tone = "default", sign = null } = props;
 
+	/*
+	 * The figure is rendered in PARTS so the minor units can sit a step smaller and raised — the
+	 * treatment the design uses on every price. It is a SPLIT of the string `Intl` already produced,
+	 * never a re-format: see `splitMoney`. An unparseable string returns itself as `major`, so the
+	 * fallback is exactly "render it unsplit".
+	 *
+	 * The parts must stay structural rather than cosmetic, because the app's currency sweep rebuilds
+	 * this same subtree when it re-projects a server-rendered figure. If the two ever disagreed, a
+	 * swept figure would lose its pence styling while the one beside it kept it.
+	 */
+	const parts = splitMoney(projected.display, projected.currency);
+
 	// `data-money-live` tells the app's DOM sweep to leave this instance alone, because it will
 	// re-render itself from the store. It can ONLY be set from an effect — which is exactly right:
 	// an effect runs on hydration and never during SSR, so the flag answers "is this instance
@@ -141,7 +154,10 @@ export function MoneyView(props: MoneyViewProps): JSX.Element {
 		>
 			<span class="ui-money__amount ui-money__num" aria-hidden="true">
 				{sign ? <span class="ui-money__sign">{sign}</span> : null}
-				{projected.display}
+				{parts.symbol ? <span class="ui-money__symbol">{parts.symbol}</span> : null}
+				<span class="ui-money__major">{parts.major}</span>
+				{parts.minor ? <span class="ui-money__minor">{parts.minor}</span> : null}
+				{parts.suffix ? <span class="ui-money__symbol">{parts.suffix}</span> : null}
 			</span>
 			{origin
 				? (

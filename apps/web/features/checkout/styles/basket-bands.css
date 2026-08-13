@@ -1,16 +1,24 @@
 /**
- * basket-bands.css — the `/basket` + `/checkout` middle-nav HEADER and FOOTER bands.
+ * basket-bands.css — the checkout's middle-nav HEADER and FOOTER bands, across all four steps.
  *
  * **Why every width rule here is a container query.** The shell eats roughly 344px, so at a 768px
  * viewport the content region is about 424px: a viewport media query asked about the wrong box and
  * would size these bands against a width they never have. `container-type: inline-size` on each band
- * root makes `@container` ask about the band itself.
+ * root makes `@container` ask about the band itself, and the header band NAMES its container
+ * (`cko-band`) because `checkout-stepper.css` queries it by name from a descendant sheet — an
+ * `@container` with no matching ancestor container never matches at all, so the name is the whole
+ * mechanism by which the step labels collapse.
  *
- * The ONE deliberate exception is `.bsk-head__btn--browse`, which mirrors the shell's own
- * `@media (max-width: 767px)` rule removing `.ui-middle-nav__lane`. The Browse control exists precisely
- * because the lane is gone, so it must be decided by the same measurement the lane's own rule uses —
- * a container query there could show Browse while the lane was still present, duplicating navigation
- * instead of transferring it.
+ * There are exactly TWO deliberate viewport exceptions, and both mirror the shell's own
+ * `@media (max-width: 767px)` rules rather than guessing at them:
+ *
+ * 1. `.cko-band__btn--browse` exists precisely because `.ui-middle-nav__lane` is removed at that
+ *    width, so it must be decided by the same measurement the lane's own rule uses — a container
+ *    query could show Browse while the lane was still present, duplicating navigation instead of
+ *    transferring it.
+ * 2. `.cko-rig__btn--cta` on the basket step, for the same reason: the lane footer owns the single
+ *    filled commitment on desktop (§B.8.2), and the duty transfers to the rig only where the lane is
+ *    gone.
  *
  * `container-type: inline-size` also supplies the containment that stops a `nowrap` action row
  * contributing its min-content width to the frame's `minmax(0, 1fr)` content track. `/wallet` shipped
@@ -18,365 +26,514 @@
  */
 
 /* #region Header band */
-.bsk-head {
-	container-type: inline-size;
-	display: flex;
-	gap: var(--space-3);
-	align-items: center;
-	inline-size: 100%;
-	block-size: var(--shell-midnav-header-h);
-	padding-inline: var(--space-4);
+/*
+ * Three regions, left to right: identity · the four-step trail · the currency selector. The height is
+ * the frame's own `--shell-midnav-header-h` and is not negotiable — the grid row is `auto`, so a band
+ * that does not set it desynchronises the `--has-header` seam accumulator from the band's real height
+ * and misplaces the canvas seam by the difference.
+ */
+.cko-band {
+    container-type: inline-size;
+    container-name: cko-band;
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    inline-size: 100%;
+    block-size: var(--shell-midnav-header-h);
+    padding-inline: var(--space-4);
 }
 
-.bsk-head__identity {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	min-inline-size: 0;
+.cko-band__identity {
+    display: flex;
+    flex: none;
+    gap: var(--space-2);
+    align-items: center;
+    min-inline-size: 0;
 }
 
-.bsk-head__names {
-	display: flex;
-	flex-direction: column;
-	min-inline-size: 0;
-	line-height: var(--leading-normal);
+.cko-band__names {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    line-height: var(--leading-normal);
 }
 
-.bsk-head__title {
-	overflow: hidden;
-	color: var(--on-surface);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-semibold);
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.cko-band__title {
+    overflow: hidden;
+    color: var(--on-surface);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.bsk-head__owner {
-	overflow: hidden;
-	color: var(--text-secondary);
-	font-size: var(--text-2xs);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.bsk-head__search {
-	position: relative;
-	display: flex;
-	flex: 1;
-	gap: var(--space-2);
-	align-items: center;
-	min-inline-size: 0;
-	padding-inline: var(--space-3);
-	border: var(--hairline);
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
-}
-
-.bsk-head__search:focus-within {
-	box-shadow: var(--focus-ring-shadow);
-}
-
-.bsk-head__search-icon {
-	display: flex;
-	color: var(--text-secondary);
-}
-
-.bsk-head__search-input {
-	flex: 1;
-	min-inline-size: 0;
-	padding-block: var(--space-2);
-	border: 0;
-	background: transparent;
-	color: var(--on-surface);
-	font-family: var(--font-sans);
-	font-size: var(--text-sm);
-}
-
-.bsk-head__search-input:focus-visible {
-	outline: none;
-}
-
-.bsk-head__controls {
-	display: flex;
-	gap: var(--space-1);
-	align-items: center;
-	margin-inline-start: auto;
-}
-
-.bsk-head__btn {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	min-block-size: var(--fld-hit);
-	padding-inline: var(--space-3);
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--on-surface);
-	font-family: var(--font-sans);
-	font-size: var(--text-xs);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.bsk-head__btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.bsk-head__btn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+.cko-band__sub {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /*
- * Below the band's own narrow tier the identity's secondary line goes first: the avatar still answers
- * "whose money is this", which is the last fact allowed to leave a region whose controls precede a
- * payment.
+ * The trail sits at the band's inline START, on the same axis as the page title and the leading
+ * column of every row beneath it — one continuous leading edge down the whole surface. It still takes
+ * the row's slack so the control cluster stays flush to the opposite end.
+ *
+ * `flex-start` rather than `center` for a second reason: centring measured the trail against whatever
+ * the control cluster happened to occupy, so the same four labels appeared to shift sideways between
+ * the basket step (which has controls) and the two focus steps (which do not).
+ *
+ * The steps still scroll inside this box at extreme zoom (`.cko-stepper__list`).
  */
-@container (max-width: 34rem) {
-	.bsk-head__owner {
-		display: none;
-	}
-
-	.bsk-head__btn-label {
-		display: none;
-	}
+.cko-band__steps {
+    display: flex;
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    min-inline-size: 0;
+    block-size: 100%;
 }
 
-/*
- * The narrowest tier. The inline field has no room left, so the duty MOVES to the Find control beside
- * the currency toggle — it does not evaporate. A `display: none` with nothing holding the capability
- * is the `/wallet` footer bug wearing a header's clothes.
- */
-.bsk-head__btn--find {
-	position: relative;
-	display: none;
-	padding-inline: var(--space-2);
+.cko-band__controls {
+    display: flex;
+    flex: none;
+    gap: var(--space-1);
+    align-items: center;
+}
+
+.cko-band__btn {
+    position: relative;
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-inline-size: var(--fld-hit);
+    min-block-size: var(--fld-hit);
+    padding-inline: var(--space-2);
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--on-surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.cko-band__btn:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.cko-band__btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
 }
 
 /* The one signal that a filter is narrowing what the reader is looking at (§B.6 — a dot, not a count). */
-.bsk-head__btn-dot {
-	position: absolute;
-	inset-block-start: var(--space-1);
-	inset-inline-end: var(--space-1);
-	inline-size: var(--space-2);
-	block-size: var(--space-2);
-	border-radius: var(--radius-full);
-	background: var(--primary);
+.cko-band__dot {
+    position: absolute;
+    inset-block-start: var(--space-1);
+    inset-inline-end: var(--space-1);
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--primary);
 }
 
 /* Inside the popover the field is the whole panel, so it gets a real measure instead of a flex remnant. */
-.bsk-head__findfield {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	min-inline-size: 14rem;
-	padding-inline: var(--space-3);
-	border: var(--hairline);
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
+.cko-band__findfield {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-inline-size: 14rem;
+    padding-inline: var(--space-3);
+    border: var(--hairline);
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
 }
 
-.bsk-head__findfield:focus-within {
-	box-shadow: var(--focus-ring-shadow);
+.cko-band__findfield:focus-within {
+    box-shadow: var(--focus-ring-shadow);
 }
 
-@container (max-width: 26rem) {
-	.bsk-head__search {
-		display: none;
-	}
+.cko-band__findicon {
+    display: flex;
+    color: var(--text-secondary);
+}
 
-	.bsk-head__btn--find {
-		display: flex;
-	}
+.cko-band__findinput {
+    flex: 1;
+    min-inline-size: 0;
+    padding-block: var(--space-2);
+    border: 0;
+    background: transparent;
+    color: var(--on-surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+}
+
+.cko-band__findinput:focus-visible {
+    outline: none;
+}
+
+/*
+ * The band's narrow tier. The identity's secondary line goes first and the control labels with it: the
+ * avatar and the account name still answer "whose money is this", which is the last fact allowed to
+ * leave a region whose controls precede a payment. Nothing that ACTS is removed by a tier.
+ */
+@container cko-band (max-width: 34rem) {
+    .cko-band__sub {
+        display: none;
+    }
+
+    .cko-band__btn-label {
+        display: none;
+    }
+}
+
+/* The narrowest tier: the account name gives way too, but the avatar never does. */
+@container cko-band (max-width: 24rem) {
+    .cko-band__names {
+        display: none;
+    }
 }
 
 /* The lane's own breakpoint — see the note at the top of this file. */
-.bsk-head__btn--browse {
-	display: none;
+.cko-band__btn--browse {
+    display: none;
 }
 
 @media (max-width: 767px) {
-	.bsk-head__btn--browse {
-		display: flex;
-	}
+    .cko-band__btn--browse {
+        display: flex;
+    }
 }
+
+/* #endregion */
+
+/* #region Display-currency selector */
+/*
+ * The control the brief describes as "flag · ISO · symbol". The flag is a DATA MARK, not an icon: it
+ * is `aria-hidden`, it never carries `.ui-icon`, and the ISO code beside it is what actually names the
+ * currency (§B.7's ban on Unicode-glyph icons is about glyphs that carry meaning). The symbol is
+ * decoration for the same reason — `Intl` owns formatting, and the yen renders `JP¥` in `en-GB` and
+ * `￥` in `ja-JP`, so a symbol lifted out of a table would eventually disagree with the figures.
+ */
+.cko-cur {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+}
+
+.cko-cur__field {
+    min-inline-size: 8.5rem;
+}
+
+.cko-cur__row {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-inline-size: 0;
+}
+
+.cko-cur__flag {
+    font-size: var(--text-sm);
+    line-height: 1;
+}
+
+.cko-cur__code {
+    color: var(--on-surface);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+}
+
+.cko-cur__symbol {
+    color: var(--text-secondary);
+}
+
+.cko-cur__name {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * A saving that could not be persisted is still the viewer's currency in THIS browser, so the note
+ * states that rather than reverting a choice the surface is visibly honouring. It floats below the
+ * band because the band's height is a fixed contract; it is `role="status"` in the markup, so the
+ * fact is announced even where the frame clips the printed form.
+ */
+.cko-cur__note {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-end: 0;
+    z-index: var(--z-raised);
+    margin-block-start: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-base);
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    white-space: nowrap;
+}
+
+@container cko-band (max-width: 34rem) {
+    .cko-cur__field {
+        min-inline-size: 6.5rem;
+    }
+}
+
 /* #endregion */
 
 /* #region Footer rig */
-.bsk-rig {
-	container-type: inline-size;
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-4);
+.cko-rig {
+    container-type: inline-size;
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-4);
 }
 
-.bsk-rig__row {
-	display: flex;
-	gap: var(--space-3);
-	align-items: center;
-	inline-size: 100%;
-}
-
-.bsk-rig__density {
-	flex: 0 1 14rem;
-	min-inline-size: 0;
-}
-
-.bsk-rig__actions {
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	margin-inline-start: auto;
-}
-
-.bsk-rig__btn {
-	display: inline-flex;
-	gap: var(--space-2);
-	align-items: center;
-	min-block-size: var(--fld-hit);
-	padding-inline: var(--space-3);
-	border-radius: var(--radius-full);
-	color: var(--on-surface);
-	font-size: var(--text-sm);
-	text-decoration: none;
-}
-
-a.bsk-rig__btn[data-primary="true"] {
-	background: var(--primary);
-	color: var(--on-primary);
-	font-weight: var(--fw-medium);
-}
-
-a.bsk-rig__btn[aria-disabled="true"] {
-	opacity: var(--fld-disabled-alpha);
-	pointer-events: none;
-}
-
-a.bsk-rig__btn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
-}
-
-.bsk-rig__more {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-inline-size: var(--fld-hit);
-	min-block-size: var(--fld-hit);
-	border: 0;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--on-surface);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.bsk-rig__more:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-}
-
-.bsk-rig__more:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+.cko-rig__row {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    inline-size: 100%;
 }
 
 /*
- * Tier 2 — the density control is a refinement, not a capability, so it is the first thing to go.
- * Nothing that ACTS is ever removed by a tier: the menu beside these controls holds every action at
- * every width, which is the rule `/wallet` broke.
+ * The band's one FACT, at the inline start: the label above the figure, so the figure keeps the
+ * reading line and the word that qualifies it is read on the way in. Uppercase at the label register
+ * with the tracking that register requires — the two are a pair, and uppercase without it sets tight.
+ */
+.cko-rig__total {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-px);
+    min-inline-size: 0;
+    line-height: var(--leading-tight);
+}
+
+.cko-rig__total-label {
+    color: var(--text-secondary);
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+}
+
+/*
+ * A band is `--shell-midnav-header-h` tall and this figure has to sit inside it beside a pill, so the
+ * rig's hero step is one below the body's. `Amount`'s `hero` is the checkout's largest step; here it
+ * is capped rather than re-mapped, so the same `size` prop keeps meaning the same rank everywhere and
+ * only its rendered size answers to the band it is in.
+ */
+.cko-rig__total .cko-money--hero .ui-money__amount {
+    font-size: var(--text-xl);
+}
+
+.cko-rig__actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-inline-start: auto;
+}
+
+.cko-rig__btn {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-block-size: var(--fld-hit);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-full);
+    color: var(--on-surface);
+    font-size: var(--text-sm);
+    text-decoration: none;
+}
+
+a.cko-rig__btn[aria-disabled="true"] {
+    opacity: var(--fld-disabled-alpha);
+    pointer-events: none;
+}
+
+a.cko-rig__btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The step's single commitment.
+ *
+ * `--warning` / `--on-warning` is the amber the build brief names, read from the token rather than
+ * from the hex it quotes (root CLAUDE.md §3). The pair is the theme engine's, so it stays legible in
+ * light, dark and under the contrast overlays — which the brief's literal amber hex would not, since
+ * that value appears nowhere in this product and is not one any theme here produces. Flagged in the
+ * decision log rather than silently converted to `--primary`.
+ *
+ * The button form gets the same treatment from `severity="warning" variant="filled"`; this rule
+ * dresses the ANCHOR form so a navigation and a submission read as one control.
+ */
+a.cko-rig__btn--cta {
+    background: var(--warning);
+    color: var(--on-warning);
+    font-weight: var(--fw-medium);
+}
+
+/* #region Container tiers */
+/*
+ * Labels collapse to glyphs. Each control keeps its accessible name and its portal Tooltip (§B.6), so
+ * the collapse costs a sighted reader the word and costs assistive technology nothing.
+ *
+ * **Nothing that ACTS is removed by a tier.** With the overflow menu gone there is no second home for
+ * a control a breakpoint hides, so a `display: none` here would delete a capability outright — the
+ * exact `/wallet` defect (`nth-child(n + 3) { display: none }` on four pages with no menu). Every rig
+ * action is therefore drawn inline at every width, and only its LABEL gives way.
+ *
+ * The commitment is exempt: it is the only control here that can print an AMOUNT, and a button
+ * reading "£1,366.15" with no verb is a control whose consequence the reader has to infer.
  */
 @container (max-width: 44rem) {
-	.bsk-rig__density {
-		display: none;
-	}
-}
+    .cko-rig__btn:not(.cko-rig__btn--cta) .cko-rig__label {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
 
-/* Tier 3 — labels collapse to glyphs. Each control keeps its `aria-label` and its portal Tooltip. */
-@container (max-width: 30rem) {
-	.bsk-rig__label {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		margin: -1px;
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-
-	.bsk-rig__btn {
-		padding-inline: var(--space-2);
-	}
+    .cko-rig__btn:not(.cko-rig__btn--cta) {
+        padding-inline: var(--space-2);
+    }
 }
 
 /*
- * The mobile bottom nav is `position: fixed` at the viewport's bottom edge, exactly where a footer band
- * pinned to `inset-block-end: 0` lands. `/messages` shipped the two overlapping; the band clears it.
+ * The narrowest tier. Measured at 375px: the total block, four glyph controls and the Checkout pill
+ * came to ~360px against 359px of content box, so the commitment overhung the band by 17px and was
+ * clipped — and clipped silently, because `container-type` supplies the containment that stops an
+ * overflowing rig widening the document (which is what keeps the frame's `minmax(0, 1fr)` track
+ * honest, so there is no scrollbar to notice it by).
+ *
+ * The band buys the room back from SPACING rather than from a control: the gaps close and the glyph
+ * buttons give up their inline padding, leaving every action drawn and every hit target still over the
+ * 24px floor (WCAG 2.2 AA 2.5.8 — the boxes land at ~32px). This is the tier where `/wallet` reached
+ * for `display: none` instead, and deleted three money actions on four pages.
+ *
+ * Scoped to the row and the actions, not to `.cko-rig` itself: `.cko-rig` IS the query container, and
+ * a container query can never style the element it measures.
  */
-@media (max-width: 767px) {
-	.bsk-rig {
-		padding-block-end: calc(var(--space-2) + var(--shell-bottomnav-h));
-	}
+@container (max-width: 30rem) {
+    .cko-rig__row {
+        gap: var(--space-2);
+    }
+
+    .cko-rig__actions {
+        gap: var(--space-1);
+    }
+
+    .cko-rig__btn:not(.cko-rig__btn--cta) {
+        padding-inline: var(--space-1);
+    }
 }
+
 /* #endregion */
 
-/* #region Shared menu (the header's Browse + currency, the rig's overflow) */
+/*
+ * The basket step's commitment is the LANE's above 767px (§B.8.2 — one filled control per decision
+ * region), so the rig's copy is hidden there and revealed only where the lane is gone. It stays in the
+ * DOM and in the overflow menu at every width: hiding a control is a layout decision, and removing a
+ * capability is not.
+ */
+.cko-rig[data-step="basket"] .cko-rig__btn--cta {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .cko-rig[data-step="basket"] .cko-rig__btn--cta {
+        display: inline-flex;
+    }
+
+    /*
+	 * The mobile bottom nav is `position: fixed` at the viewport's bottom edge, exactly where a footer
+	 * band pinned to `inset-block-end: 0` lands. `/messages` shipped the two overlapping; the band
+	 * clears it.
+	 */
+    .cko-rig {
+        padding-block-end: calc(var(--space-2) + var(--shell-bottomnav-h));
+    }
+
+    /*
+	 * …except in focus chrome, which withholds `BottomNav` entirely. Reserving the clearance anyway
+	 * would leave a 56px dead gap under the step's commit action on every phone.
+	 */
+    [data-chrome="focus"] .cko-rig {
+        padding-block-end: var(--space-2);
+    }
+}
+
+/* #endregion */
+
+/* #region Shared menu (the header's Browse + Find, the rig's overflow, the lane's rail switcher) */
 .bsk-menu {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	min-inline-size: 12rem;
-	padding: var(--space-1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 12rem;
+    padding: var(--space-1);
 }
 
 .bsk-menu__item {
-	display: flex;
-	gap: var(--space-3);
-	align-items: center;
-	inline-size: 100%;
-	min-block-size: var(--fld-hit);
-	padding-inline: var(--space-3);
-	border: 0;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--on-surface);
-	font-family: var(--font-sans);
-	font-size: var(--text-sm);
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    inline-size: 100%;
+    min-block-size: var(--fld-hit);
+    padding-inline: var(--space-3);
+    border: 0;
+    border-radius: var(--radius-base);
+    background: transparent;
+    color: var(--on-surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .bsk-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .bsk-menu__item:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
 }
 
 .bsk-menu__item[disabled] {
-	color: var(--text-secondary);
-	opacity: var(--fld-disabled-alpha);
-	cursor: default;
+    color: var(--text-secondary);
+    opacity: var(--fld-disabled-alpha);
+    cursor: default;
 }
 
 .bsk-menu__item[data-danger="true"] {
-	color: var(--danger);
+    color: var(--danger);
 }
 
 .bsk-menu__count {
-	margin-inline-start: auto;
-	color: var(--text-secondary);
-	font-size: var(--text-xs);
-	font-variant-numeric: tabular-nums;
+    margin-inline-start: auto;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
 }
 
 .bsk-menu__rule {
-	margin: var(--space-1) 0;
-	border: 0;
-	border-block-start: var(--hairline);
+    margin: var(--space-1) 0;
+    border: 0;
+    border-block-start: var(--hairline);
 }
+
 /* #endregion */

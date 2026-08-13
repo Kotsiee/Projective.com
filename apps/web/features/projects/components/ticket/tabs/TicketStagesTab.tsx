@@ -4,6 +4,9 @@ import type { BoardStageRef } from "../../../types/projects-types.ts";
 import type { TicketStageView } from "../../../core/ticket-view.ts";
 import { StagePipeline } from "../StagePipeline.tsx";
 
+// The pipeline diagram, its inspector and the task list are `.tkc-*` — see the note in `TicketView`.
+import "../../../styles/ticket-pipeline.css";
+
 /**
  * TicketStagesTab — the ticket's pipeline: which stages it runs through, in what order, and which of
  * them run at the same time.

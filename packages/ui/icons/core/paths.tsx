@@ -305,6 +305,20 @@ const STATE = {
 		</>
 	),
 	/**
+	 * A video call — the camera body with its lens barrel angled off one side.
+	 *
+	 * Distinct from `image` (a still) and from `play` (a transport control): this names a MEETING, and
+	 * it is what a booked session's conferencing provider is labelled with. Drawn on the 24-unit grid
+	 * with the same 2.2 corner radius the other rounded-rectangle bodies use, so it sits in a row
+	 * beside `document` and `basket` without reading as a different family.
+	 */
+	"video": () => (
+		<>
+			<rect x="3" y="6.5" width="12.5" height="11" rx="2.2" />
+			<path d="M15.5 10.5l4.2-2.6a.7.7 0 0 1 1.05.6v7a.7.7 0 0 1-1.05.6l-4.2-2.6z" />
+		</>
+	),
+	/**
 	 * What has already happened — a clock face with the counter-clockwise arrow that distinguishes an
 	 * ARCHIVE from a plain `clock` (a time) or `refresh` (a repeat).
 	 */

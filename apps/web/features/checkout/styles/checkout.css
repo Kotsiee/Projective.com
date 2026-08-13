@@ -1,23 +1,34 @@
 /**
- * checkout.css — the `/basket` + `/checkout` stylesheet barrel.
+ * checkout.css — the checkout surface's stylesheet barrel.
  *
- * Split by REGION rather than by page, because the region contract is what governs this surface: the
- * lane, the two frame bands, and the body each own one job and one sheet.
+ * Split by REGION and by STEP rather than by page, because the region contract is what governs this
+ * surface: the lane, the two frame bands, and each step's body own one job and one sheet.
+ *
+ * **Every sheet is listed here, and no other work package edits this file.** The barrel is the one
+ * place the surface's CSS is assembled, so a step that lands with its own sheet appears in the same
+ * ordered cascade as every other step rather than in whichever island happened to import it first.
  *
  * **Delivery note (the trap this repo has been bitten by twice).** A stylesheet imported by a SERVER
  * component never reaches the page: `@projective/ui` CSS is collected from the ISLAND graph, not the
- * SSR render. Every region here imports this barrel from its own island — `BasketLane`,
- * `BasketHeaderBand`, `BasketFooterRig`, `BasketScreen`, `CheckoutScreen` — so the surface stays styled
- * even on the branches where the body renders nothing but an empty state.
+ * SSR render. Every region imports this barrel from its own island — the stepper band, the footer rig,
+ * the list lane and each step's screen — so the surface stays styled even on the branches where a body
+ * renders nothing but an empty state.
  *
- * The last two sheets belong to the surfaces that reach the buyer OUTSIDE those two routes: the header
- * Basket drawer, which mounts on every authenticated page through `UserActions`, and the Buy-Now modal,
- * which mounts on a listing page. Both ride this same barrel from their own islands for the same
- * reason — a purchase panel that renders unstyled is a purchase panel nobody completes.
+ * The last two sheets belong to the surfaces that reach the buyer OUTSIDE these routes: the header
+ * Basket drawer, which mounts on every authenticated page through `UserActions`, and the Buy-Now
+ * modal, which mounts on a listing page. Both ride this same barrel from their own islands for the
+ * same reason — a purchase panel that renders unstyled is a purchase panel nobody completes.
+ *
+ * Order is the cascade: chrome first (the bands and the trail they carry), then the lane, then the
+ * bodies in step order, then the two off-surface overlays.
  */
-@import "./basket-lane.css";
 @import "./basket-bands.css";
-@import "./checkout-body.css";
+@import "./checkout-stepper.css";
+@import "./basket-lane.css";
 @import "./basket-body.css";
+@import "./checkout-details.css";
+@import "./checkout-payment.css";
+@import "./checkout-confirmation.css";
+@import "./checkout-body.css";
 @import "./basket-drawer.css";
 @import "./buy-now.css";

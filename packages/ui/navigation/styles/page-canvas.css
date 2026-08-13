@@ -51,4 +51,11 @@
     .ui-page-canvas__body {
         padding-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
     }
+
+    /* Focus chrome renders no `BottomNav`, so the reservation above would waste 56px at the foot of
+	   the step's body. Paired with the matching rule in middle-nav.css — the two must move together
+	   or the band and the body disagree about where the viewport bottom is. */
+    .ui-app-shell[data-chrome="focus"] .ui-page-canvas__body {
+        padding-block-end: env(safe-area-inset-bottom, 0px);
+    }
 }

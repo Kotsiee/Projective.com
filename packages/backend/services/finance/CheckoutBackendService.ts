@@ -1,26 +1,35 @@
 import type {
 	BasketItem,
+	BillingContext,
+	BuyerDetails,
 	CheckoutBlocker,
 	CheckoutResult,
 	CheckoutSessionContext,
 	CheckoutTotals,
 	CreateCheckout,
+	MonthlyInvoicing,
 	PaymentProvider,
 	ProviderAvailability,
+	SaveBuyerDetails,
 	SavedCard,
+	SpendLimitBlock,
 } from "@projective/types/finance";
 import {
 	availableProviders,
+	buyerDetailsComplete,
 	checkoutRequirements,
 	checkoutTotals,
 	isCheckoutEligible,
 	itemKindMeta,
+	missingBuyerFields,
 	PLATFORM_FEE_BP,
 } from "@projective/types/finance";
-import { ok, type ServiceResult } from "../ServiceResult.ts";
+import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isFinanceBackendLive } from "../../core/supabase.ts";
 import type { BasketQuery } from "./basket-query.ts";
 import * as fx from "./basket-fixtures.ts";
+import * as buyer from "./buyer-fixtures.ts";
+import { recordOrder } from "./order-fixtures.ts";
 import { defaultCardId, findCard, listCards } from "./cards-fixtures.ts";
 
 /**
@@ -83,8 +92,9 @@ function toTotals(
 	items: readonly BasketItem[],
 	promoMinor: number,
 	display: string,
+	processingContributionMinor = 0,
 ): CheckoutTotals {
-	const t = checkoutTotals({ items, promoDiscountMinor: promoMinor });
+	const t = checkoutTotals({ items, promoDiscountMinor: promoMinor, processingContributionMinor });
 	const money = (minor: number) => fx.money(minor, display);
 	return {
 		subtotal: money(t.subtotalMinor),
@@ -98,8 +108,23 @@ function toTotals(
 		// No tax engine has been wired, so no tax is asserted. A fabricated rate would look
 		// authoritative and be wrong; the SSOT takes tax as an INPUT for exactly this reason.
 		taxNote: null,
+		processingContribution: money(t.processingContributionMinor),
 		total: money(t.totalMinor),
 	};
+}
+
+/**
+ * The two account-level gates that are resolved AFTER the total exists, so they cannot be computed
+ * inside {@link blockersFor} itself.
+ *
+ * Both are optional because the earliest refusal path — a submission with nothing eligible in it —
+ * runs before either has been resolved, and the true reason there is `empty`.
+ */
+interface CheckoutGate {
+	/** The buyer's saved delivery + billing record for the active identity. */
+	buyer?: BuyerDetails;
+	/** How the acting member's spending limit bears on this basket's total. */
+	spendLimit?: SpendLimitBlock;
 }
 
 /**
@@ -109,6 +134,7 @@ function toTotals(
 function blockersFor(
 	resolved: Resolved,
 	providers: readonly ProviderAvailability[],
+	gate: CheckoutGate = {},
 ): CheckoutBlocker[] {
 	const { owner, items } = resolved;
 	const blockers: CheckoutBlocker[] = [];
@@ -168,6 +194,39 @@ function blockersFor(
 		}
 	}
 
+	// The mirror of `canSkipDetails`. A session that may not SKIP the Details step must also refuse
+	// Pay, or a deep link straight to `/checkout/payment` becomes a way around the form — and one
+	// predicate governs both directions, so the redirect and the refusal can never disagree.
+	if (eligible.length > 0 && gate.buyer && !buyerDetailsComplete(gate.buyer)) {
+		const missing = missingBuyerFields(gate.buyer);
+		blockers.push({
+			code: "missing_details",
+			// A record whose fields are all filled but which was never SAVED is a genuinely different
+			// state from an incomplete one — it is pre-fill the buyer has not yet looked at — so it asks
+			// for confirmation rather than naming a field that is not actually missing.
+			message: missing.length > 0
+				? `Add your delivery and billing details to continue — ${
+					missing[0].label
+				} is still missing.`
+				: "Confirm your delivery and billing details to continue.",
+			itemId: null,
+		});
+	}
+
+	// `needs_approval` blocks payment too, but it is not a wall: the verdict carries its own sentence
+	// and the session carries the route forward, so the surface offers the request rather than a dead
+	// end. Re-deriving the ceiling here would be a fourth view of a rule that already has three.
+	if (gate.spendLimit?.applies && gate.spendLimit.verdict !== "allowed") {
+		blockers.push({
+			code: "spend_limit",
+			message: gate.spendLimit.reason ??
+				(gate.spendLimit.verdict === "needs_approval"
+					? "This purchase needs approval before it can be paid for."
+					: "This purchase is over your spending limit for this account."),
+			itemId: null,
+		});
+	}
+
 	// KYB gates OPERATING a pooled entity wallet (finance-model.md §KYC/KYB Gating). The SSOT's
 	// provider function gates only `invoice` on KYB, so the broader gate is expressed here as a
 	// blocker rather than by forking that function.
@@ -192,6 +251,30 @@ function blockersFor(
 	}
 
 	return blockers.slice(0, 20);
+}
+
+/**
+ * The Details step's payload — one record, every identity that record could belong to, and the
+ * monthly-invoicing offer for the active one.
+ *
+ * `invoicing` is the active record's own `invoicing` block rather than a second resolution of it, so
+ * the form's control and the record it edits can never disagree about which mode is set.
+ */
+export interface DetailsPayload {
+	buyer: BuyerDetails;
+	billingContexts: BillingContext[];
+	invoicing: MonthlyInvoicing;
+}
+
+/** Resolve the Details payload for a query. */
+function detailsFor(query: BasketQuery): DetailsPayload {
+	const owner = fx.resolveOwner(query);
+	const record = buyer.buyerDetailsFor(owner, query);
+	return {
+		buyer: record,
+		billingContexts: buyer.billingContextsFor(owner, query),
+		invoicing: record.invoicing,
+	};
 }
 
 /** Resolve the shared inputs both entry points need. */
@@ -269,7 +352,24 @@ export class CheckoutBackendService {
 			items,
 			owner.display,
 		);
-		const totals = toTotals(items, fx.promoMinorFor(promo), owner.display);
+		const buyerRecord = buyer.buyerDetailsFor(owner, query);
+		// The contribution is resolved in two passes on purpose: its amount is a function of the
+		// charge, and the charge is a function of the contribution. The first pass prices the goods,
+		// the second adds the opted-in contribution — so the figure the checkbox advertises and the
+		// figure the buyer is charged are the same number, computed once each.
+		const goods = toTotals(items, fx.promoMinorFor(promo), owner.display);
+		const processingOffer = buyer.processingOfferFor(
+			goods.total.minor,
+			owner.display,
+			query.provider ?? null,
+			query.processingContribution === true,
+		);
+		const totals = toTotals(
+			items,
+			fx.promoMinorFor(promo),
+			owner.display,
+			processingOffer.optedIn ? processingOffer.amount.minor : 0,
+		);
 		// The coverage axis is relative to the TOTAL, so it can only be applied once the total exists —
 		// and it must be applied before the offer, or the wallet provider would be judged against a
 		// balance the surface is about to contradict.
@@ -278,6 +378,7 @@ export class CheckoutBackendService {
 		const providers = offerFor(covered, totals.total.minor, query.sim);
 		const shortfall = Math.max(totals.total.minor - walletMinor, 0);
 		const requirements = checkoutRequirements(items);
+		const spendLimit = buyer.spendLimitFor(owner, totals.total.minor, query);
 
 		return ok({
 			session: {
@@ -312,8 +413,67 @@ export class CheckoutBackendService {
 				requiresEmail: requirements.requiresEmail,
 				requiresSchedule: requirements.requiresSchedule,
 				requiresStage: requirements.requiresStage,
-				blockers: blockersFor(covered, providers),
+				blockers: blockersFor(covered, providers, { buyer: buyerRecord, spendLimit }),
+				buyer: buyerRecord,
+				billingContexts: buyer.billingContextsFor(owner, query),
+				invoicing: buyerRecord.invoicing,
+				processingOffer,
+				spendLimit,
 			},
+		});
+	}
+
+	/**
+	 * The Details step's read: the buyer's saved record for the active billing identity, every identity
+	 * they may bill through, and the monthly-invoicing offer for the active one.
+	 *
+	 * The same three values {@link session} already carries. They are exposed separately so the Details
+	 * page can refresh them after a save without re-resolving a whole checkout — and both paths read
+	 * the ONE record, so the answer that decided the auto-skip is the answer that prints on the
+	 * invoice.
+	 */
+	static details(query: BasketQuery): ServiceResult<DetailsPayload> {
+		if (isFinanceBackendLive()) {
+			// LIVE: read the buyer record + the entities the viewer may bill through under the caller's
+			// JWT (RLS scopes it) — not yet implemented; fall back to fixtures.
+		}
+		return ok(detailsFor(query));
+	}
+
+	/**
+	 * Save the buyer's delivery + billing details for the active identity.
+	 *
+	 * Returns the refreshed record AND the whole checkout session, deliberately: saving is what clears
+	 * the `missing_details` blocker, so a save that answered with the record alone would leave the
+	 * caller holding a stale gate and needing a second round trip to discover it had opened.
+	 */
+	static saveDetails(
+		input: SaveBuyerDetails,
+		query: BasketQuery,
+	): ServiceResult<DetailsPayload & { session: CheckoutSessionContext }> {
+		if (isFinanceBackendLive()) {
+			// LIVE: upsert the buyer record under the caller's JWT — not yet implemented; fall back to
+			// the in-module store.
+		}
+		const owner = fx.resolveOwner(query);
+		if (owner.isEntity && !owner.actingIsMember) {
+			return fail(403, {
+				message:
+					"Only a member of this account can change its billing details. Switch to your personal account to buy this yourself.",
+			});
+		}
+		buyer.saveBuyerDetails(owner, input, query);
+		const session = CheckoutBackendService.session(query);
+		if (!session.ok || !session.data) {
+			// Unreachable over the fixtures, and deliberately not papered over with a fabricated empty
+			// session: the save DID land, and a caller told otherwise would re-submit it.
+			return fail(500, {
+				message:
+					"Your details were saved, but we couldn't refresh the checkout. Reload to continue.",
+			});
+		}
+		return ok({ ...detailsFor(query), session: session.data.session }, {
+			message: "Details saved.",
 		});
 	}
 
@@ -374,12 +534,22 @@ function ownerMatches(input: CreateCheckout, owner: fx.ResolvedOwner): boolean {
 	return input.ownerType === "user" || input.ownerType === "freelancer";
 }
 
-/** The outcome status + wording a provider produces on a successful submission. */
+/**
+ * The outcome status + wording a provider produces on a submission that got this far.
+ *
+ * The return type deliberately EXCLUDES `failed`: every failure leaves through {@link refuse} above,
+ * so a submission that reaches here has produced an order in one of the three live states — and
+ * saying so in the type is what lets {@link recordOrder} take the status without re-checking it.
+ */
 function outcomeFor(
 	provider: PaymentProvider,
 	totalMinor: number,
 	display: string,
-): { status: CheckoutResult["status"]; message: string; nextActionUrl: string | null } {
+): {
+	status: Exclude<CheckoutResult["status"], "failed">;
+	message: string;
+	nextActionUrl: string | null;
+} {
 	const amount = fx.money(totalMinor, display).display;
 	switch (provider) {
 		case "paypal":
@@ -397,6 +567,27 @@ function outcomeFor(
 		default:
 			return { status: "succeeded", message: `Paid ${amount}.`, nextActionUrl: null };
 	}
+}
+
+/**
+ * Which legal identity the invoice is made out to.
+ *
+ * `billingContextId` names an identity the buyer selected on the Details step; it is honoured only
+ * when it is one the viewer may actually bill through, because it arrives in a request body and an
+ * unchecked one would let a submitted string decide whose company registration prints on a document.
+ * Anything unrecognised falls back to the active record's own kind.
+ */
+function billedToKindFor(
+	owner: fx.ResolvedOwner,
+	record: BuyerDetails,
+	input: CreateCheckout,
+	query: BasketQuery,
+): BillingContext["kind"] {
+	if (!input.billingContextId) return record.contextKind;
+	const chosen = buyer.billingContextsFor(owner, query).find((c) =>
+		c.id === input.billingContextId
+	);
+	return chosen?.kind ?? record.contextKind;
 }
 
 /** Run one checkout attempt. Pure of transport; every refusal names what to fix. */
@@ -434,7 +625,33 @@ function charge(input: CreateCheckout, query: BasketQuery): CheckoutResult {
 	}
 
 	const promo = fx.resolvePromo(input.promoCode, eligible, display);
-	const totals = toTotals(eligible, fx.promoMinorFor(promo), display);
+	const promoMinor = fx.promoMinorFor(promo);
+
+	// #region The voluntary contribution (the highest-risk figure in this function)
+	// It is resolved in the SAME two passes `session` uses — the offer is a function of the charge and
+	// the charge is a function of the offer — because the total the buyer was shown INCLUDED it. A
+	// server that recomputed without it would land exactly one contribution below `expectedTotalMinor`
+	// and refuse with `price_changed`, on every contributed payment, for a reason nothing on the
+	// surface could explain.
+	const goods = toTotals(eligible, promoMinor, display);
+	const contribution = Math.max(input.processingContributionMinor ?? 0, 0);
+	const offered = buyer.processingOfferFor(
+		goods.total.minor,
+		display,
+		input.provider,
+		contribution > 0,
+	);
+	if (contribution > 0 && (!offered.offered || contribution !== offered.amount.minor)) {
+		// The contribution is voluntary, not arbitrary: it may only ever be the amount that was
+		// actually offered. Accepting any other figure would let a submitted number decide what a buyer
+		// is charged, which is the same hole `expectedTotalMinor` is re-verified to close.
+		const message =
+			"The optional contribution changed while you were paying. Review the total and try again.";
+		return refuse(message, [{ code: "price_changed", message, itemId: null }], display);
+	}
+	const totals = toTotals(eligible, promoMinor, display, contribution);
+	// #endregion
+
 	// Same ordering as `session`: the coverage axis is relative to the total, so the wallet is settled
 	// before the offer is built — otherwise a charge could be judged against a balance the checkout
 	// page had already shown differently.
@@ -442,7 +659,11 @@ function charge(input: CreateCheckout, query: BasketQuery): CheckoutResult {
 	const priced: Resolved = { ...scoped, items: eligible, walletMinor };
 	const providers = offerFor(priced, totals.total.minor, query.sim);
 
-	const blocking = blockersFor(priced, providers);
+	const buyerRecord = buyer.buyerDetailsFor(owner, query);
+	const blocking = blockersFor(priced, providers, {
+		buyer: buyerRecord,
+		spendLimit: buyer.spendLimitFor(owner, totals.total.minor, query),
+	});
 	if (blocking.length > 0) {
 		return refuse(blocking[0].message, blocking, display);
 	}
@@ -518,11 +739,30 @@ function charge(input: CreateCheckout, query: BasketQuery): CheckoutResult {
 	if (outcome.status === "succeeded") {
 		fx.markPurchased(owner, resolved.basketId, eligible.map((i) => i.id));
 	}
+
+	// The order is written HERE and read back by `OrderBackendService` — `orderId` stops being the
+	// permanently-null field it has always been (Decision #68, flagged item (g)). Every non-failed
+	// outcome produces one: `requires_action` and `invoiced` are real order states, and a buyer bounced
+	// to PayPal or billed on a monthly statement still needs a record to come back to. The id derives
+	// from the attempt key, so the idempotent replay above names the same order rather than a second
+	// one for a single payment.
+	const orderId = recordOrder({
+		owner,
+		basketId: resolved.basketId,
+		items: eligible,
+		totals,
+		status: outcome.status,
+		message: outcome.message,
+		provider: input.provider,
+		cardId: input.cardId,
+		idempotencyKey: input.idempotencyKey,
+		buyer: buyerRecord,
+		billedToKind: billedToKindFor(owner, buyerRecord, input, query),
+	});
+
 	return {
 		status: outcome.status,
-		// No orders table exists yet, so there is no order to name. A fabricated id would be a
-		// reference the buyer could not look up.
-		orderId: null,
+		orderId,
 		charged: fx.money(outcome.status === "succeeded" ? totals.total.minor : 0, display),
 		nextActionUrl: outcome.nextActionUrl,
 		message: outcome.message,

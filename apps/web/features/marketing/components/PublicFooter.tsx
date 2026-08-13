@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import NewsletterForm from "../islands/NewsletterForm.island.tsx";
 import {
-	BrandMark,
 	ChevronIcon,
 	DribbbleIcon,
 	GitHubIcon,
@@ -9,6 +8,7 @@ import {
 	LinkedInIcon,
 	XIcon,
 } from "./footer-icons.tsx";
+import { Logo } from "@web/components/Logo.tsx";
 import "../styles/footer.css";
 
 /**
@@ -74,7 +74,7 @@ export function PublicFooter(): JSX.Element {
 				{/* #region Column 1 — brand + social */}
 				<div class="lp-footer__brand-col">
 					<a class="lp-footer__brand" id="lp-footer-brand" href="/" aria-label="Projective — home">
-						<BrandMark class="lp-footer__brand-mark" />
+						<Logo class="lp-footer__brand-mark" />
 						<span class="lp-footer__brand-text">Projective</span>
 					</a>
 					<p class="lp-footer__tagline">

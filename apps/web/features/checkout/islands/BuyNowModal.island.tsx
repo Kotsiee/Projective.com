@@ -200,6 +200,12 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 			// The total the buyer was SHOWN. A witness statement, not a computation — the server
 			// recomputes it and refuses on mismatch.
 			expectedTotalMinor: view.totals.total.minor,
+			// Buy Now never offers the voluntary gateway contribution — there is no control here to
+			// accept one with — so it is explicitly nothing. It is sent rather than omitted because the
+			// server recomputes the total from what the write carries, and a contribution the client
+			// left out of the write but had included in `expectedTotalMinor` refuses every attempt as
+			// `price_changed`.
+			processingContributionMinor: 0,
 			idempotencyKey: newAttemptKey(),
 		}, { ...base, serviceId: target.itemId, projectId: null });
 		submitting.value = false;

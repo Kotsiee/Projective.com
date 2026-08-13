@@ -45,8 +45,9 @@
 }
 
 .lp-footer__brand-mark {
-	inline-size: 1.85rem;
+	/* Height-driven; the width follows the mark's own 520:485 ratio (see `Logo`). */
 	block-size: 1.85rem;
+	inline-size: auto;
 	color: var(--primary);
 }
 

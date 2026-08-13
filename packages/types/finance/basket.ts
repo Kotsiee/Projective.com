@@ -364,6 +364,85 @@ export const BasketSchema = z.object({
 });
 export type Basket = z.infer<typeof BasketSchema>;
 
+// #region Lists (the lane's navigation projection)
+/**
+ * What a list in the basket lane actually is.
+ *
+ * **A user-defined "list" is a named basket, not a new concept.** `finance.baskets` has always been
+ * multi-row per owner with one `is_default` — the shape a "Save for Later" or "3D Assets" list needs
+ * already exists, and inventing a parallel `finance.lists` table would give the platform two places
+ * a purchasable can sit and two answers to "what is in my basket".
+ *
+ * `ticket` and `session` entries are **derived, not stored**: they are an index over the active
+ * basket's lines grouped by the engagement they belong to, which is why they have no id of their own
+ * beyond the engagement's and cannot be renamed or deleted. Modelling them as real lists would let a
+ * buyer "delete" a grouping and appear to delete the tickets inside it.
+ */
+export const BasketListKind = z.enum([
+	/** A real `finance.baskets` row the buyer named. */
+	"basket",
+	/** The parked shelf — `saved_for_later` lines across the owner's baskets. */
+	"saved",
+	/** Derived: the active basket's ticket lines for one project or service. */
+	"ticket",
+	/** Derived: the active basket's session lines for one service. */
+	"session",
+]);
+export type BasketListKind = z.infer<typeof BasketListKind>;
+
+/** One selectable destination in the basket lane's list explorer. */
+export const BasketListEntrySchema = z.object({
+	id: reference,
+	kind: BasketListKind,
+	label: z.string().min(1).max(120),
+	/** Supporting line ("4 tickets · Helia wallet redesign"); `null` when the label says enough. */
+	caption: z.string().max(160).nullable(),
+	itemCount: z.number().int().min(0),
+	/** The running total of this list's checkout-eligible lines, computed SERVER-side. */
+	subtotal: MoneyViewSchema,
+	/** Where selecting it navigates. */
+	href: z.string().max(200),
+	/** Whether this is the owner's default basket — an add-to-basket lands here. */
+	isDefault: z.boolean(),
+	/** Whether a buyer may check out directly from this list. Derived groupings can; the shelf cannot. */
+	checkoutable: z.boolean(),
+	/** Avatar or cover for an engagement-derived entry; `null` for a plain list. */
+	thumbnail: z.string().max(600).nullable(),
+});
+export type BasketListEntry = z.infer<typeof BasketListEntrySchema>;
+
+/**
+ * The lane's whole navigation model: the buyer's own lists, then the two collapsible
+ * engagement-derived groups.
+ *
+ * Server-computed in one pass so the three sections cannot disagree about a line's membership — a
+ * ticket that appears under its project must be the same row the basket counts.
+ */
+export const BasketListsSchema = z.object({
+	/** Named baskets, default first, plus the parked shelf as the trailing entry. */
+	lists: z.array(BasketListEntrySchema).max(40),
+	/** One entry per project or service with ticket lines in the active basket. */
+	tickets: z.array(BasketListEntrySchema).max(40),
+	/** One entry per service with session lines in the active basket. */
+	sessions: z.array(BasketListEntrySchema).max(40),
+	/** The entry the current URL addresses, so the lane paints its active row on the first byte. */
+	activeId: reference.nullable(),
+	/** The running total of the ACTIVE list — the lane footer's figure. */
+	activeSubtotal: MoneyViewSchema,
+	/** The active list's checkout destination, for the lane footer's CTA. */
+	activeCheckoutHref: z.string().max(200),
+});
+export type BasketLists = z.infer<typeof BasketListsSchema>;
+
+/** Create a new named list. `name` is bounded to the `finance.baskets.name` projection bound. */
+export const CreateBasketListSchema = z.object({
+	name: z.string().trim().min(1).max(120),
+	ownerType: PurchaseOwnerType.optional(),
+	ownerId: reference.optional(),
+});
+export type CreateBasketList = z.infer<typeof CreateBasketListSchema>;
+// #endregion
+
 /** The basket list a buyer switches between (several named baskets, one default). */
 export const BasketSummarySchema = z.object({
 	id: reference,

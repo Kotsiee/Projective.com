@@ -108,11 +108,12 @@
 	flex: 0 0 auto;
 }
 
+/* Was a bare `--primary` rounded square standing in for a logo the project did not have yet. Now
+   the real mark: height-driven, width from its own 520:485 ratio, tinted via `currentColor`. */
 .site-header__mark {
-	inline-size: 18px;
-	block-size: 18px;
-	border-radius: var(--radius-sm);
-	background: var(--primary);
+	block-size: 20px;
+	inline-size: auto;
+	color: var(--primary);
 }
 
 .site-header__nav {
