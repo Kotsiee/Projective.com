@@ -18,22 +18,25 @@ import {
 	endLineWrite,
 	isSelected,
 	notifyBasketChanged,
-	payBlocked,
-	requestCheckoutSubmit,
 	session,
 } from "../core/basket-state.ts";
-import { requestStepAdvance } from "../core/checkout-state.ts";
 import { useCheckoutSeamPassive } from "../core/checkout-seam.ts";
 import type { BasketItem, MoneyView } from "../types/checkout-types.ts";
 
 /**
- * CheckoutFooterRig — the middle-nav FOOTER band on **all four** checkout steps: *every action, and
- * nothing else*.
+ * CheckoutFooterRig — the middle-nav FOOTER band on the checkout's two NON-committing steps: *every
+ * action, and nothing else*.
+ *
+ * **It does not render on `/checkout/details` or `/checkout/payment`.** Those two run in focus chrome
+ * (§D.6) and own their actions inside the content layout and the summary rail, so the band would be a
+ * third place to press a button the buyer is already looking at. `basketFooterFor` withholds it there
+ * — never constructs it — which is why {@link CheckoutFooterRigProps.step} is narrowed to the two
+ * steps that remain rather than typed over the whole `CheckoutStep` union: a step this band cannot
+ * serve should be a type error, not a footer that silently renders the wrong actions.
  *
  * The action SET changes per step; the layout never does. On the **basket** step the design reads as
  * two facts at opposite ends of the band — the running **Total** at the inline start, the **Checkout**
- * pill at the inline end — with every selection operation held in the overflow menu behind them. On
- * the three later steps the band is the step's action set, right-aligned, unchanged.
+ * pill at the inline end. On the confirmation step the band is that step's action set, right-aligned.
  *
  * Four rules are load-bearing here, and each one is a defect this codebase has already shipped once:
  *
@@ -52,24 +55,21 @@ import type { BasketItem, MoneyView } from "../types/checkout-types.ts";
  *    step belongs to the body's summary card ("Proceed to Checkout"). The band's own Checkout is
  *    therefore the neutral `secondary` pill — a second route to the same step, not a second shout.
  *    On the three later steps the body carries no commitment, so the rig's CTA is the amber one.
- * 4. **The rig owns the ACTIONS; the body owns the facts.** Continue and Buy Now therefore *dispatch*
- *    rather than submitting here — the step's body holds the composition, the form state and the
- *    blockers, and a footer that assembled its own idea of them would be a second answer to what is
- *    being bought. The one fact the band does print, the basket Total, is the server's own
- *    `MoneyView`, rendered through {@link Amount}; nothing here sums, formats or converts.
- *
- * The later steps' CTAs are `severity="warning"` — the amber the build brief names, taken from the
- * token rather than from its hex (root CLAUDE.md §3 is absolute). This is a **flagged conflict**:
- * DESIGN_SYSTEM §A.1 assigns `--warning` to time-sensitive status, and in light mode the token
- * resolves to an ochre rather than the brief's amber. The owner's directive is explicit and repeated,
- * so it ships as written and is logged rather than silently converted to `--primary`.
+ * 4. **The rig owns the ACTIONS; the body owns the facts.** The one fact the band does print, the
+ *    basket Total, is the server's own `MoneyView` rendered through {@link Amount}; nothing here sums,
+ *    formats or converts.
  */
 
 // #region Props
 /** Props for {@link CheckoutFooterRig}. */
 export interface CheckoutFooterRigProps {
-	/** Which of the four steps the URL addresses — decides the action SET, never the layout. */
-	step: CheckoutStep;
+	/**
+	 * Which step the URL addresses — decides the action SET, never the layout.
+	 *
+	 * Narrowed to the two steps this band serves. The focus steps withhold it entirely (see the
+	 * component note), so accepting them here would type a state that cannot occur.
+	 */
+	step: Extract<CheckoutStep, "basket" | "confirmation">;
 	/** The basket the actions target. */
 	basketId: string | null;
 	/** The acting owner scope, echoed into every link. */
@@ -81,8 +81,6 @@ export interface CheckoutFooterRigProps {
 	 * with the currency selector in the band above rather than freezing at the first byte.
 	 */
 	total: MoneyView | null;
-	/** Whether anything currently blocks payment; the commit control is refused while true. */
-	blocked: boolean;
 	/** The completed order, on the confirmation step. */
 	orderId?: string | null;
 	/**
@@ -222,7 +220,6 @@ export default function CheckoutFooterRig(props: CheckoutFooterRigProps): JSX.El
 		hasLines,
 		allSelected,
 		busy: busy.value,
-		blocked: props.blocked || payBlocked.value,
 		onSelectAll: () => void setSelection(!allSelected),
 		onSaveSelected: () => void saveSelected(),
 		onRemoveSelected: () => void removeSelected(),
@@ -272,7 +269,6 @@ interface RigContext {
 	hasLines: boolean;
 	allSelected: boolean;
 	busy: boolean;
-	blocked: boolean;
 	onSelectAll: () => void;
 	onSaveSelected: () => void;
 	onRemoveSelected: () => void;
@@ -282,8 +278,9 @@ interface RigContext {
 /**
  * The step's action set.
  *
- * Pure, and deliberately exhaustive over {@link CheckoutStep} rather than defaulted: a step added to
- * the flow without an action set should be a type error, not a footer that silently renders nothing.
+ * Pure, and deliberately exhaustive over the two steps the band serves rather than defaulted: a step
+ * added to the flow without an action set should be a type error, not a footer that silently renders
+ * nothing.
  */
 function actionsFor(props: CheckoutFooterRigProps, ctx: RigContext): RigAction[] {
 	switch (props.step) {
@@ -339,48 +336,6 @@ function actionsFor(props: CheckoutFooterRigProps, ctx: RigContext): RigAction[]
 					disabled: ctx.selectedCount === 0,
 				},
 			];
-		case "details":
-			return [
-				{
-					key: "save_details",
-					label: "Save details",
-					icon: "check",
-					// Target = this step: save, and stay where you are.
-					onSelect: () => requestStepAdvance("details"),
-				},
-				{
-					key: "continue",
-					label: "Continue",
-					icon: "arrow-right",
-					cta: true,
-					// Target = the next step. The body validates and navigates; the rig only asks.
-					onSelect: () => requestStepAdvance("payment"),
-				},
-			];
-		case "payment":
-			return [
-				{
-					key: "change_details",
-					label: "Change details",
-					icon: "edit",
-					// `edit=1` is what makes the form reachable at all once a record is complete — every
-					// other route into it redirects straight past.
-					href: appendParam(
-						checkoutStepHref("details", props.basketId, props.owner),
-						"edit",
-						"1",
-					),
-				},
-				{
-					key: "buy_now",
-					label: "Buy Now",
-					icon: "wallet",
-					cta: true,
-					amount: ctx.total,
-					disabled: ctx.blocked,
-					onSelect: requestCheckoutSubmit,
-				},
-			];
 		case "confirmation":
 			return [
 				{
@@ -413,13 +368,6 @@ function actionsFor(props: CheckoutFooterRigProps, ctx: RigContext): RigAction[]
 				},
 			];
 	}
-}
-
-/** Append one query param to a path that may or may not already carry a query string. */
-function appendParam(path: string, key: string, value: string): string {
-	return `${path}${path.includes("?") ? "&" : "?"}${encodeURIComponent(key)}=${
-		encodeURIComponent(value)
-	}`;
 }
 // #endregion
 

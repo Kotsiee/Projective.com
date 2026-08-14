@@ -13,6 +13,10 @@ import { DetailsField } from "./AddressFields.tsx";
  * The email here is the ACCOUNT-level default. A basket line that carries its own
  * `destinationEmail` still wins for that line; this is what pre-fills it, which is why the hint says
  * so rather than implying the address is final.
+ *
+ * **Two rows.** The name splits across the row because a first and last name are read as one fact;
+ * the email takes the row beneath and is capped at `--field-max`, because an address stretched to
+ * the form's full measure invites the reader to expect a longer value than one.
  */
 
 // #region Props
@@ -39,6 +43,7 @@ export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
 				autoComplete="given-name"
 				disabled={disabled}
 				scope={scope}
+				span="half"
 			/>
 			<DetailsField
 				draft={draft}
@@ -49,6 +54,7 @@ export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
 				autoComplete="family-name"
 				disabled={disabled}
 				scope={scope}
+				span="half"
 			/>
 			<DetailsField
 				draft={draft}
@@ -62,7 +68,8 @@ export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
 				hint="Downloads and receipts go here. Any line with its own address keeps it."
 				disabled={disabled}
 				scope={scope}
-				wide
+				span="full"
+				cap
 			/>
 		</div>
 	);

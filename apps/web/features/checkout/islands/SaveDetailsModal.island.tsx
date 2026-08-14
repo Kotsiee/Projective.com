@@ -143,9 +143,6 @@ export default function SaveDetailsModal(props: SaveDetailsModalProps): JSX.Elem
 					contexts={billingContexts}
 					disabled={busy}
 					scope={SCOPE}
-					onChange={() => {
-						draft.business.departmentId.value = "";
-					}}
 				/>
 
 				{error.value ? <Message severity="warning" size="sm">{error.value}</Message> : null}

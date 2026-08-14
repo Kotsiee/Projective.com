@@ -30,6 +30,7 @@ export type {
 	CheckoutResult,
 	CheckoutResultStatus,
 	CheckoutSessionContext,
+	CheckoutSettlement,
 	CheckoutTotals,
 	CheckoutWallet,
 	CreateCheckout,

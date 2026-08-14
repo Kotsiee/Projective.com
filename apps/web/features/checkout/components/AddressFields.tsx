@@ -32,14 +32,19 @@ import {
  * **`state` and `line2` are genuinely optional** and say so, rather than being silently accepted and
  * then refused by a payment processor that needed a US state.
  *
- * **Width is a SPAN, not a boolean.** The grid runs six tracks, so a row asks for a half (three), a
- * third (two) or the whole width (six) — which is what lets City / State / Postcode sit three across
- * without a second grid nested inside the first. `wide` survives as the alias for `full`, so the
- * callers that pre-date the ramp keep working unchanged.
+ * **Width is a SPAN, not a boolean.** The grid runs twelve tracks, so a row asks for a half (six), a
+ * third (four) or the whole width (twelve) — which is what lets City / State / Postcode sit three
+ * across without a second grid nested inside the first. `wide` survives as the alias for `full`, so
+ * the callers that pre-date the ramp keep working unchanged.
+ *
+ * **A full-width row may still be capped.** `cap` holds a control to `--field-max` (28rem) inside a
+ * twelve-track row: an email or a country is a short value, and a text input stretched to 44rem
+ * invites the reader to expect one. It is a MEASURE on a field, never on a figure — the rule
+ * Decision #60 draws around amounts, charts and tables does not reach a column of text inputs.
  */
 
 // #region Shared field row
-/** How many of the grid's six tracks a field row occupies. */
+/** How many of the grid's twelve tracks a field row occupies. */
 export type DetailsFieldSpan = "third" | "half" | "full";
 
 /** Props for {@link DetailsField}. */
@@ -65,10 +70,12 @@ export interface DetailsFieldProps {
 	placeholder?: string;
 	/** Block writes while a save is in flight. */
 	disabled?: boolean;
-	/** How much of the six-track grid this row occupies. Defaults to a half. */
+	/** How much of the twelve-track grid this row occupies. Defaults to a half. */
 	span?: DetailsFieldSpan;
 	/** Span the full width. The pre-ramp spelling of `span="full"`. */
 	wide?: boolean;
+	/** Hold the control to `--field-max` within its span — for short values on a wide row. */
+	cap?: boolean;
 	/** Id scope, so the page form and the modal never mint the same ids. */
 	scope?: string;
 }
@@ -95,7 +102,7 @@ export function DetailsField(props: DetailsFieldProps): JSX.Element {
 	const note = verdict.message ?? hint ?? null;
 
 	return (
-		<p class="ckod-field" data-span={spanOf(props)}>
+		<p class="ckod-field" data-span={spanOf(props)} data-cap={props.cap ? "true" : undefined}>
 			<label class="ckod-field__label" for={id}>
 				{label}
 				{required
@@ -104,7 +111,7 @@ export function DetailsField(props: DetailsFieldProps): JSX.Element {
 			</label>
 			<InputText
 				id={id}
-				size="sm"
+				size="md"
 				fluid
 				type={props.type ?? (email ? "email" : "text")}
 				autoComplete={props.autoComplete}
@@ -115,6 +122,14 @@ export function DetailsField(props: DetailsFieldProps): JSX.Element {
 				aria-describedby={note ? noteId : undefined}
 				onBlur={() => markTouched(draft, path)}
 			/>
+			{
+				/*
+				 * The note row is rendered whether or not it has anything to say, and reserves its height
+				 * from `--fld-hint-min-h`. A message that appears only when it has content pushes its
+				 * whole grid row — and therefore the rest of the form — down at the exact moment the
+				 * reader is being asked to look at something.
+				 */
+			}
 			{verdict.message
 				? (
 					<span class="ckod-field__note ckod-field__note--error" id={noteId} role="alert">
@@ -122,9 +137,7 @@ export function DetailsField(props: DetailsFieldProps): JSX.Element {
 						{verdict.message}
 					</span>
 				)
-				: hint
-				? <span class="ckod-field__note" id={noteId}>{hint}</span>
-				: null}
+				: <span class="ckod-field__note" id={noteId}>{hint}</span>}
 		</p>
 	);
 }
@@ -151,9 +164,11 @@ export interface AddressFieldsProps {
  * cannot be validated, cannot be handed to a tax engine, and cannot be corrected line by line.
  *
  * The two street lines take the full width because an address line is long; City / State / Postcode
- * take a third each because they are short and are read as one row. Country stays a third rather
- * than being dropped — it is required by `missingBuyerFields` for both identities, and it is what
- * seeds the phone field's dial code.
+ * take a third each because they are short and are read as one row. **Country is kept and is not
+ * part of that three-across row** — it is required by `missingBuyerFields` for both identities and
+ * it is what seeds the phone field's dial code, so dropping it to make the row tidy would make the
+ * form unfilable. It takes its own row, capped like the other short values, rather than squeezing a
+ * fourth column into a row the design draws as three.
  */
 export function AddressFields(props: AddressFieldsProps): JSX.Element {
 	const { draft, address, prefix, disabled, scope } = props;
@@ -197,7 +212,7 @@ export function AddressFields(props: AddressFieldsProps): JSX.Element {
 				label="State"
 				value={address.state}
 				autoComplete="address-level1"
-				hint="Required in some countries, including the United States."
+				hint="Required in some countries, including the US."
 				disabled={disabled}
 				scope={scope}
 				span="third"
@@ -205,7 +220,7 @@ export function AddressFields(props: AddressFieldsProps): JSX.Element {
 			<DetailsField
 				draft={draft}
 				path={`${prefix}.postcode`}
-				label="Postcode"
+				label="Postcode / Zip code"
 				value={address.postcode}
 				required
 				autoComplete="postal-code"
@@ -223,7 +238,8 @@ export function AddressFields(props: AddressFieldsProps): JSX.Element {
 				placeholder="GB"
 				disabled={disabled}
 				scope={scope}
-				span="third"
+				span="full"
+				cap
 			/>
 		</>
 	);

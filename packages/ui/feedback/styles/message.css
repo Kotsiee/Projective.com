@@ -6,179 +6,208 @@
  */
 
 .ui-message {
-	/* Matches the component's own `severity = "info"` default. */
-	--msg-accent: var(--info);
-	--msg-on: var(--on-info);
+    /* Matches the component's own `severity = "info"` default. */
+    --msg-accent: var(--info);
+    --msg-on: var(--on-info);
 
-	position: relative;
-	display: flex;
-	align-items: flex-start;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--overlay-radius-sm);
-	font-family: var(--font-sans);
-	color: var(--on-surface);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--overlay-radius-sm);
+    font-family: var(--font-sans);
+    color: var(--on-surface);
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        border-color var(--dur-fast) var(--ease-standard);
 }
 
 /* #region Severities — accent pair only */
 .ui-message--primary {
-	--msg-accent: var(--primary);
-	--msg-on: var(--on-primary);
+    --msg-accent: var(--primary);
+    --msg-on: var(--on-primary);
 }
+
 .ui-message--secondary {
-	--msg-accent: var(--secondary);
-	--msg-on: var(--on-secondary);
+    --msg-accent: var(--secondary);
+    --msg-on: var(--on-secondary);
 }
+
 .ui-message--success {
-	--msg-accent: var(--success);
-	--msg-on: var(--on-success);
+    --msg-accent: var(--success);
+    --msg-on: var(--on-success);
 }
+
 .ui-message--info {
-	--msg-accent: var(--info);
-	--msg-on: var(--on-info);
+    --msg-accent: var(--info);
+    --msg-on: var(--on-info);
 }
+
 .ui-message--warning {
-	--msg-accent: var(--warning);
-	--msg-on: var(--on-warning);
+    --msg-accent: var(--warning);
+    --msg-on: var(--on-warning);
 }
+
 .ui-message--help {
-	--msg-accent: var(--tertiary);
-	--msg-on: var(--on-tertiary);
+    --msg-accent: var(--tertiary);
+    --msg-on: var(--on-tertiary);
 }
+
 .ui-message--danger {
-	--msg-accent: var(--danger);
-	--msg-on: var(--on-danger);
+    --msg-accent: var(--danger);
+    --msg-on: var(--on-danger);
 }
+
 /* #endregion */
 
 /* #region Variants */
 .ui-message--subtle {
-	background: color-mix(in srgb, var(--msg-accent) var(--tint), transparent);
-	border-inline-start: 3px solid var(--msg-accent);
+    background: color-mix(in srgb, var(--msg-accent) var(--tint), transparent);
 }
+
 .ui-message--filled {
-	background: var(--msg-accent);
-	color: var(--msg-on);
+    background: var(--msg-accent);
+    color: var(--msg-on);
 }
+
 .ui-message--outlined {
-	background: var(--surface);
-	border: 1px solid var(--msg-accent);
+    background: var(--surface);
+    border: 1px solid var(--msg-accent);
 }
+
 /* #endregion */
 
 /* #region Sizes */
 .ui-message--size-sm {
-	padding: var(--space-2) var(--space-3);
-	font-size: var(--text-sm);
-	gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    gap: var(--space-2);
 }
+
 .ui-message--size-md {
-	font-size: var(--text-md);
+    font-size: var(--text-md);
 }
+
 .ui-message--size-lg {
-	font-size: var(--text-lg);
-	padding: var(--space-4) var(--space-5);
+    font-size: var(--text-lg);
+    padding: var(--space-4) var(--space-5);
 }
+
 /* #endregion */
 
 /* #region Parts */
 .ui-message__icon {
-	display: inline-flex;
-	flex: none;
-	inline-size: 1.25em;
-	block-size: 1.25em;
-	color: var(--msg-accent);
+    display: inline-flex;
+    flex: none;
+    inline-size: 1.25em;
+    block-size: 1.25em;
+    color: var(--msg-accent);
 }
+
 .ui-message--filled .ui-message__icon {
-	color: var(--msg-on);
+    color: var(--msg-on);
 }
+
 .ui-message__icon svg {
-	inline-size: 100%;
-	block-size: 100%;
+    inline-size: 100%;
+    block-size: 100%;
 }
+
 .ui-message__text {
-	flex: 1 1 auto;
-	line-height: var(--leading-snug);
-	word-break: break-word;
+    flex: 1 1 auto;
+    line-height: var(--leading-snug);
+    word-break: break-word;
 }
+
 .ui-message__summary {
-	display: block;
-	font-weight: var(--fw-semibold);
+    display: block;
+    font-weight: var(--fw-semibold);
 }
+
 .ui-message__detail {
-	display: block;
-	opacity: 0.9;
+    display: block;
+    opacity: 0.9;
 }
+
 .ui-message__close {
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--overlay-action-size);
-	block-size: var(--overlay-action-size);
-	margin-inline-start: var(--space-1);
-	padding: 0;
-	color: inherit;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	opacity: 0.75;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		opacity var(--dur-fast) var(--ease-standard);
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--overlay-action-size);
+    block-size: var(--overlay-action-size);
+    margin-inline-start: var(--space-1);
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    opacity: 0.75;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        opacity var(--dur-fast) var(--ease-standard);
 }
+
 .ui-message__close svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
 }
+
 .ui-message__close:hover {
-	opacity: 1;
-	background: color-mix(in srgb, currentColor var(--tint), transparent);
+    opacity: 1;
+    background: color-mix(in srgb, currentColor var(--tint), transparent);
 }
+
 .ui-message__close:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
-	opacity: 1;
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    opacity: 1;
 }
+
 /* #endregion */
 
 /* #region Messages stack (islands/Messages.tsx) */
 .ui-messages {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
 }
+
 .ui-messages__item {
-	overflow: hidden;
-	animation: ui-messages-enter var(--dur-medium) var(--ease-emphasized);
-	transition:
-		opacity var(--dur-medium) var(--ease-standard),
-		transform var(--dur-medium) var(--spring-standard);
+    overflow: hidden;
+    animation: ui-messages-enter var(--dur-medium) var(--ease-emphasized);
+    transition:
+        opacity var(--dur-medium) var(--ease-standard),
+        transform var(--dur-medium) var(--spring-standard);
 }
+
 .ui-messages__item--exit {
-	opacity: 0;
-	transform: translateY(-4px) scale(0.98);
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
 }
+
 @keyframes ui-messages-enter {
-	from {
-		opacity: 0;
-		transform: translateY(-6px) scale(0.98);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0) scale(1);
-	}
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
+
 @media (prefers-reduced-motion: reduce) {
-	.ui-message,
-	.ui-message__close,
-	.ui-messages__item {
-		animation-duration: 0ms;
-		transition-duration: 0ms;
-	}
+
+    .ui-message,
+    .ui-message__close,
+    .ui-messages__item {
+        animation-duration: 0ms;
+        transition-duration: 0ms;
+    }
 }
+
 /* #endregion */

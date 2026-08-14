@@ -92,23 +92,12 @@ export const activeListTotal = computed<string | null>(() =>
 );
 // #endregion
 
-// #region Region bridge
-/**
- * Fired by a band to ask the body to advance the flow.
- *
- * The footer rig holds the step's commit action (the region contract), but the BODY holds the
- * composition being committed — which lines, which details, which instrument. A rig that assembled
- * its own idea of what was being bought would be a second answer to the same question, and the two
- * would eventually differ by one line.
+/*
+ * The `CHECKOUT_STEP_EVENT` region bridge is gone with the two focus steps' footer band. It let a rig
+ * holding the step's commit ask the body — which owns the record being committed — to advance. Both
+ * steps now carry their commit inside the body, so the action and the record it commits are in one
+ * component and there is nothing left to bridge.
  */
-export const CHECKOUT_STEP_EVENT = "pj:checkout-step";
-
-/** Ask the active step's body to advance. */
-export function requestStepAdvance(step: CheckoutStep): void {
-	if (typeof globalThis.dispatchEvent !== "function") return;
-	globalThis.dispatchEvent(new CustomEvent(CHECKOUT_STEP_EVENT, { detail: { step } }));
-}
-// #endregion
 
 // #region Read unwrapping
 /** The last read error, so a failed refetch is visible rather than silent. */

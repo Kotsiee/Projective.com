@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { basisPoints, currency, minorUnitsNonNeg, timestamp } from "./common.ts";
 import { KycStatus } from "./verification.ts";
+import { FxSnapshotSchema } from "./ledger.ts";
 import { formatMoney, MoneyViewSchema } from "./wallet.ts";
 import { CardBrand } from "./card-art.ts";
 import {
@@ -660,6 +661,45 @@ export const CheckoutBlockerSchema = z.object({
 export type CheckoutBlocker = z.infer<typeof CheckoutBlockerSchema>;
 
 /**
+ * What this checkout will settle in, and — when the goods were priced elsewhere — the FX observation
+ * it was priced against.
+ *
+ * **Every string here is composed server-side, and that is the whole point.** The rate is read off
+ * the money that was actually converted (each price carries its own `MoneyOrigin.fxRate`), never
+ * resolved a second time: a printed rate that differs from the one applied is the single FX failure
+ * a reader has no way to detect. The client renders `rateLabel` and `asOfLabel` verbatim and composes
+ * no arithmetic, exactly as the invoice's `InvoiceFx` does.
+ *
+ * **It is a QUOTE, not a record.** `InvoiceFx` documents the conversion a completed charge actually
+ * used; this documents the observation the buyer is being quoted against before they commit. The two
+ * describe different moments, so they are two shapes over one primitive ({@link FxSnapshotSchema})
+ * rather than one shape doing double duty — reusing the invoice's would assert a settlement that has
+ * not happened.
+ *
+ * **`fx` is `null` on a same-currency checkout**, and the surface then prints no rate and no
+ * timestamp at all. A stamp with no conversion behind it is clutter that reads as a commitment.
+ */
+export const CheckoutSettlementSchema = FxSnapshotSchema.extend({
+	/** The ISO code every figure in this projection is expressed in. */
+	currency,
+	/** The currency's own symbol ("£", "JP¥"), for the code-and-symbol disclosure. */
+	symbol: z.string().max(8),
+	/** Pre-formatted `GBP (£)`, so the client never concatenates a currency label. */
+	label: z.string().max(40),
+	/**
+	 * Pre-formatted rate statement (`1 USD = 0.7874 GBP`); `null` when nothing was converted.
+	 *
+	 * Read off an actual converted price rather than re-resolved — see the block note above.
+	 */
+	rateLabel: z.string().max(80).nullable(),
+	/** Pre-formatted snapshot stamp (`13 Aug 2026, 23:38 UTC`); `null` when nothing was converted. */
+	asOfLabel: z.string().max(80).nullable(),
+	/** The currency the goods were priced in; `null` when it is already {@link currency}. */
+	originCurrency: currency.nullable(),
+});
+export type CheckoutSettlement = z.infer<typeof CheckoutSettlementSchema>;
+
+/**
  * The checkout page's entire server projection.
  *
  * Everything the surface renders is here and already resolved: which account is paying, which lines
@@ -671,6 +711,8 @@ export const CheckoutSessionContextSchema = z.object({
 	owner: CheckoutOwnerSchema,
 	/** The display currency every figure in this projection is expressed in. */
 	currency,
+	/** What this checkout settles in, and the FX observation it was priced against. */
+	settlement: CheckoutSettlementSchema,
 	/** The lines being paid for — the basket narrowed by {@link preselect} and by selection. */
 	items: z.array(BasketItemSchema).max(200),
 	/** Server-computed grouping over {@link items}, so the summary renders categories without grouping. */

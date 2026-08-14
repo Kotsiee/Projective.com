@@ -36,21 +36,62 @@ export const PROVIDER_LABEL: Record<PaymentProvider, string> = {
 	invoice: "Invoice",
 };
 
-/**
- * What each route actually does with the money, in one line.
- *
- * Present on every route including a refused one, because a buyer deciding between two methods needs
- * to know what they differ in — and a route they cannot use today is one they may be able to use
- * tomorrow, so explaining it is worth the line.
+/*
+ * `PROVIDER_NOTE` — a one-line explanation per route — is gone with the six-row radio list it
+ * captioned. The two regions that replaced it need no such line: an instrument the buyer already owns
+ * is named by its own plate, and an express button says what it does by being the vendor's button.
+ * A refused route still carries the SERVER's own reason, which is the sentence that actually matters.
  */
-export const PROVIDER_NOTE: Record<PaymentProvider, string> = {
-	card: "Charged to a card saved on this account.",
-	wallet: "Taken from your available Projective balance.",
-	google_pay: "Pay with the card in your Google account.",
-	apple_pay: "Pay with the card in your Apple Wallet.",
-	paypal: "You'll approve the amount on PayPal, then come back here.",
-	invoice: "Billed to your account on your usual terms instead of charged now.",
-};
+
+/**
+ * The two routes a buyer SELECTS between, as opposed to the ones they trigger.
+ *
+ * The payment step draws one list of instruments — the Projective wallet and the cards on file — and
+ * a buyer picks the THING they want to pay with; the route is a consequence of that choice rather
+ * than a question asked before it. The remaining three live routes (Google Pay, Apple Pay, PayPal)
+ * are **express** actions: pressing one starts a payment immediately in the vendor's own sheet, so
+ * they are never a selection that sits waiting for a separate Buy Now. `invoice` is not a route the
+ * buyer picks here at all — consolidated monthly billing is arranged once, on the Details step, and
+ * offering it as a per-purchase instrument would imply it can be chosen per basket.
+ */
+export const SELECTABLE_ROUTES: readonly PaymentProvider[] = ["wallet", "card"];
+
+/** Whether a route is one the instrument list can hold a selection for. */
+export function isSelectableRoute(provider: PaymentProvider | null): boolean {
+	return provider !== null && SELECTABLE_ROUTES.includes(provider);
+}
+
+/**
+ * The id of one selectable instrument — the single value the wallet and every saved card compete
+ * for.
+ *
+ * The wallet and the card list are two presentations of ONE decision, so they must not be able to
+ * hold two answers. `(provider, cardId)` remains the storage, because that pair is what the charge
+ * payload and the route gates are expressed in; this is the projection of it that the UI selects on,
+ * which is what makes "either the wallet or a card, never both" true by construction rather than by
+ * two components remembering to clear each other.
+ */
+export type PaymentMethodId = "wallet" | `card:${string}`;
+
+/** The instrument currently selected, or `null` when the pair does not name one. */
+export function methodIdOf(
+	provider: PaymentProvider | null,
+	cardId: string | null,
+): PaymentMethodId | null {
+	if (provider === "wallet") return "wallet";
+	if (provider === "card" && cardId) return `card:${cardId}`;
+	return null;
+}
+
+/** The `(provider, cardId)` pair an instrument id resolves to. */
+export function routeOfMethod(id: PaymentMethodId): {
+	provider: PaymentProvider;
+	cardId: string | null;
+} {
+	return id === "wallet"
+		? { provider: "wallet", cardId: null }
+		: { provider: "card", cardId: id.slice("card:".length) };
+}
 
 /** The registry glyph a payment route is marked with. */
 export function providerIcon(provider: PaymentProvider): IconName {

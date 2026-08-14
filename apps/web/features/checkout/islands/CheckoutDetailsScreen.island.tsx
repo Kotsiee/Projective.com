@@ -1,13 +1,13 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
+import { useCallback, useEffect, useMemo } from "preact/hooks";
 import "../styles/checkout.css";
 import { missingBuyerFields } from "@projective/types/finance";
 import { Button } from "@projective/ui/fields";
 import { Message } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { CheckoutService } from "../core/CheckoutService.ts";
-import { basketHref, checkoutStepHref, itemKindLabel } from "../core/basket-model.ts";
+import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
 import { currentCheckoutContext } from "../core/basket-state.ts";
 import { includedNow } from "../core/checkout-model.ts";
 import { useCheckoutSeam } from "../core/checkout-seam.ts";
@@ -15,7 +15,6 @@ import {
 	applyRead,
 	billingContextKind,
 	buyerDetails,
-	CHECKOUT_STEP_EVENT,
 	contributionOptedIn,
 	detailsDirty,
 	seedStep,
@@ -36,17 +35,11 @@ import {
 	activeBillingContext,
 	BillingContextSwitcher,
 } from "../components/BillingContextSwitcher.tsx";
-import { BillingFields, BillingKindTabs } from "../components/BillingFields.tsx";
+import { BillingFields } from "../components/BillingFields.tsx";
 import { DeliveryFields } from "../components/DeliveryFields.tsx";
 import { InvoicingSetup } from "../components/InvoicingSetup.tsx";
-import { Amount } from "../components/Amount.tsx";
-import { ProcessingContribution } from "../components/ProcessingContribution.tsx";
-import type {
-	BasketItem,
-	CheckoutSessionContext,
-	CheckoutStep,
-	CheckoutTotals,
-} from "../types/checkout-types.ts";
+import { OrderSummaryRail } from "../components/OrderSummaryRail.tsx";
+import type { CheckoutSessionContext } from "../types/checkout-types.ts";
 
 /**
  * CheckoutDetailsScreen — step 2 of the checkout: where the work goes, and who is invoiced for it.
@@ -78,10 +71,12 @@ import type {
  * the session with `contribute`, and the whole totals block comes back recomputed. That is also what
  * keeps the total the buyer is shown on this step identical to the one the payment step submits.
  *
- * The step's commit action also lives in the middle-nav footer rig (the region contract), so this
- * body listens for {@link CHECKOUT_STEP_EVENT} and runs the same advance the in-form Continue does.
- * The rig holds the button; the body holds the record being committed, and a rig that assembled its
- * own idea of what was being saved would be a second answer to the same question.
+ * ## One commitment, in the rail
+ *
+ * The step runs in focus chrome and carries no footer band, so the summary rail's Continue is the
+ * page's single `filled` action (§B.8.2) — placed beside the figure it commits to. The form's own
+ * foot keeps only the quiet `outlined` Save details, which saves and stays. Two Continues that did
+ * the same thing left a reader working out whether they did.
  */
 
 // #region Props
@@ -222,18 +217,6 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 		globalThis.location.assign(checkoutStepHref("payment", session.basketId || null, owner));
 	}, []);
 
-	// The rig's commit action dispatches rather than submitting, so the body stays the single owner of
-	// what is being saved. A ref keeps the listener bound to the current closure without rebinding it.
-	const advanceRef = useRef(advance);
-	advanceRef.current = advance;
-	useEffect(() => {
-		const onStep = (event: Event) => {
-			const step = (event as CustomEvent<{ step?: CheckoutStep }>).detail?.step;
-			if (step === "payment" || step === "details") void advanceRef.current();
-		};
-		globalThis.addEventListener(CHECKOUT_STEP_EVENT, onStep);
-		return () => globalThis.removeEventListener(CHECKOUT_STEP_EVENT, onStep);
-	}, []);
 	// #endregion
 
 	// #region Derived
@@ -257,19 +240,22 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 							Supplied once and kept — the next order will not ask again. You can change any of it
 							before you pay.
 						</p>
-					</header>
 
-					<BillingContextSwitcher
-						draft={draft}
-						contexts={contexts.value}
-						disabled={busy}
-						addBusinessHref={props.addBusinessHref}
-						onChange={() => {
-							// A different identity has a different department list; a stale selection would
-							// attribute the spend to a budget the new identity does not have.
-							draft.business.departmentId.value = "";
-						}}
-					/>
+						{
+							/*
+							 * The identity chip row belongs in the header because it governs everything
+							 * beneath it: it decides which billing block the form even renders. Placed after
+							 * the first section it would be a control the reader meets only once they have
+							 * started filling in the wrong one.
+							 */
+						}
+						<BillingContextSwitcher
+							draft={draft}
+							contexts={contexts.value}
+							disabled={busy}
+							addBusinessHref={props.addBusinessHref}
+						/>
+					</header>
 
 					{stepError.value
 						? (
@@ -318,12 +304,10 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 						<p class="ckod__hint">
 							What appears on the invoice, and where you are for tax purposes.
 						</p>
-						<BillingKindTabs draft={draft} disabled={busy} />
 						<BillingFields
 							draft={draft}
 							departments={departmentOptions}
 							disabled={busy}
-							tabbed
 						/>
 					</section>
 
@@ -332,18 +316,27 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 						<InvoicingSetup draft={draft} invoicing={invoicing.value} disabled={busy} />
 					</section>
 
+					{
+						/*
+						 * The form's foot carries the quiet action ONLY (§B.8.2). It used to hold a second
+						 * `filled` Continue, identical to the rail's, so the page offered two primaries and a
+						 * reader had to work out whether they did the same thing. The step now has exactly one
+						 * commitment anywhere on it — in the summary rail, beside the figure it commits to —
+						 * because the footer band this step used to share it with is not constructed at all
+						 * under focus chrome (§D.6).
+						 */
+					}
 					<div class="ckod__actions">
 						<Button
-							variant="filled"
-							severity="warning"
+							variant="outlined"
 							size="md"
 							rounded
+							disabled={busy}
 							loading={busy}
-							icon={<Icon name="arrow-right" size="xs" />}
-							iconPos="right"
-							onClick={() => void advance()}
+							icon={<Icon name="check" size="xs" />}
+							onClick={() => void save()}
 						>
-							Continue
+							Save details
 						</Button>
 						<span class="ckod__actionnote" role="status">
 							{busy
@@ -356,222 +349,46 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 								? "Saved to your account."
 								: "Not saved yet."}
 						</span>
-						<Button
-							class="ckod__save"
-							variant="outlined"
-							size="sm"
-							rounded
-							disabled={busy}
-							onClick={() => void save()}
-						>
-							Save details
-						</Button>
 					</div>
 				</div>
 
-				<DetailsSummaryRail
-					lines={lines}
-					totals={projection.totals}
-					session={projection}
-					owner={owner}
-					busy={busy}
-					reading={reading.value}
-					onContribute={(next) => {
-						contributionOptedIn.value = next;
-						void readSession(next);
-					}}
-					onContinue={() => void advance()}
-				/>
+				<div class="cko-pstep__aside">
+					<OrderSummaryRail
+						view={projection}
+						items={lines}
+						// No route has been chosen yet on this step, and the gateway contribution only exists
+						// once one has been — a wallet payment touches no card scheme, so there is no
+						// third-party cost to help with. Asking here would be asking the buyer to answer for a
+						// payment method they have not picked.
+						contribution={null}
+						optedIn={contributionOptedIn}
+						reading={reading.value}
+						onToggleContribution={() => {}}
+						basketHref={basketHref(projection.basketId || null, owner)}
+					>
+						<div class="cko-rail__commit">
+							<Button
+								class="cko-rail__buy"
+								variant="filled"
+								severity="warning"
+								size="lg"
+								fluid
+								rounded
+								loading={busy}
+								icon={<Icon name="arrow-right" size="xs" />}
+								iconPos="right"
+								onClick={() => void advance()}
+							>
+								Continue
+							</Button>
+							<p class="cko-rail__reassure">
+								<Icon name="lock" />
+								<span>Nothing is charged until you review the total on the next step.</span>
+							</p>
+						</div>
+					</OrderSummaryRail>
+				</div>
 			</div>
 		</div>
 	);
 }
-
-// #region Summary rail
-/** Props for {@link DetailsSummaryRail}. */
-interface DetailsSummaryRailProps {
-	/** The lines this payment covers, already narrowed by the server's own selection. */
-	lines: readonly BasketItem[];
-	/** The server's totals block. Rendered, never summed. */
-	totals: CheckoutTotals;
-	/** The live projection, for the contribution offer and the way back to the basket. */
-	session: CheckoutSessionContext;
-	owner: string;
-	/** Whether a save is in flight. */
-	busy: boolean;
-	/** Whether a session re-read is in flight, so the contribution cannot be toggled mid-recompute. */
-	reading: boolean;
-	onContribute: (next: boolean) => void;
-	onContinue: () => void;
-}
-
-/**
- * The composition and what it will cost, beside the form.
- *
- * **Read-only, and computed nowhere.** Step 1 owns editing the basket and this rail links back to
- * it; every figure is a server-computed `MoneyView` printed through {@link Amount}, so the rail
- * cannot disagree with the payment step about what is owed.
- *
- * The intermediate lines — discounts, tax, the platform fee when the buyer is the one carrying it —
- * render only when the server sent a non-zero figure for them. That is a presence test on a value
- * the server computed, not arithmetic: it keeps the common case to the three rows the design asks
- * for while never showing Items + Processing that visibly fails to reach the total.
- */
-function DetailsSummaryRail(props: DetailsSummaryRailProps): JSX.Element {
-	const { lines, totals, session, busy, reading } = props;
-	const optedIn = contributionOptedIn.value;
-	const feeOnBuyer = totals.platformFeeMode === "buyer_added" && totals.platformFee.minor !== 0;
-
-	return (
-		<aside class="ckod-rail" aria-labelledby="ckod-rail-head">
-			<div class="ckod-rail__headrow">
-				<h2 class="ckod-rail__head" id="ckod-rail-head">Your Basket</h2>
-				<a class="ckod-rail__edit" href={basketHref(session.basketId || null, props.owner)}>
-					Change
-				</a>
-			</div>
-
-			{lines.length === 0
-				? (
-					<p class="ckod-rail__empty" role="status">
-						Nothing is selected for this payment yet.
-					</p>
-				)
-				: (
-					<ul class="ckod-rail__list">
-						{lines.map((item) => (
-							<li key={item.id} class="ckod-rail__row">
-								<span class="ckod-rail__body">
-									<span class="ckod-rail__title">{item.title}</span>
-									<span class="ckod-rail__meta">
-										<span>
-											{item.scheduledLabel ?? item.stageLabel ?? item.subtitle ??
-												itemKindLabel(item)}
-										</span>
-										{item.quantity > 1
-											? (
-												<>
-													<span class="ckod-rail__dot" aria-hidden="true">·</span>
-													<span>{`× ${item.quantity}`}</span>
-												</>
-											)
-											: null}
-									</span>
-								</span>
-								<span class="ckod-rail__price">
-									<Amount value={item.lineTotal} size="body" hideOrigin />
-								</span>
-							</li>
-						))}
-					</ul>
-				)}
-
-			<ProcessingContribution
-				offer={session.processingOffer}
-				optedIn={contributionOptedIn}
-				busy={reading}
-				onToggle={props.onContribute}
-			/>
-
-			<dl class="ckod-rail__totals">
-				<div class="ckod-rail__total">
-					<dt>Items</dt>
-					<dd>
-						<Amount value={totals.subtotal} size="body" hideOrigin />
-					</dd>
-				</div>
-
-				{totals.creatorDiscounts.minor !== 0
-					? (
-						<div class="ckod-rail__total">
-							<dt>Creator discounts</dt>
-							<dd>
-								<Amount
-									value={totals.creatorDiscounts}
-									size="body"
-									tone="credit"
-									sign="−"
-									hideOrigin
-								/>
-							</dd>
-						</div>
-					)
-					: null}
-
-				{totals.promoDiscount.minor !== 0
-					? (
-						<div class="ckod-rail__total">
-							<dt>Promotion</dt>
-							<dd>
-								<Amount
-									value={totals.promoDiscount}
-									size="body"
-									tone="credit"
-									sign="−"
-									hideOrigin
-								/>
-							</dd>
-						</div>
-					)
-					: null}
-
-				{feeOnBuyer
-					? (
-						<div class="ckod-rail__total">
-							<dt>Service fee</dt>
-							<dd>
-								<Amount value={totals.platformFee} size="body" hideOrigin />
-							</dd>
-						</div>
-					)
-					: null}
-
-				{totals.taxes.minor !== 0
-					? (
-						<div class="ckod-rail__total">
-							<dt>{totals.taxNote ?? "Tax"}</dt>
-							<dd>
-								<Amount value={totals.taxes} size="body" hideOrigin />
-							</dd>
-						</div>
-					)
-					: null}
-
-				<div class="ckod-rail__total">
-					<dt>Processing fee</dt>
-					<dd>
-						<Amount
-							value={totals.processingContribution}
-							size="body"
-							tone={optedIn ? "default" : "muted"}
-							hideOrigin
-						/>
-					</dd>
-				</div>
-
-				<div class="ckod-rail__total ckod-rail__total--grand">
-					<dt>Order Total</dt>
-					<dd>
-						<Amount value={totals.total} size="lead" />
-					</dd>
-				</div>
-			</dl>
-
-			<Button
-				class="ckod-rail__continue"
-				variant="filled"
-				severity="warning"
-				size="lg"
-				fluid
-				rounded
-				loading={busy}
-				icon={<Icon name="arrow-right" size="xs" />}
-				iconPos="right"
-				onClick={props.onContinue}
-			>
-				Continue
-			</Button>
-		</aside>
-	);
-}
-// #endregion

@@ -399,6 +399,18 @@
 			"port": 8673
 		},
 		{
+			"name": "web-checkout",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8873",
+				"--strictPort"
+			],
+			"port": 8873
+		},
+		{
 			"name": "web-currency",
 			"runtimeExecutable": "deno",
 			"runtimeArgs": [

@@ -1,24 +1,20 @@
 import type { JSX } from "preact";
-import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { useCallback, useEffect, useRef } from "preact/hooks";
 import "../styles/checkout.css";
 import "../styles/checkout-payment.css";
-import { itemKindMeta } from "@projective/types/finance";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { CheckoutService } from "../core/CheckoutService.ts";
-import { checkoutStepHref, itemKindLabel } from "../core/basket-model.ts";
+import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
 import {
 	applyResponse,
 	applySession,
 	BASKET_REFRESH_EVENT,
-	CHECKOUT_SUBMIT_EVENT,
 	checkoutError,
 	chosenCardId,
 	chosenProvider,
 	clearDraft,
-	clientBlockers,
 	currentCheckoutContext,
 	lastResult,
 	newAttemptKey,
@@ -26,13 +22,14 @@ import {
 	resetAttempt,
 	restoreDraft,
 	seedCheckoutContext,
+	selectedMethodId,
+	selectPaymentMethod,
 	session as sessionSignal,
 	submitting,
 } from "../core/basket-state.ts";
 import { contributionOptedIn, seedStep } from "../core/checkout-state.ts";
 import {
 	attemptFingerprint,
-	feeDisclosure,
 	includedNow,
 	resultIcon,
 	resultTitle,
@@ -41,26 +38,18 @@ import {
 import { useCheckoutSeam } from "../core/checkout-seam.ts";
 import { Amount } from "../components/Amount.tsx";
 import { CheckoutBlockers } from "../components/CheckoutBlockers.tsx";
+import { CheckoutContractBanner } from "../components/CheckoutContractBanner.tsx";
 import { ConfirmPayDialog } from "../components/ConfirmPayDialog.tsx";
-import {
-	CardChooser,
-	InstrumentFace,
-	instrumentLabel,
-	ProviderChoice,
-} from "../components/PaymentChoice.tsx";
-import { ProcessingContribution } from "../components/ProcessingContribution.tsx";
+import { OrderSummaryRail } from "../components/OrderSummaryRail.tsx";
+import { ExpressCheckout, PaymentMethodChooser } from "../components/PaymentChoice.tsx";
 import { SpendLimitNotice } from "../components/SpendLimitNotice.tsx";
-import { groupIconName } from "../components/checkout-glyphs.tsx";
 import AddPaymentMethodModal from "./AddPaymentMethodModal.island.tsx";
 import { LINE_ID_PREFIX } from "../components/CheckoutLine.tsx";
 import type {
 	BasketItem,
 	CheckoutBootstrap,
-	CheckoutSessionContext,
-	MoneyView,
 	MonthlyInvoicing,
 	PaymentProvider,
-	PostalAddress,
 	SavedCard,
 } from "../types/checkout-types.ts";
 
@@ -69,7 +58,7 @@ import type {
  *
  * ## What it inherited, verbatim and deliberately
  *
- * Four things were lifted from the single-page checkout unchanged because each is load-bearing and
+ * Three things were lifted from the single-page checkout unchanged because each is load-bearing and
  * each was arrived at by measurement rather than preference:
  *
  * 1. **`expectedTotalMinor` is a witness statement, not a calculation.** It is the total the buyer
@@ -77,34 +66,37 @@ import type {
  *    between render and submit into a `price_changed` refusal instead of a silent overcharge.
  * 2. **The attempt key is minted once per attempt and dropped when the purchase changes.** A retry
  *    replays an outcome; a genuinely different purchase must never replay the previous one's.
- * 3. **The footer band owns the commit action, so it dispatches rather than charges.** The rig holds
- *    the button, this body holds the composition and the blockers, and a rig that assembled its own
- *    idea of what was being bought would be a second answer to the same question.
- * 4. **The outcome claims focus, and re-claims it.** The confirm dialog restores focus to its trigger
+ * 3. **The outcome claims focus, and re-claims it.** The confirm dialog restores focus to its trigger
  *    on an exit ANIMATION, and that trigger has been replaced by the outcome panel — so focus lands
  *    on `<body>` and a buyer who paid by keyboard is left with no position at all. See the effect.
  *
- * ## The two regions
+ * ## The three regions
  *
- * **The main column answers "how".** The wallet's own container, the saved-card list, and the actions
- * that follow from them — commit, switch to monthly invoicing, add a card.
+ * **The banner states the contract.** Where the work goes, who is billed, what currency it settles in
+ * and — only when one applies — the FX rate it was priced at. All of it already decided, all of it one
+ * link from being changed.
  *
- * **The summary rail answers "what, to whom, and for how much".** Where the details go, who is
- * billed, which instrument is charged, what is in the basket, and the arithmetic. It carries its own
- * copy of the commit because it is where the total is, and a buyer reading a total should not have to
- * hunt for the button that agrees to it.
+ * **The main column answers "how".** One list of instruments the buyer owns — the Projective wallet
+ * and every card on file — sharing one selection, plus the alternative arrangement (monthly
+ * invoicing) for the identities that qualify for it.
+ *
+ * **The summary rail answers "how much", and carries the commit.** The lines, the arithmetic, the
+ * express sheets and Buy Now, in that order, so the button that agrees to a total is beside the total
+ * it agrees to rather than a screen away from it.
  *
  * ## What this step does NOT do
  *
  * **It does not edit the basket or the details.** Selecting lines belongs to step 1 and the buyer's
- * record belongs to step 2, both of which have the controls for them; this step renders both
- * read-only and links back. Carrying step 1's client-side slot gate here would state a requirement
- * with no control on the page to satisfy it — a dead end dressed as a blocker.
+ * record belongs to step 2, both of which have the controls for them; this step links back to each.
+ * Carrying step 1's client-side slot gate here would state a requirement with no control on the page
+ * to satisfy it — a dead end dressed as a blocker.
  *
- * **It computes no money.** Every figure is a server-computed `MoneyView`. The voluntary
- * contribution in particular is never added client-side: opting in re-reads the session with
- * `contribute=1`, and the whole totals block comes back recomputed, which is also what keeps
- * `expectedTotalMinor` agreeing with the server's own recompute at charge time.
+ * **It computes no money.** Every figure is a server-computed `MoneyView`. The voluntary contribution
+ * in particular is never added client-side: opting in re-reads the session with `contribute=1`, and
+ * the whole totals block comes back recomputed, which is also what keeps `expectedTotalMinor`
+ * agreeing with the server's own recompute at charge time.
+ *
+ * **It has no footer band.** The step runs in focus chrome (§D.6) and owns its actions here.
  */
 
 // #region Props
@@ -138,6 +130,15 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const confirmOpen = useSignal(false);
 	const addMethodOpen = useSignal(false);
 	const reading = useSignal(false);
+	/**
+	 * The express route a confirmation is open for, or `null` for the selected instrument.
+	 *
+	 * Express is a separate act from selecting, so it must not overwrite the buyer's saved-method
+	 * choice: pressing PayPal and then dismissing the confirmation has to leave the wallet or card they
+	 * had picked exactly as it was. Holding the route for the life of one confirmation is what keeps
+	 * those two decisions independent.
+	 */
+	const expressRoute = useSignal<PaymentProvider | null>(null);
 	// #endregion
 
 	// #region Reads
@@ -194,6 +195,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const gates = routeGatesFor(view, chosenProvider.value, chosenCardId.value);
 	const blockers = [...view.blockers, ...gates];
 	const blocked = blockers.length > 0;
+	/** Blockers that an express sheet cannot clear either — everything except "pick an instrument". */
+	const hardBlocked = view.blockers.length > 0;
 
 	const fingerprint = attemptFingerprint(
 		view,
@@ -203,14 +206,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	);
 	// #endregion
 
-	// #region Cross-region publication + attempt identity
-	// The footer band's Pay control reads `clientBlockers`; publishing from render would be a write
-	// during render, so the derived list is synced here instead.
-	const gateKey = gates.map((gate) => `${gate.code}:${gate.itemId ?? "-"}`).join("|");
-	useEffect(() => {
-		clientBlockers.value = gates;
-	}, [gateKey]);
-
+	// #region Attempt identity + the reconciling read
 	// A changed purchase must not replay the previous purchase's stored outcome.
 	useEffect(() => {
 		resetAttempt();
@@ -222,17 +218,26 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	}, [chosenProvider.value, chosenCardId.value]);
 
 	/*
-	 * Re-read whenever the ROUTE changes, because the offer and the totals both depend on it — a
-	 * wallet payment incurs no gateway cost, so the contribution simply stops being offered.
+	 * Re-read whenever the ROUTE or the contribution changes, because the offer and the totals both
+	 * depend on them — a wallet payment incurs no gateway cost, so the contribution simply stops being
+	 * offered.
 	 *
-	 * The guard is what stops this looping: `applySession` adopts the first available provider when
-	 * none is chosen, which would otherwise re-fire this effect on the answer to its own request. The
-	 * key is seeded from the SSR paint, so the first render never triggers a redundant read.
+	 * **The seed is the SERVER's own answer, and that is a fix rather than a detail.** It used to seed
+	 * from `chosenProvider`, the route the client had just ADOPTED, so the guard compared the client's
+	 * route against itself and no reconciling read ever fired. The SSR projection is always resolved
+	 * with no provider at all (`session.provider` is `null` by construction — the server does not
+	 * choose for the buyer), which means it always reports the contribution as offered. On a wallet or
+	 * invoice payment that is wrong, and the disagreement surfaced at the worst possible moment: the
+	 * checkbox painted, and vanished the instant it was ticked, because ticking it was the first read
+	 * that ever carried the route. Seeding from `initial.session.provider` makes the mount itself the
+	 * reconciling read, so the offer appears or disappears with the ROUTE and never as a side effect of
+	 * answering it. Verified by reproduction: with the wallet restored from a draft, the box previously
+	 * rendered unticked and disappeared on the first click.
 	 */
 	useEffect(() => {
 		const key = `${chosenProvider.value ?? "-"}|${contributionOptedIn.value ? "1" : "0"}`;
 		if (readKey.current === "") {
-			readKey.current = `${initial.session.provider ?? chosenProvider.value ?? "-"}|${
+			readKey.current = `${initial.session.provider ?? "-"}|${
 				initial.session.processingOffer.optedIn ? "1" : "0"
 			}`;
 		}
@@ -282,7 +287,8 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		const current = sessionSignal.value;
 		if (!current || submitting.value) return;
 
-		const provider = chosenProvider.value;
+		// The express route wins for the life of one confirmation; otherwise the selected instrument.
+		const provider = expressRoute.value ?? chosenProvider.value;
 		if (!provider) {
 			checkoutError.value = "Choose how you'd like to pay first.";
 			return;
@@ -321,6 +327,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		});
 		submitting.value = false;
 		confirmOpen.value = false;
+		expressRoute.value = null;
 
 		applyResponse(res, (data) => {
 			lastResult.value = data.result;
@@ -350,39 +357,32 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		await reload();
 	}, [reload]);
 
-	// The footer band's Pay opens the confirmation rather than charging: an irreversible payment gets
-	// the platform's established confirm grammar (the wallet's), not a single click in a toolbar.
-	const openConfirm = useCallback(() => {
+	/**
+	 * Open the confirmation rather than charging.
+	 *
+	 * An irreversible payment gets the platform's established confirm grammar (the wallet's), not a
+	 * single click. An express route travels through the SAME gate: the vendor's sheet is where the
+	 * buyer approves the payment, but this is where they approve the AMOUNT, and the two are different
+	 * agreements.
+	 */
+	const openConfirm = useCallback((route?: PaymentProvider) => {
 		if (submitting.value) return;
+		expressRoute.value = route ?? null;
 		confirmOpen.value = true;
 	}, []);
-
-	useEffect(() => {
-		const handler = () => openConfirm();
-		globalThis.addEventListener?.(CHECKOUT_SUBMIT_EVENT, handler);
-		return () => globalThis.removeEventListener?.(CHECKOUT_SUBMIT_EVENT, handler);
-	}, [openConfirm]);
 	// #endregion
 
 	// #region Render
 	const savedCards = view.savedCards.length > 0 ? view.savedCards : props.cards;
 	const card = savedCards.find((entry) => entry.id === chosenCardId.value) ?? null;
 	const done = result?.status === "succeeded";
-	/**
-	 * Whether to show the instrument list at all.
-	 *
-	 * Keyed on the SERVER's offer rather than on what the buyer has chosen, so the cards paint in the
-	 * first byte. `available` is the fat service's verdict from `availableProviders`; when it refused
-	 * the card route, `ProviderChoice` above is already rendering that refusal WITH its reason, and a
-	 * list of chargeable cards beneath it would contradict the sentence directly above them.
-	 */
-	const cardRouteOffered = view.providers.some(
-		(entry) => entry.provider === "card" && entry.available,
-	);
 	const showsInvoicing = view.buyer.contextKind === "business" ||
 		view.owner.ownerType === "business" || view.owner.ownerType === "organisation";
 	const detailsHref = editDetailsHref(initial.owner);
 	const buyLabel = submitting.value ? "Taking payment…" : `Buy Now · ${view.totals.total.display}`;
+	// The route the confirmation is actually about, so the dialog never names the instrument the buyer
+	// had selected when they pressed an express button instead.
+	const confirmProvider = expressRoute.value ?? chosenProvider.value;
 
 	return (
 		<div class="cko cko-pstep" data-done={done ? "true" : undefined}>
@@ -486,6 +486,12 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 					<div class="cko-pstep__cols">
 						<div class="cko-pstep__main">
+							<CheckoutContractBanner
+								buyer={view.buyer}
+								settlement={view.settlement}
+								detailsHref={detailsHref}
+							/>
+
 							<section class="cko__section" aria-labelledby="cko-pay-head">
 								<div class="cko__headrow">
 									<h2 class="cko__head" id="cko-pay-head">How you'll pay</h2>
@@ -495,116 +501,112 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									</p>
 								</div>
 
-								<ProviderChoice
+								{
+									/*
+									 * ONE list, ONE selection. The wallet and the cards write the same
+									 * `selectedMethodId`, so choosing a card cannot leave the wallet looking chosen
+									 * and vice versa — the two presentations are two drawings of one decision.
+									 */
+								}
+								<PaymentMethodChooser
 									providers={view.providers}
-									chosen={chosenProvider.value}
 									wallet={view.wallet}
 									// The wallet card prints the account it belongs to. It comes from the
 									// session's resolved owner rather than the viewer's own name, because on a
 									// team or business basket the balance being spent is the ENTITY's.
 									ownerName={view.owner.name}
+									cards={savedCards}
+									selected={selectedMethodId.value}
 									labelledBy="cko-pay-head"
-									onChoose={(provider: PaymentProvider) => {
-										chosenProvider.value = provider;
+									onSelect={selectPaymentMethod}
+									onAddCard={() => {
+										addMethodOpen.value = true;
 									}}
 								/>
 
 								{
 									/*
-									 * The saved cards are always on screen, not revealed by first choosing the
-									 * "card" route.
-									 *
-									 * The design puts the wallet and the cards in one list of instruments, and a
-									 * buyer picks the THING they want to pay with — the route is a consequence of
-									 * that choice, not a question asked before it. Gating the list behind
-									 * `chosenProvider === "card"` also meant it was absent from the first byte,
-									 * since nothing is chosen server-side: the page painted a wallet and no cards
-									 * at all, which reads as an account with none saved.
-									 *
-									 * Choosing a card therefore selects the card route with it. The list is
-									 * withheld only when the server has actually refused that route — in which
-									 * case `ProviderChoice` above is already showing the refusal and its reason,
-									 * and offering the instruments beneath it would contradict that.
+									 * The alternative ARRANGEMENT, not an alternative instrument — which is why it
+									 * sits under the instrument list rather than in it. Monthly invoicing is a
+									 * property of the billing identity, agreed once; offering it as a per-purchase
+									 * route would imply it can be picked per basket.
 									 */
 								}
-								{cardRouteOffered && (
-									<div class="cko__cards">
-										<h3 class="cko__subhead" id="cko-cards-head">Card to charge</h3>
-										<CardChooser
-											cards={savedCards}
-											chosen={chosenCardId.value}
-											onChoose={(id) => {
-												chosenCardId.value = id;
-												chosenProvider.value = "card";
-											}}
-											onAddCard={() => {
-												addMethodOpen.value = true;
-											}}
+								{showsInvoicing && (
+									<div class="cko-pstep__alt">
+										<InvoicingAction
+											invoicing={view.invoicing}
+											href={detailsHref}
+											id="cko-inv-main"
 										/>
 									</div>
 								)}
-
-								<div class="cko-pstep__acts">
-									<div class="cko-pstep__acts-primary">
-										<Button
-											class="cko-pstep__buy"
-											variant="filled"
-											severity="warning"
-											rounded
-											disabled={blocked}
-											loading={submitting.value}
-											aria-describedby={blocked ? "cko-buy-gate" : undefined}
-											// The SERVER's formatted total, and the SAME words the footer rig's
-											// control uses. Two names for one action is worse than two places to
-											// press it.
-											label={buyLabel}
-											onClick={openConfirm}
-										/>
-										{showsInvoicing && (
-											<InvoicingAction
-												invoicing={view.invoicing}
-												href={detailsHref}
-												id="cko-inv-main"
-											/>
-										)}
-									</div>
-
-									{cardRouteOffered && (
-										<Button
-											class="cko-pstep__addcard"
-											variant="outlined"
-											size="sm"
-											rounded
-											icon={<Icon name="plus" />}
-											label="Add Card"
-											onClick={() => {
-												addMethodOpen.value = true;
-											}}
-										/>
-									)}
-								</div>
 							</section>
 						</div>
 
 						<div class="cko-pstep__aside">
-							<SummaryRail
+							<OrderSummaryRail
 								view={view}
 								items={paying}
-								card={card}
-								provider={chosenProvider.value}
+								contribution={view.processingOffer}
 								optedIn={contributionOptedIn}
 								reading={reading.value}
 								onToggleContribution={(next) => {
 									contributionOptedIn.value = next;
 								}}
-								detailsHref={detailsHref}
-								showsInvoicing={showsInvoicing}
-								blocked={blocked}
-								blockerMessage={blockers[0]?.message ?? null}
-								submitting={submitting.value}
-								buyLabel={buyLabel}
-								onBuy={openConfirm}
-							/>
+								basketHref={basketHref(view.basketId || null, initial.owner)}
+							>
+								<ExpressCheckout
+									providers={view.providers}
+									busy={submitting.value}
+									blocked={hardBlocked}
+									onPay={(provider) => openConfirm(provider)}
+								/>
+
+								{
+									/*
+									 * Two hairlines meeting a word is one separation device drawn across the row,
+									 * not a box — and the word stays in the accessibility tree because "these are
+									 * two different ways to pay" is a fact a reader needs, not decoration.
+									 */
+								}
+								<p class="cko-rail__or">
+									<span class="cko-rail__or-word">OR PAY WITH SAVED METHOD</span>
+								</p>
+
+								{
+									/*
+									 * The reason, repeated next to the money. A disabled control whose explanation
+									 * lives elsewhere on the page is indistinguishable from a broken one.
+									 */
+								}
+								{blocked && blockers[0] && (
+									<p class="cko__gate" id="cko-buy-gate" role="status">
+										<Icon name="lock" />
+										<span>Pay is off until this is sorted: {blockers[0].message}</span>
+									</p>
+								)}
+
+								<div class="cko-rail__commit">
+									<Button
+										class="cko-rail__buy"
+										variant="filled"
+										severity="warning"
+										size="lg"
+										fluid
+										rounded
+										disabled={blocked}
+										loading={submitting.value}
+										aria-describedby={blocked ? "cko-buy-gate" : undefined}
+										label={buyLabel}
+										onClick={() => openConfirm()}
+									/>
+									<p class="cko-rail__reassure">
+										<Icon name="lock" />
+										<span>You'll confirm the amount before anything is charged.</span>
+									</p>
+								</div>
+							</OrderSummaryRail>
 						</div>
 					</div>
 				</>
@@ -612,9 +614,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 
 			<ConfirmPayDialog
 				open={confirmOpen}
-				session={{ ...view, provider: chosenProvider.value }}
+				session={{ ...view, provider: confirmProvider }}
 				lineCount={paying.length}
-				card={card}
+				card={confirmProvider === "card" ? card : null}
 				busy={submitting.value}
 				onConfirm={() => void submit()}
 			/>
@@ -647,8 +649,6 @@ interface InvoicingActionProps {
 	href: string;
 	/** Unique per instance, so two copies of this control do not share one reason element id. */
 	id: string;
-	/** Stretch to the rail's width. */
-	fluid?: boolean;
 }
 
 /**
@@ -677,7 +677,6 @@ function InvoicingAction(props: InvoicingActionProps): JSX.Element {
 					class="cko-invact__btn"
 					variant="outlined"
 					rounded
-					fluid={props.fluid}
 					disabled
 					aria-describedby={reasonId}
 					icon={<Icon name="lock" />}
@@ -694,9 +693,7 @@ function InvoicingAction(props: InvoicingActionProps): JSX.Element {
 	return (
 		<div class="cko-invact" data-state={active ? "on" : "off"}>
 			<a
-				class={`ui-button ui-button--outlined ui-button--rounded${
-					props.fluid ? " ui-button--fluid" : ""
-				} cko-invact__btn`}
+				class="ui-button ui-button--outlined ui-button--rounded cko-invact__btn"
 				href={props.href}
 				aria-describedby={active ? reasonId : undefined}
 			>
@@ -711,382 +708,6 @@ function InvoicingAction(props: InvoicingActionProps): JSX.Element {
 				</p>
 			)}
 		</div>
-	);
-}
-// #endregion
-
-// #region The summary rail
-/**
- * One detail row beneath a basket line: what the money is for, and the per-unit figure it is priced
- * at. Both come straight from the server's projection — the label is a pre-formatted string and the
- * price is a `MoneyView`, so nothing here is derived.
- */
-interface RailDetail {
-	key: string;
-	label: string;
-	price: MoneyView;
-	/** Whether {@link price} is a per-unit figure rather than what the line costs. */
-	perUnit: boolean;
-}
-
-/**
- * The detail rows for one basket line.
- *
- * A session's booked slot, a ticket's routed stage and a product's licence are the same thing at this
- * scale — the fact that says WHICH instance of the purchasable this is — so one resolution order
- * covers all three and falls back to the kind's own noun rather than to an empty row.
- *
- * The server sends **one** slot per line, so this returns one row. It is shaped as a list because the
- * design shows a booked session with several sittings, and a line that grows a real `slots[]`
- * projection should extend this function rather than replace the markup around it.
- */
-function detailsOf(item: BasketItem): RailDetail[] {
-	const base = item.scheduledLabel ?? item.stageLabel ?? item.subtitle ?? itemKindLabel(item);
-	const seats = item.seats !== null && item.seats > 1 ? ` · ${item.seats} seats` : "";
-	return [{
-		key: `${item.id}-detail`,
-		label: `${base}${seats}`,
-		price: item.unitPrice,
-		perUnit: item.quantity > 1,
-	}];
-}
-
-/**
- * A postal address as at most three printed lines: street, locality, country.
- *
- * Empty parts are dropped rather than printed blank, so a partially-filled record reads as short
- * instead of broken. Nothing is invented — an address with nothing in it returns no lines at all and
- * the caller says so in words.
- */
-function addressLines(address: PostalAddress): string[] {
-	const street = [address.line1, address.line2].map((part) => part.trim()).filter(Boolean).join(
-		", ",
-	);
-	const locality = [address.city, address.state, address.postcode]
-		.map((part) => part.trim())
-		.filter(Boolean)
-		.join(", ");
-	return [street, locality, address.country.trim()].filter(Boolean);
-}
-
-/** Props for {@link SummaryRail}. */
-interface SummaryRailProps {
-	view: CheckoutSessionContext;
-	/** The lines this payment covers, already narrowed to what is included. */
-	items: readonly BasketItem[];
-	/** The card a card payment will charge; `null` for every other route. */
-	card: SavedCard | null;
-	provider: PaymentProvider | null;
-	/** Controlled opt-in for the voluntary gateway contribution. */
-	optedIn: Signal<boolean>;
-	/** Whether a session read is in flight, so the contribution cannot be toggled mid-recompute. */
-	reading: boolean;
-	onToggleContribution: (next: boolean) => void;
-	detailsHref: string;
-	showsInvoicing: boolean;
-	blocked: boolean;
-	/** The first obstacle's own sentence, repeated beside the money; `null` when nothing blocks. */
-	blockerMessage: string | null;
-	submitting: boolean;
-	/** The commit label, identical to the main column's and the footer rig's. */
-	buyLabel: string;
-	onBuy: () => void;
-}
-
-/**
- * The order summary: who it goes to, who is billed, what is charged, and the arithmetic.
- *
- * **Every figure is the server's.** The rail prints `MoneyView`s and never sums, formats or converts
- * one — which is also why the contribution's toggle re-reads the session instead of adding to a total
- * on the client.
- *
- * **The blocks are separated by spacing, a tonal ground and ONE hairline** (§B.4). Nothing here is
- * interactive except the two commits, the "Change Details" link and the contribution checkbox, so
- * nothing here is boxed.
- */
-function SummaryRail(props: SummaryRailProps): JSX.Element {
-	const { view, items, card, provider, blocked } = props;
-	const { buyer, totals } = view;
-
-	const fee = feeDisclosure(totals);
-	const hasTax = totals.taxes.minor > 0 || totals.taxNote !== null;
-	const showsContribution = view.processingOffer.offered ||
-		totals.processingContribution.minor > 0;
-
-	const deliveryName = `${buyer.delivery.firstName} ${buyer.delivery.lastName}`.trim();
-	const business = buyer.contextKind === "business";
-	const billingName = business ? buyer.business.companyName.trim() : buyer.personal.name.trim();
-	const billingEmail = business
-		? buyer.business.corporateEmail.trim()
-		: buyer.personal.email.trim();
-	const billingPhone = business ? buyer.business.phone.trim() : buyer.personal.phone.trim();
-	const billingAddress = addressLines(business ? buyer.business.address : buyer.personal.address);
-
-	return (
-		<section class="cko-rail" aria-labelledby="cko-rail-head">
-			<h2 class="ui-visually-hidden" id="cko-rail-head">Order summary</h2>
-
-			<p class="cko-rail__changerow">
-				<a class="cko-rail__change" href={props.detailsHref}>Change Details</a>
-			</p>
-
-			<section class="cko-rail__sec" aria-labelledby="cko-rail-delivery">
-				<h3 class="cko-rail__head" id="cko-rail-delivery">Delivery Details</h3>
-				<div class="cko-rail__pair">
-					<span class="cko-rail__name">{deliveryName || "No name saved"}</span>
-					<span class="cko-rail__stack">
-						{buyer.delivery.email
-							? <span class="cko-rail__line">{buyer.delivery.email}</span>
-							: <span class="cko-rail__line" data-empty="true">No email saved</span>}
-					</span>
-				</div>
-			</section>
-
-			<section class="cko-rail__sec" aria-labelledby="cko-rail-billing">
-				<h3 class="cko-rail__head" id="cko-rail-billing">Billing Details</h3>
-				<div class="cko-rail__pair">
-					<span class="cko-rail__name">{billingName || "No billing name saved"}</span>
-					<span class="cko-rail__stack">
-						{billingEmail && <span class="cko-rail__line">{billingEmail}</span>}
-						{billingPhone && <span class="cko-rail__line">{billingPhone}</span>}
-						{billingAddress.map((line) => <span key={line} class="cko-rail__line">{line}</span>)}
-						{!billingEmail && !billingPhone && billingAddress.length === 0 && (
-							<span class="cko-rail__line" data-empty="true">No billing details saved</span>
-						)}
-					</span>
-				</div>
-			</section>
-
-			<section class="cko-rail__sec" aria-labelledby="cko-rail-card">
-				<h3 class="cko-rail__head" id="cko-rail-card">Card</h3>
-				<div class="cko-rail__pair">
-					<InstrumentFace
-						class="cko-rail__face"
-						provider={provider}
-						card={card}
-						ownerName={view.owner.name}
-					/>
-					<span class="cko-rail__stack">
-						<span class="cko-rail__line">{instrumentLabel(provider, card)}</span>
-						{provider === "card" && card?.last4 && (
-							<span class="cko-rail__line" data-quiet="true">
-								<span aria-hidden="true">••••</span>
-								<span class="ui-visually-hidden">ending</span>
-								{card.last4}
-							</span>
-						)}
-					</span>
-				</div>
-			</section>
-
-			<hr class="cko-rail__divider" />
-
-			<section class="cko-rail__sec" aria-labelledby="cko-rail-basket">
-				<h3 class="cko-rail__head" id="cko-rail-basket">Your Basket</h3>
-
-				{items.length === 0
-					? (
-						<p class="cko-rail__empty" role="status">
-							Nothing is selected for this payment yet.
-						</p>
-					)
-					: (
-						<ul class="cko-rail__items">
-							{items.map((item) => (
-								<li key={item.id} class="cko-rail__item">
-									<span class="cko-rail__thumb" aria-hidden="true">
-										{item.thumbnail
-											? (
-												<img
-													class="cko-rail__thumbimg"
-													src={item.thumbnail}
-													alt=""
-													loading="lazy"
-												/>
-											)
-											: <Icon name={groupIconName(itemKindMeta(item.itemType).group)} />}
-									</span>
-
-									<span class="cko-rail__itembody">
-										<span class="cko-rail__itemtitle">{item.title}</span>
-
-										<ul class="cko-rail__slots">
-											{detailsOf(item).map((detail) => (
-												<li key={detail.key} class="cko-rail__slot">
-													<span class="cko-rail__slotlabel">
-														{detail.label}
-														{item.quantity > 1 && (
-															<span class="cko-rail__qty">{`× ${item.quantity}`}</span>
-														)}
-													</span>
-													<Amount
-														value={detail.price}
-														size="micro"
-														tone="muted"
-														hideOrigin
-														srLabel={detail.perUnit ? `${detail.price.display} each` : undefined}
-													/>
-												</li>
-											))}
-										</ul>
-
-										<span class="cko-rail__linetotal">
-											<Amount value={item.lineTotal} size="lead" />
-										</span>
-									</span>
-								</li>
-							))}
-						</ul>
-					)}
-			</section>
-
-			<ProcessingContribution
-				offer={view.processingOffer}
-				optedIn={props.optedIn}
-				busy={props.reading}
-				onToggle={props.onToggleContribution}
-			/>
-
-			{
-				/*
-				 * The arithmetic, as a polite live region: a promo landing or a contribution being
-				 * accepted changes what the buyer will be charged, and a total that changes silently is a
-				 * total nobody re-reads. `#cko-summary` is also where a `price_changed` refusal points.
-				 */
-			}
-			<div class="cko-rail__totals" id="cko-summary" role="status" aria-live="polite">
-				<dl class="cko-rail__rows">
-					<div class="cko-rail__row">
-						<dt class="cko-rail__label">Items</dt>
-						<dd class="cko-rail__value">
-							<Amount value={totals.subtotal} hideOrigin />
-						</dd>
-					</div>
-
-					{totals.creatorDiscounts.minor > 0 && (
-						<div class="cko-rail__row" data-kind="discount">
-							<dt class="cko-rail__label">Seller discounts</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.creatorDiscounts} tone="credit" sign="−" hideOrigin />
-							</dd>
-						</div>
-					)}
-
-					{view.promo?.valid && (
-						<div class="cko-rail__row" data-kind="discount">
-							<dt class="cko-rail__label">{view.promo.label}</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.promoDiscount} tone="credit" sign="−" hideOrigin />
-							</dd>
-						</div>
-					)}
-
-					{
-						/*
-						 * The one line that can be presented dishonestly. Under the platform's documented
-						 * default the fee comes out of the seller's release, so showing it as an addition
-						 * would overstate what the buyer pays by exactly the fee. `feeDisclosure` owns the
-						 * branch; the note says in words what the tone says in colour.
-						 */
-					}
-					<div class="cko-rail__row" data-kind="fee" data-charged={fee.charged ? "true" : "false"}>
-						<dt class="cko-rail__label">
-							{fee.label}
-							<span class="cko-rail__note">{fee.note}</span>
-						</dt>
-						<dd class="cko-rail__value">
-							<Amount
-								value={totals.platformFee}
-								tone={fee.charged ? "default" : "muted"}
-								hideOrigin
-								srLabel={fee.charged
-									? undefined
-									: `${totals.platformFee.display}, paid by the seller, not added to your total`}
-							/>
-						</dd>
-					</div>
-
-					{hasTax && (
-						<div class="cko-rail__row" data-kind="tax">
-							<dt class="cko-rail__label">
-								Tax
-								{totals.taxNote && <span class="cko-rail__note">{totals.taxNote}</span>}
-							</dt>
-							<dd class="cko-rail__value">
-								<Amount value={totals.taxes} hideOrigin />
-							</dd>
-						</div>
-					)}
-
-					{showsContribution && (
-						<div class="cko-rail__row" data-kind="contribution">
-							<dt class="cko-rail__label">Processing fee</dt>
-							<dd class="cko-rail__value">
-								<Amount
-									value={totals.processingContribution}
-									tone={props.optedIn.value ? "default" : "muted"}
-									hideOrigin
-								/>
-							</dd>
-						</div>
-					)}
-				</dl>
-
-				<p class="cko-rail__grand">
-					<span class="cko-rail__grand-label">Order Total</span>
-					<Amount value={totals.total} size="hero" />
-				</p>
-			</div>
-
-			{
-				/*
-				 * The reason, repeated next to the money. The blocker list is at the top of the body and
-				 * the Pay control is also pinned in the footer band, so on a long checkout the two can be
-				 * a screen apart — and a disabled control whose explanation is off-screen is
-				 * indistinguishable from a broken one. Both Buy Now controls describe themselves by it.
-				 */
-			}
-			{blocked && props.blockerMessage && (
-				<p class="cko__gate" id="cko-buy-gate" role="status">
-					<Icon name="lock" />
-					<span>Pay is off until this is sorted: {props.blockerMessage}</span>
-				</p>
-			)}
-
-			<div class="cko-rail__commit">
-				<Button
-					class="cko-rail__buy"
-					variant="filled"
-					severity="warning"
-					size="lg"
-					fluid
-					rounded
-					disabled={blocked}
-					loading={props.submitting}
-					aria-describedby={blocked ? "cko-buy-gate" : undefined}
-					label={props.buyLabel}
-					onClick={props.onBuy}
-				/>
-				<p class="cko-rail__reassure">
-					<Icon name="lock" />
-					<span>You'll confirm the amount before anything is charged.</span>
-				</p>
-			</div>
-
-			{props.showsInvoicing && (
-				<>
-					<p class="cko-rail__or">
-						<span class="cko-rail__or-word">OR</span>
-					</p>
-					<InvoicingAction
-						invoicing={view.invoicing}
-						href={props.detailsHref}
-						id="cko-inv-rail"
-						fluid
-					/>
-				</>
-			)}
-		</section>
 	);
 }
 // #endregion

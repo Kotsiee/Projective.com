@@ -392,6 +392,9 @@ export class CheckoutBackendService {
 					actingIsMember: owner.actingIsMember,
 				},
 				currency: owner.display,
+				// Read off the converted prices themselves, so the rate the buyer is quoted and the
+				// figures they are charged cannot come from two different tables.
+				settlement: fx.settlementFor(items, owner.display),
 				items,
 				groups: fx.buildGroups(items, owner.display),
 				preselect: {

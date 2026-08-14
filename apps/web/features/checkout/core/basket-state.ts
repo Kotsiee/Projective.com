@@ -6,7 +6,6 @@ import type {
 	BasketItem,
 	BasketSim,
 	BasketSummary,
-	CheckoutBlocker,
 	CheckoutContext,
 	CheckoutResult,
 	CheckoutSessionContext,
@@ -14,6 +13,12 @@ import type {
 	SavedCard,
 } from "../types/checkout-types.ts";
 import type { CheckoutResponse } from "../types/results.ts";
+import {
+	isSelectableRoute,
+	methodIdOf,
+	type PaymentMethodId,
+	routeOfMethod,
+} from "./checkout-model.ts";
 
 /**
  * basket-state — the cross-island signal store for the `/basket` + `/checkout` surfaces.
@@ -198,13 +203,23 @@ export function applyBasket(
 	writeStored("local", LocalKeys.BASKET_LAST, data.basket.id);
 }
 
-/** Apply a checkout session projection. */
+/**
+ * Apply a checkout session projection.
+ *
+ * The adopted route is narrowed to the two the instrument list can actually show a selection for
+ * (`isSelectableRoute`). Adopting the first AVAILABLE route would silently land on Google Pay or
+ * PayPal whenever the wallet and cards were both refused — leaving the surface with a chosen route
+ * and nothing selected anywhere on it, and a Buy Now that would charge through a sheet the buyer
+ * never opened. Those three are express ACTIONS now, not selections.
+ */
 export function applySession(data: { session: CheckoutSessionContext }): void {
 	session.value = data.session;
 	cards.value = data.session.savedCards;
 	defaultCardId.value = data.session.defaultCardId;
-	if (chosenProvider.value === null) {
-		chosenProvider.value = data.session.providers.find((p) => p.available)?.provider ?? null;
+	if (!isSelectableRoute(chosenProvider.value)) {
+		chosenProvider.value =
+			data.session.providers.find((p) => p.available && isSelectableRoute(p.provider))?.provider ??
+				null;
 	}
 	if (chosenCardId.value === null) chosenCardId.value = data.session.defaultCardId;
 }
@@ -224,6 +239,29 @@ export function applyCards(data: { cards: SavedCard[]; defaultCardId: string | n
 export const chosenProvider = signal<PaymentProvider | null>(null);
 /** The saved card a `card` payment will charge. */
 export const chosenCardId = signal<string | null>(null);
+
+/**
+ * The ONE selection the wallet card and the saved-card list share.
+ *
+ * Both presentations read this and both write through {@link selectPaymentMethod}, so they cannot
+ * hold two answers to one question. It is `computed` over the `(provider, cardId)` pair rather than
+ * a third stored signal because that pair is what the charge payload, the route gates, the attempt
+ * fingerprint and the persisted draft are all already expressed in — a parallel store would be a
+ * second source of truth for the same fact, and the two would eventually disagree about what is
+ * being charged.
+ */
+export const selectedMethodId = computed<PaymentMethodId | null>(() =>
+	methodIdOf(chosenProvider.value, chosenCardId.value)
+);
+
+/** Select an instrument — the wallet, or one saved card. */
+export function selectPaymentMethod(id: PaymentMethodId): void {
+	const route = routeOfMethod(id);
+	chosenProvider.value = route.provider;
+	// A card selection carries its card; choosing the wallet KEEPS the last card, so coming back to
+	// the list restores what the buyer had picked rather than clearing it under them.
+	if (route.cardId !== null) chosenCardId.value = route.cardId;
+}
 /** The promo code as TYPED — never applied until the server resolves and prices it. */
 export const promoDraft = signal<string>("");
 /** Whether a charge is in flight — the footer's Pay control locks on this. */
@@ -254,31 +292,14 @@ export function resetAttempt(): void {
 	attemptKey.value = null;
 }
 
-/**
- * Blockers the CLIENT owns, published by the checkout BODY for the footer band to read.
+/*
+ * `clientBlockers` / `payBlocked` were removed with the payment step's footer band.
  *
- * There is one today — an unacknowledged booking time — and it is a genuine gate rather than a
- * courtesy: only the device the buyer is reading on can know whether they have agreed to a slot
- * expressed in someone else's timezone. See `checkout-model.clientGatesFor`.
+ * They existed to reconcile two regions: the band was SSR-rendered by its own slot resolver, so its
+ * `blocked` prop was a snapshot of the first byte and could not see a line since deselected or a
+ * booking since confirmed. The payment body now owns the only Pay control on the surface and derives
+ * its gates in the same render that draws them, so there is no second region left to disagree with.
  */
-export const clientBlockers = signal<readonly CheckoutBlocker[]>([]);
-
-/**
- * Whether Pay must be refused right now, across every region.
- *
- * The footer band is SSR-rendered by its slot resolver and its `blocked` prop is therefore a snapshot
- * of the FIRST byte: it cannot see a line the buyer has since deselected, a booking they have since
- * confirmed, or a blocker that arrived with a refetch. Folding the live session in here is what keeps
- * a disabled Pay control and its visible reason describing the same moment — a Pay button whose
- * enabled state lags the reason printed beside it is the "dead button" the region contract forbids.
- *
- * Before hydration `session` is `null`, so the footer falls back to the server's own answer.
- */
-export const payBlocked = computed<boolean>(() =>
-	submitting.value ||
-	clientBlockers.value.length > 0 ||
-	(session.value !== null && session.value.blockers.length > 0)
-);
 
 /**
  * The live server-formatted checkout total, or `null` before the first read lands.
@@ -314,7 +335,13 @@ export function persistDraft(): void {
 	writeStored("local", LocalKeys.CHECKOUT_DRAFT, JSON.stringify({ [id]: draft }));
 }
 
-/** Restore the buyer's unsubmitted choices for a basket, if any were kept. */
+/**
+ * Restore the buyer's unsubmitted choices for a basket, if any were kept.
+ *
+ * A restored route is filtered through `isSelectableRoute` for the same reason the adoption is: a
+ * draft written before the express routes stopped being selections would otherwise restore `paypal`
+ * and leave the instrument list showing nothing chosen, with no way for the buyer to tell why.
+ */
 export function restoreDraft(basketId: string | null): void {
 	if (!basketId) return;
 	try {
@@ -323,7 +350,7 @@ export function restoreDraft(basketId: string | null): void {
 		const parsed = JSON.parse(raw) as Record<string, CheckoutDraft>;
 		const draft = parsed[basketId];
 		if (!draft) return;
-		chosenProvider.value = draft.provider ?? null;
+		chosenProvider.value = isSelectableRoute(draft.provider ?? null) ? draft.provider : null;
 		chosenCardId.value = draft.cardId ?? null;
 		promoDraft.value = draft.promoCode ?? "";
 	} catch {
@@ -363,19 +390,11 @@ export function notifyBasketChanged(): void {
 	}
 }
 
-/**
- * Dispatched by the FOOTER band's Pay control so the checkout body — which owns the composition and
- * the blockers — runs the charge. The footer holds the action and the body holds the facts, which is
- * the region contract working as designed rather than around.
+/*
+ * The `CHECKOUT_SUBMIT_EVENT` bridge that used to live here is gone with the footer band on the two
+ * focus steps. It existed so a rig that held the Pay control could ask the body — which owns the
+ * composition and the blockers — to run the charge. The payment step now carries its own commit
+ * beside the total it commits to, so the action and the facts are in one component and there is
+ * nothing left to bridge. `BASKET_REFRESH_EVENT` above stays: it crosses regions that still exist.
  */
-export const CHECKOUT_SUBMIT_EVENT = "pj:checkout-submit";
-
-/** Ask the checkout body to submit the current composition. */
-export function requestCheckoutSubmit(): void {
-	try {
-		globalThis.dispatchEvent(new CustomEvent(CHECKOUT_SUBMIT_EVENT));
-	} catch {
-		// SSR / no window.
-	}
-}
 // #endregion

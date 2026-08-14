@@ -303,6 +303,49 @@ export function seedDetailsDraft(draft: DetailsDraft, source: BuyerDetails): voi
 }
 // #endregion
 
+// #region Billing identity
+/**
+ * Move the draft onto a billing identity — the one write the entity chip row makes.
+ *
+ * It lives here rather than in the control because BOTH the page form and the modal mount that row,
+ * and "what happens when the invoiced identity changes" is a rule about the record, not about a
+ * button. Two copies of it is how the modal comes to leave a department selected that the page
+ * clears.
+ *
+ * Three things move together, and each is a separate decision:
+ *
+ * 1. **The id and the kind.** They are no longer independent: the identity a buyer picks determines
+ *    the shape its invoice is drawn in, which is what retired the second personal/business toggle.
+ * 2. **The department is dropped.** A different identity has a different budget list, so a carried-
+ *    over selection would attribute the spend to a department the new identity does not have.
+ * 3. **The company name is SEEDED, never overwritten.** It is filled from the entity's own name when
+ *    the field is empty, or when it still holds the name another identity put there — that value was
+ *    this function's to begin with. Anything the buyer typed themselves is left exactly as typed,
+ *    because a legal name that differs from the platform display name is the normal case (a display
+ *    name is not an incorporation record), and silently replacing it would discard the more accurate
+ *    of the two.
+ *
+ * The registration and tax numbers are deliberately NOT seeded: {@link BillingContext} does not
+ * carry them, and inventing a plausible-looking company identifier is worse than an empty field the
+ * buyer is asked to fill.
+ */
+export function adoptBillingContext(
+	draft: DetailsDraft,
+	chosen: BillingContext,
+	contexts: readonly BillingContext[],
+): void {
+	draft.contextId.value = chosen.id;
+	draft.contextKind.value = chosen.kind;
+	draft.business.departmentId.value = "";
+	if (chosen.kind !== "business") return;
+
+	const held = draft.business.companyName.peek().trim();
+	const seededByUs = held === "" ||
+		contexts.some((entry) => entry.kind === "business" && entry.label.trim() === held);
+	if (seededByUs) draft.business.companyName.value = chosen.label;
+}
+// #endregion
+
 // #region Touch tracking
 /** Whether a path has been finished with. */
 export function isTouched(draft: DetailsDraft, path: string): boolean {

@@ -211,6 +211,19 @@ function emptySession(display: string): CheckoutBootstrap["session"] {
 			actingIsMember: true,
 		},
 		currency: display,
+		// No lines means nothing was converted, so every FX field is `null` rather than a fabricated
+		// rate — the same rule the populated projection follows.
+		settlement: {
+			currency: display,
+			symbol: display,
+			label: display,
+			fxRate: null,
+			fxBase: null,
+			fxAsOf: null,
+			rateLabel: null,
+			asOfLabel: null,
+			originCurrency: null,
+		},
 		items: [],
 		groups: [],
 		preselect: { projectId: null, serviceId: null },

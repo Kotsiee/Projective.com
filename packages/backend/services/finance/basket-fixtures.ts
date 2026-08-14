@@ -7,6 +7,7 @@ import type {
 	BasketListEntry,
 	BasketLists,
 	BasketSummary,
+	CheckoutSettlement,
 	KycStatus,
 	MoneyView,
 	MoveBasketItem,
@@ -19,6 +20,7 @@ import type {
 import {
 	applyDiscounts,
 	basketSubtotal,
+	DISPLAY_CURRENCIES,
 	formatMoney,
 	isCheckoutEligible,
 	itemKindMeta,
@@ -28,6 +30,7 @@ import { PRODUCTS, PROJECTS, SERVICES } from "../explore/fixtures.ts";
 import { allProjects } from "../projects/fixtures.ts";
 import { parsePriceMajor, PIPELINE_LOW, unitPriceMajor } from "../explore/pricing.ts";
 import { switcher, toMoney } from "./wallet-fixtures.ts";
+import { FX_FIXTURE_AS_OF, FX_FIXTURE_BASE } from "./fx-fixtures.ts";
 import type { BasketQuery, BasketSim } from "./basket-query.ts";
 
 /**
@@ -1744,5 +1747,74 @@ export function referenceNow(): number {
 /** Build a display-currency {@link MoneyView} — the checkout service's wrapper for SSOT integers. */
 export function money(minor: number, display: string): MoneyView {
 	return derived(minor, display);
+}
+// #endregion
+
+// #region Settlement (what this checkout is charged in, and the rate that got it there)
+/** `13 Aug 2026, 23:38 UTC` — the FX observation instant, stated in UTC so it is unambiguous. */
+function utcStamp(isoInstant: string): string {
+	const ms = Date.parse(isoInstant);
+	if (!Number.isFinite(ms)) return isoInstant.slice(0, 80);
+	return `${
+		new Intl.DateTimeFormat(LOCALE, {
+			day: "numeric",
+			month: "short",
+			year: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+			hour12: false,
+			timeZone: "UTC",
+		}).format(new Date(ms)).replace(",", "")
+	} UTC`.slice(0, 80);
+}
+
+/**
+ * What this checkout settles in, and the FX observation behind it.
+ *
+ * **The rate is READ OFF the money that was actually converted, never resolved again.** Every price
+ * goes through `toMoney`, which attaches the origin amount and the exact multiplier it applied;
+ * reprinting that multiplier is the only way the rate the buyer is shown and the figure they are
+ * charged cannot disagree. Re-resolving through `FxService` would be a second table — and an async
+ * one, which a synchronous SSR resolver cannot await — and a rate that differs from the one applied
+ * is the single FX failure a reader has no way to detect. Same rule the invoice's `invoiceFxFor`
+ * follows, deliberately.
+ *
+ * Returns `fx: null` fields when nothing was converted: on a same-currency checkout there is no rate
+ * to quote and no snapshot to stamp, and printing either would assert a conversion that never
+ * happened.
+ */
+export function settlementFor(
+	items: readonly BasketItem[],
+	display: string,
+): CheckoutSettlement {
+	const code = display.toUpperCase();
+	const symbol = DISPLAY_CURRENCIES.find((entry) => entry.code === code)?.symbol ?? code;
+	const base: CheckoutSettlement = {
+		currency: code,
+		symbol,
+		label: symbol === code ? code : `${code} (${symbol})`,
+		fxRate: null,
+		fxBase: null,
+		fxAsOf: null,
+		rateLabel: null,
+		asOfLabel: null,
+		originCurrency: null,
+	};
+
+	// The first line that actually carries a conversion. Every price in one basket converts from the
+	// same corpus currency at the same observation, so one origin describes the whole checkout.
+	const converted = items.find((item) => item.unitPrice.origin !== null)?.unitPrice.origin ?? null;
+	if (converted === null || converted.currency.toUpperCase() === code) return base;
+
+	const rate = Math.round(converted.fxRate * 10_000) / 10_000;
+	return {
+		...base,
+		fxRate: rate,
+		fxBase: FX_FIXTURE_BASE,
+		fxAsOf: FX_FIXTURE_AS_OF,
+		rateLabel: `1 ${converted.currency.toUpperCase()} = ${rate} ${code}`.slice(0, 80),
+		asOfLabel: utcStamp(FX_FIXTURE_AS_OF),
+		originCurrency: converted.currency.toUpperCase(),
+	};
 }
 // #endregion

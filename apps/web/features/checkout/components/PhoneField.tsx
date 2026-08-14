@@ -258,7 +258,7 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 				<Select
 					class="ckod-phone__dial"
 					id={dialId}
-					size="sm"
+					size="md"
 					aria-label="Country dialling code"
 					value={iso}
 					disabled={disabled}
@@ -284,7 +284,7 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 				<InputText
 					class="ckod-phone__number"
 					id={id}
-					size="sm"
+					size="md"
 					fluid
 					type="tel"
 					autoComplete="tel-national"
@@ -298,6 +298,7 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 				/>
 			</span>
 
+			{/* Always rendered, height reserved — see {@link DetailsField}. */}
 			{verdict.message
 				? (
 					<span class="ckod-field__note ckod-field__note--error" id={noteId} role="alert">
@@ -305,9 +306,7 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 						{verdict.message}
 					</span>
 				)
-				: hint
-				? <span class="ckod-field__note" id={noteId}>{hint}</span>
-				: null}
+				: <span class="ckod-field__note" id={noteId}>{hint}</span>}
 		</p>
 	);
 }
