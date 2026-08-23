@@ -1,15 +1,21 @@
 /**
  * @projective/ui/calendar — the header controls (§Part 1.1): the period label + prev/next/today
  * navigation, the Day/Week/Month view switch (also reachable via Ctrl+wheel), a search box, a filter
- * toggle, and privacy-safe external-integration indicators. Icon-first (§B.6): every icon control
- * carries an `aria-label` + `Tooltip`, never a native `title`.
+ * toggle, and a consumer-owned action slot. Icon-first (§B.6): every icon control carries an
+ * `aria-label` + `Tooltip`, never a native `title`.
+ *
+ * The header used to carry a fixed row of external-calendar STATUS chips (Google · Outlook · Apple ·
+ * Samsung · Notion), painted from a hardcoded five-row fixture and wired to nothing: they could not
+ * be pressed, they named providers the connector catalogue may not even offer, and they reported a
+ * connection state no part of the product had ever asked the integrations service for. They are
+ * replaced by {@link CalendarHeaderProps.actions} — a slot the consumer fills with real, actionable
+ * controls, so the package carries no provider vocabulary at all.
  */
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { cx } from "../../core/cx.ts";
-import { styleVars } from "../../core/style.ts";
 import { Tooltip } from "../../feedback/mod.ts";
-import type { CalendarIntegration, CalendarViewMode } from "../core/types.ts";
+import type { CalendarViewMode } from "../core/types.ts";
 import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
@@ -36,7 +42,8 @@ export interface CalendarHeaderProps {
 	periodLabel: string;
 	view: CalendarViewMode;
 	query: Signal<string>;
-	integrations?: CalendarIntegration[];
+	/** Consumer-owned controls, rendered between the filter toggle and the view switch. */
+	actions?: ComponentChildren;
 	filtersActive?: boolean;
 	onView: (v: CalendarViewMode) => void;
 	onPrev: () => void;
@@ -108,7 +115,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 								class={cx("cal-header__iconbtn", props.filtersActive && "cal-header__iconbtn--on")}
 								onClick={props.onToggleFilters}
 								aria-label="Filter by type"
-								aria-pressed={!!props.filtersActive}
+								aria-pressed={props.filtersActive ? "true" : "false"}
 							>
 								<FilterIcon size={17} />
 							</button>
@@ -116,29 +123,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 					)
 					: null}
 
-				{props.integrations?.length
-					? (
-						<div class="cal-header__integrations" role="group" aria-label="Connected calendars">
-							{props.integrations.map((it) => (
-								<Tooltip
-									key={it.id}
-									content={`${it.label}: ${
-										it.connected ? "connected — shown as Busy/Available only" : "not connected"
-									}`}
-								>
-									<span
-										class={cx("cal-header__int", it.connected && "cal-header__int--on")}
-										style={it.accent ? styleVars({ "--cal-int": `var(${it.accent})` }) : undefined}
-										aria-label={`${it.label} ${it.connected ? "connected" : "not connected"}`}
-									>
-										<span class="cal-header__int-dot" aria-hidden="true" />
-										<span class="cal-header__int-label">{it.label}</span>
-									</span>
-								</Tooltip>
-							))}
-						</div>
-					)
-					: null}
+				{props.actions ? <div class="cal-header__actions">{props.actions}</div> : null}
 
 				<div class="cal-header__views" role="group" aria-label="View">
 					{VIEWS.map((v) => {
@@ -149,7 +134,7 @@ export function CalendarHeader(props: CalendarHeaderProps): JSX.Element {
 									type="button"
 									class={cx("cal-header__view", props.view === v.key && "cal-header__view--on")}
 									onClick={() => props.onView(v.key)}
-									aria-pressed={props.view === v.key}
+									aria-pressed={props.view === v.key ? "true" : "false"}
 									aria-label={`${v.label} view`}
 								>
 									<Icon size={16} />

@@ -36,6 +36,11 @@ import { basketLaneFor } from "@web/features/checkout/core/basket-lane-slot.tsx"
 import { checkoutChromeFor } from "@web/features/checkout/core/checkout-chrome.ts";
 import { basketHeaderFor } from "@web/features/checkout/core/basket-header-slot.tsx";
 import { basketFooterFor } from "@web/features/checkout/core/basket-footer-slot.tsx";
+import {
+	calendarFooterFor,
+	calendarHeaderFor,
+	calendarLaneFor,
+} from "@web/features/calendar/core/calendar-slots.tsx";
 import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
 import { filesHeaderFor } from "@web/features/files/core/files-header-slot.tsx";
 import { filesFooterFor } from "@web/features/files/core/files-footer-slot.tsx";
@@ -99,7 +104,8 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
 		inboxFooterFor(url, context) ?? conversationFooterFor(url, context) ??
 		catalogueFooterFor(url, context) ??
 		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
-		filesFooterFor(url, context) ?? basketFooterFor(url, context);
+		filesFooterFor(url, context) ?? basketFooterFor(url, context) ??
+		calendarFooterFor(url, context);
 }
 
 /**
@@ -112,7 +118,8 @@ function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
 		inboxHeaderFor(url, context) ?? conversationHeaderFor(url, context) ??
 		catalogueHeaderFor(url, context) ??
 		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
-		filesHeaderFor(url, context) ?? basketHeaderFor(url, context);
+		filesHeaderFor(url, context) ?? basketHeaderFor(url, context) ??
+		calendarHeaderFor(url, context);
 }
 
 /**
@@ -129,6 +136,11 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 	// The basket + checkout: one lane across both steps, so a buyer can change basket mid-payment.
 	if (url.pathname.startsWith("/basket") || url.pathname.startsWith("/checkout")) {
 		return basketLaneFor(url, context);
+	}
+
+	// The personal agenda (`/calendar`): the mini-month, what is coming, and the availability manager.
+	if (url.pathname === "/calendar" || url.pathname.startsWith("/calendar/")) {
+		return calendarLaneFor(url, context);
 	}
 
 	// The global inbox: the scope map on the `/messages` root, the conversation list beside an open one.

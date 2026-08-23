@@ -1,0 +1,403 @@
+/*
+ * @projective/ui/calendar — the CALENDAR TOKEN LAYER and the shell: side panel, main column, filter
+ * bar. Imported first by `calendar.css`, so every sheet after it resolves the custom properties
+ * declared here. Token-only, strict BEM (DESIGN_SYSTEM.md §B.4 / §B.6): non-interactive structure is
+ * separated by spacing + tonal surfaces + single hairlines, never a four-sided box.
+ *
+ * THE TOKENS ARE ON `:root`, NOT ON `.cal`, AND THAT IS LOAD-BEARING. The engine's popover renders
+ * through `BodyPortal` — it has to, because the sticky middle-nav lane is a stacking context, is
+ * `overflow: clip`, and any glass ancestor's `backdrop-filter` re-bases a `position: fixed` panel
+ * onto that ancestor's box — so the panel is a child of `<body>` and is NOT a descendant of `.cal`.
+ * A token scoped to `.cal` therefore silently falls back to its default inside the one surface that
+ * most needs it, which is precisely the `--wlt-*` failure root CLAUDE.md §8 Decision #60 records: the
+ * wallet scoped its token layer to `.wlt` while its lane, header band, footer rig and every portalled
+ * overlay rendered outside it. Every name here is `--cal-`-prefixed, so lifting the block to the root
+ * collides with nothing.
+ *
+ * THIS BLOCK HOLDS CUSTOM PROPERTIES AND NOTHING ELSE, and the rule is absolute. `:root` IS the
+ * `<html>` element: a `display` or `overflow` that rides along here does not style the calendar,
+ * it styles the DOCUMENT. Carrying the engine's own box up with its tokens made `<html>` a flex row,
+ * which turned `<body>` into a shrink-to-fit flex ITEM — so the entire shell, top bar included,
+ * stopped at its content width and left the rest of the window empty — and the `overflow: hidden`
+ * that came with it stopped the page scrolling at all. The engine's box lives on `.cal` below.
+ */
+
+:root {
+	--cal-gutter-w: 3.5rem;
+	--cal-side-w: 16rem;
+	/*
+	* The pure-canvas viewport's PREFERRED height, declared here rather than on the viewport itself so
+	* a host can lower it by inheritance — a compact booking dialog sets it on any ancestor and gets a
+	* shorter grid, where a value declared on the element would need a more specific selector to beat.
+	* It is a flex BASIS, never a minimum: see `.cal-tg__viewport`.
+	*/
+	--cal-viewport-basis: 20rem;
+	/*
+	* The kind mark on an event card, on the §B.7 icon ramp rather than on a number of this engine's
+	* own. Both the DOM card's `<svg>` and the canvas read these, so the mark carries one weight
+	* wherever it is drawn.
+	*/
+	--cal-kind-size: var(--icon-2xs);
+	--cal-kind-stroke: var(--icon-stroke);
+	/* The cancelled treatment's alpha — read by `.cal-event--cancelled` AND by the canvas swatch. */
+	--cal-cancelled-alpha: 0.6;
+	/*
+	* CARD GEOMETRY, mirrored from TypeScript.
+	*
+	* Each of the three restates a constant in `core/scene-build.ts` / `core/layout.ts` that the
+	* canvas draws with, because a DOM card and a canvas card have to be the same size and a canvas
+	* cannot read a custom property. Both declarations carry a comment naming the other, which is the
+	* only form of duplication the token rule allows: change one and change the other in the same
+	* edit, or the Week grid and the Day timeline will disagree about where a card ends.
+	*/
+	--cal-card-gap-inline: 3px;
+	/* = `EVENT_GAP_INLINE` in `core/scene-build.ts` */
+	--cal-card-gap-block: 1px;
+	/* = `EVENT_GAP_BLOCK` in `core/scene-build.ts` */
+	--cal-nest-inset: 6%;
+	/* = `NEST_INSET_FRAC` (0.06) in `core/layout.ts` */
+	/*
+	* The instant (point-in-time) marker: a rule of `--cal-pin-thickness` with a
+	* `--cal-pin-chip-w` chip on it. An instant has no duration, so it has no height to encode — the
+	* mark is a fixed size on purpose, and the two halves are declared together so the chip can never
+	* be sized against a rule it no longer sits on.
+	*/
+	--cal-pin-thickness: 2px;
+	--cal-pin-chip-w: 1.25rem;
+	/*
+	* HOVER. The lift is the ONE separation device the hover state adds (DESIGN_SYSTEM.md §B.9.3): a
+	* card already spends its budget on a solid accent fill plus a `border-block-start`, so the hover
+	* may not also step the tint and add a hairline. `--elevation-medium` rather than the
+	* `--elevation-low` the card shipped with, because §A.3 reserves Medium for hover.
+	*
+	* The scale rides a unitless number so the canvas can read it back off a LENGTH — see the
+	* `--lift` probe swatch in `grid.css`, and the `border-width` snapping note beside the kind
+	* stroke, which is the same trap.
+	*/
+	--cal-hover-lift-scale: 1.02;
+	--cal-hover-shadow: var(--elevation-medium);
+	/* The HTML popover layer's panel box. */
+	--cal-pop-w: 20rem;
+	--cal-pop-max-h: 26rem;
+	/*
+	* The overlay gauge's grabbed BALL: its resting diameter, and how far through the pill → circle
+	* morph it currently is.
+	*
+	* `--cal-bar-morph` is written by `components/OverlayScrollbar.tsx` as a RESOLVED number, never as
+	* a transition — a frozen animation clock in a background tab must not be able to strand the
+	* handle between two shapes. `0` here is the resting pill, so the control is correct before any
+	* script has run at all.
+	*/
+	--cal-ball-size: 0.85rem;
+	--cal-bar-morph: 0;
+	/*
+	* THE DRAFT BLOCK's dashed outline — the temporary card a drag-to-create leaves on the grid while
+	* its quick-create popover is open. A dash pattern is the one shape channel that reads as
+	* "provisional" without spending a colour, and it is declared here so the canvas can measure it back
+	* (`.cal-grid__swatch--selection`) and the Day timeline's DOM twin can draw the same one.
+	*/
+	--cal-draft-dash: 5px;
+	--cal-draft-gap: 4px;
+	--cal-draft-alpha: 0.72;
+	/* Each resize grab band's depth — a pointer target, never a drawn edge (WCAG 2.2 SC 2.5.8). */
+	--cal-draft-grab: 10px;
+	/*
+	* FOCUS + DIMMING (DESIGN_SYSTEM.md §B.9.3). While one card is being dragged, resized, or pointed at
+	* from the overlap list, every OTHER card recedes so the reader's eye has one place to be. Two
+	* depths, because the two states are asking for different amounts of attention: a drag is a thing
+	* the reader is doing (a gentle recession is enough), a list hover is a thing they are looking for
+	* (the answer has to separate hard from the noise).
+	*
+	* They are RESOLVED numbers rather than a transition target: a hidden or frameless tab freezes
+	* transitions and keyframes alike, and `--cal-dim-t` below is written per frame by the same
+	* discipline `--cal-hover-t` already follows. The transition in `motion.css` only ever decorates
+	* the journey between two states that are each correct on their own.
+	*/
+	--cal-dim-drag: 0.35;
+	--cal-dim-focus: 0.25;
+	/* The 2px ring a list-hovered card wears so it is findable among plain colour blocks. */
+	--cal-focus-edge-w: 2px;
+	/*
+	* THE CURRENT-TIME INDICATOR's own geometry — the rule's weight and its anchoring dot's DIAMETER.
+	*
+	* Declared together, and read by three renderers at once: `.cal-daycol__now` in the Day timeline,
+	* `.cal-grid__swatch--now` for the Week canvas, and the dot's own self-centring offsets. A dot
+	* sized as a multiple of the rule's weight would drift from its twin the moment either moved.
+	*/
+	--cal-now-w: 2px;
+	--cal-now-dot: 0.55rem;
+	/*
+	* THE DEADLINE PIN's horizontal extent, as a fraction of the band it is drawn in.
+	*
+	* A deadline is a rule, and a rule drawn the full width of a day column reads as a grid line — it
+	* sits on the same horizontal as the hour label in the gutter beside it and appears to strike
+	* through it. Half the band keeps the mark unmistakably an EVENT: it starts where every card in
+	* that column starts, carries its chip and its timestamp, and stops well before the column's far
+	* edge, so nothing on the row can be read as continuing the hour scale.
+	*
+	* A unitless RATIO rather than a length, because the band it applies to is a fraction of a column
+	* whose width changes with the view, the zoom and the nesting depth. It is read straight off the
+	* probe as a custom property (the same route `--cal-hatch-stripe` takes), never through a computed
+	* percentage — a percentage on a 0×0 probe resolves to zero.
+	*/
+	--cal-pin-width-frac: 0.5;
+	/*
+	* How faint the LEAD-IN is: the run of rule between the gutter dot and the start of the active
+	* day's column in a multi-day view, where the two are not adjacent. It has to connect the dot to
+	* the line it anchors without reading as a fifth hour rule crossing four other days.
+	*/
+	--cal-now-lead-alpha: 0.3;
+}
+
+/*
+ * #region The event palette
+ *
+ * THE FOUR NAMED EVENT GROUPS, as literal brand values rather than as generated theme tones.
+ *
+ * This is the one place in the package that holds a colour, and it is a DELIBERATE, owner-directed
+ * exception to the token-only rule (root CLAUDE.md §3), recorded rather than hidden. Everywhere else
+ * — every component, every swatch, every canvas read — still resolves `var(--*)` and nothing
+ * hardcodes a hex at a call site, so the exception is exactly one declaration block wide and the
+ * whole calendar can be re-themed by editing it.
+ *
+ * WHY THE THEME ENGINE COULD NOT SUPPLY THEM. `theme-engine.ts` generates its ramp from a single seed
+ * through Material's tonal maths, so the values it emits are a FUNCTION of `#288690`. Three of the
+ * eight values the design asks for are not on that curve at any tone — the light "Tentative" wash
+ * `#fdf4e7` and the two slate "Busy" tones are neutral-with-a-cast rather than seed-derived, and the
+ * generated `--warning` resolves to `#ca8100` (light) / `#ed990d` (dark) rather than the `#f19c13`
+ * the design names, even though `#f19c13` is literally that ramp's own seed. Asking for these
+ * particular colours is asking for values off the curve.
+ *
+ * THE SELECTOR SHAPE IS THE PRODUCT'S OWN. `:root` carries light, `:root[data-theme="dark"]` carries
+ * dark, and the two contrast overlays mirror `apps/web/routes/_app.tsx`'s `TOKENS_CSS` exactly —
+ * `prefers-contrast: more` under `:not([data-contrast="normal"])`, then the explicit in-app
+ * `[data-contrast="high"]` last so a deliberate choice beats the media query. `data-theme` is stamped
+ * on `<html>` before first paint by the inline script in `_app.tsx`, so SSR and the client agree on
+ * the first byte and there is no flash.
+ *
+ * EVERY GROUP DECLARES ITS OWN INK. `core/kinds.ts`'s `onAccentFor()` derives a card's text colour
+ * from its fill's NAME (`--x` → `--on-x`), so a fill with no `--on-` twin silently falls back to
+ * `--on-surface` — legible against the neutral page and never contrast-checked against a solid
+ * accent. The `--on-cal-ev-*` names below exist so that derivation lands on a real, measured value.
+ *
+ * MEASURED CONTRAST (ink on fill, WCAG 2.1):
+ *   light  confirmed 4.28:1 · all-day 2.21:1 · tentative 6.73:1 · busy 6.19:1
+ *   dark   confirmed 5.35:1 · all-day 3.33:1 · tentative 10.37:1 · busy 6.06:1
+ * Three of those are below the 4.5:1 floor for the small text a card title is, and the light all-day
+ * pair is below the 3:1 large-text floor as well. They ship as specified because they are the
+ * design's stated intent, and the contrast overlay below is what rescues them for a reader who has
+ * asked for it: the two amber pairs take a dark ink, and the light teal deepens its fill.
+ */
+:root {
+	/* Confirmed / active — the primary teal. The default for every kind the four groups cover. */
+	--cal-ev-confirmed: #288690;
+	--on-cal-ev-confirmed: #ffffff;
+	/* All-day + milestones — the high-impact banner amber. */
+	--cal-ev-allday: #f19c13;
+	--on-cal-ev-allday: #ffffff;
+	/*
+	* Tentative — the ONE group whose identity is a fill plus a BORDER, because a pale wash cannot
+	* carry "not settled yet" on its own against a page that is itself pale. The edge pair is optional
+	* by construction: every other accent resolves it through `var(…, transparent)` / `var(…, 0px)` and
+	* draws no border at all, so the channel costs nothing where it is not used.
+	*/
+	--cal-ev-tentative: #fdf4e7;
+	--on-cal-ev-tentative: #7c4b00;
+	--cal-ev-tentative-edge: #f19c13;
+	--cal-ev-tentative-edge-w: 1.5px;
+	/* Busy / out of office — a cool muted slate-teal tint. Time the reader does not control. */
+	--cal-ev-busy: #f0f4f5;
+	--on-cal-ev-busy: #4a5e60;
+	/* The lattice: subtle grey dividers, deliberately low contrast (§B.4 — one hairline, quiet). */
+	--cal-line: #e5e7eb;
+	/* The live current-time rule and its dot — one high-visibility amber, the sharpest thing on the grid. */
+	--cal-now: #f19c13;
+}
+
+:root[data-theme="dark"] {
+	--cal-ev-confirmed: #206e76;
+	--on-cal-ev-confirmed: #e6f7f8;
+	--cal-ev-allday: #c77c06;
+	--on-cal-ev-allday: #ffffff;
+	--cal-ev-tentative: #2c251c;
+	--on-cal-ev-tentative: #f8d08d;
+	--cal-ev-tentative-edge: #f19c13;
+	--cal-ev-busy: #1e2528;
+	--on-cal-ev-busy: #94a3b8;
+	--cal-line: #262b30;
+	--cal-now: #f19c13;
+}
+
+/*
+ * The contrast overlay. It touches ONLY the three pairs measured below the floor, and it moves the
+ * smallest thing that fixes each: the two amber fills keep their hue and take a dark ink (white on
+ * amber is unrecoverable at any weight), and the light teal deepens rather than lightening its ink,
+ * because `#ffffff` is already the lightest ink there is.
+ */
+@media (prefers-contrast: more) {
+	:root:not([data-contrast="normal"]) {
+		--cal-ev-confirmed: #1b5f66;
+		/* white ink 4.28:1 -> 7.30:1 */
+		--on-cal-ev-allday: #331f00;
+		/* on #f19c13 2.21:1 -> 7.11:1 */
+	}
+
+	:root[data-theme="dark"]:not([data-contrast="normal"]) {
+		--on-cal-ev-allday: #2c1a00;
+		/* on #c77c06 3.33:1 -> 5.03:1 */
+	}
+}
+
+:root[data-contrast="high"] {
+	--cal-ev-confirmed: #1b5f66;
+	--on-cal-ev-allday: #331f00;
+}
+
+:root[data-theme="dark"][data-contrast="high"] {
+	--cal-ev-confirmed: #206e76;
+	--on-cal-ev-confirmed: #e6f7f8;
+	--on-cal-ev-allday: #2c1a00;
+}
+
+/* #endregion */
+
+/* #region Root */
+/*
+ * The engine's own box.
+ *
+ * It is a bounded flex ROW — the side panel and the main column — and every one of these declarations
+ * is load-bearing rather than decorative. `display: flex` is what makes `.cal__side`'s `flex: 0 0` and
+ * `.cal__main`'s `flex: 1 1 auto` mean anything at all; `block-size: 100%` plus `min-block-size: 0` is
+ * what lets the Day timeline's scroll container be BOUNDED, and without them `.cal__main` sizes to its
+ * content — which on a four-year axis is about 2.6 MILLION pixels, so the scroller has nothing left to
+ * scroll and its overlay bar correctly reports that it is not needed. `overflow: hidden` keeps that
+ * axis inside the box even while it is being measured.
+ */
+.cal {
+	display: flex;
+	min-block-size: 0;
+	block-size: 100%;
+	inline-size: 100%;
+	overflow: hidden;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+}
+
+/* #endregion */
+
+/* #region Side panel */
+.cal__side {
+	flex: 0 0 var(--cal-side-w);
+	inline-size: var(--cal-side-w);
+	min-block-size: 0;
+	overflow-y: auto;
+	padding: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	border-inline-end: var(--hairline);
+}
+
+/* #endregion */
+
+/* #region Main column */
+.cal__main {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.cal__view {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	display: flex;
+}
+
+/* #endregion */
+
+/* #region Filter bar */
+.cal__filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.cal__filterchip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline: var(--space-2);
+	block-size: 1.7rem;
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: 0.72rem;
+	cursor: pointer;
+	opacity: 0.55;
+	transition: background-color var(--dur-fast) var(--ease-standard), opacity var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cal__filterchip--on {
+	opacity: 1;
+	color: var(--on-surface);
+	border-color: transparent;
+	background: var(--surface-2);
+}
+
+.cal__filterchip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cal__filterdot {
+	inline-size: 0.55rem;
+	block-size: 0.55rem;
+	border-radius: var(--radius-full);
+	background: var(--outline);
+}
+
+.cal__filterchip--deadline .cal__filterdot {
+	background: var(--danger);
+}
+
+.cal__filterchip--milestone .cal__filterdot {
+	background: var(--tertiary);
+}
+
+.cal__filterchip--sync .cal__filterdot {
+	background: var(--primary);
+}
+
+.cal__filterchip--session .cal__filterdot {
+	background: var(--secondary);
+}
+
+.cal__filterchip--booking .cal__filterdot {
+	background: var(--success);
+}
+
+/* Was --success too, so the legend showed two identical dots for two different kinds. Tracks
+   `accentFor()` in `core/kinds.ts` — the legend and the blocks must never disagree. */
+.cal__filterchip--availability .cal__filterdot {
+	background: var(--info);
+}
+
+/* Reassigned from --warning in the 2026-08-20 palette pass — amber now belongs to the cross-cutting
+   tentative/pending STATUS overlay (`effectiveAccent`), not to a kind. */
+.cal__filterchip--holiday .cal__filterdot {
+	background: var(--tertiary);
+}
+
+/* Reassigned from the neutral --on-surface-variant: "Busy / Conflicting" is deliberately an alarm
+   colour now — time on the reader's calendar they do not control. */
+.cal__filterchip--busy .cal__filterdot {
+	background: var(--danger);
+}
+
+/* #endregion */

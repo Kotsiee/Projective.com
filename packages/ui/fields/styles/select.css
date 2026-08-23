@@ -88,13 +88,26 @@
 /* #region Panel */
 .ui-select__panel {
 	position: fixed;
+	/*
+	 * `left`, not `inset-inline-start` — the one place in this sheet where the PHYSICAL property is
+	 * the correct one. `--float-left` is a `getBoundingClientRect()` measurement, a distance from the
+	 * viewport's LEFT edge that is already expressed in whatever direction the document is in.
+	 * `inset-inline-start` resolves to `right` under `dir="rtl"`, so feeding it that number mirrors an
+	 * already-mirrored coordinate and anchors the panel to the opposite edge of the screen from its
+	 * trigger. The block axis does not turn with direction, so it stays logical.
+	 */
 	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
+	left: var(--float-left, -9999px);
 	inline-size: var(--float-width, auto);
 	z-index: var(--z-portal, var(--z-popover));
 	display: flex;
 	flex-direction: column;
 	max-block-size: var(--fld-panel-maxh);
+	/* Whichever bound is tighter: the taxonomy's panel height, or the space the positioner measured on
+	   the side the panel actually resolved to. Declared as a second, paired declaration rather than a
+	   single `min()` so an engine that cannot parse `min()` falls back to the contract height instead
+	   of losing the cap entirely. */
+	max-block-size: min(var(--fld-panel-maxh), var(--float-available-h, 100vh));
 	/* A panel may exceed its trigger. Matching width alone made a 71px Select produce a 71px menu
 	   with every label ellipsised away. */
 	min-inline-size: var(--fld-panel-minw);

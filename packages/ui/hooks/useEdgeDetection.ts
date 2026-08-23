@@ -50,8 +50,10 @@ export interface UseEdgeDetectionOptions {
 	placement?: Placement;
 	/** Gap between trigger and panel, px (default 4). */
 	offset?: number;
-	/** Viewport edge padding, and the gap kept from each `avoid` zone, px (default 8). */
+	/** Gap kept from each `avoid` zone, px (default 8). Also the default for `collisionPadding`. */
 	padding?: number;
+	/** Inset kept from the VIEWPORT edges when clamping, px (defaults to `padding`). */
+	collisionPadding?: number;
 	/** Match the panel width to the trigger — exposed as `--float-width` (default false). */
 	matchWidth?: boolean;
 	/** Higher-level nav zones the panel must never intersect — it shifts clear (see the module doc). */
@@ -103,6 +105,7 @@ export function useEdgeDetection<
 		offset: opts.offset,
 		padding: opts.padding,
 		matchWidth: opts.matchWidth,
+		collisionPadding: opts.collisionPadding,
 		avoid: opts.avoid,
 		allowOverflow: opts.allowOverflow,
 	});
@@ -111,6 +114,15 @@ export function useEdgeDetection<
 		"--float-top": floating ? `${floating.top}px` : undefined,
 		"--float-left": floating ? `${floating.left}px` : undefined,
 		"--float-width": floating && opts.matchWidth ? `${floating.width}px` : undefined,
+		// The space the panel actually has. A panel that can outgrow the viewport should cap itself
+		// with `max-block-size: var(--float-available-h, none)` and scroll internally — clamping alone
+		// only moves a too-tall panel, it cannot make it fit.
+		"--float-available-h": floating?.availableHeight != null
+			? `${floating.availableHeight}px`
+			: undefined,
+		"--float-available-w": floating?.availableWidth != null
+			? `${floating.availableWidth}px`
+			: undefined,
 		"--z-portal": opts.zIndex !== undefined ? String(opts.zIndex) : undefined,
 	});
 

@@ -125,6 +125,18 @@ export const ProfileItemSchema = z.object({
 	cover: z.string(),
 	delivered: z.number(),
 	members: z.number().optional(),
+	/**
+	 * Where the entity is based, as a ready-to-print display string (e.g. `"Manchester, United
+	 * Kingdom"`). A single string rather than a `{city, country}` pair: the card prints it verbatim and
+	 * never re-orders it, and address order is not universal.
+	 */
+	location: z.string().optional(),
+	/**
+	 * Typical first-response time in minutes. Drives the card's "Fast replies" trust chip, which is
+	 * gated on a REAL measured signal rather than inferred from booking load — a chip that promises a
+	 * reply speed derived from something else is a claim the platform cannot stand behind.
+	 */
+	responseMinutes: z.number().optional(),
 	/** Languages worked in, short codes (e.g. `["EN","FR"]`) — card metadata. */
 	languages: z.array(z.string()).optional(),
 	/** Freelancers/teams: thumbnail URLs of top-rated work, revealed on hover. */

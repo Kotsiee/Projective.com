@@ -237,6 +237,43 @@ export type DevFulfilmentMix = "mixed" | "products" | "tickets" | "sessions" | "
 export type DevConferencing = "zoom" | "google" | "microsoft_teams" | "none";
 
 /**
+ * Where the acting viewer sits on the calendar event they open — the axis every control in the Event
+ * Modal is gated on.
+ *
+ * `non_party` is the reason this exists: it is the only way to reach the WITHHELD projection
+ * (`@projective/types/scheduling` `./privacy.ts` strips the roster, the room, the money and the
+ * negotiation from a stranger) at runtime, because the alternative is signing out — and a signed-out
+ * developer cannot open the authenticated calendars at all. `auto` defers to the surface's own
+ * seating: a project's delivery side hosts its calendar, a public availability page never does.
+ */
+export type DevEventSeat = "auto" | "host" | "attendee" | "non_party";
+
+/**
+ * The acting seat's own answer to the event. `pending` is a real state and not the absence of one —
+ * "has not answered yet" and "said no" read differently to a host deciding whether a session is
+ * viable — so it is offered rather than folded into the default.
+ */
+export type DevEventRsvp = "auto" | "accepted" | "tentative" | "rejected" | "pending";
+
+/**
+ * The reschedule negotiation state to force. Mirrors the SSOT's `RescheduleStatus` so the switcher
+ * cannot offer a state the service is unable to produce.
+ *
+ * The MODE is deliberately not on this axis: a negotiation is settled by a vote or by the
+ * counterparty according to how many people are on the arrangement, which is what the existing
+ * `serviceType` axis (1-1 session ⁄ group session) already moves.
+ */
+export type DevEventReschedule =
+	| "auto"
+	| "none"
+	| "collecting"
+	| "awaiting_counterparty"
+	| "voting"
+	| "resolved"
+	| "lapsed"
+	| "withdrawn";
+
+/**
  * Whether the acting wallet covers the resolved total or falls short of it. Expressed as a
  * RELATIONSHIP rather than a figure because a fixed balance covers one basket and not another — an
  * axis that set a number would be inert on half the baskets it was pointed at.
@@ -345,6 +382,12 @@ export interface DevSeamState {
 	fulfilmentMix: DevFulfilmentMix;
 	/** Which conferencing provider a booked session resolves to. */
 	conferencing: DevConferencing;
+	/** Where the acting viewer sits on the calendar event they open (host / attendee / stranger). */
+	eventSeat: DevEventSeat;
+	/** The acting seat's own answer to that event. */
+	eventRsvp: DevEventRsvp;
+	/** The reschedule negotiation state the event opens in. */
+	eventReschedule: DevEventReschedule;
 }
 // #endregion
 
@@ -503,6 +546,24 @@ const FULFILMENT_MIXES: readonly DevFulfilmentMix[] = [
 	"pending",
 ];
 const CONFERENCING: readonly DevConferencing[] = ["zoom", "google", "microsoft_teams", "none"];
+const EVENT_SEATS: readonly DevEventSeat[] = ["auto", "host", "attendee", "non_party"];
+const EVENT_RSVPS: readonly DevEventRsvp[] = [
+	"auto",
+	"accepted",
+	"tentative",
+	"rejected",
+	"pending",
+];
+const EVENT_RESCHEDULES: readonly DevEventReschedule[] = [
+	"auto",
+	"none",
+	"collecting",
+	"awaiting_counterparty",
+	"voting",
+	"resolved",
+	"lapsed",
+	"withdrawn",
+];
 const WALLET_COVERAGES: readonly DevWalletCoverage[] = ["covers", "shortfall"];
 const SAVED_CARDS: readonly DevSavedCards[] = ["seeded", "none", "expired"];
 
@@ -572,6 +633,9 @@ export function readDevSeam(): DevSeamState | null {
 		spendLimit: coerce(ds.devSpendLimit, SPEND_LIMITS, "within"),
 		fulfilmentMix: coerce(ds.devFulfilmentMix, FULFILMENT_MIXES, "mixed"),
 		conferencing: coerce(ds.devConferencing, CONFERENCING, "zoom"),
+		eventSeat: coerce(ds.devEventSeat, EVENT_SEATS, "auto"),
+		eventRsvp: coerce(ds.devEventRsvp, EVENT_RSVPS, "auto"),
+		eventReschedule: coerce(ds.devEventReschedule, EVENT_RESCHEDULES, "auto"),
 	};
 }
 

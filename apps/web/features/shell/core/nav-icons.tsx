@@ -33,6 +33,7 @@ export type IconName =
 	| "user"
 	| "logout"
 	| "briefcase"
+	| "calendar"
 	| "files"
 	| "switch"
 	| "check"
@@ -152,6 +153,19 @@ const PATHS: Record<IconName, VNode> = {
 	files: (
 		<>
 			<path d="M3 7.5a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+		</>
+	),
+	/**
+	 * Calendar — a month page with its two binding rings. Added rather than borrowed: `article` is a
+	 * document PAGE and `dashboard` is a gauge, so reusing either would give one glyph two
+	 * destinations, which is the exact collision the iconography audit resolved (§B.7, Decision #62).
+	 * Geometrically the same shape as the shared registry's `calendar`, redrawn on this set's own
+	 * 24×24 grid because the sidebar renders through `NavIcon`, not `Icon`.
+	 */
+	calendar: (
+		<>
+			<rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+			<path d="M3.5 10h17M8 3.5v3M16 3.5v3" />
 		</>
 	),
 	// Context switch — two counter-facing arrows (swap between workspaces).

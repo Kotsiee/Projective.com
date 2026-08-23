@@ -21,56 +21,56 @@
  * `.ex` keeps only what is genuinely the Explore PAGE's: its fill, its background, its font stack.
  */
 :root {
-    --ex-r-sm: var(--radius-lg);
-    --ex-r-md: var(--radius-xl);
-    --ex-r-lg: var(--card-radius-media);
-    --ex-hair: var(--hairline-color);
-    --ex-hair-strong: var(--hairline-strong-color);
-    /*
-	 * Glass over THEME surfaces. 62% is fine here: whatever sits behind is a token-derived surface, so
-	 * the composite is knowable and every text pair on it was verified.
-	 */
-    --ex-glass: color-mix(in srgb, var(--surface) 62%, transparent);
-    /*
-	 * Glass over CONTENT is a different problem wearing the same clothes, and the code used to treat
-	 * them identically. The promoted flag, the service-type chip and the price chip sit on the card
-	 * THUMBNAIL — arbitrary uploaded photography — so the composite is 62% surface plus 38% of an
-	 * image nobody has seen. Measured worst cases against this seed:
-	 *
-	 *              on a white photo (dark mode)   on a black photo (light mode)
-	 *   --on-surface        4.02:1                        6.41:1
-	 *   --primary           3.04:1                        2.01:1   <- the type chip's Session variant
-	 *   --secondary          —                            ~1.9:1   <- its Direct Deliverable variant
-	 *
-	 * Light mode is the worse case, not dark, because the light accents are mid-dark and a dark photo
-	 * pulls the composite toward them. Raising the veil does not rescue it: at 94% opacity --secondary
-	 * is still under 4.5:1, and at that point the blur is drawing nothing anyway. So an image-backed
-	 * chip is not glass — it is a label, and it gets the solid surface. `backdrop-filter` comes off
-	 * with it, since blurring a backdrop you have made opaque only costs a compositing layer.
-	 *
-	 * This is now the ONE chip surface for the whole product, so it was promoted to the design system as
-	 * `--chip-on-media` (see `packages/ui/styles/index.css`): the marketing price chip and the catalogue
-	 * status chip ran the translucent construction this replaced and measured 3.75:1 and 3.05:1
-	 * respectively at their worst case. A feature-scoped token could not serve them — it resolves to
-	 * nothing on any surface that does not load this sheet, silently, because the chip still lays out.
-	 * The `--ex-` name is kept as the local alias so no call site had to change.
-	 */
-    --ex-chip-on-media: var(--chip-on-media);
-    --ex-primary-tint: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    --ex-pad-x: clamp(1.25rem, 5vw, 5rem);
+	--ex-r-sm: var(--radius-lg);
+	--ex-r-md: var(--radius-xl);
+	--ex-r-lg: var(--card-radius-media);
+	--ex-hair: var(--hairline-color);
+	--ex-hair-strong: var(--hairline-strong-color);
+	/*
+	* Glass over THEME surfaces. 62% is fine here: whatever sits behind is a token-derived surface, so
+	* the composite is knowable and every text pair on it was verified.
+	*/
+	--ex-glass: color-mix(in srgb, var(--surface) 62%, transparent);
+	/*
+	* Glass over CONTENT is a different problem wearing the same clothes, and the code used to treat
+	* them identically. The promoted flag, the service-type chip and the price chip sit on the card
+	* THUMBNAIL — arbitrary uploaded photography — so the composite is 62% surface plus 38% of an
+	* image nobody has seen. Measured worst cases against this seed:
+	*
+	*              on a white photo (dark mode)   on a black photo (light mode)
+	*   --on-surface        4.02:1                        6.41:1
+	*   --primary           3.04:1                        2.01:1   <- the type chip's Session variant
+	*   --secondary          —                            ~1.9:1   <- its Direct Deliverable variant
+	*
+	* Light mode is the worse case, not dark, because the light accents are mid-dark and a dark photo
+	* pulls the composite toward them. Raising the veil does not rescue it: at 94% opacity --secondary
+	* is still under 4.5:1, and at that point the blur is drawing nothing anyway. So an image-backed
+	* chip is not glass — it is a label, and it gets the solid surface. `backdrop-filter` comes off
+	* with it, since blurring a backdrop you have made opaque only costs a compositing layer.
+	*
+	* This is now the ONE chip surface for the whole product, so it was promoted to the design system as
+	* `--chip-on-media` (see `packages/ui/styles/index.css`): the marketing price chip and the catalogue
+	* status chip ran the translucent construction this replaced and measured 3.75:1 and 3.05:1
+	* respectively at their worst case. A feature-scoped token could not serve them — it resolves to
+	* nothing on any surface that does not load this sheet, silently, because the chip still lays out.
+	* The `--ex-` name is kept as the local alias so no call site had to change.
+	*/
+	--ex-chip-on-media: var(--chip-on-media);
+	--ex-primary-tint: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	--ex-pad-x: clamp(1.25rem, 5vw, 5rem);
 }
 
 .ex {
-    display: block;
-    min-block-size: 100vh;
-    /* background: var(--surface); */
-    color: var(--on-surface);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
+	display: block;
+	min-block-size: 100vh;
+	/* background: var(--surface); */
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
 }
 
 .ex *::selection {
-    background: var(--ex-primary-tint);
+	background: var(--ex-primary-tint);
 }
 
 /* #endregion */
@@ -79,167 +79,167 @@
 /* Relative (never sticky/fixed): the query + trending header scrolls away with the page. Keeps a
    raised stacking context so the entity dropdown can overlay the results below it. */
 .ex__searchbar {
-    position: relative;
-    z-index: 20;
-    padding: var(--space-5) var(--ex-pad-x);
-    background: var(--surface);
-    border-block-end: 1px solid var(--ex-hair);
+	position: relative;
+	z-index: 20;
+	padding: var(--space-5) var(--ex-pad-x);
+	background: var(--surface);
+	border-block-end: 1px solid var(--ex-hair);
 }
 
 .ex__searchbar-inner {
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
 }
 
 /* #endregion */
 
 /* #region Shared atoms */
 .ex-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--on-surface-variant);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
 }
 
 .ex-eyebrow--rule::before {
-    content: "";
-    inline-size: 1.75rem;
-    block-size: 1px;
-    background: var(--primary);
+	content: "";
+	inline-size: 1.75rem;
+	block-size: 1px;
+	background: var(--primary);
 }
 
 .ex-muted {
-    font-size: 0.85rem;
-    color: var(--on-surface-variant);
+	font-size: 0.85rem;
+	color: var(--on-surface-variant);
 }
 
 /* Uniform, elegant thin-weight pricing everywhere (service floors, product chips, project budgets). */
 .ex-price {
-    font-weight: 300;
-    font-size: 1.05rem;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
+	font-weight: 300;
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+	white-space: nowrap;
 }
 
 .ex-price--lg {
-    font-size: 1.3rem;
-    font-weight: 300;
-    letter-spacing: -0.02em;
+	font-size: 1.3rem;
+	font-weight: 300;
+	letter-spacing: -0.02em;
 }
 
 /* The billing unit after a service price (`/ ticket`, `/ session`) — muted, small, thin. */
 .ex-price__unit {
-    margin-inline-start: 0.3rem;
-    font-size: 0.8rem;
-    font-weight: 400;
-    color: var(--on-surface-variant);
-    letter-spacing: 0;
+	margin-inline-start: 0.3rem;
+	font-size: 0.8rem;
+	font-weight: 400;
+	color: var(--on-surface-variant);
+	letter-spacing: 0;
 }
 
 .ex-cta {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--primary);
-    white-space: nowrap;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--primary);
+	white-space: nowrap;
 }
 
 .ex-viewall {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--primary);
-    text-decoration: none;
-    white-space: nowrap;
-    transition: gap var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-weight: 600;
+	font-size: 0.95rem;
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+	transition: gap var(--dur-fast) var(--ease-standard);
 }
 
 .ex-viewall:hover {
-    gap: var(--space-3);
+	gap: var(--space-3);
 }
 
 .ex-viewall:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 3px;
-    border-radius: var(--radius-xs);
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+	border-radius: var(--radius-xs);
 }
 
 .ex-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    padding: 0.7rem 1.3rem;
-    border-radius: var(--radius-xl);
-    font-size: 0.95rem;
-    font-weight: 600;
-    line-height: 1;
-    text-decoration: none;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition:
-        transform var(--dur-medium) var(--spring-standard),
-        background-color var(--dur-slow) var(--ease-standard),
-        border-color var(--dur-slow) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: 0.7rem 1.3rem;
+	border-radius: var(--radius-xl);
+	font-size: 0.95rem;
+	font-weight: 600;
+	line-height: 1;
+	text-decoration: none;
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition:
+		transform var(--dur-medium) var(--spring-standard),
+		background-color var(--dur-slow) var(--ease-standard),
+		border-color var(--dur-slow) var(--ease-standard);
 }
 
 .ex-btn--solid {
-    background: var(--primary);
-    color: var(--on-primary);
-    box-shadow: var(--elevation-low);
+	background: var(--primary);
+	color: var(--on-primary);
+	box-shadow: var(--elevation-low);
 }
 
 .ex-btn--solid:hover {
-    transform: translateY(-2px);
+	transform: translateY(-2px);
 }
 
 .ex-btn--ghost {
-    background: var(--surface-1);
-    color: var(--on-surface);
-    border-color: var(--ex-hair-strong);
+	background: var(--surface-1);
+	color: var(--on-surface);
+	border-color: var(--ex-hair-strong);
 }
 
 .ex-btn--ghost:hover {
-    border-color: var(--primary);
-    color: var(--primary);
+	border-color: var(--primary);
+	color: var(--primary);
 }
 
 .ex-btn:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 3px;
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
 }
 
 /* #endregion */
 
 /* #region Section heading */
 .ex-head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: var(--space-5);
-    margin-block-end: clamp(1.5rem, 3vw, 2.5rem);
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-5);
+	margin-block-end: clamp(1.5rem, 3vw, 2.5rem);
 }
 
 .ex-head__title {
-    margin: var(--space-3) 0 0;
-    font-size: clamp(1.75rem, 0.917rem + 2.778vw, 3rem);
-    line-height: 1;
-    letter-spacing: -0.03em;
+	margin: var(--space-3) 0 0;
+	font-size: clamp(1.75rem, 0.917rem + 2.778vw, 3rem);
+	line-height: 1;
+	letter-spacing: -0.03em;
 }
 
 .ex-head__title-thin {
-    font-weight: 300;
-    color: var(--on-surface-variant);
+	font-weight: 300;
+	color: var(--on-surface-variant);
 }
 
 .ex-head__title-strong {
-    font-weight: 600;
-    color: var(--on-surface);
+	font-weight: 600;
+	color: var(--on-surface);
 }
 
 /* #endregion */
@@ -248,210 +248,210 @@
 /* Container (NOT an anchor): profile navigation is bound only to the avatar + handle sub-anchors; the
    display name is inert text. Sits above the card's stretched link so the sub-anchors stay clickable. */
 .ex-owner {
-    position: relative;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    max-inline-size: 100%;
-    color: var(--on-surface);
+	position: relative;
+	z-index: 2;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	max-inline-size: 100%;
+	color: var(--on-surface);
 }
 
 .ex-owner__avatar-link {
-    display: inline-flex;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    text-decoration: none;
+	display: inline-flex;
+	flex: 0 0 auto;
+	border-radius: 50%;
+	text-decoration: none;
 }
 
 .ex-owner--md .ex-owner__avatar-link {
-    border-radius: var(--radius-lg);
+	border-radius: var(--radius-lg);
 }
 
 .ex-owner__avatar-link:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
 }
 
 .ex-owner__id {
-    display: flex;
-    flex-direction: column;
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
 }
 
 .ex-owner__name {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-weight: 600;
-    font-size: 0.92rem;
-    line-height: 1.15;
-    min-inline-size: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	font-weight: 600;
+	font-size: 0.92rem;
+	line-height: 1.15;
+	min-inline-size: 0;
 }
 
 .ex-owner--md .ex-owner__name {
-    font-size: 1.05rem;
+	font-size: 1.05rem;
 }
 
 .ex-owner__nametext {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .ex-owner__handle {
-    inline-size: fit-content;
-    font-size: 0.8rem;
-    color: var(--on-surface-variant);
-    text-decoration: none;
-    transition: color var(--dur-fast) var(--ease-standard);
+	inline-size: fit-content;
+	font-size: 0.8rem;
+	color: var(--on-surface-variant);
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-owner__handle:hover {
-    color: var(--primary);
+	color: var(--primary);
 }
 
 .ex-owner__handle:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-    border-radius: var(--radius-xs);
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
 }
 
 /* Mini owner-row — the compact thumbnail attribution: a tiny circular avatar + `@handle`, inline. */
 .ex-owner--mini {
-    gap: var(--space-2);
+	gap: var(--space-2);
 }
 
 .ex-owner--mini .ex-owner__avatar {
-    inline-size: 1.5rem;
-    block-size: 1.5rem;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
 }
 
 .ex-owner--mini .ex-owner__handle {
-    font-size: 0.85rem;
+	font-size: 0.85rem;
 }
 
 /* #endregion */
 
 /* #region Verified badge */
 .ex-verified {
-    display: inline-flex;
-    flex: 0 0 auto;
-    color: var(--primary);
-    vertical-align: middle;
+	display: inline-flex;
+	flex: 0 0 auto;
+	color: var(--primary);
+	vertical-align: middle;
 }
 
 .ex-verified svg {
-    inline-size: 100%;
-    block-size: 100%;
+	inline-size: 100%;
+	block-size: 100%;
 }
 
 .ex-verified--sm {
-    inline-size: 1rem;
-    block-size: 1rem;
+	inline-size: 1rem;
+	block-size: 1rem;
 }
 
 .ex-verified--md {
-    inline-size: 1.2rem;
-    block-size: 1.2rem;
+	inline-size: 1.2rem;
+	block-size: 1.2rem;
 }
 
 .ex-verified--lg {
-    inline-size: 1.5rem;
-    block-size: 1.5rem;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
 }
 
 .ex-verified__seal {
-    fill: currentColor;
+	fill: currentColor;
 }
 
 .ex-verified__ring {
-    fill: none;
-    stroke: color-mix(in srgb, var(--on-primary) 55%, transparent);
-    stroke-width: 1.1;
+	fill: none;
+	stroke: color-mix(in srgb, var(--on-primary) 55%, transparent);
+	stroke-width: 1.1;
 }
 
 .ex-verified__tick {
-    stroke: var(--on-primary);
+	stroke: var(--on-primary);
 }
 
 /* #endregion */
 
 /* #region Rating tracks */
 .ex-ratings {
-    display: flex;
-    gap: var(--space-4) var(--space-5);
+	display: flex;
+	gap: var(--space-4) var(--space-5);
 }
 
 .ex-ratings--inline {
-    flex-wrap: wrap;
+	flex-wrap: wrap;
 }
 
 .ex-ratings--stack {
-    flex-direction: column;
-    gap: var(--space-3);
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
 .ex-ratings__track {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: 0.82rem;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.82rem;
 }
 
 .ex-ratings__label {
-    color: var(--on-surface-variant);
-    font-weight: 500;
+	color: var(--on-surface-variant);
+	font-weight: 500;
 }
 
 .ex-ratings__value {
-    font-weight: 600;
+	font-weight: 600;
 }
 
 .ex-ratings__count {
-    margin-inline-start: 0.15rem;
-    font-weight: 400;
-    color: var(--on-surface-variant);
+	margin-inline-start: 0.15rem;
+	font-weight: 400;
+	color: var(--on-surface-variant);
 }
 
 .ex-stars {
-    position: relative;
-    display: inline-flex;
-    color: var(--ex-hair-strong);
+	position: relative;
+	display: inline-flex;
+	color: var(--ex-hair-strong);
 }
 
 .ex-stars__track,
 .ex-stars__fill {
-    display: inline-flex;
-    gap: 1px;
+	display: inline-flex;
+	gap: 1px;
 }
 
 .ex-stars svg {
-    inline-size: var(--icon-xs);
-    block-size: var(--icon-xs);
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
 }
 
 .ex-stars__fill {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    inline-size: var(--ex-fill, 0%);
-    overflow: hidden;
-    color: var(--primary);
-    white-space: nowrap;
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--ex-fill, 0%);
+	overflow: hidden;
+	color: var(--primary);
+	white-space: nowrap;
 }
 
 /* Single-glyph indicator: one always-filled primary star (the numeric score sits beside it in the
    RatingTracks row), saving the horizontal space a five-star meter would cost on a dense card. */
 .ex-stars--single {
-    color: var(--primary);
+	color: var(--primary);
 }
 
 .ex-stars--single .ex-stars__fill {
-    position: static;
-    inline-size: auto;
-    overflow: visible;
+	position: static;
+	inline-size: auto;
+	overflow: visible;
 }
 
 /* #endregion */
@@ -460,41 +460,41 @@
 /* Skills read as simple, low-contrast clickable words — no enclosing chip frame. Clamped to at most
    two rows so a busy card never balloons; the SkillPills cap (≤5) + the `+N` handle the overflow. */
 .ex-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    align-items: center;
-    max-block-size: 2.6rem;
-    overflow: hidden;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	align-items: center;
+	max-block-size: 2.6rem;
+	overflow: hidden;
 }
 
 .ex-pill {
-    position: relative;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--on-surface-variant);
-    font-size: 0.76rem;
-    font-weight: 500;
-    line-height: 1.2;
-    text-decoration: none;
-    transition: color var(--dur-fast) var(--ease-standard);
+	position: relative;
+	z-index: 2;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--on-surface-variant);
+	font-size: 0.76rem;
+	font-weight: 500;
+	line-height: 1.2;
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-pill__icon {
-    display: inline-flex;
-    inline-size: var(--icon-xs);
-    block-size: var(--icon-xs);
-    color: color-mix(in srgb, var(--primary) 70%, var(--on-surface-variant));
+	display: inline-flex;
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
+	color: color-mix(in srgb, var(--primary) 70%, var(--on-surface-variant));
 }
 
 .ex-pill__icon svg {
-    inline-size: 100%;
-    block-size: 100%;
+	inline-size: 100%;
+	block-size: 100%;
 }
 
 /* On card hover the whole tag row warms toward the card's accent (a stand-in for the thumbnail's
@@ -502,128 +502,141 @@
    no reflow — so idle tags stay minimal plain words. */
 .ex-card:hover .ex-pill,
 .ex-card:focus-within .ex-pill {
-    color: color-mix(in srgb, var(--ex-accent) 62%, var(--on-surface-variant));
+	color: color-mix(in srgb, var(--ex-accent) 62%, var(--on-surface-variant));
 }
 
 .ex-card:hover .ex-pill .ex-pill__icon,
 .ex-card:focus-within .ex-pill .ex-pill__icon {
-    color: color-mix(in srgb, var(--ex-accent) 72%, var(--on-surface-variant));
+	color: color-mix(in srgb, var(--ex-accent) 72%, var(--on-surface-variant));
 }
 
 .ex-pill:hover,
 .ex-card:hover .ex-pill:hover {
-    color: var(--ex-accent);
+	color: var(--ex-accent);
 }
 
 .ex-pill:hover .ex-pill__icon {
-    color: var(--ex-accent);
+	color: var(--ex-accent);
 }
 
 .ex-pill:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-    border-radius: var(--radius-xs);
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
 }
 
 .ex-pills__more {
-    font-size: 0.76rem;
-    color: var(--on-surface-variant);
+	font-size: 0.76rem;
+	color: var(--on-surface-variant);
 }
 
 /* #endregion */
 
 /* #region Card base */
 /*
- * Flex column + full-height so every card in a grid/rail row shares the tallest card's height and the
- * foot pins to the bottom (equal-height rows).
+ * THE CARD SHELL — transparent at rest, ambient on hover.
  *
- * SEPARATION (§B.4): ONE resting device — the tonal step from `--surface-2` against the page's
- * `--surface`, read through the radius. Measured 1.165:1 in light, 1.131:1 in dark; on a rounded block
- * this size, with a media band supplying a hard edge across the top, that is a legible boundary. The
- * 1px hairline this rule used to carry was a THIRD simultaneous device (tint + border + radius, and a
- * fourth on hover once the shadow arrived) doing nothing the tint was not already doing. `.cat-card`
- * has always separated on tint + radius alone against a busier console and reads cleanly.
+ * SEPARATION (§B.4): the resting card carries NO fill, NO border and NO shadow. Its media does all the
+ * separating — a rounded image tile is a hard, unambiguous edge, and it is the thing the eye lands on
+ * anyway. That is one device, which is the rule; the previous shell spent a tonal fill AND a radius on
+ * a boundary the thumbnail was already drawing, and the tint only ever measured 1.13:1 against the
+ * page for its trouble.
  *
- * The hairline returns for the one cohort that asked for it: `data-contrast="high"` restores it as an
- * INSET ring (`--ex-card-ring`) rather than a border, so switching the overlay never changes the card's
- * box metrics and never reflows a grid. Hover composes the ring with the elevation rather than
- * replacing it.
+ * The project card is the exception and takes a real border, because it has no media (see its region).
+ *
+ * HOVER is the YouTube ambient treatment: the card's background warms toward the dominant colour of its
+ * OWN thumbnail, with a matching glow beneath it. Two layers resolve that colour:
+ *
+ *   1. `--ex-accent` — a deterministic per-card token (`core/accent.ts`). Painted at SSR, so the card is
+ *      already finished before any script runs, and it is what a no-JS / CORS-refused / decode-failed
+ *      card keeps.
+ *   2. `--ex-ambient` — the real extracted `r g b`, written by the AmbientPalette island and switched in
+ *      by `[data-ambient="on"]`. It only ever UPGRADES layer 1; it is never load-bearing.
+ *
+ * Both resolve into `--ex-wash` / `--ex-glow` so the hover rule itself never branches. `--ex-ambient`
+ * cannot be given a `var()` fallback here — a fallback colour and a channel triplet are not the same
+ * grammar — which is exactly why the switch is an attribute selector rather than a fallback chain.
  */
 .ex-card {
-    /* Per-card accent — a stand-in for the card's dominant thumbnail hue (see core/accent.ts). Cards
-	   with media/banners override it inline; tags tint to it on hover (Golden Blueprint §3). */
-    --ex-accent: var(--primary);
-    /* Resting ring: none, until the high-contrast overlay asks for one. */
-    --ex-card-ring: 0 0 0 0 transparent;
+	/* 16px — the low end of the design's 16–20px band, and one step down from `--card-radius-media`
+	(24px), which now belongs to the media tile INSIDE the card rather than to the card. */
+	--ex-card-r: var(--radius-xl);
+	/* Per-card accent — the deterministic stand-in for the thumbnail's dominant hue. */
+	--ex-accent: var(--primary);
+	--ex-wash: color-mix(in srgb, var(--ex-accent) 12%, transparent);
+	--ex-glow: color-mix(in srgb, var(--ex-accent) 32%, transparent);
+	/* Resting ring: none, until the high-contrast overlay asks for one. */
+	--ex-card-ring: 0 0 0 0 transparent;
 
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    /* Fill the grid/rail/masonry cell on BOTH axes. Height equalises rows; width no longer relies on the
-	   card's text content being wide enough to stretch a flex cell (lean cards would otherwise shrink to
-	   their min-content and strand the cell). */
-    inline-size: 100%;
-    block-size: 100%;
-    color: inherit;
-    background: var(--surface-2);
-    border-radius: var(--ex-r-lg);
-    overflow: clip;
-    box-shadow: var(--ex-card-ring);
-    transition:
-        transform var(--dur-medium) var(--spring-standard),
-        box-shadow var(--dur-medium) var(--ease-standard);
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	/* Fill the grid/rail/masonry cell on BOTH axes. Height equalises rows; width no longer relies on the
+	card's text content being wide enough to stretch a flex cell (lean cards would otherwise shrink to
+	their min-content and strand the cell). */
+	inline-size: 100%;
+	block-size: 100%;
+	padding: var(--space-2);
+	color: inherit;
+	background-color: transparent;
+	border-radius: var(--ex-card-r);
+	box-shadow: var(--ex-card-ring);
+	transition:
+		background-color 0.25s var(--ease-standard),
+		transform var(--dur-medium) var(--spring-standard),
+		box-shadow var(--dur-medium) var(--ease-standard);
 }
 
-/* Hover: a smooth Y-axis lift + an expanded deep shadow — the background stays stable (Golden
-   Blueprint §3). No tonal fill. The resting ring composes ahead of the elevation so a high-contrast
-   card keeps its boundary while it lifts. */
+/* Extraction resolved — swap the deterministic accent for the thumbnail's real dominant colour. */
+.ex-card[data-ambient="on"] {
+	--ex-wash: rgb(var(--ex-ambient) / 0.12);
+	--ex-glow: rgb(var(--ex-ambient) / 0.45);
+}
+
+/*
+ * Hover / focus: the ambient fill, a matching soft glow, and the family's Y-axis lift. The glow is a
+ * long, wide, heavily-negative-spread shadow in the card's OWN colour rather than the neutral
+ * `--elevation-high` — a coloured card sitting in a grey shadow reads as two unrelated effects.
+ */
 .ex-card:hover,
 .ex-card:focus-within {
-    transform: translateY(var(--card-hover-lift));
-    box-shadow: var(--ex-card-ring), var(--elevation-high);
+	background-color: var(--ex-wash);
+	transform: translateY(var(--card-hover-lift));
+	box-shadow: var(--ex-card-ring), 0 16px 36px -18px var(--ex-glow), var(--elevation-high);
 }
 
 /*
- * High-contrast overlay (§A.5) — an explicit request for stronger boundaries, so the card takes the
- * hairline back. `--hairline-color` is not widened by `:root[data-contrast="high"]`, hence
- * `--hairline-strong-color` here: at 40% outline it is the widened edge this cohort actually needs.
+ * High-contrast overlay (§A.5) — an explicit request for stronger boundaries, so the card takes a
+ * hairline back. An INSET ring rather than a border, so switching the overlay never changes the card's
+ * box metrics and never reflows a grid. Hover composes the ring ahead of the glow.
  */
 :root[data-contrast="high"] .ex-card {
-    --ex-card-ring: inset 0 0 0 1px var(--hairline-strong-color);
+	--ex-card-ring: inset 0 0 0 1px var(--hairline-strong-color);
 }
 
-/* Reduced motion: keep the deepened shadow as the hover affordance, drop the lift. */
+/* Reduced motion: keep the wash and the deepened shadow, drop the lift. The colour transition stays —
+   it is a cross-fade, not movement, and removing it makes the hover snap. */
 @media (prefers-reduced-motion: reduce) {
-    .ex-card {
-        transition: box-shadow var(--dur-medium) var(--ease-standard);
-    }
-
-    .ex-card:hover,
-    .ex-card:focus-within {
-        transform: none;
-    }
+	.ex-card,
+	.ex-card:hover,
+	.ex-card:focus-within {
+		transform: none;
+		transition:
+			background-color 0.25s var(--ease-standard),
+			box-shadow var(--dur-medium) var(--ease-standard);
+	}
 }
 
-/*
- * The stretched primary link overlays the whole card; owner/pills sit above it (z-index:2).
- *
- * Focus lands on the CARD, not on an inner fragment, because the link IS the card's footprint. The
- * treatment is the canonical two-tone `--focus-ring-shadow` composite rather than the flat
- * `outline: 2px solid var(--primary)` this rule used to carry: a single accent colour cannot clear 3:1
- * against both the card fill and the page behind it, which is the whole reason the generated halo+ink
- * pair exists. It is drawn INSIDE the link's own box (`inset`) so the card's `overflow: clip` cannot
- * shave it — an outset ring on a clipped child is invisible on three edges.
- */
 .ex-card__link {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    border-radius: inherit;
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border-radius: inherit;
 }
 
 .ex-card__link:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring-shadow-inset);
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset);
 }
 
 /*
@@ -647,13 +660,13 @@
  * here varies by which card was written first.
  */
 .ex-card__body {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    gap: var(--card-gap);
-    padding: var(--card-pad-media);
-    min-inline-size: 0;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	gap: var(--card-gap);
+	padding: var(--card-pad-media);
+	min-inline-size: 0;
 }
 
 /*
@@ -666,24 +679,24 @@
  * clamp, which is how the catalogue title has been silently unbounded outside those engines.
  */
 .ex-card__title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    /* Long unbroken strings (a URL, a run-on product code) would otherwise push the card wider than its
-	   cell instead of wrapping into the clamp. */
-    overflow-wrap: anywhere;
+	margin: 0;
+	font-size: 1.1rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	/* Long unbroken strings (a URL, a run-on product code) would otherwise push the card wider than its
+	cell instead of wrapping into the clamp. */
+	overflow-wrap: anywhere;
 }
 
 /* The one sanctioned title step-down: a masonry product tile and a list article are read at a smaller
    optical size than a service card in a 4-up grid. Same weight, same tracking — size only. */
 .ex-card__title--sm {
-    font-size: 1rem;
+	font-size: 1rem;
 }
 
 /*
@@ -693,21 +706,21 @@
  * empty, so the composition is identical whether or not a rating exists.
  */
 .ex-card__byline {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
 .ex-card__byline .ex-owner {
-    min-inline-size: 0;
-    flex: 1 1 auto;
+	min-inline-size: 0;
+	flex: 1 1 auto;
 }
 
 .ex-card__byline .ui-ratingstars,
 .ex-card__byline .ex-muted {
-    flex: 0 0 auto;
+	flex: 0 0 auto;
 }
 
 /*
@@ -721,925 +734,1202 @@
  * silently spill.
  */
 .ex-card__foot {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    margin-block-start: auto;
-    padding-block-start: var(--space-4);
-    min-inline-size: 0;
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	margin-block-start: auto;
+	padding-block-start: var(--space-4);
+	min-inline-size: 0;
 }
 
-.ex-card__foot>.ex-price {
-    flex: 0 1 auto;
-    min-inline-size: 0;
+.ex-card__foot > .ex-price {
+	flex: 0 1 auto;
+	min-inline-size: 0;
 }
 
-.ex-card__foot>.ex-muted {
-    flex: 0 1 auto;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.ex-card__foot > .ex-muted {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* #endregion */
 
 /* #region Media */
+/*
+ * The media tile. It is now an INSET rounded rectangle inside a transparent card rather than a
+ * flush-to-the-edge band, which is what lets the ambient wash show as a halo AROUND the image instead
+ * of only under the text.
+ */
 .ex-media {
-    position: relative;
-    overflow: clip;
-    background: var(--surface-1);
+	position: relative;
+	overflow: clip;
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
 }
 
 .ex-media--4x3 {
-    aspect-ratio: 4 / 3;
+	aspect-ratio: 4 / 3;
 }
 
-/* Wider, shorter service/article thumbnail — keeps the card from becoming half-image, half-metadata. */
+/* Wider, shorter service thumbnail — keeps the card from becoming half-image, half-metadata. */
 .ex-media--16x10 {
-    aspect-ratio: 16 / 10;
+	aspect-ratio: 16 / 10;
+}
+
+/*
+ * The product frame is the ONE media box whose height is content-driven — that variability is what
+ * makes the masonry interlock, so it takes no `aspect-ratio`. It is bounded instead: a floor so a
+ * still-decoding or 404'd image cannot collapse the tile to 0px and reflow the column, and a ceiling
+ * so a tall portrait asset cannot run away with it. Between those, a portrait and a landscape asset
+ * both keep their own proportions.
+ */
+.ex-media--free {
+	min-block-size: 8rem;
+	max-block-size: 18rem;
+}
+
+.ex-media--free img {
+	/* `block-size: auto` inside the bounded box: the intrinsic ratio drives the height until it hits
+	the ceiling, at which point `object-fit` crops rather than letterboxes. */
+	block-size: auto;
+	max-block-size: 18rem;
 }
 
 .ex-media img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
-    display: block;
-    transition: transform var(--dur-slow) var(--ease-emphasized);
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+	transition: transform var(--dur-slow) var(--ease-standard);
 }
 
-/* On card hover the thumbnail grows gently WITHIN its clipped frame (the frame is fixed) — the classic
-   premium media-zoom. Paired with the card lift; both revert cleanly on leave. */
+/* A slow scale INSIDE the clipped frame — the image comes forward, the tile does not move. */
 .ex-card:hover .ex-media img,
 .ex-card:focus-within .ex-media img {
-    transform: scale(var(--card-media-zoom));
+	transform: scale(1.04);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .ex-media img {
-        transition: none;
-    }
-
-    .ex-card:hover .ex-media img,
-    .ex-card:focus-within .ex-media img {
-        transform: none;
-    }
-}
-
-.ex-media__tag {
-    position: absolute;
-    inset-block-start: var(--space-3);
-    inset-inline-start: var(--space-3);
-    z-index: 2;
-}
-
-/*
- * Top-left overlay flag stack — holds the media/cover corner chips (a Promoted badge, the engagement
- * type / price chip, the profile kind tag) so they stack cleanly without overlapping. A vertical
- * column by default; `--row` lays them out inline (used on the wider profile cover).
- *
- * STACKING ORDER is the source order the cards emit: Promoted first, then the entity chip. Promoted is
- * a disclosure the viewer is owed before they read the offer, so it takes the top slot and never
- * truncates; the entity chip below it is the slot that gives way when the card narrows.
- *
- * The inline size reserves the top-RIGHT actions gutter rather than only the card's own padding. The
- * kebab and quick-action cluster is two 2rem controls plus a gap, and the stack previously measured
- * against the full card width — so nothing but luck kept a long label out from under it. `.cat-card`
- * has always reserved this gutter explicitly; this is the same reservation, expressed against the
- * actual control geometry.
- */
-.ex-flags {
-    /* 2 × 2rem controls + their gap + the gutter each side. */
-    --ex-actions-gutter: calc(2 * 2rem + var(--space-2) + var(--space-3));
-
-    position: absolute;
-    inset-block-start: var(--space-3);
-    inset-inline-start: var(--space-3);
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-    max-inline-size: calc(100% - var(--space-3) - var(--ex-actions-gutter));
-}
-
-.ex-flags--row {
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-/*
- * THE CHIP CONTRACT — one shell, two type registers.
- *
- * Every chip that floats on a card's media shares this shell: the SOLID `--ex-chip-on-media` label
- * surface (never a translucent veil — see the token's own note; a chip whose legibility depends on the
- * photograph behind it is a defect, and the measured failures were 3.75:1 and 3.05:1), one radius, one
- * block padding, one stacking behaviour, and one truncation rule. No contour: a chip is not actionable
- * (§B.4 — a chip takes a tint, never a border).
- *
- * The two registers are a real content distinction, not drift. A LABEL (Promoted, the engagement type)
- * is small, uppercase and tracked-out because it is a classification the eye skips unless it is
- * looking; a FIGURE (a price) is larger and thin because it is the same money treatment `.ex-price`
- * sets everywhere else in the feed. The registers differ only in type, never in shell.
- */
-.ex-promoted,
-.ex-media__type,
-.ex-media__price {
-    --ex-chip-pad-inline: var(--space-2);
-
-    max-inline-size: 100%;
-    padding: var(--space-1) var(--ex-chip-pad-inline);
-    border-radius: var(--radius-xl);
-    color: var(--on-surface);
-    background: var(--ex-chip-on-media);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Label register. */
-.ex-promoted,
-.ex-media__type {
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-}
-
-/* Figure register — matches `.ex-price`'s thin money treatment. */
-.ex-media__price {
-    --ex-chip-pad-inline: var(--space-3);
-    font-size: 0.95rem;
-    font-weight: 300;
-    letter-spacing: -0.01em;
-}
-
-/* Promoted / sponsored marker. Reads as a gentle disclosure, not a loud ad: a muted label and one
-   quiet primary dot. `inline-flex` for the dot's baseline; the label is two fixed words and never
-   needs to truncate, so it keeps the full shell without an ellipsis case. */
-.ex-promoted {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex: 0 0 auto;
-}
-
-.ex-promoted__dot {
-    inline-size: 0.4rem;
-    block-size: 0.4rem;
-    border-radius: 50%;
-    background: var(--primary);
-    flex: 0 0 auto;
-}
-
-/*
- * The engagement-type chip (Pipeline / One-Off / Session). It replaces the old full-width type eyebrow
- * band AND the redundant category tag — one clear signal on the image, so the body reads title → who →
- * price with no noise between. `inline-block` rather than `inline-flex` so the shell's
- * `text-overflow: ellipsis` actually resolves: this is the slot that gives way on a narrow card, and
- * "Direct Deliverable" is the label that needs it.
- */
-.ex-media__type {
-    display: inline-block;
-    min-inline-size: 0;
-}
-
-/* The tint is a second, redundant channel — the chip always prints the literal type name, so the
-   colour is recognition speed, never the only carrier of the meaning. */
-.ex-media__type[data-type="Session"],
-.ex-media__type[data-type="Group Session"] {
-    color: var(--primary);
-}
-
-.ex-media__type[data-type="Direct Deliverable"] {
-    color: var(--secondary);
-}
-
-/* Product price chip — lives in the top-left flag stack so it never collides with the top-right kebab. */
-.ex-media__price {
-    display: inline-block;
-    min-inline-size: 0;
+	.ex-media img,
+	.ex-card:hover .ex-media img,
+	.ex-card:focus-within .ex-media img {
+		transition: none;
+		transform: none;
+	}
 }
 
 /* #endregion */
 
-/* #region Talent card (freelancers + teams) — banner layout + hover work strip */
-.ex-card--talent .ex-banner__body {
-    gap: var(--space-3);
-}
-
-/* The single LinkedIn-style headline — one line, thin, no bio paragraph. */
-.ex-talent__headline {
-    margin: 0;
-    font-size: 0.9rem;
-    font-weight: 300;
-    line-height: 1.4;
-    color: var(--on-surface-variant);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+/* #region Media overlays — trust chips (top-left) + the paid-placement badge (top-right) */
+/*
+ * TWO CORNERS, TWO MEANINGS. A signal the entity EARNED and a placement the entity BOUGHT are opposite
+ * kinds of claim, so they never share a stack, a shape, or a surface. Earned chips are pills on the
+ * left; the paid disclosure is a circular glass token on the right. A reader can tell them apart
+ * without reading either.
+ */
+.ex-signals {
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-start: var(--space-3);
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	/* Reserve the opposite corner: the AD token plus the hover actions cluster live there. */
+	max-inline-size: calc(100% - var(--space-3) * 2 - 5.5rem);
 }
 
 /*
- * ONE metadata line. This was three stacked rows — rating, then languages, then counts — each set at a
- * near-identical quiet weight, so the card presented five competing focal points and the face stopped
- * winning. They carry the same KIND of fact (quiet, secondary, scannable), so they belong on one
- * wrapping line at one weight. No information was dropped; it stopped being three separate reads.
+ * The earned trust chip.
+ *
+ * It floats over uploaded photography, so it takes the SOLID `--ex-chip-on-media` label surface, never
+ * a translucent veil — the token's own note records the two measured failures (3.75:1 and 3.05:1) that
+ * rule out glass for a chip whose legibility would otherwise depend on the seller's photograph.
+ *
+ * Meaning is carried by the WORDS. The accent is a second, redundant channel on the dot and the label,
+ * for recognition speed only (§B.6). Note that no variant tints with `--primary`: `--on-primary` on
+ * `--primary` measures 3.57:1 in dark mode in this theme (a known theme-engine defect, Decisions
+ * #64/#65), so this family stays on the semantic tokens.
+ *
+ * The LABEL does not take the raw accent, though. A semantic token is tuned to be legible against the
+ * theme's own ground, which is not the same as being legible on a chip surface: `--success` as label
+ * ink measured 8.44:1 in dark and **3.17:1 in light**, a fail that a dark-mode spot-check never sees.
+ * Mixing the accent toward `--on-surface` is self-correcting, because `--on-surface` is near-white in
+ * dark and near-black in light — so the same one declaration darkens the label on a light chip and
+ * lightens it on a dark one, while keeping enough of the hue to still read as the signal's colour.
+ * The DOT keeps the pure accent: it is a decorative second channel, fully redundant with the word
+ * beside it, so it is free to be the more saturated of the two.
  */
-.ex-talent__meta {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    font-size: 0.82rem;
-    color: var(--on-surface-variant);
-    min-inline-size: 0;
+.ex-status {
+	--ex-status-accent: var(--secondary);
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	border: 1px solid color-mix(in srgb, var(--ex-status-accent) 40%, transparent);
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: color-mix(in srgb, var(--ex-status-accent) 62%, var(--on-surface));
+	background: var(--ex-chip-on-media);
+	box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.28);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-/* Languages spoken — plain metadata, e.g. "Speaks EN, FR". */
-.ex-talent__langs {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.ex-status__dot {
+	inline-size: 0.4rem;
+	block-size: 0.4rem;
+	border-radius: 50%;
+	background: var(--ex-status-accent);
+	flex: 0 0 auto;
 }
 
-.ex-talent__langs-label {
-    font-weight: 600;
-    color: var(--on-surface);
-    margin-inline-end: 0.15rem;
+.ex-status[data-signal="fast-replies"],
+.ex-status[data-signal="available"] {
+	--ex-status-accent: var(--success);
 }
 
-/* Services + products sold (freelancers) or team size. Middot-separated, inline with the rest of the
-   metadata line rather than a row of its own. */
-.ex-talent__count {
-    position: relative;
-    white-space: nowrap;
+.ex-status[data-signal="top-rated"] {
+	--ex-status-accent: var(--tertiary, var(--secondary));
 }
 
-.ex-talent__count+.ex-talent__count::before,
-.ex-talent__langs+.ex-talent__count::before {
-    content: "·";
-    position: absolute;
-    inset-inline-start: calc(-1 * var(--space-2) + 0.1ch);
-    color: var(--ex-hair-strong);
+/*
+ * The paid-placement token — the family's one sanctioned use of real glass.
+ *
+ * The chip contract bans translucency because a LABEL's legibility must not depend on the photograph
+ * behind it. This is not a label: two letters at heavy weight, over a blurred backdrop, carrying both
+ * a border and a text shadow. The blur is the point — it is what says "this was placed here", visibly
+ * an overlay rather than part of the image. `backdrop-filter` degrades to the semi-opaque fill alone
+ * where it is unsupported, which still reads.
+ */
+.ex-ad {
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-end: var(--space-3);
+	z-index: 2;
+	display: grid;
+	place-items: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border-radius: 50%;
+	border: 1px solid rgb(255 255 255 / 0.35);
+	/*
+	* 0.62, not the 0.38 this first shipped at. The token floats over arbitrary photography, so its
+	* worst case is a BLOWN-OUT WHITE image, and at 0.38 the glass flattened to ~rgb(158,158,158) and
+	* put its white text at a measured 2.68:1 — a failure a dark-thumbnail spot-check never sees. At
+	* 0.62 the same worst case measures 6.19:1 and the blur still reads as glass. A `text-shadow`
+	* cannot rescue this: it changes the impression of contrast without changing the contrast.
+	*/
+	background: rgb(0 0 0 / 0.62);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	box-shadow:
+		0 2px 10px -2px rgb(0 0 0 / 0.45),
+		inset 0 1px 0 rgb(255 255 255 / 0.16);
 }
 
-/* Hover-revealed strip of top-rated / most-popular work — slides up over the foot from the base. */
-.ex-talent__highlights {
-    position: absolute;
-    inset-inline: 0;
-    inset-block-end: 0;
-    z-index: 2;
-    display: flex;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-5);
-    background: color-mix(in srgb, var(--surface-2) 88%, var(--ex-accent));
-    border-block-start: 1px solid var(--ex-hair);
-    transform: translateY(100%);
-    opacity: 0;
-    transition:
-        transform var(--dur-medium) var(--spring-standard),
-        opacity var(--dur-fast) var(--ease-standard);
-    pointer-events: none;
+/*
+ * Fixed white, not `--on-surface`: this token sits on its own near-black glass, not on a theme
+ * surface, so the theme's ink would invert straight into the fill in light mode. The pair here is
+ * white on `rgb(0 0 0 / 0.38)` over arbitrary photography, and the drop shadow holds it apart from a
+ * bright image underneath.
+ */
+.ex-ad__text {
+	font-size: 0.6rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	line-height: 1;
+	color: rgb(255 255 255 / 0.95);
+	text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
 }
 
-.ex-card--talent:hover .ex-talent__highlights,
-.ex-card--talent:focus-within .ex-talent__highlights {
-    transform: translateY(0);
-    opacity: 1;
-}
-
-.ex-talent__thumb {
-    inline-size: 2.75rem;
-    block-size: 2.75rem;
-    border-radius: var(--radius-base);
-    overflow: clip;
-    background: var(--surface-1);
-    flex: 0 0 auto;
-}
-
-.ex-talent__thumb img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
-    display: block;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .ex-talent__highlights {
-        transition-property: opacity;
-        transform: none;
-    }
+/*
+ * The hover actions cluster shares the top-right corner with the AD token, so when one is present the
+ * other steps aside. Shifting the ACTIONS (not the disclosure) is deliberate: a paid-placement mark is
+ * owed to the reader at rest and must not be displaced by a transient control.
+ */
+.ex-card:has(.ex-ad) .ex-actions {
+	inset-inline-end: calc(var(--space-3) + 2rem + var(--space-2));
 }
 
 /* #endregion */
 
-/* #region Service card */
-/* Service cards lead with the media thumbnail (its glass `.ex-media__type` chip) then a lean body —
-   title, a single owner+rating byline, and the price/turnaround foot. The former in-body type eyebrow,
-   description snippet, and skill-tag row were removed to cut the card height and visual noise (the
-   description + skills live on the detail view / drawer). */
+/* #region Profile card (individuals / freelancers / teams / businesses) */
+/*
+ * ONE anatomy for every profile-shaped entity. The former talent-vs-banner split rendered the same
+ * seller two different ways depending on which section surfaced them; a card's job is to make results
+ * comparable, so what varies by kind now varies INSIDE one composition (the avatar's shape, and
+ * whether the foot counts a catalogue or a headcount).
+ *
+ * Reading order is centre then left. Identity is a single focal object and centres under the avatar;
+ * everything below it is running text scanned down a shared left edge. Centring the headline too would
+ * leave the card with no anchor line at all.
+ */
+.ex-card--profile {
+	/* The banner and body are the card's own children, so the card supplies no extra gap between them. */
+	gap: 0;
+}
+
+/*
+ * The cover banner. It fades out at its lower edge with a mask rather than a gradient overlay: an
+ * overlay has to know the colour behind it (and would be wrong the moment the ambient wash tints it),
+ * where a mask dissolves the image itself into whatever is actually there.
+ */
+.ex-pcard__banner {
+	position: relative;
+	aspect-ratio: 16 / 7;
+	border-radius: var(--radius-lg);
+	overflow: clip;
+	background: var(--surface-2);
+	-webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent 100%);
+	mask-image: linear-gradient(to bottom, #000 58%, transparent 100%);
+}
+
+.ex-pcard__cover {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+	transition: transform var(--dur-slow) var(--ease-standard);
+}
+
+.ex-card--profile:hover .ex-pcard__cover,
+.ex-card--profile:focus-within .ex-pcard__cover {
+	transform: scale(1.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-pcard__cover,
+	.ex-card--profile:hover .ex-pcard__cover,
+	.ex-card--profile:focus-within .ex-pcard__cover {
+		transition: none;
+		transform: none;
+	}
+}
+
+.ex-pcard__body {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	gap: var(--space-2);
+	padding: 0 var(--space-3) var(--space-3);
+	min-inline-size: 0;
+}
+
+/* The identity block: avatar, name, handle, as one centred column. */
+.ex-pcard__identity {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/*
+ * The avatar rides the banner's lower edge, overlapping it by half its own height, the middle of the
+ * design's 40-60% band. A negative margin rather than absolute positioning, so the body below it stays
+ * in normal flow and the card's height is still driven by its content.
+ */
+.ex-pcard__avatar {
+	margin-block-start: calc(var(--avatar-size, 4rem) / -2);
+	border: 3px solid var(--surface);
+	box-shadow: var(--elevation-low);
+}
+
+.ex-pcard__name {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	max-inline-size: 100%;
+	min-inline-size: 0;
+	font-weight: 600;
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+	text-align: center;
+}
+
+.ex-pcard__nametext {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ex-pcard__handle {
+	font-size: 0.82rem;
+	color: var(--on-surface-variant);
+	max-inline-size: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The headline: left-aligned running text, hard-clamped to two lines so one verbose bio cannot grow
+   every sibling card in an equalised grid row. */
+.ex-pcard__headline {
+	margin: var(--space-2) 0 0;
+	font-size: 0.9rem;
+	line-height: 1.45;
+	color: var(--on-surface);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+/* Location and languages: one quiet line at the smallest register the card uses. */
+.ex-pcard__meta {
+	margin: 0;
+	font-size: 0.78rem;
+	line-height: 1.4;
+	color: var(--on-surface-variant);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.ex-pcard__foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin-block-start: auto;
+	padding-block-start: var(--space-3);
+	min-inline-size: 0;
+}
+
+/* Stacked key metrics, right-aligned: `5 services` over `12 products`, or a single member count. */
+.ex-pcard__metrics {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	flex: 0 0 auto;
+	font-size: 0.76rem;
+	line-height: 1.35;
+	color: var(--on-surface-variant);
+	white-space: nowrap;
+}
+
+.ex-pcard__metric-value {
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+/* The hover work strip, freelancers and teams only. Collapsed to zero height at rest so it costs the
+   card nothing, and it is `aria-hidden` decoration, so removing it from the flow removes nothing. */
+.ex-pcard__highlights {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	max-block-size: 0;
+	opacity: 0;
+	overflow: clip;
+	transition:
+		max-block-size var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+.ex-card--profile:hover .ex-pcard__highlights,
+.ex-card--profile:focus-within .ex-pcard__highlights {
+	max-block-size: 4rem;
+	opacity: 1;
+}
+
+.ex-pcard__thumb {
+	display: block;
+	aspect-ratio: 1;
+	border-radius: var(--radius-sm);
+	overflow: clip;
+	background: var(--surface-2);
+}
+
+.ex-pcard__thumb img {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-pcard__highlights {
+		transition: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Card body atoms (service + product) */
+/*
+ * The creator row. It sits ABOVE the title and prints the seller's NAME, not their handle: on a
+ * marketplace the answer to "who is selling this" is a person or a studio, and a handle is an address.
+ * Routing convention is unchanged, the avatar is the anchor and the name is inert text.
+ */
+.ex-owner--creator {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	max-inline-size: 100%;
+}
+
+.ex-owner--creator .ex-owner__name {
+	font-size: 0.82rem;
+	font-weight: 500;
+	color: var(--on-surface-variant);
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ex-owner--creator .ex-owner__nametext {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * The classification row: the delivery-model / category chip, with a secondary fact right-aligned
+ * beside it. The chip moved off the media and into the body, because on the image it competed with the
+ * trust chips for the same corner and had to survive arbitrary photography; here it sits on a known
+ * surface.
+ */
+.ex-card__kindrow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ex-kind {
+	min-inline-size: 0;
+	font-size: 0.66rem;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Sessions read as a different kind of purchase from delivered work, so they take a tint. The chip
+   always prints its literal name, so colour is recognition speed and never the only carrier (B.6). */
+.ex-kind[data-type="Session"],
+.ex-kind[data-type="Group Session"] {
+	color: var(--secondary);
+}
+
+/* The right-aligned secondary fact. It gives way first, the classification is the load-bearing half. */
+.ex-card__aside {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	font-size: 0.74rem;
+	color: var(--on-surface-variant);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The foot: rating left, price right, on one baseline. */
+.ex-ratingpill {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+}
+
+/*
+ * The price. It never truncates — a clipped price is worse than no price — so the rating beside it is
+ * the slot that gives way, and past that the price WRAPS rather than overflowing.
+ *
+ * `white-space: nowrap` was wrong here, and only showed up on a narrow card. A Pipeline range in a
+ * converted currency renders `From £94.49 – £377.95 (~US$480.00 USD) / ticket`: as one unbreakable run
+ * that measured 312px inside a 161px card, so it escaped the card's own box entirely. The foot already
+ * wrapped, which did nothing, because the overflow was one atomic child rather than the row.
+ *
+ * So the badge wraps at its spaces and each AMOUNT is individually protected instead. The break points
+ * that opens up — before the dash, before the origin disclosure, before the unit — are exactly the
+ * places a reader would break the line themselves; what must never split is a figure, and that is what
+ * the nowrap now guards.
+ */
+.ex-pricebadge {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	font-size: 1.05rem;
+	font-weight: 300;
+	letter-spacing: -0.02em;
+	color: var(--on-surface);
+	white-space: normal;
+	text-align: end;
+	text-wrap: balance;
+}
+
+/* A figure is atomic: `£1,496.06` may move to the next line but may never be split across two. */
+.ex-pricebadge .ui-money__amount,
+.ex-pricebadge .ui-money__origin {
+	white-space: nowrap;
+}
+
+.ex-pricebadge .ex-price__unit {
+	font-size: 0.74rem;
+	font-weight: 400;
+	color: var(--on-surface-variant);
+	margin-inline-start: 0.15rem;
+}
+
 /* #endregion */
 
 /* #region Card actions (kebab + helper quick-action) */
 .ex-actions {
-    position: absolute;
-    inset-block-start: var(--space-3);
-    inset-inline-end: var(--space-3);
-    z-index: 3;
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-2);
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-standard);
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-end: var(--space-3);
+	z-index: 3;
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 /* Utility actions are revealed only on hover/focus of the card (or when the menu is engaged). */
 .ex-card:hover .ex-actions,
 .ex-card:focus-within .ex-actions,
-.ex-projrow:hover .ex-actions,
-.ex-projrow:focus-within .ex-actions,
 .ex-actions:focus-within {
-    opacity: 1;
+	opacity: 1;
 }
 
 @media (hover: none) {
-    .ex-actions {
-        opacity: 1;
-    }
+	.ex-actions {
+		opacity: 1;
+	}
 }
 
 .ex-actions__quick {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    padding: 0;
-    border-radius: 50%;
-    border: 1px solid transparent;
-    background: var(--primary);
-    color: var(--on-primary);
-    cursor: pointer;
-    text-decoration: none;
-    box-shadow: var(--elevation-low);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border-radius: 50%;
+	border: 1px solid transparent;
+	background: var(--primary);
+	color: var(--on-primary);
+	cursor: pointer;
+	text-decoration: none;
+	box-shadow: var(--elevation-low);
 }
 
 .ex-actions__quick svg {
-    inline-size: 1rem;
-    block-size: 1rem;
+	inline-size: 1rem;
+	block-size: 1rem;
 }
 
 .ex-actions__quick:hover {
-    background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
+	background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
 }
 
 .ex-actions__kebab {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    padding: 0;
-    border: 1px solid var(--ex-hair-strong);
-    border-radius: 50%;
-    background: var(--ex-glass);
-    color: var(--on-surface);
-    cursor: pointer;
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: 1px solid var(--ex-hair-strong);
+	border-radius: 50%;
+	background: var(--ex-glass);
+	color: var(--on-surface);
+	cursor: pointer;
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .ex-actions__kebab svg {
-    inline-size: var(--icon-sm);
-    block-size: var(--icon-sm);
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 }
 
 .ex-actions__quick:focus-visible,
 .ex-actions__kebab:focus-visible,
 .ex-actions__item:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
 }
 
 .ex-actions__menu-wrap {
-    position: relative;
+	position: relative;
 }
 
 /* Positioning comes from `.ui-anchored` + `useEdgeDetection` (fixed, `--float-*`, `--z-portal`) —
    the panel is body-portalled out of `.ex-card`'s `overflow: clip`, so it must NOT re-declare
    `position`/`inset`/`z-index` here or it would fight the hook's resolved coordinates. */
 .ex-actions__menu {
-    min-inline-size: 12rem;
-    padding: var(--space-1);
-    background: var(--surface-2);
-    border: 1px solid var(--ex-hair);
-    border-radius: var(--ex-r-md);
-    box-shadow: var(--elevation-high);
+	min-inline-size: 12rem;
+	padding: var(--space-1);
+	background: var(--surface-2);
+	border: 1px solid var(--ex-hair);
+	border-radius: var(--ex-r-md);
+	box-shadow: var(--elevation-high);
 }
 
 .ex-actions__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    inline-size: 100%;
-    padding: 0.55rem 0.65rem;
-    border: 0;
-    border-radius: var(--radius-base);
-    background: none;
-    color: var(--on-surface);
-    font: inherit;
-    font-size: 0.88rem;
-    text-align: start;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: 0.55rem 0.65rem;
+	border: 0;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 0.88rem;
+	text-align: start;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-actions__item:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ex-actions__item svg {
-    inline-size: var(--icon-sm);
-    block-size: var(--icon-sm);
-    flex: 0 0 auto;
-    color: var(--on-surface-variant);
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+	flex: 0 0 auto;
+	color: var(--on-surface-variant);
 }
 
 .ex-actions__item--danger {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .ex-actions__item--danger svg {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 .ex-actions__item[aria-pressed="true"] svg {
-    color: var(--primary);
+	color: var(--primary);
 }
 
 .ex-actions__status {
-    position: absolute;
-    inset-inline-end: 0;
-    inset-block-start: calc(100% + var(--space-2));
-    max-inline-size: 14rem;
-    padding: var(--space-2) var(--space-3);
-    font-size: 0.75rem;
-    color: var(--on-surface);
-    background: var(--surface-2);
-    border-radius: var(--radius-base);
-    box-shadow: var(--elevation-low);
-    pointer-events: none;
+	position: absolute;
+	inset-inline-end: 0;
+	inset-block-start: calc(100% + var(--space-2));
+	max-inline-size: 14rem;
+	padding: var(--space-2) var(--space-3);
+	font-size: 0.75rem;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border-radius: var(--radius-base);
+	box-shadow: var(--elevation-low);
+	pointer-events: none;
 }
 
 .ex-actions__status:empty {
-    display: none;
+	display: none;
 }
 
 /* #endregion */
 
-/* #region Banner card (users / teams / businesses) */
-.ex-card--banner {
-    display: flex;
-    flex-direction: column;
-}
-
-.ex-banner__cover {
-    position: relative;
-    block-size: 9rem;
-    padding: var(--space-3);
-    background-image:
-        linear-gradient(to bottom,
-            transparent 45%,
-            color-mix(in srgb, var(--surface-2) 92%, transparent)),
-        var(--ex-cover);
-    background-size: cover;
-    background-position: center;
-}
-
-.ex-banner__cover .ui-tag {
-    position: relative;
-    z-index: 2;
-}
-
-.ex-banner__body {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: 0 var(--space-5) var(--space-5);
-    flex: 1 1 auto;
-}
-
-.ex-banner__id {
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-3);
-    margin-block-start: -2.25rem;
-}
-
-.ex-banner__avatar {
-    border: 3px solid var(--surface-2);
-    box-shadow: var(--elevation-low);
-}
-
-.ex-banner__idtext {
-    display: flex;
-    flex-direction: column;
-    padding-block-end: 0.3rem;
-    min-inline-size: 0;
-}
-
-.ex-banner__name {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-weight: 600;
-    font-size: 1.1rem;
-    letter-spacing: -0.01em;
-}
-
-.ex-banner__nametext {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ex-banner__handle {
-    font-size: 0.82rem;
-    color: var(--on-surface-variant);
-}
-
-.ex-banner__craft {
-    margin: 0;
-    font-size: 0.92rem;
-    color: var(--on-surface-variant);
-}
+/* #region Banner card - removed */
+/*
+ * The `.ex-banner__*` block was the second of the two profile anatomies. Both now render through
+ * `.ex-card--profile` above; the rules are deleted rather than left as an unreferenced fork that the
+ * next change would have to keep in step.
+ */
 
 /* #endregion */
 
-/* #region Project row (no media, no box — a clean divider-separated list row) */
-.ex-projrow {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-4) var(--space-3);
-    border-block-end: 1px solid var(--ex-hair);
-    border-radius: 0;
-    transition: background-color var(--dur-medium) var(--ease-standard);
+/* #region Project card + the fixed two-column project grid */
+/*
+ * The project card is the family's deliberate exception, in two ways.
+ *
+ * It is EXEMPT FROM THE AMBIENT SYSTEM. A project carries no media, so there is no colour to extract,
+ * and borrowing the publisher's avatar hue would tint a brief with a colour that says nothing about
+ * it. It therefore also gets no trust chips and no paid-placement token: those belong to things being
+ * sold, and a brief is being staffed.
+ *
+ * With no media it also has no hard edge of its own, so it is the one card that takes a real BORDER
+ * (B.4: a full contour is for interactive elements, and the whole card is one link). That is still a
+ * single separation device, just a different one from the media cards.
+ */
+.ex-card--project {
+	/*
+	* The card reflows on ITS OWN width, not the viewport's. The two-column rule is absolute, so at
+	* 375px each card is ~167px wide while the viewport is 375 — a viewport media query would be
+	* reading a box more than twice the size of the one that is actually too narrow.
+	*
+	* Safe here specifically because this card's only overlay (the kebab menu) is body-portalled:
+	* `container-type` establishes containment that would otherwise re-base a `position: fixed`
+	* descendant, the same trap glass chrome hits elsewhere in this codebase.
+	*/
+	container-type: inline-size;
+	container-name: exproj;
+
+	gap: var(--space-3);
+	padding: var(--space-5);
+	background: var(--surface-2);
+	border: 1px solid var(--ex-hair);
+	border-radius: var(--ex-card-r);
 }
 
-.ex-projrow:hover,
-.ex-projrow:focus-within {
-    background: color-mix(in srgb, var(--on-surface) 3%, transparent);
+/* No wash, no glow, no image scale: the border deepens and the card lifts. Overrides the family rule
+   rather than opting out of it, so a future change to the base hover cannot silently re-tint this. */
+.ex-card--project:hover,
+.ex-card--project:focus-within {
+	background: var(--surface-2);
+	border-color: var(--ex-hair-strong);
+	box-shadow: var(--ex-card-ring), var(--elevation-high);
 }
 
-/* Top layer — creator attribution on the left, a thin budget (and plain "Promoted") pinned right. */
-.ex-projrow__top {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
+/* Header row: publisher left, posting age right. */
+.ex-proj__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
-.ex-projrow__top .ex-owner {
-    margin-inline-end: auto;
+/*
+ * The publisher is the load-bearing half of this row, so it takes the slack and the timestamp is the
+ * slot that gives way. Without this the timestamp's `nowrap` won the whole row on a narrow card and
+ * crushed the name to a measured 0px — present in the DOM, invisible on screen.
+ */
+.ex-proj__head > .ex-owner--creator {
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
-/* "Promoted" reads as integrated native text — no tag frame, no chip outline. */
-.ex-projrow__promoted {
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--on-surface-variant);
+.ex-proj__posted {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	font-size: 0.74rem;
+	color: var(--on-surface-variant);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
-/* Thin-weight escrow budget value. */
-.ex-projrow__budget {
-    font-weight: 300;
-    font-size: 1.3rem;
-    letter-spacing: -0.02em;
-    white-space: nowrap;
+/*
+ * Below ~270px of CARD width there is not room for a name and a date on one line without one of them
+ * becoming an ellipsis, so the row stacks instead. Both facts stay whole; the card gets one more row.
+ */
+@container exproj (max-width: 270px) {
+	.ex-proj__head {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-1);
+	}
+
+	.ex-card--project {
+		padding: var(--space-4);
+	}
+
+	.ex-proj__title {
+		font-size: 1rem;
+	}
+
+	/* At this width the full stage chain is unreadable anyway; the pill keeps the first stages and the
+	card stays scannable rather than becoming a wall of wrapped chevrons. */
+	.ex-proj__pipeline {
+		padding: var(--space-1) var(--space-2);
+		font-size: 0.7rem;
+	}
 }
 
-.ex-projrow__title {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    letter-spacing: -0.015em;
+.ex-proj__title {
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 700;
+	letter-spacing: -0.015em;
+	line-height: 1.3;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
 }
 
-/* Description spans the full width of the row — thin, quietly toned. */
-.ex-projrow__desc {
-    margin: 0;
-    font-size: 0.9rem;
-    font-weight: 300;
-    line-height: 1.55;
-    color: var(--on-surface-variant);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+/*
+ * The stage pipeline, as one breadcrumb pill rather than a row of separate chips: the stages are a
+ * single ordered path, and boxing each one would say they are independent choices. It wraps rather
+ * than scrolls, so a five-stage pipeline stays fully readable in a narrow column.
+ */
+.ex-proj__pipeline {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+	font-size: 0.76rem;
+	min-inline-size: 0;
 }
 
-/* Bottom layer — the pipeline chain: stage names joined by arrows. No boxes, no progress meters. */
-.ex-projrow__phases {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-3);
-    margin-block-start: var(--space-1);
+.ex-proj__stage {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--on-surface-variant);
+	min-inline-size: 0;
 }
 
-.ex-phase {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-3);
-    font-size: 0.82rem;
+.ex-proj__chevron {
+	color: var(--ex-hair-strong);
+	flex: 0 0 auto;
 }
 
-.ex-phase__name {
-    color: var(--on-surface-variant);
+.ex-proj__stagename {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.ex-phase__arrow {
-    color: var(--ex-hair-strong);
+/* Three lines, hard: the summary is the card's variable-length field and would otherwise set the
+   height of every sibling in an equalised grid row. */
+.ex-proj__desc {
+	margin: 0;
+	font-size: 0.88rem;
+	font-weight: 300;
+	line-height: 1.55;
+	color: var(--on-surface-variant);
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+/* Skill tags: a wrapping row pinned to the foot. Wrapping, not scrolling, because a horizontal
+   scroller inside a card hides content behind a gesture with no affordance to announce it. */
+.ex-proj__skills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: auto 0 0;
+	padding: 0;
+	list-style: none;
+	min-inline-size: 0;
+}
+
+.ex-proj__skill {
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	border: 1px solid var(--ex-hair);
+	font-size: 0.72rem;
+	color: var(--on-surface-variant);
+	white-space: nowrap;
+	max-inline-size: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/*
+ * THE PROJECT GRID: two equal columns, always. Never auto-fit, never a single gapless column.
+ *
+ * A project card is a bounded brief (header, title, pipeline, three clamped lines, skills), so its
+ * height is predictable and two equal columns pack it without the ragged bottom edge an auto-fit track
+ * leaves when the last row is short. It is also what stops projects reading as a RANKED list: a
+ * full-width row implies an order that an open call does not have.
+ */
+.ex-projgrid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ex-projgrid__cell {
+	display: flex;
+	min-inline-size: 0;
 }
 
 /* #endregion */
 
 /* #region Product / article modifiers */
-.ex-card--product .ex-eyebrow,
 .ex-card--article .ex-eyebrow {
-    color: var(--on-surface-variant);
+	color: var(--on-surface-variant);
 }
 
-/*
- * The product tile is the ONE card whose media height is content-driven — that variability is what
- * makes the masonry interlock, so it takes no `aspect-ratio`. The cost was a frame that measured 0px
- * until the image decoded (and stayed 0px forever if it 404'd), collapsing the tile and reflowing the
- * whole column when the image finally landed. A min height floors the frame without capping it: once
- * the image resolves it drives the height as before, and until then the frame holds a `--surface-1`
- * band of roughly the right size instead of vanishing.
- */
-.ex-card--product .ex-media {
-    min-block-size: 8rem;
-}
+/* The product frame's bounds moved onto `.ex-media--free` in the Media region, where the reasoning
+   for the floor (a still-decoding image must not collapse the tile) sits with the ceiling. */
 
 .ex-card--article-list {
-    display: grid;
-    grid-template-columns: 9rem 1fr;
+	display: grid;
+	grid-template-columns: 9rem 1fr;
 }
 
 .ex-card--article-list .ex-media {
-    aspect-ratio: auto;
-    block-size: 100%;
+	aspect-ratio: auto;
+	block-size: 100%;
 }
 
 .ex-card--article-grid .ex-media {
-    aspect-ratio: var(--card-media-ratio);
+	aspect-ratio: var(--card-media-ratio);
 }
 
 /* #endregion */
 
 /* #region Collections: list / masonry / article combo */
-/* Projects render as a beautifully clean list separated by hairlines, never boxed cards. */
+/* The generic hairline list. Projects no longer use it — they render as `.ex-projgrid` cards. */
 .ex-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-.ex-list__item:last-child .ex-projrow {
-    border-block-end: 0;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .ex-masonry {
-    columns: 4 15rem;
-    column-gap: var(--space-5);
+	columns: 4 15rem;
+	column-gap: var(--space-5);
 }
 
 .ex-masonry__item {
-    break-inside: avoid;
-    margin-block-end: var(--space-5);
+	break-inside: avoid;
+	margin-block-end: var(--space-5);
 }
 
 .ex-artcombo {
-    display: grid;
-    grid-template-columns: 1.3fr 1fr;
-    gap: var(--space-5);
-    align-items: start;
+	display: grid;
+	grid-template-columns: 1.3fr 1fr;
+	gap: var(--space-5);
+	align-items: start;
 }
 
 .ex-artcombo__rows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
 }
 
 /* #endregion */
 
 /* #region Promos */
 .ex-sponsored {
-    position: relative;
-    display: grid;
-    grid-template-columns: 1.1fr 1.4fr;
-    gap: var(--space-6);
-    align-items: center;
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
-    padding: var(--space-5);
-    border: 1px solid var(--ex-hair-strong);
-    border-radius: var(--ex-r-lg);
-    background: var(--surface-1);
-    text-decoration: none;
-    color: inherit;
-    overflow: clip;
-    transition: border-color var(--dur-slow) var(--ease-standard);
+	position: relative;
+	display: grid;
+	grid-template-columns: 1.1fr 1.4fr;
+	gap: var(--space-6);
+	align-items: center;
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding: var(--space-5);
+	border: 1px solid var(--ex-hair-strong);
+	border-radius: var(--ex-r-lg);
+	background: var(--surface-1);
+	text-decoration: none;
+	color: inherit;
+	overflow: clip;
+	transition: border-color var(--dur-slow) var(--ease-standard);
 }
 
 .ex-sponsored:hover {
-    border-color: var(--primary);
+	border-color: var(--primary);
 }
 
 .ex-sponsored:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 3px;
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
 }
 
 .ex-sponsored__media {
-    align-self: stretch;
-    min-block-size: 11rem;
-    border-radius: var(--ex-r-md);
-    background-image: var(--ex-cover);
-    background-size: cover;
-    background-position: center;
+	align-self: stretch;
+	min-block-size: 11rem;
+	border-radius: var(--ex-r-md);
+	background-image: var(--ex-cover);
+	background-size: cover;
+	background-position: center;
 }
 
 .ex-sponsored__body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
 }
 
 /* "Promoted" reads as integrated native text — no tag frame. */
 .ex-sponsored__promoted {
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--on-surface-variant);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
 }
 
 .ex-sponsored__title {
-    margin: var(--space-2) 0 0;
-    font-size: clamp(1.3rem, 0.934rem + 1.22vw, 1.9rem);
-    font-weight: 600;
-    letter-spacing: -0.015em;
+	margin: var(--space-2) 0 0;
+	font-size: clamp(1.3rem, 0.934rem + 1.22vw, 1.9rem);
+	font-weight: 600;
+	letter-spacing: -0.015em;
 }
 
 .ex-sponsored__text {
-    margin: 0;
-    font-size: 1rem;
-    line-height: 1.55;
-    font-weight: 300;
-    color: var(--on-surface-variant);
-    max-inline-size: 44ch;
+	margin: 0;
+	font-size: 1rem;
+	line-height: 1.55;
+	font-weight: 300;
+	color: var(--on-surface-variant);
+	max-inline-size: 44ch;
 }
 
 .ex-sponsored__foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-block-start: var(--space-2);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin-block-start: var(--space-2);
 }
 
 .ex-help {
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
-    padding: var(--space-6);
-    background: var(--surface-1);
-    border-radius: var(--ex-r-lg);
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding: var(--space-6);
+	background: var(--surface-1);
+	border-radius: var(--ex-r-lg);
 }
 
 .ex-help__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-    padding-block-end: var(--space-4);
-    margin-block-end: var(--space-3);
-    border-block-end: 1px solid var(--ex-hair);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block-end: var(--space-4);
+	margin-block-end: var(--space-3);
+	border-block-end: 1px solid var(--ex-hair);
 }
 
 .ex-help__title {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
 }
 
 .ex-help__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-3);
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--space-3);
 }
 
 .ex-help__link {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    border-radius: var(--radius-lg);
-    text-decoration: none;
-    color: var(--on-surface);
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	border-radius: var(--radius-lg);
+	text-decoration: none;
+	color: var(--on-surface);
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .ex-help__link:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .ex-help__link:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
 }
 
 .ex-help__glyph {
-    display: inline-flex;
-    inline-size: 1.6rem;
-    block-size: 1.6rem;
-    color: var(--primary);
-    flex: 0 0 auto;
+	display: inline-flex;
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
+	color: var(--primary);
+	flex: 0 0 auto;
 }
 
 .ex-help__glyph svg {
-    inline-size: 100%;
-    block-size: 100%;
+	inline-size: 100%;
+	block-size: 100%;
 }
 
 .ex-help__text {
-    flex: 1 1 auto;
-    font-size: 0.95rem;
-    font-weight: 500;
+	flex: 1 1 auto;
+	font-size: 0.95rem;
+	font-weight: 500;
 }
 
 .ex-help__meta {
-    font-size: 0.8rem;
-    color: var(--on-surface-variant);
-    white-space: nowrap;
+	font-size: 0.8rem;
+	color: var(--on-surface-variant);
+	white-space: nowrap;
 }
 
 .ex-cta-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--space-5);
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
-    padding: clamp(var(--space-5), 4vw, var(--space-7));
-    border-radius: var(--ex-r-lg);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-5);
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding: clamp(var(--space-5), 4vw, var(--space-7));
+	border-radius: var(--ex-r-lg);
 }
 
 .ex-cta-banner--primary {
-    background: var(--ex-primary-tint);
+	background: var(--ex-primary-tint);
 }
 
 .ex-cta-banner--neutral {
-    background: var(--surface-2);
+	background: var(--surface-2);
 }
 
 .ex-cta-banner__title {
-    margin: var(--space-2) 0 0;
-    font-size: clamp(1.4rem, 1.016rem + 1.279vw, 2rem);
-    font-weight: 600;
-    letter-spacing: -0.015em;
+	margin: var(--space-2) 0 0;
+	font-size: clamp(1.4rem, 1.016rem + 1.279vw, 2rem);
+	font-weight: 600;
+	letter-spacing: -0.015em;
 }
 
 .ex-cta-banner__body {
-    margin: var(--space-2) 0 0;
-    max-inline-size: 48ch;
-    font-size: 1rem;
-    line-height: 1.55;
-    font-weight: 300;
-    color: var(--on-surface-variant);
+	margin: var(--space-2) 0 0;
+	max-inline-size: 48ch;
+	font-size: 1rem;
+	line-height: 1.55;
+	font-weight: 300;
+	color: var(--on-surface-variant);
 }
 
 /* #endregion */
@@ -1648,218 +1938,230 @@
 /* A deep-primary illustrative band mirroring the auth side-panel language. Holds the ONE large search
    bar; the on-primary line-art backdrop recolours with theme (token-only). */
 .ex-hero {
-    position: relative;
-    overflow: clip;
-    isolation: isolate;
-    background: var(--primary);
-    color: var(--on-primary);
-    padding: clamp(2.75rem, 6vw, 5rem) var(--ex-pad-x) clamp(3rem, 6vw, 5.5rem);
-    margin: var(--space-6);
-    border-radius: var(--radius-3xl);
+	position: relative;
+	overflow: clip;
+	isolation: isolate;
+	background: var(--primary);
+	color: var(--on-primary);
+	padding: clamp(2.75rem, 6vw, 5rem) var(--ex-pad-x) clamp(3rem, 6vw, 5.5rem);
+	margin: var(--space-6);
+	border-radius: var(--radius-3xl);
 }
 
 .ex-hero__art {
-    position: absolute;
-    inset: 0;
-    inline-size: 100%;
-    block-size: 100%;
-    z-index: -1;
-    pointer-events: none;
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	z-index: -1;
+	pointer-events: none;
 }
 
 .ex-hero__orbit {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: ex-hero-spin 80s linear infinite;
+	transform-box: fill-box;
+	transform-origin: center;
+	animation: ex-hero-spin 80s linear infinite;
 }
 
 /* The inner ring drifts the opposite way for parallax depth (mirrors the auth scene's layered rings). */
 .ex-hero__orbit--rev {
-    animation: ex-hero-spin 110s linear infinite reverse;
+	animation: ex-hero-spin 110s linear infinite reverse;
 }
 
 @keyframes ex-hero-spin {
-    to {
-        transform: rotate(360deg);
-    }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-
-    .ex-hero__orbit,
-    .ex-hero__orbit--rev {
-        animation: none;
-    }
+	.ex-hero__orbit,
+	.ex-hero__orbit--rev {
+		animation: none;
+	}
 }
 
 .ex-hero__inner {
-    position: relative;
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: var(--space-4);
+	position: relative;
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--space-4);
 }
 
 .ex-hero__kicker {
-    margin: 0;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--on-primary) 78%, transparent);
+	margin: 0;
+	font-size: 0.78rem;
+	font-weight: 600;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--on-primary) 78%, transparent);
 }
 
 .ex-hero__title {
-    margin: 0;
-    font-size: clamp(2.25rem, 1.021rem + 4.096vw, 4rem);
-    line-height: 1.02;
-    letter-spacing: -0.03em;
-    text-wrap: balance;
+	margin: 0;
+	font-size: clamp(2.25rem, 1.021rem + 4.096vw, 4rem);
+	line-height: 1.02;
+	letter-spacing: -0.03em;
+	text-wrap: balance;
 }
 
 /* Auth-style two-tone hierarchy: a thin italic lead over a heavy strong line, each on its own row. */
 .ex-hero__title-lead {
-    display: block;
-    font-weight: 300;
-    font-style: italic;
-    color: color-mix(in srgb, var(--on-primary) 80%, transparent);
+	display: block;
+	font-weight: 300;
+	font-style: italic;
+	color: color-mix(in srgb, var(--on-primary) 80%, transparent);
 }
 
 .ex-hero__title-strong {
-    display: block;
-    font-weight: 600;
-    color: var(--on-primary);
+	display: block;
+	font-weight: 600;
+	color: var(--on-primary);
 }
 
 .ex-hero__lede {
-    margin: 0;
-    max-inline-size: 46ch;
-    font-size: clamp(1rem, 0.893rem + 0.358vw, 1.15rem);
-    line-height: 1.55;
-    font-weight: 300;
-    color: color-mix(in srgb, var(--on-primary) 82%, transparent);
+	margin: 0;
+	max-inline-size: 46ch;
+	font-size: clamp(1rem, 0.893rem + 0.358vw, 1.15rem);
+	line-height: 1.55;
+	font-weight: 300;
+	color: color-mix(in srgb, var(--on-primary) 82%, transparent);
 }
 
 .ex-hero__search {
-    inline-size: 100%;
-    margin-block-start: var(--space-4);
+	inline-size: 100%;
+	margin-block-start: var(--space-4);
 }
 
 /* Recolour the search's trending row for the deep-primary field (the glass bar itself stays legible). */
 .ex-hero__search .hero-search__trending-label {
-    color: color-mix(in srgb, var(--on-primary) 72%, transparent);
+	color: color-mix(in srgb, var(--on-primary) 72%, transparent);
 }
 
 .ex-hero__search .hero-search__tag {
-    color: var(--on-primary);
-    border-color: color-mix(in srgb, var(--on-primary) var(--tint-heavy), transparent);
-    background: color-mix(in srgb, var(--on-primary) var(--tint-soft), transparent);
+	color: var(--on-primary);
+	border-color: color-mix(in srgb, var(--on-primary) var(--tint-heavy), transparent);
+	background: color-mix(in srgb, var(--on-primary) var(--tint-soft), transparent);
 
-    border-bottom: 1px solid rgba(98, 98, 98, 0.6);
-    border-right: 1px solid rgba(98, 98, 98, 0.6);
+	border-bottom: 1px solid rgba(98, 98, 98, 0.6);
+	border-right: 1px solid rgba(98, 98, 98, 0.6);
 }
 
 .ex-hero__search .hero-search__tag:hover {
-    color: var(--on-primary);
-    border-color: var(--on-primary);
+	color: var(--on-primary);
+	border-color: var(--on-primary);
 }
 
 /* #endregion */
 
 /* #region Home layout */
 .ex-home {
-    display: flex;
-    flex-direction: column;
-    gap: clamp(2.25rem, 4vw, 3.75rem);
-    padding-block: clamp(2rem, 4vw, 3.5rem);
+	display: flex;
+	flex-direction: column;
+	gap: clamp(2.25rem, 4vw, 3.75rem);
+	padding-block: clamp(2rem, 4vw, 3.5rem);
 }
 
 .ex-home__container {
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
-    padding-inline: var(--ex-pad-x);
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding-inline: var(--ex-pad-x);
 }
 
 /* Grid/list/masonry/combo sit inside the padded container width. */
-.ex-home__section>.ui-grid,
-.ex-home__section>.ex-list,
-.ex-home__section>.ex-masonry,
-.ex-home__section>.ex-artcombo {
-    max-inline-size: var(--container-xl);
-    margin-inline: auto;
-    padding-inline: var(--ex-pad-x);
-    box-sizing: border-box;
+.ex-home__section > .ui-grid,
+.ex-home__section > .ex-list,
+.ex-home__section > .ex-masonry,
+.ex-home__section > .ex-artcombo {
+	max-inline-size: var(--container-xl);
+	margin-inline: auto;
+	padding-inline: var(--ex-pad-x);
+	box-sizing: border-box;
 }
 
 /* Cards fill their grid cell so every card in a row shares the row's height. */
-.ex-home__section>.ui-grid>[role="listitem"] {
-    display: flex;
+.ex-home__section > .ui-grid > [role="listitem"] {
+	display: flex;
 }
 
 /* Profile teaser grids hold wide banner cards; below the tablet cusp a banner reads best one-per-row,
    so they drop to a single column (its 0,3,0 specificity overrides the generic two-up mobile grid). */
 @media (max-width: 900px) {
-    .ex-home .ex-profilegrid.ui-grid {
-        grid-template-columns: 1fr !important;
-    }
+	.ex-home .ex-profilegrid.ui-grid {
+		grid-template-columns: 1fr !important;
+	}
 }
 
 /* #endregion */
 
 /* #region Responsive */
 @media (max-width: 1100px) {
-    .ex-masonry {
-        columns: 3 14rem;
-    }
+	.ex-masonry {
+		columns: 3 14rem;
+	}
 }
 
 @media (max-width: 900px) {
-    .ex-sponsored {
-        grid-template-columns: 1fr;
-    }
+	.ex-sponsored {
+		grid-template-columns: 1fr;
+	}
 
-    .ex-artcombo {
-        grid-template-columns: 1fr;
-    }
+	.ex-artcombo {
+		grid-template-columns: 1fr;
+	}
 
-    .ex-help__list {
-        grid-template-columns: 1fr;
-    }
+	.ex-help__list {
+		grid-template-columns: 1fr;
+	}
 
-    .ex-masonry {
-        columns: 2 12rem;
-    }
+	.ex-masonry {
+		columns: 2 12rem;
+	}
+}
+
+@media (max-width: 900px) {
+	/*
+	 * The two-column project grid is a layout RULE, not a breakpoint preference, so it holds here and
+	 * only relaxes its gap. See the phone rule below for the one place it cannot hold.
+	 */
+	.ex-projgrid {
+		gap: var(--space-4);
+	}
+
+	.ex-card--project {
+		padding: var(--space-4);
+	}
 }
 
 @media (max-width: 767.98px) {
+	/* Mobile shows exactly two cards per grid row. */
+	.ex-home .ui-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		gap: var(--space-3) !important;
+	}
 
-    /* Mobile shows exactly two cards per grid row. */
-    .ex-home .ui-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: var(--space-3) !important;
-    }
+	/* Impact banners bleed to the viewport edges — no outline, no rounded corners. */
+	.ex-sponsored,
+	.ex-help,
+	.ex-cta-banner {
+		max-inline-size: none;
+		border-radius: 0;
+		border-inline: 0;
+		border-block-start: 0;
+	}
 
-    /* Impact banners bleed to the viewport edges — no outline, no rounded corners. */
-    .ex-sponsored,
-    .ex-help,
-    .ex-cta-banner {
-        max-inline-size: none;
-        border-radius: 0;
-        border-inline: 0;
-        border-block-start: 0;
-    }
+	.ex-cta-banner--neutral {
+		border-block: 1px solid var(--ex-hair);
+	}
 
-    .ex-cta-banner--neutral {
-        border-block: 1px solid var(--ex-hair);
-    }
-
-    .ex-masonry {
-        columns: 2 8rem;
-        column-gap: var(--space-3);
-    }
+	.ex-masonry {
+		columns: 2 8rem;
+		column-gap: var(--space-3);
+	}
 }
 
 /* #endregion */

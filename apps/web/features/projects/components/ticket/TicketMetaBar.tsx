@@ -97,6 +97,19 @@ function MetaEditor(props: MetaEditorProps): JSX.Element {
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape") return;
 			const host = hostRef.current;
+			/*
+			 * A control's panel is portalled to `document.body`, so a control opened from INSIDE another
+			 * control's panel — the calendar's own month/year `Select` — is invisible to a host-scoped
+			 * query. Consuming the key here would then read "the calendar is open" and close the whole
+			 * calendar when the reader only meant to close the year list. When a nested panel is open the
+			 * package's own dismissal already owns the key (its `document` capture handler is gated on
+			 * `useOverlayStack().isTop`), so the honest move is to let the event travel rather than to
+			 * decide on its behalf.
+			 */
+			const nested = document.querySelector(
+				'.ui-datepicker__panel [aria-expanded="true"], .ui-select__panel [aria-expanded="true"]',
+			);
+			if (nested) return;
 			const panelOpen = !!host?.querySelector('[aria-expanded="true"]');
 			e.stopImmediatePropagation();
 			e.preventDefault();

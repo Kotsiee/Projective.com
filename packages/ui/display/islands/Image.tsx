@@ -67,11 +67,13 @@ export function Image(props: ImageProps): JSX.Element {
 	};
 
 	useFocusTrap({ active: mounted, containerRef: panelRef });
+	// The top-most test belongs on `enabled`, not inside the callback: `useDismiss` calls
+	// `stopImmediatePropagation()` BEFORE it invokes `onDismiss`, so a callback-side guard let the
+	// preview swallow Escape for every overlay opened above it while declining to close itself.
 	useDismiss({
 		open: mounted,
-		onDismiss: () => {
-			if (stack.isTop) close();
-		},
+		enabled: stack.isTop,
+		onDismiss: close,
 		panelRef,
 		closeOnOutside: false,
 	});

@@ -1,0 +1,615 @@
+/*
+ * @projective/ui/calendar — the `.cal-pop*` HTML popover layer: the panel that floats OVER the grid
+ * for a single event, a stacked cluster, and a drag-to-create.
+ *
+ * TWO THINGS ABOUT THIS SHEET ARE UNUSUAL, AND BOTH FOLLOW FROM THE PANEL BEING PORTALLED.
+ *
+ * 1. IT IS POSITIONED WITH PHYSICAL `top`/`left`, not logical insets. `--float-top`/`--float-left`
+ *    come from `useFloating`, which computes them from `getBoundingClientRect` — a physical,
+ *    left-origin frame that does not mirror under `dir="rtl"`. Writing that number into
+ *    `inset-inline-start` would resolve it as `right` in an RTL document and put the panel on the
+ *    wrong side of the screen. Everything INSIDE the panel is logical, because that content does
+ *    mirror; only the outer placement is physical, because the number it is given already is.
+ *
+ * 2. IT MAY NOT READ A `.cal`-SCOPED CUSTOM PROPERTY. `BodyPortal` appends the panel to
+ *    `document.body`, so it is not a descendant of `.cal` and inherits nothing declared there — the
+ *    same trap `--wlt-*` hit when the wallet's lane, header band and portalled overlays all rendered
+ *    outside the block the tokens were scoped to (root CLAUDE.md §8 Decision #60). Everything below
+ *    therefore reads the GLOBAL contract in `packages/ui/styles/index.css`. The two exceptions are
+ *    `--cal-pop-w` and `--cal-pop-max-h`, which `shell.css` now declares on `:root` FOR THIS REASON — the
+ *    whole calendar token block was lifted off `.cal` once this sheet proved a portalled panel could
+ *    not reach it — and which this sheet
+ *    consumes with a graceful fallback until they are lifted to `:root`.
+ *
+ * Strict BEM, token-only. The panel is an elevated INTERACTIVE surface, so a hairline + shadow are
+ * allowed (DESIGN_SYSTEM.md §B.4); the facts inside it are separated by spacing and type weight and
+ * are never boxed.
+ */
+
+/* #region Proxies */
+/*
+ * The inline OWNERSHIP tether. It exists only so `overlay-registry` has a real node, at the point in
+ * the tree where the layer was mounted, to answer "who opened this panel" with — see the component's
+ * module doc. Out of flow and zero-sized, so it can neither take space nor lengthen a scroll
+ * container, and `pointer-events: none` so it can never intercept a press meant for the grid beneath.
+ */
+.cal-pop__tether {
+	position: absolute;
+	inline-size: 0;
+	block-size: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/*
+ * The portalled POSITIONING proxy: a zero-size box parked exactly on the anchor rectangle, so
+ * `useFloating` has something to measure where the canvas has only pixels. Physical `top`/`left` for
+ * the reason in the header — these are viewport coordinates, not layout ones.
+ *
+ * It is a body child rather than an inline sibling of the tether on purpose: a transformed, filtered
+ * or `backdrop-filter`ed ancestor re-bases `position: fixed` onto its own box, and a proxy that had
+ * been re-based would report a rect that is honest about the element and wrong about the anchor.
+ * The `-9999px` resting position is the pre-measurement park, matching `.ui-anchored`.
+ */
+.cal-pop__anchor {
+	position: fixed;
+	top: var(--cal-pop-anchor-y, -9999px);
+	left: var(--cal-pop-anchor-x, -9999px);
+	inline-size: var(--cal-pop-anchor-w, 0);
+	block-size: var(--cal-pop-anchor-h, 0);
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Panel */
+/*
+ * The positioned root. It carries placement, stacking and PRESENCE; the surface itself is the inner
+ * `__panel`, so the scale transform has an element of its own and never competes with the
+ * `top`/`left` the collision engine is writing.
+ *
+ * The resting state is the CLOSED one — `opacity: 0` and the entry scale — corrected by
+ * `[data-state="open"]`. That ordering is what lets the panel be correct with no frame having run:
+ * `usePresence` flips the attribute on a rAF with a timer watchdog behind it, so a hidden tab that
+ * never services a frame still opens rather than leaving a mounted, focus-trapped, invisible surface.
+ */
+.cal-pop {
+	position: fixed;
+	top: var(--float-top, -9999px);
+	left: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-popover));
+	/*
+	 * The scale the panel grows from — `ENTRY_SCALE` in `components/EventPopoverLayer.tsx`, mirrored
+	 * here because a CSS custom property cannot be read by the spring and the spring's value cannot be
+	 * read by the cascade. Both declarations name the other, which is the only duplication the
+	 * token rule allows: change one and change the other in the same edit. The component overwrites
+	 * this inline with the spring's resolved number; this declaration is what makes the closed state
+	 * correct before, and without, any script.
+	 */
+	--cal-pop-scale: 0.94;
+	/*
+	 * How far a step pane slides in from. A signed length so the two keyframes below can be written
+	 * once and negated, and so RTL flips the direction rather than needing its own pair.
+	 */
+	--cal-pop-slide: 12%;
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+[dir="rtl"] .cal-pop {
+	--cal-pop-slide: -12%;
+}
+
+.cal-pop[data-state="open"] {
+	--cal-pop-scale: 1;
+	opacity: 1;
+}
+
+/*
+ * While the pointer is still drawing the range this create popover belongs to, the panel refuses the
+ * pointer entirely: it spawns UNDER the cursor mid-gesture, and a panel that swallowed those moves
+ * would end the drag the moment it appeared. Keyboard and assistive tech are unaffected — only the
+ * pointer is withheld, and only for as long as one is actually down.
+ */
+.cal-pop--dragging {
+	pointer-events: none;
+}
+
+/*
+ * The surface. Deliberately OPAQUE `--surface` rather than glass: a dense panel of small type needs
+ * a settled ground behind it, and a `backdrop-filter` here would re-base any `position: fixed`
+ * descendant onto this box — the trap that put every anchored panel in this package behind
+ * `BodyPortal` in the first place.
+ *
+ * `--cal-pop-w` / `--cal-pop-max-h` are `shell.css`'s, declared on `:root`. The panel is portalled out
+ * of that scope, so both carry a fallback that degrades to a usable auto-width panel rather than to
+ * nothing; lifting the two declarations to `:root` is what makes the intended box actually apply.
+ * `--float-available-h` is the space the collision engine measured on the side it resolved to — a
+ * clamp alone cannot fit a panel taller than the room left, it can only move it, so the panel caps
+ * itself against that measurement and scrolls internally instead of running off the screen.
+ */
+.cal-pop__panel {
+	display: flex;
+	flex-direction: column;
+	inline-size: var(--cal-pop-w, auto);
+	max-inline-size: min(var(--container-sm), calc(100vw - var(--space-8)));
+	max-block-size: min(var(--cal-pop-max-h, 100vh), var(--float-available-h, 100vh));
+	background: var(--surface);
+	color: var(--on-surface);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
+	box-shadow: var(--elevation-high);
+	overflow: hidden;
+	font-family: var(--font-sans);
+	transform: scale(var(--cal-pop-scale));
+}
+
+/*
+ * The panel grows OUT of its anchor, so the origin follows whichever side the collision engine
+ * settled on. Physical keywords, for the same reason the placement itself is physical.
+ */
+.cal-pop[data-placement^="right"] .cal-pop__panel {
+	transform-origin: left center;
+}
+
+.cal-pop[data-placement^="left"] .cal-pop__panel {
+	transform-origin: right center;
+}
+
+.cal-pop[data-placement^="bottom"] .cal-pop__panel {
+	transform-origin: center top;
+}
+
+.cal-pop[data-placement^="top"] .cal-pop__panel {
+	transform-origin: center bottom;
+}
+/* #endregion */
+
+/* #region Action header */
+/*
+ * Back leads, the consumer's actions trail. `margin-inline-start: auto` rather than
+ * `justify-content: space-between` so the actions stay pinned to the trailing edge even when there
+ * is no Back button to push them there — with `space-between` a lone child collapses to the start,
+ * which would put the action cluster on the wrong side exactly when it is the only thing in the row.
+ */
+.cal-pop__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	padding: var(--space-2) var(--space-2) 0;
+}
+
+.cal-pop__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-inline-start: auto;
+}
+
+.cal-pop__back {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	flex: none;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.cal-pop__back:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.cal-pop__back:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Step panes */
+/*
+ * One pane is mounted at a time and keyed on the step, so moving between the cluster list and a
+ * single event replaces the element and replays the animation below.
+ *
+ * The animation has NO fill: its final state is the pane's own resting style. That is what makes it
+ * safe in a background tab, where CSS animations are frozen — a frozen `forwards` animation strands
+ * the element at its starting offset, while an unfilled one that never runs simply paints at rest.
+ * The component withholds the class outright when `prefersJumpToFinal()` is true; the reduced-motion
+ * block in `motion.css` is the other half, for a preference that changes after the class was applied.
+ */
+.cal-pop__pane {
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+}
+
+.cal-pop__pane--forward {
+	animation: cal-pop-forward var(--dur-medium) var(--ease-standard);
+}
+
+.cal-pop__pane--back {
+	animation: cal-pop-back var(--dur-medium) var(--ease-standard);
+}
+
+@keyframes cal-pop-forward {
+	from {
+		opacity: 0;
+		transform: translateX(var(--cal-pop-slide));
+	}
+}
+
+@keyframes cal-pop-back {
+	from {
+		opacity: 0;
+		transform: translateX(calc(-1 * var(--cal-pop-slide)));
+	}
+}
+/* #endregion */
+
+/* #region Single event */
+.cal-pop__event {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-block-size: 0;
+	flex: 1 1 auto;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-4);
+}
+
+/*
+ * A privacy-masked block, stepped down on the same two axes `.cal-event--masked` uses.
+ *
+ * The panel already WITHHOLDS everything §Part 1.4 forbids — title, kind, location, faces,
+ * provenance — so this is not the privacy mechanism; it is the signal that what is on screen is a
+ * status rather than an identity, and it exists so a reader does not mistake "Busy" for the name of
+ * a meeting. It restates the treatment rather than sharing a selector with the card, because the two
+ * live in different sheets and one of them is portalled out of the other's subtree.
+ */
+.cal-pop__event--masked .cal-pop__titletext,
+.cal-pop__event--masked .cal-pop__kindchip {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface-variant);
+}
+
+.cal-pop__title {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	line-height: 1.3;
+	color: var(--on-surface);
+}
+
+/* The title becomes a control only where the host can actually honour opening it — a dead affordance
+   is worse than plain text, because it advertises a capability and then refuses. */
+.cal-pop__title--open {
+	border: none;
+	background: none;
+	padding: 0;
+	text-align: start;
+	font-family: inherit;
+	cursor: pointer;
+	border-radius: var(--radius-base);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.cal-pop__title--open:hover {
+	color: var(--primary);
+}
+
+.cal-pop__title--open:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* The accent, at full strength, in the one place it can be spent without competing with the type it
+   sits beside — the same coin the grid card is punched from, at chip scale. */
+.cal-pop__kindchip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	flex: none;
+	border-radius: var(--radius-base);
+	background: var(--cal-accent);
+	color: var(--cal-accent-on);
+}
+
+/*
+ * Size and weight come from the §B.7 icon ramp rather than from `.cal`'s card-scoped pair, which does
+ * not reach a portalled panel. `vector-effect` on the path is what makes the weight a rendered width
+ * rather than a fraction of the 16-unit path box, so the mark lands on the same line here as it does
+ * on a card.
+ */
+.cal-pop__kindglyph {
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
+	stroke-width: var(--icon-stroke);
+}
+
+.cal-pop__titletext {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+
+.cal-pop__kindname {
+	margin: 0;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cal-pop__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-start: var(--space-1);
+}
+
+.cal-pop__fact {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	line-height: 1.4;
+	color: var(--on-surface);
+}
+
+.cal-pop__fact--quiet {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.cal-pop__facticon {
+	flex: none;
+	margin-block-start: 0.1em;
+	color: var(--text-secondary);
+}
+
+.cal-pop__facttext {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+
+.cal-pop__facttime {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Faces */
+.cal-pop__faces {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+}
+
+.cal-pop__face {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
+	flex: none;
+	border-radius: var(--radius-full);
+	background: var(--surface-3);
+	color: var(--text-secondary);
+	overflow: hidden;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
+	line-height: 1;
+	/* The gap between overlapping circles is drawn in the colour actually behind the stack, so the
+	   ring reads as a cut-out rather than as a second border. */
+	box-shadow: 0 0 0 2px var(--surface);
+}
+
+.cal-pop__face--host {
+	box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--primary);
+}
+
+.cal-pop__face--more {
+	background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface-3));
+}
+
+.cal-pop__face + .cal-pop__face {
+	margin-inline-start: calc(var(--icon-md) * -0.32);
+}
+
+.cal-pop__facephoto {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.cal-pop__faceinitials {
+	position: relative;
+}
+/* #endregion */
+
+/* #region Cluster list */
+.cal-pop__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-block-size: 0;
+	flex: 1 1 auto;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-3);
+}
+
+.cal-pop__list:focus {
+	outline: none;
+}
+
+.cal-pop__item {
+	flex: none;
+}
+
+/*
+ * The preview IS the grid's own `EventBlock`, so a reader recognises the card they were reaching for
+ * rather than a second rendering of it. The one adaptation is height: a positioned card fills the
+ * slot it was given (`block-size: 100%`), and in a flow list there is no slot — it has to size to its
+ * own content. Reaching into another block is normally forbidden, and it is allowed here for the one
+ * thing a block cannot know on its own, which is the shape of the context it was placed in.
+ */
+.cal-pop__item > .cal-event {
+	block-size: auto;
+}
+/* #endregion */
+
+/* #region Quick create */
+.cal-pop__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-block-size: 0;
+	flex: 1 1 auto;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-4);
+}
+
+.cal-pop__range {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: 1.4;
+	color: var(--on-surface);
+}
+
+.cal-pop__label {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+}
+
+.cal-pop__input {
+	block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font-family: inherit;
+	font-size: var(--text-sm);
+	transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.cal-pop__input::placeholder {
+	color: var(--text-secondary);
+}
+
+.cal-pop__input:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The commit control is TONAL rather than a filled primary. `--on-primary` on `--primary` measures
+ * 3.57:1 in dark mode — a theme-engine pairing flagged for a human at the token layer (root
+ * CLAUDE.md §8 Decisions #64/#65/#74) — and this button carries a real word at small type, where that
+ * ratio fails outright. Primary ink on a mostly-surface ground is a pair the palette does guarantee,
+ * and the control still reads as the primary action because it is the only tinted thing in the panel.
+ */
+.cal-pop__submit {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	align-self: flex-start;
+	margin-block-start: var(--space-1);
+	block-size: 2.25rem;
+	padding-inline: var(--space-4);
+	border: 1px solid color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
+	border-radius: var(--radius-base);
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+	color: var(--primary);
+	font-family: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.cal-pop__submit:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), var(--surface));
+}
+
+.cal-pop__submit:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * One disabled treatment, applied to ink and border rather than to the box, and NOT paired with
+ * `pointer-events: none` — which would cancel the `not-allowed` cursor sitting beside it and leave
+ * the control with no way to say why it is refusing.
+ */
+.cal-pop__submit:disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: not-allowed;
+}
+
+/*
+ * The route to the full creation surface.
+ *
+ * A TEXT control, deliberately quieter than the submit beside it: the primary action here is
+ * "create this", and a second filled button of equal weight would make the reader choose between two
+ * things that look equally like the thing to do. §B.8.2 — one commitment per region.
+ */
+.cal-pop__expand {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	align-self: flex-start;
+	/* The 24px pointer-target floor (WCAG 2.2 SC 2.5.8) on a control whose ink is only 14px tall. */
+	min-block-size: 1.5rem;
+	padding: var(--space-1) 0;
+	border: none;
+	background: none;
+	color: var(--text-secondary);
+	font-family: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.cal-pop__expand:hover {
+	color: var(--on-surface);
+}
+
+.cal-pop__expand:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* #endregion */

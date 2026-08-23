@@ -1,5 +1,3 @@
-import type { CalendarIntegration } from "@projective/types/scheduling";
-
 /**
  * scheduling fixtures — shared deterministic core. Like the sibling read fixtures (projects/board,
  * messages) every value derives from a small unsigned hash + a FIXED reference clock (no `Date.now()`,
@@ -77,7 +75,14 @@ function offsetAt(ms: number, tz: string): number {
 	return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - ms;
 }
 /** Epoch ms of a wall-clock time (`y`/`m`(1-based)/`d` `h`:`min`) in `tz` (DST-corrected). */
-export function zonedTimeToMs(y: number, m: number, d: number, h: number, min: number, tz: string): number {
+export function zonedTimeToMs(
+	y: number,
+	m: number,
+	d: number,
+	h: number,
+	min: number,
+	tz: string,
+): number {
 	const guess = Date.UTC(y, m - 1, d, h, min, 0);
 	const off1 = offsetAt(guess, tz);
 	let epoch = guess - off1;
@@ -144,21 +149,48 @@ export function tzFor(seed: number): string {
 	return TZ_POOL[seed % TZ_POOL.length];
 }
 
-const INTEGRATIONS: { id: string; label: string; accent: string }[] = [
-	{ id: "google", label: "Google", accent: "--primary" },
-	{ id: "outlook", label: "Outlook", accent: "--secondary" },
-	{ id: "apple", label: "Apple", accent: "--on-surface-variant" },
-	{ id: "samsung", label: "Samsung", accent: "--tertiary" },
-	{ id: "notion", label: "Notion", accent: "--on-surface" },
-];
+/**
+ * The external calendars a derived occurrence can be mirrored onto.
+ *
+ * `projective` is deliberately NOT in this pool — it is added unconditionally by
+ * {@link sourcesFor}, because every event on this platform is on this platform. A pool that could
+ * omit it would let a block claim it exists only in Google.
+ *
+ * ⚠️ Every member must be a provider the CONNECTOR CATALOGUE declares a `calendar` capability for
+ * (`integrations.providers`, mirrored by `services/integrations/connections-fixtures.ts`). The pool
+ * used to include `outlook` and `apple`, which that catalogue does not carry at all — so the grid
+ * drew Outlook and Apple provenance across the page while the Connect Calendar dialog, filtering the
+ * very same catalogue on `capabilities.includes("calendar")`, told the reader neither is a calendar
+ * this account can connect. Two surfaces on one route answering "is this synced?" differently is
+ * worse than a shorter pool. Restore them here the moment the catalogue carries them, not before.
+ */
+const SYNC_POOL = ["google", "notion", "calendly"] as const;
 
-/** A deterministic set of external-calendar chips — a couple connected per seed. */
-export function integrationsFor(seed: number): CalendarIntegration[] {
-	return INTEGRATIONS.map((it, i) => ({
-		id: it.id,
-		label: it.label,
-		accent: it.accent,
-		connected: ((seed >>> i) & 1) === 1 && i < 3,
-	}));
+/**
+ * Which calendars an occurrence appears on, deterministically.
+ *
+ * Always leads with `projective` (see above) and adds between zero and two external mirrors, so the
+ * grid shows single, double and triple stacks without any of them being random. Every index is
+ * UNSIGNED (`>>>`): a signed shift produced negative indices and `undefined` slots the last three
+ * times a fixture in this repo reached for one.
+ *
+ * The leading `projective` is what makes the reader's Calendars filter a LAYER switch rather than an
+ * origin filter: an occurrence is on several calendars at once, so withdrawing one of them leaves
+ * the others holding it up. See `visibleEvents`/`sourceIsVisible` in the app's `calendar-state.ts`
+ * for the semantics that follow from it — do not "fix" this by dropping the platform's own copy,
+ * which would let a block claim it exists only in Google.
+ */
+export function sourcesFor(key: string): string[] {
+	const h = hash(key);
+	const extra = h % 3; // 0 · 1 · 2 external mirrors
+	const out = ["projective"];
+	for (let i = 0; i < extra; i++) out.push(SYNC_POOL[(h >>> (i * 3)) % SYNC_POOL.length]);
+	// A vendor can only appear once — two marks for one calendar is a lie about the fan-out.
+	return Array.from(new Set(out));
+}
+
+/** The single external calendar a privacy-masked busy block was pulled in from. */
+export function externalSourceFor(key: string): string[] {
+	return [SYNC_POOL[hash(key) % SYNC_POOL.length]];
 }
 // #endregion

@@ -134,6 +134,18 @@ export function globalNav(
 			active: isActive(path, "/projects"),
 			children: workspaceSublinks("project"),
 		},
+		// Calendar — the acting account's own agenda. UNGATED for the same reason Files and Basket are:
+		// everyone has a week, whichever side of the market they are on, so this destination carries no
+		// capability predicate — which also keeps it clear of the unresolved `is_operator` ⁄
+		// `isFreelancer` gate inconsistency still flagged against the seller surfaces (Decisions #17 /
+		// #18 / #61).
+		{
+			key: "calendar",
+			label: "Calendar",
+			href: "/calendar",
+			icon: "calendar",
+			active: isActive(path, "/calendar"),
+		},
 		// Files — the personal/entity asset hub. Deliberately UNGATED: everyone has files, whichever
 		// side of the market they are on, so this destination carries no capability predicate at all —
 		// which also keeps it clear of the unresolved `is_operator` ⁄ `isFreelancer` gate inconsistency

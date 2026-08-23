@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
@@ -286,7 +287,15 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 	}, [global, targetRef?.current]);
 	// #endregion
 
-	useDismiss({ open: open.value, onDismiss: () => (open.value = false), panelRef });
+	// A right-click menu is routinely raised OVER an open dialog or drawer, so it claims a slot both to
+	// paint above that surface and to take Escape ownership from it for as long as it is open.
+	const stack = useOverlayStack({ active: open.value, layer: "popover" });
+	useDismiss({
+		open: open.value,
+		enabled: stack.isTop,
+		onDismiss: () => (open.value = false),
+		panelRef,
+	});
 
 	return (
 		<>
@@ -298,6 +307,7 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 					style={styleVars({
 						"--float-top": `${pos.value.y}px`,
 						"--float-left": `${pos.value.x}px`,
+						"--z-portal": String(stack.zIndex),
 					})}
 				>
 					<CtxLevel

@@ -1,0 +1,761 @@
+/*
+ * @projective/ui/calendar — the DOM event card and the hybrid Day timeline's column.
+ *
+ * The canvas twin's drawing values are probe swatches, and those live in `grid.css` with the rest of
+ * the probe — see that file's header.
+ *
+ * THREE RULES RUN THROUGH EVERY BLOCK BELOW, and they are the reason several declarations look more
+ * roundabout than they need to:
+ *
+ *  1. MOTION MAY DECORATE, NEVER ENCODE. Not one rule here declares a `transition` or an `animation`.
+ *     Anything that moves is driven by `--cal-hover-t`, a RESOLVED number the Day timeline's spring
+ *     writes into the wrapper on every frame — because a hidden or backgrounded tab freezes CSS
+ *     transitions, keyframes and `requestAnimationFrame` alike, and a card whose height means a
+ *     duration must not be able to be stranded half-way. A consequence worth stating: this sheet
+ *     needs NO entry in `motion.css`. Reduced motion is honoured by `createSpring`'s jump-to-final,
+ *     which lands `--cal-hover-t` on its target with zero frames elapsed.
+ *  2. OMIT, NEVER CLIP. Only the title truncates. Every metadata row is either ABSENT (below the
+ *     container width at which it could be read at all) or COMPLETE (it wraps rather than
+ *     truncating). The thresholds are `@container` queries on the card's own inline size, because a
+ *     card is narrowed by a split lane or by nesting inside another card, and neither of those is a
+ *     viewport event.
+ *  3. GEOMETRY IS MIRRORED FROM TYPESCRIPT, NOT INVENTED. `--cal-card-gap-inline`,
+ *     `--cal-card-gap-block`, `--cal-pin-thickness` and `--cal-pin-chip-w` are declared in
+ *     `shell.css` beside comments naming the constants in `core/scene-build.ts` they restate. A DOM
+ *     card and a canvas card have to be the same size, and a canvas cannot read a custom property.
+ */
+
+/*
+ * #region Day column (the hybrid Day TIMELINE only)
+ *
+ * The Week grid's `DayColumn` is gone: its hit surface, its event stack and its now-line are all
+ * painted by the canvas now. What is left here is what `DayTimeline` still mounts directly.
+ */
+.cal-daycol__hit {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	cursor: cell;
+}
+
+/*
+ * A card's positioned wrapper.
+ *
+ * The inline position comes from the PLACEMENT ENGINE as two fractions of one column — `0`/`1` for
+ * the overwhelming majority of cards, an inset share for a nested child, a lane share for a split.
+ * They are used verbatim rather than re-derived from `--cal-nest-inset`, because the engine's
+ * fractions COMPOSE across depth (each level multiplies into its parent's share) and a percentage
+ * re-applied per level would part company with the canvas's answer at depth two.
+ *
+ * `--cal-card-gap-block` comes off the BOTTOM. Back-to-back events share an edge exactly — a
+ * 10:00–11:00 followed by an 11:00–12:00 puts one card's bottom on the next card's top — and two
+ * rounded fills that touch read as one shape. The canvas takes the same gap inside `eventRect`.
+ */
+.cal-daycol__event {
+	position: absolute;
+	inset-block-start: var(--cal-top);
+	block-size: calc(var(--cal-h) - var(--cal-card-gap-block));
+	inset-inline-start: calc(var(--cal-inset-start, 0) * 100%);
+	inline-size: calc(var(--cal-inset-w, 1) * 100%);
+	padding-inline-end: var(--cal-card-gap-inline);
+	/* Deeper cards over shallower ones: a nested child is a DOM SIBLING of the card it is drawn
+	   inside (it is positioned against the column, not against that card's box), so nothing but paint
+	   order decides which of two overlapping fills the reader sees. */
+	z-index: calc(1 + var(--cal-nest-depth, 0));
+}
+
+/*
+ * A POINT IN TIME. `--cal-h` here is the PRESS TARGET, not a duration — the wrapper is a band centred
+ * on the moment (`INSTANT_HIT_H`, the same band the canvas widens a zero-height card to), and the pin
+ * inside it draws two pixels. No gap is taken off it: the gap separates adjacent spans, and half a
+ * pixel off a centred band would move the mark off the minute it names.
+ *
+ * It outranks the spans around it, because a deadline drawn inside the workshop it belongs to is the
+ * one mark in that stack a reader must not lose.
+ */
+.cal-daycol__event--pin {
+	inset-block-start: calc(var(--cal-top) - var(--cal-h) / 2);
+	block-size: var(--cal-h);
+	z-index: calc(2 + var(--cal-nest-depth, 0));
+}
+
+/*
+ * HOVER — the lift.
+ *
+ * The scale grows from the card's TOP EDGE, which is its start time and the one piece of geometry on
+ * a time axis that means something; scaling about the centre would move it. The inline axis carries
+ * nothing comparable, so growing a per cent either side of centre costs no meaning.
+ *
+ * `--cal-hover-t` is written by the timeline's spring — over-damped on the way in, and on the way out
+ * the one sanctioned under-damped spring in the package, whose ring is visible here as the card
+ * settling back past its resting size. The value may go slightly negative during that ring; a scale
+ * a hair under 1 is the bounce, and it encodes nothing.
+ */
+.cal-daycol__event--hover {
+	z-index: 4;
+	transform: scale(calc(1 + (var(--cal-hover-lift-scale) - 1) * var(--cal-hover-t, 0)));
+	transform-origin: 50% 0;
+}
+
+/*
+ * HOVER — the ambient shadow, on a pseudo-element of the WRAPPER rather than on the card.
+ *
+ * It has to be here for two reasons. `--cal-hover-shadow` is a soft, wide drop shadow and it is
+ * faded in by `opacity`, which is one of the two properties motion is allowed to touch — where a
+ * `box-shadow` on the card itself could only be switched on and off. And drawing it on the wrapper
+ * means it is scaled by the wrapper's own transform, so the shadow tracks the card instead of
+ * staying behind at the resting size.
+ */
+.cal-daycol__event--hover:not(.cal-daycol__event--pin)::after {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0 var(--cal-card-gap-inline);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--cal-hover-shadow);
+	opacity: var(--cal-hover-t, 0);
+	z-index: -1;
+	pointer-events: none;
+}
+
+/* A pin's mark is a rule, and a rule does not lift — its position is the whole fact it carries. The
+   hover reads on the chip and the timestamp instead (see the pin region). */
+.cal-daycol__event--pin.cal-daycol__event--hover {
+	transform: none;
+}
+
+/*
+ * A NESTED card sits inside another card's fill, and two cards of the same kind share an accent — so
+ * without one hairline of separation the two fills merge into a single shape and the containment
+ * that was the entire point of nesting becomes invisible. ONE device, per §B.4: an outline, not a
+ * tint step as well.
+ *
+ * `outline` rather than `box-shadow` so it composes with the hover elevation instead of replacing
+ * it, and so `:focus-visible` — which clears the outline and paints the focus ring in its place —
+ * still resolves to exactly one indicator rather than two competing rings.
+ */
+.cal-daycol__event--nested .cal-event {
+	outline: 1px solid color-mix(in srgb, var(--cal-accent-on) 30%, transparent);
+	outline-offset: -1px;
+}
+
+/*
+ * The stack's decorative shadow silhouettes (§Part 2 "offset shadows underneath to indicate depth").
+ * `aria-hidden`, purely visual — every event they stand in for is still independently reachable
+ * through the `.cal-tg__a11y` list the timeline renders alongside them.
+ *
+ * The step is VERTICAL only. A diagonal offset puts the silhouettes outside the card's inline band,
+ * which on this surface is a claim about placement: a lane, a nest, an overhang into the next
+ * column. Stepping straight down says "there are more of these" without saying anything about where.
+ */
+.cal-daycol__eventshadow {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--radius-lg);
+	background: var(--cal-accent);
+	opacity: calc(0.42 - var(--cal-stack-depth) * 0.14);
+	transform: translateY(calc(var(--cal-stack-depth) * 4px));
+	/* No `z-index` needed: it is rendered BEFORE the real `EventBlock` in document order, and both are
+	   plain (auto-z) siblings, so paint order alone puts it behind the card it belongs to. */
+	pointer-events: none;
+}
+
+/*
+ * The fold control, pinned to the surviving card's top-trailing corner — a coin punched from the
+ * card's own ink, matching the canvas twin's `paintBadge`.
+ *
+ * It is a real `<button>` wherever the consumer supplied an unfold handler, and a plain count where
+ * it did not: a chip that looks pressable and does nothing is worse than a number. Either way every
+ * folded event stays independently reachable through the accessible layer, so the chip is a shortcut
+ * rather than the only route.
+ */
+.cal-daycol__stackbadge {
+	position: absolute;
+	inset-block-start: var(--space-1);
+	inset-inline-end: calc(var(--cal-card-gap-inline) + var(--space-1));
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.1rem;
+	block-size: 1.1rem;
+	padding-inline: 0.3rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--cal-accent-on) 22%, transparent);
+	color: var(--cal-accent-on);
+	font-family: inherit;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
+	z-index: 3;
+}
+
+button.cal-daycol__stackbadge {
+	appearance: none;
+	cursor: pointer;
+}
+
+button.cal-daycol__stackbadge:hover {
+	background: color-mix(in srgb, var(--cal-accent-on) 36%, transparent);
+}
+
+button.cal-daycol__stackbadge:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* An open cluster's "show fewer" control. Same coin, and deliberately in the same corner: the
+   affordance that opened the group is where a reader will look to close it again. */
+.cal-daycol__stackbadge--collapse {
+	background: color-mix(in srgb, var(--cal-accent-on) 30%, transparent);
+}
+
+/* A pin's band is twenty pixels tall, so the badge centres on it rather than tucking under a top
+   edge that is only ten pixels above the mark. A negative margin, not a transform: a static offset
+   has no business occupying the one property motion is allowed to use. */
+.cal-daycol__event--pin .cal-daycol__stackbadge {
+	inset-block-start: 50%;
+	margin-block-start: -0.55rem;
+}
+
+/*
+ * The live current-time indicator: one rule across the active day, anchored by a solid dot on the
+ * time-gutter axis. The dot is what makes the rule FINDABLE — a grid is full of hairlines and a
+ * hundredth one is not a signal — and it sits at the leading edge, on the same axis the hour labels
+ * are read off, so the reader can carry a horizontal line to a vertical scale in one glance.
+ *
+ * `--cal-now` rather than `--danger`: the current time is not an error state, and on a grid where
+ * red already means "deadline" a second red rule is a third meaning for one hue. Amber is the one
+ * colour in the palette reserved for "right now", and it is deliberately the sharpest thing drawn.
+ */
+.cal-daycol__now {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--cal-top);
+	border-block-start: var(--cal-now-w) solid var(--cal-now);
+	z-index: 3;
+	pointer-events: none;
+}
+
+.cal-daycol__now-dot {
+	position: absolute;
+	inline-size: var(--cal-now-dot);
+	block-size: var(--cal-now-dot);
+	border-radius: var(--radius-full);
+	background: var(--cal-now);
+	/*
+	 * Centred on the rule's leading END, not tucked beside it — half the dot overhangs into the gutter
+	 * so the mark straddles the boundary between the hour scale and the day, which is exactly the
+	 * junction it is there to bridge. Both offsets are half of the diameter (the second also taking
+	 * the rule's own weight off), so the dot re-centres itself if either token moves.
+	 */
+	inset-inline-start: calc(var(--cal-now-dot) / -2);
+	inset-block-start: calc(var(--cal-now-dot) / -2 + var(--cal-now-w) / 2);
+}
+
+/* #endregion */
+
+/* #region Event block */
+/*
+ * `container-type: inline-size` makes every card its own query container, which is what lets the
+ * omit tiers below measure the box that is actually too narrow. Inline-size containment is safe
+ * here: the card's width is already extrinsic (`inline-size: 100%`), so nothing about it was being
+ * derived from its contents. Note it is NOT `paint` containment, so the hover shadow still escapes.
+ *
+ * `overflow: hidden` is the resting CLIP. The card renders its whole stack of rows unconditionally
+ * and shows as much of it as its height allows; the Day timeline's hover expansion reveals the
+ * remainder by writing a larger height. That is why the rows must not shrink — see `__body` below.
+ */
+.cal-event {
+	container-type: inline-size;
+	container-name: cal-card;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	block-size: 100%;
+	padding: var(--space-2);
+	/*
+	 * The accent's OPTIONAL edge. Exactly one group in the shipped palette declares one — Tentative,
+	 * whose pale wash cannot carry "not settled yet" on a page that is itself pale — and every other
+	 * accent resolves the two `var()` fallbacks to `0` and `transparent`, so the border box is
+	 * unchanged for five of the six groups and no modifier class is needed for the sixth.
+	 *
+	 * A real `border` rather than an inset `box-shadow`, because `box-shadow` on this element is
+	 * already spoken for twice (the ambient hover lift below and the focus ring) and it is a single
+	 * property. The global `box-sizing: border-box` means the border eats its own width from the
+	 * padding box rather than growing the card, so a bordered card still measures the height the
+	 * placement engine gave it — which is the one thing on a time grid that must never drift.
+	 */
+	border: var(--cal-accent-edge-w, 0) solid var(--cal-accent-edge, transparent);
+	/* The same "pronounced, playful" step as the canvas card's own swatch — see the note there. */
+	border-radius: var(--radius-lg);
+	background: var(--cal-accent);
+	color: var(--cal-accent-on);
+	text-align: start;
+	cursor: pointer;
+	overflow: hidden;
+	font-family: var(--font-sans);
+	/* `--text-xs`, the same step `.cal-grid__swatch--title` carries: the Day timeline draws its cards
+	   as DOM and the Week grid paints the same cards, and one card must not be a size larger in one
+	   view than in the other. */
+	font-size: var(--text-xs);
+}
+
+/*
+ * Outside the Day timeline — a month cell chip, the all-day lane — there is no positioned wrapper to
+ * carry the ambient shadow on a fadeable pseudo-element, so the card carries its own. It appears at
+ * once, with no transition, because a shadow is neither `transform` nor `opacity` and this package
+ * does not animate anything else.
+ */
+:not(.cal-daycol__event) > button.cal-event:hover:not(.cal-event--pin) {
+	box-shadow: var(--cal-hover-shadow);
+}
+
+button.cal-event:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The kind mark. Sized and weighted from the §B.7 icon contract rather than from the `width`/
+ * `stroke-width` attributes the SVG carries as its no-stylesheet fallback — a CSS declaration
+ * outranks an SVG presentation attribute, which is the same mechanism `.ui-icon` normalises every
+ * other glyph in the product with. `non-scaling-stroke` is what makes the weight a RENDERED width
+ * independent of the 16-unit path box, so the canvas twin (which divides the same token by its own
+ * scale) and this one land on the same line.
+ */
+.cal-event__kind {
+	flex: none;
+	inline-size: var(--cal-kind-size);
+	block-size: var(--cal-kind-size);
+	stroke-width: var(--cal-kind-stroke);
+	vector-effect: non-scaling-stroke;
+	/* `--cal-accent-on`, not `--cal-accent`: the card's fill IS the accent now, so the mark needs the
+	   same verified-contrast ink the title text reads (masked cards override both to the neutral pair
+	   below, since a masked card's fill stays a quiet wash rather than the solid accent). */
+	color: var(--cal-accent-on);
+}
+
+/*
+ * The row stack. `flex: none` on the container AND on every row, because a flex column with a fixed
+ * height COMPRESSES its items by default — which would squash the whole stack into the resting card
+ * instead of letting it overflow, and there is nothing left for the hover expansion to reveal once
+ * every row has already been squeezed into view at an illegible height.
+ *
+ * There is deliberately no `overflow` here. The rows manage their own inline fit (omit, or wrap), so
+ * a clip at this level could only ever truncate the second line of a row that had wrapped correctly.
+ * The card's own clip is the only one, and it is vertical.
+ */
+.cal-event__body {
+	display: flex;
+	flex-direction: column;
+	flex: none;
+	gap: 1px;
+	min-inline-size: 0;
+}
+
+.cal-event__body > * {
+	flex: none;
+}
+
+/* The one line allowed to truncate: a card cannot be without it, so half of it beats none of it. */
+.cal-event__title {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-inline-size: 0;
+	font-weight: var(--fw-semibold);
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.cal-event__titletext {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/*
+ * The metadata rows. Each is its own line — the time and the location used to share one, which meant
+ * the longer of the two decided whether the shorter was readable — and each is ABSENT until the
+ * container query below admits it.
+ *
+ * `color` INHERITS the card's own ink (the accent's verified "on-" pair, or the neutral pair on a
+ * masked card) rather than the fixed `--text-secondary`, which was calibrated against a pale surface
+ * and not against an arbitrary solid accent; the opacity step is what still reads as "secondary"
+ * against whatever that ink turns out to be.
+ *
+ * `overflow-wrap: break-word` is the second half of omit-not-clip: above its threshold a row takes a
+ * second line rather than an ellipsis, and a single unbroken token long enough to overflow is broken
+ * rather than cut off. So a metadata item is complete or gone, never four characters and a guess.
+ */
+.cal-event__time,
+.cal-event__loc {
+	display: none;
+	color: inherit;
+	opacity: 0.82;
+	font-size: var(--text-2xs);
+	white-space: normal;
+	overflow-wrap: break-word;
+}
+
+.cal-event__attendees {
+	display: none;
+	align-items: center;
+	gap: 3px;
+	color: inherit;
+	opacity: 0.82;
+	font-size: 0.64rem;
+}
+
+/*
+ * The identity row: the avatar stack (host + participants, §Part 2) leading, the provider/provenance
+ * stack trailing — both sharing ONE overlapping-circle convention so the two read as one visual
+ * family. `isolation` gives it its own stacking context so the overlap order stays local and cannot
+ * slide under a neighbouring block.
+ *
+ * Declared BEFORE the omit tiers, with every other row's resting state, and that placement is
+ * load-bearing rather than tidiness: a container query adds no specificity, so a base rule written
+ * after one would silently out-cascade it and this row would never appear at any width.
+ */
+.cal-event__identity {
+	display: none;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	isolation: isolate;
+	margin-block-start: var(--space-1);
+}
+
+/*
+ * OMIT TIERS. Thresholds are the card's OWN inline size: a card is narrowed by a split lane or by
+ * nesting inside another card, and a viewport media query would be reading a box several times the
+ * size of the one that is actually too narrow. Custom properties are not permitted in a container
+ * query's condition, so these are literal lengths — the same way this package's responsive
+ * breakpoints are written in `calendar.css`.
+ *
+ * Absent is the DEFAULT and the query only ever adds: an engine without container queries shows the
+ * minimal honest card rather than a clipped rich one.
+ */
+@container cal-card (min-width: 88px) {
+	.cal-event__time {
+		display: block;
+	}
+}
+
+@container cal-card (min-width: 112px) {
+	.cal-event__loc {
+		display: block;
+	}
+}
+
+@container cal-card (min-width: 128px) {
+	.cal-event__attendees {
+		display: inline-flex;
+	}
+}
+
+@container cal-card (min-width: 144px) {
+	.cal-event__identity {
+		display: flex;
+	}
+}
+
+/*
+ * THE REVEAL. Gated on `data-reveal`, which the Day timeline sets only when the card genuinely has
+ * clipped content, and scoped to the identity row — the card's LAST row, so on any card with
+ * something left to show it is below the resting fold BY CONSTRUCTION. Decorating a row that was
+ * already on screen would make a fact appear to flicker into existence, which is the one thing a
+ * fade is never allowed to do here.
+ *
+ * `--cal-hover-t` is the spring's resolved value, not a transition, so a frozen animation clock
+ * cannot strand the row half-faded; and the fallback is `1`, so any context that never writes the
+ * property renders the row plainly rather than invisibly.
+ */
+.cal-daycol__event[data-reveal] .cal-event__identity {
+	opacity: var(--cal-hover-t, 1);
+	transform: translateY(calc((1 - var(--cal-hover-t, 1)) * 6px));
+}
+
+.cal-event__faces,
+.cal-event__sources {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+}
+
+.cal-event__sources {
+	margin-inline-start: auto;
+}
+
+.cal-event__face,
+.cal-event__source {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+	border-radius: var(--radius-full);
+	/* A translucent cut from the card's own ink — "punched from the same metal" as the badge chip, so
+	   a circle with no photo still reads as belonging to THIS card rather than as a generic grey pip. */
+	background: color-mix(in srgb, currentColor 22%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 55%, transparent);
+	color: inherit;
+	flex: none;
+	overflow: hidden;
+	font-size: 0.58rem;
+	font-weight: var(--fw-bold);
+}
+
+.cal-event__face--host {
+	box-shadow: 0 0 0 1.5px currentColor;
+}
+
+.cal-event__face--more {
+	background: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.cal-event__facephoto {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.cal-event__faceinitials {
+	position: relative;
+	line-height: 1;
+}
+
+/* Each mark tucks under the one before it; the first sits flush. */
+.cal-event__face + .cal-event__face,
+.cal-event__source + .cal-event__source {
+	margin-inline-start: calc(var(--icon-sm) * -0.32);
+}
+
+.cal-event--compact .cal-event__face,
+.cal-event--compact .cal-event__source {
+	inline-size: var(--icon-2xs);
+	block-size: var(--icon-2xs);
+}
+
+.cal-event--compact .cal-event__face + .cal-event__face,
+.cal-event--compact .cal-event__source + .cal-event__source {
+	margin-inline-start: calc(var(--icon-2xs) * -0.32);
+}
+
+.cal-event--compact {
+	padding: 1px 6px;
+	font-size: 0.68rem;
+}
+
+/*
+ * #region Focus & recession
+ *
+ * While one card is the subject of an interaction — being dragged, being resized, or being pointed at
+ * from a row in the overlap-list popover — every OTHER card steps back so the reader's eye has one
+ * place to be. Two depths, because a thing you are DOING needs less separation than a thing you are
+ * LOOKING FOR: `--cal-dim-drag` for the first, `--cal-dim-focus` for the second, both chosen by the
+ * caller because only the caller knows which is happening.
+ *
+ * `--cal-alpha` arrives as a RESOLVED number and defaults to `1`, so a card is at full strength before
+ * any script has run and a frozen animation clock cannot strand one half-receded. The transition in
+ * `motion.css` decorates the journey between two states that are each correct on their own — which is
+ * the only thing motion is allowed to do here.
+ */
+.cal-daycol__event {
+	opacity: var(--cal-alpha, 1);
+	/*
+	 * The ONE transition in this sheet, and the reason it is allowed here when nothing else is: what
+	 * it moves is `opacity`, which decorates emphasis rather than encoding a fact. A card's HEIGHT
+	 * means a duration and may never be transitioned; its faintness means "not the one you are looking
+	 * at", and both ends of the journey are written as resolved numbers, so a frozen clock leaves the
+	 * card at a correct value rather than at a stale one. Registered in `motion.css` with the rest.
+	 */
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * The highlighted card wears a ring INSIDE its own edge, in its own verified ink.
+ *
+ * Inside rather than around, and in `--cal-accent-on` rather than a new colour, because a ring drawn
+ * outside abuts the grid on one side and the fill on the other and would need the two-tone
+ * construction `--focus-ring-shadow` exists for. An inset ring has exactly one background — the fill
+ * it sits on — and the theme engine has already verified that pair. `inset` on the shadow keeps it off
+ * the layout, so a ringed card is exactly the size the placement engine gave it.
+ *
+ * It is the counterpart to the recession above, not a replacement for it: a ring alone is not enough
+ * on a grid of plain colour blocks that may share a fill, and a recession alone leaves the reader
+ * comparing degrees of faintness.
+ */
+.cal-daycol__event--highlight .cal-event {
+	box-shadow: inset 0 0 0 var(--cal-focus-edge-w) var(--cal-accent-on);
+}
+
+/*
+ * A BARE block — a member of an expanded overlap cluster. Fill and shape, nothing else.
+ *
+ * It renders no children at all (see `EventBlock`), so this rule only has to stop the empty flex
+ * column from claiming padding it has nothing to pad. Its `aria-label` is untouched and complete: a
+ * reader who cannot see the pixels loses nothing here.
+ */
+.cal-event--bare {
+	padding: 0;
+}
+
+/* #endregion */
+
+/*
+ * A MASKED card's fill stays a quiet wash (§Part 1.4 — calm, not attention-grabbing), so its ink
+ * reverts to the neutral pair too: `--cal-accent-on` is calibrated against the SOLID accent every
+ * other card wears, and would not reliably clear contrast against this pale mix.
+ */
+.cal-event--masked {
+	background: color-mix(in srgb, var(--cal-accent) var(--tint), var(--surface));
+	color: var(--on-surface);
+	/*
+	 * And it drops the accent's edge, for the same reason the canvas twin exempts a masked card: a
+	 * bordered masked block would advertise "this one is different" about an entry the viewer is not
+	 * entitled to identify. The border-box is preserved as `transparent` rather than removed, so the
+	 * card's padding box does not shift when a tentative entry is masked.
+	 */
+	border-color: transparent;
+}
+
+.cal-event--masked .cal-event__title {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface-variant);
+}
+
+/* `.cal-event__kind` sets its own `color` rather than inheriting (it needs to independently override
+   masked vs. accent-on), so the masked step-down has to be restated here rather than relying on the
+   cascade from `.cal-event--masked`'s root-level `color`. */
+.cal-event--masked .cal-event__kind {
+	color: var(--on-surface-variant);
+}
+
+.cal-event--cancelled {
+	opacity: var(--cal-cancelled-alpha);
+}
+
+.cal-event--cancelled .cal-event__title,
+.cal-event--cancelled .cal-event__pintitle {
+	text-decoration: line-through;
+}
+
+/* #endregion */
+
+/*
+ * #region Instant pin
+ *
+ * A POINT IN TIME has no duration, so it is given no box: a rule across the band carries the moment
+ * — the only mark here whose position means anything — with the kind chip and the timestamp riding
+ * it. Nothing in this region declares a minimum height, because a synthetic one would draw a
+ * plausible span for an entry that has none. The PRESS TARGET comes from the wrapper's twenty-pixel
+ * band instead, so the drawing stays two pixels thick while the thing a reader can hit does not.
+ *
+ * It comes AFTER the masked block deliberately. Both modifiers set `background` at one class of
+ * specificity, so source order is what decides between them — the cascade mechanism this barrel is
+ * ordered by, stated in `calendar.css`'s header.
+ */
+.cal-event--pin {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0;
+	border-radius: 0;
+	background: none;
+	color: var(--on-surface);
+	overflow: visible;
+}
+
+.cal-event__pinrule {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: 50%;
+	block-size: var(--cal-pin-thickness);
+	margin-block-start: calc(var(--cal-pin-thickness) / -2);
+	border-radius: var(--radius-full);
+	background: var(--cal-accent);
+	pointer-events: none;
+}
+
+.cal-event__pinchip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: var(--cal-pin-chip-w);
+	block-size: var(--cal-pin-chip-w);
+	border-radius: var(--radius-full);
+	background: var(--cal-accent);
+	color: var(--cal-accent-on);
+}
+
+/* The chip is a solid accent coin whatever the card around it is, so the mark on it reads the
+   accent's verified pair — including on a masked pin, where the surrounding ink has stepped down. */
+.cal-event--pin .cal-event__kind {
+	color: var(--cal-accent-on);
+}
+
+/* The pin's own two omit tiers. The title goes first because it is the fact the reader came for;
+   the timestamp follows, and below the narrower threshold the chip and the rule carry the mark
+   alone — which is still honest, since the rule's position IS the moment. */
+.cal-event__pintitle,
+.cal-event__pintime {
+	display: none;
+}
+
+.cal-event__pintitle {
+	position: relative;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+}
+
+.cal-event__pintime {
+	position: relative;
+	flex: none;
+	margin-inline-start: auto;
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--cal-accent);
+	color: var(--cal-accent-on);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+@container cal-card (min-width: 104px) {
+	.cal-event__pintitle {
+		display: block;
+	}
+}
+
+@container cal-card (min-width: 176px) {
+	.cal-event__pintime {
+		display: block;
+	}
+}
+
+/*
+ * A rule does not lift — its position is the whole fact it carries, and raising it would be a claim
+ * about the minute it names. The hover reads on the two things riding it instead. Written against
+ * `:hover` on the button rather than against the wrapper's modifier, so a pin mounted outside the
+ * Day timeline behaves identically.
+ */
+button.cal-event--pin:hover .cal-event__pinchip,
+button.cal-event--pin:hover .cal-event__pintime {
+	box-shadow: var(--cal-hover-shadow);
+}
+
+/* #endregion */

@@ -25,14 +25,18 @@ export interface MiniMonthProps {
 	focusMs: number;
 	tz: string;
 	view: CalendarViewMode;
-	nowMs: number;
-	mounted: boolean;
+	/**
+	 * Day-granular "today" (that day's midnight epoch), or null before mount. Deliberately NOT the live
+	 * clock: this grid is 42 buttons and only cares which day is today, so it subscribes to a value that
+	 * changes at midnight rather than one that changes every minute.
+	 */
+	todayMs: number | null;
 	onPick: (dayStart: number) => void;
 	onMonthStep: (delta: number) => void;
 }
 
 export function MiniMonth(props: MiniMonthProps): JSX.Element {
-	const { tz, view, nowMs, mounted } = props;
+	const { tz, view, todayMs } = props;
 	const hoverIdx = useSignal<number | null>(null);
 	const days = monthMatrix(props.monthMs, tz);
 	const focusWeekStart = startOfWeek(props.focusMs, tz);
@@ -70,7 +74,7 @@ export function MiniMonth(props: MiniMonthProps): JSX.Element {
 					const row = Math.floor(i / 7);
 					const hoveredRow = hoverIdx.value != null && Math.floor(hoverIdx.value / 7) === row;
 					const outside = !sameZonedMonth(d, props.monthMs, tz);
-					const today = mounted && sameZonedDay(d, nowMs, tz);
+					const today = todayMs != null && sameZonedDay(d, todayMs, tz);
 					const selectedDay = view === "day" && sameZonedDay(d, props.focusMs, tz);
 					const selectedWeek = view === "week" && startOfWeek(d, tz) === focusWeekStart;
 					return (

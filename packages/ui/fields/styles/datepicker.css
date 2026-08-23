@@ -4,6 +4,16 @@
  * alone (a descendant selector rooted at `.ui-datepicker` would no longer reach it). Token-only (no
  * hardcoded hex/radius/duration/shadow); the panel is an interactive surface so a full
  * border/elevation is allowed (§B.4).
+ *
+ * The month grid speaks the same visual language as the calendar package's mini-month: a 1-letter
+ * weekday strip, square cells separated by a seam rather than packed edge to edge, and a hover that
+ * lifts the whole WEEK. It is a deliberate COPY, not an import — `calendar.css` ships only through
+ * the Calendar island, so reaching for `.cal-mini` here would either drag a 1,100-line stylesheet
+ * into every form or render unstyled markup. Only the design crosses; the token layer is the shared
+ * part, which is exactly what the token layer is for.
+ *
+ * The panel and its dropdowns also sit on the `--fld-panel-*` / `--fld-opt-*` contract, so a
+ * calendar and the Select beside it in the same form read as one class of object.
  */
 
 .ui-datepicker {
@@ -31,7 +41,7 @@
 	border: none;
 	color: var(--text-secondary);
 	cursor: pointer;
-	font-size: 1.1em;
+	font-size: var(--icon-sm);
 	line-height: 0;
 }
 .ui-datepicker__icon:focus-visible {
@@ -43,25 +53,59 @@
 
 /* #region Panel */
 .ui-datepicker__panel {
+	/*
+	 * The panel's own height ceiling, independent of the positioner. Deliberately NOT
+	 * `--fld-panel-maxh` (18rem): a six-week grid, its weekday strip and its header are already taller
+	 * than that, so the taxonomy's LIST cap would put every calendar in a scroller. Held flat — no
+	 * `calc()` — because it is substituted into a `min()` below, and a nested `calc()` inside `min()`
+	 * is the shape this engine has been observed to drop.
+	 */
+	--dp-panel-maxh: 100dvh;
+
 	position: fixed;
-	inset-block-start: var(--float-top, 0);
-	inset-inline-start: var(--float-left, 0);
+	/*
+	 * Parked far off-screen until the positioner has measured, not at `0` — the origin is a real place
+	 * on the screen, so a `0` fallback paints the whole calendar in the top-left corner for one frame
+	 * before it jumps to the trigger. Every sibling panel in the taxonomy now either parks off-screen
+	 * (select, multiselect, colorpicker, split-button) or stays `visibility: hidden` until the
+	 * positioner has stamped `[data-placement]` (autocomplete, treeselect, cascadeselect).
+	 *
+	 * `left`, not `inset-inline-start`, and this is the one place in the sheet where a PHYSICAL
+	 * property is the correct one. `--float-left` is a `getBoundingClientRect()` measurement — a
+	 * distance from the viewport's LEFT edge, already expressed in whatever direction the document is
+	 * in. `inset-inline-start` resolves to `right` under `dir="rtl"`, so feeding it that number
+	 * mirrors an already-mirrored coordinate and anchors the panel to the opposite edge of the screen
+	 * from its trigger. The block axis is unaffected by direction, so it stays logical.
+	 */
+	inset-block-start: var(--float-top, -9999px);
+	left: var(--float-left, -9999px);
 	z-index: var(--z-portal, var(--z-popover));
+	/* Cap to the space the positioner measured on the resolved side and scroll internally, so a tall
+	   calendar in a short viewport loses its scrollbar rather than its last week. Two declarations
+	   rather than one `min()`: `--float-available-h` is undefined on the first commit (the positioner
+	   has not measured yet) and an engine that cannot parse `min()` would otherwise be left with no
+	   cap at all, so the absolute bound is stated first and stands on its own. Block flow, not a flex
+	   column: flex children shrink before they overflow, which would compress the grid instead of
+	   scrolling it. */
+	max-block-size: var(--dp-panel-maxh);
+	max-block-size: min(var(--dp-panel-maxh), var(--float-available-h, 100dvh));
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	padding: var(--space-3);
-	background: var(--surface-1);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-lg);
+	background: var(--surface);
+	border: var(--fld-bw) solid var(--fld-panel-border);
+	border-radius: var(--fld-panel-radius);
 	box-shadow: var(--elevation-high);
 	animation: ui-datepicker-in var(--dur-fast) var(--ease-standard);
 }
 .ui-datepicker--inline {
 	padding: var(--space-3);
-	background: var(--surface-1);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-lg);
+	background: var(--surface);
+	border: var(--fld-bw) solid var(--fld-panel-border);
+	border-radius: var(--fld-panel-radius);
 }
 .ui-datepicker--disabled {
-	opacity: 0.55;
+	opacity: var(--fld-disabled-alpha);
 	pointer-events: none;
 }
 @keyframes ui-datepicker-in {
@@ -82,6 +126,8 @@
 /* #endregion */
 
 /* #region Header navigation */
+/* Period on the leading side, the two step buttons grouped on the trailing side — the mini-month's
+   head, with the month/year controls standing in for its static title. */
 .ui-datepicker__nav {
 	display: flex;
 	align-items: center;
@@ -94,39 +140,65 @@
 }
 .ui-datepicker__nav-selects {
 	display: flex;
-	gap: var(--space-2);
-	flex: 1 1 auto;
-	justify-content: center;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+/*
+ * The two dropdowns ARE the calendar's title, so they carry the title's weight and none of a field's
+ * furniture (the `--bare` variant supplies the borderless surface). Set on the wrapper, which is the
+ * `.ui-field` root, so the trigger and its label both inherit it.
+ */
+.ui-datepicker__nav-select {
+	font-weight: var(--fw-semibold);
+}
+/* The button group. `--space-px` keeps the pair reading as one control rather than two. */
+.ui-datepicker__nav-btns {
+	display: flex;
+	flex: 0 0 auto;
+	gap: var(--space-px);
 }
 .ui-datepicker__nav-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	font-size: 1.25rem;
+	/* `--fld-hit`, not `--icon-lg`. The two are both 24 at a 16px root, but WCAG 2.2 SC 2.5.8's floor
+	   is 24 CSS px and `--icon-lg` is `1.5rem` — at a browser default of 14px or 13px ("Medium-small"
+	   / "Small") a rem-sized button computes to 21px / 19.5px and drops under AA, and the pair sit
+	   `--space-px` apart so the spacing exception cannot rescue them either. `--fld-hit` is the
+	   absolute token the contract declares for exactly this. The chevron takes `1em`, so it still
+	   reads at `--icon-sm` inside the box: the mini-month's proportion. */
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	/* A `<button>` carries UA padding; at this box size it would eat the glyph's own 1em. */
+	padding: 0;
+	font-size: var(--icon-sm);
 	line-height: 1;
-	color: var(--on-surface);
+	color: var(--text-secondary);
 	background: transparent;
 	border: none;
 	border-radius: var(--radius-sm);
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
 }
 .ui-datepicker__nav-btn:hover {
+	color: var(--on-surface);
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-datepicker__nav-btn:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring-shadow);
 }
+/* The remaining native `<select>`s (hour / minute / second / meridiem in the time picker). */
 .ui-datepicker__select {
 	appearance: none;
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--text-md);
 	color: var(--on-surface);
 	background: var(--surface-2);
-	border: 1px solid transparent;
+	border: var(--fld-bw) solid transparent;
 	border-radius: var(--radius-sm);
 	padding-block: var(--space-1);
 	padding-inline: var(--space-2);
@@ -149,8 +221,8 @@
 }
 .ui-datepicker__month-title {
 	text-align: center;
-	font-size: 0.9375rem;
-	font-weight: 600;
+	font-size: var(--fld-fs-md);
+	font-weight: var(--fw-semibold);
 	color: var(--on-surface);
 	margin-block-end: var(--space-2);
 }
@@ -160,29 +232,66 @@
 /* #endregion */
 
 /* #region Grid */
+/*
+ * The `role="row"` wrappers survive — ARIA's grid pattern needs them, and `display: contents` would
+ * hand the a11y tree back a structure without rows in more than one engine. The seam is instead split
+ * across the two axes: the grid owns the row gap, each row owns the column gap. Same continuous
+ * 1-step lattice as the mini-month, real rows underneath it.
+ */
+.ui-datepicker__grid {
+	/*
+	 * Declared HERE, not on `.ui-datepicker`: the popup panel is a `document.body` child, so a custom
+	 * property scoped to the component root would silently fall back for the whole popup presentation.
+	 * `__grid` is the one ancestor every consumer shares in both presentations.
+	 *
+	 * `--fld-opt-h` is the option row's FLOOR (a `min-block-size` everywhere else in the taxonomy),
+	 * reused here as an exact square. That is deliberately not a claim that a day cell and a dropdown
+	 * row render at the same height — the option row's line box plus its `--space-2` padding pushes it
+	 * past the floor, and by a different amount at every root font size. What the two genuinely share
+	 * is the token, and therefore the ramp they move on together; 36px is also the smallest square in
+	 * that ramp that clears `--fld-hit` with room to spare.
+	 *
+	 * `--space-px` is the pixel-grid step — the token for a graphical seam between adjacent marks,
+	 * which is exactly what separates one day from the next.
+	 */
+	--dp-cell: var(--fld-opt-h);
+	--dp-gap: var(--space-px);
+
+	display: grid;
+	row-gap: var(--dp-gap);
+}
 .ui-datepicker__weekdays,
 .ui-datepicker__week {
 	display: grid;
-	grid-template-columns: repeat(7, 1fr);
+	/* `minmax` rather than a bare `1fr`: the panel is shrink-to-fit, and an `1fr` track with no floor
+	   would collapse to the width of two digits. The floor sets the intrinsic width; the `1fr` lets the
+	   grid still stretch if a caller widens the panel. */
+	grid-template-columns: repeat(7, minmax(var(--dp-cell), 1fr));
+	column-gap: var(--dp-gap);
 }
+/*
+ * One letter, like the mini-month: the strip is a rhythm marker read by position, not a set of words
+ * to be parsed — and the full weekday name travels on the column header's `aria-label`, so nothing is
+ * lost where it is actually read out.
+ */
 .ui-datepicker__weekday {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	block-size: 2rem;
-	font-size: 0.75rem;
-	font-weight: 600;
+	block-size: var(--fld-h-sm);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
 	color: var(--text-secondary);
-	text-transform: uppercase;
 }
 .ui-datepicker__day {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2.25rem;
-	block-size: 2.25rem;
+	inline-size: 100%;
+	block-size: var(--dp-cell);
+	padding: 0;
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
+	font-size: var(--fld-fs-sm);
 	color: var(--on-surface);
 	background: transparent;
 	border: none;
@@ -192,29 +301,62 @@
 		background-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
 }
-.ui-datepicker__day:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--selected) {
+/*
+ * Three tints on one ramp, and the ordering is the point: the week band is the faintest (it is
+ * ambient — it follows the pointer and means nothing), the cell under the cursor is a step up so the
+ * actual target stays identifiable inside its own band, and a committed range is stronger still
+ * because it is a decision rather than a hint.
+ *
+ * The band is an ancestor `:hover`, not state. `:hover` is resolved by hit-testing rather than by
+ * event dispatch, so it keeps matching over a DISABLED day — which is most of the month in a
+ * date-of-birth picker bounded by `maxDate`, and precisely where a JS `pointerenter` band went stale.
+ * It also cannot survive the panel closing, and it clears correctly over the weekday strip and the
+ * row gap, both of which are inside the grid and so fire no `pointerleave` on it.
+ *
+ * `:where()` holds the band at the specificity of a single class, so the rules BELOW it — which are
+ * all single-class too — win on document order rather than needing to out-specify a descendant
+ * selector. Without it a hovered week would repaint a committed range's own band.
+ */
+:where(.ui-datepicker__week:hover) .ui-datepicker__day {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+/* The in-range case is excluded HERE rather than out-specified below. `:not()` contributes its
+   argument's specificity, so this selector already weighs (0,4,0) against the in-range hover rule's
+   (0,3,0) — leaving that rule dead, and a hovered interior day painting the lighter generic tint it
+   was written to prevent. Naming the exclusion is what actually hands the day over. */
+.ui-datepicker__day:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--selected):not(.ui-datepicker__day--in-range) {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 .ui-datepicker__day:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring-shadow);
 }
+/* De-emphasised, not dimmed. This carried `opacity: 0.5` on top of an already-secondary ink, which
+   compounded to roughly 2.5:1 — below the floor, on the days that tell you where the month ends.
+   The ink token alone is the whole distinction, and it is the one the taxonomy already uses for it. */
 .ui-datepicker__day--outside {
 	color: var(--text-secondary);
-	opacity: 0.5;
 }
 .ui-datepicker__day--today {
-	font-weight: 700;
-	box-shadow: inset 0 0 0 1px var(--outline);
+	font-weight: var(--fw-bold);
+	box-shadow: inset 0 0 0 var(--fld-bw) var(--outline);
 }
 .ui-datepicker__day--in-range {
-	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+	/* Square, so consecutive days fuse into one continuous band instead of a row of lozenges. The
+	   `--dp-gap` seam still separates them; that is the honest reading of "these days, individually". */
 	border-radius: 0;
+}
+/* A day already inside the range must step UP under the pointer, not down. The generic hover tint is
+   lighter than the band, so without this rule hovering an interior day dimmed the range it is part
+   of — the one place a hover said "less" instead of "more". */
+.ui-datepicker__day--in-range:hover:not(.ui-datepicker__day--disabled) {
+	background: color-mix(in srgb, var(--primary) var(--tint-heavy), transparent);
 }
 .ui-datepicker__day--selected {
 	background: var(--primary);
 	color: var(--on-primary);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 /* Was `--text-secondary` at `opacity: 0.4` — 2.30:1, the least legible thing in the taxonomy, on the
    one control where reading the greyed-out dates is how you understand the booking window. */
@@ -232,11 +374,11 @@
 	gap: var(--space-1);
 	margin-block-start: var(--space-3);
 	padding-block-start: var(--space-3);
-	border-block-start: 1px solid var(--border-subtle);
+	border-block-start: var(--fld-bw) solid var(--fld-panel-border);
 }
 .ui-datepicker__time-sep {
 	color: var(--text-secondary);
-	font-weight: 700;
+	font-weight: var(--fw-bold);
 }
 /* #endregion */
 
@@ -247,12 +389,12 @@
 	gap: var(--space-2);
 	margin-block-start: var(--space-3);
 	padding-block-start: var(--space-3);
-	border-block-start: 1px solid var(--border-subtle);
+	border-block-start: var(--fld-bw) solid var(--fld-panel-border);
 }
 .ui-datepicker__bar-btn {
 	font-family: var(--font-sans);
-	font-size: 0.875rem;
-	font-weight: 600;
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
 	color: var(--primary);
 	background: transparent;
 	border: none;

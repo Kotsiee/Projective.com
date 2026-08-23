@@ -120,6 +120,8 @@ export const FREELANCERS: ProfileItem[] = [
 			unsplash("1620641788421-7a1c342ea42e", 200, 200),
 		],
 		workload: { level: 70, status: "Booked till Aug 4 · then ~15 hrs/week" },
+		location: "Manchester, United Kingdom",
+		responseMinutes: 35,
 		createdAt: "2026-06-30",
 	},
 	{
@@ -142,6 +144,8 @@ export const FREELANCERS: ProfileItem[] = [
 			unsplash("1550745165-9bc0b252726f", 200, 200),
 		],
 		workload: { level: 92, status: "Fully booked · waitlist open" },
+		location: "Kyoto, Japan",
+		responseMinutes: 180,
 		createdAt: "2026-07-02",
 	},
 	{
@@ -164,6 +168,8 @@ export const FREELANCERS: ProfileItem[] = [
 			unsplash("1550745165-9bc0b252726f", 200, 200),
 		],
 		workload: { level: 28, status: "Available now · ~25 hrs/week" },
+		location: "Seoul, South Korea",
+		responseMinutes: 45,
 		createdAt: "2026-07-05",
 	},
 ];
@@ -186,6 +192,7 @@ export const USERS: ProfileItem[] = [
 		skills: resolveSkills(["Brand", "Strategy"]),
 		rating: dual([4.8, 20], [4.9, 31]),
 		languages: ["EN", "AR"],
+		location: "Dubai, United Arab Emirates",
 		createdAt: "2026-06-20",
 	},
 	{
@@ -205,6 +212,7 @@ export const USERS: ProfileItem[] = [
 		skills: resolveSkills(["Product", "Growth"]),
 		rating: dual([4.6, 6], [4.8, 18]),
 		languages: ["EN", "PT"],
+		location: "Lisbon, Portugal",
 		createdAt: "2026-07-01",
 	},
 ];
@@ -228,6 +236,8 @@ export const TEAMS: ProfileItem[] = [
 			unsplash("1536240478700-b869070f9279", 200, 200),
 			unsplash("1620641788421-7a1c342ea42e", 200, 200),
 		],
+		location: "Berlin, Germany",
+		responseMinutes: 50,
 		createdAt: "2026-06-15",
 	},
 	{
@@ -248,6 +258,8 @@ export const TEAMS: ProfileItem[] = [
 			unsplash("1551288049-bebda4e38f71", 200, 200),
 			unsplash("1467232004584-a241de8bcf5d", 200, 200),
 		],
+		location: "Toronto, Canada",
+		responseMinutes: 120,
 		createdAt: "2026-06-18",
 	},
 	{
@@ -268,6 +280,8 @@ export const TEAMS: ProfileItem[] = [
 			unsplash("1499750310107-5fef28a66643", 200, 200),
 			unsplash("1552664730-d307ca884978", 200, 200),
 		],
+		location: "Barcelona, Spain",
+		responseMinutes: 40,
 		createdAt: "2026-06-22",
 	},
 ];
@@ -285,6 +299,7 @@ export const BUSINESSES: ProfileItem[] = [
 		skills: resolveSkills(["Fintech", "Product"]),
 		rating: clientOnly(4.9, 41),
 		languages: ["EN", "DE"],
+		location: "London, United Kingdom",
 		createdAt: "2026-06-10",
 	},
 	{
@@ -299,6 +314,7 @@ export const BUSINESSES: ProfileItem[] = [
 		skills: resolveSkills(["Data", "Analytics"]),
 		rating: clientOnly(4.7, 28),
 		languages: ["EN"],
+		location: "New York, United States",
 		createdAt: "2026-06-12",
 	},
 ];

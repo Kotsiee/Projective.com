@@ -3,7 +3,7 @@ import { IconShell } from "@projective/ui/icons";
 
 /**
  * session-glyphs — the minimal 1em `currentColor` stroke icons unique to the session-based service
- * sidebars (the 1-1 mini-calendar + upcoming-session widget and the group-session sub-group/voting
+ * sidebars (the 1-1 upcoming-session widget and the group-session sub-group/voting
  * panel). Co-located inline SVG, matching the sibling `detail-glyphs.tsx`/`glyphs.tsx` convention (the
  * feature has no icon registry). Each inherits font-size so the sidebar can size it against the type
  * ramp. Kept distinct from `detail-glyphs.tsx` so a shared VNode is never mounted in two subtrees at
@@ -14,22 +14,6 @@ import { IconShell } from "@projective/ui/icons";
 function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
 	return <IconShell {...props} />;
 }
-// #endregion
-
-// #region Mini-calendar navigation
-/** Previous month — a left chevron. */
-export const ChevronLeftIcon = (
-	<Svg>
-		<path d="M14 6l-6 6 6 6" />
-	</Svg>
-);
-
-/** Next month — a right chevron. */
-export const ChevronRightIcon = (
-	<Svg>
-		<path d="M10 6l6 6-6 6" />
-	</Svg>
-);
 // #endregion
 
 // #region Session widget

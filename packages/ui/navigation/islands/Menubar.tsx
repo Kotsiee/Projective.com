@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useIsMobile } from "../../hooks/useMediaQuery.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
@@ -243,9 +244,21 @@ export function Menubar(props: MenubarProps): JSX.Element {
 
 	const tops = visibleItems(model);
 
-	useDismiss({ open: openTop.value >= 0, onDismiss: () => (openTop.value = -1), panelRef: barRef });
+	// Two independent surfaces, so two independent claims — each must be able to hand Escape to whatever
+	// it itself opened. Both are additionally gated on the form factor that RENDERS them: crossing the
+	// breakpoint leaves the other branch's open-state signal untouched, and a claim over an unmounted
+	// bar/panel would hold the top of the stack for a surface that is not on screen.
+	const dropStack = useOverlayStack({ active: !isMobile && openTop.value >= 0, layer: "popover" });
+	const mobileStack = useOverlayStack({ active: isMobile && mobileOpen.value, layer: "popover" });
+	useDismiss({
+		open: openTop.value >= 0,
+		enabled: dropStack.isTop,
+		onDismiss: () => (openTop.value = -1),
+		panelRef: barRef,
+	});
 	useDismiss({
 		open: mobileOpen.value,
+		enabled: mobileStack.isTop,
 		onDismiss: () => (mobileOpen.value = false),
 		panelRef: mobileRef,
 		triggerRef: hamburgerRef,
@@ -321,7 +334,13 @@ export function Menubar(props: MenubarProps): JSX.Element {
 	) => (expanded.value = { ...expanded.value, [key]: !expanded.value[key] });
 
 	const mobilePanel = (
-		<div ref={mobileRef} class="ui-menubar__mobile" role="menu" aria-label={ariaLabel}>
+		<div
+			ref={mobileRef}
+			class="ui-menubar__mobile"
+			role="menu"
+			aria-label={ariaLabel}
+			style={styleVars({ "--z-portal": String(mobileStack.zIndex) })}
+		>
 			{tops.map((item, i) => {
 				const key = itemKey(item, i);
 				const sub = hasChildren(item);
@@ -407,7 +426,19 @@ export function Menubar(props: MenubarProps): JSX.Element {
 					</>
 				)
 				: (
-					<div ref={barRef} role="menubar" class="ui-menubar__bar" aria-label={ariaLabel}>
+					<div
+						ref={barRef}
+						role="menubar"
+						class="ui-menubar__bar"
+						aria-label={ariaLabel}
+						// The dropdown levels are rendered INSIDE the bar by `MenubarSub`, so the claim is
+						// published here as an inherited custom property rather than threaded down through the
+						// recursive flyout. It is deliberately a `--*` value and never a `z-index`: a real
+						// `z-index` on the bar would make it a stacking context and trap its own fixed panels.
+						style={openTop.value >= 0
+							? styleVars({ "--z-portal": String(dropStack.zIndex) })
+							: undefined}
+					>
 						{tops.map((item, i) => {
 							if (isSeparator(item)) {
 								return <div key={`sep-${i}`} role="separator" class="ui-menubar__bar-separator" />;

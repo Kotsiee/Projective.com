@@ -1,5 +1,5 @@
 import type { JSX, VNode } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import "../styles/field.css";
 import "../styles/select.css";
 import { cx } from "../../core/cx.ts";
@@ -181,7 +181,13 @@ export function Select(props: SelectProps): JSX.Element {
 	const stack = useOverlayStack({ active: open, layer: "popover" });
 	const floating = useFloating({ open, triggerRef, panelRef, placement: "bottom-start" });
 
-	useDismiss({ open, onDismiss: () => close(), panelRef, triggerRef });
+	// `enabled` gates the ESCAPE channel only. That channel is exclusive — its handler calls
+	// `stopImmediatePropagation`, so exactly one overlay may own the key — and every listener sits on
+	// `document` in the capture phase, where they run in registration order rather than stacking
+	// order. Without this a Select opened UNDER a later overlay silently eats that overlay's Escape.
+	// Outside-pointer dismissal is governed by containment and stays live regardless, so this cannot
+	// make the panel undismissable.
+	useDismiss({ open, enabled: stack.isTop, onDismiss: () => close(), panelRef, triggerRef });
 
 	// #region Open / close
 	const openPanel = () => {
@@ -286,6 +292,84 @@ export function Select(props: SelectProps): JSX.Element {
 	const activeIdx = nav.active.value;
 	const activeDescendant = open && activeIdx >= 0 ? `${rootId}-opt-${activeIdx}` : undefined;
 
+	// #region Keeping a row in view
+	/**
+	 * Scroll row `index` into the list's OWN scroller.
+	 *
+	 * Written directly rather than via `scrollIntoView`, which walks up and scrolls every ancestor
+	 * scroller it finds — and a portalled panel's ancestor is the page, so the document would lurch
+	 * behind the open dropdown.
+	 *
+	 * `centre` is for the moment the panel opens: a long list must open ON the current value, or a
+	 * two-hundred-entry year picker asks the reader to hunt for the year they already chose. Keyboard
+	 * movement uses the nearest edge instead, so the highlight walks off the end of the viewport
+	 * rather than jumping the list under it.
+	 */
+	const scrollRowIntoView = (index: number, centre: boolean) => {
+		const list = listRef.current;
+		if (!list || index < 0) return;
+		let top: number;
+		let size: number;
+		if (useVirtual) {
+			// The windowed renderer positions rows arithmetically, so the target row need not exist in
+			// the DOM yet — which is the whole point of asking for it by index. The sizer those offsets
+			// are measured from sits inside the list's own padding, so that pad has to be added back:
+			// without it End and typeahead land four pixels short and clip the row they just selected.
+			const sizer = list.querySelector<HTMLElement>(".ui-select__sizer");
+			const pad = sizer
+				? sizer.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop
+				: 0;
+			top = pad + index * virtualItemSize;
+			size = virtualItemSize;
+		} else {
+			const row = typeof document === "undefined"
+				? null
+				: document.getElementById(`${rootId}-opt-${index}`);
+			if (!row) return;
+			top = row.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+			size = row.offsetHeight;
+		}
+		const view = list.clientHeight;
+		let next: number;
+		if (centre) next = top - (view - size) / 2;
+		else if (top < list.scrollTop) next = top;
+		else if (top + size > list.scrollTop + view) next = top + size - view;
+		else return;
+		list.scrollTop = Math.max(0, Math.min(next, list.scrollHeight - view));
+		// The scroll event that follows a programmatic write is async; publishing the offset here keeps
+		// the windowed range in step with the very first painted frame.
+		if (useVirtual) setScrollTop(list.scrollTop);
+	};
+
+	/**
+	 * The list height the opening centre was computed against, or `-1` while closed.
+	 *
+	 * Two things make one shot insufficient. The centring runs BEFORE paint — a `useEffect` is
+	 * deferred past it, so a hundred-year year picker visibly painted on 1926 and snapped 3,762px to
+	 * 2026 — and `--float-available-h` only lands on the commit AFTER open, so on a short viewport the
+	 * first pass centres against a list that is about to get shorter. Re-running when the list's own
+	 * height actually changes fixes both without re-centring on every reposition, which would fight a
+	 * reader who has started scrolling.
+	 */
+	const centredFor = useRef(-1);
+
+	useLayoutEffect(() => {
+		if (!open) {
+			centredFor.current = -1;
+			return;
+		}
+		const h = listRef.current?.clientHeight ?? 0;
+		if (h === centredFor.current) return;
+		centredFor.current = h;
+		scrollRowIntoView(flat.findIndex((o) => o.value === ctrl.get()), true);
+	}, [open, floating?.availableHeight]);
+
+	useEffect(() => {
+		if (!open) return;
+		scrollRowIntoView(activeIdx, false);
+	}, [open, activeIdx]);
+	// #endregion
+
 	// #region Row renderer
 	const renderOption = (opt: Option, index: number, virtual: boolean) => (
 		<li
@@ -385,6 +469,13 @@ export function Select(props: SelectProps): JSX.Element {
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,
 							"--float-width": floating ? `${floating.width}px` : undefined,
+							// The panel caps itself to the space actually left on the resolved side, so a long
+							// list scrolls internally instead of running off the bottom of the screen. `null`
+							// means that side is deliberately unbounded, which is not a length — emit nothing
+							// and let `--fld-panel-maxh` stand alone.
+							"--float-available-h": floating?.availableHeight != null
+								? `${floating.availableHeight}px`
+								: undefined,
 							"--z-portal": String(stack.zIndex),
 						})}
 					>

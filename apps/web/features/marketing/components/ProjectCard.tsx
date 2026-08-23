@@ -11,9 +11,9 @@ import { vars } from "../core/style.ts";
  *
  * This is the ONE landing card that deliberately keeps its own `.lp-*` presentation while services,
  * products and profiles moved onto the canonical `.ex-card` contract. The difference is the entity's,
- * not history's: discovery renders a project as `.ex-projrow`, a hairline-divided list row built for
- * scanning many, while the landing page presents a handful of open pipelines as hero objects with a
- * progress meter. A list row cannot do that job and a card cannot do the feed's. Both are correct.
+ * not history's: discovery renders a project as `.ex-card--project`, a compact bordered brief built for
+ * comparing many side by side, while the landing page presents a handful of open pipelines as hero
+ * objects with a cover and a progress meter. Neither can do the other's job. Both are correct.
  */
 export function ProjectCard({ project }: { project: ProjectShowcase }): JSX.Element {
 	return (

@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import "../styles/profile.css";
 import TabCreateButton from "../islands/TabCreateButton.island.tsx";
+import AmbientPalette from "@features/explore/islands/AmbientPalette.island.tsx";
 import { TAB_LABEL } from "../core/profile-model.ts";
 import { tabIcon } from "./profile-glyphs.tsx";
 import {
@@ -220,6 +221,11 @@ export function ProfileTabContent(
 	const empty = countFor(tab, payload) === 0;
 	return (
 		<div class="pf-panel">
+			{
+				/* Extracts each discovery card's dominant media colour into `--ex-ambient` for the hover
+			    wash. Renders nothing; the cards paint a token-derived fallback without it. */
+			}
+			<AmbientPalette />
 			{
 				/* The tab strip 24px above already names this section, in its active state — an `<h2>`
 			    repeating it put the largest type on the page on a word the eye had just read, and pushed

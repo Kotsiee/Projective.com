@@ -1,0 +1,228 @@
+/*
+ * DateTimePicker — one popover holding the calendar and the time tumbler.
+ *
+ * The panel is projected into `document.body`, so every panel rule must stand alone: a descendant
+ * selector rooted at `.ui-datetime` no longer reaches it. Token-only, logical properties throughout,
+ * and on the same `--fld-panel-*` contract as every other dropdown in the taxonomy, so the calendar,
+ * the tumbler and a Select in the same form read as one class of object.
+ */
+
+.ui-datetime {
+	position: relative;
+	display: inline-block;
+}
+.ui-datetime--fluid {
+	display: block;
+}
+
+/* #region Trigger */
+.ui-datetime__trigger {
+	cursor: pointer;
+}
+.ui-datetime__trigger .ui-field__input {
+	cursor: pointer;
+}
+.ui-datetime__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	margin-inline-start: calc(-1 * var(--space-1));
+	background: transparent;
+	border: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	font-size: var(--icon-sm);
+	line-height: 0;
+}
+.ui-datetime__icon:focus-visible {
+	outline: none;
+	border-radius: var(--radius-xs);
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Panel */
+.ui-datetime__panel {
+	/*
+	 * The panel's own height ceiling, independent of the positioner. Deliberately NOT
+	 * `--fld-panel-maxh` (18rem): a six-week grid plus its header is already taller than that, so the
+	 * taxonomy's LIST cap would put every date-time picker in a scroller. Held flat — no `calc()` —
+	 * because it is substituted into a `min()` below, and a nested `calc()` inside `min()` is the shape
+	 * this engine has been observed to drop.
+	 */
+	--dtp-panel-maxh: 100dvh;
+
+	position: fixed;
+	/*
+	 * Parked far off-screen until the positioner has measured, not at `0` — the origin is a real place
+	 * on screen, so a `0` fallback paints the whole panel in the corner for one frame before it jumps
+	 * to the trigger.
+	 *
+	 * `left`, not `inset-inline-start`, and this is the one place in the sheet where the PHYSICAL
+	 * property is the correct one. `--float-left` is a `getBoundingClientRect()` measurement — a
+	 * distance from the viewport's LEFT edge, already expressed in the document's direction.
+	 * `inset-inline-start` resolves to `right` under `dir="rtl"`, so feeding it that number mirrors an
+	 * already-mirrored coordinate and anchors the panel to the opposite edge of the screen from its
+	 * trigger. The block axis is unaffected by direction, so it stays logical.
+	 */
+	inset-block-start: var(--float-top, -9999px);
+	left: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-popover));
+	/* Cap to the space measured on the resolved side and scroll internally, so a tall panel in a short
+	   viewport loses its scrollbar rather than its last week. Two declarations rather than one `min()`:
+	   `--float-available-h` is undefined on the first commit, and an engine that cannot parse `min()`
+	   would otherwise be left with no cap at all. */
+	max-block-size: var(--dtp-panel-maxh);
+	max-block-size: min(var(--dtp-panel-maxh), var(--float-available-h, 100dvh));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-3);
+	background: var(--surface);
+	border: var(--fld-bw) solid var(--fld-panel-border);
+	border-radius: var(--fld-panel-radius);
+	box-shadow: var(--elevation-high);
+	animation: ui-datetime-in var(--dur-fast) var(--ease-standard);
+}
+@keyframes ui-datetime-in {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.ui-datetime__panel {
+		animation-duration: 0ms;
+	}
+}
+/* #endregion */
+
+/* #region Body */
+.ui-datetime__body {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-3);
+}
+/*
+ * The composed calendar keeps its grid and loses its card.
+ *
+ * `.ui-datepicker--inline` draws a bordered, padded surface because it is normally the whole control;
+ * inside this panel that is a box in a box (§B.4), and the panel already carries the border and the
+ * elevation. Written as a descendant of THIS panel rather than as a modifier on DatePicker so nothing
+ * about that component's public shape changes, and at (0,2,0) it out-specifies the inline rule
+ * regardless of which stylesheet the bundler happens to emit first.
+ */
+.ui-datetime__panel .ui-datepicker--inline {
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+}
+
+/*
+ * A single hairline between the two halves, not a border around either (§B.4). It is drawn on the
+ * time column's leading edge so it is one device, and it flips sides automatically under `dir="rtl"`.
+ */
+.ui-datetime__time {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2);
+	padding-inline-start: var(--space-3);
+	border-inline-start: var(--fld-bw) solid var(--fld-panel-border);
+}
+.ui-datetime__time-caption {
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
+	align-self: start;
+}
+
+/*
+ * Below the panel's own comfortable width the two halves stack, and the divider moves with them: a
+ * vertical hairline between rows would read as a stray mark rather than a seam.
+ *
+ * A viewport media query is the right instrument here even though the repo generally prefers a
+ * container query for laned surfaces — this panel is a portalled overlay measured directly against
+ * the viewport, so the viewport IS the box that matters.
+ */
+@media (max-width: 34rem) {
+	.ui-datetime__body {
+		flex-direction: column;
+	}
+	.ui-datetime__time {
+		align-items: stretch;
+		padding-inline-start: 0;
+		padding-block-start: var(--space-3);
+		border-inline-start: none;
+		border-block-start: var(--fld-bw) solid var(--fld-panel-border);
+	}
+	.ui-datetime__time .ui-tumbler {
+		justify-content: center;
+	}
+}
+/* #endregion */
+
+/* #region Footer */
+.ui-datetime__foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	margin-block-start: var(--space-3);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--fld-bw) solid var(--fld-panel-border);
+}
+.ui-datetime__foot-start {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+.ui-datetime__bar-btn {
+	font-family: var(--font-sans);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+	color: var(--primary);
+	background: transparent;
+	border: var(--fld-bw) solid transparent;
+	border-radius: var(--radius-sm);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-3);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.ui-datetime__bar-btn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+.ui-datetime__bar-btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.ui-datetime__bar-btn:disabled {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+/* Done is the panel's commit-and-leave control, so it is the one filled affordance here — the other
+   two are alternatives to it, not peers of it (§B.8.2). */
+.ui-datetime__bar-btn--primary {
+	color: var(--on-primary);
+	background: var(--primary);
+	border-color: var(--primary);
+}
+.ui-datetime__bar-btn--primary:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-primary) var(--tint-soft), var(--primary));
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-datetime__bar-btn {
+		transition: none;
+	}
+}

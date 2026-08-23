@@ -1,0 +1,1194 @@
+/*
+ * calendar-chrome — the `/calendar` hub's lane (expanded + collapsed rail), header band, footer rig,
+ * and the three modals the rig opens.
+ *
+ * Token-only, strict BEM, CSS LOGICAL PROPERTIES ONLY — the surface mirrors under `dir="rtl"`.
+ *
+ * The shared `.ui-lane-*` chrome from `@projective/ui/navigation` is NOT restyled here: this lane is
+ * meant to read as the same control set as `/projects`, `/messages` and `/wallet`. Only the
+ * calendar's own additions carry rules.
+ */
+
+/* #region Local tokens */
+/*
+ * On `:root`, not on `.cal-lanewrap`.
+ *
+ * The lane, the header band, the footer rig and every `BodyPortal`-mounted overlay these regions
+ * open render in four different places in the document, three of which are outside any element this
+ * feature owns. A token scoped to the feature's own class silently falls back for all of them —
+ * exactly the defect `/wallet` shipped when `--wlt-*` was scoped to `.wlt`. Every name is
+ * `--cal-hub-` prefixed so nothing here can collide with the engine's own `--cal-*`.
+ */
+:root {
+	--cal-hub-row: 1.75rem;
+	/*
+	* The interactive-target floor. 28px, which clears WCAG 2.5.8's 24px minimum with room, and is
+	* declared once so the band's icon buttons, the view switch and the filter rows cannot drift into
+	* three near-identical numbers — which is how a control ends up one pixel under the floor.
+	*/
+	--cal-hub-hit: 1.75rem;
+	--cal-hub-fs-body: var(--text-sm);
+	--cal-hub-fs-micro: var(--text-2xs);
+	--cal-hub-label-track: 0.04em;
+}
+
+/* #endregion */
+
+/* #region The dual presentation */
+.cal-lanewrap,
+.cal-lane {
+	display: flex;
+	flex-direction: column;
+	/*
+	* `block-size: 100%`, never `flex: 1`. `.ui-splitter__body` is an ordinary BLOCK container, so a
+	* flex shorthand on a lane root is inert and the footer band never reaches the bottom.
+	*/
+	block-size: 100%;
+	min-block-size: 0;
+	inline-size: 100%;
+}
+
+/*
+ * Both presentations are always in the DOM; the splitter's density decides which paints. No width
+ * observer, so SSR and the hydrated island agree on the first frame.
+ */
+.cal-rail {
+	display: none;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: var(--space-3);
+	block-size: 100%;
+	min-block-size: 0;
+	inline-size: 100%;
+}
+
+.ui-splitter[data-mode="collapsed"] .cal-lane {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .cal-rail {
+	display: flex;
+}
+
+/*
+ * `.ui-splitter` carries a BARE global rule `inline-size: var(--shell-lane-w)`, so a rail that only
+ * flips `display` swaps the presentation but NOT the track — leaving a column of glyphs adrift in
+ * 280px with the content region's space collapsed away and never handed back. Scoped with `:has` so
+ * only THIS lane takes the narrow width.
+ */
+.ui-splitter[data-mode="collapsed"]:has(.cal-rail) {
+	inline-size: var(--shell-sidebar-w);
+}
+
+/* #endregion */
+
+/* #region Collapsed rail */
+.cal-rail__items,
+.cal-rail__bottom {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.cal-rail__bottom {
+	margin-block-start: auto;
+}
+
+.cal-rail__item,
+.cal-rail__toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.cal-rail__item:hover,
+.cal-rail__toggle:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.cal-rail__item:focus-visible,
+.cal-rail__toggle:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.cal-rail__item[data-active="true"] {
+	background: var(--surface-3);
+	color: var(--primary);
+}
+
+.cal-rail__item--accent {
+	color: var(--primary);
+}
+
+/* #endregion */
+
+/* #region Expanded lane */
+.cal-lane__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+}
+
+.cal-lane__list {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	padding-inline: var(--space-2);
+}
+
+/* One upcoming entry. Separated by spacing and a hairline, never boxed (§B.4). */
+.cal-up {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-2);
+	border-block-end: var(--hairline);
+	border-radius: var(--radius-base);
+}
+
+.cal-up:last-child {
+	border-block-end: none;
+}
+
+.cal-up:hover {
+	background: var(--surface-2);
+}
+
+.cal-up__link {
+	display: block;
+	min-inline-size: 0;
+	flex: 1 1 auto;
+	color: inherit;
+	text-decoration: none;
+}
+
+.cal-up__link:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+.cal-up__body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.cal-up__when {
+	font-size: var(--cal-hub-fs-micro);
+	letter-spacing: var(--cal-hub-label-track);
+	color: var(--text-secondary);
+}
+
+.cal-up__title {
+	font-size: var(--cal-hub-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cal-up__meta {
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The same overlapped provenance stack the grid draws, so a row is recognisable in both. */
+.cal-up__sources {
+	display: inline-flex;
+	align-items: center;
+	isolation: isolate;
+	flex: none;
+}
+
+.cal-up__source {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+	color: var(--text-secondary);
+	box-shadow: 0 0 0 1px var(--border-subtle);
+	flex: none;
+}
+
+.cal-up__source + .cal-up__source {
+	margin-inline-start: calc(var(--icon-sm) * -0.35);
+}
+
+/*
+ * The tab panel below the head — the upcoming list (`.cal-lane__list`, which is the shared
+ * `.ui-lane-list`) or the availability manager. Only one is in the DOM at a time, so the panel owns
+ * the remaining height and its own scroll rather than sharing it with a second subject.
+ */
+.cal-lane__panel {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+/*
+ * Inside the panel the availability block IS the panel, so it drops the separating rule it carried
+ * when it sat pinned beneath the upcoming list: the head's own hairline is already the boundary
+ * directly above it, and two rules a few pixels apart is the doubling §B.4 forbids.
+ */
+.cal-lane__panel .cal-avail-block {
+	border-block-start: none;
+}
+
+/* #endregion */
+
+/* #region Availability block */
+.cal-avail-block {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.cal-avail-block__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.cal-avail-block__title,
+.cal-avail-block__subtitle {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--cal-hub-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cal-avail-block__configure {
+	appearance: none;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--primary);
+	padding: 0;
+	cursor: pointer;
+}
+
+.cal-avail-block__configure:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-xs);
+}
+
+.cal-avail-block__tz,
+.cal-avail-block__none {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+.cal-avail-block__days,
+.cal-avail-block__leavelist {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cal-avail-block__day {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--cal-hub-fs-micro);
+}
+
+.cal-avail-block__dayname {
+	inline-size: 2.25rem;
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.cal-avail-block__bands {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+/*
+ * Working hours and call windows are two LAYERS of one answer, so they differ by weight and a single
+ * accent rather than by two boxes: "I am at my desk" and "interrupt me" are different statements,
+ * and a surface that paints them identically cannot express the second.
+ */
+.cal-avail-block__band {
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+.cal-avail-block__band[data-kind="call_window"] {
+	color: var(--primary);
+	font-weight: var(--fw-medium);
+}
+
+.cal-avail-block__leave {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.cal-avail-block__leaveitem {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	font-size: var(--cal-hub-fs-micro);
+}
+
+.cal-avail-block__leavelabel {
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cal-avail-block__leavewhen {
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.cal-avail-dialog__note {
+	margin-block-end: var(--space-3);
+}
+
+/* #endregion */
+
+/* #region Header band */
+/*
+ * The band contract, shared verbatim with `/wallet` and `/files`: exactly `--shell-midnav-header-h`
+ * tall, `--space-4` inline padding, and TRANSPARENT — the tonal surface is the shell band's own
+ * glass underlay (`.ui-middle-nav__header::before`) and the seam beneath it is the canvas frame's
+ * single hairline (`.ui-page-canvas::before`, offset by this band's height). Painting a plate or a
+ * second hairline here doubles both. The height is load-bearing beyond appearance: the frame's seam
+ * accumulator subtracts exactly this token, so a band of any other height misplaces the canvas
+ * hairline by the difference.
+ */
+.cal-band {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+	min-inline-size: 0;
+}
+
+.cal-band__identity {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.cal-band__name {
+	font-size: var(--cal-hub-fs-body);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+.cal-band__tz {
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.cal-band__trail {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cal-band__period {
+	font-size: var(--cal-hub-fs-body);
+	color: var(--on-surface);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-inline-size: 0;
+}
+
+.cal-band__navbtn,
+.cal-band__iconbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--cal-hub-hit);
+	block-size: var(--cal-hub-hit);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.cal-band__navbtn:hover,
+.cal-band__iconbtn:hover {
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+.cal-band__navbtn:focus-visible,
+.cal-band__iconbtn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.cal-band__iconbtn[data-on="true"] {
+	color: var(--primary);
+}
+
+.cal-band__controls {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+	min-inline-size: 0;
+}
+
+/*
+ * The two controls the band INHERITS when the shell removes the lane. Hidden by default and revealed
+ * together in the 767px block below, so the transfer is one rule rather than two that can drift
+ * apart. `Tooltip` renders a `<span>` wrapper, so the hide has to reach that too — otherwise an empty
+ * inline anchor keeps its gap in the row.
+ *
+ * `.cal-band__views` is in the hide list and NOT in the reveal: the view switch now lives in the
+ * footer rig, which renders at every width, so there is no width at which the duty transfers here.
+ * Revealing it would put two switches for one fact on the same phone screen — the pair of Starred
+ * controls `/messages` shipped. The band's markup for it is dead and belongs in the same delete.
+ */
+.cal-band__search,
+.cal-band__views,
+.cal-band__iconbtn--mobile,
+.ui-tooltip__anchor:has(.cal-band__iconbtn--mobile) {
+	display: none;
+}
+
+.cal-band__search {
+	align-items: center;
+	gap: var(--space-1);
+	block-size: var(--cal-hub-hit);
+	padding-inline: var(--space-2);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	min-inline-size: 0;
+}
+
+.cal-band__search:focus-within {
+	border-color: var(--primary);
+}
+
+.cal-band__searchinput {
+	border: none;
+	background: none;
+	outline: none;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	font-size: var(--cal-hub-fs-micro);
+	inline-size: 6rem;
+	min-inline-size: 0;
+}
+
+/*
+ * Retained only so the band's own markup keeps a definition while it is being removed; nothing
+ * reveals it (see the hide block above — the footer rig owns the view switch at every width).
+ */
+.cal-band__views {
+	background: var(--surface-2);
+	border-radius: var(--radius-base);
+	padding: var(--space-px);
+}
+
+.cal-band__view {
+	appearance: none;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+	inline-size: var(--cal-hub-hit);
+	block-size: var(--cal-hub-hit);
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	text-transform: uppercase;
+}
+
+.cal-band__view[data-on="true"] {
+	background: var(--surface);
+	color: var(--on-surface);
+}
+
+.cal-band__view:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* The full word is the accessible name; the letter is what is drawn (§B.6.3). */
+.cal-band__viewname {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Below 1100px the timezone yields; the calendar's own grid still labels every column. */
+@media (max-width: 1100px) {
+	.cal-band__tz {
+		display: none;
+	}
+}
+
+/*
+ * The lane is removed at exactly this width (middle-nav.css), so the band inherits the two duties
+ * that lived ONLY there: find-in-calendar, and the way into working hours and leave. `/wallet` proved
+ * the transfer is mandatory; `/messages` proved what a surface looks like when it does not happen.
+ * The view switch is deliberately absent — the footer rig holds it at this width too, so it has
+ * nothing to inherit.
+ */
+@media (max-width: 767px) {
+	.cal-band__search,
+	.cal-band__iconbtn--mobile,
+	.ui-tooltip__anchor:has(.cal-band__iconbtn--mobile) {
+		display: inline-flex;
+	}
+
+	/* By this width the identity is down to one word, and the period is what may truncate. */
+	.cal-band__name {
+		display: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Filter panel */
+.cal-filters {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 14rem;
+	padding: var(--space-2);
+}
+
+.cal-filters__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.cal-filters__legend {
+	padding: 0;
+	font-size: var(--cal-hub-fs-micro);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--cal-hub-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cal-filters__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	/* The row IS the target, so it carries the floor rather than the 12px checkbox inside it. */
+	min-block-size: var(--cal-hub-hit);
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-xs);
+	font-size: var(--cal-hub-fs-body);
+	color: var(--on-surface);
+	cursor: pointer;
+}
+
+.cal-filters__option:hover {
+	background: var(--surface-2);
+}
+
+.cal-filters__option:focus-within {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+.cal-filters__mark {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.cal-filters__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cal-filters__none {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Footer rig */
+/*
+ * `container-type: inline-size` is load-bearing twice over.
+ *
+ * (1) It gives the rig INLINE-SIZE CONTAINMENT, so its width is computed without regard to its
+ *     contents. Without it the labelled `nowrap` cluster contributes its full min-content to the
+ *     middle-nav content column — a `1fr` grid track whose automatic minimum is `auto` — which is
+ *     what starved the `/wallet` lane to 2px at an 820px viewport and overflowed the frame's clip at
+ *     768px. `middle-nav.css` carries the matching `minmax(0, 1fr)`; either alone leaves the other's
+ *     failure reachable.
+ * (2) It makes the tier switch a real CONTAINER QUERY keyed on the band's own width, so the collapse
+ *     is deterministic CSS rather than a client width observer.
+ *
+ * THE TIERS RELOCATE NAMES, THEY NEVER REMOVE A CONTROL. There is no overflow menu on this rig to
+ * recover one from, so a width that hid an action would destroy it: `/wallet`'s
+ * `nth-child(n + 3) { display: none }` deleted three money actions on four pages, and that is the
+ * failure this arrangement has to make unreachable rather than merely survivable. The three tiers are
+ * glyph + label · glyph only, action names on their Tooltips (§B.6.3's icon-only sticky footer) ·
+ * plus the view names down to their initials, the full word staying in the accessibility tree.
+ *
+ * There is deliberately NO row `gap`: the trailing cluster is placed by an auto margin, so the only
+ * separation a gap would buy is around the notice — which is empty most of the time and would then be
+ * charging the row two gutters for a sentence that does not exist. The notice pads itself when it has
+ * something to say (`[data-said]`) instead. It cannot simply be removed while empty: a `role="status"`
+ * that is `display: none` until it has content is not reliably announced when it gets it.
+ */
+.cal-rig {
+	container-type: inline-size;
+	container-name: calrig;
+	display: flex;
+	align-items: center;
+	padding: var(--space-3) var(--space-4);
+	min-inline-size: 0;
+}
+
+/*
+ * Leading: the view switch. `flex: none`, because a segmented control that shrinks clips its own
+ * labels — when the row runs out of room the notice is what yields, and below that the tiers narrow
+ * the controls deliberately rather than by squeezing.
+ */
+.cal-rig__views {
+	display: inline-flex;
+	flex: none;
+	background: var(--surface-2);
+	border-radius: var(--radius-base);
+	padding: var(--space-px);
+}
+
+.cal-rig__view {
+	appearance: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+	padding-inline: var(--space-2);
+	block-size: var(--cal-hub-row);
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+}
+
+.cal-rig__view[data-on="true"] {
+	background: var(--surface);
+	color: var(--on-surface);
+	box-shadow: var(--elevation-low);
+}
+
+.cal-rig__view:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+/* The initial is drawn only in the narrowest tier; the word is the name at every width. */
+.cal-rig__viewletter {
+	display: none;
+	text-transform: uppercase;
+}
+
+/*
+ * Trailing: the actions. An auto margin rather than `justify-content`, so the notice between them
+ * keeps its own place in the flow — and logical, so the cluster lands on the inline-end under
+ * `dir="rtl"` too. `flex: none` for the same reason the switch carries it.
+ */
+.cal-rig__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-inline-start: auto;
+	flex: none;
+}
+
+.cal-rig__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: inherit;
+	font-size: var(--cal-hub-fs-body);
+	block-size: var(--cal-hub-row);
+	padding-inline: var(--space-3);
+	border: 1px solid transparent;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.cal-rig__action:hover {
+	background: var(--surface-3);
+}
+
+.cal-rig__action:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.cal-rig__action[data-variant="primary"] {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.cal-rig__action[data-variant="primary"]:hover {
+	filter: brightness(1.05);
+}
+
+.cal-rig__glyph {
+	flex: none;
+}
+
+/*
+ * The rig's own answer back — a refusal, or a confirmation that a file was written.
+ *
+ * `flex: 0 1 auto` with a zero minimum and an ellipsis, so a long sentence can never widen the band
+ * (the containment above stops the row driving the middle-nav's `1fr` track, and this stops the
+ * notice driving the row) — and it is the ONLY shrinkable item in the row, so a squeezed band gives
+ * up a message before it gives up a millimetre of any control. Empty it costs nothing: no padding,
+ * no minimum, and no `gap` charged around it.
+ */
+.cal-rig__notice {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--cal-hub-fs-body);
+	color: var(--text-secondary);
+}
+
+.cal-rig__notice[data-said] {
+	padding-inline: var(--space-3);
+}
+
+/*
+ * TIER 2 — the action labels drop, glyphs stay. `clip-path`, never `display: none`: the box collapses
+ * but the accessible name survives in the tree, so a control drawn as a glyph is never announced as
+ * nameless, and voice control can still say it.
+ *
+ * THE BUDGET, measured rather than guessed (a container query is asked about the CONTENT box, so
+ * these are inner widths). Fully labelled the row draws 612.62px — views 129.99 + the four actions
+ * 470.63 + their three 4px gaps — against a 640px trigger, so the labelled tier is never narrower
+ * than its own contents and has 27px in hand for font-metric variance. An action added to this rig
+ * must fit inside that margin or bring the trigger down with it; it may not be hidden instead.
+ */
+@container calrig (max-width: 40rem) {
+	.cal-rig__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.cal-rig__action {
+		gap: 0;
+		inline-size: var(--cal-hub-row);
+		padding-inline: 0;
+		justify-content: center;
+	}
+}
+
+/*
+ * TIER 3 — the view names step down to their initials, which is the same trade one tier lower: the
+ * word stays in the accessibility tree and on the Tooltip, only the drawing changes.
+ *
+ * 22rem is where the row genuinely runs out, not where it looks tight. A 390px phone gives this
+ * container 366px and needs 254px (labelled views + glyph actions), so it keeps whole words; the
+ * binding case is a COARSE pointer, which lifts every control to 2.5rem and takes the row to 302px —
+ * still inside 352px, and inside the 296px a 320px handset leaves once the initials are drawn.
+ */
+@container calrig (max-width: 22rem) {
+	.cal-rig__viewletter {
+		display: inline;
+	}
+
+	.cal-rig__viewname {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.cal-rig__view {
+		inline-size: var(--cal-hub-row);
+		padding-inline: 0;
+	}
+}
+
+/*
+ * An action under a thumb. The rig row clears WCAG 2.5.8's 24px floor but is not a comfortable
+ * target, and in the icon-only tier the box IS the target.
+ */
+@media (pointer: coarse) {
+	.cal-rig {
+		--cal-hub-row: 2.5rem;
+	}
+}
+
+@media (max-width: 767px) {
+	.cal-rig {
+		padding-inline: var(--space-3);
+		padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+	}
+}
+
+/* #endregion */
+
+/* #region Connect + import modals */
+.cal-connect__hint,
+.cal-import__hint {
+	margin: 0 0 var(--space-3);
+	font-size: var(--cal-hub-fs-body);
+	color: var(--text-secondary);
+	line-height: var(--leading-relaxed);
+}
+
+.cal-connect__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-end: var(--space-4);
+}
+
+.cal-connect__grouptitle {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--cal-hub-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cal-connect__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cal-connect__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2);
+	border-radius: var(--radius-lg);
+	background: var(--surface-2);
+}
+
+.cal-connect__body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.cal-connect__name {
+	font-size: var(--cal-hub-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.cal-connect__state {
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+/* The tone reinforces the words; it never carries the meaning on its own. */
+.cal-connect__row[data-tone="warn"] .cal-connect__state {
+	color: var(--warning);
+}
+
+.cal-connect__row[data-tone="off"] .cal-connect__state {
+	color: var(--text-secondary);
+}
+
+.cal-connect__action {
+	appearance: none;
+	font: inherit;
+	font-size: var(--cal-hub-fs-micro);
+	block-size: var(--cal-hub-row);
+	padding-inline: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface);
+	cursor: pointer;
+	flex: none;
+}
+
+.cal-connect__action:hover {
+	background: var(--surface-3);
+}
+
+.cal-connect__action:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.cal-connect__providers {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cal-connect__provider {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	background: none;
+	font: inherit;
+	font-size: var(--cal-hub-fs-body);
+	color: var(--on-surface);
+	cursor: pointer;
+	text-align: start;
+}
+
+.cal-connect__provider:hover {
+	background: var(--surface-2);
+}
+
+.cal-connect__provider:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/*
+ * The one disabled treatment, applied to INK and BORDER rather than the box, and NOT paired with
+ * `pointer-events: none` — which would cancel the `not-allowed` cursor sitting beside it. There is
+ * no `--text-disabled` token in this theme (Decision #70 flagged it), so the recession is the shared
+ * field alpha rather than an invented colour.
+ */
+.cal-connect__provider:disabled {
+	cursor: not-allowed;
+	opacity: var(--fld-disabled-alpha);
+}
+
+.cal-connect__mark {
+	display: inline-flex;
+	align-items: center;
+	color: var(--on-surface);
+	flex: none;
+}
+
+.cal-connect__providerlabel {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.cal-connect__beta {
+	font-size: var(--cal-hub-fs-micro);
+	letter-spacing: var(--cal-hub-label-track);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.cal-connect__caret {
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.cal-connect__empty,
+.cal-connect__error {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+.cal-connect__error {
+	color: var(--danger);
+}
+
+/* The import file well. A label wrapping a visually-hidden input, so the whole area is the target. */
+.cal-import__drop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: var(--space-6);
+	border: 1px dashed var(--border-subtle);
+	border-radius: var(--radius-lg);
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.cal-import__drop:hover {
+	background: var(--surface-2);
+	border-color: var(--primary);
+}
+
+.cal-import__drop:focus-within {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+.cal-import__input {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+}
+
+.cal-import__droplabel {
+	font-size: var(--cal-hub-fs-body);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-inline-size: 100%;
+}
+
+.cal-import__msg {
+	margin-block-start: var(--space-3);
+}
+
+.cal-import__result {
+	margin-block-start: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cal-import__count {
+	margin: 0;
+	font-size: var(--cal-hub-fs-body);
+	color: var(--on-surface);
+}
+
+.cal-import__preview {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cal-import__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	font-size: var(--cal-hub-fs-micro);
+}
+
+.cal-import__rowtitle {
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cal-import__rowwhen {
+	color: var(--text-secondary);
+	flex: none;
+}
+
+.cal-import__more {
+	margin: 0;
+	font-size: var(--cal-hub-fs-micro);
+	color: var(--text-secondary);
+}
+
+.cal-import__warnings {
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.cal-import__foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+/* #endregion */

@@ -139,8 +139,11 @@
 /* #region Panel */
 .ui-multiselect__panel {
 	position: fixed;
+	/* Physical `left` on purpose: `--float-left` is a viewport-left measurement, and a logical
+	   `inset-inline-start` resolves to `right` under `dir="rtl"`, mirroring an already-mirrored
+	   coordinate onto the wrong edge. The block axis does not turn with direction. */
 	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
+	left: var(--float-left, -9999px);
 	inline-size: var(--float-width, auto);
 	z-index: var(--z-portal, var(--z-popover));
 	display: flex;

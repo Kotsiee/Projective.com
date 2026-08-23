@@ -7,7 +7,19 @@
 .ui-popover {
 	position: fixed;
 	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
+	/*
+	 * PHYSICAL `left`, deliberately, and not `inset-inline-start`.
+	 *
+	 * `--float-left` is written by `useFloating`/`useEdgeDetection` from `getBoundingClientRect`, which
+	 * is a physical, left-origin measurement — the hook has already done the collision maths in
+	 * viewport coordinates and decided which side of the trigger the panel goes on. Feeding that number
+	 * to a LOGICAL property makes it resolve to `right` under `dir="rtl"`, so a panel the hook placed
+	 * 100px from the left edge is drawn 100px from the RIGHT edge: mirrored to the wrong side of the
+	 * control it belongs to, and off-screen wherever the hook had clamped it against an edge. The
+	 * placement is already direction-aware; the property that applies it must not mirror it a second
+	 * time.
+	 */
+	left: var(--float-left, -9999px);
 	inline-size: var(--float-width, auto);
 	z-index: var(--z-portal, var(--z-overlay));
 	min-inline-size: 12rem;

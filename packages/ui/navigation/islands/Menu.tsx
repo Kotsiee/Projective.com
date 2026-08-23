@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useListNavigation } from "../../hooks/useListNavigation.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
@@ -111,6 +112,10 @@ export function Menu(props: MenuProps): JSX.Element {
 	const { rows, items } = buildRows(model);
 	const nav = useListNavigation(() => items.length, (i) => !!items[i]?.disabled);
 
+	// The popup claims a stack slot so it both outranks whatever is already open and DEMOTES it: the
+	// panel is rendered inline (not portalled), so without a claim its `--z-overlay` sat at the popover
+	// base and it also kept Escape ownership from anything opened on top of it.
+	const stack = useOverlayStack({ active: popup && open.value, layer: "popover" });
 	const floating = useFloating({
 		open: popup && open.value,
 		triggerRef,
@@ -119,6 +124,7 @@ export function Menu(props: MenuProps): JSX.Element {
 	});
 	useDismiss({
 		open: popup && open.value,
+		enabled: stack.isTop,
 		onDismiss: () => closePanel(),
 		panelRef,
 		triggerRef,
@@ -295,12 +301,11 @@ export function Menu(props: MenuProps): JSX.Element {
 						"ui-menu__panel",
 						floating?.placement.startsWith("top") && "ui-menu__panel--top",
 					)}
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-						})
-						: undefined}
+					style={styleVars({
+						"--float-top": floating ? `${floating.top}px` : undefined,
+						"--float-left": floating ? `${floating.left}px` : undefined,
+						"--z-portal": String(stack.zIndex),
+					})}
 				>
 					{list}
 				</div>

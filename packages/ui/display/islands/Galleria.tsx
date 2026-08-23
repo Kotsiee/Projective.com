@@ -155,6 +155,7 @@ export function Galleria(props: GalleriaProps): JSX.Element {
 	useFocusTrap({ active: isFullscreen, containerRef: rootRef });
 	useDismiss({
 		open: isFullscreen,
+		enabled: overlay.isTop,
 		onDismiss: () => fullscreenCtrl.set(false),
 		panelRef: rootRef,
 		closeOnOutside: false,

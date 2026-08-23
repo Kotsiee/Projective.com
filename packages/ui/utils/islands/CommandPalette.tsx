@@ -115,7 +115,9 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element | null {
 	useFocusTrap({ active: isOpen, containerRef: panelRef, initialFocusRef: inputRef });
 
 	const close = () => ctrl.set(false);
-	useDismiss({ open: isOpen, onDismiss: close, panelRef });
+	// `enabled` gates the listener itself: the palette registers on `document` in the capture phase, so
+	// merely no-oping inside the callback would still consume Escape from anything it launched above it.
+	useDismiss({ open: isOpen, enabled: stack.isTop, onDismiss: close, panelRef });
 
 	// #region Model → filtered groups
 	const baseGroups = useMemo<FlatGroup[]>(() => {

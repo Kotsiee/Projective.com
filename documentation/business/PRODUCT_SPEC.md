@@ -1631,6 +1631,7 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `billing`                | Stripe Connect integration                                                                     |
 |               |                           | `invoices`               |                                                                                                |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
+|               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |
 |               | `/messages`               | `index`                  | All messages list                                                                              |
 |               | `/messages/[message id]`  | `chat`                   | Active conversation                                                                            |
 |               |                           | `details`                | Message/Contact info                                                                           |

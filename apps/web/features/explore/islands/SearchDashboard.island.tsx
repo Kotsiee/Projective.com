@@ -42,7 +42,6 @@ const CATEGORY_TITLE: Record<ExploreCategory, string> = {
 	articles: "Articles",
 };
 
-
 /**
  * SearchDashboard — the State B orchestrator (the one heavy island). Owns the results dashboard: a
  * `params` signal synced to the URL (`history.pushState` + `popstate`, so refining is instant and
@@ -371,10 +370,12 @@ function UnifiedFeed(
 			</div>
 		);
 	} else if (type === "projects") {
+		// Projects hold a fixed two-column grid rather than joining the auto-fit track above: a project
+		// card is a bounded brief, so its height is predictable and two equal columns pack it cleanly.
 		body = (
-			<ul class="ex-list" role="list" aria-label="Search results">
+			<ul class="ex-projgrid" role="list" aria-label="Search results">
 				{items.map((it) => (
-					<li class="ex-list__item" key={it.id}>
+					<li class="ex-projgrid__cell" key={it.id}>
 						<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
 					</li>
 				))}

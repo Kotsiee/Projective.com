@@ -78,6 +78,22 @@ export function TodayIcon({ size = 18, class: cls }: IconProps): JSX.Element {
 	);
 }
 
+/**
+ * Four corner brackets pointing outward — "make this bigger".
+ *
+ * The same geometry as the `expand` entry in `@projective/ui/icons`, restated here rather than
+ * imported for the reason every glyph in this file is: this package's icons are sized and weighted
+ * for an 11px mark inside a 20px card, and the shared registry is calibrated for chrome. The two are
+ * the same drawing at two scales, not one drawing shared.
+ */
+export function ExpandIcon({ size = 18, class: cls }: IconProps): JSX.Element {
+	return (
+		<IconShell {...base(size, cls)}>
+			<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+		</IconShell>
+	);
+}
+
 export function PlusIcon({ size = 18, class: cls }: IconProps): JSX.Element {
 	return (
 		<IconShell {...base(size, cls)}>

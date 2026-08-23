@@ -164,6 +164,21 @@ export const LocalKeys = {
 	/** The project board's column grouping (`stages` | `statuses`), remembered across sessions. */
 	BOARD_GROUPING: "pj.local.board.grouping",
 	/**
+	 * The `/calendar` hub's view mode (`day` | `week` | `month`).
+	 *
+	 * Owned by the APP, not by the calendar engine: the hub hoists the view switch into the lane
+	 * footer and the header band, so it passes `view` to the engine and the engine therefore persists
+	 * only the zoom density it still owns (`CALENDAR_DENSITY`). Two owners for one value is how the
+	 * reader's choice came to be written on every change and read back never.
+	 */
+	CALENDAR_VIEW: "pj.local.calendar.view",
+	/**
+	 * Prefix for the calendar engine's own density persistence — it writes `…:zoom` beneath this.
+	 * Registered rather than left as a literal at the call site so every client key on the platform is
+	 * enumerable from one place.
+	 */
+	CALENDAR_DENSITY: "pj.local.calendar",
+	/**
 	 * The shopping basket — a JSON array of the item ids the visitor has added from an Entity View page
 	 * (`/view/[id]`). A client-side stub until the `/api/basket` endpoint lands; shared cross-island so
 	 * the sidebar CTA reflects the current basket membership.

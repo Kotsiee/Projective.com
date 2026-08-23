@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { ChannelRow } from "./ChannelTree.tsx";
-import { SessionMiniCalendar } from "./SessionMiniCalendar.tsx";
 import { CalendarPlusIcon, FolderIcon, UploadIcon, VideoIcon } from "./session-glyphs.tsx";
 import { bookingBadge, type NormalSessionData } from "../core/session-model.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
@@ -10,8 +9,6 @@ import type { ProjectDetail } from "../types/projects-types.ts";
  * (task §3.A). A 1-1 session has no stage tree, tickets, or nested PMs, so the sidebar's empty
  * real-estate is reclaimed with the engagement's live cadence instead:
  *
- *   - a compact interactive **mini-calendar** ({@link SessionMiniCalendar}) that highlights the next
- *     booked session and jumps to the full project calendar on a day click;
  *   - an **upcoming-session** card — the next slot's time, duration, a booking-proposal badge
  *     (`Confirmed` / `Pending Proposal` / `Rescheduled`), and a quick **Propose Time** CTA;
  *   - a **session counter** (`Session 3 of 10` or `Pay-per-session`);
@@ -28,18 +25,10 @@ export interface NormalSessionPanelProps {
 	detail: ProjectDetail;
 	/** The SSR/seam-derived 1-1 session projection (upcoming slot · counter · counterpart). */
 	data: NormalSessionData;
-	/** Current instant — the mini-calendar's default month + today marker. */
-	nowMs: number;
-	/** The next session's day (a UTC day-key) — highlighted in the mini-calendar. */
-	sessionDayMs: number;
-	/** Whether the island has mounted (gates the mini-calendar's today marker). */
-	mounted: boolean;
-	/** Where the Propose-Time CTA + a mini-calendar day pick navigate (the project calendar). */
+	/** Where the Propose-Time CTA navigates (the project calendar). */
 	calendarHref: string;
 	/** The Shared files & resources destination. */
 	filesHref: string;
-	/** Jump to the project calendar for a picked day. */
-	onPickDay: (dayMs: number) => void;
 }
 
 export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element {
@@ -49,13 +38,6 @@ export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element 
 
 	return (
 		<div class="proj-sess proj-sess--normal">
-			<SessionMiniCalendar
-				nowMs={props.nowMs}
-				sessionDayMs={props.sessionDayMs}
-				mounted={props.mounted}
-				onPickDay={props.onPickDay}
-			/>
-
 			{/* Upcoming session — next slot + booking proposal state */}
 			<section class="sess-next" aria-label="Upcoming session">
 				<div class="sess-next__head">

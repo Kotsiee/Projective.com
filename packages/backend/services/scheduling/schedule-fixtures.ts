@@ -2,17 +2,21 @@ import type {
 	AvailabilityRule,
 	CalendarEvent,
 	SchedulePage,
+	SchedulingSim,
+	SchedulingViewer,
 } from "@projective/types/scheduling";
+import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 import { findItem } from "../explore/query.ts";
 import {
 	addDaysLocal,
 	hash,
-	integrationsFor,
 	localSlot,
 	NOW,
+	sourcesFor,
 	startOfWeekLocal,
 	tzFor,
 } from "./derive.ts";
+import { withCoordination } from "./coordination-fixtures.ts";
 
 /**
  * session-service schedule fixtures — the fat scheduling service's answer for `/view/[entity]/schedule`
@@ -32,8 +36,26 @@ function hostRules(): AvailabilityRule[] {
 	return out;
 }
 
-/** Resolve the session-schedule page for an explore entity id. `null` → 404. */
-export function findSchedulePage(entityId: string): SchedulePage | null {
+/**
+ * The coordination store key for an entity's schedule. Exported so a WRITE addresses the same key
+ * the READ derived.
+ */
+export function scheduleSurfaceKey(entityId: string): string | null {
+	const item = findItem(entityId);
+	return item ? `schedule:${item.id}` : null;
+}
+
+/**
+ * Resolve the session-schedule page for an explore entity id. `null` → 404.
+ *
+ * A public marketing surface, so `viewer` defaults to nobody: the seat counter on a group session is
+ * public (§Part 1.4), the people filling those seats are not.
+ */
+export function findSchedulePage(
+	entityId: string,
+	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+	sim?: SchedulingSim,
+): SchedulePage | null {
 	const item = findItem(entityId);
 	if (!item) return null;
 	const seed = hash(item.id);
@@ -58,6 +80,7 @@ export function findSchedulePage(entityId: string): SchedulePage | null {
 				capacity: cap,
 				meta: item.type === "services" ? item.delivery : "Session",
 				location: "Online",
+				sources: sourcesFor(`${item.id}:cls:${w}:${wd}`),
 			});
 		}
 		const av = localSlot(addDaysLocal(base, 0, tz), 11 * 60, 45, tz);
@@ -76,6 +99,12 @@ export function findSchedulePage(entityId: string): SchedulePage | null {
 		? `${item.serviceType} · ${item.delivery}`
 		: item.summary.slice(0, 140);
 
+	const ordered = events.sort((a, b) => a.start - b.start);
+	// A class runs twice a week for the derived horizon; a seat is worth every occurrence still to
+	// come, counted from the series rather than assumed.
+	const upcomingSessions = ordered.filter((e) => e.kind === "session" && e.start >= NOW).length;
+	const host = { name: item.owner.name, avatar: item.owner.avatar, handle: item.owner.handle };
+
 	return {
 		scope: "schedule",
 		title: item.title,
@@ -84,7 +113,16 @@ export function findSchedulePage(entityId: string): SchedulePage | null {
 		ownerHandle: item.owner.handle,
 		viewerCanBook: true,
 		availability: { timezone: tz, rules: hostRules(), blackouts: [] },
-		events: events.sort((a, b) => a.start - b.start),
-		integrations: integrationsFor(seed),
+		events: ordered.map((event) =>
+			withCoordination(event, {
+				surfaceKey: `schedule:${item.id}`,
+				host,
+				viewer,
+				viewerHostsSurface: false,
+				timezone: tz,
+				remainingOccurrences: Math.max(1, upcomingSessions),
+				sim,
+			})
+		),
 	};
 }

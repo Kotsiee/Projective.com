@@ -1,0 +1,55 @@
+/*
+ * @projective/ui/calendar — the package's SINGLE reduced-motion block.
+ *
+ * One place, imported LAST, so every animated selector in the package is enumerated together and the
+ * override reliably out-cascades the rule it is overriding. A sheet that adds a transition adds its
+ * selector here rather than carrying a `@media` block of its own — two of them would drift, and the
+ * one that lost the cascade would be invisible until somebody with the preference set opened the
+ * calendar.
+ *
+ * WHAT IS NOT LISTED HERE, AND WHY THAT IS NOT AN OMISSION. Most of this engine's motion is not CSS
+ * at all: the zoom interpolation, the card hover expansion, the scrollbar's pill-to-ball morph and
+ * the month track's spring-back are all driven by `packages/ui/core/motion.ts`, whose
+ * `prefersJumpToFinal()` gate already checks this very media query — and `document.hidden` first,
+ * because a frozen animation clock strands a value just as thoroughly as a preference does. A JS
+ * integrator cannot read a media query through a stylesheet, so those motions are honoured there or
+ * not at all; listing their selectors here would be listing selectors that carry no transition.
+ */
+
+/* #region Reduced motion (jump-to-final; transforms/transitions only — theme crossfade stays global) */
+@media (prefers-reduced-motion: reduce) {
+	.cal__filterchip,
+	.cal-header__view,
+	.cal-mini__day,
+	.cal-event,
+	.cal-daycol__event,
+	.cal-month__daynum,
+	.cal-month__present,
+	.cal-bar,
+	.cal-bar__handle,
+	.cal-bar__handle::before,
+	.cal-tg__viewport[data-cursor],
+	.cal-pop,
+	.cal-pop__back,
+	.cal-pop__title--open,
+	.cal-pop__input,
+	.cal-pop__submit,
+	.cal-pop__expand,
+	.cal-pop__pane--forward,
+	.cal-pop__pane--back {
+		transition: none;
+	}
+
+	/*
+	 * The popover's ENTER is a spring on `transform`, driven from JS and already gated by
+	 * `prefersJumpToFinal()`; this closes the CSS half of the same motion, so a reader with the
+	 * preference set gets the panel at its final scale and opacity in the frame it mounts.
+	 */
+	.cal-pop,
+	.cal-pop__pane--forward,
+	.cal-pop__pane--back {
+		animation: none;
+	}
+}
+
+/* #endregion */

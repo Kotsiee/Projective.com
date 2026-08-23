@@ -1,0 +1,764 @@
+/*
+ * @projective/ui/calendar — the timed views' scaffolding: the Day/Week time grid, the canvas
+ * backdrop, and the PROBE.
+ *
+ * The whole `.cal-grid__swatch--*` set lives here — including the swatches whose values are drawn by
+ * `chrome.css`'s gauge and `event.css`'s cards — because the probe is one subtree with one renderer
+ * (`components/GridProbe.tsx`) and one reader (`hooks/useGridCanvas.ts`). Splitting its declarations
+ * across the sheets that happen to draw with them would put a swatch and the code that reads it in
+ * two different owners' hands, which is the drift the sheet split exists to prevent.
+ */
+
+/* #region Time grid (Day / Week) */
+.cal-tg {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+	inline-size: 100%;
+}
+
+.cal-tg__head {
+	display: grid;
+	grid-template-columns: var(--cal-gutter-w) 1fr;
+	border-block-end: var(--hairline);
+}
+
+.cal-tg__gutter-head {
+	inline-size: var(--cal-gutter-w);
+}
+
+.cal-tg__headcols {
+	display: grid;
+	grid-template-columns: var(--cal-cols);
+}
+
+.cal-tg__daycell {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-px);
+	padding-block: var(--space-2);
+	border-inline-start: var(--hairline);
+}
+
+.cal-tg__daydow {
+	font-size: 0.66rem;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cal-tg__daynum {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.9rem;
+	block-size: 1.9rem;
+	font-size: 1.05rem;
+	font-weight: 600;
+	color: var(--on-surface);
+	border-radius: var(--radius-full);
+}
+
+.cal-tg__daycell--today .cal-tg__daynum {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.cal-tg__allday {
+	display: grid;
+	grid-template-columns: var(--cal-gutter-w) 1fr;
+	border-block-end: var(--hairline);
+	min-block-size: 1.75rem;
+}
+
+.cal-tg__allday-label {
+	font-size: 0.62rem;
+	color: var(--text-secondary);
+	padding: var(--space-1);
+	text-align: end;
+}
+
+.cal-tg__allday-col {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	padding: var(--space-px);
+	border-inline-start: var(--hairline);
+}
+
+/*
+ * #region The pure-canvas viewport
+ *
+ * The Week grid's time area. It holds ONE `<canvas>` and nothing else — no scroll container, no day
+ * columns, no event cards, no now-line element, no scrollbar track. Everything that used to be an
+ * element in here is painted in one ordered pass (`core/scene-paint.ts`).
+ *
+ * `padding-inline-start` is doing two jobs at once, and that is why it is a padding rather than a
+ * `--cal-*` custom property: it reserves the hour scale's width so the canvas's own geometry lines up
+ * with the day-number header above (which is a grid on the same token), AND it is the only form in
+ * which that width can be MEASURED — `getComputedStyle` resolves a custom property to its authored
+ * token (`3.5rem`), never to a length, and a canvas needs the pixel.
+ *
+ * `--cal-viewport-basis` is a flex BASIS and deliberately not a `min-block-size`. A canvas has no
+ * content to grow to, so a host that does not cap the calendar's height would otherwise collapse the
+ * viewport to nothing — but a floor solves that by creating the opposite failure, since an explicit
+ * minimum overrides the automatic one and a region shorter than the floor can then never shrink to
+ * fit. It overflows a `.cal` that clips, and with no scroll container anywhere the clipped hours are
+ * unrecoverable. As a basis it is the size the viewport ASKS for: in an unbounded host that is the
+ * height it gets (the flex container sizes to it), and in a bounded one `min-block-size: 0` lets it
+ * shrink the whole way down — showing fewer hours, which is the honest answer to a short region.
+ *
+ * `touch-action: pinch-zoom` hands the browser exactly one gesture and keeps the other. There is no
+ * scroll container here for it to pan, so a one-finger drag has to be ours or the grid does not
+ * scroll on a phone at all (`useCanvasViewport.beginPan` takes it) — while leaving PINCH with the
+ * browser keeps page zoom working, which `touch-action: none` would have suppressed outright
+ * (WCAG 1.4.4).
+ */
+.cal-tg__viewport {
+	position: relative;
+	flex: 1 1 var(--cal-viewport-basis);
+	min-block-size: 0;
+	padding-inline-start: var(--cal-gutter-w);
+	overflow: hidden;
+	touch-action: pinch-zoom;
+	overscroll-behavior: contain;
+}
+
+/*
+ * The cursor is the ONE affordance a canvas can offer before a press — there are no elements in here
+ * to carry a `cursor` of their own — so the viewport wears what the hit test resolved.
+ */
+.cal-tg__viewport[data-cursor="cell"] {
+	cursor: cell;
+}
+
+.cal-tg__viewport[data-cursor="pointer"] {
+	cursor: pointer;
+}
+
+.cal-tg__viewport[data-cursor="grabbing"] {
+	cursor: grabbing;
+	user-select: none;
+}
+
+/*
+ * `inline-size`/`block-size` are stated rather than left to the insets: a canvas is a REPLACED
+ * element with an intrinsic 300×150 box, so an `auto` size between two insets resolves to 300px and
+ * over-constrains the equation instead of filling the box.
+ *
+ * It spans the gutter too — the hour scale is part of the same pass — so it is positioned against the
+ * viewport's PADDING box (`inset: 0` on an absolutely-positioned child resolves to the padding box),
+ * and the scene carries the gutter offset itself.
+ */
+.cal-tg__canvas {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	pointer-events: none;
+}
+
+/*
+ * THE ACCESSIBLE LAYER.
+ *
+ * A canvas is opaque to assistive technology and to the keyboard: once a card is pixels it has no
+ * role, no name and no focus. This is the parallel layer that carries all three — the same events, as
+ * real focusable controls with the same handlers — and it is a SIBLING of the viewport so the
+ * viewport itself stays DOM-free.
+ *
+ * Visually hidden rather than absent, because the drawing is already on screen; a sighted keyboard
+ * reader is shown their position by the focus ring the canvas paints for the focused card. The rules
+ * are `.ui-visually-hidden`'s, restated locally rather than referenced, because this package is
+ * copy-paste-portable and must not depend on a class from another sub-path's stylesheet.
+ */
+.cal-tg__a11y {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.cal-tg__a11ylist {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+/*
+ * The layer's controls. A `<button>` carries the UA's own font, padding and border, none of which
+ * this layer wants: it is 1px tall and clipped, so any intrinsic box the UA gives these would be
+ * laid out and thrown away — and the DEFAULT font would be the UA's, not the reader's, which is the
+ * one thing a screen reader's own text scaling still reads through.
+ *
+ * No focus rule, and that is deliberate rather than an omission: `clip-path` would crop any ring
+ * drawn here to nothing. The indicator for all three of these lives on the CANVAS instead — a ring
+ * around the focused card, around the pill, and around the whole viewport for the region itself.
+ */
+.cal-tg__a11yitem {
+	appearance: none;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	text-align: start;
+}
+
+/* #endregion */
+
+.cal-tg__scroll {
+	position: relative;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	touch-action: pan-y;
+	/*
+	 * Opt out of the global native-styled scrollbar (`styles/index.css`) for THIS container only — a
+	 * class selector (0,1,0) is what beats that rule's `:not(html):not(body)` (0,0,2), and the opt-out
+	 * is the documented pattern the other custom-scrollbar viewports use. `.cal-bar` replaces it.
+	 * A welcome side effect: with no reserved scrollbar gutter, the day-of-week header row (which lives
+	 * OUTSIDE this scroller) is no longer offset from its own columns by the bar's width.
+	 */
+	scrollbar-width: none;
+}
+
+.cal-tg__scroll::-webkit-scrollbar {
+	inline-size: 0;
+	block-size: 0;
+}
+
+/* Inset, because the scroller fills its region edge to edge and `.cal`'s `overflow: hidden` would
+   clip an outset ring away exactly where it matters. */
+.cal-tg__scroll:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset);
+}
+
+.cal-tg__scroll--panning {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.cal-tg__content {
+	position: relative;
+	block-size: var(--cal-content-h);
+	padding-inline-start: var(--cal-gutter-w);
+}
+
+.cal-tg__gutter {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--cal-gutter-w);
+}
+
+.cal-tg__hour {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--cal-top);
+	transform: translateY(-50%);
+	text-align: end;
+	padding-inline-end: var(--space-1);
+}
+
+/* On the type ramp, and on the SAME step as `.cal-grid__swatch--hour`: the Day timeline draws this
+   label as DOM and the Week grid draws the same label as pixels, so an off-ramp literal here would
+   render one calendar's hour scale at a different size from the other's. */
+.cal-tg__hour-label {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.cal-tg__cols {
+	position: relative;
+	display: grid;
+	grid-template-columns: var(--cal-cols);
+	block-size: 100%;
+}
+
+/*
+ * No border: the separator between two day columns is painted by the canvas backdrop
+ * (`.cal-grid`), together with the hour rules it has to line up with. A DOM border here would
+ * double the drawn one, and — with `box-sizing: border-box` on a `1fr` track — would also take its
+ * width out of the column's content box, so the first column's events would sit a pixel wider than
+ * every other column's.
+ *
+ * Still used by the Day TIMELINE, which remains a hybrid: its single column is a real element that
+ * hosts its DOM event cards. The Week grid no longer has columns at all — they are drawn.
+ */
+.cal-tg__col {
+	position: relative;
+	min-inline-size: 0;
+}
+
+.cal-tg__selection {
+	position: absolute;
+	inset-inline: 1% 2%;
+	inset-block-start: var(--cal-top);
+	block-size: var(--cal-h);
+	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+	border: 1px solid var(--primary);
+	border-radius: var(--radius-sm);
+	pointer-events: none;
+	z-index: 4;
+}
+
+.cal-tg__present {
+	position: absolute;
+	inset-block-end: var(--space-4);
+	inset-inline-start: 50%;
+	transform: translateX(-50%);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: 2rem;
+	padding-inline: var(--space-3);
+	background: var(--surface-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	box-shadow: var(--elevation-medium);
+	color: var(--primary);
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	z-index: var(--z-raised);
+}
+
+.cal-tg__present:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow), var(--elevation-medium);
+}
+
+.cal-tg__daymark {
+	position: absolute;
+	inset-inline-start: var(--space-2);
+	inset-block-start: var(--cal-top);
+	z-index: 2;
+	padding-inline: var(--space-1);
+	transform: translateY(2px);
+	/* Same step as `.cal-grid__swatch--marker`, for the same reason the hour label matches its own. */
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
+	color: var(--text-secondary);
+	background: color-mix(in srgb, var(--surface) 82%, transparent);
+	border-radius: var(--radius-xs);
+	pointer-events: none;
+}
+
+.cal-tg__daymark--today {
+	color: var(--primary);
+}
+
+/* #endregion */
+
+/*
+ * #region Grid backdrop (canvas)
+ *
+ * ONE canvas replaces the hour rules, the day-boundary rules, the day-column separators, the
+ * working-hours bands and the blacked-out-day hatch. Four of those five were an element per drawn
+ * thing, so the layer's node count tracked how much axis was on screen and how many days were in the
+ * block; the fifth was a border on every day column, which — with `box-sizing: border-box` — also
+ * took a pixel out of the track it was meant to divide.
+ *
+ * It is pinned over the viewport rather than living inside the scroller, and the paint routine
+ * subtracts the scroll offset itself, so its DOM cost is exactly one node at any scroll depth. It
+ * comes FIRST in `.cal-tg__viewport`, so — both being positioned with an automatic z-index — the
+ * scroller and everything in it (day columns, event cards, the now-line, the period markers) paints
+ * on top of it in document order, which is the same stack the DOM layers had.
+ *
+ * `inline-size` is stated rather than left to `inset-inline-end`: a canvas is a REPLACED element
+ * with an intrinsic 300×150 box, so an `auto` width between two insets resolves to 300px and
+ * over-constrains the equation instead of filling the box.
+ */
+.cal-grid {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: var(--cal-gutter-w);
+	inline-size: calc(100% - var(--cal-gutter-w));
+	block-size: 100%;
+	pointer-events: none;
+}
+
+/*
+ * The palette probe: the bridge between the token contract and a canvas, which cannot read a CSS
+ * custom property. Every colour and width the backdrop draws is authored HERE as an ordinary
+ * declaration against `var(--*)`, and `useGridCanvas` reads the engine's RESOLVED value back — so
+ * `color-mix()` works, the a11y overlays work, and no number ever moves into TypeScript.
+ *
+ * `transition: none` is load-bearing rather than tidy. The global theme crossfade transitions
+ * `color` and `border-color` on `*`, so a swatch read mid-crossfade would report the value the
+ * animation happens to be passing through — and in a hidden tab, where that animation is frozen, it
+ * would report the OLD theme's colour forever. Opting out means the read is always the final value.
+ */
+.cal-grid__probe {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	inline-size: 0;
+	block-size: 0;
+	overflow: hidden;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.cal-grid__swatch {
+	display: block;
+	transition: none;
+}
+
+/*
+ * The lattice. Both take `--cal-line` — the palette's own low-contrast separator — rather than the
+ * product's `--hairline`, because a grid line here is not a §B.4 separation device between two
+ * regions: it is a REFERENCE ruling that a hundred of them are drawn at once, and it has to stay
+ * quiet enough that a card sitting on it still reads as the foreground. The day boundary keeps its
+ * one step of extra weight through the border WIDTH rather than through a second colour.
+ */
+.cal-grid__swatch--rule {
+	border-block-start: 1px solid var(--cal-line);
+}
+
+.cal-grid__swatch--boundary {
+	border-block-start: 1px solid var(--cal-line);
+}
+
+/* The two region tints ride `color` — the one inherited paint property a swatch can carry without
+   also painting itself, which a `background-color` probe would. */
+.cal-grid__swatch--band {
+	color: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+.cal-grid__swatch--band-edge {
+	border-block-start: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+/* Stripe and pitch are measured PERPENDICULAR to the hatch, exactly as a repeating-linear-gradient
+   measures along its gradient line — the paint routine converts that to a diagonal step itself. */
+.cal-grid__swatch--blackout {
+	--cal-hatch-stripe: 6px;
+	--cal-hatch-pitch: 12px;
+	color: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+}
+
+/*
+ * The FULL-viewport swatches, rendered only where the whole grid is drawn (the Week grid) rather
+ * than only its lattice (the Day timeline).
+ *
+ * TYPE. Three of these carry a font, and that is what keeps canvas text inside the token contract:
+ * `getComputedStyle` resolves `font-size` to a PIXEL against the live root size and `font-family` to
+ * whatever `--font-sans` currently is, so the reader's own font scaling and the open-dyslexic overlay
+ * both reach the canvas. (`useGridCanvas` watches `data-font` for exactly that reason.) What does NOT
+ * survive the move to pixels is find-in-page and text selection — see the roster note.
+ */
+.cal-grid__swatch--hour {
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+.cal-grid__swatch--title {
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.cal-grid__swatch--meta {
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+/*
+ * A MASKED card's title, one step quieter on BOTH axes — the same pair
+ * `.cal-event--masked .cal-event__title` carries. The privacy treatment must not ride the fill
+ * alone; "one step quieter" is a token decision, so it is declared here rather than derived from
+ * `--title` in TypeScript.
+ */
+.cal-grid__swatch--masked {
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface-variant);
+}
+
+/*
+ * The kind mark's drawn box (`inline-size`) and its RENDERED stroke weight (`block-size`), both
+ * straight off the §B.7 icon ramp. The canvas divides the weight by the path's own scale, which is
+ * what `vector-effect: non-scaling-stroke` does for the identical mark on a DOM card.
+ *
+ * The weight rides a SIZE rather than a border width, and that is not arbitrary: a computed
+ * `border-width` is snapped to whole device pixels, so `--icon-stroke`'s 1.5 came back as 1 and the
+ * canvas mark would have been drawn a third lighter than every other glyph on the page. `inline-size`
+ * and `block-size` resolve exactly. `--icon-stroke` is also UNITLESS, because SVG's own
+ * `stroke-width` takes a number, so it has to be given a unit here at all.
+ */
+.cal-grid__swatch--glyph {
+	inline-size: var(--cal-kind-size);
+	block-size: calc(var(--cal-kind-stroke) * 1px);
+}
+
+/* The period marker: its own type, plus the wash it sits on so it stays legible over a day rule. */
+.cal-grid__swatch--marker {
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
+	color: var(--text-secondary);
+	background-color: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+/*
+ * An event card's corner radius and the cancelled state's alpha, both read off real declarations
+ * rather than named in TypeScript. `--cal-cancelled-alpha` is the SAME custom property
+ * `.cal-event--cancelled` reads, so the DOM card and the canvas cannot fade by different amounts.
+ *
+ * The radius stepped from `--radius-sm` (6px, the old "chip clipped from a spreadsheet" read) to
+ * `--radius-lg` (12px) in the 2026-08-20 pass — a "pronounced, playful" roundedness square in the
+ * 12–16px range the redesign asks for, and the step that makes sense once the leading bar is gone: a
+ * tight radius on a rectangle with a straight coloured edge reads as structure, the same radius on a
+ * SOLID rounded fill reads as an object.
+ */
+.cal-grid__swatch--card {
+	border-radius: var(--radius-lg);
+	opacity: var(--cal-cancelled-alpha);
+	/* The ring a list-hovered card wears, drawn INSIDE its own edge — see `paintHighlightRing`. It
+	   rides `outline-width` because the card swatch's border and background are already spoken for,
+	   and an outline on a 0x0 clipped probe paints nothing. */
+	outline: var(--cal-focus-edge-w) solid transparent;
+}
+
+/*
+ * The current-time rule: its thickness on the border, and the DIAMETER of the dot that makes it
+ * findable on `inline-size` — matching `.cal-daycol__now-dot`, rather than a multiple of the rule's
+ * own weight that would drift from it the moment either token moved.
+ */
+.cal-grid__swatch--now {
+	inline-size: var(--cal-now-dot);
+	border-block-start: var(--cal-now-w) solid var(--cal-now);
+	/* How faint the lead-in run between the gutter dot and a non-adjacent day column is drawn. */
+	opacity: var(--cal-now-lead-alpha);
+}
+
+/*
+ * The drag preview AND the DRAFT block a quick-create leaves behind. The two margins are its inline
+ * insets INSIDE a column, as real lengths: they were a percentage of the column, which resolves to
+ * sub-pixel on a narrow one and to six pixels on a wide one — an inset that changes with the zoom is
+ * not one design at two zooms.
+ *
+ * `border-block-start` is the stroke colour and weight; the DASH PATTERN rides `column-rule` and
+ * `outline-width` — two more values this element can carry without painting — because a canvas takes
+ * a dash as a pair of numbers and `border-style: dashed` gives back only the word. A dashed stroke is
+ * what says "provisional" without spending a colour the palette has already assigned four meanings
+ * to. `opacity` is the draft's own subtlety, kept separate from the stroke so the two can be tuned
+ * apart.
+ */
+.cal-grid__swatch--selection {
+	margin-inline: 2px 3px;
+	background-color: color-mix(in srgb, var(--cal-ev-confirmed) var(--tint-strong), transparent);
+	border-block-start: 1px solid var(--cal-ev-confirmed);
+	column-rule: var(--cal-draft-dash) solid transparent;
+	outline: var(--cal-draft-gap) solid transparent;
+	opacity: var(--cal-draft-alpha);
+	/* How deep each of the draft's two resize grab bands is. A TARGET, never a drawn edge — the hit
+	   test caps it at a third of the draft's height so a short draft still has a middle to move by. */
+	block-size: var(--cal-draft-grab);
+}
+
+/*
+ * The overlay depth gauge. `inline-size` is the handle's DRAWN width and `margin-inline-end` its
+ * inset from the viewport edge — both real lengths, so the paint routine and the hit test resolve one
+ * number instead of each carrying its own copy. `outline-color` is the grabbed/hovered fill.
+ */
+.cal-grid__swatch--bar {
+	inline-size: 0.625rem;
+	margin-inline-end: var(--space-1);
+	border-block-start: 1px solid color-mix(in srgb, var(--outline) 45%, transparent);
+	border-radius: var(--radius-full);
+	background-color: color-mix(in srgb, var(--outline) 32%, transparent);
+	outline-color: color-mix(in srgb, var(--outline) 55%, transparent);
+}
+
+/*
+ * The gauge's POINTER TARGET (WCAG 2.2 SC 2.5.8) — 10px is the depth mark the design asks for, 24px
+ * is the floor a finger needs, and the hit test widens the target rather than the drawing.
+ *
+ * It is a swatch of its OWN and not a `min-inline-size` on the one above, which is where this first
+ * landed: a minimum on the same element wins over its `inline-size`, so the measured "drawn width"
+ * came back as 24px and the gauge would have been PAINTED at the target size — letting an
+ * accessibility floor redraw the design, which is the one thing the pair exists to avoid.
+ */
+.cal-grid__swatch--bar-hit {
+	inline-size: 1.5rem;
+}
+
+/*
+ * The return-to-present pill. Its BOX is declared here rather than measured from its own label,
+ * because the hit test has to be a pure function of the scene: a rect derived from `measureText`
+ * would only exist inside a draw, and the target would then depend on a frame having run.
+ */
+.cal-grid__swatch--pill {
+	inline-size: 5rem;
+	block-size: 2rem;
+	margin-block-end: var(--space-4);
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	color: var(--primary);
+	background-color: var(--surface-1);
+	border-block-start: 1px solid var(--border-subtle);
+	/* The HOVERED ring's weight — a canvas control has no `:hover`, so the ring thickens instead. */
+	outline: 2px solid transparent;
+}
+
+/*
+ * The focus indicator drawn for whatever the accessible layer currently has focus on — a card, the
+ * return-to-present pill, or the scroll region itself.
+ *
+ * TWO tones, because one cannot do the job here by computation rather than by opinion: the ring abuts
+ * an accent-tinted card fill on one side and the grid on the other, and `theme-engine.ts` documents
+ * why no single value clears 3:1 against both across the generated palette. `--focus-ring` is the ink
+ * (against the page) and `--focus-ring-halo` the halo (against the control) — exactly the pair
+ * `--focus-ring-shadow` composes for every DOM control. A canvas ring cannot be corrected later by a
+ * cascade, so it has to be right here.
+ */
+.cal-grid__swatch--focus {
+	outline: 2px solid var(--focus-ring);
+	border-block-start: 2px solid var(--focus-ring-halo);
+}
+
+.cal-grid__swatch--tooltip {
+	background-color: var(--surface-1);
+	border-block-start: 1px solid var(--border-subtle);
+}
+
+/*
+ * One card paint per accent token on screen. FIVE properties on ONE element, because an accent needs
+ * five values and the probe already costs a node per value: `color` is the accent itself (now used
+ * for the stack's shadow silhouettes and the bubble-mode pip, the leading bar having been retired),
+ * `background-color` the resting fill, the block-start border colour the hovered fill, `outline-color`
+ * the masked one, and `text-decoration-color` the verified-contrast ink drawn ON the resting/hovered
+ * fill. `--cal-accent`/`--cal-accent-on` are written inline by `GridProbe` as token REFERENCES — every
+ * mix below is resolved by the engine, exactly as it is for a DOM card.
+ *
+ * 2026-08-20 palette pass: `background-color` is now the accent at FULL strength (a rich, playful
+ * solid) rather than a 16% wash — which is what makes `--cal-accent-on` load-bearing rather than
+ * decorative: `--on-surface` alone cannot be trusted to clear contrast against an arbitrary solid
+ * accent the way it could against a pastel tint of it.
+ */
+.cal-grid__swatch--accent {
+	color: var(--cal-accent);
+	background-color: var(--cal-accent);
+	/* The hovered fill: one step DEEPER, not lighter — mixing toward black is the same technique
+	   `--elevation-*`'s shadows already use (`styles/index.css`), so a filled card gains the tactile
+	   "pressed a little further in" read rather than washing out. */
+	border-block-start: 1px solid color-mix(in srgb, var(--cal-accent) 88%, black);
+	/* Masked stays a QUIET wash on purpose (§Part 1.4 — a masked block is calm, not attention-grabbing;
+	   see `paintCard`'s `ink` resolution, which keeps masked text on the neutral `--on-surface-variant`
+	   pair rather than `--cal-accent-on`). */
+	outline-color: color-mix(in srgb, var(--cal-accent) var(--tint-strong), var(--surface));
+	text-decoration-color: var(--cal-accent-on);
+	/*
+	 * The optional EDGE. Its COLOUR rides `column-rule-color` — a colour property this element can
+	 * declare without painting, since a `<span>` has no columns to rule — and `column-rule-style:
+	 * solid` is load-bearing beside it, because a rule whose style is `none` resolves to nothing.
+	 *
+	 * Its WIDTH rides `column-gap`, and that is not interchangeable with `column-rule-width`. A
+	 * computed border-like width is SNAPPED TO WHOLE DEVICE PIXELS, so the design's `1.5px` was read
+	 * back as `1px` and the canvas stroked a third thinner than the DOM card beside it — the same trap
+	 * `--cal-hover-lift-scale` and `--cal-kind-stroke` already document, in its third disguise. A gap
+	 * is a plain length and resolves exactly.
+	 */
+	column-rule: 1px solid var(--cal-accent-edge);
+	column-gap: var(--cal-accent-edge-w);
+}
+
+/*
+ * The avatar/badge circle's diameter + its text style — one swatch serving both the face stack and
+ * the provider stack (§Part 2), since a face and a provider dot are the same shape at the same size.
+ */
+.cal-grid__swatch--avatar {
+	inline-size: 1.25rem;
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-bold);
+	color: var(--on-surface);
+}
+
+/*
+ * The grabbed gauge's BALL (§Part 4's lever). `inline-size` is the diameter and `background-color`
+ * the fill — the same `--cal-bar-fill-strong` mix `.cal-bar__handle::before` paints its own ball
+ * with, restated here because a swatch cannot inherit a custom property declared on `.cal-bar`. The
+ * DOM handle and the canvas handle are one control in two renderings, so they resolve one size and
+ * one colour or they are two controls.
+ */
+.cal-grid__swatch--ball {
+	inline-size: var(--cal-ball-size);
+	background-color: color-mix(in srgb, var(--outline) 55%, transparent);
+}
+
+/*
+ * The hovered card's LIFT — the file's only shadow, and the one separation device the hover state is
+ * allowed to add (§B.9.3).
+ *
+ * A canvas takes a shadow as three separate numbers, and `box-shadow` is one value that cannot be
+ * decomposed by the cascade, so the three components of `--elevation-medium` are restated here:
+ * `color` its ink, `block-size` its blur radius, `border-block-start-width` its y offset. They ride
+ * `var(--shadow-intensity)` exactly as the token does, so the contrast overlay that flattens shadows
+ * across the product flattens this one too rather than leaving the canvas the only surface still
+ * casting.
+ *
+ * `inline-size` carries the hover SCALE, a unitless ratio, as a length — authored `* 100px` and
+ * divided by 100 on the read. A ratio cannot ride a `border-width`, which snaps to whole device
+ * pixels; that is the same trap the kind stroke above documents, and 1.02 would come back as 1.
+ */
+.cal-grid__swatch--lift {
+	color: rgba(0, 0, 0, calc(0.1 * var(--shadow-intensity))); /* = `--elevation-medium`'s ink */
+	block-size: 12px; /* = `--elevation-medium`'s blur */
+	border-block-start: 4px solid transparent; /* = `--elevation-medium`'s y offset */
+	inline-size: calc(var(--cal-hover-lift-scale) * 100px);
+}
+
+/*
+ * The instant (point-in-time) marker: a rule of `block-size` thickness carrying a chip of
+ * `inline-size`, in `color`, with `border-start-start-radius` as the chip's corner.
+ *
+ * An instant has no duration, so it has no height that could encode one — every number here is a
+ * fixed mark rather than a measurement, which is exactly why they are declared together and read
+ * together. Drawing an instant as a card would assert a span the event does not have.
+ */
+.cal-grid__swatch--pin {
+	block-size: var(--cal-pin-thickness);
+	inline-size: var(--cal-pin-chip-w);
+	/* The neutral fallback ink. A pin drawn on an accented card takes that accent's own verified
+	   `onAccent`, resolved by the accent swatch below — this is what a pin outside one uses. */
+	color: var(--on-surface);
+	border-start-start-radius: var(--radius-full);
+}
+
+/*
+ * The `+N` chip's BOX — the target that unfolds an overlap cluster.
+ *
+ * Declared rather than measured for the same reason the pill's is: a rect derived from `measureText`
+ * exists only inside a draw, so the click target would depend on a frame having run. The two lengths
+ * are the ones `.cal-daycol__stackbadge` already draws with, so the Day timeline's chip and the Week
+ * canvas's chip are the same coin. The chip's PADDING is a plain geometry constant (`CARD.badgePad`
+ * in `core/scene-paint.ts`) — it is spacing, not a token value, and §E.15 leaves those in TypeScript.
+ */
+.cal-grid__swatch--badge {
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
+}
+
+/* #endregion */

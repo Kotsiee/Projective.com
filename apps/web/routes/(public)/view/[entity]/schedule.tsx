@@ -3,6 +3,7 @@ import { EmptyState } from "@projective/ui/utils";
 import { Icon } from "@projective/ui/icons";
 import { define } from "@web/utils/state.ts";
 import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts";
+import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.tsx";
 
@@ -15,7 +16,7 @@ import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.t
  */
 export const handler = define.handlers({
 	GET(ctx) {
-		const { page: schedule } = resolveSchedulePage(ctx.params.entity);
+		const { page: schedule } = resolveSchedulePage(ctx.params.entity, viewerFromState(ctx.state));
 		ctx.state.title = schedule
 			? `${schedule.title} · Schedule · Projective`
 			: "Schedule · Projective";

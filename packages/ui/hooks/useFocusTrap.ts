@@ -6,6 +6,7 @@
  */
 import { useEffect } from "preact/hooks";
 import type { RefObject } from "preact";
+import { containerOwnsNode } from "./overlay-registry.ts";
 
 const FOCUSABLE = [
 	"a[href]",
@@ -139,6 +140,17 @@ export function useFocusTrap(opts: FocusTrapOptions): void {
 			const activeEl = document.activeElement;
 			// Focus can legitimately sit outside the container — a background click lands there, and the
 			// browser's own chrome hands it back at the document root. Both directions pull it home.
+			//
+			// But a panel this subtree OPENED is not an escape. Every anchored panel in the package is
+			// portalled to `document.body`, so a Select, DatePicker or DateTime picker raised from inside
+			// a trapped dialog is that dialog's DOM SIBLING: `contains()` calls focus landing in the
+			// overlay's own child an escape and yanks it back, which makes every control in that panel
+			// unreachable by keyboard. Ownership (`containerOwnsNode`) is the same relation outside-click
+			// detection uses, and it answers this correctly — the panel's chain leads to a trigger that
+			// is inside the container. While focus is genuinely in a descendant panel the trap stands
+			// aside and lets that panel manage its own.
+			const owned = containerOwnsNode(container, activeEl);
+			if (owned) return;
 			const outside = !container.contains(activeEl);
 			if (e.shiftKey && (activeEl === first || outside)) {
 				e.preventDefault();

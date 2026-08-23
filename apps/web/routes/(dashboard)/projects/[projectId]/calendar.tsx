@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { resolveCalendarPage } from "@web/features/calendar/core/calendar-ssr.ts";
+import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
 import ProjectCalendar from "@web/features/calendar/islands/ProjectCalendar.island.tsx";
 
 /**
@@ -12,6 +13,6 @@ import ProjectCalendar from "@web/features/calendar/islands/ProjectCalendar.isla
  */
 export default define.page(function ProjectCalendarPage(ctx) {
 	const { projectId } = ctx.params;
-	const { page } = resolveCalendarPage(projectId);
+	const { page } = resolveCalendarPage(projectId, null, viewerFromState(ctx.state));
 	return <ProjectCalendar scope="project" projectId={projectId} initial={page} />;
 });

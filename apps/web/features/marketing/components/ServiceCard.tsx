@@ -13,9 +13,9 @@ import { type ServiceShowcase } from "../core/landing-data.ts";
  * one place. The former `.lp-service` rules were a fork that had drifted behind on reduced-motion,
  * focus treatment, and chip legibility.
  *
- * The bands are the family's: media (16:10) → eyebrow (category) → title → byline → foot. Marketing's
- * fixtures carry no `serviceType`, so the media takes no engagement-type chip — an optional slot in the
- * contract, omitted rather than repurposed to mean something else.
+ * The bands are the family's: media (16:10) → creator row → title → classification row → foot.
+ * Marketing's fixtures carry no `serviceType`, so the classification chip falls back to the category
+ * and the turnaround takes the row's right-aligned secondary slot.
  *
  * The whole card is one route action via the stretched `.ex-card__link`, and the owner's avatar and
  * `@handle` stay independently clickable above it. Zero client JS; hydration lives in the parent
@@ -37,14 +37,15 @@ export function ServiceCard({ service }: { service: ServiceShowcase }): JSX.Elem
 				<img src={service.thumb} alt="" loading="lazy" decoding="async" />
 			</div>
 			<div class="ex-card__body">
-				<span class="ex-eyebrow">{service.category}</span>
+				<OwnerBadge owner={ownerForHandle(service.providerHandle)} variant="creator" />
 				<h3 class="ex-card__title">{service.title}</h3>
-				<div class="ex-card__byline">
-					<OwnerBadge owner={ownerForHandle(service.providerHandle)} variant="mini" />
+				<div class="ex-card__kindrow">
+					<span class="ex-kind">{service.category}</span>
+					<span class="ex-card__aside">{service.delivery}</span>
 				</div>
 				<div class="ex-card__foot">
-					<span class="ex-price ex-price--lg">{service.price}</span>
-					<span class="ex-muted">{service.delivery}</span>
+					<span />
+					<span class="ex-pricebadge">{service.price}</span>
 				</div>
 			</div>
 		</article>

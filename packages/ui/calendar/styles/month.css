@@ -1,0 +1,302 @@
+/*
+ * @projective/ui/calendar — the Month grid.
+ */
+
+/* #region Month grid */
+.cal-month {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+	inline-size: 100%;
+}
+
+.cal-month__weekdays {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	border-block-end: var(--hairline);
+}
+
+.cal-month__weekday {
+	text-align: center;
+	font-size: 0.68rem;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	padding-block: var(--space-2);
+}
+
+/*
+ * The frame. `overflow: hidden` is the enforcement of the view's one structural promise — a whole
+ * month, never a partial one — and it is also what turns the three-page track into a window: the
+ * neighbour months exist and are laid out, but only the width of this box is ever showing. The chip
+ * cap is measured against a cell inside it (MonthGrid.tsx), not fixed, so what is hidden vertically is
+ * always announced by a "+N more" rather than silently clipped.
+ *
+ * A plain POSITIONING container: the day matrix belongs to `.cal-month__page`, two levels further in,
+ * behind the track that carries the offset. `gridRef`, the capacity `ResizeObserver`, the wheel
+ * listener and the pointer handlers all sit on THIS element precisely because it is the one box in
+ * the subtree that no gesture and no step can ever re-mount.
+ *
+ * `touch-action: pinch-zoom` rather than `none`: the grid never scrolls, so surrendering the pan
+ * gesture to the browser would only ever scroll something else out from under a fixed page — but
+ * refusing pinch as well would take a zoom away from a reader who needs it, and a zoom is not a pan.
+ */
+.cal-month__grid {
+	position: relative;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow: hidden;
+	touch-action: pinch-zoom;
+}
+
+/* Inset, because the grid fills its region edge to edge — an outset ring would be clipped away. */
+.cal-month__grid:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset);
+}
+
+.cal-month__grid[data-dragging="true"] {
+	cursor: grabbing;
+	/* A drag that begins on a day number would otherwise leave a selection highlight trailing behind
+	   the page it is turning. */
+	user-select: none;
+}
+
+/*
+ * The three-page track.
+ *
+ * Three equal columns spanning `-100%` to `+200%` of the frame, so the middle one covers the frame
+ * exactly and each neighbour sits a full page outside it. The pages are PLACED by
+ * `grid-column` below rather than by document order, which is what lets the track render one page
+ * (reduced motion, a hidden tab, or a consumer with no `onPage`) and still have it land centred.
+ *
+ * `inset-inline-start` and the grid's own column order both follow the writing direction, so in RTL
+ * the previous month is laid out to the right — correct without a second rule. The TRANSFORM cannot
+ * follow it, because `translate` takes a physical offset and CSS has no logical equivalent; the sign
+ * is resolved in JS instead (`inlineSign` in MonthGrid.tsx), the same two-step logical→physical
+ * resolution `scene-paint.ts`'s `mapX` performs for the canvas twin.
+ *
+ * `--cal-month-dx` is written directly by a spring, never transitioned: a CSS transition on this
+ * would be a second animation clock, and one frozen in a background tab would strand the track
+ * mid-page. Motion here decorates and encodes nothing — the month on screen is already correct at
+ * every offset, including this one.
+ */
+.cal-month__track {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: -100%;
+	inline-size: 300%;
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	transform: translate3d(var(--cal-month-dx, 0px), 0, 0);
+}
+
+.cal-month__page {
+	grid-row: 1;
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	grid-auto-rows: minmax(0, 1fr);
+	min-inline-size: 0;
+	min-block-size: 0;
+}
+
+.cal-month__page[data-page="prev"] {
+	grid-column: 1;
+}
+
+.cal-month__page[data-page="current"] {
+	grid-column: 2;
+}
+
+.cal-month__page[data-page="next"] {
+	grid-column: 3;
+}
+
+/*
+ * A neighbour page is a preview of where the gesture is heading, not a page you can operate. It
+ * renders no controls at all (MonthGrid.tsx gates them on `interactive`), so this rule is belt to
+ * that braces: nothing inside it can take a pointer, which also means a drag crossing a neighbour
+ * cannot be captured by whatever it passes over.
+ */
+.cal-month__page[data-preview] {
+	pointer-events: none;
+}
+
+.cal-month__cell {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-block-size: 0;
+	padding: 3px;
+	overflow: hidden;
+	border-inline-start: var(--hairline);
+	border-block-start: var(--hairline);
+}
+
+.cal-month__cell:nth-child(7n + 1) {
+	border-inline-start: none;
+}
+
+.cal-month__cell--outside {
+	background: color-mix(in srgb, var(--surface-1) 45%, transparent);
+}
+
+.cal-month__cell--outside .cal-month__daynum {
+	color: var(--text-secondary);
+	opacity: 0.6;
+}
+
+.cal-month__cell--blackout {
+	background: color-mix(in srgb, var(--warning) var(--tint-soft), transparent);
+}
+
+.cal-month__cellhead {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.cal-month__daynum {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.5rem;
+	block-size: 1.5rem;
+	padding-inline: 0.25rem;
+	font-size: 0.78rem;
+	border: none;
+	background: transparent;
+	color: var(--on-surface);
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+/* A preview page's day number is a `<span>`, not a button — it must not claim an affordance the
+   preview does not have. */
+.cal-month__page[data-preview] .cal-month__daynum {
+	cursor: default;
+}
+
+.cal-month__daynum:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.cal-month__daynum:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cal-month__cell--today .cal-month__daynum {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+/*
+ * FILLS the cell's remaining height rather than being sized by the chips inside it. Content-sizing was
+ * a feedback loop against the measured chip cap (MonthGrid.tsx): the cap is derived from this box's
+ * height, so a box that shrinks to fit one chip reports room for one chip, forever. Filling makes the
+ * measurement a property of the CELL, which the grid row fixes, so it is stable whatever is in it.
+ */
+.cal-month__events {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	gap: var(--space-px);
+	overflow: hidden;
+}
+
+/*
+ * The chip's own row. It exists so the month can say something about a chip that the chip cannot say
+ * about itself — `EventBlock` is shared with the Day timeline and takes no class — and it restores the
+ * list/listitem pairing that a bare `<button>` child of `role="list"` had broken.
+ */
+.cal-month__chip {
+	display: flex;
+	flex: none;
+	min-inline-size: 0;
+}
+
+/*
+ * A month chip is sized by its own text. `.cal-event`'s `block-size: 100%` exists for the time grid,
+ * where an absolutely-positioned wrapper supplies the duration height; in a month cell there is no such
+ * wrapper, so once this lane fills the cell a lone chip would stretch to the full cell height.
+ */
+.cal-month__events .cal-event {
+	block-size: auto;
+	flex: none;
+}
+
+/*
+ * AN INSTANT IS A MOMENT, NOT A SPAN. A zero-duration event — a deadline — has no extent, and drawing
+ * it as a bar reaching across the day says it occupies one. It keeps every identity channel the card
+ * family settled on (fill, glyph, spoken label) and changes only its GEOMETRY: it shrinks to its own
+ * text and rounds to a full pill, so it reads as a marker pinned in the day rather than a block filling
+ * part of it. `max-inline-size` keeps a long title from escaping the cell it belongs to.
+ */
+.cal-month__chip--instant .cal-event {
+	inline-size: auto;
+	max-inline-size: 100%;
+	border-radius: var(--radius-full);
+	padding-inline: var(--space-2);
+}
+
+.cal-month__more {
+	font-size: 0.66rem;
+	color: var(--text-secondary);
+	background: none;
+	border: none;
+	text-align: start;
+	cursor: pointer;
+	padding: 0 var(--space-px);
+}
+
+button.cal-month__more:hover {
+	color: var(--on-surface);
+}
+
+/*
+ * Return to present.
+ *
+ * Deliberately the same object as the Day/Week timeline's `.cal-tg__present` — same shape, same
+ * placement, same "Now" — because it answers the same question and a reader should not have to learn
+ * it twice. What differs is only what it DOES: those views scroll a continuous axis back to the
+ * current time, and a month grid, having no scroll offset and every hour of the focused month already
+ * on screen, has only the month itself left to return.
+ *
+ * A sibling of the track rather than a child: riding the offset would carry the one control that says
+ * "come back" off-screen along with everything else.
+ */
+.cal-month__present {
+	position: absolute;
+	inset-block-end: var(--space-4);
+	/* Centred with `inset-inline: 0` + `margin-inline: auto` rather than the 50%-and-translate pair
+	   `.cal-tg__present` uses: that pair resolves `inset-inline-start` to the RIGHT edge under RTL and
+	   then pulls the pill LEFT by its own width, landing it a full width off centre. This is the same
+	   placement, stated so it holds in both directions. */
+	inset-inline: 0;
+	margin-inline: auto;
+	inline-size: fit-content;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: 2rem;
+	padding-inline: var(--space-3);
+	background: var(--surface-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	box-shadow: var(--elevation-medium);
+	color: var(--primary);
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	z-index: var(--z-raised);
+}
+
+.cal-month__present:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow), var(--elevation-medium);
+}
+
+/* #endregion */

@@ -9,14 +9,14 @@ import { type ProductShowcase } from "../core/landing-data.ts";
  * Renders the CANONICAL discovery card contract (`.ex-card--product`, defined once in
  * `features/explore/styles/explore.css` and `@import`ed by `landing.css`) rather than a parallel
  * `.lp-product` block, so the landing masonry and the search masonry are the same object. Media-forward:
- * the image's own intrinsic ratio drives the tile height, which is what makes the masonry interlock,
- * and the price rides the media as an overlay chip instead of taking a foot.
+ * the image's own intrinsic ratio drives the tile height within a bounded frame, which is what makes
+ * the masonry interlock.
  *
- * Two fixes come with the merge. The price chip was a 60%-translucent veil over an arbitrary product
- * photograph — measured 3.75:1 against a light image in dark theme, below WCAG AA — and now takes the
- * family's solid `--ex-chip-on-media` label surface. And the card carried a `--lp-span` custom property
- * for its supposed masonry weight that no stylesheet has ever read; the staggering has always come from
- * the intrinsic image ratio, so the dead plumbing is gone rather than left as a false claim.
+ * The price moved off the image and into the foot with the rest of the family: it was the only price
+ * whose legibility depended on the photograph a seller uploaded (the overlay chip measured 3.75:1
+ * against a light image in dark theme). The card also carried a `--lp-span` custom property for its
+ * supposed masonry weight that no stylesheet has ever read; the staggering has always come from the
+ * intrinsic image ratio, so the dead plumbing is gone rather than left as a false claim.
  *
  * Zero client JS.
  */
@@ -28,17 +28,18 @@ export function ProductCard({ product }: { product: ProductShowcase }): JSX.Elem
 				href={`/view/${product.slug}?type=products`}
 				aria-label={`${product.title} by ${product.maker} — ${product.price}`}
 			/>
-			<div class="ex-media">
+			<div class="ex-media ex-media--free">
 				<img src={product.thumb} alt="" loading="lazy" decoding="async" />
-				<span class="ex-flags">
-					<span class="ex-media__price">{product.price}</span>
-				</span>
 			</div>
 			<div class="ex-card__body">
-				<span class="ex-eyebrow">{product.category}</span>
+				<OwnerBadge owner={ownerForHandle(product.makerHandle)} variant="creator" />
 				<h3 class="ex-card__title ex-card__title--sm">{product.title}</h3>
-				<div class="ex-card__byline">
-					<OwnerBadge owner={ownerForHandle(product.makerHandle)} variant="mini" />
+				<div class="ex-card__kindrow">
+					<span class="ex-kind">{product.category}</span>
+				</div>
+				<div class="ex-card__foot">
+					<span />
+					<span class="ex-pricebadge">{product.price}</span>
 				</div>
 			</div>
 		</article>

@@ -12,6 +12,9 @@ import {
 	DEV_CONNECTION_STATES,
 	DEV_DEDUP_STATES,
 	DEV_DISPLAY_CURRENCIES,
+	DEV_EVENT_RESCHEDULES,
+	DEV_EVENT_RSVPS,
+	DEV_EVENT_SEATS,
 	DEV_FULFILMENT_MIXES,
 	DEV_INVOICING_MODES,
 	DEV_LAYOUT_DIRECTIONS,
@@ -687,6 +690,42 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled ||
 							(o.fulfilmentMix !== "mixed" && o.fulfilmentMix !== "sessions")}
 						onChange={(conferencing) => patchDevContext({ conferencing })}
+					/>
+				</Field>
+
+				{
+					/* Calendar & Events — the Event Modal's four gates. The 1-on-1 ⁄ group axis is NOT
+				    repeated here: "Service type" above already discriminates the three engagement
+				    archetypes, and a second near-duplicate control would only make it ambiguous which
+				    one wins. */
+				}
+				<Field label="Event seat" hint="host / attendee / stranger">
+					<Segment
+						name="Event seat"
+						options={DEV_EVENT_SEATS}
+						value={o.eventSeat}
+						disabled={!o.enabled}
+						onChange={(eventSeat) => patchDevContext({ eventSeat })}
+					/>
+				</Field>
+
+				<Field label="Your RSVP" hint="the acting seat's answer">
+					<Segment
+						name="Your RSVP"
+						options={DEV_EVENT_RSVPS}
+						value={o.eventRsvp}
+						disabled={!o.enabled || o.eventSeat === "non_party"}
+						onChange={(eventRsvp) => patchDevContext({ eventRsvp })}
+					/>
+				</Field>
+
+				<Field label="Reschedule" hint="negotiation state">
+					<Segment
+						name="Reschedule"
+						options={DEV_EVENT_RESCHEDULES}
+						value={o.eventReschedule}
+						disabled={!o.enabled || o.eventSeat === "non_party"}
+						onChange={(eventReschedule) => patchDevContext({ eventReschedule })}
 					/>
 				</Field>
 

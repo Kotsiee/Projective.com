@@ -121,13 +121,25 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const { uid, mode, stages, canEdit, isClient, isFreelancer, onClose } = props;
 	const creating = mode === "create";
 
-	const stack = useOverlayStack({ active: true, lockScroll: true });
+	// `layer: "modal"` is not cosmetic — the default `"popover"` band (1100) put the ticket modal
+	// BELOW any sibling that correctly declared itself a modal (1300).
+	const stack = useOverlayStack({ active: true, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: true, containerRef: panelRef });
 	// A ticket being composed can be dismissed, but not by a stray click on the backdrop — there is
 	// unsaved work in it by definition. Escape and Cancel still close it.
-	useDismiss({ open: true, onDismiss: onClose, panelRef, closeOnOutside: !creating });
+	//
+	// `enabled: stack.isTop` is what stops this modal from acting on an event that belongs to an
+	// overlay above it; containment for its OWN portalled children (every Select, DatePicker and
+	// Popover in the tabs) is handled inside `useDismiss` by the overlay registry.
+	useDismiss({
+		open: true,
+		enabled: stack.isTop,
+		onDismiss: onClose,
+		panelRef,
+		closeOnOutside: !creating,
+	});
 
 	// The title is the required field and the first thing to write, so on a new ticket the caret is
 	// already in it. The focus trap parks focus on the panel first, so this runs after it.

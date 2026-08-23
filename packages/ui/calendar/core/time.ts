@@ -63,6 +63,30 @@ export function localTimezone(): string {
 	}
 }
 
+/**
+ * The largest instant `Date` can represent: ±100,000,000 days from the epoch (ECMA-262 §21.4.1.1).
+ * One millisecond past it and every `Intl` formatter throws `RangeError: Invalid time value`.
+ */
+const MAX_INSTANT = 8.64e15;
+
+/**
+ * Hold an instant inside the range `Intl` can format, and turn a non-finite one into the epoch.
+ *
+ * NOT defensive clutter: this engine's day arithmetic multiplies a virtualized day INDEX by a day,
+ * and an index derived — however indirectly — from a division by a caller-owned zoom can land outside
+ * the representable range. Where it does, `formatToParts` throws, and because these helpers are called
+ * from a RENDER BODY the throw does not degrade one label — it takes the component and every child
+ * below it out of the tree. That is how a working day timeline came to render with no scrollbar: not
+ * because the bar measured wrong, but because its parent never finished rendering.
+ *
+ * Clamping shows a date at the edge of representable time, which is visibly wrong and therefore
+ * findable. Throwing shows nothing at all. For a view, the first is strictly the better failure.
+ */
+function safeInstant(ms: number): number {
+	if (!Number.isFinite(ms)) return 0;
+	return Math.max(-MAX_INSTANT, Math.min(MAX_INSTANT, ms));
+}
+
 /** Wall-clock components of `ms` read through `tz`. `month` is 1-based. */
 export interface ZonedParts {
 	year: number;
@@ -95,7 +119,7 @@ function partsFmt(tz: string): Intl.DateTimeFormat {
 /** Read the wall-clock components of an instant through a timezone. */
 export function zonedParts(ms: number, tz: string): ZonedParts {
 	const map: Record<string, string> = {};
-	for (const p of partsFmt(tz).formatToParts(new Date(ms))) {
+	for (const p of partsFmt(tz).formatToParts(new Date(safeInstant(ms)))) {
 		if (p.type !== "literal") map[p.type] = p.value;
 	}
 	return {
@@ -128,7 +152,17 @@ export function zonedTimeToMs(
 	let epoch = guess - off1;
 	const off2 = offsetAt(epoch, tz);
 	if (off2 !== off1) epoch = guess - off2;
-	return epoch;
+	/*
+	 * TOTAL on the way out as well as on the way in.
+	 *
+	 * `Date.UTC` happily returns `NaN` for a year outside its range, and every caller here feeds the
+	 * result straight back into a formatter — so an out-of-range instant does not stay contained, it
+	 * propagates to the next `Intl` call and throws there instead. Clamping at the boundary of the
+	 * representable range means the worst outcome is a date at the edge of time, which is visible and
+	 * findable; the alternative is a `RangeError` inside a render body, which removes the component and
+	 * everything under it and leaves nothing to look at.
+	 */
+	return safeInstant(epoch);
 }
 // #endregion
 

@@ -58,8 +58,15 @@
 /* #region Panel */
 .ui-colorpicker__panel {
 	position: fixed;
-	inset-block-start: var(--float-top, 0);
-	inset-inline-start: var(--float-left, 0);
+	/* Parked off-screen, not at `0`: the origin is a real place on the screen, so a `0` fallback paints
+	   the whole panel in the top-left corner for one frame before it jumps to the trigger. This one
+	   has no `visibility: hidden` guard, so the fallback is the only thing standing between the reader
+	   and that flash.
+	   Physical `left` on purpose: `--float-left` is a viewport-left measurement, and a logical
+	   `inset-inline-start` resolves to `right` under `dir="rtl"`, mirroring an already-mirrored
+	   coordinate onto the wrong edge. The block axis does not turn with direction. */
+	inset-block-start: var(--float-top, -9999px);
+	left: var(--float-left, -9999px);
 	z-index: var(--z-portal, var(--z-popover));
 	inline-size: 15rem;
 	padding: var(--space-3);

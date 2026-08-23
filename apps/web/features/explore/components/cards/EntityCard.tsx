@@ -1,8 +1,7 @@
 import type { JSX } from "preact";
-import { FreelancerCard } from "./FreelancerCard.tsx";
-import { ProfileBannerCard } from "./ProfileBannerCard.tsx";
+import { ProfileCard } from "./ProfileCard.tsx";
 import { ServiceCard } from "./ServiceCard.tsx";
-import { ProjectRow } from "./ProjectRow.tsx";
+import { ProjectCard } from "./ProjectCard.tsx";
 import { ProductCard } from "./ProductCard.tsx";
 import { ArticleCard } from "./ArticleCard.tsx";
 import type { HrefContext } from "../../core/routing.ts";
@@ -22,16 +21,15 @@ export function EntityCard(
 	},
 ): JSX.Element {
 	switch (item.type) {
+		case "users":
 		case "freelancers":
 		case "teams":
-			return <FreelancerCard item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
-		case "users":
 		case "businesses":
-			return <ProfileBannerCard item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
+			return <ProfileCard item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
 		case "services":
 			return <ServiceCard item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
 		case "projects":
-			return <ProjectRow item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
+			return <ProjectCard item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
 		case "products":
 			return <ProductCard item={item} ctx={ctx} onSelect={onSelect} authed={authed} />;
 		case "articles":

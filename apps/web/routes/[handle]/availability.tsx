@@ -1,6 +1,7 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { resolveAvailabilityPage } from "@web/features/calendar/core/calendar-ssr.ts";
+import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 
 /**
@@ -24,6 +25,6 @@ export const handler = define.handlers({
 export default define.page(function ProfileAvailabilityPage(ctx) {
 	const profile = ctx.state.profile;
 	if (!profile) return null;
-	const { page: schedule } = resolveAvailabilityPage(profile.handle);
+	const { page: schedule } = resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state));
 	return <ScheduleView scope="availability" handle={profile.handle} initial={schedule} fullPage />;
 });

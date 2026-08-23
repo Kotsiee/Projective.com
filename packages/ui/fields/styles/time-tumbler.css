@@ -1,0 +1,294 @@
+/*
+ * TimeTumbler — the drum-roll time picker, drawn as a cylindrical combination lock.
+ *
+ * Token-only, logical properties throughout, and on the shared `--fld-*` contract so a tumbler and
+ * the Select beside it in the same panel read as one class of object: the cell height IS the field
+ * height ramp, the surface is the field's tonal fill, and the focus ring is the canonical two-tone
+ * `--focus-ring-shadow`.
+ *
+ * THE ONE RULE THIS SHEET EXISTS TO HOLD: the selected cell is placed by LAYOUT, never by an
+ * animation. `--tmb-drag` — the reel's only transform — carries the sub-cell remainder of a drag in
+ * progress and nothing else, and it is zero at rest. So in a background tab, where every transition
+ * and `@keyframes` is frozen, the drum still shows the value it committed. Motion here decorates the
+ * return to a resting position that is already correct without it (root CLAUDE.md §8 Decision #60).
+ */
+
+.ui-tumbler {
+	/*
+	 * The cell height IS a field height. Reusing the ramp rather than inventing a third one is what
+	 * lets a tumbler sit beside an input without either looking like a visitor, and it keeps the reel
+	 * on the same rhythm at every root font size.
+	 */
+	--tmb-cell-h: var(--fld-h-md);
+	/* Three cells visible: the value, and one neighbour each side to say which way the drum turns. */
+	--tmb-visible: 3;
+	--tmb-fs: var(--text-xl);
+	--tmb-fs-near: var(--text-sm);
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ui-tumbler--size-sm {
+	--tmb-cell-h: var(--fld-h-sm);
+	--tmb-fs: var(--text-lg);
+	--tmb-fs-near: var(--text-xs);
+}
+.ui-tumbler--size-lg {
+	--tmb-cell-h: var(--fld-h-lg);
+	--tmb-fs: var(--text-2xl);
+	--tmb-fs-near: var(--text-md);
+}
+
+/* Ink and border fade, never the whole box: fading the element would fade the focus ring with it. */
+.ui-tumbler--disabled .ui-tumbler__viewport,
+.ui-tumbler--readonly .ui-tumbler__viewport {
+	cursor: default;
+}
+.ui-tumbler--disabled .ui-tumbler__cell,
+.ui-tumbler--disabled .ui-tumbler__value,
+.ui-tumbler--disabled .ui-tumbler__sep {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+}
+.ui-tumbler--disabled .ui-tumbler__viewport {
+	cursor: not-allowed;
+}
+
+/* #region Column */
+/*
+ * `stretch`, not `center`: the reel is content-sized, so it is the viewport that must define the
+ * column's inline size and the fixed-width step buttons that centre themselves inside it. Centring
+ * the column instead leaves the viewport asking for a percentage of a width it is itself producing.
+ */
+.ui-tumbler__col {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--space-px);
+}
+
+/*
+ * The ▲/▼ controls. `--fld-hit` is the absolute 24px WCAG 2.2 SC 2.5.8 floor rather than an icon
+ * ramp step: a rem-sized box drops under the floor at a browser default of 14px or 13px, and these
+ * two sit a hairline apart so the spacing exception cannot rescue them either.
+ */
+.ui-tumbler__step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	align-self: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	/* A `<button>` carries UA padding, which at this box size would eat the glyph's own 1em. */
+	padding: 0;
+	font-size: var(--icon-sm);
+	line-height: 1;
+	color: var(--text-secondary);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+.ui-tumbler__step:hover:not(:disabled) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+.ui-tumbler__step:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.ui-tumbler__step:disabled {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+/* #endregion */
+
+/* #region Viewport */
+.ui-tumbler__viewport {
+	position: relative;
+	/* Own stacking context, so the selection band below can be layered against the reel by paint
+	   order alone — no z-index, and therefore nothing that could collide with the global z scale. */
+	isolation: isolate;
+	block-size: calc(var(--tmb-cell-h) * var(--tmb-visible));
+	/* `clip`, not `hidden`: this must not become a scroll container. The centre cell's focus ring is
+	   drawn on THIS element rather than on the input precisely because a child's ring would be cut
+	   off here. */
+	overflow: clip;
+	/* Required for the touch swipe. Without it the browser claims a vertical drag as a page scroll and
+	   the drum never moves on a phone. */
+	touch-action: none;
+	cursor: grab;
+	background: var(--surface-2);
+	border: var(--fld-bw) solid transparent;
+	border-radius: var(--fld-r-md);
+}
+.ui-tumbler__viewport:hover {
+	border-color: var(--fld-hover-bd);
+}
+/*
+ * `:focus-within`, the same channel `.ui-field` uses, and on the VIEWPORT rather than the input: the
+ * viewport clips its children, so a ring on the centre cell would be sliced off top and bottom.
+ */
+.ui-tumbler__viewport:focus-within {
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--focus-ring-shadow);
+}
+.ui-tumbler--invalid .ui-tumbler__viewport,
+.ui-tumbler--required .ui-tumbler__viewport {
+	border-color: var(--fld-invalid-bd);
+}
+.ui-tumbler--warning .ui-tumbler__viewport,
+.ui-tumbler--gate .ui-tumbler__viewport {
+	border-color: var(--fld-warning-bd);
+}
+.ui-tumbler--success .ui-tumbler__viewport {
+	border-color: var(--fld-valid-bd);
+}
+
+/*
+ * The selection band — the lock's window. Purely decorative and inert, so it is `pointer-events:
+ * none` and carries no text; the value it frames is real content in the cell behind it.
+ *
+ * It paints under the reel by document order (both are in the positioned-descendant paint step, the
+ * `::before` first), which is why the `isolation` above matters more than any z-index would.
+ */
+.ui-tumbler__viewport::before {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--tmb-cell-h);
+	block-size: var(--tmb-cell-h);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+	border-block: var(--fld-bw) solid color-mix(in srgb, var(--primary) var(--tint-strong),
+		transparent);
+	pointer-events: none;
+}
+/* #endregion */
+
+/* #region Reel */
+.ui-tumbler__reel {
+	display: flex;
+	flex-direction: column;
+	/*
+	 * The reel renders one extra cell above the selected one (and one below) beyond the three that
+	 * show, so a mid-drag translate of up to half a cell never opens a gap at either edge. Sliding it
+	 * up by exactly one cell height puts the SELECTED cell in the middle of the viewport.
+	 *
+	 * This is a MARGIN, not a transform, and that is the whole design: the resting position of the
+	 * data is a layout fact, computed by the engine on every paint, and cannot be left half-applied by
+	 * a transition that never got a frame.
+	 */
+	margin-block-start: calc(var(--tmb-cell-h) * -1);
+	transform: translateY(var(--tmb-drag, 0px));
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+/* A transition during the drag would make the reel lag the finger, which reads as latency. */
+.ui-tumbler__reel--dragging {
+	transition: none;
+}
+
+.ui-tumbler__cell {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	block-size: var(--tmb-cell-h);
+	/*
+	 * The column's width is DECLARED, not inferred, and `ch` is the unit that makes that honest: it is
+	 * the advance of "0", and the cells are `tabular-nums`, so `2.75ch` is exactly two digits with room
+	 * for the wider letters of AM/PM. Measured against the alternative — every cell in a column flex
+	 * container stretches to the widest, and the widest was the centre cell's `<input>`, whose intrinsic
+	 * size is its `size` attribute rather than its content. That produced 93px cells for a two-digit
+	 * drum even after `size` was set to 2.
+	 */
+	min-inline-size: calc(2.75ch + var(--space-3) * 2);
+	padding-inline: var(--space-3);
+	/* Digits must not change width as the reel turns, or the column jitters on every step. */
+	font-variant-numeric: tabular-nums;
+	font-family: var(--font-sans);
+	font-size: var(--tmb-fs);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+/*
+ * The neighbours recede on two channels — smaller AND lighter — because either alone reads as a
+ * rendering accident. They are `aria-hidden` affordances, so this is a depth cue rather than
+ * information being dimmed; the value itself never leaves the full-contrast centre cell.
+ *
+ * The fade steps through inks the taxonomy already owns rather than an opacity, which would drop the
+ * contrast of whatever happens to sit behind the reel by an amount nobody chose.
+ */
+.ui-tumbler__cell--ghost {
+	font-size: var(--tmb-fs-near);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	user-select: none;
+}
+.ui-tumbler__cell[data-depth="2"] {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+}
+
+/*
+ * The centre cell is a real input, so the column that can be dragged and spun is the same element
+ * that can be typed into. It inherits every type property from its cell, which is what keeps the
+ * typed value and the printed neighbours on one ramp.
+ */
+.ui-tumbler__value {
+	/*
+	 * Positioned out of flow so it contributes NOTHING to the reel's intrinsic width — see the cell's
+	 * `min-inline-size` for the measurement. It still fills the cell exactly, so the whole centre row
+	 * remains the click and caret target.
+	 */
+	position: absolute;
+	inset-block: 0;
+	inset-inline: 0;
+	padding: 0;
+	font: inherit;
+	font-variant-numeric: inherit;
+	color: inherit;
+	text-align: center;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+}
+.ui-tumbler__value:focus {
+	/* The ring lives on the viewport (see above); a second one here would be clipped in half. */
+	outline: none;
+}
+.ui-tumbler__value:disabled {
+	color: inherit;
+	-webkit-text-fill-color: currentColor;
+	opacity: 1;
+}
+/* #endregion */
+
+/* #region Separator */
+/*
+ * No vertical nudge is needed and none is wanted. A column is symmetric — an identical step button
+ * above and below the reel — so its centre IS the reel's centre, and the row's `align-items: center`
+ * puts the colon exactly on the selected value's line. An offset here would only be right until
+ * someone changed one of the two buttons.
+ */
+.ui-tumbler__sep {
+	align-self: center;
+	font-size: var(--tmb-fs);
+	font-weight: var(--fw-bold);
+	color: var(--text-secondary);
+	user-select: none;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	/* Jump to the final state: the resting position is layout, so removing the transition removes the
+	   movement and changes nothing about which value is shown. */
+	.ui-tumbler__reel,
+	.ui-tumbler__step {
+		transition: none;
+	}
+}

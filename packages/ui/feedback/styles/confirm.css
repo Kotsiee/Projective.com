@@ -40,7 +40,10 @@
 .ui-confirm-popup {
 	position: fixed;
 	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
+	/* Physical `left`: `--float-left` is a left-origin `getBoundingClientRect` number the hook has
+	   already placed direction-aware, and a logical property would mirror it a second time under
+	   `dir="rtl"`. See `.ui-anchored` in `packages/ui/styles/index.css` for the full reasoning. */
+	left: var(--float-left, -9999px);
 	z-index: var(--z-portal, var(--z-overlay));
 	inline-size: max-content;
 	max-inline-size: min(20rem, calc(100vw - var(--space-6)));

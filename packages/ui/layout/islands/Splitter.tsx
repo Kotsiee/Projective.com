@@ -5,6 +5,7 @@ import { useSignal } from "@preact/signals";
 import "../styles/splitter.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { resolveSplitSizes } from "../core/split-sizes.ts";
 
 export type SplitterLayout = "horizontal" | "vertical";
 
@@ -14,8 +15,12 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 // #region SplitterPanel
 export interface SplitterPanelProps extends Omit<HTMLAttributes<HTMLDivElement>, "size"> {
 	/**
-	 * Initial size as a percentage of the split axis. Panels without an explicit `size` split the
+	 * Seed size as a percentage of the split axis. Panels without an explicit `size` split the
 	 * remainder evenly. Siblings are re-normalised to 100% on mount.
+	 *
+	 * A SEED, not a binding: once a gutter has been dragged the dragged ratio wins, and changing this
+	 * prop does not move the pane. It is re-read only when the number of panes changes, because that
+	 * is the one edit the stored ratio cannot survive — see the note in {@link Splitter}.
 	 */
 	size?: number;
 	/** Minimum size in percentage points the gutter will not shrink this panel below (default `5`). */
@@ -67,6 +72,10 @@ export interface SplitterProps {
  * suppressed while actively dragging so the pointer tracks 1:1. Nest a `Splitter` inside a
  * `SplitterPanel` for nested layouts — no special wiring required.
  *
+ * A caller may show or hide a pane between renders; the size array re-derives when the pane COUNT
+ * changes and at no other time, so a dragged ratio survives everything except the edit that makes it
+ * meaningless (see the note beside {@link SplitterPanelProps.size}).
+ *
  * Keyboard: each gutter is `role="separator"` with `aria-orientation` + `aria-valuenow/min/max`;
  * Arrow keys resize by 5 points, Home/End snap to the panel's min/max bound.
  */
@@ -87,26 +96,39 @@ export function Splitter(props: SplitterProps): JSX.Element {
 	const maxes = panels.map((p) => p.props.maxSize ?? 100);
 	const storageKey = stateKey ? `ui-splitter.${stateKey}` : undefined;
 
-	const restore = (): number[] => {
-		if (storageKey && typeof localStorage !== "undefined") {
-			try {
-				const raw = localStorage.getItem(storageKey);
-				if (raw) {
-					const parsed = JSON.parse(raw) as number[];
-					if (Array.isArray(parsed) && parsed.length === count) return parsed;
-				}
-			} catch {
-				/* storage unavailable — fall through to the even split */
-			}
+	const seeds = panels.map((p) => p.props.size);
+
+	/** The ratio stored for this layout, or `null`. Storage may be unavailable; that is not an error. */
+	const readPersisted = (): number[] | null => {
+		if (!storageKey || typeof localStorage === "undefined") return null;
+		try {
+			const raw = localStorage.getItem(storageKey);
+			if (!raw) return null;
+			const parsed = JSON.parse(raw) as number[];
+			return Array.isArray(parsed) ? parsed : null;
+		} catch {
+			return null;
 		}
-		const given = panels.map((p) => p.props.size);
-		const definedSum = given.reduce((s: number, v) => s + (v ?? 0), 0);
-		const undefinedCount = given.filter((v) => v === undefined).length;
-		const remaining = Math.max(0, 100 - definedSum);
-		return given.map((v) => v ?? (undefinedCount ? remaining / undefinedCount : 0));
 	};
 
-	const sizes = useSignal<number[]>(restore());
+	const sizes = useSignal<number[]>(resolveSplitSizes([], seeds, readPersisted));
+
+	/*
+	 * The live ratio is keyed to a pane COUNT, so a changed count is the one edit it cannot survive.
+	 *
+	 * `size` is a mount SEED rather than a binding — that is exactly what lets a drag outlive a
+	 * re-render, and it stays that way. But a caller that shows or hides a pane (a modal's roster
+	 * column, a picker's inspector) changes the array's LENGTH, and {@link resolveSplitSizes} is where
+	 * that is dealt with, once, in a form that is tested rather than argued about.
+	 *
+	 * Re-derived during RENDER rather than in an effect, because the first paint after the count change
+	 * is the one the reader sees and an effect lands a frame too late. Nothing is written here: the
+	 * signal is the DRAG store and `persist` puts the right length back on the next drag, while the
+	 * persisted array is left alone — so a ratio dragged at this count is still there after a round
+	 * trip through a different one.
+	 */
+	const current = resolveSplitSizes(sizes.value, seeds, readPersisted);
+
 	const isDragging = useSignal(false);
 	const rootRef = useRef<HTMLDivElement>(null);
 	const drag = useRef<
@@ -138,7 +160,7 @@ export function Splitter(props: SplitterProps): JSX.Element {
 		const maxA = maxes[index];
 		const maxB = maxes[index + 1];
 		const da = clamp(deltaPct, Math.max(minA - a, b - maxB), Math.min(maxA - a, b - minB));
-		const next = sizes.value.slice();
+		const next = current.slice();
 		next[index] = a + da;
 		next[index + 1] = b - da;
 		persist(next);
@@ -153,8 +175,8 @@ export function Splitter(props: SplitterProps): JSX.Element {
 			index,
 			axisSize: layout === "horizontal" ? rect.width : rect.height,
 			startPos: layout === "horizontal" ? e.clientX : e.clientY,
-			a: sizes.value[index],
-			b: sizes.value[index + 1],
+			a: current[index],
+			b: current[index + 1],
 		};
 		isDragging.value = true;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -179,8 +201,8 @@ export function Splitter(props: SplitterProps): JSX.Element {
 	const onGutterKeyDown = (index: number) => (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
 		const growKey = layout === "horizontal" ? "ArrowRight" : "ArrowDown";
 		const shrinkKey = layout === "horizontal" ? "ArrowLeft" : "ArrowUp";
-		const a = sizes.value[index];
-		const b = sizes.value[index + 1];
+		const a = current[index];
+		const b = current[index + 1];
 		let delta = 0;
 		if (e.key === growKey) delta = ARROW_STEP;
 		else if (e.key === shrinkKey) delta = -ARROW_STEP;
@@ -198,7 +220,7 @@ export function Splitter(props: SplitterProps): JSX.Element {
 			<div
 				key={`pane-${i}`}
 				class="ui-splitter__pane"
-				style={styleVars({ "--split-size": `${sizes.value[i]}%` })}
+				style={styleVars({ "--split-size": `${current[i]}%` })}
 			>
 				{panels[i]}
 			</div>,
@@ -212,7 +234,7 @@ export function Splitter(props: SplitterProps): JSX.Element {
 					role="separator"
 					aria-orientation={layout === "horizontal" ? "vertical" : "horizontal"}
 					aria-label={`Resize ${layout === "horizontal" ? "column" : "row"} ${i + 1}`}
-					aria-valuenow={Math.round(sizes.value[i])}
+					aria-valuenow={Math.round(current[i])}
 					aria-valuemin={mins[i]}
 					aria-valuemax={Math.round(Math.min(maxes[i], 100 - minAfter))}
 					tabIndex={0}

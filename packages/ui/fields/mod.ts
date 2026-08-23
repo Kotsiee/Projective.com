@@ -146,6 +146,25 @@ export {
 	type DateTemplate,
 	type DateValue,
 } from "./islands/DatePicker.tsx";
+export { TimeTumbler, type TimeTumblerProps } from "./islands/TimeTumbler.tsx";
+export { DateTimePicker, type DateTimePickerProps } from "./islands/DateTimePicker.tsx";
+/**
+ * The picker family's pure arithmetic. Exported because a consumer that seeds or validates a
+ * date-time must reach the SAME answer the reels will offer — `resolveMinutes` is what makes a
+ * caller's default land on a value the tumbler can actually display, and `dayTimeBounds` is how a
+ * form works out which times a boundary day allows without re-deriving the rule.
+ */
+export {
+	dayTimeBounds,
+	formatDatePattern,
+	formatTimeOfDay,
+	MINUTES_PER_DAY,
+	minutesOfDay,
+	type TimeWindow,
+	toLocalIsoMinute,
+	withMinutes,
+} from "./core/datetime.ts";
+export { DEFAULT_MINUTE_STEP, resolveMinutes, type TumblerItem } from "./core/tumbler.ts";
 export { type ColorFormat, ColorPicker, type ColorPickerProps } from "./islands/ColorPicker.tsx";
 export {
 	FileUpload,

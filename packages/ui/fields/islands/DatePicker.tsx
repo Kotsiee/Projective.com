@@ -1,5 +1,5 @@
 import type { JSX, RefObject, VNode } from "preact";
-import { useRef } from "preact/hooks";
+import { useMemo, useRef } from "preact/hooks";
 import { signal, useSignalEffect } from "@preact/signals";
 import "../styles/datepicker.css";
 import { cx } from "../../core/cx.ts";
@@ -11,8 +11,10 @@ import { useDismiss } from "../hooks/useDismiss.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
-import type { BaseFieldProps, Bindable, ValueChange } from "../types/mod.ts";
+import { formatDatePattern } from "../core/datetime.ts";
+import type { BaseFieldProps, Bindable, Option, ValueChange } from "../types/mod.ts";
 import { Icon } from "../../icons/mod.ts";
+import { Select } from "./Select.tsx";
 
 // #region Types
 
@@ -50,6 +52,15 @@ export interface DatePickerProps extends BaseFieldProps {
 	dateFormat?: string;
 	/** First day of the week: `0` Sun … `1` Mon (default `1`). */
 	firstDayOfWeek?: 0 | 1;
+	/**
+	 * How many years the year picker offers either side of the current year (default `100`).
+	 *
+	 * `minDate`/`maxDate` still bound the list on the side they constrain — a date of birth with
+	 * `maxDate={new Date()}` gets exactly one century back and nothing forward — and the year currently
+	 * in view is always included, so navigating past the span can never strand the control with no
+	 * matching option.
+	 */
+	yearSpan?: number;
 	/** Input placeholder (popup mode). */
 	placeholder?: string;
 	/** Show a Today / Clear button bar under the grid. */
@@ -147,34 +158,57 @@ function monthMatrix(year: number, month: number, firstDayOfWeek: number): Date[
 	return weeks;
 }
 
-/** Ordered weekday header labels for the chosen week start. */
-function weekdayHeaders(firstDayOfWeek: number): { short: string; long: string }[] {
-	const out: { short: string; long: string }[] = [];
+/**
+ * Ordered weekday header labels for the chosen week start.
+ *
+ * `narrow` is the single letter the mini-month calendar prints, and it is deliberately ambiguous
+ * (T/T, S/S) — the strip is a rhythm marker read positionally, not a set of words. The unabbreviated
+ * name travels alongside it and is what the column header actually announces, so nothing is lost to
+ * assistive technology by drawing one character.
+ */
+function weekdayHeaders(firstDayOfWeek: number): { narrow: string; long: string }[] {
+	const out: { narrow: string; long: string }[] = [];
 	for (let i = 0; i < 7; i++) {
 		const idx = (firstDayOfWeek + i) % 7;
 		const long = WEEKDAY_NAMES[idx];
-		out.push({ short: long.slice(0, 2), long });
+		out.push({ narrow: long.slice(0, 1), long });
 	}
 	return out;
 }
 
 // #endregion
 
+// #region Header picker constants
+
+/** Month options for the header picker — built once; the labels never change. */
+const MONTH_OPTIONS: Option[] = MONTH_NAMES.map((label, i) => ({ value: String(i), label }));
+
+/**
+ * Row height for the two windowed header lists, px.
+ *
+ * The windowed renderer positions rows absolutely, so it needs a concrete number where the rest of
+ * the taxonomy reads a token. This is `Select`'s own `virtualItemSize` default — stated rather than
+ * inherited, so a change to that default cannot silently misalign a two-hundred-entry list.
+ *
+ * BOTH header lists are windowed on it, including the twelve-row month list that does not need the
+ * windowing, because the alternative is two adjacent dropdowns with different row heights: an
+ * unwindowed `.ui-select__option` is `max(--fld-opt-h, line-box + 2 × --space-2)`, which at the
+ * default root size resolves to ~38.5px rather than the token's 36px — and, being a function of the
+ * root font size, to a different number again at any other. No px constant can equal that, so the
+ * two lists are made to agree with each OTHER instead of each disagreeing separately. The real fix
+ * is for `Select` to measure its own row; this constant goes when it does.
+ */
+const NAV_ROW_H = 40;
+
+// #endregion
+
 // #region Formatting
 
-/** Format a single date with the token grammar (`d dd m mm yy yyyy`). */
-function formatDate(d: Date, format: string): string {
-	const pad = (n: number) => String(n).padStart(2, "0");
-	const map: Record<string, string> = {
-		yyyy: String(d.getFullYear()),
-		yy: pad(d.getFullYear() % 100),
-		mm: pad(d.getMonth() + 1),
-		m: String(d.getMonth() + 1),
-		dd: pad(d.getDate()),
-		d: String(d.getDate()),
-	};
-	return format.replace(/yyyy|yy|mm|m|dd|d/g, (t) => map[t] ?? t);
-}
+/*
+ * The date pattern itself lives in `core/datetime.ts` — see `formatDatePattern`. It moved there when
+ * DateTimePicker needed it: two implementations of one grammar is exactly how a picker and the
+ * picker composing it come to disagree about what `mm/dd/yy` means.
+ */
 
 /** Append the time portion to a formatted date string. */
 function formatTime(d: Date, hourFormat: "12" | "24"): string {
@@ -228,6 +262,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		disabledDates,
 		dateFormat = "mm/dd/yy",
 		firstDayOfWeek = 1,
+		yearSpan = 100,
 		placeholder,
 		showButtonBar = false,
 		showIcon = false,
@@ -282,6 +317,14 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		onDismiss: () => (open.value = false),
 		panelRef: panelRef as RefObject<HTMLElement>,
 		triggerRef: triggerRef as RefObject<HTMLElement>,
+		// The month/year pickers open their own panels FROM inside this one, so this overlay is not
+		// always the top of the stack. `enabled` gates the ESCAPE channel only, and that channel is
+		// exclusive (its handler calls `stopImmediatePropagation`), so exactly one overlay may own the
+		// key: without this the calendar's listener registers first, wins the capture phase, and takes
+		// the whole calendar down when the reader only meant to close the year list. Outside-pointer
+		// dismissal is governed by containment instead and stays live regardless, so a child dropdown
+		// can never leave the calendar stranded.
+		enabled: stack.isTop,
 	});
 
 	// Move keyboard focus onto the active day whenever it (or the open state) changes.
@@ -293,6 +336,48 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		const el = host.querySelector<HTMLElement>(`[data-day="${key}"]`);
 		el?.focus();
 	});
+	// #endregion
+
+	// #region Header pickers
+	/**
+	 * `viewDate` remains the single source of truth for what the grid shows; these two mirrors exist
+	 * only because `Select` binds a `Signal<string>`. Writing a mirror moves `viewDate`, moving
+	 * `viewDate` (a chevron, a selection that lands in an adjacent month) re-publishes both, and a
+	 * signal write of an equal string is a no-op — so the two directions settle instead of looping.
+	 */
+	const monthValue = useRef(signal(String(viewDate.peek().getMonth()))).current;
+	const yearValue = useRef(signal(String(viewDate.peek().getFullYear()))).current;
+	useSignalEffect(() => {
+		const vd = viewDate.value;
+		monthValue.value = String(vd.getMonth());
+		yearValue.value = String(vd.getFullYear());
+	});
+
+	const viewYear = viewDate.value.getFullYear();
+	// The year in view is always offered, so navigating past `yearSpan` (or past a min/max bound, which
+	// the arrow keys can do) can never leave the picker showing its placeholder instead of the year the
+	// grid is actually on.
+	const thisYear = new Date().getFullYear();
+	const minYear = Math.min(minDate ? minDate.getFullYear() : thisYear - yearSpan, viewYear);
+	const maxYear = Math.max(maxDate ? maxDate.getFullYear() : thisYear + yearSpan, viewYear);
+	const yearOptions = useMemo<Option[]>(() => {
+		const out: Option[] = [];
+		for (let y = minYear; y <= maxYear; y++) out.push({ value: String(y), label: String(y) });
+		return out;
+	}, [minYear, maxYear]);
+
+	const pickMonth = (v: string) => {
+		const m = Number(v);
+		if (!Number.isInteger(m)) return;
+		const vd = viewDate.peek();
+		viewDate.value = new Date(vd.getFullYear(), m, 1);
+	};
+	const pickYear = (v: string) => {
+		const y = Number(v);
+		if (!Number.isInteger(y)) return;
+		const vd = viewDate.peek();
+		viewDate.value = new Date(y, vd.getMonth(), 1);
+	};
 	// #endregion
 
 	// #region Disabled predicate
@@ -460,20 +545,22 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	};
 	// #endregion
 
-	// #region Header change handlers
-	const onMonthSelect = (e: JSX.TargetedEvent<HTMLSelectElement>) => {
-		const vd = viewDate.peek();
-		viewDate.value = new Date(vd.getFullYear(), Number(e.currentTarget.value), 1);
-	};
-	const onYearSelect = (e: JSX.TargetedEvent<HTMLSelectElement>) => {
-		const vd = viewDate.peek();
-		viewDate.value = new Date(Number(e.currentTarget.value), vd.getMonth(), 1);
-	};
-	// #endregion
-
 	// #region Renderers
 	const headers = weekdayHeaders(firstDayOfWeek);
 
+	/**
+	 * One month grid.
+	 *
+	 * The whole-week hover band is CSS (`.ui-datepicker__week:hover`), not state. It was a signal read
+	 * during render, which subscribed the component: crossing one day re-rendered 42 buttons and both
+	 * header dropdowns, and — because `useDismiss` lists its `onDismiss` closure in a dependency array
+	 * — tore down and re-added two `document` capture listeners on every cell. It was also wrong three
+	 * ways that an ancestor `:hover` is right by construction: it never cleared on close, so the panel
+	 * re-opened with a band lit under no pointer (`{gridIndex}:{row}` carries no month identity, so it
+	 * always matched something); it went stale over the weekday strip and the row gap, which are
+	 * inside the grid and so fire no `pointerleave` on it; and a DISABLED day dispatches no pointer
+	 * events at all, which is most of the month in a date-of-birth picker bounded by `maxDate`.
+	 */
 	const renderGrid = (monthDate: Date, gridIndex: number): VNode => {
 		const y = monthDate.getFullYear();
 		const m = monthDate.getMonth();
@@ -494,11 +581,10 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 							<span
 								class="ui-datepicker__weekday"
 								role="columnheader"
-								title={h.long}
 								aria-label={h.long}
 								key={h.long}
 							>
-								<span aria-hidden="true">{h.short}</span>
+								<span aria-hidden="true">{h.narrow}</span>
 							</span>
 						))}
 					</div>
@@ -545,14 +631,45 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		);
 	};
 
-	const renderHeaderNav = (): VNode => {
-		const vd = viewDate.value;
-		const years: number[] = [];
-		const minY = minDate ? minDate.getFullYear() : vd.getFullYear() - 10;
-		const maxY = maxDate ? maxDate.getFullYear() : vd.getFullYear() + 10;
-		for (let yy = minY; yy <= maxY; yy++) years.push(yy);
-		return (
-			<div class="ui-datepicker__nav">
+	/**
+	 * The month header, laid out the way the mini-month calendar is: the period on the leading side,
+	 * the two step buttons grouped together on the trailing side.
+	 *
+	 * The month and year controls are the package's own {@link Select}, not native `<select>`s. A
+	 * native dropdown is drawn by the OS: it ignores the token layer, cannot be windowed, and — the
+	 * reason it had to go — renders a century of years as a single unbounded list. Because both open
+	 * from a trigger that lives INSIDE this (already portalled) panel, the overlay registry reads them
+	 * as this overlay's children, so choosing a month is not an outside click on the calendar.
+	 */
+	const renderHeaderNav = (): VNode => (
+		<div class="ui-datepicker__nav">
+			{numberOfMonths === 1
+				? (
+					<div class="ui-datepicker__nav-selects">
+						<Select
+							class="ui-field--bare ui-datepicker__nav-select"
+							size="sm"
+							aria-label="Month"
+							options={MONTH_OPTIONS}
+							value={monthValue}
+							virtualScroll
+							virtualItemSize={NAV_ROW_H}
+							onValueChange={pickMonth}
+						/>
+						<Select
+							class="ui-field--bare ui-datepicker__nav-select"
+							size="sm"
+							aria-label="Year"
+							options={yearOptions}
+							value={yearValue}
+							virtualScroll
+							virtualItemSize={NAV_ROW_H}
+							onValueChange={pickYear}
+						/>
+					</div>
+				)
+				: <div class="ui-datepicker__nav-spacer" />}
+			<div class="ui-datepicker__nav-btns">
 				<button
 					type="button"
 					class="ui-datepicker__nav-btn"
@@ -561,28 +678,6 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 				>
 					<Icon name="chevron-left" />
 				</button>
-				{numberOfMonths === 1
-					? (
-						<div class="ui-datepicker__nav-selects">
-							<select
-								class="ui-datepicker__select"
-								aria-label="Month"
-								value={vd.getMonth()}
-								onChange={onMonthSelect}
-							>
-								{MONTH_NAMES.map((mn, i) => <option value={i} key={mn}>{mn}</option>)}
-							</select>
-							<select
-								class="ui-datepicker__select"
-								aria-label="Year"
-								value={vd.getFullYear()}
-								onChange={onYearSelect}
-							>
-								{years.map((yy) => <option value={yy} key={yy}>{yy}</option>)}
-							</select>
-						</div>
-					)
-					: <div class="ui-datepicker__nav-spacer" />}
 				<button
 					type="button"
 					class="ui-datepicker__nav-btn"
@@ -592,8 +687,8 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 					<Icon name="chevron-right" />
 				</button>
 			</div>
-		);
-	};
+		</div>
+	);
 
 	const renderTime = (): VNode => {
 		const pad = (n: number) => String(n).padStart(2, "0");
@@ -673,7 +768,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		const dates = toDates(ctrl.signal.value);
 		if (dates.length === 0) return "";
 		const fmt = (d: Date) =>
-			formatDate(d, dateFormat) + (showTime ? ` ${formatTime(d, hourFormat)}` : "");
+			formatDatePattern(d, dateFormat) + (showTime ? ` ${formatTime(d, hourFormat)}` : "");
 		if (selectionMode === "range") {
 			return dates.length === 2 ? `${fmt(dates[0])} - ${fmt(dates[1])}` : fmt(dates[0]);
 		}
@@ -760,18 +855,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						tabIndex={-1}
 						onClick={toggleOpen}
 					>
-						<svg
-							viewBox="0 0 24 24"
-							width="1em"
-							height="1em"
-							aria-hidden="true"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<rect x="3" y="4" width="18" height="17" rx="2" />
-							<path d="M3 9h18M8 2v4M16 2v4" />
-						</svg>
+						<Icon name="calendar" />
 					</button>
 				)}
 			</div>
@@ -787,6 +871,14 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						style={styleVars({
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,
+							// The panel caps itself to the space measured on the side it resolved to and
+							// scrolls internally, rather than letting a tall calendar (multi-month, or a time
+							// picker under it) run off the bottom of a short viewport. `null` means that side
+							// is deliberately unbounded, which is not a length — emit nothing and let the
+							// sheet's own absolute cap stand.
+							"--float-available-h": floating?.availableHeight != null
+								? `${floating.availableHeight}px`
+								: undefined,
 							"--z-portal": String(stack.zIndex),
 						})}
 					>

@@ -72,7 +72,12 @@ CREATE TABLE scheduling.events (
     created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT ck_event_span CHECK (ends_at > starts_at),
+    -- `>=`, not `>`: a DEADLINE is a point in time and has no duration to record. The UI engine has
+    -- always drawn `end === start` as a pin rather than as a box, precisely so a due date is not
+    -- asserted to be a plausible half-hour meeting, and a `>` check here would refuse to persist the
+    -- one shape that view exists to render. A milestone — a review that genuinely takes time — keeps
+    -- its span; the two are different objects, not one object recorded two ways.
+    CONSTRAINT ck_event_span CHECK (ends_at >= starts_at),
     CONSTRAINT ck_event_anchor CHECK (
         schedule_id IS NOT NULL
         OR project_id IS NOT NULL

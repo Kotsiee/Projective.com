@@ -205,6 +205,8 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Spend approval**         | `pending → approved` / `rejected` / `expired`              | `finance.approval_status` · `finance-model.md` §14   |
 | **Chargeback**             | `opened → under_review → won` / `lost` / `refunded`        | `finance.chargeback_status` · `finance-model.md` §15 |
 | **Discovery call**         | `proposed → confirmed → completed`; `declined` / `expired` / `cancelled` / `no_show` | `scheduling.call_status` · `PRODUCT_SPEC.md` §Discovery & Courtesy Calls |
+| **Event reschedule (per round)** | `none → collecting → awaiting_counterparty` \| `voting`; then `resolved` (a time carried) / `lapsed` (asked, no majority) / `withdrawn` (pulled). All three endings are terminal **for that round**; proposing again opens round `n + 1` | `RescheduleStatus` · `packages/types/scheduling/coordination.ts` · `PRODUCT_SPEC.md` §The Proactive Calendar |
+| **Event RSVP (per attendee)** | `pending ⇄ accepted` / `tentative` / `rejected`, freely revisable until the event starts | `RsvpResponse` · `packages/types/scheduling/coordination.ts` |
 | **Integration connection** | `active → expired` (refreshable) / `revoked` (terminal); `error` | `integrations.connection_status` · `SYSTEM_ARCHITECTURE.md` §Conferencing 2.1 |
 | **Subscription**           | `trialing → active`; `active ⇄ past_due` / `paused`; `cancelled` / `expired` (terminal) | `finance.subscription_state` · `finance-model.md` §16 |
 | **Standing rung**          | `L1 New → L2 Established → L3 Trusted → L4 Expert → L5 Elite` (bidirectional — a rung can be lost) | `org.standing_levels` · `finance-model.md` §16.3 |
@@ -216,10 +218,42 @@ column for them.** Their canonical definitions are the enum + doc listed:
 
 > **The discovery call is the sharpest illustration of why this section exists.** A booked call is
 > not a unit of delivery: it creates no Project, Stage or Ticket, never appears on a board, and does
-> **not** count toward Workload Intensity (§4). A **reschedule is not a state** either — it returns
-> the row to `proposed` and increments a counter, so a call that moved three times is still one
-> call, not three. Enforced by `scheduling.fn_enforce_call_transition`; mirrored for the client in
+> **not** count toward Workload Intensity (§4). For a CALL a **reschedule is not a state** — it
+> returns the row to `proposed` and increments a counter, so a call that moved three times is still
+> one call, not three. Enforced by `scheduling.fn_enforce_call_transition`; mirrored for the client in
 > `packages/types/scheduling/calls.ts` (`CALL_TRANSITIONS`), where **the trigger is the authority**.
+>
+> **For an EVENT it is, and the two rows above are not a contradiction of that sentence but its
+> complement.** A call has exactly one proposed slot and one person to accept it, so "proposed" says
+> everything there is to say. Moving a booked group session does not: the host assembles several
+> alternatives before anyone is asked (`collecting`), the cohort is then asked (`voting`) with a
+> deadline they can read, and the question has to be able to END — carried, lapsed for want of a
+> majority, or pulled. There is no single field on the event that could carry that, and a surface
+> cannot draw a countdown, a ballot or a refusal without it. The reschedule state therefore lives
+> **beside** the event, on `EventReschedule`, and moving a session still does not create a second
+> session — the same "one row, many attempts" discipline the call's counter expresses, kept per round
+> in `EventReschedule.round`.
+>
+> **Three named caps govern it, and they are policy, not implementation details** (pinned by unit
+> test in `coordination_test.ts`): `RESCHEDULE_LOCKOUT_HOURS = 12` — inside it nothing moves, because
+> the other party has arranged their day around the slot; `VOTE_RESOLUTION_LEAD_HOURS = 12` — a vote
+> closes that far before the EARLIEST slot on the ballot, so a ballot can never elect a time that has
+> itself become unmovable; `MIN_VOTE_PROPOSALS = 2` — one option is an announcement, not a vote.
+>
+> **A change of time needs a MAJORITY, not a plurality** (`PRODUCT_SPEC.md` §The Proactive Calendar).
+> The threshold is strictly more than half of everyone ENTITLED to vote — the roster minus the host,
+> who authored the options — never more than half of those who happened to answer. Abstaining is
+> therefore a vote against moving, deliberately: the default outcome of an unanswered question is
+> that nothing changes. A vote that closes without one **lapses** and the original time stands;
+> `lapsed` is a separate state from `resolved` precisely so that "decided" can never be read off a
+> null winner. The transition is applied by one pure function (`settleVote`) on every read and before
+> every action, because there is no cron in this layer and a deadline nothing observes is not a
+> deadline.
+>
+> ⚠️ **Unreconciled with the escrow window, flagged for a human** (root CLAUDE.md §8): the 12-hour
+> reschedule lockout does not line up with §Cancellation & Escrow Protection's 24-hour cancellation
+> window, so between T-24h and T-12h an attendee may still MOVE a session they could no longer cancel
+> without forfeiting escrow. That is a money decision and is deliberately not settled here.
 
 > **The two asset lifecycles, and why neither is a build state.** An **asset** is a file somebody
 > uploaded; a **share link** is a capability URL somebody minted. Neither is a unit of work: neither

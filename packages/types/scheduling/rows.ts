@@ -6,8 +6,10 @@ import { z } from "zod";
  *
  * `scheduling.ts` describes what a calendar SURFACE renders (epoch-ms positions flattened for the
  * `@projective/ui/calendar` engine). This file describes what the DATABASE stores: ISO timestamps,
- * uuid keys, and the `schedule_id` graph. Mirrors migrations
- * `20260724100000_scheduling_schema_availability.sql` and `20260724102000_scheduling_events.sql`.
+ * uuid keys, and the `schedule_id` graph. Mirrors the consolidated
+ * `supabase/migrations/00000022_tables_scheduling.sql` — the timestamped
+ * `2026072410xxxx_scheduling_*.sql` files those columns were first authored in were folded into it
+ * (root CLAUDE.md §1) and no longer exist, so read the SQL, not a filename, for column truth.
  *
  * The `scheduling` schema is new — `0001_init_schemas.sql` never created it, even though the
  * scheduling projections have described themselves as reads "over the eventual `scheduling.*`

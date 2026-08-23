@@ -172,7 +172,18 @@
 @media (min-width: 768px) {
 	.guest-shell[data-has-aside="true"] .guest-shell__region {
 		display: flex;
-		align-items: flex-start;
+		/*
+		 * Items STRETCH — the flex default, restated by its absence rather than overridden.
+		 *
+		 * `align-items: flex-start` used to sit here, and the aside did not need it: `.ui-guest-aside`
+		 * already opts out with its own `align-self: flex-start` AND carries an explicit
+		 * `block-size`, so the only item the rule ever governed was the BODY — which it stopped from
+		 * stretching. A body with no height is fine for ordinary scrolling content, whose height is its
+		 * content, and fatal for a surface that fills its host: `/[handle]/availability` mounts a
+		 * full-page calendar whose `block-size: 100%` chain resolved against nothing and rendered at
+		 * ZERO height. Stretching costs the scrolling surfaces nothing (their content already exceeds
+		 * or matches the region) and is the only thing that gives a filling one something to fill.
+		 */
 		gap: var(--guest-inset);
 		padding-inline: var(--guest-inset);
 		padding-block-start: calc(var(--site-header-h, 5.5rem) + var(--guest-inset));
@@ -199,6 +210,42 @@
 	.ui-guest-aside,
 	.guest-shell__subheader {
 		display: none;
+	}
+
+	/*
+	 * The region is still a container that FILLS, it is simply a column here — one item instead of a
+	 * rail beside a body.
+	 *
+	 * Without this the desktop stretch above stops at the breakpoint and the body falls back to
+	 * `display: block` with an auto height, which is fine for scrolling content and fatal for a
+	 * surface that fills: `/[handle]/availability` rendered its calendar at ZERO height on every
+	 * phone for exactly the same reason it did on desktop. Stating the arrangement at BOTH widths is
+	 * what stops the two from drifting the next time one of them is touched.
+	 */
+	.guest-shell[data-has-aside="true"] .guest-shell__region {
+		display: flex;
+		flex-direction: column;
+	}
+
+	/*
+	 * A COLUMN, so a filling surface fills by FLEX rather than by percentage.
+	 *
+	 * The desktop half of this fix lets `.cal-surface--full`'s `block-size: 100%` resolve, because
+	 * there the body is stretched on the flex CROSS axis and that makes its height definite. Here the
+	 * body is a MAIN-axis item of a column, whose size flex layout resolves — and a percentage against
+	 * that is treated as indefinite, so `100%` computed to `0` and the calendar stayed invisible even
+	 * with the body finally 812px tall. Making the body a column hands the surface the remainder
+	 * through the `flex: 1 1 0` its base rule already carries, which is the same mechanism the
+	 * dashboard's `.ui-page-canvas__body` uses and needs no percentage at all.
+	 *
+	 * Ordinary scrolling content is unaffected: a column flex item defaults to `flex: 0 1 auto`, so
+	 * every other lane surface keeps sizing to its own content exactly as it did in block flow.
+	 */
+	.guest-shell[data-has-aside="true"] .guest-shell__body {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-block-size: 0;
 	}
 }
 /* #endregion */

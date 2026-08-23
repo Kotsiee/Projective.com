@@ -30,6 +30,9 @@ import {
 	type DevConnectionState,
 	type DevDedupState,
 	type DevDisplayCurrency,
+	type DevEventReschedule,
+	type DevEventRsvp,
+	type DevEventSeat,
 	type DevFulfilmentMix,
 	type DevInvoicingMode,
 	type DevLayoutDirection,
@@ -79,6 +82,9 @@ export type {
 	DevBuyerDetails,
 	DevConferencing,
 	DevDisplayCurrency,
+	DevEventReschedule,
+	DevEventRsvp,
+	DevEventSeat,
 	DevFulfilmentMix,
 	DevInvoicingMode,
 	DevLayoutDirection,
@@ -264,6 +270,16 @@ export interface DevOverrides {
 	fulfilmentMix: DevFulfilmentMix;
 	/** Simulated conferencing provider a booked session's join link resolves to. */
 	conferencing: DevConferencing;
+	/**
+	 * Where the acting viewer sits on the calendar event they open. `non_party` is the only runtime
+	 * route to the withheld projection — the alternative is signing out, and a signed-out developer
+	 * cannot open the authenticated calendars at all.
+	 */
+	eventSeat: DevEventSeat;
+	/** The acting seat's own answer to that event, including "no answer yet". */
+	eventRsvp: DevEventRsvp;
+	/** The reschedule negotiation state the event opens in (the mode follows the service type). */
+	eventReschedule: DevEventReschedule;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -321,6 +337,9 @@ export const DEV_DEFAULTS: DevOverrides = {
 	spendLimit: "within",
 	fulfilmentMix: "mixed",
 	conferencing: "zoom",
+	eventSeat: "auto",
+	eventRsvp: "auto",
+	eventReschedule: "auto",
 };
 
 /** Account-type options in display order. */
@@ -610,6 +629,35 @@ export const DEV_CONFERENCING: ReadonlyArray<DevOption<DevConferencing>> = [
 	{ value: "microsoft_teams", label: "Teams" },
 	{ value: "none", label: "None" },
 ];
+
+/** Where the viewer sits on the calendar event they open. */
+export const DEV_EVENT_SEATS: ReadonlyArray<DevOption<DevEventSeat>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "host", label: "Host" },
+	{ value: "attendee", label: "Attendee" },
+	{ value: "non_party", label: "Stranger" },
+];
+
+/** The acting seat's own answer to that event. */
+export const DEV_EVENT_RSVPS: ReadonlyArray<DevOption<DevEventRsvp>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "accepted", label: "Going" },
+	{ value: "tentative", label: "Maybe" },
+	{ value: "rejected", label: "No" },
+	{ value: "pending", label: "Unanswered" },
+];
+
+/** The reschedule negotiation state the event opens in. */
+export const DEV_EVENT_RESCHEDULES: ReadonlyArray<DevOption<DevEventReschedule>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None" },
+	{ value: "collecting", label: "Collecting" },
+	{ value: "awaiting_counterparty", label: "Awaiting" },
+	{ value: "voting", label: "Voting" },
+	{ value: "resolved", label: "Resolved" },
+	{ value: "lapsed", label: "Lapsed" },
+	{ value: "withdrawn", label: "Withdrawn" },
+];
 // #endregion
 
 // #region Store
@@ -689,6 +737,9 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devSpendLimit = next.spendLimit;
 		root.dataset.devFulfilmentMix = next.fulfilmentMix;
 		root.dataset.devConferencing = next.conferencing;
+		root.dataset.devEventSeat = next.eventSeat;
+		root.dataset.devEventRsvp = next.eventRsvp;
+		root.dataset.devEventReschedule = next.eventReschedule;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the wallet (and the rest of the shell) mirror to the opposite edge.
 		root.dir = next.layoutDirection;
@@ -739,6 +790,9 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devSpendLimit;
 		delete root.dataset.devFulfilmentMix;
 		delete root.dataset.devConferencing;
+		delete root.dataset.devEventSeat;
+		delete root.dataset.devEventRsvp;
+		delete root.dataset.devEventReschedule;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}

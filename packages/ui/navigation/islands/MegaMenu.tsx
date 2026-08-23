@@ -6,6 +6,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { Icon } from "../../icons/mod.ts";
@@ -71,8 +72,12 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 		panelRef,
 		placement: (horizontal ? "bottom-start" : "right-start") as Placement,
 	});
+	// Claimed while a column panel is open, so the bar surrenders Escape to anything opened from inside
+	// the panel and the panel itself steps above an already-open surface instead of sitting at the base.
+	const stack = useOverlayStack({ active: openTop.value >= 0, layer: "popover" });
 	useDismiss({
 		open: openTop.value >= 0,
+		enabled: stack.isTop,
 		onDismiss: () => (openTop.value = -1),
 		panelRef,
 		triggerRef: barRef,
@@ -336,12 +341,11 @@ export function MegaMenu(props: MegaMenuProps): JSX.Element {
 				<div
 					ref={panelRef}
 					class="ui-megamenu__panel"
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-						})
-						: undefined}
+					style={styleVars({
+						"--float-top": floating ? `${floating.top}px` : undefined,
+						"--float-left": floating ? `${floating.left}px` : undefined,
+						"--z-portal": String(stack.zIndex),
+					})}
 				>
 					{renderColumns(tops[openTop.value].items!)}
 				</div>

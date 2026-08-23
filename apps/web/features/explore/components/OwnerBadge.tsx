@@ -16,8 +16,13 @@ export function OwnerBadge(
 	{ owner, size = "sm", variant = "full" }: {
 		owner: ExploreOwner;
 		size?: "sm" | "md";
-		/** `mini` = the compact thumbnail owner-row: a tiny circular avatar + `@handle` only, inline. */
-		variant?: "full" | "mini";
+		/**
+		 * `mini` = the compact thumbnail owner-row: a tiny circular avatar + `@handle` only, inline.
+		 * `creator` = the service/product card's creator row: a small avatar + the DISPLAY NAME, so the
+		 * card names a person rather than a handle. Same routing convention as the others — the avatar
+		 * is the anchor, the name is inert text.
+		 */
+		variant?: "full" | "mini" | "creator";
 	},
 ): JSX.Element {
 	const href = profileHref(owner.handle);
@@ -34,6 +39,25 @@ export function OwnerBadge(
 					/>
 				</a>
 				<a class="ex-owner__handle" href={href}>{owner.handle}</a>
+			</span>
+		);
+	}
+	if (variant === "creator") {
+		return (
+			<span class="ex-owner ex-owner--creator">
+				<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
+					<Avatar
+						image={owner.avatar}
+						alt=""
+						size="sm"
+						shape={owner.kind === "business" ? "square" : "circle"}
+						class="ex-owner__avatar"
+					/>
+				</a>
+				<span class="ex-owner__name">
+					<span class="ex-owner__nametext">{owner.name}</span>
+					{owner.verified && <VerifiedBadge size="sm" />}
+				</span>
 			</span>
 		);
 	}

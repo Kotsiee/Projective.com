@@ -29,9 +29,32 @@
  */
 .cal-surface {
 	display: flex;
+	/*
+	 * A COLUMN, so the surface can carry a notice above the grid. The grid was the only child, which
+	 * made the direction moot; a banner had to displace it rather than cover it, because a refetch
+	 * failure is a statement ABOUT the grid underneath and covering the thing it is talking about is
+	 * the wrong way round.
+	 */
+	flex-direction: column;
 	flex: 1 1 0;
 	min-block-size: 0;
 	overflow: hidden;
+}
+
+/*
+ * The engine's root declares `block-size: 100%`, which in a column flex container would claim the
+ * FULL height and push the notice out under `overflow: hidden`. A `0` basis contributes nothing
+ * intrinsically, so the calendar takes exactly the remainder — the same reason `.cal-surface` itself
+ * uses one against the shell's `1fr` row.
+ */
+.cal-surface > .cal {
+	flex: 1 1 0;
+	min-block-size: 0;
+}
+
+.cal-surface__notice {
+	flex: none;
+	margin-block-end: var(--space-3);
 }
 /*
  * The one variant that is NOT a filled app region: the public `/view/[entity]/schedule` surface embeds
@@ -43,6 +66,21 @@
 	block-size: min(calc(100dvh - 9rem), 46rem);
 	min-block-size: 30rem;
 }
+/*
+ * `--full` fills its host, and it has TWO hosts that fill in different ways.
+ *
+ * In the dashboard shell its parent is `.ui-page-canvas__body`, a flex COLUMN, and the base rule's
+ * `flex: 1 1 0` is what fills it. In the guest shell (`/[handle]/availability`) the parent is
+ * `.guest-shell__body`, which is `display: block` — so that `flex` is inert and the surface fell
+ * back to its content height. `block-size: 100%` is the half that works THERE, and it is free in the
+ * dashboard: a flex item's `flex-basis: 0` wins over `block-size` for the main size, so the column
+ * host keeps sizing the surface by remainder exactly as before. One declaration, correct in both,
+ * rather than a host-specific rule that the next host would need a third version of.
+ */
+.cal-surface--full {
+	block-size: 100%;
+}
+
 .cal-surface--empty {
 	align-items: center;
 	justify-content: center;
@@ -59,80 +97,11 @@
 }
 /* #endregion */
 
-/* #region Event / booking dialog */
-.cal-dlg__facts {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	margin: 0;
-}
-.cal-dlg__fact {
-	display: grid;
-	grid-template-columns: 5.5rem 1fr;
-	gap: var(--space-2);
-	align-items: start;
-}
-.cal-dlg__fact dt {
-	font-size: 0.72rem;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-secondary);
-	font-weight: 600;
-}
-.cal-dlg__fact dd {
-	margin: 0;
-	color: var(--on-surface);
-	font-size: 0.86rem;
-}
-.cal-dlg__form {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-.cal-dlg__field {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-}
-.cal-dlg__label {
-	font-size: 0.72rem;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-secondary);
-	font-weight: 600;
-}
-.cal-dlg__select {
-	appearance: none;
-	font-family: var(--font-sans);
-	font-size: 0.9rem;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: 1px solid var(--border-subtle);
-	border-radius: var(--radius-base);
-	padding-block: var(--space-2);
-	padding-inline: var(--space-3);
-	cursor: pointer;
-}
-.cal-dlg__select:focus-visible {
-	outline: none;
-	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
-}
-.cal-dlg__when {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-}
-.cal-dlg__whenval {
-	font-size: 0.86rem;
-	color: var(--on-surface);
-}
-.cal-dlg__footer {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--space-2);
-}
-/* #endregion */
+/*
+ * The `.cal-dlg__*` block is GONE with the dialog it styled. Its replacement, the Event Modal, carries
+ * its own `.evm-*` sheet (`./event-modal.css`) and imports it from the component rather than the
+ * island — see the note at the top of `../components/EventModal.tsx` for why.
+ */
 
 /* The `.view-schedule*` block moved to `features/view/styles/view.css`. It styles the
    `/view/[id]/schedule` routes, which the VIEW feature owns, and it was only ever delivered here

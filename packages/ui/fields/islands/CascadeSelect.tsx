@@ -103,7 +103,18 @@ export function CascadeSelect(props: CascadeSelectProps): JSX.Element {
 		placement: "bottom-start",
 		matchWidth: false,
 	});
-	useDismiss({ open: open.value, onDismiss: () => close(), panelRef, triggerRef });
+	// `enabled` gates the ESCAPE channel only, and that channel is exclusive (its handler calls
+	// `stopImmediatePropagation`). Every listener registers on `document` in the capture phase, so
+	// they run in registration order, not stacking order — without this an open CascadeSelect under a
+	// later overlay eats that overlay's Escape. Outside-pointer dismissal is governed by containment
+	// and stays live regardless.
+	useDismiss({
+		open: open.value,
+		enabled: stack.isTop,
+		onDismiss: () => close(),
+		panelRef,
+		triggerRef,
+	});
 
 	// #region Column model
 	const columns: CascadeOption[][] = [options];

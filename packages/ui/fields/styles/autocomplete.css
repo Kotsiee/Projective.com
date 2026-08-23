@@ -104,8 +104,12 @@
 /* #region Floating panel */
 .ui-autocomplete__panel {
 	position: fixed;
+	/* Physical `left` on purpose: `--ac-left` is a viewport-left measurement, and a logical
+	   `inset-inline-start` resolves to `right` under `dir="rtl"`, mirroring an already-mirrored
+	   coordinate onto the wrong edge. The block axis does not turn with direction. The `0` fallback is
+	   harmless here only because the panel stays `visibility: hidden` until `[data-placement]`. */
 	inset-block-start: var(--ac-top, 0);
-	inset-inline-start: var(--ac-left, 0);
+	left: var(--ac-left, 0);
 	inline-size: var(--ac-width, auto);
 	z-index: var(--z-portal, var(--z-popover));
 	max-block-size: var(--fld-panel-maxh);

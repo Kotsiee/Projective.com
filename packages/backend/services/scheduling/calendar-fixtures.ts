@@ -1,16 +1,25 @@
-import type { CalendarEvent, CalendarPage, CalendarParams } from "@projective/types/scheduling";
+import type {
+	CalendarEvent,
+	CalendarPage,
+	CalendarParams,
+	SchedulingSim,
+	SchedulingViewer,
+} from "@projective/types/scheduling";
+import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 import type { ProjectDetail } from "@projective/types/projects";
 import { findProjectDetail } from "../projects/detail-fixtures.ts";
 import {
 	addDaysLocal,
+	externalSourceFor,
 	hash,
 	HOUR,
-	integrationsFor,
 	localSlot,
 	NOW,
+	sourcesFor,
 	startOfWeekLocal,
 	tzFor,
 } from "./derive.ts";
+import { withCoordination } from "./coordination-fixtures.ts";
 
 /**
  * project/channel calendar fixtures — the fat scheduling service's in-memory answer for
@@ -22,6 +31,12 @@ import {
  * Times are placed at a real local wall-clock in the project's deterministic display timezone, so the
  * grid and any working-hours overlay agree. The live path (RLS-scoped `scheduling.*` + integration
  * sync) fills in behind the same gate.
+ *
+ * **Deadlines are INSTANTS here** (`end === start`) and milestones are not. A due date is the moment
+ * work is owed and a review is an hour people sit down for, so the two are minted as different
+ * objects — see {@link CalendarEvent.end}, which now admits `>= start` for exactly this reason. The
+ * distinction is load-bearing rather than cosmetic: an instant is the only entry the engine draws as
+ * a pin, and while every deadline here carried a synthetic half-hour that path had no data at all.
  */
 
 const TASK_TITLES = [
@@ -34,7 +49,11 @@ const TASK_TITLES = [
 	"QA regression",
 ];
 
-function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | null): CalendarEvent[] {
+function buildEvents(
+	detail: ProjectDetail,
+	tz: string,
+	channelId?: string | null,
+): CalendarEvent[] {
 	const stages = detail.channels.stages;
 	const done = stages.filter((s) => s.status === "completed").length;
 	const weekMon = startOfWeekLocal(NOW, tz);
@@ -59,6 +78,7 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 			end: sync.end,
 			meta: "Stage sync",
 			location: "Project room",
+			sources: sourcesFor(`sync-${stage.id}`),
 		});
 
 		const reviewDay = addDaysLocal(centerDay, 2, tz);
@@ -71,10 +91,16 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 			start: review.start,
 			end: review.end,
 			meta: "Review milestone",
+			sources: sourcesFor(`review-${stage.id}`),
 		});
 
+		// A deadline is a MOMENT, so it is minted as an instant (`end === start`) and the grid draws it
+		// as a pin. The review above keeps a real 45 minutes because a review is a thing people sit
+		// down and do — the two are different objects, and giving the deadline a synthetic half-hour
+		// (which is what this fixture used to do) put a box on the grid whose height a reader is
+		// entitled to read as a span nobody agreed to.
 		const dueDay = addDaysLocal(centerDay, 4, tz);
-		const due = localSlot(dueDay, 17 * 60, 30, tz);
+		const due = localSlot(dueDay, 17 * 60, 0, tz);
 		events.push({
 			id: `due-${stage.id}`,
 			title: `${stage.name} due`,
@@ -83,6 +109,7 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 			start: due.start,
 			end: due.end,
 			meta: "Stage deadline",
+			sources: sourcesFor(`due-${stage.id}`),
 		});
 
 		if (detail.format === "session") {
@@ -99,6 +126,7 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 				attendees: 2 + (hash(`${stage.id}:att`) % cap),
 				capacity: cap,
 				meta: "Group session",
+				sources: sourcesFor(`session-${stage.id}`),
 			});
 		}
 	}
@@ -119,15 +147,20 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 				end: launchDay + 24 * HOUR,
 				allDay: true,
 				meta: "Milestone",
+				sources: sourcesFor(`launch-${detail.slug}`),
 			});
 		}
 
-		// A scatter of task deadlines across the current fortnight.
+		// A scatter of task deadlines across the current fortnight — instants, for the same reason the
+		// stage deadline above is one. They are also what exercises the engine's pin path and the
+		// proximity clustering that folds several due-marks in the same hour into one chip, neither of
+		// which had any live data while every deadline here carried an invented three quarters of an
+		// hour.
 		for (let i = 0; i < 5; i++) {
 			const h = hash(`${detail.slug}:task:${i}`);
 			const day = addDaysLocal(weekMon, (h % 10) - 1, tz);
 			const startMin = 9 * 60 + (h % 7) * 60;
-			const slot = localSlot(day, startMin, 45, tz);
+			const slot = localSlot(day, startMin, 0, tz);
 			events.push({
 				id: `task-${i}`,
 				title: `${TASK_TITLES[h % TASK_TITLES.length]} due`,
@@ -135,6 +168,7 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 				status: "confirmed",
 				start: slot.start,
 				end: slot.end,
+				sources: sourcesFor(`${detail.slug}:task:${i}`),
 			});
 		}
 
@@ -150,7 +184,7 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 				kind: "busy",
 				status: i % 3 === 0 ? "tentative" : "busy",
 				masked: true,
-				source: ["google", "outlook", "apple"][i % 3],
+				sources: externalSourceFor(`${detail.slug}:busy:${i}`),
 				start: slot.start,
 				end: slot.end,
 			});
@@ -160,13 +194,41 @@ function buildEvents(detail: ProjectDetail, tz: string, channelId?: string | nul
 	return events.sort((a, b) => a.start - b.start);
 }
 
-/** Resolve the calendar page for a project (or one of its channels). `null` → 404. */
-export function findCalendarPage(params: CalendarParams): CalendarPage | null {
+/**
+ * The coordination store key for a project's calendar. Exported so a WRITE addresses the same key
+ * the READ derived, without either side re-deriving the slug from the id twice.
+ */
+export function calendarSurfaceKey(projectId: string): string | null {
+	const detail = findProjectDetail(projectId);
+	return detail ? `project:${detail.slug}` : null;
+}
+
+/**
+ * Resolve the calendar page for a project (or one of its channels). `null` → 404.
+ *
+ * `viewer` decides only who is SEATED on each event's roster; it never changes which events exist.
+ * It defaults to nobody so a caller that forgets it produces a page with no party on it — the safe
+ * direction, since the service's privacy projection then withholds every coordination field.
+ *
+ * `sim` is the developer simulation overlay, absent on every real request; it moves the coordination
+ * INPUTS only (see `./coordination-fixtures.ts`) and grants nothing.
+ */
+export function findCalendarPage(
+	params: CalendarParams,
+	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+	sim?: SchedulingSim,
+): CalendarPage | null {
 	const detail = findProjectDetail(params.projectId);
 	if (!detail) return null;
 	const seed = hash(detail.slug);
 	const tz = tzFor(seed);
 	const channelId = params.channelId ?? null;
+	// Keyed on the SLUG, not the requested id, so the project- and channel-scope reads of the same
+	// engagement derive (and mutate) the same coordination state for the events they share.
+	const surfaceKey = `project:${detail.slug}`;
+	// The engagement's own people are the honest cast; the host is whoever runs the engagement, and
+	// on a project calendar the client is a guest of the delivery side, never its host.
+	const cast = detail.members.map((m) => m.party);
 	return {
 		scope: channelId ? "channel" : "project",
 		projectId: params.projectId,
@@ -175,7 +237,17 @@ export function findCalendarPage(params: CalendarParams): CalendarPage | null {
 		timezone: tz,
 		viewerIsClient: detail.viewerIsClient,
 		canCreate: true,
-		events: buildEvents(detail, tz, channelId),
-		integrations: integrationsFor(seed),
+		events: buildEvents(detail, tz, channelId).map((event) =>
+			withCoordination(event, {
+				surfaceKey,
+				host: detail.owner,
+				cast,
+				viewer,
+				viewerHostsSurface: !detail.viewerIsClient,
+				timezone: tz,
+				remainingOccurrences: 1,
+				sim,
+			})
+		),
 	};
 }

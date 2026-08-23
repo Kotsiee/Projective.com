@@ -51,8 +51,12 @@
 /* #region Panel + columns */
 .ui-cascadeselect__panel {
 	position: fixed;
+	/* Physical `left` on purpose: `--cs-left` is a viewport-left measurement, and a logical
+	   `inset-inline-start` resolves to `right` under `dir="rtl"`, mirroring an already-mirrored
+	   coordinate onto the wrong edge. The block axis does not turn with direction. The `0` fallback is
+	   harmless here only because the panel stays `visibility: hidden` until `[data-placement]`. */
 	inset-block-start: var(--cs-top, 0);
-	inset-inline-start: var(--cs-left, 0);
+	left: var(--cs-left, 0);
 	z-index: var(--z-portal, var(--z-popover));
 	display: flex;
 	align-items: flex-start;

@@ -76,8 +76,11 @@
 .ui-menubar__panel {
 	position: fixed;
 	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
-	z-index: var(--z-overlay);
+	/* Physical `left`: `--float-left` is a left-origin `getBoundingClientRect` number the hook has
+	   already placed direction-aware, and a logical property would mirror it a second time under
+	   `dir="rtl"`. See `.ui-anchored` in `packages/ui/styles/index.css` for the full reasoning. */
+	left: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-overlay));
 	background: var(--surface);
 	border: 1px solid var(--border-subtle);
 	border-radius: var(--radius-base);
@@ -201,7 +204,7 @@
 	position: fixed;
 	inset-block-start: 3rem;
 	inset-inline: var(--space-2);
-	z-index: var(--z-overlay);
+	z-index: var(--z-portal, var(--z-overlay));
 	max-block-size: calc(100vh - 4rem);
 	overflow-y: auto;
 	padding: var(--space-1);

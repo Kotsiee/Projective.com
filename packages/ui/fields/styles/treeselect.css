@@ -51,8 +51,12 @@
 /* #region Panel */
 .ui-treeselect__panel {
 	position: fixed;
+	/* Physical `left` on purpose: `--ts-left` is a viewport-left measurement, and a logical
+	   `inset-inline-start` resolves to `right` under `dir="rtl"`, mirroring an already-mirrored
+	   coordinate onto the wrong edge. The block axis does not turn with direction. The `0` fallback is
+	   harmless here only because the panel stays `visibility: hidden` until `[data-placement]`. */
 	inset-block-start: var(--ts-top, 0);
-	inset-inline-start: var(--ts-left, 0);
+	left: var(--ts-left, 0);
 	inline-size: var(--ts-width, auto);
 	min-inline-size: var(--fld-panel-minw);
 	z-index: var(--z-portal, var(--z-popover));

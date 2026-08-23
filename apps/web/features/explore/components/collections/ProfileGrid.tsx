@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { Grid } from "@projective/ui/layout";
-import { FreelancerCard } from "../cards/FreelancerCard.tsx";
-import { ProfileBannerCard } from "../cards/ProfileBannerCard.tsx";
+import { ProfileCard } from "../cards/ProfileCard.tsx";
 import type { ProfileItem } from "../../types/explore-types.ts";
 
 /**
@@ -13,7 +12,11 @@ import type { ProfileItem } from "../../types/explore-types.ts";
  * (users / teams / businesses) render the wide banner card — mirroring the retired EntityCarousel.
  */
 export function ProfileGrid(
-	{ kind, items, limit = 4, authed = false }: {
+	{ kind: _kind, items, limit = 4, authed = false }: {
+		/**
+		 * Which curated group this row is. Both render the SAME card — it survives only so a caller
+		 * still labels the group it is asking for, and so the Home sections stay self-describing.
+		 */
 		kind: "freelancers" | "profiles";
 		items: ProfileItem[];
 		/** Cap on cards shown in the teaser row (the rest live behind "See all →"). */
@@ -33,9 +36,7 @@ export function ProfileGrid(
 		>
 			{shown.map((it) => (
 				<div role="listitem" key={it.id}>
-					{kind === "freelancers"
-						? <FreelancerCard item={it} authed={authed} />
-						: <ProfileBannerCard item={it} authed={authed} />}
+					<ProfileCard item={it} authed={authed} />
 				</div>
 			))}
 		</Grid>

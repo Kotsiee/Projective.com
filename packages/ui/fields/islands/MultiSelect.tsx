@@ -181,7 +181,12 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 	const nav = useListNavigation(() => flat.length, (i) => !!flat[i]?.disabled);
 	const stack = useOverlayStack({ active: open, layer: "popover" });
 	const floating = useFloating({ open, triggerRef, panelRef, placement: "bottom-start" });
-	useDismiss({ open, onDismiss: () => close(), panelRef, triggerRef });
+	// `enabled` gates the ESCAPE channel only, and that channel is exclusive (its handler calls
+	// `stopImmediatePropagation`). Every listener registers on `document` in the capture phase, so
+	// they run in registration order, not stacking order — without this an open MultiSelect under a
+	// later overlay eats that overlay's Escape. Outside-pointer dismissal is governed by containment
+	// and stays live regardless.
+	useDismiss({ open, enabled: stack.isTop, onDismiss: () => close(), panelRef, triggerRef });
 
 	// #region Open / close
 	const openPanel = () => {

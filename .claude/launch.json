@@ -421,6 +421,138 @@
 				"--strictPort"
 			],
 			"port": 8773
+		},
+		{
+			"name": "web-cal2",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8973",
+				"--strictPort"
+			],
+			"port": 8973
+		},
+		{
+			"name": "web-sched",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8981",
+				"--strictPort"
+			],
+			"port": 8981
+		},
+		{
+			"name": "web-evmodal",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"8991",
+				"--strictPort"
+			],
+			"port": 8991
+		},
+		{
+			"name": "web-callane",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9073",
+				"--strictPort"
+			],
+			"port": 9073
+		},
+		{
+			"name": "web-evdt",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9273",
+				"--strictPort"
+			],
+			"port": 9273
+		},
+		{
+			"name": "web-calcanvas",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9173",
+				"--strictPort"
+			],
+			"port": 9173
+		},
+		{
+			"name": "web-calfix",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9373",
+				"--strictPort"
+			],
+			"port": 9373
+		},
+		{
+			"name": "web-calredesign",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9473",
+				"--strictPort"
+			],
+			"port": 9473
+		},
+		{
+			"name": "web-calphys",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9573",
+				"--strictPort"
+			],
+			"port": 9573
+		},
+		{
+			"name": "web-calphys2",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9673",
+				"--strictPort"
+			],
+			"port": 9673
+		},
+		{
+			"name": "web-calux",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9773",
+				"--strictPort"
+			],
+			"port": 9773
 		}
 	]
 }

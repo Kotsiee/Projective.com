@@ -36,20 +36,6 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
 };
 
 /**
- * A fixed reference instant for the mini-calendar's SSR + first-paint render (matches the calendar
- * fixtures' reference clock). Seeding a constant keeps SSR and hydration byte-identical; the island
- * swaps to the real clock after mount, so the mini-calendar then reflects the live month.
- */
-const SSR_REF_MS = Date.UTC(2026, 6, 17, 16, 20);
-const DAY_MS = 86_400_000;
-
-/** The UTC midnight day-key of an instant. */
-function dayKeyOf(ms: number): number {
-	const d = new Date(ms);
-	return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
-
-/**
  * ProjectSidebar — the contextual middle-nav sidebar for the Project Details page
  * (`/projects/[projectId]`). Icon-heavy + minimalist: it replaces the `/projects` feed in the lane
  * whenever a single engagement is open. It has two presentations, switched purely by the splitter's
@@ -108,9 +94,6 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// tracked live from the dev Context Switcher, with the current seam snapshot kept for the derivations.
 	const kind = useSignal<SessionKind>(sessionKind);
 	const seam = useSignal<DevSeamState | null>(null);
-	// The mini-calendar clock — a fixed reference for SSR/first paint, the real clock after mount.
-	const nowMs = useSignal<number>(SSR_REF_MS);
-	const mounted = useSignal<boolean>(false);
 
 	// Restore the persisted accordion open/closed preference once, client-side (never during SSR, so
 	// the server-rendered defaults stay authoritative for hydration). Merged onto the defaults so a
@@ -135,12 +118,6 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		sync();
 		return subscribeDevSeam(sync);
 	}, [sessionKind]);
-
-	// Swap the mini-calendar to the real clock after mount (deterministic SSR before, live month after).
-	useEffect(() => {
-		nowMs.value = Date.now();
-		mounted.value = true;
-	}, []);
 
 	// A slug that resolved to nothing — a calm stub with a way back, never a hard error.
 	if (!detail) {
@@ -218,9 +195,6 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// The session projection recomputes when the archetype or the dev seam changes (both signals).
 	const normalData = activeKind === "normal" ? deriveNormalSession(detail, seam.value) : null;
 	const groupData = activeKind === "group" ? deriveGroupSession(detail, seam.value) : null;
-	const sessionDayMs = normalData
-		? dayKeyOf(nowMs.value) + normalData.upcoming.dayOffset * DAY_MS
-		: 0;
 
 	return (
 		<div class="proj-detail" data-service={activeKind}>
@@ -251,12 +225,8 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 							<NormalSessionPanel
 								detail={detail}
 								data={normalData}
-								nowMs={nowMs.value}
-								sessionDayMs={sessionDayMs}
-								mounted={mounted.value}
 								calendarHref={calendarHref}
 								filesHref={filesHref}
-								onPickDay={() => go(calendarHref)}
 							/>
 						)
 						: groupData

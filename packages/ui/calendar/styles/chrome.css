@@ -1,0 +1,112 @@
+/*
+ * @projective/ui/calendar — the pinned viewport chrome: the overlay depth gauge and its lever.
+ *
+ * Its canvas twin's drawing values are probe swatches, and those live in `grid.css` with the rest of
+ * the probe — see that file's header.
+ */
+
+/*
+ * #region Overlay scrollbar
+ *
+ * An OVERLAY bar, so it reserves no layout width and the time columns keep the full content box. It
+ * carries its own token defaults rather than reading them off `.cal`, so `TimeGrid`/`DayTimeline`
+ * still work when composed standalone outside the island (the `--cal-gutter-w` trap: a var with no
+ * fallback, declared only on an ancestor that may not be there, silently collapses the property).
+ * That is also why `--cal-ball-size`/`--cal-bar-morph`/`--cal-bar-throw` are restated here even though
+ * `shell.css` declares the first two on `.cal` — the values must agree, and this copy is what a
+ * standalone composition resolves against before any script has run.
+ *
+ * THE ONLY TRANSITIONS IN THIS BLOCK ARE ON `opacity` AND `background-color`/`border-color`. Every
+ * geometric value the reader is meant to trust — the handle's position, its length, how far through
+ * the pill-to-ball morph it is, and where the ball is pointing — is written directly from a
+ * measurement by `components/OverlayScrollbar.tsx` on the event that changed it. A frozen animation
+ * clock (a hidden or background tab) must not be able to strand any of them, and the morph in
+ * particular is spent as a `transform`/`opacity` factor precisely so that motion decorates it rather
+ * than encoding it.
+ */
+.cal-bar {
+	--cal-bar-w: 0.625rem;
+	--cal-bar-inset: var(--space-1);
+	--cal-bar-fill: color-mix(in srgb, var(--outline) 32%, transparent);
+	--cal-bar-fill-strong: color-mix(in srgb, var(--outline) 55%, transparent);
+	--cal-bar-edge: color-mix(in srgb, var(--outline) 45%, transparent);
+	--cal-ball-size: 0.85rem;
+	--cal-bar-morph: 0;
+	--cal-bar-throw: 0px;
+	position: absolute;
+	inset-block: var(--cal-bar-inset);
+	inset-inline-end: var(--cal-bar-inset);
+	inline-size: var(--cal-bar-w);
+	z-index: var(--z-raised);
+	opacity: 0;
+	/* The track never takes a pointer: a wheel or a middle-click over it must reach the scroller
+	   underneath. Only the handle re-enables hit-testing. */
+	pointer-events: none;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+
+.cal-bar--on {
+	opacity: 1;
+}
+
+.cal-bar__handle {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--cal-bar-top);
+	block-size: var(--cal-bar-h);
+	border: 1px solid var(--cal-bar-edge);
+	border-radius: var(--radius-full);
+	background: var(--cal-bar-fill);
+	/* Hit-testable even at rest, so the bar can be found again after it has faded out — a control that
+	   becomes unreachable the moment it is idle is not a control. */
+	pointer-events: auto;
+	cursor: grab;
+	touch-action: none;
+	/* `--cal-bar-h`/`--cal-bar-top` are geometry the JS layer writes every frame while the lever is
+	   open; they stay UNTRANSITIONED for the reason the header gives. Only the decorative tint does. */
+	transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast)
+		var(--ease-standard);
+}
+
+.cal-bar__handle:hover {
+	background: var(--cal-bar-fill-strong);
+}
+
+.cal-bar--dragging .cal-bar__handle {
+	background: var(--cal-bar-fill-strong);
+	cursor: grabbing;
+}
+
+/*
+ * The joystick BALL (§Part 4). A `::before` rather than a restyled handle, so the handle's own box
+ * goes on encoding its real geometry — its offset is still the depth read, and that is the only thing
+ * on screen still reporting where the reader is while the throttle is open.
+ *
+ * The morph rides `transform: scale()` and `opacity`, both driven by the resolved `--cal-bar-morph`.
+ * The previous shape transitioned `inline-size`/`block-size`, which is a layout property AND an
+ * animated one — two rules broken at once, and the failure mode was silent: a tab that lost its
+ * animation clock mid-press kept a zero-diameter ball over a handle the reader had visibly grabbed.
+ * With no transition at all there is nothing to strand; the spring in `useOverlayScrollbar` already
+ * jumps to its final value whenever the clock is frozen or the reader prefers reduced motion.
+ *
+ * `--cal-bar-throw` is the stick's deflection from the handle's centre, saturating well before the
+ * throttle does (`core/chrome.ts` `leverThrowPx`) so the ball never detaches from the handle it grew
+ * out of.
+ */
+.cal-bar__handle::before {
+	content: "";
+	position: absolute;
+	inset-inline-start: 50%;
+	inset-block-start: 50%;
+	inline-size: var(--cal-ball-size);
+	block-size: var(--cal-ball-size);
+	border-radius: var(--radius-full);
+	background: var(--cal-bar-fill-strong);
+	opacity: var(--cal-bar-morph);
+	transform: translate(-50%, calc(-50% + var(--cal-bar-throw))) scale(var(--cal-bar-morph));
+	transform-origin: center;
+	/* The ball is decoration drawn over the handle; the handle keeps the whole target. */
+	pointer-events: none;
+}
+
+/* #endregion */

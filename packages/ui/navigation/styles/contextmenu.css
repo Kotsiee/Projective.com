@@ -9,8 +9,11 @@
 .ui-contextmenu__panel {
 	position: fixed;
 	inset-block-start: var(--float-top, -9999px);
-	inset-inline-start: var(--float-left, -9999px);
-	z-index: var(--z-overlay);
+	/* Physical `left`: `--float-left` is a left-origin `getBoundingClientRect` number the hook has
+	   already placed direction-aware, and a logical property would mirror it a second time under
+	   `dir="rtl"`. See `.ui-anchored` in `packages/ui/styles/index.css` for the full reasoning. */
+	left: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-overlay));
 	min-inline-size: 12rem;
 	background: var(--surface);
 	border: 1px solid var(--border-subtle);

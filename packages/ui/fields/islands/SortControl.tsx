@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import type { Bindable, FieldSize } from "../types/mod.ts";
 
 /**
@@ -110,6 +111,10 @@ export function SortControl(props: SortControlProps): JSX.Element {
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
 
+	// The menu carries `.ui-anchored`, whose z-index resolves to the popover BASE unless a claim writes
+	// `--z-portal` — so an unclaimed menu opened from inside a modal painted underneath it. The claim
+	// fixes the paint order and hands the menu Escape ownership over the surface beneath.
+	const stack = useOverlayStack({ active: open.value, layer: "popover" });
 	const float = useFloating({
 		open: open.value,
 		triggerRef,
@@ -119,6 +124,7 @@ export function SortControl(props: SortControlProps): JSX.Element {
 	});
 	useDismiss({
 		open: open.value,
+		enabled: stack.isTop,
 		onDismiss: () => (open.value = false),
 		panelRef: menuRef,
 		triggerRef,
@@ -209,6 +215,7 @@ export function SortControl(props: SortControlProps): JSX.Element {
 						style={styleVars({
 							"--float-top": float ? `${float.top}px` : undefined,
 							"--float-left": float ? `${float.left}px` : undefined,
+							"--z-portal": String(stack.zIndex),
 						})}
 					>
 						{options.map((opt) => {

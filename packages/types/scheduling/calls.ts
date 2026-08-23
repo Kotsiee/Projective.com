@@ -4,9 +4,11 @@ import { timestamp, uuid } from "./rows.ts";
 /**
  * Discovery & courtesy calls — the Zod SSOT for the pre-engagement booking layer.
  *
- * Mirrors migrations `20260724103000_scheduling_discovery_calls.sql` (settings, the booking record,
- * the Digital Handshake attendance log, the audit trail) and `20260724104000_scheduling_
- * booking_engine.sql` (the refusal vocabulary the in-DB gate returns).
+ * Mirrors the consolidated `supabase/migrations/00000022_tables_scheduling.sql` (settings, the
+ * booking record, the Digital Handshake attendance log, the audit trail) plus `00001510` (the
+ * refusal vocabulary the in-DB gate returns) / `00001860` (its enforcement triggers). The
+ * timestamped `2026072410xxxx_scheduling_*.sql` files these were first authored in were folded into
+ * those consolidated files (root CLAUDE.md §1) and no longer exist.
  *
  * **The central distinction (PRODUCT_SPEC.md §Discovery & Courtesy Calls).** A discovery call is a
  * TOP-OF-FUNNEL CONVERSION TOOL, not a deliverable: it creates no project, stage, or ticket, never

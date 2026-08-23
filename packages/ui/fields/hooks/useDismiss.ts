@@ -1,54 +1,16 @@
 /**
- * `useDismiss` — close an open overlay (dropdown/popup/menu) on outside pointerdown or Escape.
+ * Package-level re-export of the canonical dismissal hook.
  *
- * Client-only; the listeners are attached in an effect and torn down on close/unmount. Overlays that
- * anchor a trigger pass both refs so a click on the trigger itself does not double-toggle. Escape is
- * captured so it wins over any inner handler that might stop propagation.
+ * This module used to carry a SECOND, divergent copy of `useDismiss`: it had no `enabled` option and
+ * used `stopPropagation` rather than `stopImmediatePropagation` on Escape. Because every fields
+ * dropdown (Select, MultiSelect, TreeSelect, CascadeSelect, DatePicker, ColorPicker, AutoComplete,
+ * SplitButton) imported it, none of them could take part in overlay-stack ownership even when a
+ * caller wanted them to, and one Escape press closed a different surface depending on incidental
+ * render order.
+ *
+ * The two are now one. The canonical hook's options are a strict superset of the old ones, so every
+ * existing call site keeps working unchanged while gaining portal-aware containment
+ * (`hooks/overlay-registry.ts`) and consistent Escape ownership.
  */
-import { useEffect } from "preact/hooks";
-import type { RefObject } from "preact";
-
-export interface DismissOptions {
-	/** Whether the overlay is currently open (listeners only run while true). */
-	open: boolean;
-	/** Called to request close. */
-	onDismiss: () => void;
-	/** The overlay/panel element — clicks inside are ignored. */
-	panelRef: RefObject<HTMLElement>;
-	/** The trigger element — clicks here are ignored (its own handler toggles). */
-	triggerRef?: RefObject<HTMLElement>;
-	/** Close on Escape (default true). */
-	closeOnEscape?: boolean;
-	/** Close on outside pointer (default true). */
-	closeOnOutside?: boolean;
-}
-
-export function useDismiss(opts: DismissOptions): void {
-	const { open, onDismiss, panelRef, triggerRef, closeOnEscape = true, closeOnOutside = true } =
-		opts;
-
-	useEffect(() => {
-		if (!open || typeof document === "undefined") return;
-
-		const onPointer = (e: PointerEvent) => {
-			if (!closeOnOutside) return;
-			const target = e.target as Node | null;
-			if (panelRef.current?.contains(target)) return;
-			if (triggerRef?.current?.contains(target)) return;
-			onDismiss();
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (closeOnEscape && e.key === "Escape") {
-				e.stopPropagation();
-				onDismiss();
-			}
-		};
-
-		document.addEventListener("pointerdown", onPointer, true);
-		document.addEventListener("keydown", onKey, true);
-		return () => {
-			document.removeEventListener("pointerdown", onPointer, true);
-			document.removeEventListener("keydown", onKey, true);
-		};
-	}, [open, onDismiss, panelRef, triggerRef, closeOnEscape, closeOnOutside]);
-}
+export { useDismiss } from "../../hooks/useDismiss.ts";
+export type { DismissOptions } from "../../hooks/useDismiss.ts";

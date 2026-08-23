@@ -1,11 +1,12 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import "../styles/hover-card.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { usePresence } from "../core/usePresence.ts";
 import { BodyPortal } from "../components/BodyPortal.tsx";
+import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Placement } from "../../types/mod.ts";
@@ -79,17 +80,21 @@ export function HoverCard(props: HoverCardProps): JSX.Element {
 	// #endregion
 
 	// WCAG 2.1 SC 1.4.13 (Content on Hover or Focus) requires hover-revealed content to be dismissable
-	// without moving the pointer. Escape closes it immediately.
-	useEffect(() => {
-		if (!mounted) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
+	// without moving the pointer. Escape closes it immediately — routed through the shared hook so the
+	// press is scoped to the top-most card; a raw bubble-phase `document` listener per instance meant
+	// one press collapsed every open HoverCard at once. `closeOnOutside` stays off: the card is governed
+	// by pointer-leave/blur, and an outside-pointer rule would fight those delays.
+	useDismiss({
+		open: mounted,
+		enabled: stack.isTop,
+		onDismiss: () => {
 			clearTimer();
 			setOpen(false);
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, [mounted]);
+		},
+		panelRef,
+		triggerRef,
+		closeOnOutside: false,
+	});
 
 	return (
 		<span

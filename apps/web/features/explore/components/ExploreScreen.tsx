@@ -4,6 +4,7 @@ import "../styles/explore-results.css";
 import { ExploreHome } from "./ExploreHome.tsx";
 import SearchDashboard from "../islands/SearchDashboard.island.tsx";
 import CardStyleAnchor from "../islands/CardStyleAnchor.island.tsx";
+import AmbientPalette from "../islands/AmbientPalette.island.tsx";
 import { isResultsMode } from "../core/explore-state.ts";
 import type { ExploreParams } from "../core/explore-state.ts";
 import type { HomeFeed, SearchPayload } from "../types/explore-types.ts";
@@ -28,9 +29,16 @@ export function ExploreScreen(
 	const results = isResultsMode(params);
 	return (
 		<div class="ex" data-mode={results ? "results" : "home"}>
-			{/* Anchors the shared card CSS (Avatar/RatingStars) into the page's island bundle — the static
-			    Home has no other island carrying it. See CardStyleAnchor for the full rationale. */}
+			{
+				/* Anchors the shared card CSS (Avatar/RatingStars) into the page's island bundle — the static
+			    Home has no other island carrying it. See CardStyleAnchor for the full rationale. */
+			}
 			<CardStyleAnchor />
+			{
+				/* Extracts each card's dominant media colour into `--ex-ambient` for the hover wash. Renders
+			    nothing; cards already paint a token-derived fallback, so this only ever upgrades them. */
+			}
+			<AmbientPalette />
 			{results
 				? (
 					<SearchDashboard

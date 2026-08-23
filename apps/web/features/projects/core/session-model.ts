@@ -132,8 +132,6 @@ export interface UpcomingSession {
 	label: string;
 	/** Pre-formatted relative label (e.g. "In 2 days"). */
 	relativeLabel: string;
-	/** Days from "today" the session sits on — the mini-calendar highlights this after mount. */
-	dayOffset: number;
 	/** Pre-formatted duration label (e.g. "60 min"). */
 	durationLabel: string;
 	/** The booking-proposal state (drives {@link bookingBadge}). */
@@ -172,7 +170,6 @@ export function deriveNormalSession(
 	const upcoming: UpcomingSession = {
 		label: `${WEEKDAYS[h % WEEKDAYS.length]} · ${TIMES[(h >>> 3) % TIMES.length]}`,
 		relativeLabel: RELATIVE[h % RELATIVE.length],
-		dayOffset: h % 7,
 		durationLabel: `${[30, 45, 60, 90][(h >>> 5) % 4]} min`,
 		bookingStatus,
 	};

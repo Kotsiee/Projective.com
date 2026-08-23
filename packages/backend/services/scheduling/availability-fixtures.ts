@@ -2,16 +2,21 @@ import type {
 	AvailabilityRule,
 	CalendarEvent,
 	SchedulePage,
+	SchedulingSim,
+	SchedulingViewer,
 } from "@projective/types/scheduling";
+import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 import { findProfile } from "../profile/profile-fixtures.ts";
 import {
 	addDaysLocal,
+	externalSourceFor,
 	hash,
-	integrationsFor,
 	localSlot,
 	NOW,
+	sourcesFor,
 	startOfWeekLocal,
 } from "./derive.ts";
+import { withCoordination } from "./coordination-fixtures.ts";
 
 /**
  * `@handle` availability fixtures — the fat scheduling service's answer for `/[handle]/availability`
@@ -38,7 +43,12 @@ function buildRules(seed: number): AvailabilityRule[] {
 			label: "Morning",
 		});
 		if (!isSat) {
-			rules.push({ weekday: wd, startMinute: 13 * 60 + 30, endMinute: closeH * 60, label: "Afternoon" });
+			rules.push({
+				weekday: wd,
+				startMinute: 13 * 60 + 30,
+				endMinute: closeH * 60,
+				label: "Afternoon",
+			});
 		}
 	}
 	return rules;
@@ -87,7 +97,7 @@ function buildSlots(seed: number, tz: string, rules: AvailabilityRule[]): Calend
 					kind: "busy",
 					status: "busy",
 					masked: true,
-					source: ["google", "outlook", "apple"][h % 3],
+					sources: externalSourceFor(`${seed}:busy:${w}:${wd}`),
 					start: s.start,
 					end: s.end,
 				});
@@ -108,19 +118,45 @@ function buildSlots(seed: number, tz: string, rules: AvailabilityRule[]): Calend
 			capacity: 12,
 			meta: "Group session",
 			location: "Live",
+			sources: sourcesFor(`${seed}:ses:${w}`),
 		});
 	}
 	return events.sort((a, b) => a.start - b.start);
 }
 
-/** Resolve the availability schedule page for a `@handle`. `null` → 404. */
-export function findAvailabilityPage(handle: string): SchedulePage | null {
+/**
+ * The coordination store key for a `@handle`'s availability. Exported so a WRITE addresses the same
+ * key the READ derived — keyed on the RESOLVED handle, so `@Ada` and `@ada` cannot end up with two
+ * separate sets of RSVPs.
+ */
+export function availabilitySurfaceKey(handle: string): string | null {
+	const profile = findProfile(handle);
+	return profile ? `availability:${profile.handle}` : null;
+}
+
+/**
+ * Resolve the availability schedule page for a `@handle`. `null` → 404.
+ *
+ * This is the platform's most exposed schedule read — a guest-reachable page for anybody's profile —
+ * so `viewer` defaults to nobody and every event comes back with no seated party, which is what the
+ * service's privacy projection then keys the withholding on.
+ */
+export function findAvailabilityPage(
+	handle: string,
+	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+	sim?: SchedulingSim,
+): SchedulePage | null {
 	const profile = findProfile(handle);
 	if (!profile) return null;
 	const seed = hash(profile.handle);
 	const tz = profile.location.timezone;
 	const isFreelancer = profile.kind === "freelancer";
 	const rules = buildRules(seed);
+	const events = isFreelancer ? buildSlots(seed, tz, rules) : [];
+	// The office hours recur weekly, so a seat bought today is worth every remaining occurrence —
+	// counted from the derived series rather than assumed, so the money figure and the grid agree.
+	const upcomingSessions = events.filter((e) => e.kind === "session" && e.start >= NOW).length;
+	const host = { name: profile.name, avatar: profile.avatar, handle: profile.handle };
 	return {
 		scope: "availability",
 		title: "Availability",
@@ -129,7 +165,16 @@ export function findAvailabilityPage(handle: string): SchedulePage | null {
 		ownerHandle: profile.handle,
 		viewerCanBook: isFreelancer,
 		availability: { timezone: tz, rules, blackouts: buildBlackouts(seed, tz) },
-		events: isFreelancer ? buildSlots(seed, tz, rules) : [],
-		integrations: integrationsFor(seed),
+		events: events.map((event) =>
+			withCoordination(event, {
+				surfaceKey: `availability:${profile.handle}`,
+				host,
+				viewer,
+				viewerHostsSurface: false,
+				timezone: tz,
+				remainingOccurrences: Math.max(1, upcomingSessions),
+				sim,
+			})
+		),
 	};
 }

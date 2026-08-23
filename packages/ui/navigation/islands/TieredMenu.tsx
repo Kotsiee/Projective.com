@@ -7,6 +7,7 @@ import { styleVars } from "../../core/style.ts";
 import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
@@ -267,8 +268,18 @@ export function TieredMenu(props: TieredMenuProps): JSX.Element {
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 
+	// One claim for the whole tree: the side flyouts render INSIDE the root panel, so they inherit its
+	// `--z-portal` and are covered by its containment. Without the claim the popup neither outranked an
+	// already-open surface nor surrendered Escape to anything opened above it.
+	const stack = useOverlayStack({ active: popup && open.value, layer: "popover" });
 	const floating = useFloating({ open: popup && open.value, triggerRef, panelRef });
-	useDismiss({ open: popup && open.value, onDismiss: () => close(), panelRef, triggerRef });
+	useDismiss({
+		open: popup && open.value,
+		enabled: stack.isTop,
+		onDismiss: () => close(),
+		panelRef,
+		triggerRef,
+	});
 
 	const close = () => {
 		if (!popup) return;
@@ -315,12 +326,11 @@ export function TieredMenu(props: TieredMenuProps): JSX.Element {
 				<div
 					ref={panelRef}
 					class="ui-tieredmenu__panel"
-					style={floating
-						? styleVars({
-							"--float-top": `${floating.top}px`,
-							"--float-left": `${floating.left}px`,
-						})
-						: undefined}
+					style={styleVars({
+						"--float-top": floating ? `${floating.top}px` : undefined,
+						"--float-left": floating ? `${floating.left}px` : undefined,
+						"--z-portal": String(stack.zIndex),
+					})}
 				>
 					{level}
 				</div>
