@@ -136,6 +136,20 @@ export const ListingPricingSchema = z.object({
 	sessionPrice: z.number().min(0).nullable(),
 	/** Group Session only — attendee cap per session (drives the `$X / seat` presentation). */
 	seatsPerSession: z.number().int().min(1).max(500).nullable(),
+	/**
+	 * Revision rounds included at no extra cost, **per stage** — the seller's own commitment, mirrored
+	 * from the discovery `ServiceItem` field of the same name so the manage page edits the value the
+	 * `/view` stage ledger renders rather than a second copy of it.
+	 *
+	 * `null` means the seller has not declared one and the corpus default applies; `0` is the distinct
+	 * claim that no rounds are included.
+	 */
+	freeRevisions: z.number().int().min(0).max(99).nullable(),
+	/**
+	 * The per-round cost once the free allowance is spent, in the listing's currency. `0` means further
+	 * rounds are free — a real offer, and not the same as `null`, which means nothing was priced.
+	 */
+	extraRevisionPrice: z.number().min(0).nullable(),
 });
 export type ListingPricing = z.infer<typeof ListingPricingSchema>;
 

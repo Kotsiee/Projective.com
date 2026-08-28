@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { ENTITY_META, ProfileIcon, TIER_META } from "./profile-glyphs.tsx";
 import type { ProfileKind, VerificationTier } from "../types/profile-types.ts";
 
@@ -25,7 +26,7 @@ export function TierBadges(
 						data-tier={tier}
 						aria-label={TIER_META[tier].title}
 					>
-						<ProfileIcon name="verified" class="pf-tier__mark" />
+						<Icon name="verified" class="pf-tier__mark" filled />
 						<span class="pf-tier__label">{TIER_META[tier].label}</span>
 					</span>
 				</Tooltip>

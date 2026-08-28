@@ -1,7 +1,10 @@
 import type { ComponentChildren } from "preact";
 import ProjectStickyHeader from "../islands/ProjectStickyHeader.island.tsx";
+import EntityStickyHeader from "../islands/EntityStickyHeader.island.tsx";
 import { resolveViewPage } from "./view-ssr.ts";
+import { resolveArchetype } from "./entity-archetype.ts";
 import type { HrefContext } from "@features/explore/core/routing.ts";
+import type { UserContext } from "@projective/types/auth";
 
 /**
  * viewHeaderFor — the SSR-idiomatic resolver that decides whether the Entity View page mounts a
@@ -10,11 +13,22 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * URL (+ auth), evaluated by the `(public)` and `[handle]` layouts, so the correct header paints on the
  * first byte with no client-context flash.
  *
- * ONLY the custom **Projects** template mirrors the profile page's scroll-migrated header (its body
- * `ProjectViewHeader` sets the shared signal that reveals this band). Articles and the generic
- * service/product view carry no such header, so this returns `null` for every other route/type.
+ * It DISPATCHES exactly like `viewLaneFor`, so the band, the lane and the body are all hydrated from
+ * one answer: a **project** gets the profile-mirroring `ProjectStickyHeader`; an **article** gets
+ * nothing (it has no transaction and already owns the TOC lane); every **commerce archetype** gets
+ * `EntityStickyHeader` (§D.7.6).
+ *
+ * The band deliberately carries no purchase control and no contact trigger. `.guest-shell__subheader`
+ * is `display: none` at ≤767px while `.ui-middle-nav__header` still renders there, so anything placed
+ * here exists for a signed-in phone user and not a guest one, beside `EntityBuyBar`, which already owns
+ * both flows below `--bp-md` — the duty-transfer conflict §D.7.4 forbids. It is identity and one jump
+ * to the reviews, which is why it needs no resolved offer.
  */
-export function viewHeaderFor(url: URL, authed: boolean): ComponentChildren | null {
+export function viewHeaderFor(
+	url: URL,
+	authed: boolean,
+	_context?: UserContext,
+): ComponentChildren | null {
 	const segments = url.pathname.split("/").filter(Boolean);
 
 	let id: string | undefined;
@@ -31,7 +45,18 @@ export function viewHeaderFor(url: URL, authed: boolean): ComponentChildren | nu
 	if (!id || !ctx) return null;
 
 	const { view } = resolveViewPage(id);
-	if (!view || !view.project) return null;
+	if (!view) return null;
 
-	return <ProjectStickyHeader item={view.item} authed={authed} ctx={ctx} />;
+	if (view.project) return <ProjectStickyHeader item={view.item} authed={authed} ctx={ctx} />;
+	// An article has no transaction and its lane is the table of contents — nothing to condense into.
+	if (view.article) return null;
+
+	return (
+		<EntityStickyHeader
+			item={view.item}
+			archetype={resolveArchetype(view)}
+			authed={authed}
+			ctx={ctx}
+		/>
+	);
 }

@@ -5,6 +5,7 @@ import { ExploreHome } from "./ExploreHome.tsx";
 import SearchDashboard from "../islands/SearchDashboard.island.tsx";
 import CardStyleAnchor from "../islands/CardStyleAnchor.island.tsx";
 import AmbientPalette from "../islands/AmbientPalette.island.tsx";
+import ViewHistory from "../islands/ViewHistory.island.tsx";
 import { isResultsMode } from "../core/explore-state.ts";
 import type { ExploreParams } from "../core/explore-state.ts";
 import type { HomeFeed, SearchPayload } from "../types/explore-types.ts";
@@ -39,6 +40,13 @@ export function ExploreScreen(
 			    nothing; cards already paint a token-derived fallback, so this only ever upgrades them. */
 			}
 			<AmbientPalette />
+			{
+				/* Records which items this DEVICE opens, so the Home's "Continue where you left off" rail
+			    and the footer's "Recently viewed" stack have something true to read. Renders nothing;
+			    finds its subjects by `data-item-id` rather than being threaded through every card, so the
+			    cards stay server components. */
+			}
+			<ViewHistory />
 			{results
 				? (
 					<SearchDashboard

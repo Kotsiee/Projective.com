@@ -3,6 +3,10 @@ import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { EmptyState } from "@projective/ui/utils";
 import "../styles/view.css";
+// The not-found branch renders no lane, and the lane island is what delivers `entity-view.css` on
+// every other branch — so without this import the one state that most needs a working next action
+// ships with zero rules for `.evp`, `.evp__back` or its call to action.
+import "../styles/entity-view.css";
 
 /**
  * ViewStyleAnchor — a zero-UI style anchor for the Entity View page.

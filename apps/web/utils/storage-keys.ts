@@ -50,6 +50,12 @@ export const SessionKeys = {
 	 * popover clears it.
 	 */
 	CHAT_POPOUT: "pj.session.chatPopout",
+	/**
+	 * A listing inquiry the buyer has typed but whose send has not yet been confirmed — `{ to, itemId,
+	 * body }`. Written before the create call and removed once it succeeds, so a failed send keeps the
+	 * text instead of discarding it. Session-scoped: an unsent question should not outlive the tab.
+	 */
+	VIEW_INQUIRY_DRAFT: "pj.session.view.inquiryDraft",
 } as const;
 // #endregion
 
@@ -85,6 +91,20 @@ export const LocalKeys = {
 	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
 	/** Recent Explore search terms (most-recent-first, capped) — powers the search recall list. */
 	EXPLORE_RECENT_SEARCHES: "pj.local.explore.recentSearches",
+	/**
+	 * The items this DEVICE has opened, most-recent-first and capped — a JSON array of
+	 * `{ id, type, at }` references (never a snapshot of the item, so a stale card can never be
+	 * rendered from a cache the corpus has since changed).
+	 *
+	 * It backs the Explore Home's "Continue where you left off" rail and the footer's "Recently
+	 * viewed" stack. It is deliberately CLIENT-ONLY and deliberately named for what it is: there is
+	 * no server-side view history anywhere in the product (no `analytics` view event, no
+	 * `discovery.recent_views` table, and `ExploreBackendService.home()` takes no viewer argument),
+	 * so this is per-device recency and nothing else. It cannot be read during SSR, so both surfaces
+	 * paint nothing on the first byte and reveal only after hydration — a surface that renders an
+	 * empty "Continue" heading would be claiming a history the viewer does not have.
+	 */
+	EXPLORE_RECENT_VIEWS: "pj.local.explore.recentViews",
 	/** Preferred Explore results layout (grid | list) — remembered across sessions. */
 	EXPLORE_LAYOUT: "pj.local.explore.layout",
 	/** Preferred Explore results sort key — remembered across sessions. */
@@ -96,6 +116,23 @@ export const LocalKeys = {
 	SIDEBAR_COLLAPSED: "pj.local.shell.sidebarCollapsed",
 	/** Persisted middle-nav (Blue lane) drag width in px — restored by the MiddleNavSplitter island. */
 	MIDDLE_LANE_WIDTH: "pj.local.shell.laneWidth",
+	/**
+	 * The conversion lane's width on a public entity-view route — deliberately a SEPARATE key from
+	 * {@link MIDDLE_LANE_WIDTH}.
+	 *
+	 * That one key is shared by every laned surface in the product, so a drag on `/projects` moves the
+	 * lane on `/wallet`, `/messages` and `/view` alike. The entity view's lane is not navigation, it is
+	 * the transaction (DESIGN_SYSTEM §D.7), and it needs more room than a channel list — so it ships a
+	 * wider default. Without its own key that default would be silently discarded for any viewer who
+	 * has ever dragged any other lane, because `useSplitter` restores the stored width in preference to
+	 * `initial`.
+	 */
+	VIEW_LANE_WIDTH: "pj.local.shell.viewLaneWidth",
+	/**
+	 * The commerce `/view` nav rail's width. Its own key on purpose: the rail is pinned shut, and a
+	 * width restored from any shared key would reopen a lane that holds a single back button.
+	 */
+	VIEW_NAV_RAIL_WIDTH: "pj.local.shell.viewNavRailWidth",
 	/**
 	 * Guest floating side-nav collapsed vs expanded preference (`"1"` collapsed | `"0"` expanded).
 	 * The guest equivalent of {@link SIDEBAR_COLLAPSED}: read pre-paint in `_app.tsx` to set

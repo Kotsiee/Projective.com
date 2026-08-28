@@ -1,17 +1,30 @@
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
+import { Tooltip } from "@projective/ui/feedback";
 import { BodyPortal } from "@projective/ui/overlay";
 import { useEdgeDetection } from "@projective/ui/hooks";
 
 /**
- * CardActions — the per-card utility cluster: a kebab (`⋯`) menu holding Share, Bookmark, and Report,
- * plus an optional "Add to project" quick-action for helper entities (freelancers/teams). Revealed on
- * card hover/focus via CSS; the menu itself stays open once toggled. Dumb island — it owns only local
- * interaction state and, for the stub, optimistic client feedback (clipboard for Share; local toggles
- * for the rest). The bookmark + add-to-project actions are gated behind auth: signed-out users get a
- * sign-in link instead of the action. Swap the optimistic handlers for internal API-route calls
- * (`/api/explore/bookmark`, `/report`, `/projects/add`) when those land — islands fetch routes only.
+ * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Star · kebab**,
+ * as one horizontal row.
+ *
+ * Share and Star used to live inside the kebab menu, which cost two interactions and a decision for
+ * the two things a reader does most on a discovery card. They are now direct controls; the menu keeps
+ * what is either rare (Report) or contextual (Add to project on a helper card), so the row stays three
+ * wide on every card in the family rather than four on some.
+ *
+ * Every button is icon-only, so each carries all three things §B.8.5 makes a merge gate: an
+ * `aria-label`, a portal `Tooltip` (never a native `title`), and a hit target past the 24px floor —
+ * 32×32 here. Three unlabelled 16px glyphs in a row is exactly the case the rule exists for: a mouse
+ * user has no way to tell Share from Star from More without one.
+ *
+ * The cluster is revealed on card hover/focus via CSS and pinned open once the menu is engaged. Dumb
+ * island: it owns only local interaction state and, for the stub, optimistic client feedback (the
+ * clipboard for Share, a local toggle for Star). Star and Add-to-project are auth-gated — a signed-out
+ * reader gets a sign-in link rather than a control that silently does nothing. Swap the optimistic
+ * handlers for internal API-route calls (`/api/explore/bookmark`, `/report`, `/projects/add`) when
+ * those land; islands fetch routes only.
  */
 export default function CardActions(
 	{ title, href, authed = false, helper = false }: {
@@ -19,14 +32,14 @@ export default function CardActions(
 		title: string;
 		/** The card's canonical relative href — used to build the absolute share URL. */
 		href: string;
-		/** Whether the current visitor is signed in (gates Bookmark + Add-to-project). */
+		/** Whether the current visitor is signed in (gates Star + Add-to-project). */
 		authed?: boolean;
-		/** Render the "Add to project" helper quick-action (freelancer/team cards). */
+		/** Offer "Add to project" in the menu (freelancer/team cards). */
 		helper?: boolean;
 	},
 ) {
 	const open = useSignal(false);
-	const bookmarked = useSignal(false);
+	const starred = useSignal(false);
 	const status = useSignal(""); // polite aria-live confirmation
 	const rootRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +54,22 @@ export default function CardActions(
 		placement: "bottom-end",
 		offset: 8,
 	});
+
+	/*
+	 * Move focus INTO the panel when it opens, and back to the trigger when it closes.
+	 *
+	 * The panel is body-portalled, so in DOM order it is the last child of `<body>` while its trigger
+	 * sits inside a card — measured, 348 tab stops apart on a full Explore page. Without this a
+	 * keyboard reader who opens the menu has to tab past every remaining control on the page to reach
+	 * the two actions it holds, and `.ex-card:focus-within` stops matching the moment they leave the
+	 * card, so the trigger row fades out from under them while the panel stays up.
+	 */
+	useEffect(() => {
+		if (!open.value) return;
+		const first = menu.ref.current?.querySelector<HTMLElement>('[role="menuitem"]');
+		first?.focus();
+		return () => menu.triggerRef.current?.focus();
+	}, [open.value]);
 
 	// Close the menu on outside click / Escape. The panel lives outside `rootRef` now that it is
 	// portalled, so it needs its own containment test or a click inside the menu would dismiss it.
@@ -83,9 +112,9 @@ export default function CardActions(
 		}
 	}
 
-	function bookmark() {
-		bookmarked.value = !bookmarked.value;
-		announce(bookmarked.value ? "Saved to your bookmarks" : "Removed from bookmarks");
+	function star() {
+		starred.value = !starred.value;
+		announce(starred.value ? "Saved" : "Removed from saved");
 	}
 
 	function report() {
@@ -100,37 +129,60 @@ export default function CardActions(
 
 	return (
 		<div class="ex-actions" ref={rootRef} data-stop>
-			{helper && (
-				authed
-					? (
-						<button
-							type="button"
-							class="ex-actions__quick"
-							aria-label={`Add ${title} to a project`}
-							onClick={addToProject}
-						>
-							<PlusIcon />
-						</button>
-					)
-					: (
-						<a class="ex-actions__quick" href={signIn} aria-label="Sign in to add to a project">
-							<PlusIcon />
-						</a>
-					)
-			)}
-
-			<div class="ex-actions__menu-wrap">
+			<Tooltip content="Share">
 				<button
 					type="button"
-					ref={menu.triggerRef}
-					class="ex-actions__kebab"
-					aria-haspopup="menu"
-					aria-expanded={open.value}
-					aria-label="More actions"
-					onClick={() => (open.value = !open.value)}
+					class="ex-actions__btn"
+					aria-label={`Share ${title}`}
+					onClick={share}
 				>
-					<Icon name="kebab" />
+					<Icon name="share" />
 				</button>
+			</Tooltip>
+
+			{
+				/*
+				 * Star is a claim on the reader's own account, so a signed-out visitor gets the sign-in
+				 * link in the same slot rather than a control that toggles and forgets. Same shape, same
+				 * position — only the destination differs.
+				 */
+			}
+			{authed
+				? (
+					<Tooltip content={starred.value ? "Saved" : "Save"}>
+						<button
+							type="button"
+							class="ex-actions__btn"
+							aria-label={starred.value ? `Remove ${title} from saved` : `Save ${title}`}
+							aria-pressed={starred.value}
+							onClick={star}
+						>
+							<Icon name="star" filled={starred.value} />
+						</button>
+					</Tooltip>
+				)
+				: (
+					<Tooltip content="Sign in to save">
+						<a class="ex-actions__btn" href={signIn} aria-label="Sign in to save this">
+							<Icon name="star" />
+						</a>
+					</Tooltip>
+				)}
+
+			<div class="ex-actions__menu-wrap">
+				<Tooltip content="More actions">
+					<button
+						type="button"
+						ref={menu.triggerRef}
+						class="ex-actions__btn"
+						aria-haspopup="menu"
+						aria-expanded={open.value}
+						aria-label="More actions"
+						onClick={() => (open.value = !open.value)}
+					>
+						<Icon name="kebab" />
+					</button>
+				</Tooltip>
 
 				{open.value && (
 					<BodyPortal>
@@ -142,40 +194,36 @@ export default function CardActions(
 							role="menu"
 							aria-label="Card actions"
 						>
-						<button type="button" class="ex-actions__item" role="menuitem" onClick={share}>
-							<ShareIcon />
-							<span>Share</span>
-						</button>
-
-						{authed
-							? (
-								<button
-									type="button"
-									class="ex-actions__item"
-									role="menuitem"
-									aria-pressed={bookmarked.value}
-									onClick={bookmark}
-								>
-									<BookmarkIcon filled={bookmarked.value} />
-									<span>{bookmarked.value ? "Bookmarked" : "Bookmark"}</span>
-								</button>
-							)
-							: (
-								<a class="ex-actions__item" role="menuitem" href={signIn}>
-									<BookmarkIcon filled={false} />
-									<span>Sign in to bookmark</span>
-								</a>
+							{helper && (
+								authed
+									? (
+										<button
+											type="button"
+											class="ex-actions__item"
+											role="menuitem"
+											onClick={addToProject}
+										>
+											<Icon name="plus" />
+											<span>Add to project</span>
+										</button>
+									)
+									: (
+										<a class="ex-actions__item" role="menuitem" href={signIn}>
+											<Icon name="plus" />
+											<span>Sign in to add to a project</span>
+										</a>
+									)
 							)}
 
-						<button
-							type="button"
-							class="ex-actions__item ex-actions__item--danger"
-							role="menuitem"
-							onClick={report}
-						>
-							<FlagIcon />
-							<span>Report</span>
-						</button>
+							<button
+								type="button"
+								class="ex-actions__item ex-actions__item--danger"
+								role="menuitem"
+								onClick={report}
+							>
+								<Icon name="flag" />
+								<span>Report</span>
+							</button>
 						</div>
 					</BodyPortal>
 				)}
@@ -185,16 +233,3 @@ export default function CardActions(
 		</div>
 	);
 }
-
-// #region Icons
-/**
- * Thin adapters onto the shared registry (§B.7). These were four hand-authored `<svg>` roots, and
- * the file was its own smallest proof that per-call-site authoring cannot hold a set together: the
- * plus was drawn at `stroke-width: 2` while its three neighbours sat at 1.8, in the same row of the
- * same card.
- */
-const PlusIcon = () => <Icon name="plus" />;
-const ShareIcon = () => <Icon name="share" />;
-const FlagIcon = () => <Icon name="flag" />;
-const BookmarkIcon = ({ filled }: { filled: boolean }) => <Icon name="bookmark" filled={filled} />;
-// #endregion

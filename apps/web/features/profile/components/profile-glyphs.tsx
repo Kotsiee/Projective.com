@@ -10,6 +10,14 @@ import { IconShell } from "@projective/ui/icons";
  */
 
 // #region Glyph names
+/**
+ * Note what is NOT here: `verified`. The trust crest is shared vocabulary — the profile tier badges,
+ * the sticky header, the notable-client cards and the projects view all make the same claim about an
+ * entity — so it belongs to the registry (`@projective/ui/icons`, `<Icon name="verified" />`) and not
+ * to this feature. It used to live in both, drawn from two numerically different path datasets, which
+ * meant the same assertion rendered as two subtly different marks depending on which surface made it.
+ * A glyph stays here only when it is genuinely the profile domain's own (§B.7.1).
+ */
 export type ProfileGlyph =
 	| "back"
 	| "share"
@@ -24,7 +32,6 @@ export type ProfileGlyph =
 	| "star"
 	| "clock"
 	| "location"
-	| "verified"
 	| "response"
 	| "overview"
 	| "services"
@@ -108,12 +115,6 @@ const PATHS: Record<ProfileGlyph, VNode> = {
 		<>
 			<path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z" />
 			<circle cx="12" cy="10" r="2.5" />
-		</>
-	),
-	verified: (
-		<>
-			<path d="M12 3l2.1 1.6 2.6-.2 1 2.4 2.2 1.4-.6 2.6.6 2.6-2.2 1.4-1 2.4-2.6-.2L12 21l-2.1-1.6-2.6.2-1-2.4-2.2-1.4.6-2.6-.6-2.6 2.2-1.4 1-2.4 2.6.2z" />
-			<path d="M9 12l2 2 4-4" />
 		</>
 	),
 	response: <path d="M13 3 4 14h6l-1 7 9-11h-6z" />,

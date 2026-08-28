@@ -13,8 +13,7 @@
 }
 
 .ui-scrollpanel__viewport::-webkit-scrollbar {
-	width: 0;
-	height: 0;
+	display: none;
 }
 
 .ui-scrollpanel__viewport:focus-visible {

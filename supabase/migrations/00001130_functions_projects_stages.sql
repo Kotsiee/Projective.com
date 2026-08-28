@@ -671,3 +671,98 @@ BEGIN
     RETURN v_result;
 END;
 $$;
+
+
+-- ============================================================================
+-- Service instantiation — the 30-day sweep for un-funded pipeline drafts.
+--
+-- "Add to Projects" on a Pipeline listing copies the seller's blueprint into the buyer's workspace as
+-- `status = 'draft'`, `visibility = 'unlisted'`, with every `stage_assignments` row parked at
+-- `pending_funding`. No money moves and nothing is reserved, which is the point: a pipeline is
+-- staffed and then bought against, one ticket at a time (PRODUCT_SPEC.md §Creation & Purchasing
+-- Gate).
+--
+-- A draft nobody ever funds is clutter rather than history, so it is reclaimed after 30 days of
+-- inactivity — by SOFT ARCHIVAL. Nothing here deletes a row (root CLAUDE.md §7): the status becomes
+-- `archived`, `archived_at` is stamped, and the project and its stages stay exactly where they were.
+--
+-- The three predicates are each load-bearing:
+--   * `source_blueprint_id IS NOT NULL` — only instantiated drafts are in scope. A project somebody
+--     built by hand is theirs, however long it sits.
+--   * `status = 'draft'` — anything that has moved on has left the sweep's reach by definition.
+--   * no funded stage — funding does not POSTPONE the deadline, it REMOVES it. A pipeline somebody
+--     has paid into is an engagement, and no amount of subsequent idleness makes it an abandoned
+--     draft again.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION projects.fn_archive_stale_service_drafts (p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_idle_days integer;
+    v_archived  integer := 0;
+BEGIN
+    -- The window is a platform parameter rather than a literal, so it can be tuned without a
+    -- migration — and it is mirrored by `DRAFT_IDLE_DAYS` in `@projective/types/services`, which the
+    -- app reads to tell the buyer when their draft expires. Two places, one number: if they disagree
+    -- the interface promises a date the job does not honour.
+    SELECT COALESCE((value #>> '{}')::integer, 30)
+      INTO v_idle_days
+      FROM security.platform_params
+     WHERE key = 'service_draft_idle_days';
+
+    IF v_idle_days IS NULL THEN
+        v_idle_days := 30;
+    END IF;
+
+    WITH stale AS (
+        UPDATE projects.projects p
+           SET status      = 'archived',
+               archived_at = p_now,
+               updated_at  = p_now
+         WHERE p.status = 'draft'
+           AND p.source_blueprint_id IS NOT NULL
+           AND p.last_activity_at < p_now - make_interval(days => v_idle_days)
+           -- No stage has been funded. `fn_stage_is_funded` is not assumed to exist here; the
+           -- escrow record is the authoritative evidence that money moved, and it is what a dispute
+           -- would be resolved against.
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM projects.project_stages ps
+                 JOIN finance.escrows e ON e.project_stage_id = ps.id
+                WHERE ps.project_id = p.id
+           )
+        RETURNING 1
+    )
+    SELECT count(*) INTO v_archived FROM stale;
+
+    RETURN v_archived;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.fn_archive_stale_service_drafts (timestamptz) IS
+'Soft-archives instantiated pipeline drafts idle for `service_draft_idle_days` (default 30) with no funded stage. Never deletes. Returns the number archived.';
+
+-- Scheduled registration.
+--
+-- Guarded end to end, matching the `pg_cron` block in `00000002_extensions_core.sql`: the extension
+-- may not be installed (a local `supabase start` does not ship it), and `cron.schedule` needs
+-- privileges a migration run may not have. A failure here must not block the rest of the migration —
+-- the job can be scheduled by hand afterwards, and the application-side twin
+-- (`ProjectBackendService.sweepStaleDrafts`) covers the fixture path where there is no database at
+-- all.
+--
+-- Daily at 03:10 UTC. The window is thirty days, so the hour is irrelevant to correctness and is
+-- chosen to sit away from the top of an hour where every other job clusters.
+DO $$
+BEGIN
+    PERFORM cron.schedule (
+        'archive-stale-service-drafts',
+        '10 3 * * *',
+        $cron$SELECT projects.fn_archive_stale_service_drafts();$cron$
+    );
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pg_cron unavailable — projects.fn_archive_stale_service_drafts must be scheduled manually.';
+END $$;

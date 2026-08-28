@@ -596,7 +596,6 @@
 	list-style: none;
 	overflow-x: auto;
 	overscroll-behavior-inline: contain;
-	scrollbar-width: thin;
 }
 
 /* A chip is interactive (it carries a remove control), so a full border is allowed here. */

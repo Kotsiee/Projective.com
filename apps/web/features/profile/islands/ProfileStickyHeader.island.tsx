@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import "../styles/profile.css";
 import { ProfileActions } from "../components/ProfileActions.tsx";
-import { ProfileIcon } from "../components/profile-glyphs.tsx";
 import { editedAvatar, headerCondensed } from "../core/profile-state.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 
@@ -49,7 +49,7 @@ export default function ProfileStickyHeader(
 				<span class="pf-stickyhead__name">
 					{profile.name}
 					{profile.verified
-						? <ProfileIcon name="verified" class="pf-stickyhead__verified" />
+						? <Icon name="verified" class="pf-stickyhead__verified" filled />
 						: null}
 				</span>
 				<span class="pf-stickyhead__handle">{profile.handle}</span>

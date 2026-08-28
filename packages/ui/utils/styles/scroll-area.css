@@ -17,8 +17,7 @@
 	scrollbar-width: none; /* Firefox — hide native bar, we render our own */
 }
 .ui-scroll-area__viewport::-webkit-scrollbar {
-	inline-size: 0;
-	block-size: 0;
+	display: none;
 }
 .ui-scroll-area__viewport:focus-visible {
 	outline: none;

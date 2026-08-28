@@ -2,11 +2,16 @@ import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
+// The trust crest comes from the shared registry, not from the profile feature. This island used to
+// reach across into `@features/profile/components/profile-glyphs.tsx` for it — a feature importing
+// another feature's private glyph module purely because that is where the mark happened to be drawn.
+// A crest asserting the same thing on both surfaces is shared vocabulary, so it lives in the registry
+// and the coupling goes away with it. The `pf-header*` CSS reuse below is deliberate and stays.
+import { Icon } from "@projective/ui/icons";
 // Mirror the profile page's banner/avatar chrome by reusing its `pf-header*` skeleton; `project-view.css`
 // layers the project-specific meta/CTA styling on top.
 import "@features/profile/styles/profile.css";
 import "../styles/project-view.css";
-import { ProfileIcon } from "@features/profile/components/profile-glyphs.tsx";
 import { ViewIcon } from "../components/view-glyphs.tsx";
 import { ProjectActions } from "../components/ProjectActions.tsx";
 import { viewHeaderCondensed } from "../core/view-state.ts";
@@ -106,7 +111,7 @@ export default function ProjectViewHeader(
 							/>
 							<span class="vw-projhead__owner-name">{owner.name}</span>
 							{project.ownerVerified
-								? <ProfileIcon name="verified" class="vw-projhead__verified" />
+								? <Icon name="verified" class="vw-projhead__verified" filled />
 								: null}
 						</a>
 						{isPipeline && project.stage

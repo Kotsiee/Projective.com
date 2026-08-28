@@ -90,9 +90,18 @@ export const MessagingService = {
 		);
 	},
 
-	/** Create a conversation from the picked contacts (stub — persistence lands with the backend). */
+	/**
+	 * Create a conversation from the picked contacts (stub — persistence lands with the backend).
+	 *
+	 * `message` is the OPENING message, for flows that create a conversation and say something in the
+	 * same act — a listing's "Message seller" inquiry, where the buyer has already typed their question
+	 * before any thread exists. It is part of the payload rather than a follow-up call because a create
+	 * that succeeds and a send that fails would leave an empty thread and a lost question, which is the
+	 * exact failure this parameter exists to prevent. Transport is stubbed behind
+	 * `MESSAGING_BACKEND_LIVE`; the payload is not (the Decision #66 rule).
+	 */
 	create(
-		payload: { contactIds: string[]; groupName?: string },
+		payload: { contactIds: string[]; groupName?: string; message?: string },
 	): Promise<MessagingResult<{ id: string }>> {
 		return postMessaging<{ id: string }>("/api/messaging/conversations", payload);
 	},

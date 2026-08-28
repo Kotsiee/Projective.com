@@ -152,6 +152,8 @@ function serviceToDetail(item: ServiceItem, index: number): ListingDetail {
 		ticketPrice: item.ticketPrice ?? null,
 		sessionPrice: item.sessionPrice ?? null,
 		seatsPerSession: item.serviceType === "Group Session" ? 8 : null,
+		freeRevisions: item.freeRevisions ?? null,
+		extraRevisionPrice: item.extraRevisionPrice ?? null,
 	};
 	const media = item.media ? [item.media] : [];
 	const summary: ListingSummary = {
@@ -198,6 +200,8 @@ function productToDetail(item: ProductItem, index: number): ListingDetail {
 		ticketPrice: null,
 		sessionPrice: null,
 		seatsPerSession: null,
+		freeRevisions: null,
+		extraRevisionPrice: null,
 	};
 	const media = item.media ? [item.media] : [];
 	const summary: ListingSummary = {
@@ -444,7 +448,14 @@ export function findListing(id: string): ListingDetail | null {
 export function createListing(input: CreateListingInput): ListingDetail {
 	const id = `cl-${++seq}`;
 	const serviceType = input.kind === "service" ? input.serviceType ?? "One-Off" : null;
-	const pricing = { amount: 0, ticketPrice: null, sessionPrice: null, seatsPerSession: null };
+	const pricing = {
+		amount: 0,
+		ticketPrice: null,
+		sessionPrice: null,
+		seatsPerSession: null,
+		freeRevisions: null,
+		extraRevisionPrice: null,
+	};
 	const detail: ListingDetail = {
 		id,
 		ownerId: ACTING_SELLER.handle,

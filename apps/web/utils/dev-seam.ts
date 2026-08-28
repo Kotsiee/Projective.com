@@ -287,6 +287,41 @@ export type DevWalletCoverage = "covers" | "shortfall";
  */
 export type DevSavedCards = "seeded" | "none" | "expired";
 
+/**
+ * What a seller offers by way of a pre-purchase call — the listing page's Contact Me menu.
+ *
+ * `none` is the axis's whole point: it is the only way to reach the two-row menu, where the
+ * discovery-call row is ABSENT rather than disabled. That is the shape most likely to be got wrong and
+ * least likely to be looked at, because the three-row version looks perfectly fine.
+ */
+export type DevCallOffer = "auto" | "courtesy" | "paid" | "both" | "none";
+
+/**
+ * Where a cohort sits against its capacity.
+ *
+ * `last_seat` is separate from `open` because the copy differs at one (`1 spot left`, not `1 spots
+ * left`) and because it is the only state in which the urgency reads as true rather than as pressure.
+ * `full` reaches the refused "Cohort full" primary.
+ */
+export type DevCohortCapacity = "auto" | "open" | "last_seat" | "full";
+
+/**
+ * Whether this buyer already instantiated the pipeline they are looking at.
+ *
+ * `exists` reaches "Open project" plus the archive control; `stale` reaches a draft already past its
+ * 30-day idle window — the state the sweep acts on, and one no fixture clock will ever produce on its
+ * own.
+ */
+export type DevPipelineDraft = "auto" | "none" | "exists" | "stale";
+
+/**
+ * How much availability the slot grid finds.
+ *
+ * `sparse` is the picker's honest worst case (a fortnight with one open day) and `none` reaches the
+ * closed state, which must explain itself rather than render an empty rail.
+ */
+export type DevSlotAvailability = "auto" | "open" | "sparse" | "none";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -388,6 +423,14 @@ export interface DevSeamState {
 	eventRsvp: DevEventRsvp;
 	/** The reschedule negotiation state the event opens in. */
 	eventReschedule: DevEventReschedule;
+	/** What the viewed listing's seller offers by way of a pre-purchase call. */
+	callOffer: DevCallOffer;
+	/** Where the viewed cohort sits against its capacity. */
+	cohortCapacity: DevCohortCapacity;
+	/** Whether the viewer already has a draft project for the viewed pipeline service. */
+	pipelineDraft: DevPipelineDraft;
+	/** How much bookable availability the slot picker finds. */
+	slotAvailability: DevSlotAvailability;
 }
 // #endregion
 
@@ -566,6 +609,10 @@ const EVENT_RESCHEDULES: readonly DevEventReschedule[] = [
 ];
 const WALLET_COVERAGES: readonly DevWalletCoverage[] = ["covers", "shortfall"];
 const SAVED_CARDS: readonly DevSavedCards[] = ["seeded", "none", "expired"];
+const CALL_OFFERS: readonly DevCallOffer[] = ["auto", "courtesy", "paid", "both", "none"];
+const COHORT_CAPACITIES: readonly DevCohortCapacity[] = ["auto", "open", "last_seat", "full"];
+const PIPELINE_DRAFTS: readonly DevPipelineDraft[] = ["auto", "none", "exists", "stale"];
+const SLOT_AVAILABILITIES: readonly DevSlotAvailability[] = ["auto", "open", "sparse", "none"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -636,6 +683,10 @@ export function readDevSeam(): DevSeamState | null {
 		eventSeat: coerce(ds.devEventSeat, EVENT_SEATS, "auto"),
 		eventRsvp: coerce(ds.devEventRsvp, EVENT_RSVPS, "auto"),
 		eventReschedule: coerce(ds.devEventReschedule, EVENT_RESCHEDULES, "auto"),
+		callOffer: coerce(ds.devCallOffer, CALL_OFFERS, "auto"),
+		cohortCapacity: coerce(ds.devCohortCapacity, COHORT_CAPACITIES, "auto"),
+		pipelineDraft: coerce(ds.devPipelineDraft, PIPELINE_DRAFTS, "auto"),
+		slotAvailability: coerce(ds.devSlotAvailability, SLOT_AVAILABILITIES, "auto"),
 	};
 }
 

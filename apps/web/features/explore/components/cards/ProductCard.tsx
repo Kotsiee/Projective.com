@@ -41,6 +41,8 @@ export function ProductCard(
 	return (
 		<article
 			class="ex-card ex-card--product"
+			data-item-id={item.id}
+			data-item-type={item.type}
 			data-ambient-src={item.media}
 			style={vars({ "--ex-accent": cardAccent(item.id) })}
 		>
@@ -80,10 +82,25 @@ export function ProductCard(
 						)
 						: <span />}
 
+					{
+						/* One line, no unit: a product is a fixed purchase and has nothing to be priced PER.
+						   It shares the service card's price container so the two read at the same weight
+						   in a mixed rail, and `hideOrigin` matches the service card's decision to keep the
+						   conversion tail off a card foot — `MoneyView` still names the origin and the rate
+						   in its accessible label. */
+					}
 					<span class="ex-pricebadge">
-						{typeof item.priceMinor === "number"
-							? <MoneyView minor={item.priceMinor} currency={item.currency ?? "USD"} />
-							: item.price}
+						<span class="ex-pricebadge__amount">
+							{typeof item.priceMinor === "number"
+								? (
+									<MoneyView
+										minor={item.priceMinor}
+										currency={item.currency ?? "USD"}
+										hideOrigin
+									/>
+								)
+								: item.price}
+						</span>
 					</span>
 				</div>
 			</div>

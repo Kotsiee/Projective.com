@@ -1,0 +1,1167 @@
+/*
+ * service-booking.css — the booking panels on a listing page: the Contact Me menu, the date rail +
+ * slot picker, the scope/brief composer and the quote request.
+ *
+ * Governed by the same merge gates as `entity-view.css`, which this sheet layers on top of:
+ *
+ *   §B.4.1  Asymmetric spacing is the first separator. A section heading takes `--space-6` above and
+ *           `--space-2` below, so it attaches to what it labels rather than floating between two
+ *           neighbours equally.
+ *   §B.4.2  A tonal step is a SOLID ramp tone. There is not one translucent region background here.
+ *   §B.4.3  No `backdrop-filter` anywhere in this file. A dialog is not a viewport-pinned bar, a
+ *           floating sheet, or a mark on arbitrary photography.
+ *   §B.9.7  Zero cards for static content. The stage ledger and the slot grid are separated by
+ *           spacing and one hairline, never by a box each.
+ *   §B.11   The only filled pills are CONTROLS — day pills, slot pills, scope options. Every one of
+ *           them is a button. Nothing here containerises a fact.
+ *   §B.5    Motion decorates `transform`/`opacity` and nothing else. No geometry that encodes data is
+ *           ever animated, because a frozen animation clock (a background tab, a non-compositing
+ *           pane) would then leave the data drawn at its start value.
+ *
+ * Token-only, strict BEM, logical properties throughout so the whole surface mirrors under `dir=rtl`.
+ */
+
+/* ============================================================================
+ * Local token layer
+ *
+ * On `:root`, NOT on `.sbk` — every panel in this sheet renders through `BodyPortal` into
+ * `document.body`, so a token scoped to the page subtree would silently fall back for all of them.
+ * That is the `--wlt-*` trap of Decision #60 and the `--cal-pop-*` trap of #75, and it has now cost
+ * two redesigns. Every name is `--sbk-` prefixed so the global namespace stays legible.
+ *
+ * ⚠️ Custom properties ONLY in this block. `:root` IS `<html>`, so a layout declaration placed here
+ * becomes a layout declaration on the document element — which is how the calendar pass turned `body`
+ * into a shrink-to-fit flex item and collapsed the whole shell (Decision #75, defect 13).
+ * ========================================================================== */
+:root {
+    /* The day pill. Circular, so one size governs both axes. */
+    --sbk-day-size: 2.75rem;
+    --sbk-day-gap: var(--space-2);
+
+    /* The slot pill. A rounded rect, deliberately NOT circular — it holds a time, not a numeral. */
+    --sbk-slot-h: 2.5rem;
+    --sbk-slot-min: 5.5rem;
+
+    /* The panel's own rhythm. `--sbk-gap-section` is ~3x `--sbk-gap-row`: closer than that and
+	 * spacing has stopped doing tier-1 work and a border gets reached for next. */
+    --sbk-gap-section: var(--space-6);
+    --sbk-gap-row: var(--space-2);
+
+    /* The contact panel's width. Wide enough for a four-line question, narrow enough to stay a
+	 * popover rather than reading as a modal that forgot its backdrop. */
+    --sbk-contact-w: 22rem;
+}
+
+/* ============================================================================
+ * Dialog frame
+ * ========================================================================== */
+.sbk .ui-dialog__content {
+    padding: 0;
+}
+
+.sbk__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sbk-gap-section);
+    padding: var(--space-5);
+    /*
+     * The query container for every rule below that reflows.
+     *
+     * A viewport media query would be reading the wrong box: the dialog is capped by its own `width`
+     * prop (`min(42rem, 94vw)`), so on a 1440px desktop the panel is 672px while the viewport says
+     * 1440. `inline-size` containment scopes the query to the panel, which is the box that is
+     * actually too narrow.
+     */
+    container-type: inline-size;
+    container-name: sbk-panel;
+}
+
+.sbk__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sbk-gap-row);
+}
+
+/*
+ * Asymmetric by design (§B.4.1): a heading is pulled toward what it labels and away from what
+ * precedes it, so the boundary is spent once and needs no rule to reinforce it.
+ */
+.sbk__sectiontitle {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.sbk__about {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.sbk__aboutitem {
+    color: var(--on-surface);
+    font-weight: var(--fw-medium);
+}
+
+.sbk__loading {
+    margin: 0;
+    padding-block: var(--space-6);
+    text-align: center;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.sbk__error {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--danger);
+}
+
+/* ============================================================================
+ * Footer
+ * ========================================================================== */
+.sbk__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    inline-size: 100%;
+}
+
+.sbk__summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+}
+
+.sbk__summarymain {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.sbk__summarynote {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * Date rail
+ * ========================================================================== */
+.sbk-rail {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-inline-size: 0;
+}
+
+/*
+ * The month label is sticky at the START edge — `inset-inline-start`, so it pins to the left in LTR
+ * and the right in RTL without a second rule.
+ */
+.sbk-rail__month {
+    flex: none;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    min-inline-size: 7ch;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    /* `tabular-nums` because the year changes and a proportional digit would shift the whole rail
+	 * sideways at the boundary (§A.4). */
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk-rail__monthtext {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbk-rail__track {
+    flex: 1 1 auto;
+    display: flex;
+    gap: var(--sbk-day-gap);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: inline proximity;
+    padding-block: var(--space-1);
+    /* The rail scrolls inside itself; the page must never scroll sideways because of it. */
+    min-inline-size: 0;
+    scrollbar-width: none;
+}
+
+.sbk-rail__track::-webkit-scrollbar {
+    display: none;
+}
+
+.sbk-rail__page {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk-rail__page:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--on-surface);
+}
+
+.sbk-rail__page:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk-rail__page:disabled {
+    opacity: var(--fld-disabled-alpha, 0.45);
+    cursor: not-allowed;
+}
+
+/* ---- Day pill ---- */
+.sbk-day {
+    flex: none;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    inline-size: var(--sbk-day-size);
+    block-size: var(--sbk-day-size);
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    cursor: pointer;
+    scroll-snap-align: start;
+    /* Motion is confined to colour: the pill's SIZE encodes nothing, and animating a dimension that
+	 * did would leave it wrong under a frozen clock (§B.5). */
+    transition: background-color var(--dur-fast) var(--spring-standard),
+        color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk-day:hover:not([data-closed="true"]) {
+    background: var(--surface-2);
+}
+
+.sbk-day:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk-day[data-selected="true"] {
+    /* The inverted rig (§D.7.7): the page's ink as the fill, its surface as the ink. One declaration
+	 * that is correct in both themes because the pair swaps sides with the theme. */
+    background: var(--on-surface);
+    color: var(--surface);
+}
+
+.sbk-day[data-closed="true"] {
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: not-allowed;
+}
+
+.sbk-day__num {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk-day__dow {
+    font-size: 0.625rem;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.72;
+}
+
+/*
+ * The availability mark.
+ *
+ * A dot, drawn in `--primary`, present only on a day that has something. It is `aria-hidden` and
+ * fully redundant with the day's accessible name — a second channel for a fact already spoken, which
+ * is what §B.4's "one device per boundary" permits when the second device carries no new information.
+ */
+.sbk-day__mark {
+    position: absolute;
+    inset-block-end: 5px;
+    inline-size: 4px;
+    block-size: 4px;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+}
+
+.sbk-day[data-closed="true"] .sbk-day__mark {
+    display: none;
+}
+
+.sbk-day[data-selected="true"] .sbk-day__mark {
+    background: var(--surface);
+}
+
+/*
+ * Today's ring. `outline` rather than `border`, so it does not change the pill's box and the rail's
+ * rhythm stays even whether or not today is in the window.
+ */
+.sbk-day[data-today="true"] {
+    outline: 1px solid var(--hairline);
+    outline-offset: -1px;
+}
+
+/* ============================================================================
+ * Slot picker
+ * ========================================================================== */
+.sbk-slots {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.sbk-slots--empty {
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding-block: var(--space-7);
+    text-align: center;
+}
+
+.sbk-slots__glyph {
+    color: var(--text-secondary);
+}
+
+.sbk-slots__note {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.sbk-slots__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--sbk-slot-min), 1fr));
+    gap: var(--space-2);
+}
+
+.sbk-slots__zone {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    min-block-size: var(--sbk-slot-h);
+    padding-inline: var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--spring-standard),
+        border-color var(--dur-fast) var(--spring-standard),
+        color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk-slot:hover:not([data-blocked="true"]) {
+    border-color: var(--primary);
+}
+
+.sbk-slot:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk-slot[data-selected="true"] {
+    background: var(--on-surface);
+    border-color: var(--on-surface);
+    color: var(--surface);
+}
+
+/*
+ * A refused slot.
+ *
+ * `opacity` on the CONTENT plus a struck time, not `pointer-events: none` — which would cancel the
+ * `not-allowed` cursor sitting right beside it and make the pill silently inert rather than
+ * visibly refused (the Decision #62 fields finding).
+ */
+.sbk-slot[data-blocked="true"] {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--hairline) 60%, transparent);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.sbk-slot[data-blocked="true"] .sbk-slot__time {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
+.sbk-slot__time {
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk-slot__seats {
+    font-size: 0.625rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.75;
+}
+
+/* ============================================================================
+ * Call-type selector
+ * ========================================================================== */
+.sbk__calltype {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.sbk__calltypeopt {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--spring-standard),
+        border-color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk__calltypeopt[data-active="true"] {
+    border-color: var(--on-surface);
+    background: var(--surface-2);
+    font-weight: var(--fw-medium);
+}
+
+.sbk__calltypeopt:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* ============================================================================
+ * Scope selector + stage ledger
+ * ========================================================================== */
+.sbk__scope {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.sbk__scopeopt {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--spring-standard),
+        border-color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk__scopeopt[data-active="true"] {
+    border-color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.sbk__scopeopt:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk__scopelabel {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+}
+
+.sbk__scopehint {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/*
+ * The stage ledger. Hairline-separated rows, never a card each (§B.9.7): it is static content
+ * describing what the selection above resolves to.
+ */
+.sbk__stages {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.sbk__stagerow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+    border-block-end: 1px solid var(--hairline);
+}
+
+.sbk__stagerow:last-child {
+    border-block-end: none;
+}
+
+.sbk__stagerow:not([data-included="true"]) {
+    color: var(--text-secondary);
+}
+
+.sbk__stagename {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    min-inline-size: 0;
+}
+
+/*
+ * The step numeral.
+ *
+ * A primary RING with the numeral on the SURFACE pair, never `--on-primary` on `--primary`: that
+ * pairing measures 3.57:1 in dark mode, a theme-engine defect flagged since Decision #64 and routed
+ * around here for the sixth time rather than patched on one surface.
+ */
+.sbk__stagenum {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--on-surface);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk__stagevalue {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk__stagelater {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * Fields
+ * ========================================================================== */
+.sbk__note,
+.sbk__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+.sbk__notelabel {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.sbk__req {
+    color: var(--danger);
+}
+
+.sbk__notehint {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk__notefield,
+.sbk__input {
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-sm);
+    resize: vertical;
+}
+
+.sbk__notefield:focus-visible,
+.sbk__input:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-color: var(--primary);
+}
+
+.sbk__row {
+    display: grid;
+    /* A container query rather than a viewport one: the panel's width is capped by its own `width`
+	 * prop and by the viewport, so the box that is actually too narrow is the panel, not the window. */
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+}
+
+@container sbk-panel (min-width: 30rem) {
+    .sbk__row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+}
+
+.sbk__inputwrap {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    overflow: hidden;
+}
+
+.sbk__inputwrap:focus-within {
+    box-shadow: var(--focus-ring-shadow);
+    border-color: var(--primary);
+}
+
+.sbk__prefix {
+    display: inline-flex;
+    align-items: center;
+    padding-inline: var(--space-3);
+    background: var(--surface-2);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+}
+
+.sbk__inputwrap .sbk__input {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.sbk__inputwrap .sbk__input:focus-visible {
+    box-shadow: none;
+}
+
+.sbk__seats {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.sbk__seatslabel {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+}
+
+.sbk__seatsinput {
+    inline-size: 5rem;
+    padding: var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk__seatshint {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * Attachments
+ * ========================================================================== */
+.sbk__filepick {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    align-self: flex-start;
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--hairline);
+    border-radius: var(--radius-base);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--spring-standard),
+        color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk__filepick:hover {
+    border-color: var(--primary);
+    color: var(--on-surface);
+}
+
+.sbk__filepick:focus-within {
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk__files {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+}
+
+.sbk__file {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: var(--space-2);
+    border-block-end: 1px solid var(--hairline);
+    font-size: var(--text-sm);
+}
+
+.sbk__file:last-child {
+    border-block-end: none;
+}
+
+.sbk__filename {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbk__filesize {
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.sbk__fileremove {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* 24px floor — WCAG 2.2 AA 2.5.8, the same `.ui-hit` rule the fields layer applies. */
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.sbk__fileremove:hover {
+    background: var(--surface-2);
+    color: var(--on-surface);
+}
+
+.sbk__fileremove:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk__filenote {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * Contact popover
+ * ========================================================================== */
+.sbk-contact .ui-popover__content {
+    padding: 0;
+}
+
+.sbk-contact__panel {
+    inline-size: var(--sbk-contact-w);
+    max-inline-size: min(var(--sbk-contact-w), calc(100vw - var(--space-6)));
+    display: flex;
+    flex-direction: column;
+}
+
+.sbk-contact__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-block-end: 1px solid var(--hairline);
+}
+
+.sbk-contact__who {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+}
+
+.sbk-contact__name {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbk-contact__handle {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk-contact__list {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-1);
+}
+
+.sbk-contact__item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    border-radius: var(--radius-base);
+    background: transparent;
+    color: var(--on-surface);
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--spring-standard);
+}
+
+.sbk-contact__item:hover {
+    background: var(--surface-2);
+}
+
+.sbk-contact__item:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.sbk-contact__itemtext {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-inline-size: 0;
+}
+
+.sbk-contact__itemlabel {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+}
+
+.sbk-contact__itemhint {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk-contact__signin {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk-contact__compose {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+}
+
+.sbk-contact__about {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk-contact__subject {
+    color: var(--on-surface);
+}
+
+.sbk-contact__field {
+    inline-size: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-sm);
+    resize: vertical;
+}
+
+.sbk-contact__field:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-color: var(--primary);
+}
+
+.sbk-contact__hint {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.sbk-contact__error {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--danger);
+}
+
+.sbk-contact__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.sbk-contact__back {
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.sbk-contact__back:hover {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.sbk-contact__back:focus-visible,
+.sbk-contact__send:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * Send — the inverted rig (§D.7.7) at popover scale. `--on-surface` fill and `--surface` ink, which
+ * measures 17.14:1 light / 14.93:1 dark and improves under the high-contrast overlay, where
+ * `--on-primary` on `--primary` collapses to 1.75:1.
+ */
+.sbk-contact__send {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-4);
+    border: none;
+    border-radius: var(--radius-full);
+    background: var(--on-surface);
+    color: var(--surface);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transition: opacity var(--dur-fast) var(--spring-standard);
+}
+
+.sbk-contact__send:disabled {
+    /* Ink and border, never a wash of the box — and no `pointer-events: none`, which would cancel the
+	 * `not-allowed` cursor beside it (§C.1 fields contract). */
+    opacity: var(--fld-disabled-alpha, 0.45);
+    cursor: not-allowed;
+}
+
+.sbk-contact__trigger--block {
+    inline-size: 100%;
+    justify-content: center;
+}
+
+/* ============================================================================
+ * CTA feedback
+ *
+ * The whole animation budget for the conversion controls, and it is deliberately this small: an
+ * opacity cross-fade on the icon and nothing else. §B.5 — motion may decorate an outcome but never
+ * carry it, and every one of these transitions is on a property that encodes nothing.
+ * ========================================================================== */
+.evp-cta__ripple {
+    display: block;
+    inline-size: 100%;
+}
+
+.evp-cta__ripple:has(> .ui-button:not(.ui-button--fluid)),
+.evp-cta__ripple:has(> a) {
+    inline-size: auto;
+}
+
+.evp-cta__spinner,
+.evp-cta__check {
+    animation: sbk-cta-in var(--dur-fast) var(--spring-standard);
+}
+
+/*
+ * `opacity` only — never `transform: scale()` on the check.
+ *
+ * A scaled mark that starts at zero is a mark that stays invisible wherever the animation clock is
+ * frozen (a background tab, a non-compositing pane), and the check is the buyer's only confirmation
+ * that the press landed. Opacity has the same failure mode, so the keyframe ENDS at the resting value
+ * and carries no `backwards` fill — a frozen clock leaves it at 1, which is the honest default.
+ */
+@keyframes sbk-cta-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.evp-cta__btn[data-phase="settled"] {
+    /* A settled control steps to the success tone for the beat it holds. Border and ink, so the
+	 * button's own geometry never moves under the cursor. */
+    --btn-accent: var(--success);
+    --btn-on: var(--surface);
+}
+
+.evp-cta__reason {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/* ---- Draft management ---- */
+.evp-cta__draft {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.evp-cta__drafthint {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.evp-cta__draftaction {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    align-self: flex-start;
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-radius: var(--radius-base);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+
+.evp-cta__draftaction:hover {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.evp-cta__draftaction:focus-visible,
+.evp-cta__confirmno:focus-visible,
+.evp-cta__confirmyes:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-cta__confirm {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    font-size: var(--text-xs);
+}
+
+.evp-cta__confirmtext {
+    color: var(--on-surface);
+}
+
+.evp-cta__confirmno,
+.evp-cta__confirmyes {
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-base);
+    background: transparent;
+    font-size: var(--text-xs);
+    cursor: pointer;
+}
+
+.evp-cta__confirmno {
+    color: var(--text-secondary);
+}
+
+/*
+ * Archive is destructive, and severity does the work rather than a fill.
+ *
+ * §B.8: a destructive action carries `--danger` as its INK and border, not as a filled block that
+ * would out-weigh the primary CTA sitting directly above it. The confirmation step is what makes it
+ * safe; the colour is what makes it legible as the thing that needs confirming.
+ */
+.evp-cta__confirmyes {
+    color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.evp-cta__confirmyes:hover {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+/* ============================================================================
+ * Reduced motion
+ *
+ * The global token layer already collapses `--dur-fast` to 0ms, so every transition above becomes
+ * instant. This block removes the one KEYFRAME animation, which a duration token cannot reach —
+ * jump-to-final rather than suppress, because the check is information and not decoration.
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    .evp-cta__spinner,
+    .evp-cta__check {
+        animation: none;
+    }
+
+    .sbk-day,
+    .sbk-slot,
+    .sbk__scopeopt,
+    .sbk__calltypeopt,
+    .sbk-rail__page,
+    .sbk-contact__item,
+    .sbk-contact__send {
+        transition: none;
+    }
+}
+
+/* ============================================================================
+ * Coarse pointer
+ *
+ * A booking surface is used on phones more than most, and a 44px target is the difference between
+ * picking a time and picking the one beside it.
+ * ========================================================================== */
+@media (pointer: coarse) {
+    :root {
+        --sbk-day-size: 3rem;
+        --sbk-slot-h: 2.75rem;
+    }
+}

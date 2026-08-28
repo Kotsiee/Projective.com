@@ -15,6 +15,19 @@ import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
 import { findMemberRoster } from "./members-fixtures.ts";
+import {
+	archiveDraft,
+	getDraft,
+	instantiateDraft,
+	sweepStaleDrafts,
+} from "./draft-store.ts";
+import { buildViewPage } from "../explore/view-fixtures.ts";
+import { findItem } from "../explore/query.ts";
+import type {
+	ArchiveDraftInput,
+	InstantiateServiceInput,
+	PipelineDraft,
+} from "@projective/types/services";
 import type {
 	BoardListParams,
 	BoardPage,
@@ -229,5 +242,117 @@ export class ProjectBackendService {
 		}
 		// LIVE: insert via the RLS-scoped `projects.create_project` RPC (not yet implemented).
 		return ok({ slug }, { status: 201, message: "Project drafted." });
+	}
+
+	/**
+	 * Instantiate a **Pipeline service template** into the acting client's workspace as a draft
+	 * project — the write behind "Add to Projects".
+	 *
+	 * What the live path will do, and what the shapes here already promise:
+	 * - insert `projects.projects` with `status = 'draft'`, `visibility = 'unlisted'` and
+	 *   `source_blueprint_id` pointing at the service;
+	 * - copy the blueprint's stages into `projects.project_stages`;
+	 * - leave every `projects.stage_assignments` row at `pending_funding`, so nobody is committed to
+	 *   anything and no escrow exists until the client funds the first ticket.
+	 *
+	 * **No money moves and nothing is reserved.** That is the whole reason this is a draft rather than
+	 * a basket line: a pipeline is not bought, it is staffed and then bought against, one ticket at a
+	 * time (`PRODUCT_SPEC.md` §Creation & Purchasing Gate). A buyer must be able to open the board and
+	 * read the stages before deciding anything, which a basket line cannot hold.
+	 *
+	 * Idempotent on `input.idempotencyKey`: a repeat returns the SAME draft with `created: false`
+	 * rather than refusing, so a double-press or a retry after an unseen timeout cannot leave two
+	 * identical pipelines in someone's workspace.
+	 */
+	static instantiateService(
+		input: InstantiateServiceInput,
+		actor: { userId: string | null },
+	): ServiceResult<{ draft: PipelineDraft; created: boolean }> {
+		const item = findItem(input.serviceId);
+		if (!item || item.type !== "services") {
+			return fail(404, { message: `No service found for id "${input.serviceId}".` });
+		}
+		if (item.serviceType !== "Pipeline") {
+			return fail(422, {
+				message: "Only a pipeline service can be added to your projects.",
+				errors: { serviceId: "not_a_pipeline" },
+			});
+		}
+
+		const view = buildViewPage(item);
+		const stageCount = view.service?.stages.length ?? 0;
+
+		const result = instantiateDraft(input, {
+			serviceId: item.id,
+			title: item.title,
+			stageCount,
+			userId: actor.userId,
+			workspaceId: input.workspaceId,
+		});
+
+		if (!isProjectsBackendLive()) {
+			return ok(result, {
+				status: result.created ? 201 : 200,
+				message: result.created
+					? "Added to your projects as a draft."
+					: "This service is already in your projects.",
+			});
+		}
+		// LIVE: insert the project + copy the blueprint stages through the RLS-scoped RPC (not yet
+		// implemented) — fall through to the store so behaviour is preserved either side of the gate.
+		return ok(result, {
+			status: result.created ? 201 : 200,
+			message: result.created
+				? "Added to your projects as a draft."
+				: "This service is already in your projects.",
+		});
+	}
+
+	/**
+	 * Soft-archive a draft pipeline — the "Remove / Archive draft" secondary control.
+	 *
+	 * Nothing is hard-deleted (root CLAUDE.md §7): the status becomes `archived`, the row and its audit
+	 * trail stay, and the listing's primary control reverts to "Add to Projects" because
+	 * {@link findDraft} deliberately does not return archived rows.
+	 *
+	 * It refuses a draft that has already been funded. That is not caution — an archived project whose
+	 * stage holds escrowed money is a project whose money has nowhere to go, and the recovery path for
+	 * one is a support ticket rather than a button.
+	 */
+	static archiveDraft(
+		input: ArchiveDraftInput,
+		actor: { userId: string | null },
+	): ServiceResult<{ draft: PipelineDraft }> {
+		const current = getDraft(input.projectId, actor.userId);
+		if (!current) return fail(404, { message: "That draft is no longer in your projects." });
+		if (current.fundedStageCount > 0) {
+			return fail(409, {
+				message: "This project has funded work in it and cannot be archived from here.",
+				errors: { projectId: "has_funded_stages" },
+			});
+		}
+		const draft = archiveDraft(input.projectId, actor.userId);
+		if (!draft) return fail(404, { message: "That draft is no longer in your projects." });
+		return ok({ draft }, { message: "Draft archived." });
+	}
+
+	/**
+	 * Archive every un-funded service draft idle for {@link DRAFT_IDLE_DAYS} days.
+	 *
+	 * The scheduled counterpart of {@link ProjectBackendService.archiveDraft}, and the TypeScript twin
+	 * of `projects.fn_archive_stale_service_drafts`. Both call the SSOT's own `draftIsStale`, so the
+	 * job and the app cannot drift into different definitions of stale.
+	 *
+	 * It exists on this side as well as in SQL because with `PROJECTS_BACKEND_LIVE` off there is no
+	 * database to run the job — and a rule that only exists on the path nobody is exercising is a rule
+	 * nobody has tested.
+	 */
+	static sweepStaleDrafts(now?: number): ServiceResult<{ archived: PipelineDraft[] }> {
+		const archived = sweepStaleDrafts(now);
+		return ok({ archived }, {
+			message: archived.length === 0
+				? "No stale drafts to archive."
+				: `Archived ${archived.length} stale ${archived.length === 1 ? "draft" : "drafts"}.`,
+		});
 	}
 }

@@ -362,11 +362,33 @@ const STATE = {
 	"star": () => (
 		<path d="M12 3.8l2.65 5.37 5.93.86-4.29 4.18 1.01 5.9L12 17.32l-5.3 2.79 1.01-5.9-4.29-4.18 5.93-.86z" />
 	),
-	/** Verified — a tick inside a scalloped seal. */
+	/**
+	 * Verified — a rounded eight-pointed trust star with a centred check.
+	 *
+	 * THE ONE VERIFICATION CREST. It was drawn three separate times with three different path
+	 * datasets — this entry, a numerically-different seal in the profile feature's glyph module, and
+	 * a third geometry (seal + inner circle + tick) in explore — which is exactly the "two glyphs for
+	 * one concept" §B.7.7 forbids: the same claim about the same entity rendered differently
+	 * depending on which surface happened to make it.
+	 *
+	 * Drawn on the 24-unit grid: centre 12,12; outer R 9.6, inner r 6.9, corner trim t 1.25, so the
+	 * bounding box runs 2.4→21.6 and clears §B.7.2's 2-unit inset on every side.
+	 *
+	 * The check is marked `data-knockout` — the one two-tone channel in the set (`icon.css`). Unfilled,
+	 * that attribute does nothing and this is an ordinary outlined glyph. FILLED, the star floods with
+	 * `currentColor` while the check keeps its stroke and takes `--icon-knockout`, so the familiar solid
+	 * badge with a cut-out tick is expressible without the glyph naming a single colour: it declares
+	 * only which part is the knockout, and the CALL SITE says what ground that part is cut out of.
+	 *
+	 * That attribute is the ONLY non-geometry thing in this entry, and it is the minimum that makes a
+	 * badge possible. Without it `filled` floods the checkmark's own stroke into the fill and leaves a
+	 * blob, and the alternative — an even-odd compound path — would make this the one glyph in the
+	 * registry carrying its own paint rule.
+	 */
 	"verified": () => (
 		<>
-			<path d="M12 3.2l2.2 1.9 2.9-.3 1 2.75 2.6 1.35-.75 2.85.75 2.85-2.6 1.35-1 2.75-2.9-.3L12 20.8l-2.2-1.9-2.9.3-1-2.75-2.6-1.35.75-2.85-.75-2.85 2.6-1.35 1-2.75 2.9.3z" />
-			<path d="M8.8 12.2l2.3 2.3 4.1-4.6" />
+			<path d="M12.79 3.37L13.85 4.66Q14.64 5.63 15.88 5.5L17.54 5.34Q18.79 5.21 18.66 6.46L18.5 8.12Q18.37 9.36 19.34 10.15L20.63 11.21Q21.6 12 20.63 12.79L19.34 13.85Q18.37 14.64 18.5 15.88L18.66 17.54Q18.79 18.79 17.54 18.66L15.88 18.5Q14.64 18.37 13.85 19.34L12.79 20.63Q12 21.6 11.21 20.63L10.15 19.34Q9.36 18.37 8.12 18.5L6.46 18.66Q5.21 18.79 5.34 17.54L5.5 15.88Q5.63 14.64 4.66 13.85L3.37 12.79Q2.4 12 3.37 11.21L4.66 10.15Q5.63 9.36 5.5 8.12L5.34 6.46Q5.21 5.21 6.46 5.34L8.12 5.5Q9.36 5.63 10.15 4.66L11.21 3.37Q12 2.4 12.79 3.37Z" />
+			<path data-knockout d="M8.5 12.2l2.5 2.5 4.6-5.1" />
 		</>
 	),
 	/** Protected — a shield. */

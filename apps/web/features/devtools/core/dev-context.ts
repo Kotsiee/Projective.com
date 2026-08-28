@@ -26,6 +26,8 @@ import {
 	type DevBasketOwner,
 	type DevBillingContext,
 	type DevBuyerDetails,
+	type DevCallOffer,
+	type DevCohortCapacity,
 	type DevConferencing,
 	type DevConnectionState,
 	type DevDedupState,
@@ -42,10 +44,12 @@ import {
 	type DevMessagingRole,
 	type DevMicPermission,
 	type DevPaymentProviders,
+	type DevPipelineDraft,
 	type DevPersona,
 	type DevProjectType,
 	type DevRosterState,
 	type DevSavedCards,
+	type DevSlotAvailability,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -280,6 +284,20 @@ export interface DevOverrides {
 	eventRsvp: DevEventRsvp;
 	/** The reschedule negotiation state the event opens in (the mode follows the service type). */
 	eventReschedule: DevEventReschedule;
+	/**
+	 * What the viewed listing's seller offers by way of a pre-purchase call.
+	 *
+	 * `none` is the reason this control exists: it is the only runtime route to the Contact menu's
+	 * two-row form, where the discovery-call row is ABSENT rather than disabled — the shape most likely
+	 * to be wrong and least likely to be looked at, because the three-row version looks fine.
+	 */
+	callOffer: DevCallOffer;
+	/** Where the viewed cohort sits against its capacity, including full (a refused primary). */
+	cohortCapacity: DevCohortCapacity;
+	/** Whether the viewer already has a draft project for the viewed pipeline service. */
+	pipelineDraft: DevPipelineDraft;
+	/** How much bookable availability the slot picker finds, including none (the closed rail). */
+	slotAvailability: DevSlotAvailability;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -340,6 +358,10 @@ export const DEV_DEFAULTS: DevOverrides = {
 	eventSeat: "auto",
 	eventRsvp: "auto",
 	eventReschedule: "auto",
+	callOffer: "auto",
+	cohortCapacity: "auto",
+	pipelineDraft: "auto",
+	slotAvailability: "auto",
 };
 
 /** Account-type options in display order. */
@@ -658,6 +680,39 @@ export const DEV_EVENT_RESCHEDULES: ReadonlyArray<DevOption<DevEventReschedule>>
 	{ value: "lapsed", label: "Lapsed" },
 	{ value: "withdrawn", label: "Withdrawn" },
 ];
+
+/** Discovery-call offer options — the listing page's Contact Me menu. */
+export const DEV_CALL_OFFERS: ReadonlyArray<DevOption<DevCallOffer>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "courtesy", label: "Free only" },
+	{ value: "paid", label: "Paid only" },
+	{ value: "both", label: "Both" },
+	{ value: "none", label: "No calls" },
+];
+
+/** Cohort capacity options — reaches the last-seat copy and the refused "Cohort full" primary. */
+export const DEV_COHORT_CAPACITIES: ReadonlyArray<DevOption<DevCohortCapacity>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "open", label: "Open" },
+	{ value: "last_seat", label: "1 left" },
+	{ value: "full", label: "Full" },
+];
+
+/** Pipeline-draft options — reaches "Open project", the archive control, and the 30-day sweep. */
+export const DEV_PIPELINE_DRAFTS: ReadonlyArray<DevOption<DevPipelineDraft>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "No draft" },
+	{ value: "exists", label: "Has draft" },
+	{ value: "stale", label: "Stale draft" },
+];
+
+/** Slot-availability options — reaches the sparse rail and the closed-with-a-reason state. */
+export const DEV_SLOT_AVAILABILITIES: ReadonlyArray<DevOption<DevSlotAvailability>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "open", label: "Open" },
+	{ value: "sparse", label: "Sparse" },
+	{ value: "none", label: "Closed" },
+];
 // #endregion
 
 // #region Store
@@ -740,6 +795,10 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devEventSeat = next.eventSeat;
 		root.dataset.devEventRsvp = next.eventRsvp;
 		root.dataset.devEventReschedule = next.eventReschedule;
+		root.dataset.devCallOffer = next.callOffer;
+		root.dataset.devCohortCapacity = next.cohortCapacity;
+		root.dataset.devPipelineDraft = next.pipelineDraft;
+		root.dataset.devSlotAvailability = next.slotAvailability;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the wallet (and the rest of the shell) mirror to the opposite edge.
 		root.dir = next.layoutDirection;
@@ -793,6 +852,10 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devEventSeat;
 		delete root.dataset.devEventRsvp;
 		delete root.dataset.devEventReschedule;
+		delete root.dataset.devCallOffer;
+		delete root.dataset.devCohortCapacity;
+		delete root.dataset.devPipelineDraft;
+		delete root.dataset.devSlotAvailability;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}

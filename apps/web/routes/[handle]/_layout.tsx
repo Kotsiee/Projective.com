@@ -9,8 +9,13 @@ import ProfileHeader from "@features/profile/islands/ProfileHeader.island.tsx";
 import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
 import { ProfileAbout } from "@features/profile/components/ProfileAbout.tsx";
 import { ProfileMetaSidebar } from "@features/profile/components/ProfileMetaSidebar.tsx";
-import { viewLaneFor } from "@features/view/core/view-lane-slot.tsx";
+import {
+	viewLaneFor,
+	viewLaneOptionsFor,
+	viewOwnsLaneSlot,
+} from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
+import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
 import {
 	activeTabOf,
 	defaultTabFor,
@@ -42,9 +47,15 @@ export default define.page(function ProfileLayout(ctx) {
 	const handleParam = ctx.params.handle ?? path.split("/").filter(Boolean)[0] ?? "";
 
 	/**
-	 * Wrap body content in the auth-appropriate shell, optionally with a lane + sticky header. `footer`
-	 * (guest only) renders the marketing footer at the body's end — off for the full-page availability
-	 * calendar. The authed shell never carries the marketing footer.
+	 * Wrap body content in the auth-appropriate shell, optionally with a lane + sticky header.
+	 *
+	 * `footer` renders the marketing footer at the body's end — off for the full-page calendars, which
+	 * fill the content region and own their own scrolling. BOTH shells honour it now: the guest branch
+	 * passes it straight to {@link GuestShell}, and the authed branch composes it with the URL-keyed
+	 * `publicFooterFor` resolver, the same one the sibling `(public)` layout uses where no such local
+	 * flag exists. The composition is deliberately NARROWING — the flag can only ever withhold a footer
+	 * the resolver already agreed to, never add one it refused — so the two cannot drift apart in the
+	 * direction that would put a masthead under a full-page calendar.
 	 */
 	const shell = (
 		lane: ComponentChildren,
@@ -58,7 +69,9 @@ export default define.page(function ProfileLayout(ctx) {
 					path={path}
 					context={asAuthenticatedContext(context)}
 					lane={lane}
+					laneOptions={viewLaneOptionsFor(ctx.url)}
 					middleNavHeader={header}
+					bodyFooter={footer ? publicFooterFor(ctx.url) : null}
 				>
 					{children}
 				</UserShell>
@@ -102,10 +115,20 @@ export default define.page(function ProfileLayout(ctx) {
 		if (segments[3] === "schedule") {
 			return shell(undefined, undefined, <ctx.Component />, false);
 		}
-		const viewLane = viewLaneFor(ctx.url, authed) ?? lane;
+		/*
+		 * `viewLaneFor` owns the slot for any id that RESOLVES, and for a commerce archetype it returns a
+		 * collapsed back rail on the authenticated shell and `null` on the guest one — that listing's
+		 * conversion rail is the view page's own end column, so the shell must never mount a second
+		 * panel beside it. Falling back to the profile lane there would pin a panel about the SELLER on
+		 * one edge of a page about one of their listings, with the listing's conversion rail on the
+		 * other. The profile lane stays the fallback for an id that resolves to nothing.
+		 */
+		const viewLane = viewOwnsLaneSlot(ctx.url)
+			? viewLaneFor(ctx.url, authed, ctx.state.userContext)
+			: lane;
 		// The Projects view mirrors the profile's scroll-migrated sticky header in the middle-nav band
 		// (null for articles / the generic view — no band).
-		const viewHeader = viewHeaderFor(ctx.url, authed);
+		const viewHeader = viewHeaderFor(ctx.url, authed, ctx.state.userContext);
 		return shell(viewLane, viewHeader, <ctx.Component />);
 	}
 

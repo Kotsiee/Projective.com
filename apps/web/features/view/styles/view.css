@@ -1070,7 +1070,7 @@
 .vw-related__title {
 	margin: 0;
 	font-size: var(--text-lg);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-medium);
 	line-height: var(--leading-tight);
 	color: var(--on-surface);
 }
@@ -1161,7 +1161,7 @@
 .vw-reviews__title {
 	margin: 0;
 	font-size: var(--text-xl);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-medium);
 	line-height: var(--leading-tight);
 	letter-spacing: var(--tracking-tight);
 }

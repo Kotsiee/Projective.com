@@ -31,7 +31,7 @@ export interface CurrencyBridgeProps {
  *     themselves via the signal and are skipped; see `currency-state.ts` for why both mechanisms
  *     exist and why the sweep must not touch a hydrated node.
  *
- * Mounted next to `ScrollIdle` in `_app.tsx`, so it is present on **every** surface — public and
+ * Mounted directly in `_app.tsx`, so it is present on **every** surface — public and
  * authed alike. That matters: a guest browsing Explore has money on screen and a currency cookie, and
  * a bridge that only existed inside the authed shell would leave exactly those figures stale.
  *

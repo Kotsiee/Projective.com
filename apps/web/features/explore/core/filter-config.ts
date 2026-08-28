@@ -1,4 +1,4 @@
-import type { ExploreCategory } from "../types/explore-types.ts";
+import type { ExploreCategory, ServiceType } from "../types/explore-types.ts";
 
 /**
  * Adaptive filter configuration.
@@ -56,6 +56,31 @@ const SKILL_OPTIONS: FilterOption[] = [
 	{ value: "spatial", label: "3D & spatial" },
 ];
 
+/**
+ * Delivery model → its facet label. Typed as a TOTAL `Record<ServiceType, …>` deliberately: a sixth
+ * delivery model added to the SSOT enum then fails the type-check here rather than quietly shipping
+ * unfilterable, which is exactly the state a booked session was in before this facet existed.
+ *
+ * Each label is its value verbatim, because these same strings are what a `ServiceCard` prints on its
+ * type chip — the facet a reader clicks should read the same as the badge on the card it returns.
+ */
+const MODEL_LABELS: Record<ServiceType, string> = {
+	"Pipeline": "Pipeline",
+	"One-Off": "One-Off",
+	"Direct Deliverable": "Direct Deliverable",
+	"Session": "Session",
+	"Group Session": "Group Session",
+};
+
+/**
+ * Values are the raw `ServiceType` strings rather than slugs: the server compares them straight
+ * against `ServiceItem.serviceType`, so slugging them would buy a tidier URL (`?model=group-session`)
+ * at the price of a translation table living on both sides of the wire — two vocabularies that only
+ * have to drift once. The URL says `?model=Group+Session` instead, and means it.
+ */
+const MODEL_OPTIONS: FilterOption[] = Object.entries(MODEL_LABELS)
+	.map(([value, label]) => ({ value, label }));
+
 const RATING_OPTIONS: FilterOption[] = [
 	{ value: "4.5", label: "4.5 & up" },
 	{ value: "4", label: "4.0 & up" },
@@ -104,6 +129,10 @@ export const FILTER_CONFIG: Record<ExploreCategory, FilterGroup[]> = {
 		...BASE,
 	],
 	services: [
+		// Leads the group: how a service is DELIVERED (booked time vs. a pipeline of tickets vs. a
+		// one-off scope) is a bigger decision than what it is about, and it is what a reader arriving
+		// from the Home "Sessions" chip has already chosen.
+		{ id: "model", label: "Delivery model", control: "chips", options: MODEL_OPTIONS },
 		{
 			id: "cat",
 			label: "Category",

@@ -391,6 +391,17 @@ const SERVICE_SEED: Array<
 		"1499750310107-5fef28a66643",
 	],
 	[
+		"design-mentorship-block",
+		"Design mentorship block",
+		"fern",
+		"$960",
+		"6 × 45-minute sessions",
+		"product",
+		"Session",
+		"Six fortnightly 1:1s with a senior product designer — portfolio, craft, and the career conversation nobody schedules.",
+		"1522202176988-66273c2fd55f",
+	],
+	[
 		"packaging-art-direction",
 		"Packaging art direction",
 		"ren",
@@ -415,15 +426,45 @@ const SERVICE_SEED: Array<
 ];
 
 /**
- * Per-service unit prices keyed by seed id. Pipeline services carry a standard `ticketPrice` (the card
- * shows a 0.5×–2.0× workload range around it); Session services carry a `sessionPrice`. One-Off
- * services keep only their fixed `price` string.
+ * Per-service unit prices and revision allowances, keyed by seed id — the figures the SELLER declares.
+ *
+ * Pipeline services carry a standard `ticketPrice` (the card shows a 0.5×–2.0× workload range around
+ * it); Session services carry a `sessionPrice`; One-Off services keep only their fixed `price` string.
+ *
+ * `freeRevisions` / `extraRevisionPrice` are the seller's revision commitment, and they live here for
+ * the same reason the unit prices do: they are a promise a person makes, not a property derivable from
+ * the listing's shape. A session listing declares neither — a sitting that has happened cannot be
+ * revised — so the absence is the correct statement rather than a gap.
+ *
+ * The three allowance shapes `revisionAllowanceKind` distinguishes are each seeded on a listing that
+ * SHOWS STAGES, so all three render somewhere in the running corpus rather than only in the type:
+ *
+ *   included   — brand-identity-sprint (2 free, then $120)
+ *   metered    — design-system-foundation (0 free, $90 a round)
+ *   unlimited  — realtime-mvp-build (`extraRevisionPrice: 0`, so the count is moot)
+ *
+ * `0` is a meaningful value on BOTH fields and is not the same as omitting them: on `freeRevisions` it
+ * says none are included, on `extraRevisionPrice` it says further rounds are never charged, and an
+ * omission on either says only that the seller has not declared one. A branch no fixture reaches is
+ * dead code that every type-check and unit test passes — the `set_session` lesson, Decision #80.
  */
-const SERVICE_UNIT_PRICE: Record<string, { ticketPrice?: number; sessionPrice?: number }> = {
-	"brand-identity-sprint": { ticketPrice: 240 },
-	"design-system-foundation": { ticketPrice: 180 },
-	"realtime-mvp-build": { ticketPrice: 320 },
+const SERVICE_UNIT_PRICE: Record<
+	string,
+	{
+		ticketPrice?: number;
+		sessionPrice?: number;
+		freeRevisions?: number;
+		extraRevisionPrice?: number;
+	}
+> = {
+	"brand-identity-sprint": { ticketPrice: 240, freeRevisions: 2, extraRevisionPrice: 120 },
+	"design-system-foundation": { ticketPrice: 180, freeRevisions: 0, extraRevisionPrice: 90 },
+	"landing-page-in-a-week": { freeRevisions: 1, extraRevisionPrice: 180 },
+	"realtime-mvp-build": { ticketPrice: 320, freeRevisions: 2, extraRevisionPrice: 0 },
+	"product-launch-film": { freeRevisions: 2, extraRevisionPrice: 240 },
+	"packaging-art-direction": { freeRevisions: 3, extraRevisionPrice: 60 },
 	"portfolio-review-session": { sessionPrice: 180 },
+	"design-mentorship-block": { sessionPrice: 160 },
 	"design-systems-workshop": { sessionPrice: 90 },
 };
 

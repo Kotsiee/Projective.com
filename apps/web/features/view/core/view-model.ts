@@ -1,6 +1,11 @@
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import type { ProfileGlyph } from "@features/profile/components/profile-glyphs.tsx";
+import {
+	type CardSignal,
+	FAST_REPLY_MINUTES,
+	ratingSignals,
+} from "@features/explore/core/card-signals.ts";
 
 /**
  * View feature — pure, client-safe display helpers for the Entity View page. Label maps, badge-tag
@@ -244,5 +249,37 @@ export function laneMenuActionsFor(item: ExploreItem): LaneMenuAction[] {
 		danger: true,
 	});
 	return actions;
+}
+// #endregion
+
+// #region Seller signals
+/**
+ * The earned trust markers the seller carries on THIS listing — "Top rated", "Fast replies".
+ *
+ * One rule, two renderers. The hero's seller line prints them as explanatory text links and the
+ * conversion lane's identity band prints them as `.ex-status` chips, and both call this — because a
+ * badge that appears in the lane and not eighteen inches to its left, on the same screen, is a data
+ * question the reader cannot answer.
+ *
+ * The rating gate is the Explore card family's `ratingSignals`, imported rather than restated, so
+ * "Top rated" means the same thing on the card that linked here as it does on the page it linked to.
+ * The reply gate reuses that family's `FAST_REPLY_MINUTES` threshold.
+ *
+ * `responseMinutes` is a PARAMETER rather than read off the item, because a listing (a service, a
+ * product) carries no reply history — only a profile-shaped item does. The server resolves the
+ * seller's on the view payload, formatted from the same number the trust row prints, so the badge and
+ * that row cannot state different response times.
+ *
+ * A missing datum yields NO badge. It never falls back to a neighbouring signal: "fast replies"
+ * inferred from spare capacity is a promise about a different thing.
+ */
+export function sellerBadges(item: ExploreItem, responseMinutes?: number): CardSignal[] {
+	const out: CardSignal[] = [...ratingSignals(item.rating)];
+	const minutes = responseMinutes ??
+		("responseMinutes" in item ? item.responseMinutes : undefined);
+	if (typeof minutes === "number" && minutes <= FAST_REPLY_MINUTES) {
+		out.push({ id: "fast-replies", label: "Fast replies" });
+	}
+	return out;
 }
 // #endregion

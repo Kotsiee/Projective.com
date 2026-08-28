@@ -295,6 +295,40 @@ channels has to actually render.
   keep genuinely local fluid display steps, but the fixed steps alias `--text-*` — that aliasing is
   what stops two feature ramps from independently reinventing the same scale and drifting.
 
+
+#### The four registers — hierarchy over raw weight (merge gate)
+
+Weight is the channel most often reached for and the one that degrades worst. The five masters above
+mean "slightly bolder" **does not exist**, so a surface that expresses every level of importance
+through weight collapses two or three levels onto `600`/`700` and they compete. **Hierarchy is built
+from four registers, each of which moves SIZE, CASE and TRACKING together — never weight alone.** A
+surface that needs a fifth register has too many levels, not a missing token.
+
+| Register            | Size                   | Weight                | Case / tracking              | Leading                   | Carries                                                            |
+| :------------------ | :--------------------- | :-------------------- | :--------------------------- | :------------------------ | :----------------------------------------------------------------- |
+| **Display / title** | `--text-3xl` (2.25rem) | `--fw-medium` (500)   | sentence, `--tracking-tight` | `--leading-tight` (1.2)   | the one thing the page is about — a listing, a profile, an article |
+| **Section header**  | `--text-xs` (0.75rem)  | `--fw-semibold` (600) | UPPERCASE, `--tracking-wide` | `--leading-snug`          | a section boundary that costs no ink (§B.4 tier 3)                 |
+| **Body**            | `--text-base` (1rem)   | `--fw-normal` (400)   | sentence, `--tracking-normal` | `--leading-relaxed` (1.7) | prose, descriptions, scope copy — capped at `--measure` (68ch)     |
+| **Meta**            | `--text-sm` / `-2xs`   | `--fw-normal` (400)   | sentence, `--tracking-normal` | `--leading-normal`        | non-actionable metadata, timestamps, counts, in `--text-secondary` |
+
+**A title is never `--fw-bold` (700) or heavier.** At `--text-3xl` the size already carries the whole
+claim, and weight on top of it produces the shouted tone this language rejects — but the structural
+cost is worse than the tonal one: it spends the top of the ramp, so the next genuinely-more-important
+thing on the page has no register left to occupy. Bold is reserved for a **word inside a paragraph**,
+where size, case and tracking are all fixed and weight is the only channel available.
+
+**Two adjacent elements at `600` or above are a hierarchy failure** regardless of their sizes: the
+reader is being told that both are the most important thing, which is the same as being told neither
+is. The fix is a register change, not a weight change — demote one to Body or Meta, or promote the
+other to Display.
+
+**Numeric columns and money read `font-variant-numeric: tabular-nums`.** A price, a balance, a seat
+count or a duration that changes — on a currency switch, a re-fetch, a count-up — must not reflow the
+glyphs around it; proportional digits make a figure appear to jitter while it is merely updating.
+
+> **Merge gate.** A PR that sets a heading at `--fw-bold` or above, distinguishes two adjacent levels
+> by weight alone while size / case / tracking match, or renders a changing figure in proportional
+> digits, is not mergeable.
 ### A.5 Accessibility themes (design tokens)
 
 Accessibility is a set of **token overlays** toggled at the framework level (a `data-a11y-*`
@@ -469,6 +503,64 @@ Separate content using this **ordered toolkit** — reach for the earliest tool 
 Reviewers reject any PR that boxes non-interactive content in a four-sided border where a tint step
 or spacing would read. This rule is a merge gate (root `CLAUDE.md`).
 
+
+#### B.4.1 Asymmetric spacing is the first tool, and asymmetry is the point
+
+Tier 1 says "spacing" and gets read as "add a gap." A **symmetric** gap does not group — equal air
+above and below a heading attaches it to both neighbours equally, which is exactly the ambiguity a
+border was being used to resolve. The canonical ratio is **`--space-7` (3rem) above a section
+heading and `--space-3` (0.75rem) below it**: the heading is pulled hard toward the content it
+labels and pushed away from the section it is not part of, so ownership is unambiguous with zero
+ink. Within a section, rows sit at `--space-3`/`--space-4`; between sections, `--space-7`. If those
+two numbers are within 2× of each other the spacing is not doing tier-1 work and a reviewer will ask
+why a hairline appeared.
+
+#### B.4.2 The surface ladder is SOLID — tier 2 has no alpha
+
+A tonal step means an **opaque tone from the generated ramp** (§A.2), never a translucent wash over
+whatever happens to be behind it. The canvas is `--bg`; an elevated region steps to `--surface-1`
+and, if a third layer is genuinely warranted, `--surface-2`. Each is a real hex the theme engine
+computed against its own background, which is what makes the step measurable and stable.
+
+A semi-transparent fill — `rgba(255,255,255,0.04)`, `color-mix(… 6%, transparent)` used as a region
+background — fails in three ways at once, and all three were found in the dark-theme audit that
+motivated this rule. **It is unmeasurable**: its rendered value depends on the stack beneath it, so
+the same declaration reads as two different tones in two places and neither can be checked against a
+contrast floor. **It compounds**: two translucent layers nested produce a third tone nobody chose,
+which is how "muddy" happens — the dark theme's mid-greys converge until three nested regions are
+within ~1.1:1 of each other and the hierarchy the alpha was expressing disappears. **And it invites
+an outline to rescue it**: once the fill stops reading, a border gets added to restore the boundary,
+and the boundary is now spending two devices (§B.9.3) to do what one opaque step did for free.
+
+`color-mix()` remains correct for **ink, marks and states** — a chip label mixed toward
+`--on-surface`, a hover tint over a known parent, a disabled ink — because those composite against a
+surface the rule itself named. It is wrong as the definition of a **region's own background**.
+
+> **Merge gate.** A non-interactive region whose `background` is a translucent colour is not
+> mergeable. Use `--bg` / `--surface-1` / `--surface-2`.
+
+#### B.4.3 Functional transparency only — where `--glass-blur` is allowed
+
+Glass is part of the identity (§D.1, §D.5) and it is expensive: `backdrop-filter` is the costliest
+thing this app composites, it re-bases every `position: fixed` descendant (§B.10, the fixed-overlay
+trap), and it is the tier-2 alpha problem with a filter attached. It is therefore **not a surface
+treatment** — it is a signal that *content is passing underneath this element right now*, and it is
+allowed only where that is literally true:
+
+1. **Persistent viewport-pinned top bars** — `.ui-shell-topbar`, the guest `SiteHeader` pill, the
+   floating guest sub-header. Content scrolls beneath them.
+2. **Floating mobile sheets and the scrim** — a sheet or modal layer that overlays a page still
+   visible behind it.
+3. **A chip or badge sitting directly on photography** — where the ground is an arbitrary image and
+   no token can be checked against it (§B.7.7's mark exemption; the AD disclosure and media chips).
+
+Everywhere else — panels, lanes, bands, cards, sections, list rows, tables, empty states — glass is
+banned outright, and a lane or band that "wants" it wants a tonal step (§B.4.2). Where glass is used
+the blur goes on a **`::before` underlay**, never on the element, so the element does not become a
+containing block for the overlays it renders.
+
+> **Merge gate.** `backdrop-filter` outside those three cases is not mergeable. Inside them, it must
+> sit on a pseudo-element underlay.
 ### B.5 Fluid Motion Primitives
 
 Motion is **purposeful, fluid, and never bouncy** (reconciling the product spec's "avoid Cascading
@@ -666,8 +758,10 @@ overrode the visible label they sat under, and two of the three were not associa
 control at all.
 
 **B.7.6 currentColor only.** No `fill`/`stroke` literal and no token reference inside a glyph;
-colour comes from the inherited `color`. The sole exception is a third-party **brand** mark (social
-logos), quarantined in its own module and never reused as UI iconography.
+colour comes from the inherited `color`. Two exceptions, both narrow: a third-party **brand** mark
+(social logos), quarantined in its own module and never reused as UI iconography; and the knockout
+part of §B.7.8, which still names no colour of its own — it declares only that it IS the knockout, and
+the call site supplies the ground.
 
 **B.7.7 Banned.**
 
@@ -683,9 +777,30 @@ logos), quarantined in its own module and never reused as UI iconography.
 - **Icons that duplicate their label.** An icon replaces a word or reinforces a scan target; it does
   not restate the text beside it.
 
+**B.7.8 The knockout part — the one two-tone channel.** `data-filled` floods the whole `<svg>`
+(`fill: currentColor; stroke: none`), which is right for a star or a bookmark and wrong for the one
+shape a BADGE is: a solid mark with a symbol cut out of it. Filling a verification crest that way turns
+its checkmark into a blob, because the check is an open polyline and filling an open path closes it.
+
+So a glyph may nominate **exactly one** part `data-knockout`. Filled, that part keeps its stroke and
+takes `--icon-knockout`, defaulting to `--surface` — the ground a mark on a page surface is cut out of.
+Unfilled, the rule does not apply at all and the glyph is the ordinary outline, so the two states still
+cannot drift apart geometrically, which is the whole reason `data-filled` is an attribute rather than a
+second component.
+
+§B.7.6 survives **by the direction of the dependency**: the glyph declares only which part is the
+knockout, and the CALL SITE says what colour the ground is. A crest sitting on a `--primary` fill sets
+`--icon-knockout: var(--on-primary)` on its own wrapper; the architect tier chip, which inverts the
+pair, sets `--icon-knockout: var(--primary)` — and gets it right precisely because the decision lives
+where the ground is known.
+
+One part, and one only. A glyph that needs two knockouts is two glyphs, or it is artwork.
+
 > Merge gate: a PR that hand-authors an `<svg>` icon root outside `@projective/ui/icons`, authors a
-> `stroke-width` on a glyph, introduces a second glyph for an existing concept, reuses a registry
-> name for a new meaning, or reaches for a Unicode character in place of a glyph, is not mergeable.
+> `stroke-width` on a glyph, names a colour inside a glyph (including a second `data-knockout` part, or
+> a knockout whose ground is set anywhere but the call site), introduces a second glyph for an existing
+> concept, reuses a registry name for a new meaning, or reaches for a Unicode character in place of a
+> glyph, is not mergeable.
 
 ---
 
@@ -722,6 +837,13 @@ translation, because it is carried by weight rather than by word length.
 actions all `text` (severity distinguishing accept from the rest), and the one utility action
 `outlined`. A repeated action is **never** `filled` — a column of filled buttons is a column of
 noise, and it makes the row's _content_ the least prominent thing in the row.
+
+> **The one sanctioned two-fill rig (§D.7.7).** The entity view's conversion lane renders two solid
+> pills — an inverted monochrome primary and a brand-teal secondary — plus a ghost tertiary. The cap
+> exists to protect the reader's ability to rank the actions, and here the ranking is carried by
+> **hue** (a monochrome commit against a brand basket) rather than by emphasis, so it survives. The
+> exception is scoped to that rig and must not be generalised: two fills of the SAME colour is the
+> case the cap was written for, and remains a finding.
 
 **B.8.3 Severity is meaning, never decoration.** Severity encodes what the action _is_ — it is not a
 palette. Two rules follow:
@@ -837,8 +959,32 @@ where it cannot consume the component (component CSS reaches a page only through
 A family that declares its own padding, radius or media ratio is a finding regardless of whether it
 imports `Card`.
 
+**B.9.7 Zero cards for static content — the anti-card rule.** §B.9.1 gives the test; this states the
+consequence for the surfaces that fail it most. **Plain prose, a stage breakdown, a scope checklist,
+a specification ledger, a set of key–value facts and a reviews summary are never wrapped in a card.**
+They are sections of the page they are on: none of them would mean anything lifted out of it, none
+of them is addressable, and none of them can be acted on. They get a §B.4 tier-1 + tier-3 treatment —
+asymmetric spacing and a section header — and nothing else.
+
+The failure this bans is compound, not cosmetic. A card around a scope list inside a card around a
+stage inside an elevated panel produces **three surfaces, two shadows and up to twelve borders on
+one screen**, and the reader's eye has no way to tell which enclosure is the meaningful one because
+they all look equally deliberate. That is the "boxed-in" weight §B.4 was written against, arriving
+by a different route: not one bad decision, but the absence of a decision repeated at every level.
+
+**A list of objects is one card each, never a card around the list.** A grid of listings is N cards
+on the canvas; it does not also get a container card. The grid is expressed by the grid, and the
+section by its heading.
+
+**B.9.8 A checklist is glyph + text, not a row of boxes.** Deliverables, inclusions and scope items
+render as an unboxed list: an `Icon` (`check`) in the accent, the item in Body register, one row per
+item at `--space-3`. No per-row surface, no per-row border, no per-row chip. The check glyph is the
+only ink the row spends, and it is doing the work a box would have done worse.
+
 > **Merge gate.** A PR is not mergeable if it boxes non-interactive grouped content where spacing +
-> a heading would read, nests a card inside a card or inside an elevated panel, spends more than one
+> a heading would read, nests a card inside a card or inside an elevated panel, wraps prose / a stage
+> breakdown / a scope checklist / a spec ledger in a card at all (§B.9.7), puts a container card
+> around a list of cards, renders a checklist row as a box or a chip (§B.9.8), spends more than one
 > separation device on a boundary, uses `elevated`/`raised` as a resting state without genuine
 > overlap, or declares card padding / radius / media ratio locally instead of reading §A.3.
 
@@ -987,6 +1133,69 @@ scrolled — rather than a reset one. Three properties make it work and each is 
 
 ---
 
+### B.11 Anti-Tagification — the metadata containment rule (merge gate)
+
+§B.9 governs the box around a *region*. This section governs the box around a *word*, which is the
+same failure at a smaller scale and a great deal more common. A discovery and entity-view audit found
+surfaces where a category, a delivery model, a skill, a turnaround, a file format, a language and a
+timestamp were **each** wrapped in a pill — nine containers on one card, none of which could be
+clicked. The reader is offered nine affordances and none of them is one.
+
+**B.11.1 A chip is a control. Containment is a promise of interactivity.** A rounded fill with
+padding around a short string is the same visual object as a button, a filter and a removable token,
+because in this product it *is* those things (`Chip`, `Tag`, `SelectButton`, the Explore facet
+pills). Putting metadata inside one asserts "you can act on this" and then refuses — the §B.4 tier-5
+rule ("a full contour means interactive") applies to fills and pills exactly as it applies to
+borders. If a reviewer asks what happens when a pill is clicked, **"nothing" is a finding.**
+
+**B.11.2 Non-actionable metadata renders as inline text.** Category, sub-category, tags, delivery
+model, turnaround, revision counts, seat counts, file formats, licence terms, language,
+proficiency, location, read time and timestamps are **Meta register** (§A.4) — `--text-sm`,
+`--fw-normal`, `--text-secondary` — set inline and separated by a middot with hair spacing:
+
+```
+Branding · Marketing · Pipeline · 3 revisions · 5–7 days
+```
+
+The separator is a real middot (`·`) in a `--text-disabled` span, `aria-hidden`, with the items as
+siblings so a screen reader reads a list rather than a sentence full of punctuation. It costs one
+line, no fills, no radii, and it scales to any number of facts, which a pill row does not: pills wrap
+into a ragged block whose height is unpredictable, which is why every card family that tagified its
+metadata also had to hand-roll a height.
+
+**B.11.3 The four things that ARE still allowed a container.** The distinction is not "short text"
+— it is whether the containment is carrying a fact the text alone cannot.
+
+| Allowed                        | Why                                                                                                        | Component                          |
+| :----------------------------- | :--------------------------------------------------------------------------------------------------------- | :--------------------------------- |
+| **A control**                  | It is clicked — a filter facet, a removable token, a segmented option                                       | `Chip` / `Tag` / `SelectButton`    |
+| **A lifecycle status**         | The fill *is* the semantic channel (§A.1 role colours) — Draft, Paused, Disputed, Overdue                   | `Tag severity` / `.ex-status`      |
+| **A required disclosure**      | It must survive an arbitrary photographic ground and be impossible to mistake for content — sponsorship, AD | glass token (§B.4.3 case 3)        |
+| **A count that must not wrap** | A numeral whose neighbours would otherwise absorb it — unread, `+N` overflow                                | `Badge` / `OverlayBadge`           |
+
+Everything else is text. **A status is a state that can change; a category is what a thing
+permanently is** — that is the test when the two feel similar. "In review" is a status. "Branding" is
+not, no matter how much it looks like one.
+
+**B.11.4 Trust and promotional signals are inline composites, not badge rows.** A seller's standing
+renders as one line: the `Avatar`, the name as a link, `RatingStars compact` (one star + the score),
+then the derived signals — *Top rated*, *Fast replies*, *Available now* — as **subtle text links**
+in the accent, each carrying a portal `Tooltip` (§B.6.4) that says what earned it. The signal is a
+claim the reader may want to check, so it gets an explanation on demand; it does not get a fill,
+because a fill makes six earned signals compete with the one lifecycle status that genuinely needs
+the colour channel. Where a signal is inherently graphical — the verification crest — it is an
+`Icon`, not a pill (§B.7.8).
+
+**B.11.5 Two chips in a row is the smell.** One status on a card is a state. Two adjacent fills mean
+at least one of them is metadata wearing a control's clothes. Reviewers should read a chip row
+right-to-left and ask of each: *is this clicked, is this a lifecycle state, is this a legal
+disclosure, is this a numeral?* The first "no" is the finding.
+
+> **Merge gate.** A PR that wraps non-actionable metadata in a pill, chip, tag or badge — or that
+> ships two adjacent non-interactive fills on one row — is not mergeable. The fix is inline Meta-
+> register text with middot separators, not a smaller chip.
+
+---
 ## Part C — Component Library Architecture (`@projective/ui`)
 
 A single, decoupled, **copy-paste-portable** umbrella package (`packages/ui/`) with **multi-export
@@ -1007,7 +1216,7 @@ verbatim because every component depends only on the token contract (Part A) —
 | **`@projective/ui/dnd`**        | DndContext, Draggable, Droppable, SortableContext (alias SortableContainer), DragOverlay, **DropIndicator** (the landing seam a sortable list draws at the insertion point — the ghost says _what_, this says _where_) (+ hooks `useDraggable`, `useDroppable`, `useSortable`, `useDndMonitor`, `useDnd`; detectors `pointerWithin`/`closestCenter`/`defaultCollision`/`nextInDirection`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | **`@projective/ui/kanban`**     | KanbanBoard, KanbanColumn, KanbanCard                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **`@projective/ui/calendar`**   | Calendar (island — `hideHeader`/`hideSidePanel` for a host that owns those regions itself, TRACKED `view`/`focus` + `onViewChange`/`onFocusChange` so an external switch and trail can drive it, a `headerActions` slot, and a `renderSource` callback the consumer supplies its own provider marks through), CalendarHeader (period trail · nav · search · filter toggle · the consumer's `actions` slot), MiniMonth, AvailabilityPanel, TimeGrid (infinite Week), DayTimeline (infinite Day), MonthGrid (paginated), EventBlock (+ the stacked `sources` provenance marks), NowIndicator, OverlayScrollbar, **GridCanvas** + **GridProbe** (the canvas layer, at two depths. The Day `DayTimeline` stays HYBRID — the canvas paints its lattice, its events stay HTML cards. The Week `TimeGrid` is a PURE immediate-mode canvas: `.cal-tg__viewport` holds one `aria-hidden` `<canvas>` and NOTHING else, and the hour scale, day columns, working-hours bands, blackout hatch, every event card, the current-time rule, the drag preview, the period markers, the depth gauge and the return-to-present pill are all pixels from ONE ordered pass over one `GridScene`. There is no scroll container — `useCanvasViewport` owns the offset as a signal and re-implements what the native scroller was quietly providing (the three wheel `deltaMode` units, Arrow/Page/Home/End, clamping, and `reveal` in place of `scrollIntoView`) — and every gesture is resolved by mapping a pointer into scene coordinates and asking `hitTest` what is there. Because a canvas is opaque to assistive technology and to the keyboard, the viewport ships with a PARALLEL ACCESSIBLE LAYER as its SIBLING, which is the merge gate rather than a nicety: the same events as real focusable controls carrying the same names and firing the same handlers, a Return-to-now and a keyboard create ahead of the list (a control reached after twenty cards is a control lost), scroll-into-view when focus lands off-screen AND a hold on the focused card's block so paging cannot unmount the element under focus, and an `aria-live` region naming the visible range — quantised to the hour, so it speaks once per hour crossed rather than once per pixel. Its controls are visually hidden, so none of them can show a focus ring of its own: the canvas paints one for each — the focused card, the pill, and the whole viewport for the scroll region — TWO-TONE (halo inside, ink outside), because one tone cannot clear 3:1 against both an accent-tinted card fill and the grid, and a canvas ring cannot be fixed later by a cascade. There is no scroll container for a browser to pan, so the viewport declares `touch-action: pinch-zoom` and owns the one-finger drag: a finger SCROLLS, a tap activates, and pinch stays with the browser so page zoom survives. On a canvas card the `sources` channel becomes a COUNT — one neutral dot each, "on N calendars" in the accessible name — since a consumer-supplied brand VNode cannot be painted; a masked card carries neither. A canvas cannot read a custom property, so every colour, width, radius, font and box is still authored in `calendar.css` against `var(--*)` on a hidden swatch subtree and read back RESOLVED — which is what makes `color-mix()`, the generated palette and the a11y overlays reach a canvas at all, `data-font` included now that the canvas draws type — re-resolved on any root theme write and on any change to the ACCENT SET, which is a property of the data rather than of the theme; the swatches opt out of the global crossfade so a read is always the final value and never the one a frozen animation clock is passing through. WHAT THE PIXELS COST: canvas text has no find-in-page, no selection and no native text cursor, which is why the hour LABELS stayed DOM while the backdrop was hybrid and why the accessible layer is not optional now that they are not) (+ hooks `useCalendarViewport`, `useCanvasViewport`, `useNowTick`, `useOverlayScrollbar`, `useGridCanvas`; the pure `paintGrid`/`paintScene`/`toCanvasColor` and the pure scene geometry `buildSceneEvents`/`hitTest`/`eventRect`/`gaugeGeometry`/`eventAccessibleName`, all unit-tested with no DOM — once a card is pixels, only arithmetic can tell a click from a miss; the PLACEMENT engine `packDayEvents`, which since 2026-08-22 answers a resting day and an EXPANDED cluster differently and deliberately. AT REST every overlap cluster collapses to ONE merged card carrying a `+N` chip, whatever the relationship between its members — the previous behaviour gave three different answers to "these two overlap" (a contained pair nested, a plain straddle folded, a demoted nest split), which is two too many for a reader to hold. PRESSING that card, or its chip, expands the cluster AND opens its list popover in one move: the expansion is DERIVED from the open popover rather than held beside it, so a click outside, an Escape and a committed pick all collapse it for free and the two facts cannot come apart. An expanded cluster is laid out FLAT — every member a root, in lanes — and each member is drawn `bare`: its fill and its shape, and no text at all. That is a measurement rather than a preference: `NEST_INSET_FRAC` leaves a container visible as two 6% strips, about 7px in a real column, which is not something a reader can identify or point at once the text is gone; and N titles clipped to three characters each is noise where the reader is trying to read a SHAPE. The names live in the list beside the grid, at a full line each, and hovering one there rings its block (`highlighted`) while every other card recedes (`recede`, resolved from `--cal-dim-drag`/`--cal-dim-focus` so the DOM Day card and the Week canvas step back by ONE number). `bare` is presentation only — the card keeps its rect, its hit target and its whole accessible name. The containment engine is preserved behind `PackOptions.merge: false`, which restores the pre-2026-08-22 resting layout wholesale; no app surface passes it today. A zero-duration event (`end === start`) is a DEADLINE and survives layout as an INSTANT — admitted rather than filtered out, given no synthetic duration, and drawn as a pin (rule + kind chip + timestamp pill) rather than as a box, because a deadline drawn as a plausible twelve-minute meeting is worse than one drawn as nothing; the total `dayWindow`; the lever physics `core/chrome.ts` (`joystickVelocity`/`leverScrollDelta`/`leverBall`/`handleLength`) — the scroll handle is a RATE control, not a position mapping: pressing it morphs the pill into a circular joystick ball and dragging scrolls at a velocity proportional to displacement from the GRAB ORIGIN, which is what lets the gesture outlast a finite track on an axis that is effectively infinite, and the handle's LENGTH encodes the share of one PERIOD visible at the live zoom rather than a proportional thumb of a nineteen-year axis (a hair nobody can grab). `EventPopoverLayer` is the HTML popover layer floating OVER the canvas — `BodyPortal`'d so it escapes the canvas viewport, the lane's `overflow: clip` and any glass ancestor's `backdrop-filter` re-base, positioned by `useFloating`'s collision model, with a single-event view, a two-step stack list → detail flow whose rows publish a `highlight` channel back to the grid (the panel is body-portalled, so travelling into it fires the viewport's own `pointerleave` — one hover channel would collapse the highlight on the very card the row stands for), and a quick-create composer that leaves a live DRAFT block on the grid: dashed, grabbable, draggable and resizable from either edge while the composer tracks its timestamps, with Enter committing on defaults, Escape cancelling and removing it, and `onExpandCreate`/`compose` carrying every entered field to a host's full surface and back again. The draft is painted pixels rather than an element, so overlay containment cannot see it — the grid raises a `pointerGuard` for the duration of a press that lands on it, from a document capture listener registered ahead of `useDismiss`'s, or the panel would close under the finger about to drag it. While ANY popover is open a press on empty grid only dismisses (§2 of the redesign): the create gesture is suppressed for that press, because "get this out of my way" must not produce another thing in the way; a canvas rect is not a DOM element, so the anchor is a zero-size portalled proxy and ownership is tethered by a second inline one (`overlay-registry` derives parentage from where a TRIGGER sits, not from where a panel renders). Zoom is CURSOR-ANCHORED — `zoomAnchor(viewportY)` pins the timestamp under the pointer and `zoomTo` interpolates through it, re-solving the offset in closed form on every frame so the fixed point holds for the whole journey and a wheel burst compounds instead of collapsing to one notch; timezone-explicit `calendarTime` matrix utils; `CALENDAR_KIND_LABEL`/`calendarKindLabel` — the ONE plain-language name per event kind, owned here because `packages/ui` may not read the Zod SSOT, so a map owned there could never reach the engine's own filter chips: every surface that names a kind reads this one, and a masked block still names none of it)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **`@projective/ui/icons`**      | Icon (registry glyph by canonical name), IconShell (the base every feature-owned glyph module renders through), `ICON_PATHS` registry + `IconName` union — the single icon contract (§B.7). Token-driven via `--icon-2xs…--icon-xl` + `--icon-stroke`; one 24-unit grid; `vector-effect: non-scaling-stroke` holds one rendered weight at every size                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **`@projective/ui/icons`**      | Icon (registry glyph by canonical name), IconShell (the base every feature-owned glyph module renders through), `ICON_PATHS` registry + `IconName` union — the single icon contract (§B.7). Token-driven via `--icon-2xs…--icon-xl` + `--icon-stroke`; one 24-unit grid; `vector-effect: non-scaling-stroke` holds one rendered weight at every size. `data-filled` floods the whole glyph; a glyph may nominate ONE `data-knockout` part, which stays stroked in `--icon-knockout` (default `--surface`) so a solid badge with a cut-out symbol is expressible without the glyph naming a colour (§B.7.8) — the verification crest is the one that uses it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **`@projective/ui/editor`**     | RichTextEditor — a stripped, token-themed QuillJS wrapper (toolbar restricted to Bold/Italic/Strikeout/Underline/Bullet+Numbered lists/Headings H1–H3; Quill's `snow`/`bubble` CSS not imported; client-only `import()` so it never evaluates during SSR)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 > These supersede the deprecated `atoms/charts/data/time/files/system` split (see
@@ -1589,19 +1798,36 @@ The Green body (`.ui-page-canvas__body`, `overflow: visible`) flows naturally: i
 the document and the window scrolls it, while in-view chrome (the channel header **band** + the chat
 composer **footer band**) sticks to the viewport within that same window scroll. The nested frames
 use `overflow: clip` (for the rounded corners), which does **not** establish a scroll container, so
-every sticky descendant resolves against the window — one scrollbar, no nested traps. The **main
-window scrollbar keeps standard browser behaviour** (always visible). Every **inner** scroll
-container instead gets a global **self-hiding custom scrollbar** (`styles/index.css`, scoped
-`:not(html):not(body)`): a permanently transparent track, hidden buttons/arrows, and a muted,
-highly-rounded pill thumb that is **invisible at rest** and **fades in while the container is
-hovered _or_ actively scrolling** (and deepens when the thumb is grabbed), token-driven
-`color-mix(--outline …)` — `scrollbar-color` for Firefox, `::-webkit-scrollbar-*` for Chromium. Pure
-CSS has no "is-scrolling" selector, so the scroll-driven half comes from the global **`ScrollIdle`**
-island (mounted once in `_app.tsx`): a capture-phase `scroll` listener stamps the scrolled element
-with `[data-ui-scrolling]` for a short idle window, which the CSS reveals exactly like `:hover`. The
-window scroll is skipped (a document/window scroll targets `document`, not an element), so the main
-window keeps its native bar; a `@projective/ui` consumer that omits the island degrades to the
-hover-only reveal.
+every sticky descendant resolves against the window — one scrollbar, no nested traps.
+
+**One scrollbar, everywhere.** The root document and every inner scroll container share a single
+always-visible **10px** bar (`styles/index.css`), declared once against `*` and the bare
+`::-webkit-scrollbar-*` pseudo-elements so it reaches `html`/`body` as well as every descendant:
+`scrollbar-width: thin` + `scrollbar-color` for Firefox and the standard, the richer pseudo-elements
+for Chromium/WebKit, both fed from the SAME two tokens so the engines cannot drift. Buttons/arrows
+are never drawn. `width` and `height` are both set — a horizontal bar's thickness is its `height`,
+and setting only `width` leaves it at the UA default; physical rather than logical here because
+`::-webkit-scrollbar` is a non-standard construct with no writing mode of its own, so this is not an
+§A.6 exception.
+
+**The thumb is a token; the track is a surface.** `--scrollbar-thumb` / `--scrollbar-thumb-hover`
+are generated by the theme engine off the neutral-variant ramp through `fg()`, so they follow the
+mode AND widen under the high-contrast overlay — a thumb is a graphical control, so it clears the
+**3:1** of WCAG 2.2 SC 1.4.11 against **every** surface it can abut (measured: 3.17:1 at worst on
+`--surface-3`, 3.89:1 on `--bg`, hover ≥4.83:1, high contrast ≥4.83:1 / ≥7.14:1, identical in both
+modes). `--scrollbar-track` is NOT a palette entry — it is whatever surface the scroller sits on —
+so it is declared once at `:root` as `var(--bg)` and RE-SCOPED on each container that establishes a
+surface. Custom properties inherit, so only the surface ROOT carries a rule and every scroller
+inside it follows: this is the whole mechanism, and it is why a body-portalled panel needs scoping
+most of all (it hangs outside the shell and would otherwise take the page ground). A **translucent**
+panel takes `transparent`, never a tone — its ground is a `color-mix` over whatever is behind it, so
+an opaque track would draw the seam the veil exists to avoid. A surface nobody scoped still inherits
+`--bg`, which is the correct answer for anything sitting directly on the page.
+
+A component that renders its own overlay bar (`.ui-scroll-area__viewport`, `.ui-scrollpanel__viewport`,
+`.cal-tg__scroll`) or a horizontal rail/tab strip that must show none opts out at class specificity
+with `scrollbar-width: none` **and** `::-webkit-scrollbar { display: none }` — **both**, or one
+engine hides the bar and the other does not.
 
 > _History: this **reverses Decision #20's** locked-viewport model and returns to the
 > native-window-scroll intent of Decision #15/#27. Decision #30 briefly re-pinned the middle-nav
@@ -1609,7 +1835,15 @@ hover-only reveal.
 > reverses #30** — the middle-nav region is back on the native window scroll, and the chat composer
 > moves from inside the scrolling body to a sticky **middle-nav footer band**
 > (`.ui-middle-nav__footer`). The old `.ui-page-canvas__scroll` is renamed `.ui-page-canvas__body`
-> (it no longer scrolls — the window does). See root CLAUDE.md §8 Decisions #27/#30/#31._
+> (it no longer scrolls — the window does). See root CLAUDE.md §8 Decisions #27/#30/#31.
+>
+> The **self-hiding** scrollbar this section used to describe — transparent at rest, revealed on
+> container hover or by a `[data-ui-scrolling]` stamp from a global `ScrollIdle` island, and scoped
+> `:not(html):not(body)` so the window kept the raw native bar — is **retired**. It shipped two
+> scrollbars with two behaviours and two colour vocabularies, and its thumb was registered at a tone
+> that measured **1.00:1** against `--surface-3` in dark mode (the identical colour) and 1.23:1 at
+> its best. `ScrollIdle` is deleted with it: with the bar always drawn it had nothing left to
+> reveal._
 
 ### D.1 Desktop layout
 
@@ -1952,6 +2186,243 @@ the full shell on every step change.
 
 ---
 
+### D.7 The Conversion Lane — public entity view pages (merge gate)
+
+`/view/[entity]` and `/[handle]/view/[item]` are the product's evaluation-and-purchase surface, and
+they are the one place where the shell's two navigation columns and a page's own commerce chrome all
+want the same pixels. This section resolves that collision by **assigning the transaction to the
+lane** and forbidding the third column outright.
+
+**D.7.1 There is no right-hand sticky purchase card. Ever.** The reflex on a marketplace listing is a
+sticky right rail carrying price and CTA. On this shell that produces a **four-track layout** —
+global rail, middle-nav lane, main stage, purchase rail — inside a content region that has already
+spent ~344px on chrome. Measured consequences: the main stage falls below the width its 16:10 media
+needs and the gallery starts down-scaling; the sticky rail and the lane both claim `position: sticky`
+under the same top offset and their seams double up; and below ~1280px one of the two has to be
+dropped, which means the primary CTA's presence depends on the viewport rather than on the offer. A
+commerce surface whose Buy button is a function of window width is not a commerce surface.
+
+**D.7.2 The middle-nav lane IS the conversion engine.** On a view route the lane stops being
+navigation and becomes the transaction. It mounts identically in both shells —
+`.ui-middle-nav__lane` for authenticated viewers, the floating glass `.ui-guest-aside` for guests
+(§D.5) — because it is one component on the shared `pf-lane` skeleton, so a guest and a signed-in
+buyer see the same offer in the same place. Its anatomy is fixed, top to bottom:
+
+1. **Identity band.** The creator's `@handle` as a link to `/[handle]` (canonical, §8 Decision #3),
+   the verification crest as an `Icon` (never a pill — §B.11.4), and an overflow kebab. **Secondary
+   actions live in the kebab, not on the lane**: _Share listing · Save to custom list · Request
+   custom scope · Report listing_. Each is one decision the buyer is not currently making, and every
+   one promoted to a visible button competes with the one they are.
+2. **Price.** The converted local figure in **`--text-2xl` (1.75rem), `--fw-medium`, `tabular-nums`**
+   through `MoneyView` (§C.1) — so a currency switch re-projects it and the origin is disclosed
+   rather than hidden. The creator's original currency sits directly beneath in **`--text-sm`
+   (0.8125rem), `--text-secondary`** (`Orig. £76.99 GBP`). Two registers, one figure; never two
+   equally-weighted numbers, which reads as two prices. A discount delta, where one applies, is a
+   third line in Meta register carrying both the struck original and the saving — never a chip.
+3. **Primary CTA — one, full-width, INVERTED pill.** Its label is the archetype's actual verb:
+   **Buy now** · **Book session** · **Reserve seat** · **Fund Stage 1** · **Apply to project**. The
+   treatment is §D.7.7's monochrome fill, not `--primary`.
+4. **Secondary CTA — one, full-width, BRAND pill.** _Add to basket_. Solid `--primary`, same height
+   and radius as the primary, ranked below it by hue rather than by emphasis (§D.7.7).
+5. **Tertiary — one ghost action, and only ever this one.** _Message seller_, with its glyph. This is
+   the single sanctioned exception to item 1's "secondary actions live in the kebab", and the reason
+   is specific rather than general: every other kebab action is something the buyer does INSTEAD of
+   buying, while asking the seller a question is something they do **on the way to** buying. Burying
+   it costs the sale the rest of the lane is trying to make. It is a text-weight control, so it adds
+   no third fill and the ranking still reads primary → secondary → tertiary at a glance. A **second**
+   ghost action is a finding.
+6. **Summary ledger.** The archetype's live state and the operational facts, as inline Meta text
+   (§B.11.2) on hairline-separated rows — delivery timeframe, revisions included, stage or seat
+   state, and the escrow notice (_Funds held in escrow_) where the archetype escrows. Not chips.
+
+**D.7.3 The main stage is for evaluation and is fluid.** Everything that helps a reader _decide_
+lives in `.ui-page-canvas__body` and takes the full content width: the 16:10 media canvas, the stage
+ledger or scope checklist, the specification table, the creator section, related work, reviews. It
+carries **no price and no purchase control** on desktop — the offer has exactly one home, so the two
+can never disagree about what is being sold or what it costs.
+
+**D.7.4 Below `--bp-md` the duty transfers; it does not duplicate.** `middle-nav.css` and
+`guest-shell.css` both drop the lane at `≤767px`, and the entire transaction lives in it — measured
+at 390×844 before the fix, a product page rendered its price, _Buy now_, _Add to basket_ and
+_Message_ all at `0×0`. A single body-side transactional block is revealed by media query **exactly
+where the lane is not**, so the two are mutually exclusive by `display` and only ever one is in the
+accessibility tree. Both derive their offer from the same resolver, so they cannot drift. This is the
+same pattern as `.pf-header__actions` on the profile page and the `/wallet` header switcher (§8
+Decision #63): **a duty removed from one region is re-homed in another, never rendered twice.**
+
+**D.7.5 Resolution is a per-URL slot resolver, and it dispatches on the item's type.**
+`viewLaneFor(url, authed)` is a member of the `laneFor` / `middleNavHeaderFor` / `middleNavFooterFor`
+/ `checkoutChromeFor` family: pure, synchronous, evaluated by the `(public)` and `[handle]` layouts,
+returning `null` for a URL it does not own. It must never be an island — a client-resolved lane
+cannot paint on the first SSR byte and would flash an empty rail on every navigation. It dispatches
+by the **resolved item type**, not by a query string: a project gets the stage-jump lane, an article
+the table of contents (an article has no transaction), everything else the transactional action lane.
+`?type=` in the URL is presentational SEO only and never decides what renders.
+
+**D.7.6 The scroll-migrated sticky header.** Once the body hero passes under the sticky chrome, the
+middle-nav header band reveals a condensed identity: the title (capped at **24ch** with native
+truncation), the seller line (avatar · `@handle` · verification crest · compact rating), the
+archetype label as unboxed text, and **one contact control**.
+
+Four things about it are rules rather than choices:
+
+- **It carries no purchase control.** `.guest-shell__subheader` is `display: none` at ≤767px while
+  `.ui-middle-nav__header` still renders there, so a CTA in this band would exist for a signed-in
+  phone user and not for a guest one — and would sit alongside the body transactional block, which
+  owns the offer below `--bp-md`. Two primaries on one phone screen is the §D.7.4 duty-transfer
+  conflict. Contacting the seller is not a purchase, so the one control here is safe.
+- **The reveal is `min-block-size` + `max-block-size`, never `block-size`.** The band sits in the
+  frame's grid context, which overrides an explicit height; only the min/max logical constraints are
+  honoured. Recorded in `profile.css`, verified twice.
+- **The band root must carry `.pf-stickyhead`.** That is load-bearing, not cosmetic reuse: the guest
+  shell keys its glass underlay, hairline and elevation off the literal selector
+  `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`. A band that drops the class
+  renders unstyled for guests **while looking correct when signed in**, which is the worst shape a
+  regression can take.
+- **The probe measures once on mount, before any event.** A deep link into the middle of a page, a
+  restored scroll position, or a throttling environment must still resolve the correct initial state.
+
+> **On IntersectionObserver.** The obvious implementation is an observer on the hero, and the brief
+> that requested this feature named it first. It was built that way and then replaced. In this repo's
+> preview harness **neither observer callbacks nor `scroll` events fire** — both are compositor-driven
+> and it does not composite — while `scrollY` moves normally, so neither mechanism can be verified
+> there. Given two unverifiable options, the shipped one wins: a passive `scroll` listener is what the
+> profile and project views already run in production. The observer is the better mechanism and should
+> replace this the moment there is somewhere to prove it works; it is not currently a correctness
+> question but a verifiability one.
+
+**D.7.7 The action rig is monochrome-first.**
+
+The primary CTA is **inverted**: the page's ink colour as its fill. Expressed as
+`--btn-accent: var(--on-surface); --btn-on: var(--surface)` — the inverted-surface idiom the system
+already has in `Tooltip` — the pair swaps sides with the theme by construction, so one declaration is
+correct in both directions: near-white on near-black in light, near-black on near-white in dark.
+
+**Measured, because the alternative was not viable.** The inverted pill is **17.14:1** light /
+**14.93:1** dark, and it *improves* under `data-contrast="high"` (~20:1 both), so it needs no
+accessibility carve-out and is unaffected by the colour-blindness overlays, being achromatic.
+
+The secondary carries the brand teal, and **its ink is `--surface` too** — which is the whole trick.
+Solid `--primary` with white text measures **5.38:1 in light** (correct, and literally white) but
+**3.75:1 in dark**, and the token pair `--on-primary` measures **3.57:1** there. Both then *collapse*
+under `data-contrast="high"` in dark — **2.52:1** and **1.75:1** — so the overlay meant to rescue
+them makes them unreadable. `--surface` resolves to `#ffffff` in light and `#0b0f0f` in dark, so it
+**is** the white text where white works and flips where it does not: 5.38:1 / 5.15:1.
+
+> **Root cause, for whoever fixes it at the layer it belongs to.** `theme-engine.ts` sets dark
+> `--primary: a1.tone(fg(55))` and `--on-primary: a1.tone(on(98))` — both above mid-tone 50, which
+> violates the file's own stated invariant that a colour and its `on-` pair must straddle it. Every
+> other dark `on-` pair correctly uses `on(20)`, and the comment directly above the offending line
+> describes code that is not there. This is the defect flagged since §8 Decision #64 and routed around
+> seven times; it is a one-line change that repaints every filled primary control in the product, so
+> it needs a human, not a silent edit.
+
+Geometry: both pills are `--radius-full`, `--fw-medium`, and **36px** tall. That height is
+deliberately OFF the `--fld-h-*` ramp, which steps 32 → 40 → 48 — a compact commit control is neither
+of its neighbours. It stays on the ramp's own 4px grid, and if the pattern spreads the ramp should
+gain the step rather than each surface re-declaring it.
+
+> **§B.8.2 note.** The lane renders two solid fills, which the one-`filled`-per-decision-region cap
+> reads as a violation. It is a sanctioned exception, scoped to this rig: the two are ranked by HUE
+> (monochrome commit vs brand basket) rather than by emphasis, so the hierarchy a reader perceives is
+> intact — which is what the cap protects. It is recorded here so the next author does not generalise
+> it to a surface where both fills would be the same colour.
+
+**D.7.8 The canvas is content-first.**
+
+Structured information leads and media trails: title, metadata, summary, seller, then the stage
+ledger / scope checklist / specification tables on the **inline-start** side, with the media showcase
+on the **inline-end**. A listing is evaluated by reading, and a gallery-first canvas makes the reader
+scroll past pictures to reach the terms.
+
+**The columns are reversed in the DOM, never with `order` or `direction`.** Those move the boxes and
+leave the reading and tab order behind, so a keyboard or screen-reader user would traverse a strip of
+thumbnails before reaching the title of the thing they are being asked to buy. Reversing the source is
+the only version that moves both, and it is the version that survives the mobile stack for free.
+> **Merge gate.** A view-page PR is not mergeable if it introduces a third sticky column, renders a
+> price or a purchase control in the main stage on desktop, adds a THIRD fill or a SECOND ghost to
+> the lane rig (§D.7.7), promotes any action other than seller contact out of the kebab, duplicates
+> the transactional block across two simultaneously-visible regions, puts a purchase control in the
+> sticky header band (§D.7.6), flips the canvas columns with `order`/`direction` rather than in the
+> DOM (§D.7.8), or resolves the lane from an island rather than a URL resolver.
+### D.8 Entity-view archetypes — the render contract
+
+One page, five bodies. The archetype is resolved server-side from the listing's own delivery model,
+and each dictates what the main stage renders and what the lane's summary ledger says. All five
+inherit §B.4, §B.9.7 and §B.11 without exception — **none of these is built from cards.**
+
+**D.8.0 The media showcase is common to all five.** A 16:10 primary canvas
+(`--card-media-ratio`) with the active thumbnail strip **directly beneath it**, never floating over
+it. The strip reserves its own height at SSR so a late-decoding image cannot shift the canvas, and an
+audio or video artefact embeds `AudioVisualizer` or a native player **inside the same 16:10 box** —
+the box is the layout contract, the artefact is what fills it, so switching media type causes no
+reflow.
+
+**D.8.1 Pipelines and multi-stage services.** The stage ledger is a **continuous vertical timeline
+track**: one hairline running the full height of the run, with each stage's step number in a small
+circular **outline** on it (a `--primary` ring with the numeral on the surface pair — never
+`--on-primary` on `--primary`, which measures 3.57:1 in dark, §8 Decisions #64/#65). A stage's title
+is Section-header register, its brief is Body, its turnaround and stage budget are inline Meta.
+Expanding a stage reveals its deliverable checklist (§B.9.8) **inline, without interrupting the
+track** — the line runs behind the expansion, because a track that breaks at every open stage stops
+reading as a sequence, which is the only thing it was drawn to communicate. It is not an `Accordion`:
+that component brings a bordered panel per tab, which is the boxed accordion this rule exists to
+prevent. Lane ledger: `Stage 2 of 5 · Discovery`, plus per-stage quick-jumps.
+
+**D.8.2 One-off deliverables.** No timeline — a single unboxed **scope checklist** (`Icon` `check` +
+Body text, one row per item) under a Section header, followed by a key–value specification ledger
+(turnaround, revisions, source files, commercial licence) as a two-column definition list separated
+by single hairlines, never as a bordered table. Lane ledger: the delivery window and revisions.
+
+**D.8.3 Session-based services (1-on-1).** The booking calendar is a **full-bleed stage spanning the
+whole content width**, not a hero column — and that is a functional requirement, not a preference.
+The calendar engine drops `.cal__side` (the mini-month **and** the availability panel) below ~768px
+of its own ELEMENT width, and a hero column inside a content region that has already spent ~344px on
+chrome crosses that line on an ordinary laptop. Squeezed into a column, the booking surface silently
+loses the only control that explains what the provider's working hours are. The hero collapses to a
+single column for these archetypes and the stage takes the full width beneath it.
+
+**The stage carries a segmented Availability ⇄ Showcase switcher, and there is exactly ONE copy of
+it, working in BOTH directions.** This is stated because the first implementation had two and neither
+worked: the in-stage tablist was `display: none` above 767px and the lane's replacement only ever
+turned availability ON, so a desktop reader who opened the calendar could not get back to the gallery
+without reloading the page. A view-mode switch is a data selection, so the canvas is allowed to own
+it (§D.7.3) — but the lane must not carry a second, one-way copy.
+
+**The timezone disclosure states the zone the grid is actually drawn in.** The engine renders one
+wall clock from one zone string, and the app feeds it the schedule's own `timezone` — the
+**provider's**. Copy claiming "times are shown in your local timezone" is therefore false, and was
+shipped that way once. Name the zone being rendered, and name the reader's too when the two differ. A
+time that is right for one party and unlabelled for the other is the single most expensive error this
+surface can make; a time that is labelled with a zone the surface is not using is worse.
+
+The stage carries **no price and no Book CTA** — it is evaluation material, and the offer has one home
+(§D.7.3). Lane ledger: next available slot and session length; primary CTA **Book session**.
+
+**D.8.4 Group sessions (cohorts).** Capacity is a **segmented track meter** on `--track-meter`
+(§A.3) — filled segments for taken seats, recessed for remaining, `--space-px` seams — with the fact
+stated in words beside it (`4 of 10 seats remaining`). The meter is decorative and `aria-hidden`; the
+sentence is the accessible fact, because a bar cannot be read aloud and a nearly-full cohort is
+precisely when the number matters. Geometry is set directly and never animated — a frozen animation
+clock in a background tab must not be able to draw an empty cohort as full (§8 Decision #60). Beneath
+it runs the **chronological curriculum**, on the same timeline track as D.8.1 with dates instead of
+stage numbers. Lane ledger: remaining seats, cohort start, cadence; primary CTA **Reserve seat**.
+
+**D.8.5 Digital products** (templates · 3D assets · audio stems · video presets · code kits). The
+16:10 canvas carries the **live** artefact, not a screenshot of it: `AudioVisualizer` for stems, a
+native player for video, an interactive viewport for 3D, a syntax-highlighted excerpt for a code kit.
+Beneath it, a key–value **file specification ledger** — formats (`.blend`, `.wav`, `.psd`),
+uncompressed payload size, dimensions or sample rate, the compatibility matrix (host application and
+version), and the licence permissions in full — as hairline-separated rows in Meta register. Licence
+is never abbreviated into a chip: it is the term of the sale, and a reader who cannot see whether
+commercial use is included has not been told the price of anything.
+
+> **Merge gate.** An archetype PR is not mergeable if it boxes the stage ledger, scope list or spec
+> table; breaks the timeline track at an expansion or builds it from `Accordion`; renders session
+> times without naming the zone the grid is drawn in, or claims a zone the engine is not using;
+> confines the booking calendar to a hero column, or ships a second/one-way availability switcher;
+> encodes seat capacity in an animated property or omits the spoken count; or reduces licence terms
+> to a chip.
 ## Part E — Contracts & merge gates (summary)
 
 A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
@@ -1962,9 +2433,14 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 4. Reduced-motion + the four a11y overlays (§A.5) honored; comprehensive ARIA.
 5. Responsive at Desktop/Tablet/Mobile without app-side overrides.
 6. New/changed component ⇒ its entry in the §C.1 roster + this spec updated **in the same change.**
-7. **The five component laws** — §A.7 field state contract, §B.8 buttons, §B.9 cards, §B.7
-   iconography, §B.10 overlays. Each carries its own gate paragraph; they are listed here so a
-   reviewer has one place to check rather than five.
+7. **The six component laws** — §A.7 field state contract, §B.7 iconography, §B.8 buttons, §B.9
+   cards, §B.10 overlays, §B.11 anti-tagification. Each carries its own gate paragraph; they are
+   listed here so a reviewer has one place to check rather than six.
+8. **The three composition laws** — §A.4's four typographic registers (hierarchy over raw weight),
+   §B.4.1–B.4.3 (asymmetric spacing, solid tonal steps, functional transparency only), and §D.7/§D.8
+   (the conversion lane and the entity-view archetypes). These govern how a *page* is assembled
+   rather than how a *component* is built, which is why they are listed apart: a PR can satisfy every
+   component law and still ship a boxed, tagified, three-column view page.
 
 ---
 

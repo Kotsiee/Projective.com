@@ -63,7 +63,14 @@ export function allItems(): ExploreItem[] {
 	];
 }
 
-/** The Home discovery feed — sections keyed by format, plus the reserved promos. */
+/**
+ * The Home discovery feed — sections keyed by format, plus the reserved promos.
+ *
+ * The format sections stay in fixture declaration order (that ordering is editorial — a curated
+ * shelf), while `recommended` is genuinely ranked, through the same {@link rankRecommended} the
+ * search path's default sort uses. Two orderings of the same corpus is the point: a shelf and a
+ * ranking answer different questions, and collapsing them would make one of the two a lie.
+ */
 export function homeFeed(): HomeFeed {
 	return {
 		users: USERS,
@@ -77,6 +84,14 @@ export function homeFeed(): HomeFeed {
 		sponsored: SPONSORED,
 		helpArticles: HELP_ARTICLES,
 		ctas: CTAS,
+		recommended: {
+			services: rankRecommended(SERVICES),
+			products: rankRecommended(PRODUCTS),
+			projects: rankRecommended(PROJECTS),
+			// "People who can help" is Home's own existing precedent for the talent scope — the same
+			// freelancers-and-teams fold `CATEGORY_TYPES.freelancers` applies on the search path.
+			people: rankRecommended([...FREELANCERS, ...TEAMS]),
+		},
 	};
 }
 // #endregion
@@ -85,6 +100,29 @@ export function homeFeed(): HomeFeed {
 /** The best rating track available on an item (helper preferred) — used by the "Top rated" sort. */
 function topScore(item: ExploreItem): number {
 	return Math.max(item.rating?.asHelper?.value ?? 0, item.rating?.asClient?.value ?? 0);
+}
+
+/**
+ * The `recommended` ordering: verified owners first, then by best rating track.
+ *
+ * A marketplace-wide quality heuristic, not a personalisation — nothing here reads a viewer, because
+ * neither this module nor {@link homeFeed} is given one. Exported so the Home feed's Recommended
+ * lists and a `?sort=recommended` search rank through one comparator: two copies of "what we put
+ * forward" would eventually disagree, and the disagreement would show up as the same corpus ordered
+ * two ways on two surfaces a reader moves between in one click.
+ */
+export function compareRecommended(a: ExploreItem, b: ExploreItem): number {
+	return (Number(b.owner.verified ?? false) - Number(a.owner.verified ?? false)) ||
+		(topScore(b) - topScore(a));
+}
+
+/**
+ * Rank a list by {@link compareRecommended}, returning a copy. Generic over the element type so a
+ * caller holding a narrowed list (`ServiceItem[]`, `ProfileItem[]`) gets that type back rather than
+ * a widened `ExploreItem[]` it would then have to re-narrow.
+ */
+export function rankRecommended<T extends ExploreItem>(items: readonly T[]): T[] {
+	return [...items].sort(compareRecommended);
 }
 
 /** Parse a leading price out of a formatted string / derived floor for the "price" sort. */
@@ -157,6 +195,18 @@ export function getResults(params: ExploreParams): ExploreItem[] {
 			(it.type === "services" || it.type === "products") && catFacet.includes(it.category)
 		);
 	}
+	const modelFacet = params.filters.model;
+	if (modelFacet?.length) {
+		// Delivery model is a `ServiceItem` field, not a category — "Session" and "Group Session" are
+		// how a service is DELIVERED, so a Sessions chip is this facet rather than a top-level scope.
+		//
+		// Note the shape: unlike `cat`/`stage`, which drop everything outside the one entity they
+		// describe, this leaves non-services untouched. Within `category=services` the two readings are
+		// identical, so the difference only bites when a `model` value survives a category switch in the
+		// URL — where dropping every project on a projects query would be an empty page the reader has
+		// no way to explain. A facet that cannot apply should be inert, not destructive.
+		items = items.filter((it) => it.type !== "services" || modelFacet.includes(it.serviceType));
+	}
 	const stageFacet = params.filters.stage;
 	if (stageFacet?.length) {
 		items = items.filter((it) =>
@@ -188,10 +238,7 @@ export function getResults(params: ExploreParams): ExploreItem[] {
 			sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 			break;
 		default:
-			sorted.sort((a, b) =>
-				(Number(b.owner.verified ?? false) - Number(a.owner.verified ?? false)) ||
-				(topScore(b) - topScore(a))
-			);
+			sorted.sort(compareRecommended);
 	}
 	return sorted;
 }

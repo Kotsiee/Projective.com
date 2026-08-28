@@ -10,15 +10,33 @@ project definition and stage-based modularity to staffing, execution, and revisi
 The top-level container for all collaborative work. It defines global settings, legal requirements,
 and high-level metadata.
 
-| Column               | Type            | Notes                                                   |
-| :------------------- | :-------------- | :------------------------------------------------------ |
-| `id`                 | uuid            | PK.                                                     |
-| `client_business_id` | uuid            | FK → `org.business_profiles.id`.                        |
-| `owner_user_id`      | uuid            | FK → `auth.users.id` (The creator).                     |
-| `status`             | project_status  | `draft`, `active`, `on_hold`, `completed`, `cancelled`. |
-| `visibility`         | visibility      | `public`, `invite_only`, `unlisted`.                    |
-| `ip_ownership_mode`  | ip_option_mode  | Global default for the project.                         |
-| `timeline_preset`    | timeline_preset | `sequential`, `simultaneous`, `staggered`, `custom`.    |
+| Column                | Type            | Notes                                                                 |
+| :-------------------- | :-------------- | :-------------------------------------------------------------------- |
+| `id`                  | uuid            | PK.                                                                   |
+| `client_business_id`  | uuid            | FK → `org.business_profiles.id`.                                      |
+| `owner_user_id`       | uuid            | FK → `auth.users.id` (The creator).                                   |
+| `status`              | project_status  | `draft`, `active`, `on_hold`, `completed`, `cancelled`, `archived`.   |
+| `visibility`          | visibility      | `public`, `invite_only`, `unlisted`.                                  |
+| `ip_ownership_mode`   | ip_option_mode  | Global default for the project.                                       |
+| `timeline_preset`     | timeline_preset | `sequential`, `simultaneous`, `staggered`, `custom`.                  |
+| `source_blueprint_id` | uuid            | FK → `marketplace.service_blueprints.id`; `NULL` when hand-built.     |
+| `last_activity_at`    | timestamptz     | Last meaningful activity — what the draft sweep measures idleness by. |
+| `archived_at`         | timestamptz     | Set iff `status = 'archived'` (`ck_projects_archived_at`).            |
+
+**Service instantiation.** "Add to Projects" on a Pipeline listing copies the seller's blueprint into
+the buyer's workspace as `status = 'draft'`, `visibility = 'unlisted'`, with `source_blueprint_id`
+set and every `stage_assignments` row parked at `pending_funding`. No money moves and nothing is
+reserved: a pipeline is staffed and then bought against, one ticket at a time (`PRODUCT_SPEC.md`
+§Creation & Purchasing Gate). `source_blueprint_id` is what makes a repeated press idempotent — the
+app resolves an existing draft by `(owner, blueprint)` rather than creating a second identical
+pipeline.
+
+**`archived` is soft deletion, and it is distinct from `cancelled`.** Nothing is hard-deleted (root
+`CLAUDE.md` §7). `cancelled` records a decision somebody made about live work; `archived` records
+that nothing ever happened — a draft the buyer removed, or one
+`projects.fn_archive_stale_service_drafts` reclaimed after `service_draft_idle_days` (default 30) of
+inactivity with no funded stage. `last_activity_at` is deliberately NOT `updated_at`: any write
+touches the latter, so a draft that was merely renamed would keep escaping a sweep that measured it.
 
 ### `projects.project_stages`
 

@@ -8,6 +8,7 @@ import {
 	MiddleNav,
 	PageCanvas,
 	type ShellChrome,
+	type UseSplitterOptions,
 } from "@projective/ui/navigation";
 import ShellSidebar from "@web/features/shell/islands/ShellSidebar.island.tsx";
 import MiddleNavSplitter from "@web/features/shell/islands/MiddleNavSplitter.island.tsx";
@@ -36,6 +37,24 @@ export interface UserShellProps {
 	protectedRoute?: boolean;
 	/** Optional page-level middle-nav lane content (drag-resizable). When absent the canvas fills. */
 	lane?: ComponentChildren;
+	/**
+	 * Per-route overrides for the lane splitter — today only the entity view uses them, to give the
+	 * conversion rail more room than a channel list needs (§D.7.2).
+	 *
+	 * It is a PROP rather than a CSS override, and that is forced rather than preferred:
+	 * `MiddleNavSplitter` writes `--shell-lane-w` as an INLINE style custom property on the very
+	 * element `splitter.css` reads it from, and it is present in the SSR HTML too — so an ancestor or
+	 * `:root` override of that property changes nothing visible while still corrupting
+	 * `--shell-frame-inset-inline`, leaving the lane edge and the frame seam tens of pixels apart.
+	 * Overriding `inline-size` instead would make the drag handle lie: `useSplitter` would keep
+	 * tracking the pointer and persisting a number the lane never moves to. Passing the value in means
+	 * the inline variable IS the value, so `inline-size`, the seam accumulator and the width hoist all
+	 * agree, and drag + collapse keep working untouched.
+	 *
+	 * Pass a distinct `storageKey` alongside `initial`, or a viewer who has ever dragged any other
+	 * lane restores that width here and the wider default is silently discarded.
+	 */
+	laneOptions?: Pick<UseSplitterOptions, "initial" | "min" | "max" | "storageKey">;
 	/**
 	 * Optional route-configured header for the middle-nav frame — mounted as the {@link MiddleNav}
 	 * `header` band, a sticky top strip flush against the lane so it reads as one connected header across
@@ -68,6 +87,35 @@ export interface UserShellProps {
 	 * bands — so it paints correctly in the first byte with no client flash.
 	 */
 	chrome?: ShellChrome;
+	/**
+	 * Optional page-level footer rendered at the END of the canvas body — the marketing
+	 * `PublicFooter` on the public surfaces a signed-in visitor can still reach (`/`, `/explore`,
+	 * `/view/[id]`, `/[handle]`). Resolved per-URL by `publicFooterFor` in the layout, exactly like the
+	 * lane and the two bands, so it paints in the first byte.
+	 *
+	 * **Inside the canvas body specifically**, and this is not interchangeable with the other three
+	 * plausible mount points:
+	 *
+	 * - `.ui-page-canvas__body` already carries `position: relative` (page-canvas.css). THREE
+	 *   `position: fixed; z-index: 0` pseudo-elements paint opaque `--surface-1` / `--surface` fills
+	 *   across the whole viewport (`shell-frame.css`, `page-canvas.css`, `top-bar.css` — they are how
+	 *   the frame seams stay pinned while the document scrolls). A footer mounted anywhere else in the
+	 *   shell is a non-positioned in-flow element, so those fills paint OVER it and it is simply
+	 *   invisible. In here it inherits the fix for free.
+	 * - The ≤767px bottom-nav clearance is already reserved by the body's
+	 *   `padding-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px))`, so the
+	 *   footer clears the fixed bar on a phone without a second reservation that would have to be kept
+	 *   in step with it.
+	 * - The frame's corner seam is drawn by those viewport-FIXED pseudo-elements, which never read the
+	 *   flow, so adding a tall child changes nothing about the curve and `flushBottom` stays correctly
+	 *   `true`.
+	 * - The sticky header/footer bands are the middle-nav frame's grid rows 1 and 3 and the content is
+	 *   row 2, so a footer in the body scrolls beneath both instead of colliding with either.
+	 *
+	 * Withheld in `focus` chrome for the same reason {@link BottomNav} is: that mode exists to remove
+	 * every navigational exit from a linear, committing flow, and a footer is a wall of them.
+	 */
+	bodyFooter?: ComponentChildren;
 	/** The page body. */
 	children: ComponentChildren;
 }
@@ -96,14 +144,16 @@ export function UserShell(
 		showSearch = true,
 		protectedRoute = false,
 		lane,
+		laneOptions,
 		middleNavHeader,
 		middleNavFooter,
 		chrome = "full",
+		bodyFooter,
 		children,
 	}: UserShellProps,
 ): JSX.Element {
-	const canvas = <PageCanvas>{children}</PageCanvas>;
 	const focus = chrome === "focus";
+	const canvas = <PageCanvas>{children}{focus ? null : bodyFooter}</PageCanvas>;
 	// In focus mode every navigational exit is withheld, so the lane is not constructed at all — but
 	// the middle-nav FRAME still renders whenever a band was registered, because the checkout stepper
 	// lives in the header band and must span the canvas with no lane beside it. The frame's grid is
@@ -131,7 +181,7 @@ export function UserShell(
 					? (
 						<MiddleNav
 							lane={activeLane
-								? <MiddleNavSplitter>{activeLane}</MiddleNavSplitter>
+								? <MiddleNavSplitter {...laneOptions}>{activeLane}</MiddleNavSplitter>
 								: undefined}
 							header={middleNavHeader}
 							footer={middleNavFooter}

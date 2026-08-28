@@ -54,7 +54,13 @@ function blockerIcon(code: CheckoutBlockerCode): IconName {
 		case "insufficient_funds":
 			return "wallet";
 		case "verification_required":
-			return "verified";
+			// A shield, NOT the `verified` crest. The crest is the product's assertion that an entity
+			// HAS been verified; this row exists precisely because it has not, and the blocker list is
+			// tinted `--warning`/`--danger`, so the crest would have arrived here painted in the alarm
+			// colour beside the sentence denying what it claims. Two concepts under one name is the
+			// other half of §B.7.7's ban, and it is the half that misinforms rather than merely
+			// looking inconsistent. The shield says "a gate stands here", which is the true statement.
+			return "shield";
 		case "price_changed":
 			return "refresh";
 		case "missing_details":

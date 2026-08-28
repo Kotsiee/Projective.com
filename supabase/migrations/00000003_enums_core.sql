@@ -18,7 +18,12 @@ CREATE TYPE assignment_type AS ENUM ('freelancer', 'team');
 
 CREATE TYPE visibility AS ENUM ('public', 'invite_only', 'unlisted');
 
-CREATE TYPE project_status AS ENUM ('draft', 'active', 'on_hold', 'completed', 'cancelled');
+-- `archived` is the SOFT-DELETE terminal state. Nothing on this platform is hard-deleted (root
+-- CLAUDE.md §7), so a draft the client abandons — or one the 30-day sweep
+-- (`projects.fn_archive_stale_service_drafts`) reclaims — moves here rather than being removed. It is
+-- deliberately distinct from `cancelled`, which records a decision somebody made about live work;
+-- `archived` records that nothing ever happened.
+CREATE TYPE project_status AS ENUM ('draft', 'active', 'on_hold', 'completed', 'cancelled', 'archived');
 
 -- Folded: 0305 ALTER TYPE stage_status ADD VALUE 'cancelled'.
 CREATE TYPE stage_status AS ENUM ('open','assigned','in_progress','submitted','approved','revisions','paid','cancelled');

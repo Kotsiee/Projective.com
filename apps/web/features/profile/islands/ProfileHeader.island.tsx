@@ -10,7 +10,7 @@ import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import "../styles/profile.css";
 import { ProfileActions } from "../components/ProfileActions.tsx";
 import { EntityBadge } from "../components/ProfileBadges.tsx";
-import { ProfileIcon, TIER_META } from "../components/profile-glyphs.tsx";
+import { TIER_META } from "../components/profile-glyphs.tsx";
 import { editedAvatar, editedBanner, headerCondensed } from "../core/profile-state.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 
@@ -162,7 +162,7 @@ export default function ProfileHeader({ profile, canEdit }: ProfileHeaderProps):
 								data-tier={profile.tier}
 								aria-label={TIER_META[profile.tier].title}
 							>
-								<ProfileIcon name="verified" class="pf-tier__mark" />
+								<Icon name="verified" class="pf-tier__mark" filled />
 								<span class="pf-tier__label">{TIER_META[profile.tier].label}</span>
 							</span>
 						</Tooltip>

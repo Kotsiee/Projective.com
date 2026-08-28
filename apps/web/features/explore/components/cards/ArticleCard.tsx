@@ -30,7 +30,11 @@ export function ArticleCard(
 	},
 ): JSX.Element {
 	return (
-		<article class={`ex-card ex-card--article ex-card--article-${orientation}`}>
+		<article
+			class={`ex-card ex-card--article ex-card--article-${orientation}`}
+			data-item-id={item.id}
+			data-item-type={item.type}
+		>
 			<CardLink item={item} ctx={ctx} label={item.title} />
 			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
 			<div class="ex-media">

@@ -38,7 +38,7 @@
 }
 
 .ui-nav-item--active {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--primary);
 	color: var(--on-surface);
 }
 
@@ -114,23 +114,6 @@
 /* Collapsed: hide the visible label (the anchor's `aria-label` carries the accessible name). */
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__label {
 	display: none;
-}
-
-/*
- * Hiding the label also removes the font-weight step that distinguishes --active from :hover in the
- * EXPANDED rail, leaving two low-alpha tints separated only by hue — and this is the rail's default
- * state, so "you are here" was colour-alone for most users most of the time. The leading bar restores
- * a non-colour channel. Same mark, same geometry as the messages rail's collapsed active row, so the
- * two collapsed rails in the product read identically.
- */
-:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item--active::after {
-	content: "";
-	position: absolute;
-	inset-block-end: 6px;
-	inset-inline: 12px;
-	block-size: 2px;
-	border-radius: var(--radius-full);
-	background: var(--primary);
 }
 
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__icon svg {

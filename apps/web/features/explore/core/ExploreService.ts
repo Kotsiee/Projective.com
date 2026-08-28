@@ -43,6 +43,21 @@ export const ExploreService = {
 	item(id: string): Promise<ExploreResult<{ item: ExploreItem }>> {
 		return getExplore<{ item: ExploreItem }>(`/api/explore/item?id=${encodeURIComponent(id)}`);
 	},
+
+	/**
+	 * Resolve a batch of ids in one request — the "Continue where you left off" rail's stored
+	 * references. Returns the items that still exist, in the order the ids were given (the reader's
+	 * recency); ids that resolve to nothing are omitted rather than failing the batch.
+	 *
+	 * An empty list answers locally instead of asking the route to reject it: "the reader has viewed
+	 * nothing yet" is a normal first-visit state, not a bad request, and it deserves neither a round
+	 * trip nor an error message the caller then has to special-case back into an empty rail.
+	 */
+	items(ids: string[]): Promise<ExploreResult<ExploreItem[]>> {
+		if (ids.length === 0) return Promise.resolve({ ok: true, data: [] });
+		const qs = encodeURIComponent(ids.join(","));
+		return getExplore<ExploreItem[]>(`/api/explore/items?ids=${qs}`);
+	},
 };
 
 export type { HomeFeed, SearchPayload };

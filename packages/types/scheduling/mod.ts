@@ -21,6 +21,10 @@
  * - {@link ./calls.ts} — discovery & courtesy calls: settings, the booking record, the Digital
  *   Handshake attendance log, and the lifecycle, mirroring the same consolidated DDL plus
  *   `00001510` (functions) / `00001860` (triggers) / `00002015` (policies).
+ * - {@link ./booking.ts} — the BOOKABLE SLOT GRID behind a session listing's Book modal and the
+ *   discovery-call handshake: the read side of `availability_rules` + `fn_slot_is_free`, flattened
+ *   for a picker rather than for a calendar grid, with every instant absolute and both zone names
+ *   carried so the client formats in the viewer's zone without re-interpreting a wall clock.
  * - {@link ./ics.ts} — the iCalendar (RFC 5545) READER, the exact inverse of the writer in
  *   `@projective/types/finance` `order.ts`. Pure: no clock, no IO, so the fat service and the
  *   browser call one implementation and a `.ics` import cannot be parsed two different ways.
@@ -41,4 +45,5 @@ export * from "./meeting.ts";
 export * from "./sim.ts";
 export * from "./rows.ts";
 export * from "./calls.ts";
+export * from "./booking.ts";
 export * from "./ics.ts";

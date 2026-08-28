@@ -9,7 +9,7 @@ import { StatusChip } from "../StatusChip.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
 import { ratingSignals, serviceTypeLabel } from "../../core/card-signals.ts";
-import { servicePriceParts, servicePricing } from "../../core/pricing.ts";
+import { serviceStartingPrice } from "../../core/pricing.ts";
 import { itemHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ServiceItem } from "../../types/explore-types.ts";
@@ -21,6 +21,10 @@ import type { ExploreItem, ServiceItem } from "../../types/explore-types.ts";
  * disclosure (top-right); a creator row naming the seller directly under the image; the title, clamped
  * to two lines; the delivery-model chip with the turnaround right-aligned beside it; then a foot that
  * splits the star rating from the price.
+ *
+ * The PRICE is one figure in a two-line stack — `From £120.00` over a muted `/ ticket` — never a range
+ * and never a converted-plus-origin pair. See the block comment at the call site for what that trades
+ * away and where the full range still lives.
  *
  * The creator row moved ABOVE the title and now prints the seller's NAME rather than their handle.
  * On a marketplace the answer to "who is selling this" is a person or a studio, and a handle is an
@@ -40,17 +44,15 @@ export function ServiceCard(
 	},
 ): JSX.Element {
 	const review = item.rating?.asHelper ?? item.rating?.asClient;
-	const pricing = servicePricing(item);
-	// Structured minor units when the item carries them; the pre-formatted string stays the fallback
-	// for a listing that has none ("Contact us"), which must never become a confident zero.
-	const parts = servicePriceParts(item);
-	// A range is a floor, so it is announced as one. A single figure states itself.
-	const fromPrefix = parts?.to ? "From " : "";
+	// One figure, never a range, and never a conversion tail — see the price block below.
+	const price = serviceStartingPrice(item);
 	const signals = ratingSignals(item.rating);
 
 	return (
 		<article
 			class="ex-card ex-card--service"
+			data-item-id={item.id}
+			data-item-type={item.type}
 			data-ambient-src={item.media}
 			style={vars({ "--ex-accent": cardAccent(item.id) })}
 		>
@@ -100,36 +102,41 @@ export function ServiceCard(
 						)
 						: <span />}
 
+					{
+						/*
+					  The price, as a two-line vertical stack: the figure on top in the card's heaviest
+					  weight, the unit beneath it small and muted.
+
+					  ONE FIGURE, and no conversion tail. The card used to render a Pipeline as a
+					  converted RANGE with its origin disclosed — `From £94.49 – £377.95 (~US$480.00 USD)
+					  / ticket` — which is four numbers and two currencies for a glance that is only ever
+					  asked to answer "roughly how much". `hideOrigin` suppresses the visible disclosure
+					  only: `MoneyView` still names the origin and the rate in the accessible label and
+					  the `title`, so the fact that the figure is converted is not destroyed, just moved
+					  off a line that could not carry it. The full range stays on `/view/[id]` and in the
+					  search drawer.
+
+					  Structured minor units when the item carries them, so the figure follows the
+					  viewer's display currency (this is a server component with no island of its own —
+					  the CurrencyBridge re-projects it). The pre-formatted string is the fallback for a
+					  listing with no structured price ("Contact us"), which must never become a
+					  confident zero.
+					*/
+					}
 					<span class="ex-pricebadge">
-						{
-							/*
-						  Structured money when the item carries it — so the figure follows the viewer's
-						  display currency (the CurrencyBridge re-projects it live; this card is a server
-						  component with no island of its own). A Pipeline renders TWO MoneyViews around an
-						  en dash rather than one pre-joined string, because a range is two amounts and each
-						  has to convert independently. `hideOrigin` on the low end: one origin disclosure
-						  per range is the fact, two is noise.
-						*/
-						}
-						{parts
-							? (
-								<>
-									{fromPrefix}
+						<span class="ex-pricebadge__amount">
+							{price.isFloor && <span class="ex-pricebadge__from">From&#32;</span>}
+							{price.amount
+								? (
 									<MoneyView
-										minor={parts.from.minor}
-										currency={parts.from.currency}
-										hideOrigin={parts.to !== null}
+										minor={price.amount.minor}
+										currency={price.amount.currency}
+										hideOrigin
 									/>
-									{parts.to && (
-										<>
-											{" – "}
-											<MoneyView minor={parts.to.minor} currency={parts.to.currency} />
-										</>
-									)}
-								</>
-							)
-							: pricing.amount}
-						{pricing.unit && <span class="ex-price__unit">/ {pricing.unit}</span>}
+								)
+								: price.fallback}
+						</span>
+						{price.unit && <span class="ex-pricebadge__unit">/ {price.unit}</span>}
 					</span>
 				</div>
 			</div>

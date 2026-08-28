@@ -66,6 +66,22 @@
 - **Signal First:** Use `@preact/signals` (`useSignal`, `useComputed`, `effect`) for all local state
   management to bypass the Preact VDOM. Avoid standard React `useState` or `useEffect` unless
   interacting with external, non-reactive DOM libraries (like QuillJS or Canvas).
+- **No card-in-card.** Static content is never boxed and boxes never nest. Separate with asymmetric
+  spacing, then a **solid** tonal step (`--bg` → `--surface-1` → `--surface-2`), then at most one
+  `--hairline`. A region background is never a translucent colour — an alpha wash is unmeasurable,
+  compounds when nested, and invites an outline to rescue it
+  ([`DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md) §B.4, §B.9.7).
+- **No tagification.** Containment asserts interactivity. Non-actionable metadata (categories,
+  skills, formats, turnarounds, timestamps) renders as inline `--text-secondary` text separated by
+  middots — never a pill, chip, tag or badge. Containers are reserved for controls, lifecycle
+  statuses, required disclosures and counts (§B.11).
+- **`backdrop-filter` is functional, not decorative.** Permitted only on viewport-pinned top bars,
+  floating mobile sheets/scrims, and marks sitting on arbitrary photography — and always on a
+  `::before` underlay, never on the element, which would re-base every `position: fixed` descendant
+  (§B.4.3, §B.10).
+- **Hierarchy is four registers, not five weights.** Display / section header / body / meta, each
+  moving size, case and tracking together. A heading is never `--fw-bold` or heavier; a changing
+  figure is always `tabular-nums` (§A.4).
 
 ### 4. Security & Environment Variables
 
@@ -985,6 +1001,35 @@ cannot see). The ten checkout dev axes travel as validated `sim*` query params (
 schema, so every finance policy — old and new — is latent and nothing here can be verified against a
 live database; and `platform_fee_bp` is seeded `0` while the SSOT says `500`. Both are money decisions
 awaiting a human, and both are why this surface stays on fixtures behind a gate that defaults off.
+
+### The Entity View — polymorphic archetype resolution
+
+`/view/[entity]` is a **read** surface over `ExploreBackendService.viewPage(id)` behind
+`EXPLORE_BACKEND_LIVE`, and it is the clearest instance of the slot-resolver pattern doing real
+architectural work rather than layout plumbing.
+
+**The archetype is resolved server-side, once.** A pure `resolveArchetype(item, view)` maps a
+listing's delivery model onto one of five bodies — `pipeline` · `one_off` · `session` · `cohort` ·
+`product` — and both the canvas and the conversion lane are driven from that single answer. It keys
+on the **resolved item**, never on `?type=` in the URL, which is presentational SEO only: a query
+string is caller-controlled, and a body that trusts it can be made to render a purchase control for
+a listing that is not for sale.
+
+**Two regions, one offer, resolved by two members of the same resolver family.**
+`viewLaneFor(url, authed)` supplies the transactional lane and `viewHeaderFor(url)` the
+scroll-migrated sub-header; both are pure, synchronous, URL-keyed and composed by the `(public)` and
+`[handle]` layouts, so the correct chrome paints in the first SSR byte. Neither may be an island — a
+client-resolved lane cannot paint on the first byte and would flash an empty rail on every
+navigation.
+
+**Money crosses the boundary already resolved.** The fat service returns integer minor units plus
+the resolved `EntityPricing`; the client renders through `MoneyView` and never totals, converts or
+formats a figure itself. The card that linked here and the page it opened share the same pricing
+resolver, so they cannot quote different numbers (§8 Decision #45).
+
+**Availability and capacity are server facts too.** Seat counts, next-available slots and stage state
+are computed by the service and rendered as given — a client that derives them re-derives them
+differently the moment a fixture changes.
 
 ### Sessions & Google OAuth
 

@@ -205,7 +205,6 @@
 	gap: var(--space-2);
 	overflow: auto;
 	scroll-behavior: smooth;
-	scrollbar-width: thin;
 }
 .ui-galleria--thumbs-left .ui-galleria__thumb-strip,
 .ui-galleria--thumbs-right .ui-galleria__thumb-strip {

@@ -21,11 +21,26 @@ verbatim because it depends only on the token contract — never on app code.
 4. **Separation hierarchy** (DESIGN_SYSTEM.md §B.4): no four-sided borders on non-interactive
    content — spacing, tonal surface tints, type weight, single hairlines. Full borders = interactive
    only.
-5. **Accessibility**: reduced-motion jump-to-final; open-dyslexic / CVD / high-contrast token
+5. **Anti-card** (DESIGN_SYSTEM.md §B.4.2, §B.9.7–B.9.8): static content is never boxed; cards never
+   nest nor sit inside an elevated panel; a list of cards gets no container card; a region background
+   is a **solid** ramp tone (`--bg` / `--surface-1` / `--surface-2`), never a translucent wash — an
+   alpha fill is unmeasurable, compounds when nested, and ends up needing a border to rescue it.
+6. **Anti-tagification** (§B.11): a pill/chip/tag/badge is a promise of interactivity. Metadata that
+   cannot be acted on renders as inline `--text-secondary` text with middot separators. Containment
+   is reserved for **controls · lifecycle statuses · required disclosures · counts**. If a reviewer
+   asks what happens when a pill is clicked, "nothing" is a finding.
+7. **Hierarchy over weight** (§A.4): four registers — display (`--text-3xl`/`--fw-medium`), section
+   header (`--text-xs` uppercase/`--fw-semibold`), body (`--text-base`/`--leading-relaxed`, capped at
+   `--measure`), meta (`--text-sm`/`--text-secondary`). No heading at `--fw-bold`+; no two adjacent
+   levels separated by weight alone; `tabular-nums` on any figure that changes.
+8. **Functional transparency only** (§B.4.3): `backdrop-filter` is allowed on viewport-pinned top
+   bars, floating sheets/scrims, and marks on arbitrary photography — nowhere else — and always on a
+   `::before` underlay, never the element itself.
+9. **Accessibility**: reduced-motion jump-to-final; open-dyslexic / CVD / high-contrast token
    overlays; comprehensive ARIA + focus management on every interactive element.
-6. **Responsive** on Desktop/Tablet/Mobile out of the box (fluid `clamp()`/container queries).
-7. **Motion**: over-damped springs (no bounce); simultaneous whole-tree theme crossfade.
-8. **Same-change roster update**: adding/altering a component updates DESIGN_SYSTEM.md §C.1.
+10. **Responsive** on Desktop/Tablet/Mobile out of the box (fluid `clamp()`/container queries).
+11. **Motion**: over-damped springs (no bounce); simultaneous whole-tree theme crossfade.
+12. **Same-change roster update**: adding/altering a component updates DESIGN_SYSTEM.md §C.1.
 
 ## Structure
 

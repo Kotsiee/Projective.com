@@ -133,6 +133,17 @@ export function buildScheme(
 			"--surface-1": hx(core.n1.tone(8)),
 			"--surface-2": hx(core.n1.tone(10)),
 			"--surface-3": hx(core.n1.tone(12)),
+			// Scrollbar thumb. A thumb is a graphical UI control, so WCAG 2.2 SC 1.4.11 asks for 3:1
+			// against what it abuts — and what it abuts is the TRACK, which is not one color: the track is
+			// scoped to whatever surface the scroller sits on (`--scrollbar-track`, `styles/index.css`), so
+			// the tone has to clear 3:1 against the WHOLE ramp, `--bg` through `--surface-3`. Tone 46 on the
+			// neutral-VARIANT ramp is the quietest value that does: 3.89:1 on `--bg` down to 3.17:1 on
+			// `--surface-3`. The tone 12 previously registered here sat at 1.00:1 on `--surface-3` — the
+			// identical color — and 1.23:1 at its best. `n2` rather than `n1` so the thumb belongs to the
+			// same chrome family as `--outline`; `fg()` so the high-contrast overlay widens it (to 4.83:1 /
+			// 7.14:1) instead of leaving a third of the chrome opted out of the overlay.
+			"--scrollbar-thumb": hx(core.n2.tone(fg(46))),
+			"--scrollbar-thumb-hover": hx(core.n2.tone(fg(58))),
 			"--on-surface": hx(core.n1.tone(fg(90))),
 			"--on-surface-variant": hx(core.n2.tone(fg(80))),
 			"--text-secondary": hx(core.n2.tone(fg(70))),
@@ -160,6 +171,11 @@ export function buildScheme(
 			"--surface-1": hx(core.n1.tone(96)),
 			"--surface-2": hx(core.n1.tone(94)),
 			"--surface-3": hx(core.n1.tone(92)),
+			// Mirror of the dark pair, measured the same way: tone 54 clears 3.89:1 on `--surface` down to
+			// 3.17:1 on `--surface-3`, hover 4.88:1, high contrast 4.88:1 / 7.64:1. The tone 88 previously
+			// registered here measured 1.11:1 against `--surface-3`.
+			"--scrollbar-thumb": hx(core.n2.tone(fg(54))),
+			"--scrollbar-thumb-hover": hx(core.n2.tone(fg(42))),
 			"--on-surface": hx(core.n1.tone(fg(10))),
 			"--on-surface-variant": hx(core.n2.tone(fg(30))),
 			"--text-secondary": hx(core.n2.tone(fg(40))),

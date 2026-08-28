@@ -58,6 +58,17 @@ export const handler = define.handlers({
 		const id = contactIds.length === 1
 			? `dm-${contactIds[0]}`
 			: `grp-new-${[...contactIds].sort().join("-")}`;
-		return Response.json({ ok: true, data: { id } }, { status: 200 });
+		/*
+		 * The optional opening message (a listing inquiry, where the buyer typed their question before
+		 * any thread existed). Bounded here rather than trusted: free text arrives from a public,
+		 * guest-reachable surface, and the eventual `messages.body` column will have a limit the route
+		 * has to honour or the insert 500s. Persistence lands with `MESSAGING_BACKEND_LIVE`; accepting
+		 * and echoing it now is what makes the client's send a real send rather than a discard.
+		 */
+		const message = typeof body?.message === "string" ? body.message.trim().slice(0, 4000) : "";
+		return Response.json({
+			ok: true,
+			data: { id, ...(message ? { messageAccepted: true } : {}) },
+		}, { status: 200 });
 	},
 });

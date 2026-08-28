@@ -2,7 +2,6 @@ import { define } from "@web/utils/state.ts";
 import { buildScheme, schemeToCss } from "@projective/ui/system";
 import { CurrencyContext } from "@projective/ui/display/money";
 import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.island.tsx";
-import ScrollIdle from "@web/features/shell/islands/ScrollIdle.island.tsx";
 import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
@@ -140,11 +139,6 @@ export default define.page(function App({ Component, state }) {
 					: null}
 			</head>
 			<body>
-				{
-					/* Global scroll-activated scrollbar reveal (behaviour-only; renders nothing). Pairs with the
-				    self-hiding custom scrollbar in @projective/ui/styles (DESIGN_SYSTEM.md Part D scroll model). */
-				}
-				<ScrollIdle />
 				{
 					/* Money presentation: seeds the shared currency store from SSR and re-projects every
 				    server-rendered figure when the viewer switches currency. Renders nothing. Mounted here

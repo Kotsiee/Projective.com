@@ -15,6 +15,12 @@ import type {
 	EntityView,
 	ExploreItem,
 	ExploreOwner,
+	ProductCompat,
+	ProductFile,
+	ProductLicence,
+	ProductPreview,
+	ProductSpec,
+	ProductViewExtra,
 	ProjectFinance,
 	ProjectMetric,
 	ProjectStage,
@@ -26,12 +32,20 @@ import type {
 	ServiceRole,
 	ServiceViewExtra,
 	SkillRef,
+	StageRevisions,
 	StageRole,
 	StageSeatKind,
 	TicketPrice,
 	TrustFact,
 } from "@projective/types/explore";
-import type { ArticleItem, ProjectItem, ServiceItem } from "@projective/types/explore";
+import { revisionAllowanceKind } from "@projective/types/explore";
+import type {
+	ArticleItem,
+	ProductFormat,
+	ProductItem,
+	ProjectItem,
+	ServiceItem,
+} from "@projective/types/explore";
 
 /**
  * Explore — the Entity View page derivation (server side).
@@ -213,16 +227,49 @@ function pricingFor(item: ExploreItem): EntityPricing {
 // #endregion
 
 // #region Trust & deliverables
+/**
+ * The seller's median first-reply time, in MINUTES.
+ *
+ * A number rather than the sentence it used to be, because two consumers need it and only one of them
+ * wants prose: the trust row prints "Within 1 hour", and the conversion lane's "Fast replies" badge
+ * has to compare it against a threshold. Deriving the badge by matching the English string would make
+ * a gate out of presentation text, so a copy change would silently retire a badge.
+ *
+ * Same seed and same ladder order as the string list it replaces, so every listing keeps the response
+ * time it already had.
+ */
+function responseMinutesFor(item: ExploreItem): number {
+	// 1h · 2h · 4h · same day, in the order the old string list declared them.
+	const ladder = [60, 120, 240, 600];
+	return ladder[hash(item.id) % ladder.length];
+}
+
+/** The response time as the trust row states it — formatted FROM the minutes, never beside them. */
+function responseLabel(minutes: number): string {
+	if (minutes >= 600) return "Same day";
+	const hours = minutes / 60;
+	return `Within ${hours} hour${minutes === 60 ? "" : "s"}`;
+}
+
 /** The operational trust chips shown under the sidebar CTAs. */
 function trustFor(item: ExploreItem): TrustFact[] {
-	const seed = hash(item.id);
-	const responses = ["Within 1 hour", "Within 2 hours", "Within 4 hours", "Same day"];
 	const facts: TrustFact[] = [
-		{ icon: "response", label: "Avg. response", value: responses[seed % responses.length] },
+		{ icon: "response", label: "Avg. response", value: responseLabel(responseMinutesFor(item)) },
 	];
 	if (item.type === "services") {
 		facts.push({ icon: "delivery", label: "Delivery", value: item.delivery });
-		facts.push({ icon: "revisions", label: "Revisions", value: `${1 + (seed % 3)} included` });
+		/*
+		 * The DECLARED allowance, classified by the SAME SSOT rule the stage ledger uses. This row and
+		 * that one are one commitment stated in two places: a listing that told a buyer "2 included"
+		 * here and "unlimited revisions" on every stage would be describing two different offers on one
+		 * screen, and the reader has no way to tell which is the real one.
+		 */
+		const revisions = stageRevisions(item, 0);
+		facts.push({
+			icon: "revisions",
+			label: "Revisions",
+			value: revisionValue(revisions),
+		});
 	} else if (item.type === "products") {
 		facts.push({ icon: "delivery", label: "Access", value: "Instant download" });
 		facts.push({ icon: "returns", label: "Guarantee", value: "14-day refund" });
@@ -766,6 +813,48 @@ function serviceStageDescription(kind: PhaseKind, service: ServiceItem): string 
 }
 
 /**
+ * The seller's declared free-revision allowance, or the corpus default when they have not set one.
+ *
+ * The fallback is deterministic (id hash) rather than zero, because zero is a CLAIM — "no revisions
+ * are included" — and a listing that simply has not filled the field in has made no such claim.
+ */
+function freeRevisionsOf(service: ServiceItem): number {
+	return service.freeRevisions ?? 1 + (hash(service.id) % 3);
+}
+
+/**
+ * The per-round cost of a revision beyond the free allowance, as a {@link TicketPrice}.
+ *
+ * A revision is billed as a ticket, so it reuses the ticket shape rather than forking a second money
+ * projection that could round the same amount differently. An undeclared price falls back to a
+ * fraction of the stage's own ticket price — a revision costs less than the stage it revises — and a
+ * DECLARED `0` is preserved as free rather than being treated as missing.
+ */
+function revisionPrice(service: ServiceItem, stageTicket: number): TicketPrice {
+	const declared = service.extraRevisionPrice;
+	if (declared === 0) return { min: 0, max: 0, label: "Free" };
+	const amount = declared ?? Math.max(20, roundTo(stageTicket * 0.5, 10));
+	return ticketFixed(amount);
+}
+
+/** The stage-level revision allowance a service stage inherits from its listing. */
+function stageRevisions(service: ServiceItem, stageTicket: number): StageRevisions {
+	return { free: freeRevisionsOf(service), extraPrice: revisionPrice(service, stageTicket) };
+}
+
+/** The trust row's one-line statement of the allowance — same classification as the stage ledger's. */
+function revisionValue(revisions: StageRevisions): string {
+	switch (revisionAllowanceKind(revisions)) {
+		case "unlimited":
+			return "Unlimited";
+		case "metered":
+			return "Billed per round";
+		default:
+			return `${revisions.free} included per stage`;
+	}
+}
+
+/**
  * Derive the stage showcase for a **Pipeline** / **One-Off** service — a workflow the client previews
  * before buying (sequence · per-stage deliverables · turnaround · dependency · price), mirroring the
  * Projects view's Stage Flow. Unlike a project it recruits no seats, so the seat/role machinery is
@@ -802,6 +891,7 @@ function serviceStages(service: ServiceItem, model: ServiceModel): ProjectStage[
 			deliverables: STAGE_DELIVERABLES[kind],
 			turnaround: STAGE_TURNAROUNDS[s % STAGE_TURNAROUNDS.length],
 			dependency: i > 0 ? `After ${phases[i - 1]}` : undefined,
+			revisions: stageRevisions(service, price.min),
 		};
 	});
 }
@@ -846,6 +936,29 @@ function serviceRoles(service: ServiceItem): ServiceRole[] {
 }
 
 /** Compose the services-only view extension (delivery model + stage showcase / roles / booking flags). */
+/**
+ * Read a session listing's block size and slot length out of the copy it already publishes.
+ *
+ * `"6 × 45-minute sessions"` → `{ count: 6, minutes: 45 }`; `"60-minute session"` → `{ minutes: 60 }`.
+ *
+ * Derived from the listing's OWN words rather than from its id hash, and that is a correction rather
+ * than a refinement. A hash decided whether a Session was a single booking or a block, which meant the
+ * corpus's one Session listing landed on whichever branch its hash happened to give — measured, that
+ * left `set_session` UNREACHABLE across the whole running app, so a whole booking flow was dead code
+ * that no amount of clicking could find. It also let the CTA say "Book session" over a card whose
+ * delivery line read "6 × 45-minute sessions".
+ *
+ * Anything the pattern does not match returns `null` and the caller falls back to the hash, so a
+ * listing whose copy says nothing about cadence still gets a plausible slot length.
+ */
+function parseSessionCopy(delivery: string): { count?: number; minutes?: number } | null {
+	const block = delivery.match(/(\d+)\s*[x×]\s*(\d+)\s*-?\s*min/i);
+	if (block) return { count: Number(block[1]), minutes: Number(block[2]) };
+	const single = delivery.match(/(\d+)\s*-?\s*min/i);
+	if (single) return { minutes: Number(single[1]) };
+	return null;
+}
+
 function serviceViewFor(service: ServiceItem): ServiceViewExtra {
 	const model = SERVICE_MODEL[service.serviceType];
 	const showcaseStages = model === "pipeline" || model === "one-off";
@@ -853,8 +966,27 @@ function serviceViewFor(service: ServiceItem): ServiceViewExtra {
 	const group = model === "group-session";
 	const seed = hash(service.id);
 	const seatsPerSession = group ? 8 + (seed % 9) : undefined; // 8–16
+
+	/*
+	 * Session length and block size.
+	 *
+	 * Both derive from the id so a listing's grid, its price-per-session and its "Book 6 sessions"
+	 * label agree across every surface and across a resume. The block size is 1 for a group session —
+	 * a cohort seat is one enrolment in a recurring series, not a package of bookings — and for a 1-1
+	 * it is 1 unless the hash lands in the minority that makes the set-session flow reachable at all.
+	 * Without that minority the whole `set_session` branch would be dead code in the corpus, which is
+	 * how a flow ships untested.
+	 */
+	const declared = bookable ? parseSessionCopy(service.delivery) : null;
+	const sessionMinutes = bookable ? declared?.minutes ?? [45, 60, 90][seed % 3] : undefined;
+	const sessionCount = model === "session" ? declared?.count ?? 1 : undefined;
+
 	const bookingSummary = bookable
-		? group ? `${service.delivery} · up to ${seatsPerSession} seats` : service.delivery
+		? group
+			? `${service.delivery} · up to ${seatsPerSession} seats`
+			: (sessionCount ?? 1) > 1
+			? `${sessionCount} × ${sessionMinutes} min sessions`
+			: service.delivery
 		: undefined;
 
 	return {
@@ -867,6 +999,8 @@ function serviceViewFor(service: ServiceItem): ServiceViewExtra {
 		group,
 		seatsPerSession,
 		bookingSummary,
+		sessionCount,
+		sessionMinutes,
 	};
 }
 // #endregion
@@ -1078,6 +1212,252 @@ function articleViewFor(article: ArticleItem): ArticleViewExtra {
 }
 // #endregion
 
+// #region Product view derivation
+/**
+ * Format resolution from the product's own category / title / skill vocabulary. Deterministic and
+ * TOTAL — an unrecognised category resolves to `graphic` (a downloadable file with dimensions), never
+ * to `undefined`, because the specification ledger IS the offer and a product with no ledger reads as
+ * a listing with something to hide.
+ */
+const FORMAT_RULES: Array<[ProductFormat, RegExp]> = [
+	["asset-3d", /3d|model|blender|render|sculpt|cgi/i],
+	["audio", /audio|sound|music|stem|sample|foley|score|podcast/i],
+	["video-preset", /video|lut|preset|grade|motion|footage/i],
+	["code-kit", /code|kit|component|starter|boilerplate|sdk|script/i],
+	["template", /template|deck|document|notion|figma|wireframe|framework/i],
+];
+
+const FORMAT_LABEL: Record<ProductFormat, string> = {
+	"template": "Template",
+	"asset-3d": "3D asset",
+	"audio": "Audio stems",
+	"video-preset": "Video preset",
+	"code-kit": "Code kit",
+	"graphic": "Graphic pack",
+};
+
+/** The file manifest each format delivers — extension, human label, base uncompressed size in MB. */
+const FORMAT_FILES: Record<ProductFormat, Array<[string, string, number]>> = {
+	"template": [
+		[".fig", "Figma source", 18],
+		[".pdf", "Print-ready export", 6],
+		[".md", "Setup guide", 1],
+	],
+	"asset-3d": [
+		[".blend", "Blender scene", 412],
+		[".fbx", "FBX mesh + rig", 96],
+		[".png", "4K PBR texture set", 240],
+	],
+	"audio": [
+		[".wav", "24-bit / 48kHz stem", 386],
+		[".mp3", "320kbps reference mix", 22],
+		[".als", "Ableton session", 9],
+	],
+	"video-preset": [
+		[".cube", "3D LUT", 2],
+		[".aep", "After Effects project", 148],
+		[".mov", "ProRes preview", 310],
+	],
+	"code-kit": [
+		[".zip", "Source bundle", 14],
+		[".ts", "Typed entry points", 1],
+		[".md", "Integration guide", 1],
+	],
+	"graphic": [
+		[".ai", "Vector source", 44],
+		[".png", "Transparent exports", 128],
+		[".svg", "Scalable set", 3],
+	],
+};
+
+/** Host applications each format is verified against — the compatibility matrix. */
+const FORMAT_COMPAT: Record<ProductFormat, ProductCompat[]> = {
+	"template": [
+		{ app: "Figma", versions: "Current web + desktop" },
+		{ app: "Adobe Acrobat", versions: "2020 and later" },
+	],
+	"asset-3d": [
+		{ app: "Blender", versions: "3.6 LTS - 4.2" },
+		{ app: "Cinema 4D", versions: "R25 and later" },
+		{ app: "Unreal Engine", versions: "5.1 - 5.4" },
+	],
+	"audio": [
+		{ app: "Ableton Live", versions: "11 and later" },
+		{ app: "Logic Pro", versions: "10.7 and later" },
+		{ app: "Any DAW", versions: "WAV / MP3 import" },
+	],
+	"video-preset": [
+		{ app: "After Effects", versions: "2022 and later" },
+		{ app: "DaVinci Resolve", versions: "18 and later" },
+		{ app: "Premiere Pro", versions: "2022 and later" },
+	],
+	"code-kit": [
+		{ app: "Deno", versions: "2.x" },
+		{ app: "Node.js", versions: "20 LTS and later" },
+		{ app: "TypeScript", versions: "5.4 and later" },
+	],
+	"graphic": [
+		{ app: "Illustrator", versions: "2021 and later" },
+		{ app: "Affinity Designer", versions: "2 and later" },
+	],
+};
+
+/** Format-specific technical specifications — the rows a buyer of THIS format actually checks. */
+function formatSpecs(format: ProductFormat, seed: number): ProductSpec[] {
+	switch (format) {
+		case "asset-3d":
+			return [
+				{ label: "Poly count", value: `${18 + (seed % 40)}k tris (quad topology)` },
+				{ label: "Texture resolution", value: "4096 x 4096 PBR (albedo, normal, roughness)" },
+				{ label: "Rigged", value: seed % 2 === 0 ? "Yes - IK-ready armature" : "No - static mesh" },
+				{ label: "UV layout", value: "Non-overlapping, single UDIM" },
+			];
+		case "audio":
+			return [
+				{ label: "Sample rate", value: "48 kHz / 24-bit" },
+				{ label: "Stems included", value: `${4 + (seed % 6)} separated stems` },
+				{ label: "Tempo", value: `${88 + (seed % 52)} BPM` },
+				{ label: "Key", value: ["A minor", "C major", "F# minor", "D major"][seed % 4] },
+			];
+		case "video-preset":
+			return [
+				{ label: "Colour space", value: "Rec.709 with Log-to-Rec conversion included" },
+				{ label: "Presets included", value: `${6 + (seed % 12)} looks` },
+				{ label: "Resolution", value: "Resolution-independent (tested to 6K)" },
+				{ label: "Frame rate", value: "Any - no baked timing" },
+			];
+		case "code-kit":
+			return [
+				{ label: "Language", value: "TypeScript (strict)" },
+				{ label: "Runtime", value: "Deno 2.x, Node 20+" },
+				{
+					label: "Dependencies",
+					value: seed % 2 === 0 ? "Zero runtime dependencies" : "2 peer dependencies",
+				},
+				{ label: "Tests", value: `${12 + (seed % 40)} unit tests included` },
+			];
+		case "template":
+			return [
+				{ label: "Pages / artboards", value: `${8 + (seed % 24)}` },
+				{ label: "Grid", value: "12-column, 8pt baseline" },
+				{ label: "Type styles", value: "Variable-font ready, tokenised" },
+				{ label: "Dark mode", value: seed % 2 === 0 ? "Included" : "Light only" },
+			];
+		default:
+			return [
+				{ label: "Artboards", value: `${6 + (seed % 18)}` },
+				{ label: "Max export", value: "6000 x 6000 px at 300 DPI" },
+				{ label: "Colour profile", value: "sRGB plus CMYK variants" },
+			];
+	}
+}
+
+/**
+ * The licence, stated as explicit allowed/denied permissions rather than a list of only the things
+ * that are permitted. An omitted permission reads as an oversight; a denied one reads as a term, and
+ * the buyer needs to see the terms. The tier derives from the price band, because a higher-priced
+ * product carrying NARROWER rights is a relationship no buyer expects and a fixture must not invert.
+ */
+function licenceFor(product: ProductItem, seed: number): ProductLicence {
+	const extended = (product.priceMinor ?? 0) >= 12_000 || seed % 3 === 0;
+	return {
+		name: extended ? "Extended commercial licence" : "Standard commercial licence",
+		summary: extended
+			? "Use in unlimited commercial projects, including work delivered to your own clients and products offered for resale."
+			: "Use in your own commercial projects. Redistributing the source files, and reselling this as a competing product, are not permitted.",
+		permissions: [
+			{ label: "Personal use", allowed: true },
+			{ label: "Commercial use", allowed: true },
+			{ label: "Use in client deliverables", allowed: extended },
+			{ label: "Modify and adapt", allowed: true },
+			{ label: "Redistribute source files", allowed: false },
+			{ label: "Resell as a competing product", allowed: false },
+			// Phrased as a RIGHT, not an obligation. On an allowed/denied axis "Attribution required:
+			// Included" puts a green check against a constraint, which inverts what the row means — every
+			// row here has to be a thing the buyer GETS, or the column stops being readable.
+			{ label: "Use without attribution", allowed: extended },
+		],
+	};
+}
+
+/** Human byte size - MB below a gigabyte, one decimal above. Formatted ONCE, server-side. */
+function byteLabel(mb: number): string {
+	return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+}
+
+/** The live preview artefact for the 16:10 canvas, chosen by format. */
+function previewFor(product: ProductItem, format: ProductFormat, seed: number): ProductPreview {
+	const src = product.media ?? unsplash(GALLERY_POOL[seed % GALLERY_POOL.length], 1400, 875);
+	if (format === "audio") {
+		const peaks = Array.from({ length: 96 }, (_, i) => {
+			const v = ((hash(`${product.id}:${i}`) % 100) / 100) * 0.8 + 0.2;
+			return Math.round(v * 100) / 100;
+		});
+		const durationMs = (95 + (seed % 130)) * 1000;
+		const total = Math.round(durationMs / 1000);
+		return {
+			kind: "audio",
+			src: "#",
+			poster: src,
+			durationMs,
+			durationLabel: `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`,
+			peaks,
+		};
+	}
+	if (format === "code-kit") {
+		return {
+			kind: "code",
+			src,
+			language: "typescript",
+			code: [
+				`import { createClient } from "./mod.ts";`,
+				``,
+				`const client = createClient({ retries: 3 });`,
+				`const result = await client.send(payload);`,
+				``,
+				`if (!result.ok) throw new Error(result.error);`,
+				`export default result.data;`,
+			].join("\n"),
+		};
+	}
+	if (format === "video-preset") return { kind: "video", src: "#", poster: src };
+	if (format === "asset-3d") return { kind: "model", src, poster: src };
+	return { kind: "image", src };
+}
+
+/**
+ * Compose the products-only extension. Every figure a buyer reads is resolved here: the manifest is
+ * scaled per product so two products of one format still differ, and the payload is summed ONCE so
+ * the client never totals bytes.
+ */
+function productViewFor(product: ProductItem): ProductViewExtra {
+	const seed = hash(product.id);
+	const haystack = `${product.category} ${product.title} ${
+		product.skills.map((s) => s.label).join(" ")
+	}`;
+	const format = FORMAT_RULES.find(([, re]) => re.test(haystack))?.[0] ?? "graphic";
+
+	const scale = 0.7 + ((seed % 70) / 100);
+	const files: ProductFile[] = FORMAT_FILES[format].map(([extension, label, baseMb]) => {
+		const mb = Math.max(1, Math.round(baseMb * scale));
+		return { extension, label, bytes: mb * 1024 * 1024, sizeLabel: byteLabel(mb) };
+	});
+	const payloadBytes = files.reduce((sum, f) => sum + f.bytes, 0);
+
+	return {
+		format,
+		formatLabel: FORMAT_LABEL[format],
+		files,
+		payloadBytes,
+		payloadLabel: byteLabel(Math.round(payloadBytes / (1024 * 1024))),
+		specs: formatSpecs(format, seed),
+		compatibility: FORMAT_COMPAT[format],
+		licence: licenceFor(product, seed),
+		preview: previewFor(product, format, seed),
+	};
+}
+// #endregion
+
 /** Compose the full Entity View payload for a resolved discovery item. */
 export function buildViewPage(item: ExploreItem): EntityView {
 	return {
@@ -1085,6 +1465,7 @@ export function buildViewPage(item: ExploreItem): EntityView {
 		gallery: galleryFor(item),
 		pricing: pricingFor(item),
 		trust: trustFor(item),
+		responseMinutes: responseMinutesFor(item),
 		deliverables: deliverablesFor(item),
 		// Projects/articles suppress the generic rails/reviews in their custom templates, but the payload
 		// stays uniform — the shared screen simply doesn't read them for those types.
@@ -1094,5 +1475,6 @@ export function buildViewPage(item: ExploreItem): EntityView {
 		project: item.type === "projects" ? projectViewFor(item) : undefined,
 		article: item.type === "articles" ? articleViewFor(item) : undefined,
 		service: item.type === "services" ? serviceViewFor(item) : undefined,
+		product: item.type === "products" ? productViewFor(item) : undefined,
 	};
 }

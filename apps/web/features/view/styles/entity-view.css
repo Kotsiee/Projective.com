@@ -1,0 +1,2734 @@
+/*
+ * entity-view.css — the Entity View page (`/view/[entity]`, `/[handle]/view/[item]`).
+ *
+ * The reference implementation of the Clean Minimalist Luxury Architecture. Every rule here is
+ * governed by a merge gate in DESIGN_SYSTEM.md, and the four that shape the sheet are:
+ *
+ *   §B.4.1  Asymmetric spacing is the first separator, and asymmetry is the point — `--space-7`
+ *           above a section heading, `--space-3` below. A symmetric gap attaches a heading to both
+ *           neighbours equally, which is the ambiguity a border was being used to resolve.
+ *   §B.4.2  A tonal step is a SOLID ramp tone. There is not one translucent region background in
+ *           this file: an alpha wash is unmeasurable (its value depends on the stack beneath it),
+ *           compounds when nested, and then needs a border to rescue the boundary it lost.
+ *   §B.9.7  Zero cards for static content. Nothing here draws a box around prose, a stage run, a
+ *           scope list or a spec ledger.
+ *   §B.11   Anti-tagification. There is exactly ONE filled pill in this sheet (`.evp-status`), and
+ *           it is a lifecycle status, where the fill IS the semantic channel.
+ *
+ * Token-only, strict BEM, logical properties throughout so the whole surface mirrors under `dir=rtl`.
+ */
+
+/* ============================================================================
+ * Local token layer
+ *
+ * On `:root`, NOT on `.evp` — the lane, the header band and every BodyPortal overlay render OUTSIDE
+ * the page subtree, so a scoped token would silently fall back for most of the surface. That is the
+ * `--wlt-*` trap of Decision #60, and it cost a whole redesign to find. Every name is `--evp-`
+ * prefixed so the global namespace stays legible.
+ * ========================================================================== */
+:root {
+    /* The page's own rhythm. `--evp-gap-section` is the tier-1 separator and is deliberately ~4x
+	* `--evp-gap-heading`: if the two are within 2x of each other, spacing has stopped doing tier-1
+	* work and a hairline will be reached for next. */
+    --evp-gap-section: var(--space-7);
+    --evp-gap-heading: var(--space-3);
+    --evp-gap-row: var(--space-4);
+
+    /* Prose measure. Read from the global contract rather than restated as a pixel width. */
+    --evp-measure: var(--measure);
+
+    /* The timeline track (§D.8.1). */
+    --evp-track-node: 1.75rem;
+    --evp-track-gutter: 2.75rem;
+
+    /* The seat meter (§D.8.4) — segment height and the graphical seam between marks. */
+    --evp-seat-h: 0.5rem;
+    --evp-seat-gap: var(--space-px);
+
+    /*
+	* THE FOUR-TRACK FRAME: nav strip · media · hero · conversion lane.
+	*
+	* The lane is no longer a shell slot, so its width is stated HERE rather than passed to a
+	* splitter — one number for both shells, which is the point of moving it into the page.
+	*/
+    --evp-lane-pad: var(--space-5);
+    --evp-lane-w: 22rem;
+    --evp-navstrip-w: 3rem;
+    --evp-frame-gap: var(--space-5);
+    /*
+	* The lead-in above the archetype body — the space between the hero row and the Stages section.
+	*
+	* It is ON TOP of `--evp-frame-gap`, not instead of it, because the frame's gap is a GRID gap and
+	* also separates the hero from the media column beside it; raising that would push the two apart
+	* horizontally as well. This is the one boundary that wanted more air: the hero is the overview and
+	* the section below it is the substance, which is a bigger step than one column to the next.
+	*/
+    --evp-main-lead: var(--space-5);
+
+    /*
+	* The thumbnail rail. `--evp-rail-min` is the CARD FLOOR the island measures against to decide the
+	* slot count — it is read off the rendered element (`getComputedStyle`), so this declaration is
+	* the single authority and the JS carries no duplicate number. `--evp-rail-h` reserves the rail's
+	* height at SSR so a late-decoding thumbnail cannot shift the display above it.
+	*/
+    --evp-rail-min: 4.5rem;
+    --evp-rail-h: 4.25rem;
+
+    /*
+	* THE ACTION RIG (§D.7.7). The numbers below are measured, not chosen.
+	*
+	* The PRIMARY is inverted — the page's ink colour as its fill. It is expressed as the pair
+	* `--on-surface` / `--surface`, which is the inverted-surface idiom the design system already has
+	* (Tooltip, `tooltip.css`; also `money-flow-popover.css`). The pair swaps sides with the theme by
+	* construction, so ONE declaration gives the brief's intent in both directions: near-white on
+	* near-black in light, near-black on near-white in dark. Measured 17.14:1 light / 14.93:1 dark, and
+	* it IMPROVES under `data-contrast="high"` (~20:1 both), so it needs no accessibility carve-out and
+	* is unaffected by the colour-blindness overlays, being achromatic.
+	*
+	* The SECONDARY carries the brand teal — and its ink is `--surface` too, which is the whole trick.
+	* The brief specifies white text, and white is right in LIGHT (`#ffffff` on `#007680` = 5.38:1).
+	* It is wrong in DARK, where the engine lifts the teal above mid-tone (`#00929e`): white measures
+	* 3.75:1 and the token pair `--on-primary` measures 3.57:1 — both below the 4.5 floor, and both
+	* COLLAPSE under `data-contrast="high"` in dark (2.52:1 and 1.75:1), so the overlay meant to rescue
+	* them makes them unreadable. `--surface` resolves to `#ffffff` in light and `#0b0f0f` in dark, so
+	* it IS the brief's white text where white works and flips where it does not: 5.38:1 / 5.15:1.
+	*
+	* Root cause of that dark failure, for whoever fixes it properly: `theme-engine.ts` sets dark
+	* `--primary: a1.tone(fg(55))` and `--on-primary: a1.tone(on(98))` — both above mid-tone 50, which
+	* violates the file's own stated invariant that a colour and its `on-` pair must straddle it. Every
+	* other dark `on-` pair correctly uses `on(20)`. Flagged since Decision #64; still a theme-layer fix.
+	*
+	* ── OWNER DIRECTIVE, 2026-08-26: the primary is BRAND + WHITE in both themes. ──
+	*
+	* The paragraphs above are the measurement that made the inverted monochrome primary the right
+	* answer, and they are kept because they are still true: `#ffffff` on `--primary` measures 5.38:1
+	* in LIGHT and 3.75:1 in DARK, and the dark figure is below the 4.5:1 floor for the ~14px label
+	* this control carries. The product owner has now asked for that pairing twice — it was declined
+	* once in Decision #79 and routed around — so it ships as specified, with the cost recorded rather
+	* than quietly re-decided a second time.
+	*
+	* `#ffffff` is the one raw colour in this sheet, declared ONCE here so no rule downstream reaches
+	* for a hex of its own. "White in both themes" is not expressible as a token: every ink token in
+	* this system is defined to flip with the theme, which is exactly the behaviour being overridden.
+	*
+	* Consequence handled, not inherited: the primary now occupies the brand fill the SECONDARY used
+	* to hold, so the secondary steps down to `outlined`. Two identical teal fills, one of which buys
+	* and one of which adds to a basket, is worse than either colour choice — and §B.8.2 caps a region
+	* at one `filled` control regardless.
+	*/
+    --evp-cta-h: 2.25rem;
+    --evp-cta-fs: var(--text-sm);
+    --evp-cta-primary-fill: var(--primary);
+    --evp-cta-primary-ink: #ffffff;
+    --evp-cta-brand-fill: var(--primary);
+    --evp-cta-brand-ink: var(--primary);
+
+    /* The migrated sticky header. Its height is the band's, so the two cannot disagree. */
+    --evp-stickyhead-h: var(--shell-midnav-header-h);
+    --evp-stickyhead-title: 24ch;
+
+    /* The full-bleed session scheduler (§D.8.3). The floor is what a week grid needs before the
+	* engine starts dropping its own side panel; below it the mini-month and availability panel go. */
+    --evp-sched-min-h: 34rem;
+}
+
+/* ============================================================================
+ * Page frame
+ * ========================================================================== */
+.evp {
+    /*
+	* THE FRAME'S HEIGHT TOKENS LIVE HERE, NOT ON `:root`, and that is a correctness requirement
+	* rather than tidiness.
+	*
+	* A custom property is substituted at the element where it is DECLARED. With these three on
+	* `:root`, `--evp-col-h` resolved `--evp-chrome-h` against `:root` — so the authenticated
+	* override below changed `--evp-chrome-h` and changed nothing else, and the column kept the
+	* guest shell's 88px header on a shell with a 48px one. Measured: the media column came out
+	* 772px where 812 was correct, and the sticky nav strip pinned 32px BELOW the media it should
+	* align with (a `sticky` offset larger than an element's natural position pushes it down).
+	* Declaring all three on the same element the override targets is what makes the override reach
+	* them.
+	*
+	* The sheet's other `--evp-*` tokens stay on `:root` for the opposite reason: the CTA colours and
+	* the lane padding are read by BodyPortal overlays that are not descendants of `.evp` at all.
+	*
+	* The guest header is the default because that shell is the simpler host — one fixed pill bar.
+	*
+	* ── WHERE THE PINNED PANELS SIT, AND WHY THE TWO SHELLS DIFFER ──
+	*
+	* `--evp-pin-top` is the line the conversion lane and the start strip pin to, and it is the top
+	* edge of the middle-nav HEADER BAND in whichever shell is hosting the page. That is one rule; it
+	* just resolves to two different places, because the band is a different kind of object in each:
+	*
+	*   guest  — `.guest-shell__subheader` is `position: fixed` at `--site-header-h`, FLOATING over the
+	*            content. Pinning the lane to the same line makes the band and the lane read as one row
+	*            of floating panels rather than two objects at unrelated heights.
+	*   authed — `.ui-middle-nav__header` is a grid row at the very top of the content region, and the
+	*            page's own block padding puts the hero 24px below it. Pinning there instead keeps the
+	*            lane level with the hero at rest, so nothing jumps on the first scroll.
+	*
+	* The band's HEIGHT is still not subtracted, and that is deliberate: it reveals by `max-block-size`
+	* and measures 0 until the hero scrolls past (§D.7.6), so reserving 48px for it would leave a gap
+	* under the header on every page that never condenses. The band does not need the reservation
+	* either — its BOX is inset inline to clear the lane (see the band block below), so the two tile
+	* side by side instead of stacking, which is the §D.7.2 rule for two pinned regions in one region.
+	*
+	* `--evp-pin-lift` pulls the lane up out of the page's own top padding in the guest shell, where the
+	* pin line (88px) sits ABOVE the frame's natural top (112px). Without it the lane would start 24px
+	* low and only reach the band's line after a scroll — the alignment would be true of the pinned
+	* state and false of the state the reader arrives in. The authed shell pins AT the frame top, so it
+	* lifts nothing.
+	*
+	* The column height subtracts the pin line, not the frame top, so a pinned lane's foot lands exactly
+	* one page-gutter above the viewport floor and can never push the document taller than the screen.
+	*/
+    --evp-chrome-h: var(--site-header-h, 5.5rem);
+    --evp-frame-top: calc(var(--evp-chrome-h) + var(--space-5));
+    --evp-pin-top: var(--evp-chrome-h);
+    --evp-pin-lift: var(--space-5);
+    --evp-col-h: calc(100dvh - var(--evp-pin-top) - var(--space-5));
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--evp-gap-section);
+    padding-block: var(--space-5) var(--space-7);
+    padding-inline: var(--space-5);
+    /* No `max-inline-size`. The shell already insets the content region — the guest gutter or the
+	* L-shell's rail and frame — and capping it a second time strands width while the shell is still
+	* reserving its own inset outside that cap (the /explore finding, Decision #77). */
+    color: var(--on-surface);
+}
+
+/*
+ * The authenticated shell's chrome height.
+ *
+ * The page cannot ask which shell it is in, but its ANCESTOR answers: `.ui-page-canvas__body` exists
+ * only inside `UserShell`. Resolved at paint, with no JS and no flash — the alternative is a signal
+ * that arrives after hydration and re-sizes the viewport-locked columns under the reader.
+ *
+ * It targets `.evp` and not `:root`, because the three tokens that READ it are declared on `.evp` —
+ * see the note there for what happens when they are not.
+ */
+.ui-page-canvas__body .evp {
+    --evp-chrome-h: var(--shell-topbar-h);
+    /* The band is in-flow here and the hero starts one page-gutter below it — pin to the hero. */
+    --evp-pin-top: var(--evp-frame-top);
+    --evp-pin-lift: 0px;
+}
+
+.evp__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    align-self: flex-start;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp__back:hover {
+    color: var(--on-surface);
+}
+
+.evp__back:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * ============================================================================
+ * THE TWO FRAME THRESHOLDS
+ * ============================================================================
+ *
+ * ── WHY A CONTAINER QUERY AND NOT A MEDIA QUERY ──
+ *
+ * Every frame rule in this sheet keys off `@container evp-body`, because the viewport cannot answer
+ * the question being asked. The two shells hand this page different widths at the same viewport: the
+ * authenticated L-shell spends 64px on its global rail and another 56px on its nav rail before the
+ * page starts. Measured at a 1100px viewport with a media query, the authenticated shell resolved the
+ * media track to 256px and the hero to 269px — narrower than the same page renders on a phone — while
+ * the guest shell at the identical width had far more to spend. A container query asks the box that is
+ * actually too narrow.
+ *
+ * ── WHY THERE ARE TWO OF THEM ──
+ *
+ * The REQUIREMENT is one number and it is the same in both shells: the media + hero pair needs ~640px
+ * before either is starved. What differs is the fixed track the frame has to pay for first, because
+ * the two shells put the back link in different places:
+ *
+ *   guest   48 strip + 352 lane + 3 gutters (72) = 472   →  472 + 640 = 1112
+ *   authed             352 lane + 2 gutters (48) = 400   →  400 + 640 = 1040
+ *
+ * A single threshold cannot serve both. Set it to the guest's and a signed-in reader at 1280px — the
+ * commonest laptop width in the product's own analytics — falls to the stacked phone layout while a
+ * guest beside them gets three columns; set it to the authed one and the guest frame starves its own
+ * two content tracks by 72px. So there are two blocks: the GUEST rules are unscoped, and the AUTHED
+ * rules are scoped `.ui-page-canvas__body` (0,2,0) so they win wherever both match.
+ *
+ * Both are literals: a container-query condition cannot read a custom property.
+ *
+ * ── THE INLINE BACK LINK ──
+ *
+ * It is the START strip's duty at narrow widths, where the strip is not rendered — moved, not
+ * duplicated, so only one of the two is ever in the accessibility tree. In the AUTHENTICATED shell the
+ * owner is the shell's own nav rail instead, and whether THAT exists is a genuine viewport question
+ * (`.ui-middle-nav__lane` is `display: none` at ≤767px), so that half is a media query and correctly
+ * so.
+ */
+@container evp-body (min-width: 1112px) {
+    .evp__back--laned {
+        display: none;
+    }
+}
+
+@media (min-width: 768px) {
+    .ui-page-canvas__body .evp__back--laned {
+        display: none;
+    }
+}
+
+/* ============================================================================
+ * THE FOUR-TRACK FRAME
+ *
+ *   nav strip · media column · hero · conversion lane
+ *
+ * Mobile-first: ONE column, in reading order — back link, hero, media, body. The nav strip and the
+ * lane are not rendered at all below `--bp-md` (the strip's duty transfers to the inline back link,
+ * the lane's to `EntityBuyBar`), so the phone layout is the base case and the desktop tracks are the
+ * addition rather than the other way round.
+ * ========================================================================== */
+.evp-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        "back"
+        "hero"
+        "media"
+        "main";
+    gap: var(--evp-frame-gap);
+    min-inline-size: 0;
+}
+
+.evp-frame > .evp__back--laned {
+    grid-area: back;
+}
+
+.evp-hero {
+    grid-area: hero;
+    position: relative;
+    min-inline-size: 0;
+}
+
+.evp-media {
+    grid-area: media;
+    min-inline-size: 0;
+}
+
+.evp-main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    gap: var(--evp-gap-section);
+    min-inline-size: 0;
+    padding-block-start: var(--evp-main-lead);
+}
+
+/*
+ * The START strip. One circular ghost affordance, pinned so the way out is always reachable — a
+ * viewport-height media column means a reader can be several screens from the top of the document
+ * while still looking at the first thing on it.
+ */
+.evp-navstrip {
+    display: none;
+    grid-area: nav;
+    position: sticky;
+    inset-block-start: var(--evp-pin-top);
+    /* Lifted with the lane, so the two pinned edges of the frame sit on one line. */
+    margin-block-start: calc(-1 * var(--evp-pin-lift));
+    inline-size: var(--evp-navstrip-w);
+}
+
+/*
+ * THE AUTHENTICATED SHELL DOES NOT RENDER THIS STRIP.
+ *
+ * Its middle-nav lane carries the back link instead (`EntityNavRail`), pinned shut at the collapsed
+ * rail width — so the way out sits in the shell's own navigation column, where every other route in
+ * the product puts it, rather than in a second column the page invents inside the content region.
+ * The guest shell has no such lane, which is why the in-page strip still exists at all.
+ *
+ * Withheld by `display: none` rather than by not rendering it, because the decision is a SHELL fact
+ * (`.ui-page-canvas__body` is the ancestor that answers it) and the page component does not have that
+ * answer at SSR without threading a flag through for one link. Only one of the two is ever visible, so
+ * the duty still transfers; the cost is one hidden anchor in the authed DOM, and `display: none`
+ * removes it from the accessibility tree as well as the layout.
+ */
+.ui-page-canvas__body .evp-navstrip {
+    display: none;
+}
+
+.evp-navstrip__back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--evp-navstrip-w);
+    block-size: var(--evp-navstrip-w);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    background: transparent;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.evp-navstrip__back:hover {
+    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+    color: var(--on-surface);
+}
+
+.evp-navstrip__back:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-navstrip__back {
+        transition: none;
+    }
+}
+
+/*
+ * ---- THE FRAME: all four tracks, and the ONE place this deviates from §D.7.8 ----
+ *
+ * §D.7.8 asks for a content-first canvas — structured information leading, media trailing, reversed
+ * in the DOM, "never with `order`/`direction`". The requested layout puts the media column BEFORE the
+ * hero, so the visual assignment here is the opposite of what that gate describes.
+ *
+ * What the gate exists to prevent is preserved exactly: its stated reason is that a keyboard or
+ * screen-reader user would otherwise traverse a strip of thumbnails before reaching the title of the
+ * thing they are being asked to buy. The DOM order in `EntityViewPage` is still hero → media, so that
+ * traversal is unchanged; only the column each lands in differs, and named grid AREAS do it — not
+ * `order`, which the gate names, and not `direction`, which would also flip the lane and the rail.
+ *
+ * The tracks are near-even with a slight lean to the hero, which carries the title, the meta line, the
+ * summary and the seller. Below the container threshold the frame collapses to one column and the two
+ * stack, rather than splitting a track that would starve both — see the note on the inline back link
+ * for why the threshold is a CONTAINER width and not a viewport one.
+ */
+@container evp-body (min-width: 1112px) {
+    .evp-navstrip {
+        display: block;
+        /*
+		* `start`, explicitly. The strip's area spans every row, and a stretched grid item would take
+		* that whole height — measured at 11,755px in the intermediate layout this replaces, which
+		* also silently disabled its own `sticky` (an element as tall as its containing block has
+		* nothing to stick within). `align-items: start` below covers it too; both are stated because
+		* the failure is invisible until something scrolls.
+		*/
+        align-self: start;
+    }
+
+    .evp-frame {
+        grid-template-columns:
+            var(--evp-navstrip-w) minmax(0, 1fr) minmax(0, 1.05fr)
+            var(--evp-lane-w);
+        grid-template-areas:
+            "nav media hero lane"
+            "nav main  main lane";
+        align-items: start;
+    }
+
+    .evp-frame[data-scheduled] {
+        grid-template-columns: var(--evp-navstrip-w) minmax(0, 1fr) var(--evp-lane-w);
+        grid-template-areas:
+            "nav hero lane"
+            "nav main lane";
+    }
+
+    /*
+	* ---- THE MEDIA COLUMN HAS NO VIEWPORT HEIGHT ----
+	*
+	* It used to be `block-size: var(--evp-col-h)` — a viewport-locked slab whose display took whatever
+	* the thumbnail rail left. That made the artefact's shape a function of the reader's WINDOW: the
+	* same listing showed a tall crop on a laptop and a squat one on an external monitor, and a short
+	* window cropped the thing being sold to a letterbox.
+	*
+	* The column is now content-sized and the display inside it declares a fixed 4:3 (below), so one
+	* listing has one shape everywhere. `start` keeps the column from stretching to its grid row, which
+	* would reintroduce the same dependency by the back door — the row is as tall as the hero.
+	*/
+    .evp-media {
+        align-self: start;
+    }
+}
+
+/*
+ * ---- THE AUTHENTICATED FRAME: three tracks, at the lower threshold ----
+ *
+ * No start strip: the shell's own middle-nav lane carries the back link (`EntityNavRail`), so leaving
+ * the `nav` column declared would spend 48px plus a 24px gutter on an element that is `display: none`
+ * — a grid track is sized by its declaration, not by whether anything visible occupies it.
+ *
+ * Every selector here is `.ui-page-canvas__body`-scoped (0,2,0), so above 1112px, where the guest block
+ * also matches, these win. See the threshold note above for why the two numbers differ.
+ */
+@container evp-body (min-width: 1040px) {
+    .ui-page-canvas__body .evp-frame {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) var(--evp-lane-w);
+        grid-template-areas:
+            "media hero lane"
+            "main  main lane";
+        align-items: start;
+    }
+
+    .ui-page-canvas__body .evp-frame[data-scheduled] {
+        grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
+        grid-template-areas:
+            "hero lane"
+            "main lane";
+    }
+
+    .ui-page-canvas__body .evp-media {
+        align-self: start;
+    }
+
+    .ui-page-canvas__body .evp-laneslot {
+        display: block;
+    }
+
+    /* The lane and the buy bar are mutually exclusive: exactly one is ever in the a11y tree. */
+    .ui-page-canvas__body .evp-buybar {
+        display: none;
+    }
+}
+
+/*
+ * The scroll sentinel for the migrated sticky header. Zero-size and pinned to the hero's foot: it
+ * marks the boundary the band condenses at, and must not participate in the grid's track sizing.
+ */
+.evp-hero__probe {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-start: 0;
+    inline-size: 1px;
+    block-size: 1px;
+    pointer-events: none;
+}
+
+/*
+ * The body's container context.
+ *
+ * It lives on `.evp`, not on `.evp-hero`, and it is now load-bearing for the whole page: every frame
+ * rule and the two-column spec ledger both query it. Scoping it to the hero once meant the ledger's
+ * query could never match, because `.evp-ledger--cols` renders in the ARCHETYPE BODY and is not a hero
+ * descendant — and a container query against a non-ancestor is not an error, it just never fires,
+ * which is exactly the kind of dead rule that survives review.
+ */
+.evp {
+    container-type: inline-size;
+    container-name: evp-body;
+}
+
+/*
+ * The media canvas. The display is the FLEXIBLE child and the thumbnail rail below it is fixed,
+ * because `aspect-ratio` supplies only a PREFERRED size and loses to a sibling growing into the same
+ * space (the /explore fold finding, Decision #76). Switching artefact type (image / audio / video /
+ * 3D) fills the same box, so no reflow.
+ */
+/*
+ * The media canvas. No height of its own: the display declares a fixed 4:3 and the thumbnail rail
+ * below it is a fixed strip, so the column is exactly as tall as those two plus the gap. It used to be
+ * `block-size: 100%` against a viewport-locked column, which is what made the artefact's shape depend
+ * on the reader's window.
+ */
+.evp-canvas {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-inline-size: 0;
+}
+
+/*
+ * The display box — ONE ratio at every width, and it is 4:3.
+ *
+ * It previously took 16:10 at narrow widths and RELEASED the ratio entirely on the wide layout, where
+ * it flexed into whatever a viewport-height column left over. So the artefact's shape depended on the
+ * reader's window height, and the two presentations of one listing did not agree with each other.
+ *
+ * 4:3 is also the corpus's own crop, so the common case now fills the box exactly rather than being
+ * letterboxed against a ratio nothing was authored to.
+ */
+.evp-canvas__stage {
+    position: relative;
+    flex: none;
+    aspect-ratio: 4 / 3;
+    inline-size: 100%;
+    /*
+	* `0`, not `auto`. A flex item's automatic minimum is its min-content size, and the image inside
+	* transfers its own intrinsic ratio — which OUT-RANKS `aspect-ratio` and would silently re-shape
+	* the box to whatever was uploaded.
+	*/
+    min-block-size: 0;
+    padding: 0;
+    border: none;
+    overflow: clip;
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+}
+
+/* The display is a real button when the artefact is a still image (it opens the lightbox). */
+.evp-canvas__stage--open {
+    display: block;
+    cursor: zoom-in;
+}
+
+.evp-canvas__stage--open:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The zoom affordance.
+ *
+ * Glass on a mark that sits over arbitrary uploaded photography is the sanctioned case (§B.4.3), and
+ * the veil is `--scrim` rather than a light tint: the ink is fixed white, so the only direction that
+ * raises contrast is away from it, and a frosted light veil measured WORSE than the tint it replaced
+ * when this was tried on the /explore hero pills (Decision #77).
+ */
+.evp-canvas__zoom {
+    position: absolute;
+    inset-block-end: var(--space-3);
+    inset-inline-end: var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border-radius: var(--radius-full);
+    color: #ffffff;
+    background: color-mix(in srgb, var(--scrim) 62%, transparent);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.evp-canvas__stage--open:hover .evp-canvas__zoom,
+.evp-canvas__stage--open:focus-visible .evp-canvas__zoom {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-canvas__zoom {
+        transition: none;
+    }
+}
+
+/*
+ * `contain`, never `cover`.
+ *
+ * `cover` crops whatever does not fit the box, and on this surface the box is a FIXED 4:3 while the
+ * artefact is arbitrary uploaded work — a wide banner, a tall poster, a square mark. Cropping the
+ * thing being sold in order to fill a rectangle is the one thing this display must not do: the buyer
+ * is looking at it to decide, and a silently trimmed edge changes what they are deciding about.
+ *
+ * The cost is letterboxing on an off-ratio asset, which the stage's own `--surface-1` ground absorbs.
+ */
+.evp-canvas__img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.evp-canvas__player {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 100%;
+    block-size: 100%;
+    padding: var(--space-5);
+}
+
+.evp-canvas__code {
+    inline-size: 100%;
+    block-size: 100%;
+    margin: 0;
+    padding: var(--space-5);
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    color: var(--on-surface);
+    background: var(--surface-1);
+    tab-size: 2;
+}
+
+/*
+ * THE RAIL. A grid of exactly N equal columns — which is what makes a partially-cut-off card
+ * unrepresentable rather than merely avoided.
+ *
+ * A flex row with `overflow-x` (what this was) can only ever clip the card at the edge, and no
+ * measurement fixes that: the last visible card is always sliced by however much of it did not fit.
+ * Dividing the width into N `1fr` slots inverts the problem — the cards resize to the rail instead of
+ * the rail truncating the cards — so the only thing measurement has to get right is N, and getting it
+ * wrong shows a different NUMBER of whole cards rather than a broken one.
+ *
+ * `--evp-rail-n` is written inline by the island from its own measurement; the `4` fallback is what
+ * SSR and a browser with no `ResizeObserver` paint. It must stay a fallback rather than a bare
+ * `var()`: an unresolvable custom property invalidates the whole declaration at computed-value time,
+ * which would collapse the rail to a single stacked column inside a fixed-height box.
+ *
+ * The height is reserved so a late-decoding thumbnail cannot shift the display above it.
+ */
+.evp-canvas__strip {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(var(--evp-rail-n, 4), minmax(0, 1fr));
+    gap: var(--space-2);
+    block-size: var(--evp-rail-h);
+}
+
+.evp-canvas__thumb {
+    position: relative;
+    inline-size: 100%;
+    block-size: 100%;
+    min-inline-size: 0;
+    padding: 0;
+    overflow: clip;
+    border: none;
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    cursor: pointer;
+    opacity: 0.62;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.evp-canvas__thumb:hover,
+.evp-canvas__thumb[aria-current="true"] {
+    opacity: 1;
+}
+
+.evp-canvas__thumb:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* The overflow card. Full opacity at rest: it is a control, not a de-emphasised thumbnail. */
+.evp-canvas__thumb--more {
+    opacity: 1;
+}
+
+/*
+ * The `+N` count. A solid scrim rather than a tint, for the same reason the zoom mark uses one — the
+ * ink is fixed white and the ground is an arbitrary photograph, so contrast can only be won by
+ * darkening. Measured against a blown-out white thumbnail this is the worst case the rail has.
+ */
+.evp-canvas__more {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background: color-mix(in srgb, var(--scrim) 62%, transparent);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-canvas__thumbimg {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* ---- Overview column -------------------------------------------------- */
+.evp-overview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+/*
+ * The DISPLAY register (§A.4). `--fw-medium`, never bold: at `--text-3xl` the size already carries
+ * the claim, and weight on top of it spends the top of the ramp so nothing more important has
+ * anywhere left to sit.
+ */
+.evp-overview__title {
+    margin: 0;
+    font-size: var(--text-3xl);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--on-surface);
+    text-wrap: balance;
+}
+
+.evp-overview__summary {
+    margin: 0;
+    max-inline-size: var(--evp-measure);
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+}
+
+/* Seller line — avatar, name, one compact rating, then earned signals as TEXT (§B.11.4). */
+.evp-seller {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+}
+
+.evp-seller__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp-seller__link:hover .evp-seller__name {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.evp-seller__link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-seller__crest {
+    color: var(--primary);
+    flex: none;
+}
+
+/* ============================================================================
+ * Section — asymmetric spacing IS the separator (§B.4.1)
+ * ========================================================================== */
+.evp-section {
+    display: block;
+    /*
+	* NO `margin-block-start` here. `.evp` is a flex column with `gap: var(--evp-gap-section)`, and a
+	* flex container never collapses item margins — the gap and a margin ADD, so declaring both gave
+	* 6rem between sections against 0.75rem below a heading: an 8:1 ratio where this sheet's own
+	* header claims ~4:1. The `:first-child` reset that was meant to absorb it could never match
+	* either, because the first child of `.evp` is the style anchor, not a section.
+	*
+	* The asymmetry §B.4.1 requires is still here — it is `gap` (3rem) against
+	* `.evp-section__head`'s `margin-block-end` (0.75rem). One declaration owns each side.
+	*/
+}
+
+.evp-section__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-block-end: var(--evp-gap-heading);
+}
+
+/* The SECTION-HEADER register (§A.4): a boundary that costs no ink. */
+.evp-section__title {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.evp-section__aside {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * Inline metadata (§B.11.2) — the replacement for the badge row
+ * ========================================================================== */
+.evp-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0;
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    color: var(--text-secondary);
+}
+
+.evp-meta__item {
+    display: inline-flex;
+    align-items: baseline;
+}
+
+.evp-meta__sep {
+    padding-inline: var(--space-2);
+    color: var(--text-disabled);
+}
+
+/* ============================================================================
+ * Status — the ONE fill this sheet permits (§B.11.3)
+ *
+ * The ink mixes the role colour toward `--on-surface` rather than using the paired `--on-<role>`,
+ * because four of the theme's seven pairs measure ~3.17:1 in LIGHT mode. The mix is self-correcting
+ * in both themes: `--on-surface` is near-white in dark and near-black in light, so it always moves
+ * the ink AWAY from the fill.
+ * ========================================================================== */
+.evp-status {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--evp-status-role) 16%, var(--surface-1));
+    color: color-mix(in srgb, var(--evp-status-role) 28%, var(--on-surface));
+    --evp-status-role: var(--info);
+}
+
+.evp-status[data-tone="success"] {
+    --evp-status-role: var(--success);
+}
+
+.evp-status[data-tone="warning"] {
+    --evp-status-role: var(--warning);
+}
+
+.evp-status[data-tone="danger"] {
+    --evp-status-role: var(--danger);
+}
+
+.evp-status[data-tone="neutral"] {
+    --evp-status-role: var(--outline);
+}
+
+/* ============================================================================
+ * Scope checklist (§B.9.8) — glyph + text, never a row of boxes
+ * ========================================================================== */
+.evp-check {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    max-inline-size: var(--evp-measure);
+    list-style: none;
+}
+
+.evp-check--dense {
+    gap: var(--space-2);
+}
+
+.evp-check__row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+}
+
+.evp-check__mark {
+    flex: none;
+    margin-block-start: 0.15em;
+    color: var(--primary);
+}
+
+.evp-check__text {
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed);
+    color: var(--on-surface);
+}
+
+.evp-check--dense .evp-check__text {
+    font-size: var(--text-md);
+    line-height: var(--leading-normal);
+}
+
+/* ============================================================================
+ * Specification ledger — a <dl>, one hairline per boundary (§B.9.3)
+ * ========================================================================== */
+.evp-ledger {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin: 0;
+}
+
+@container evp-body (min-width: 44rem) {
+    .evp-ledger--cols {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: var(--space-6);
+    }
+}
+
+.evp-ledger__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-block: var(--space-3);
+    /* One hairline, on ONE edge. Not a box, not a table. */
+    border-block-end: var(--hairline);
+}
+
+.evp-ledger__label {
+    flex: none;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-ledger__value {
+    margin: 0;
+    text-align: end;
+    font-size: var(--text-md);
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-ledger__value--key {
+    color: var(--primary);
+    font-weight: var(--fw-medium);
+}
+
+/* ============================================================================
+ * Licence permissions — both states carry a glyph AND the word
+ * ========================================================================== */
+.evp-perms {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.evp-perms__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+    border-block-end: var(--hairline);
+}
+
+.evp-perms__mark {
+    flex: none;
+}
+
+.evp-perms__row[data-allowed="yes"] .evp-perms__mark {
+    color: var(--success);
+}
+
+.evp-perms__row[data-allowed="no"] .evp-perms__mark {
+    color: var(--text-disabled);
+}
+
+.evp-perms__text {
+    flex: 1 1 auto;
+    font-size: var(--text-md);
+    color: var(--on-surface);
+}
+
+.evp-perms__state {
+    flex: none;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-perms__row[data-allowed="no"] .evp-perms__text {
+    color: var(--text-secondary);
+}
+
+/* ============================================================================
+ * Seat meter (§D.8.4)
+ *
+ * Geometry is set DIRECTLY and never animated: a background tab freezes the animation clock, and a
+ * meter whose widths arrive by transition draws an empty cohort as full — a frame in which the
+ * interface states something false about availability (Decision #60).
+ * ========================================================================== */
+.evp-seats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-inline-size: 32rem;
+}
+
+.evp-seats__track {
+    display: flex;
+    gap: var(--evp-seat-gap);
+    block-size: var(--evp-seat-h);
+    border-radius: var(--radius-full);
+    overflow: clip;
+    background: var(--track-recessed);
+}
+
+.evp-seats__seg {
+    flex: 1 1 0;
+    block-size: 100%;
+}
+
+.evp-seats__seg[data-state="taken"] {
+    background: var(--primary);
+}
+
+.evp-seats__seg[data-state="open"] {
+    background: var(--track-meter);
+}
+
+.evp-seats__fact {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+ * Trust signals (§B.11.4) — text links, not badges
+ * ========================================================================== */
+.evp-signals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-signals__item {
+    display: inline-flex;
+    align-items: baseline;
+}
+
+.evp-signals__sep {
+    padding-inline: var(--space-2);
+    color: var(--text-disabled);
+}
+
+.evp-signals__text {
+    color: var(--primary);
+    cursor: help;
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 0.25em;
+    text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.evp-signals__text:hover {
+    text-decoration-style: solid;
+}
+
+/* ============================================================================
+ * Stage progression track (§D.8.1)
+ *
+ * ONE absolutely-positioned rule for the whole run, with the step nodes painted over it. A line
+ * drawn as a per-row border breaks at every open stage, and a sequence that visibly discontinues
+ * stops reading as a sequence — which is the only thing the track was drawn to communicate.
+ * ========================================================================== */
+.evp-track {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.evp-track__rule {
+    position: absolute;
+    inset-block: calc(var(--evp-track-node) / 2) calc(var(--evp-track-node) / 2);
+    inset-inline-start: calc(var(--evp-track-node) / 2);
+    inline-size: 1px;
+    background: var(--hairline-color);
+    pointer-events: none;
+}
+
+/* A single-stage run has no sequence to draw. */
+.evp-track[data-count="1"] .evp-track__rule {
+    display: none;
+}
+
+.evp-track__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--evp-track-node) minmax(0, 1fr);
+    column-gap: calc(var(--evp-track-gutter) - var(--evp-track-node));
+    align-items: start;
+}
+
+/*
+ * The step node is a RING, never a filled `--primary` disc: `--on-primary` on `--primary` measures
+ * 3.57:1 in dark (root CLAUDE.md §8 Decisions #64/#65, still open at the token layer), so the
+ * numeral sits on the surface pair instead.
+ */
+.evp-track__node {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--evp-track-node);
+    block-size: var(--evp-track-node);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--outline);
+    background: var(--bg);
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-track__node[data-status="active"] {
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.evp-track__node[data-status="completed"] {
+    border-color: color-mix(in srgb, var(--success) 55%, var(--outline));
+    color: var(--success);
+}
+
+.evp-track__body {
+    min-inline-size: 0;
+}
+
+.evp-track__summary {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    padding-block: var(--space-1);
+    cursor: pointer;
+    list-style: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp-track__summary::-webkit-details-marker {
+    display: none;
+}
+
+.evp-track__summary:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-track__heads {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.evp-track__name {
+    font-size: var(--text-lg);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+}
+
+/* A stage's lifecycle position is a STATE, so it may carry colour — but as ink, not a fill: the
+ * track already spends a device on this boundary and §B.9.3 allows exactly one. */
+.evp-track__status {
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.evp-track__status[data-status="active"] {
+    color: var(--primary);
+}
+
+.evp-track__status[data-status="completed"] {
+    color: var(--success);
+}
+
+.evp-track__price {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+}
+
+.evp-track__pricesep {
+    color: var(--text-disabled);
+}
+
+.evp-track__priceunit {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-track__caret {
+    flex: none;
+    color: var(--text-secondary);
+    transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.evp-track__body[open] .evp-track__caret {
+    transform: rotate(180deg);
+}
+
+.evp-track__detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-3) var(--space-2);
+    max-inline-size: var(--evp-measure);
+}
+
+.evp-track__desc {
+    margin: 0;
+    font-size: var(--text-md);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+}
+
+.evp-track__subhead {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.evp-track__roles {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.evp-track__role {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-block: var(--space-2);
+    border-block-end: var(--hairline);
+}
+
+.evp-track__rolename {
+    font-size: var(--text-md);
+    color: var(--on-surface);
+}
+
+.evp-track__rolemeta {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+}
+
+.evp-track__seatsummary,
+.evp-track__facts,
+.evp-track__skills {
+    margin: 0;
+}
+
+/*
+ * The revision allowance. Meta register, one line, no box and no mark — it is a fact about the stage,
+ * sitting between the stage's other facts and its deliverables checklist, and a container here would
+ * assert it is a different KIND of thing from the line above it (§B.11.2).
+ */
+.evp-track__revisions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0;
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The included allowance is the commitment; it carries the page's ink so it reads first. */
+.evp-track__revfree {
+    color: var(--on-surface);
+}
+
+.evp-track__revsep {
+    padding-inline: var(--space-2);
+    color: var(--text-disabled);
+}
+
+.evp-track__revextra {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+}
+
+/* `MoneyView` sizes its own amount; this line is Meta register, so it is told so. */
+.evp-track__revextra .ui-money__amount {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+}
+
+/* ============================================================================
+ * THE SHELL NAV RAIL — the authenticated middle-nav lane (`EntityNavRail`)
+ *
+ * One control: the way out. Its geometry mirrors the global sidebar's collapsed rail exactly, because
+ * a reader crossing from that rail into this one should not be able to tell that the column changed
+ * owners — same 48px block, same radius, same hover tint.
+ * ========================================================================== */
+.evp-navrail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: var(--space-3);
+    inline-size: 100%;
+    block-size: 100%;
+}
+
+.evp-navrail__back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--shell-nav-block, 3rem);
+    block-size: var(--shell-nav-block, 3rem);
+    border-radius: var(--radius-base);
+    color: var(--text-secondary);
+    background: transparent;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.evp-navrail__back:hover {
+    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+    color: var(--on-surface);
+}
+
+.evp-navrail__back:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-navrail__back {
+        transition: none;
+    }
+}
+
+/*
+ * NO DRAG HANDLE ON THIS LANE.
+ *
+ * `viewLaneOptionsFor` pins the splitter with `min === max === initial`, so `useSplitter` clamps every
+ * width the drag computes back to the same number. Leaving the handle rendered would offer a grab
+ * affordance — cursor, focus ring, `role="separator"` and all — whose only possible outcome is no
+ * outcome, which is the inert-control defect of root CLAUDE.md §3 gate 11. The lane holds one button
+ * and there is nothing a wider one would reveal.
+ *
+ * `:has()` on the lane's own content rather than a route-scoped selector, so it can only ever match
+ * the splitter that is actually wrapping this rail.
+ */
+.ui-splitter:has(.evp-navrail) .ui-splitter__handle {
+    display: none;
+}
+
+/* ============================================================================
+ * THE CONVERSION LANE (§D.7) — the frame's END column
+ *
+ * Layers onto the shared `pf-lane` skeleton for its header / scroll / footer geometry. It no longer
+ * uses that skeleton's collapse machinery or its collapsed icon rail: both were reveals keyed on
+ * hosts this panel does not have (`.ui-splitter[data-mode]`, `:root[data-guest-nav]`), so the rail
+ * could never appear and the toggle drove an event with no listener.
+ * ========================================================================== */
+
+/*
+ * The column. Pinned, because the panel IS the transaction — it must be on screen at the moment the
+ * reader decides, not at the moment they happen to have scrolled back to the top.
+ */
+.evp-laneslot {
+    display: none;
+    grid-area: lane;
+    position: sticky;
+    /*
+	 * Pinned to the middle-nav header band's top line, and LIFTED to it at rest in the shell where
+	 * those two are not the same number — see the `--evp-pin-*` note in the token block. The height
+	 * subtracts the same pin line, so a pinned lane's foot lands one page-gutter above the viewport
+	 * floor and can never make the document taller than the screen.
+	 */
+    inset-block-start: var(--evp-pin-top);
+    margin-block-start: calc(-1 * var(--evp-pin-lift));
+    block-size: var(--evp-col-h);
+    min-inline-size: 0;
+    /*
+	 * One step above the pinned header bands, which are `--z-sticky`.
+	 *
+	 * Both bands' BOXES now stop short of this column (see the band block below), so they no longer
+	 * overlap it and this is belt-and-braces rather than the fix it once was. It stays because the
+	 * inset is a viewport-gated approximation of a container-gated layout: in the ~60px window where
+	 * the two disagree, the band is momentarily full width, and a lane that lost that race would have
+	 * its identity row covered by an opaque strip. Losing is a defect; winning costs nothing.
+	 */
+    z-index: calc(var(--z-sticky) + 1);
+}
+
+@container evp-body (min-width: 1112px) {
+    .evp-laneslot {
+        display: block;
+    }
+}
+
+/* ---- Identity band: the uploader's face and NAME, with their earned badges ---- */
+.evp-lane__id {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--evp-lane-pad) var(--evp-lane-pad) var(--space-4);
+    border-block-end: var(--hairline);
+}
+
+.evp-lane__owner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    color: var(--on-surface);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp-lane__avatar {
+    flex: none;
+}
+
+.evp-lane__identity {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-inline-size: 0;
+}
+
+/*
+ * The display name, at Body register and `--fw-medium`. Never `--fw-bold`+: §A.4 reserves weight
+ * escalation for a level change, and this is the only identity on the panel — it has nothing to
+ * out-rank.
+ */
+.evp-lane__name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-tight);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.evp-lane__owner:hover .evp-lane__name {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.evp-lane__owner:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The earned badges. They wrap rather than truncate: a badge sliced by an ellipsis states a claim the
+ * reader cannot finish reading, and the panel would rather be a line taller.
+ */
+.evp-lane__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+.evp-lane__crest {
+    flex: none;
+    color: var(--primary);
+}
+
+.evp-lane__kebab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.evp-lane__kebab:hover {
+    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+    color: var(--on-surface);
+}
+
+.evp-lane__kebab:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-lane__scroll {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--evp-lane-pad);
+}
+
+/* ---- Price (§D.7.2 item 2) --------------------------------------------
+ * Two registers, one figure. Never two equally-weighted numbers, which reads as two prices.
+ * -------------------------------------------------------------------- */
+.evp-price {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+}
+
+/*
+ * The "FROM" eyebrow — Meta register, its OWN line.
+ *
+ * It qualifies the whole price rather than forming part of the number, and run inline it shared a
+ * baseline with the currency symbol, where it read as a word inside the figure.
+ */
+.evp-price__from {
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.evp-price__figure {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-price__money {
+    color: inherit;
+}
+
+/*
+ * THE FIGURE'S SIZE HAS TO BE SET ON `.ui-money__amount`, NOT ON THIS ELEMENT.
+ *
+ * `MoneyView` sizes its own amount (`.ui-money--figure .ui-money__amount`), so a `font-size` on the
+ * wrapper is simply ignored by the number — the previous rule only appeared to work because it happened
+ * to declare the same `--text-2xl` the component already used.
+ *
+ * The selector is three classes deep on purpose. `.evp-price__money .ui-money__amount` would TIE with
+ * the package rule at (0,2,0) and resolve on stylesheet order, which is decided by which island carries
+ * which sheet — the same trap `.ui-button--filled` documents further down this file.
+ *
+ * `--fw-light` because at 36px the size is already carrying the emphasis and a light weight reads as
+ * composed rather than shouted. It degrades to 400 under the open-dyslexic overlay, which is correct:
+ * that face ships Regular and Bold only, and a synthesised light would smear the stroke asymmetry the
+ * face exists to provide.
+ *
+ * The pence follow for free — the component sets `.ui-money--figure .ui-money__minor` to `0.5em`, so a
+ * 36px figure gets an 18px raised tail without this surface slicing the string.
+ */
+.evp-price .evp-price__money .ui-money__amount {
+    font-size: var(--text-3xl);
+    font-weight: var(--fw-light);
+    line-height: var(--leading-tight);
+    letter-spacing: -0.02em;
+}
+
+.evp-price__unit {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-price__figure--quote {
+    font-size: var(--text-xl);
+    font-weight: var(--fw-medium);
+}
+
+/* The creator's original currency — the second register, and a full line of its own so it can never
+ * be mistaken for a competing figure. */
+.evp-price__origin {
+    flex-basis: 100%;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+ * THE ACTION RIG (§D.7.7) — inverted primary, brand secondary, ghost tertiary
+ *
+ * Every colour here is set through `--btn-accent` / `--btn-on` rather than by declaring `background`
+ * and `color`. That is not a style preference, it is the only robust option: `Button`'s `filled`
+ * variant has NO variant class, so the base `.ui-button` rule declares the colours DIRECTLY at
+ * specificity (0,1,0) — a local class is also (0,1,0) and would win or lose purely on bundle order,
+ * and package CSS reaches a page through an island carrier whose order is not ours to fix. The base
+ * rule reads those two custom properties through `var()`, so overriding them always wins, and it
+ * re-colours `outlined`/`text` consistently for free.
+ *
+ * The selectors are `.ui-button.evp-cta__btn` (0,2,0) wherever a declaration (not a variable) has to
+ * beat the base rule — the height, the weight and the hover.
+ * ========================================================================== */
+.evp-cta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+/*
+ * A NAVIGATING primary (Book session / Reserve seat) is an anchor, not a button. It previously
+ * rendered `<a><Button …/></a>` — a `<button>` inside an `<a>`, which is invalid HTML: the parsers
+ * that tolerate it still expose two nested interactive elements, and the inner control took the
+ * accessible role while the outer one took the navigation. Since it navigates, the anchor IS the
+ * control (middle-click, open-in-new-tab, and the right role all follow), and it borrows the pill
+ * geometry rather than a nested component's.
+ */
+.evp-cta__link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 100%;
+    min-block-size: var(--evp-cta-h);
+    padding-inline: var(--space-4);
+    text-decoration: none;
+    border-radius: var(--radius-full);
+    font-size: var(--evp-cta-fs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+    background: var(--evp-cta-primary-fill);
+    color: var(--evp-cta-primary-ink);
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.evp-cta__link:hover {
+    background: color-mix(in srgb, var(--evp-cta-primary-fill) 88%, var(--bg));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-cta__link {
+        transition: none;
+    }
+}
+
+.evp-cta__link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * Shared geometry. 36px is deliberately OFF the `--fld-h-*` ramp, which steps 32 → 40 → 48: the brief
+ * asks for a compact CTA and neither neighbouring step is it. It stays on the ramp's own 4px grid.
+ * `font-weight` must be re-declared because `.ui-button` hardcodes `600` as a literal — it is not a
+ * token and not a prop, so `--fw-medium` is unreachable through the component.
+ */
+.ui-button.evp-cta__btn {
+    --btn-height: var(--evp-cta-h);
+    --btn-font: var(--evp-cta-fs);
+    --btn-radius: var(--radius-full);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+}
+
+/* The inverted primary. */
+.ui-button.evp-cta__btn--inverted,
+a.evp-cta__btn--inverted {
+    --btn-accent: var(--evp-cta-primary-fill);
+    --btn-on: var(--evp-cta-primary-ink);
+}
+
+/*
+ * The brand secondary — now OUTLINED.
+ *
+ * It was a second filled teal control, and the owner-directed primary above has taken that exact
+ * fill. Two identical fills, one of which buys and one of which adds to a basket, is a worse defect
+ * than either colour choice on its own, and §B.8.2 caps a region at one `filled` control anyway. The
+ * ranking still reads primary → secondary → tertiary, now by weight instead of by hue.
+ */
+.ui-button.evp-cta__btn--brand {
+    --btn-accent: var(--evp-cta-brand-fill);
+    --btn-on: var(--evp-cta-brand-ink);
+}
+
+/*
+ * Hover, FILLED only. The inherited filled hover is `filter: brightness(0.94)`, which barely moves a
+ * saturated mid-tone — no perceptible feedback on the single most important control on the page. A
+ * tonal shift toward the page ground reads at both polarities because it always moves the fill TOWARD
+ * the surface it sits on.
+ *
+ * `.ui-button--filled` is in the selector deliberately: without it this rule painted a solid
+ * background onto the OUTLINED secondary on hover, which is the one thing an outlined control must
+ * not do — it would become the filled primary for as long as the cursor rested on it. The variant
+ * class is always emitted by `Button`, so it is a reliable hook even though the package ships no rule
+ * of its own for it.
+ */
+.ui-button.evp-cta__btn.ui-button--filled:not(:disabled):hover {
+    filter: none;
+    background: color-mix(in srgb, var(--btn-accent) 88%, var(--bg));
+}
+
+.ui-button.evp-cta__btn.ui-button--filled:not(:disabled):active {
+    filter: none;
+    background: color-mix(in srgb, var(--btn-accent) 80%, var(--bg));
+}
+
+/*
+ * The ghost tertiary — direct seller contact.
+ *
+ * §D.7.2's anatomy sends secondary actions to the kebab; this is the deliberate exception (§D.7.7),
+ * because asking the seller a question is a PRE-purchase act and burying it costs the sale the rest
+ * of the lane is trying to make. It is a text-weight control, so §B.8.2's one-`filled`-per-region cap
+ * is untouched and the ranking still reads primary → secondary → tertiary.
+ */
+.evp-cta__ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    min-block-size: var(--evp-cta-h);
+    padding-inline: var(--space-3);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--evp-cta-fs);
+    font-weight: var(--fw-normal);
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+.evp-cta__ghost:hover {
+    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+    color: var(--on-surface);
+}
+
+.evp-cta__ghost:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-cta__ghost {
+        transition: none;
+    }
+}
+
+/* ---- Lane seat meter --------------------------------------------------- */
+.evp-lane__seats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.evp-lane__seatstrack {
+    display: flex;
+    gap: var(--evp-seat-gap);
+    block-size: var(--evp-seat-h);
+    border-radius: var(--radius-full);
+    overflow: clip;
+    background: var(--track-recessed);
+}
+
+.evp-lane__seatseg {
+    flex: 1 1 0;
+}
+
+.evp-lane__seatseg[data-state="taken"] {
+    background: var(--primary);
+}
+
+.evp-lane__seatseg[data-state="open"] {
+    background: var(--track-meter);
+}
+
+.evp-lane__seatsfact {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Summary ledger (§D.7.2 item 5) — facts, not chips ----------------- */
+/* ---- The meta section -------------------------------------------------
+ * ONE divider on this whole region, and it is the one at the TOP — the boundary between the stage
+ * list and the facts. Inside, the rows are separated by spacing alone: §B.4.1 makes spacing the first
+ * separator, and a rule under every row turned a five-fact summary into a five-box table.
+ *
+ * The divider lives on the meta block rather than under the stage list so it only ever exists when
+ * there is something on both sides of it — a listing with no stages, or none of these facts, draws no
+ * line at all.
+ */
+.evp-lane__meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.evp-stages + .evp-lane__meta {
+    padding-block-start: var(--space-5);
+    border-block-start: var(--hairline);
+}
+
+.evp-lane__ledger {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+}
+
+.evp-lane__ledgerrow {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+/* The value column: the fact, then its qualifier beneath it — both aligned to the END edge. */
+.evp-lane__ledgervalue {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-px);
+    min-inline-size: 0;
+    margin: 0;
+    text-align: end;
+}
+
+.evp-lane__ledgerfact {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.evp-lane__ledgernote {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+/* ---- Reputation: the listing's aggregate and its sample size ----
+ * It replaces `.evp-lane__seller`, which printed the seller's name a SECOND time inside a panel whose
+ * header already carries their face and their name. The count is a link, because the sample size is
+ * the reason a reader wants to go and read them.
+ */
+/*
+ * The WHOLE row is the control now, not the count inside it.
+ *
+ * A reader who wants the reviews aims at the stars, and the only thing that navigated was the
+ * four-word count beside them — a target roughly a third of the width of the thing being pointed at.
+ * It stays an `<a href="#evp-reviews">` so middle-click, open-in-new-tab and no-JS all keep working;
+ * the click handler only upgrades the jump to an offset-aware smooth scroll.
+ */
+.evp-lane__rating {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    align-self: flex-start;
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-base);
+    color: var(--on-surface);
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.evp-lane__rating:hover {
+    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+
+.evp-lane__rating:hover .evp-lane__ratingcount {
+    color: var(--on-surface);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.evp-lane__rating:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-lane__rating {
+        transition: none;
+    }
+}
+
+.evp-lane__ratingvalue {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-lane__ratingcount {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-lane__ledgerrow:last-child {
+    border-block-end: none;
+}
+
+/*
+ * The label. Sentence case at Body size in the secondary ink — NOT the uppercase tracked label
+ * register it used to wear.
+ *
+ * These rows are a two-column statement ("Revisions … 4 included"), and a shouty uppercase key beside
+ * a sentence-case value read as a table header rather than as half of one sentence. §A.4's label
+ * register earns its tracking where a label sits ABOVE its value; across from it, size and ink are
+ * enough to say which side is which.
+ */
+.evp-lane__ledgerlabel {
+    flex: none;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+    color: var(--text-secondary);
+}
+
+/* ---- THE STAGE LIST ---------------------------------------------------
+ * Ordinal · (name over its price) · chevron. It is the region's primary navigation, so it comes FIRST
+ * in the scroll area: a pipeline buyer asks what the engagement consists of and what each step costs
+ * before they check the summary facts.
+ *
+ * Rows are separated by spacing, never rules. The only line in this region is the one BELOW the list,
+ * and it belongs to the meta block that follows.
+ * -------------------------------------------------------------------- */
+.evp-stages {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+}
+
+.evp-stages__item {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    /* Inset by the same amount the row is padded, so hover tints a box that lines up with the
+       identity band above rather than a stripe indented from it. */
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-3) var(--space-2);
+    border: none;
+    border-radius: var(--radius-base);
+    background: transparent;
+    color: var(--on-surface);
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.evp-stages__item:hover {
+    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+
+.evp-stages__item:hover .evp-stages__chevron {
+    color: var(--on-surface);
+}
+
+.evp-stages__item:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-stages__item {
+        transition: none;
+    }
+}
+
+/* The ordinal. A plain numeral in the secondary ink — no ring, no fill: the sequence is the fact and
+   a bordered circle around a single digit is a container asserting interactivity (§B.11). */
+.evp-stages__n {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.evp-stages__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+    min-inline-size: 0;
+}
+
+.evp-stages__name {
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * The stage's own price. It WRAPS, because a range of two figures has no bounded width.
+ *
+ * A pipeline stage quotes a per-ticket RANGE (the 0.5x–2.0x workload band), and how wide that renders
+ * depends on the viewer's currency: measured in the 328px lane, `£78.74 – £314.96` is 133px of a 194px
+ * column and the same stage in JPY (`JP¥15,118 – JP¥60,472`) is 152px. Both fit today, and neither has
+ * much headroom — a six-figure stage, a longer symbol, or a narrower lane closes it. Without
+ * `flex-wrap` an inline-flex row overflows its parent silently (`min-inline-size: 0` lets the column
+ * shrink, but nothing clips), so the figure would leave the panel rather than take a second line.
+ *
+ * Each FIGURE stays atomic — `MoneyView` sets `white-space: nowrap` on its own parts — so the wrap
+ * only ever falls at the separator, never inside an amount.
+ */
+.evp-stages__price {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The price is SUBTEXT, so it has to be told so — `MoneyView` sizes and weights its own amount.
+ *
+ * At `micro` the component renders 13px/600, which measured LARGER and HEAVIER than the 14px/500 stage
+ * name directly above it: a muted qualifier out-ranking the title it qualifies, which is the
+ * hierarchy inversion §A.4 exists to catch. The wrapper's `font-size` could not fix it, because the
+ * component's `.ui-money--micro .ui-money__amount` rule is what the number reads.
+ *
+ * Three classes deep for the same reason the headline figure is: at (0,2,0) this would TIE with the
+ * package rule and resolve on stylesheet order, which is decided by island bundling rather than by us.
+ */
+.evp-stages .evp-stages__price .ui-money__amount {
+    font-size: var(--text-xs);
+    font-weight: var(--fw-normal);
+}
+
+.evp-stages__pricesep {
+    color: var(--text-secondary);
+}
+
+/* The free-revision count rides the same subtext line as the stage price — one fact, one register. */
+.evp-stages__revisions {
+    color: var(--text-secondary);
+}
+
+.evp-stages__chevron {
+    flex: none;
+    color: var(--text-secondary);
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * The chevron mirrors under `dir="rtl"`, and it has to be told to.
+ *
+ * `chevron-right` is a drawn PATH, not a logical property, so the glyph keeps pointing at the physical
+ * right edge while the row it belongs to has flipped — an arrow pointing away from the direction the
+ * reader travels.
+ */
+[dir="rtl"] .evp-stages__chevron {
+    transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp-stages__chevron {
+        transition: none;
+    }
+}
+
+/*
+ * SCROLL TARGETS clear the pinned chrome even when JS is not what did the scrolling.
+ *
+ * `scrollToElement` computes the same offset for a click, but a `#hash` in the address bar, a restored
+ * scroll position and a browser's own find-in-page all bypass it — and all three would otherwise land
+ * the target under the header band. `scroll-margin` is the one mechanism the browser applies to every
+ * kind of scroll, so it is the floor and the JS is the smooth upgrade on top.
+ */
+.evp-track__item,
+#evp-reviews {
+    scroll-margin-block-start: calc(
+        var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4)
+    );
+}
+
+.guest-shell .evp-track__item,
+.guest-shell #evp-reviews {
+    scroll-margin-block-start: calc(
+        var(--site-header-h, 5.5rem) + var(--shell-midnav-header-h) + var(--space-4)
+    );
+}
+
+/* ---- Kebab menu -------------------------------------------------------- */
+/*
+ * These merge onto the overlay panel ROOT, while the padding lives on a CHILD (`.ui-popover__content`
+ * / the draggable panel's body). Without the descendant selector the class is an inert hook and the
+ * overlay keeps the default `--space-4` box, which is why both panels looked over-padded.
+ */
+.evp-menu .ui-popover__content {
+    padding: var(--space-1);
+}
+
+.evp-inquiry .ui-draggable-popover__body {
+    padding: 0;
+}
+
+.evp-menu__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 13rem;
+}
+
+.evp-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    border-radius: var(--radius-base);
+    background: transparent;
+    color: var(--on-surface);
+    font-size: var(--text-sm);
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.evp-menu__item:hover {
+    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+.evp-menu__item:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-menu__item[data-danger="true"] {
+    color: var(--danger);
+}
+
+/* ============================================================================
+ * LANE PANEL — the floating panel treatment (§D.7.2)
+ *
+ * One width for both shells, stated here, because the panel is a page element now rather than a shell
+ * slot. It used to be two: the authenticated lane took its width from `MiddleNavSplitter`'s inline
+ * `--shell-lane-w` (which no ancestor rule can override, and overriding `inline-size` instead would
+ * make the drag handle lie), while the guest aside took `--guest-aside-w-expanded`. Removing both
+ * hosts removes both mechanisms.
+ * ========================================================================== */
+
+/*
+ * The panel. A SOLID tonal step and a large radius — ONE separation device, and it is the ramp (§B.4).
+ *
+ * No shadow. It carried `--elevation-medium`, which is a SECOND device on a boundary the tonal step
+ * already draws, and §B.4 spends one device per boundary. The elevation was arguing that the panel
+ * floats; the pin is what makes it float, and a reader watching the body scroll under a stationary
+ * surface does not need to be told so a second time in ink.
+ *
+ * No glass either. The guest aside this mirrors carries a `backdrop-filter`, and §B.4.3 permits that
+ * on viewport-pinned top bars, floating mobile sheets/scrims, and marks over arbitrary photography —
+ * a sticky in-page panel is none of the three. The guest aside is grandfathered (flagged in Decision
+ * #78(d)); extending the exception to a NEW panel would be choosing the wrong side of a rule that is
+ * currently only being tolerated. The solid step reads identically and is measurable.
+ */
+.evp-lane__full {
+    background: var(--surface-1);
+    border-radius: var(--radius-container-lg);
+    overflow: hidden;
+}
+
+/* ---- The pinned action footer -------------------------------------------
+ * `flex: none` and `sticky` at the base, so it cannot collapse or scroll away: the offer stays on
+ * screen however long the ledger above it runs. `display: block` rather than the skeleton's `flex`,
+ * because the rig it holds is itself a column and would otherwise be a flex ITEM sized to content.
+ */
+.evp-lane__footer {
+    display: block;
+    padding: var(--evp-lane-pad);
+    background: var(--surface-1);
+    border-block-start: var(--hairline);
+}
+
+/* ============================================================================
+ * MIGRATED STICKY HEADER (§D.7.6)
+ *
+ * The reveal transition, the `visibility`-based tab-order gating and the guest shell's glass underlay
+ * all come from `.pf-stickyhead` in `profile.css` — this block only lays out the content. In
+ * particular the guest slab is keyed on the literal selector
+ * `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, so dropping that class would
+ * render the band unstyled for guests while looking correct when signed in.
+ * ========================================================================== */
+.evp-stickyhead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding-inline: var(--space-4);
+}
+
+/*
+ * THE BAND SPANS THE MEDIA + HERO COLUMNS, AND NOTHING ELSE.
+ *
+ * It used to run the full width of the content region and reserve room for the lane with
+ * `padding-inline-end`, which insets the CONTENT but leaves the BOX — and therefore the glass slab
+ * that paints it — running underneath the pinned lane. Two pinned regions in one content region have
+ * to tile, not stack (§D.7.2), so the box itself now stops where the lane begins and starts where the
+ * media column does: the band, the start rail and the lane read as one row of three panels.
+ *
+ * The reservations are the frame's own arithmetic, in the frame's own tokens, so a change to the lane
+ * width or the strip width moves the band with it rather than leaving a number here to drift:
+ *
+ *   start = page gutter + start strip + frame gap    (guest only — see below)
+ *   end   = page gutter + lane        + frame gap
+ *
+ * ── Why the START inset is guest-only ──
+ *
+ * The authenticated band is grid column 2 of `.ui-middle-nav`, so the shell's own lane has ALREADY
+ * begun it after the nav rail; insetting again would double the gutter. The guest band is
+ * `position: fixed` across the whole content gutter and has nothing to begin after, so it does its own.
+ *
+ * ── Why a viewport gate for a container-driven layout, and why there are two of them ──
+ *
+ * Whether the lane is rendered is a CONTAINER question (`@container evp-body`), but neither band is a
+ * descendant of that container, so no container query can reach them, and `:has(.evp-laneslot)` matches
+ * on the element EXISTING rather than on it being displayed. The gate is therefore a viewport
+ * approximation of the container threshold, translated through the chrome each shell spends first:
+ *
+ *   guest   1112 container + 48 page gutter                        → measured crossover 1166 viewport
+ *   authed  1040 container + 48 gutter + 64 global rail + 56 lane   → measured crossover 1214 viewport
+ *
+ * One gate cannot serve both: set it at the guest's number and the authenticated band reserves 376px
+ * for a lane that is not there across a ~50px band of widths; set it at the authenticated one and the
+ * guest band is covered by its own lane for the same distance in the other direction.
+ *
+ * Both are biased LOW, deliberately, because the two possible mismatches are not symmetric:
+ *
+ *   reserving when the lane is hidden  → a cosmetic gap at the band's end edge
+ *   NOT reserving when it is shown     → the band's own identity row is covered by an opaque panel
+ *
+ * A hidden row is a defect; a gap is not. The crossovers above were measured with a 6px overlay
+ * scrollbar; a platform with 15px classic scrollbars moves them ~9px further out, which widens the
+ * cosmetic window and never the other one — which is the whole reason the bias runs this way.
+ *
+ * Both numbers also sit well above the mobile band, which is only ~358px wide and would be crushed to
+ * nothing by a 376px reservation.
+ */
+@media (min-width: 1150px) {
+    .guest-shell:has(.evp-laneslot) .guest-shell__subheader {
+        inset-inline-start: calc(
+            var(--space-5) + var(--evp-navstrip-w) + var(--evp-frame-gap)
+        );
+        inset-inline-end: calc(
+            var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
+        );
+    }
+}
+
+@media (min-width: 1195px) {
+    /*
+	 * `margin-inline`, not `padding-inline`: the band's `::before` glass underlay is `inset: 0` on this
+	 * element, so only shrinking the BOX takes the slab out from under the lane. A margin on a grid item
+	 * shrinks its used size within its area, which is exactly the effect wanted, and the
+	 * `minmax(0, 1fr)` content track absorbs it without re-sizing the lane track beside it.
+	 *
+	 * The START inset is the page's own gutter and nothing else: the shell's nav rail has already begun
+	 * this column, so all that is left between the band's edge and the media column is `.evp`'s
+	 * `padding-inline`.
+	 */
+    .ui-middle-nav:has(.evp-laneslot) .ui-middle-nav__header {
+        margin-inline-start: var(--space-5);
+        margin-inline-end: calc(
+            var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
+        );
+    }
+}
+
+.evp-stickyhead__lead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    flex: 1 1 auto;
+}
+
+/*
+ * Native truncation at 24ch. All three of `overflow`, `white-space` and a bounded box are required —
+ * `text-overflow` alone does nothing — and `min-inline-size: 0` is required on the flex ancestors or
+ * the item refuses to shrink below its content and the ellipsis never appears.
+ */
+.evp-stickyhead__title {
+    max-inline-size: var(--evp-stickyhead-title);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+/* The archetype, unboxed — a category is what a thing permanently is, so it is text (§B.11.2). */
+.evp-stickyhead__kind {
+    flex: none;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-normal);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/*
+ * The band's END block — seller identity, then the rating.
+ *
+ * `.evp-stickyhead__lead` is `flex: 1 1 auto`, so this is pushed to the inline END by the row's own
+ * distribution and not by a margin. That matters under `dir="rtl"`: "end" is a logical edge and flips
+ * with the writing mode, where a physical `margin-left` would strand the block on the wrong side.
+ */
+.evp-stickyhead__end {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex: none;
+    min-inline-size: 0;
+}
+
+.evp-stickyhead__seller {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: none;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    border-radius: var(--radius-sm);
+}
+
+/*
+ * The rating is its OWN control now, not a passenger inside the seller anchor.
+ *
+ * Nesting it there made it a non-target: the stars are the universal gesture for "show me the
+ * reviews", and clicking them navigated to the seller's profile. It is a real `<a href="#evp-reviews">`
+ * so a no-JS reader and a middle-click both still work; the handler only upgrades the jump to one that
+ * clears the pinned chrome.
+ */
+.evp-stickyhead__rating {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp-stickyhead__rating:hover {
+    color: var(--on-surface);
+}
+
+.evp-stickyhead__rating:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-stickyhead__seller:hover .evp-stickyhead__handle {
+    color: var(--on-surface);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.evp-stickyhead__seller:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-stickyhead__crest {
+    color: var(--primary);
+    flex: none;
+}
+
+/*
+ * Below the tablet cusp the band drops the archetype label.
+ *
+ * The title and the seller are the two facts that identify what is on screen; the archetype is a
+ * category, and a category is the first thing worth losing when the row runs out of width.
+ */
+@media (max-width: 900px) {
+    .evp-stickyhead__kind {
+        display: none;
+    }
+}
+
+/* ============================================================================
+ * FULL-WIDTH SESSION SCHEDULER (§D.8.3 / §D.8.4)
+ * ========================================================================== */
+.evp-scheduler {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    inline-size: 100%;
+    min-inline-size: 0;
+}
+
+.evp-scheduler__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+/*
+ * The segmented switcher — the SINGLE copy of this control at every width. It previously existed
+ * twice and neither copy worked: the in-showcase tablist was `display: none` above 767px, and the
+ * lane's replacement only ever set availability ON, so a desktop reader who opened the calendar could
+ * not get back to the gallery without reloading.
+ */
+.evp-scheduler__switch {
+    display: inline-flex;
+    gap: var(--space-px);
+    padding: var(--space-px);
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
+}
+
+.evp-scheduler__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-block-size: var(--evp-cta-h);
+    padding-inline: var(--space-4);
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.evp-scheduler__tab[data-active] {
+    background: var(--surface);
+    color: var(--on-surface);
+    font-weight: var(--fw-medium);
+    box-shadow: var(--elevation-low);
+}
+
+.evp-scheduler__tab:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* The timezone disclosure — a fact, so Meta register and no container. */
+.evp-scheduler__zones {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+/*
+ * The calendar's box.
+ *
+ * A DEFINITE height is required, not optional: the engine's `.cal` is `block-size: 100%`, which
+ * resolves to 0 against an auto-height block parent, and its own `overflow: hidden` then hides the
+ * fact — a silently blank calendar. `.cal-surface--schedule` supplies a real resolvable height, so
+ * this only has to provide a floor generous enough that the engine keeps its side panel: below about
+ * 768px of ELEMENT width it drops the mini-month and the availability panel, which is the only place
+ * the provider's working hours are explained.
+ */
+.evp-scheduler__cal {
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--evp-sched-min-h);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--surface-1);
+}
+
+.evp-scheduler__gallery {
+    inline-size: 100%;
+    min-inline-size: 0;
+}
+
+/* ============================================================================
+ * SELLER INQUIRY COMPOSER
+ * ========================================================================== */
+.evp-inquiry__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+}
+
+.evp-inquiry__about {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-inquiry__abouticon {
+    flex: none;
+}
+
+.evp-inquiry__aboutitem {
+    color: var(--on-surface);
+}
+
+.evp-inquiry__hint {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    color: var(--text-secondary);
+}
+
+.evp-inquiry__text {
+    inline-size: 100%;
+    min-block-size: 6rem;
+    padding: var(--space-3);
+    border: var(--hairline);
+    border-radius: var(--radius-base);
+    background: var(--surface);
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-md);
+    line-height: var(--leading-normal);
+    resize: vertical;
+}
+
+.evp-inquiry__text:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.evp-inquiry__error {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--danger);
+}
+
+.evp-inquiry__actions {
+    display: flex;
+}
+
+/* ============================================================================
+ * Rules the audit found MISSING — every one of these classes was applied in TSX with no declaration
+ * anywhere in the repo, which is silent by nature: the element renders, just with no layout.
+ * ========================================================================== */
+
+/* The lower rails + reviews had ZERO gap between them. */
+.evp-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--evp-gap-section);
+}
+
+/* A ledger value that stacks a summary over its own meta line (the team-roles block). */
+.evp-ledger__stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    align-items: flex-end;
+}
+
+/* Running prose inside an archetype body — capped at the measure, like every other prose block. */
+.evp-prose {
+    margin: 0;
+    max-inline-size: var(--evp-measure);
+    font-size: var(--text-md);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+}
+
+/*
+ * The ≤767px transactional block's escrow note. It previously borrowed `.evp-lane__seatsfact`, a
+ * class that belongs to the seat meter — reusing an unrelated class is how a later change to one
+ * silently moves the other.
+ */
+.evp-buybar__note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.evp-buybar__note svg {
+    flex: none;
+    color: var(--success);
+}
+
+/* ============================================================================
+ * Below the frame breakpoint — the duty TRANSFERS, it does not duplicate (§D.7.4)
+ *
+ * The lane is not rendered under 1100px, so the transaction is re-homed into one body-side block.
+ * The two are mutually exclusive by `display`, so only ever one is in the accessibility tree.
+ *
+ * The transfer point moved from `--bp-md` to the FRAME's breakpoint when the lane became a page
+ * column instead of a shell slot. Before, the shell supplied the lane's width from outside the
+ * content region; now the page pays for it, and at 900px the four tracks left the content column
+ * ~350px — narrower than the same page renders at 390px. A transaction that is present but unreadable
+ * is not a better outcome than one that has moved somewhere it fits.
+ * ========================================================================== */
+.evp-buybar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding-block: var(--space-5);
+    border-block: var(--hairline);
+}
+
+@container evp-body (min-width: 1112px) {
+    .evp-buybar {
+        display: none;
+    }
+}
+
+@media (max-width: 767px) {
+    .evp {
+        padding-inline: var(--space-4);
+    }
+
+    .evp-overview__title {
+        font-size: var(--text-2xl);
+    }
+
+    .evp-track__item {
+        --evp-track-gutter: 2.25rem;
+    }
+}
+
+/* ============================================================================
+ * Reduced motion — jump to final (§A.5)
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    .evp-canvas__thumb,
+    .evp-track__caret {
+        transition: none;
+    }
+}

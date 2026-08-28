@@ -189,6 +189,27 @@ export const ServiceItemSchema = z.object({
 	 */
 	sessionPrice: z.number().optional(),
 	/**
+	 * How many revision rounds the seller includes at no extra cost, **per stage**.
+	 *
+	 * Declared by the seller rather than derived, because it is a commitment they make and not a
+	 * property of the listing's shape — two identical four-stage sprints can honestly offer one
+	 * revision each and three each. It is the single source the trust row, the stage ledger and the
+	 * conversion lane all read, so a buyer cannot be told "2 included" in one region and "1 free" in
+	 * another eighteen inches away.
+	 *
+	 * Optional: a listing that has not declared one falls back to the corpus default rather than
+	 * asserting zero, which would read as "revisions are not offered" — a materially different claim.
+	 */
+	freeRevisions: z.number().int().min(0).optional(),
+	/**
+	 * What one revision costs once the free allowance is spent — MAJOR units in {@link currency},
+	 * matching `ticketPrice`/`sessionPrice`.
+	 *
+	 * `0` is a meaningful, distinct value: it means unlimited revisions at no charge, which is a real
+	 * offer some sellers make. `undefined` means the seller has not priced them.
+	 */
+	extraRevisionPrice: z.number().min(0).optional(),
+	/**
 	 * The headline price as STRUCTURED money — integer minor units plus its ISO-4217 currency.
 	 *
 	 * Additive alongside the pre-formatted `price` string, not a replacement: `price` is what a

@@ -190,8 +190,8 @@ and block taking precedence:
 
 The §3.1 state-machine governs **build Tasks** on the delivery tracker. The 2026-07-23 Wallet &
 Finance foundation, the 2026-07-24 Availability & Discovery Calls foundation, the 2026-07-24
-Notification Engine and the 2026-08-04 Asset Management foundation add several **product domain
-lifecycles** — these are **separate** finite state machines that live at the
+Notification Engine, the 2026-08-04 Asset Management foundation and the 2026-08-26 Service Booking
+pass add several **product domain lifecycles** — these are **separate** finite state machines that live at the
 schema/business layer, and they are recorded here **only so nobody mints a bespoke build-board
 column for them.** Their canonical definitions are the enum + doc listed:
 
@@ -213,6 +213,8 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Allowance period**       | Rolls weekly; `granted → consumed`, buffer drips back on a timer   | `finance.allowance_periods` · `finance-model.md` §16.2 |
 | **Notification delivery**  | `pending → queued → sent → delivered`; `failed` / `suppressed` (policy said no) / `skipped` (nothing to send to) | `comms.delivery_status` · `database/comms/Functions.md` |
 | **Scheduled notification** | `scheduled → processing → sent`; `cancelled` (the reason went away) / `failed` (3 attempts) | `comms.queue_status` · `database/comms/Tables.md` |
+| **Service draft (instantiated pipeline)** | `draft → active` (first stage funded) \| `archived` (removed by the buyer, or swept after `service_draft_idle_days` idle with nothing funded). `archived` is terminal and is SOFT — never a delete, and deliberately distinct from `cancelled`, which records a decision about live work where this records that nothing ever happened | `project_status` · `projects.fn_archive_stale_service_drafts` · `database/projects/Tables.md` |
+| **Custom quote request**   | `sent → answered` / `withdrawn`. Top-of-funnel: it creates no project, stage, ticket or escrow, and never enters the §3.1 delivery machine | `packages/types/services/contact.ts` · `PRODUCT_SPEC.md` §The Hiring Process |
 | **Asset**                  | `pending_upload → scanning → uploaded → archived → deleted`; `error` / `quarantined` (terminal-until-resolved off `scanning`) | `files.file_status` + `files.items.is_archived` / `deleted_at` · `database/files/Tables.md` |
 | **Share link**             | `active → expired` (time) / `revoked` (**terminal**); also `exhausted` (download limit) | `files.share_links` (`expires_at` / `revoked_at` / `download_limit`) · `database/files/Functions.md` |
 

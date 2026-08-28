@@ -36,6 +36,23 @@
 }
 
 /*
+ * NO aside, but still a floating sub-header.
+ *
+ * `--guest-body-inset-inline` reserves the aside's width plus both gutters, and the sub-header pins
+ * its inline-start to it. That is correct while an aside exists and wrong when one does not: the
+ * `/view` routes now render their own end-column lane in the page and decline the shell slot, so the
+ * band would have started ~296px in from the edge, reserving space for a panel that is not there.
+ *
+ * A shell that reserves room for chrome it did not construct is the same defect class as the focus
+ * chrome's hidden-but-still-tracked grid column (Part D.6) — stated here rather than left for the
+ * next route that supplies a header and no lane.
+ */
+.guest-shell[data-has-aside="false"] {
+	--guest-aside-cur-w: 0px;
+	--guest-body-inset-inline: var(--guest-inset);
+}
+
+/*
  * Lane routes switch to a flex column so the aside + body share a growing `.guest-shell__region` ABOVE
  * a full-width footer. The footer is a sibling of that region (GuestShell.tsx), so it spans the whole
  * window instead of inheriting the aside's inline gutter, and `min-block-size: 100dvh` (from `.site`) +
@@ -74,6 +91,13 @@
 	min-block-size: 0;
 	/* The lane content owns its OWN internal scroll (`.pf-lane__scroll`); the panel just clips + rounds. */
 	overflow: hidden;
+	/*
+	 * Scrollbar track for that inner scroll. `transparent`, not a surface tone: this panel's ground is
+	 * a `color-mix` veil painted on the `::before` underlay below, so an opaque track would draw a
+	 * visible seam down the lane's scroll edge — the one thing the veil exists to avoid. Inherited by
+	 * `.pf-lane__scroll` and anything else the route's lane mounts (`@projective/ui/styles`).
+	 */
+	--scrollbar-track: transparent;
 	/*
 	 * Glass veil + elevation, and NO four-sided contour. This panel genuinely floats over the scrolling
 	 * body, so a shadow is the honest device (§B.4: elevation means above, and here it is literally

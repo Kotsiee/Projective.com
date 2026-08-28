@@ -300,6 +300,70 @@ engagement, maintaining the historical data and communication thread.
 
 ---
 
+### The Entity View — the public evaluation & purchase surface
+
+`/view/[entity]` (and its profile-scoped twin `/[handle]/view/[item]`) is where a buyer decides. It
+is the destination of every Explore card, every profile tab item and every search result, and it is
+the last surface before money moves — so its job is to make an offer **legible, comparable and
+honest**, not to decorate it.
+
+**One page, five archetypes.** The listing's own delivery model decides which body renders; the
+buyer never chooses a "view mode". A **Pipeline** is progressive multi-stage delivery, funded and
+released stage by stage. A **One-Off** is a single deliverable against a fixed scope. A **1-on-1
+Session** is time booked in the provider's real availability. A **Group Session (cohort)** is a
+seated, scheduled cohort. A **Digital Product** is an instant-delivery artefact (templates, 3D
+assets, audio stems, video presets, code kits). Pricing is resolved from the same source as the card
+that linked here, so a listing can never quote two different prices in two places.
+
+**The transaction has exactly one home.** The contextual navigation lane carries the identity line,
+the price, the primary and secondary actions and the summary ledger; the main canvas carries only
+evaluation material. This is a product rule and not merely a layout preference: an offer stated
+twice on one screen is an offer that can disagree with itself, and a buyer who sees two prices has
+been given a reason to distrust both. Below the mobile breakpoint the lane is not rendered at all
+and the transaction is re-homed into the body — moved, never duplicated. The full render contract is
+[`DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md) §D.7–§D.8.
+
+**What every archetype must disclose before purchase.** These are business requirements, not
+presentation:
+
+- **The total the buyer will be charged, in their own currency**, with the creator's original
+  currency and the rate disclosed beside it — never a converted figure passed off as the price it
+  was set at (§Internationalization; `MoneyView` is the only component permitted to render money).
+- **The delivery commitment** — a turnaround window for a One-Off, the stage sequence and current
+  stage for a Pipeline, the actual bookable slot for a Session, the cohort start and cadence for a
+  Group Session, the file manifest for a Product.
+- **What is included and what is not** — the scope checklist, the revision count, and for a Digital
+  Product the **licence permissions in full**. A licence abbreviated to a label is not disclosed: a
+  buyer who cannot tell whether commercial use is included has not been told what they are buying.
+- **Where the money sits** — for every archetype that escrows, the escrow notice is part of the
+  offer, because "funds held in escrow" is the protection the platform charges for.
+- **Remaining capacity, where capacity is finite** — open seats on a cohort, open seats or roles on
+  a Pipeline stage. Stated as a number in words, so it survives being read aloud.
+
+**Trust signals are earned claims and are shown as such.** A seller's rating, response speed and
+availability render inline beside their identity with an explanation available on demand. They are
+never given the same visual weight as a lifecycle status, because a status is a fact about the
+listing and a trust signal is a summary of history — conflating them lets a promotional badge borrow
+the authority of a state.
+
+**Asking a question is not commissioning work.** Every listing offers a direct, top-of-funnel route
+to its seller — a first-contact inquiry that opens a conversation and creates **nothing else: no
+project, no stage, no ticket, no escrow hold**. A buyer asking "can you deliver this in French?" has
+not hired anyone, and a surface that turns that question into a project record is one that punishes
+people for asking. The conversation is a normal `messages` thread from the first word, so if the
+inquiry does convert, the history is already in the right place.
+
+Two rules follow, and both exist because the near-miss is easy:
+
+- **The composed message survives the trip.** Whatever the buyer typed is preserved across the
+  navigation into the inbox, and across a failed send. A composer that silently discards a message
+  loses precisely the thing the buyer produced, and it is the top of the funnel — the moment they
+  were most willing to engage.
+- **A signed-out visitor is asked to sign in BEFORE composing, not after.** Messaging is
+  authenticated, so letting a guest write a paragraph and then bouncing them to sign-in throws that
+  paragraph away. Bounce first, with a return path back to the listing.
+
+---
 ### Clients & Businesses
 
 While an individual can hire freelancers directly, the **Business** entity is designed for
@@ -1691,7 +1755,9 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `portfolio`              | Work portfolio items                                                                           |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
-|               | `/view/[entity type]`     | `index`                  | Public entity viewer                                                                           |
+|               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, five archetypes (Pipeline · One-Off · Session · Cohort · Digital Product) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
+|               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
+|               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 
 ---
 
@@ -1966,6 +2032,24 @@ Animations must be purposeful and subtle. Avoid "Cascading" or "Bounce" effects.
 - **Header Height (48px):** Fixed height for Guest and User headers.
 - **Sidebar Width (64px / 224px):** Collapsed (Icon-only) vs. Expanded (Full Label) states.
 - **Input Height (40px):** Standardized vertical height for all form controls.\
+
+### Composition rules (the anti-decoration contract)
+
+Three rules govern how a page is assembled, and each exists because its violation was found shipping.
+The enforceable detail lives in [`DESIGN_SYSTEM.md`](../design-system/DESIGN_SYSTEM.md); they are
+stated here because they are product positioning, not styling preference — Projective is a surface
+people trust with money, and visual noise reads as a lack of rigour.
+
+- **No card-in-card.** Static content — prose, stage breakdowns, scope lists, specification ledgers —
+  is never wrapped in a box, and boxes never nest. Separation is spacing first, then a solid tonal
+  step, then at most one hairline (§B.4, §B.9.7).
+- **No tagification.** A pill or chip means "you can act on this." Categories, skills, formats,
+  turnarounds and timestamps are not actionable, so they render as muted inline text separated by
+  middots. Containment is reserved for controls, lifecycle statuses, required disclosures and counts
+  (§B.11).
+- **Hierarchy before weight.** Four typographic registers — display, section header, body, meta —
+  each moving size, case and tracking together. A title is `500`, never `700`+; two adjacent elements
+  at `600`+ is a hierarchy failure (§A.4).
 
 ### Accessibility Compliance
 

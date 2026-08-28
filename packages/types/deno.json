@@ -18,6 +18,7 @@
 		"./messaging": "./messaging/mod.ts",
 		"./profile": "./profile/mod.ts",
 		"./scheduling": "./scheduling/mod.ts",
+		"./services": "./services/mod.ts",
 		"./logging": "./logging/mod.ts",
 		"./user": "./user/mod.ts",
 		"./workspace": "./workspace/mod.ts"

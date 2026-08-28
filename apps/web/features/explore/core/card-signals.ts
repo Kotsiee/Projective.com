@@ -63,8 +63,9 @@ export interface CardSignal {
 /** A helper rating this strong, over a sample this large, is the "Top rated" threshold. */
 const TOP_RATED_VALUE = 4.9;
 const TOP_RATED_MIN_SAMPLE = 20;
-/** Under an hour to first reply is the "Fast replies" threshold. */
-const FAST_REPLY_MINUTES = 60;
+/** Under an hour to first reply is the "Fast replies" threshold. Exported so the `/view` seller
+ * badges apply the same gate rather than a second, drifting copy of it. */
+export const FAST_REPLY_MINUTES = 60;
 /** Booking load under this is genuinely open for new work. */
 const AVAILABLE_LOAD = 60;
 

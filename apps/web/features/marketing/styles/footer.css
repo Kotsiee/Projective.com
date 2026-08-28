@@ -3,10 +3,18 @@
  * the guest shell (Explore, /view, /@handle, the landing page). It carries local `--lp-*` fallbacks so
  * it renders correctly outside the landing `.lp` token scope. Token-only, strict BEM; theme-adaptive
  * in light + dark via the shared surface/outline/on-surface tokens (no hardcoded palette). A
- * five-column masthead over a thin utility bar; the nav stacks are native `<details>` (mobile
- * accordions, force-open on desktop) and the newsletter is the only island. Non-interactive groups
- * separate by spacing + weight, never boxed (§B.4). Sits at the natural bottom of the window-scroll
- * layout — no fixed positioning.
+ * masthead + a secondary row over a thin utility bar; the nav stacks are native `<details>` (mobile
+ * accordions, force-open on desktop) and the newsletter + recently-viewed rail are the two islands.
+ * Non-interactive groups separate by spacing + weight, never boxed (§B.4). Sits at the natural bottom
+ * of the window-scroll layout — no fixed positioning.
+ *
+ * This sheet is the SOLE owner of the footer's responsive table. `landing.css` used to carry two
+ * unscoped `.lp-footer__inner` / `.lp-footer__nav` overrides at different breakpoints (768px and
+ * 560px), which meant the footer reflowed differently on `/` — same specificity, later in the cascade,
+ * so the landing sheet won wherever it loaded. Worse than the inconsistency: its 560px rule put the
+ * nav in TWO columns exactly where this sheet turns each group into a full-width accordion row, so the
+ * per-row hairlines ran down two half-width stacks. Both were deleted rather than duplicated here —
+ * one footer, one table.
  */
 
 .lp-footer {
@@ -21,15 +29,56 @@
 	color: var(--on-surface);
 	padding: clamp(3.5rem, 7vw, 6rem) var(--lp-pad-x) clamp(1.75rem, 3.5vw, 2.75rem);
 	border-block-start: 1px solid var(--lp-hair);
+	/*
+	 * Sink to the foot of whatever column holds it. Inside the authenticated shell the footer is the
+	 * last child of `.ui-page-canvas__body`, which is `display: flex; flex-direction: column` — so
+	 * without this it would default to `flex: 0 1 auto` and sit immediately under a short page's
+	 * content with the canvas's remaining height empty beneath it. `auto` resolves to 0 wherever the
+	 * parent is a plain block container (the guest `.site__main`) or already fills its track, so the
+	 * declaration is inert everywhere it is not needed rather than conditional on the shell.
+	 */
+	margin-block-start: auto;
 }
 
-/* #region Masthead grid */
+/* #region Masthead grid
+   Three tracks, two rows. Row 1 is the masthead (brand · quick-link stacks · newsletter); row 2 is
+   `.lp-footer__aux`, which spans them and re-uses the SAME track sizes so the onboarding stack
+   continues the brand lane and the recently-viewed rail continues the newsletter lane. Widening to
+   five tracks was the alternative and does not fit: at `--container-xl` (80rem) four gutters of
+   `clamp(2.5rem, 5vw, 5.5rem)` take ~22rem before a single word is set, which leaves each stack too
+   narrow to hold its links on one line. Rows cost vertical space, which a footer has; columns cost
+   measure, which it does not. */
 .lp-footer__inner {
 	display: grid;
 	grid-template-columns: 1.5fr 2.4fr 1.5fr;
 	gap: clamp(2.5rem, 5vw, 5.5rem);
 	max-inline-size: var(--container-xl);
 	margin-inline: auto;
+}
+
+/* Row 2. Separated from the masthead by the grid's own row gap and nothing else — §B.4's ladder
+   starts at spacing, and this footer already spends its one hairline above the utility bar.
+   The tracks are RESTATED rather than inherited via `subgrid`: subgrid would follow the masthead's
+   responsive changes for free, but only where it is supported, so the two breakpoint tables below
+   would each need a `@supports` twin. Three literal tracks and one table is the smaller thing to keep
+   in step, and the ratios are trivially the parent's. */
+.lp-footer__aux {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: 1.5fr 2.4fr 1.5fr;
+	gap: clamp(2.5rem, 5vw, 5.5rem);
+}
+
+/* Explicit placement, never implicit flow: "get set up" continues the brand lane, "recently viewed"
+   continues the newsletter lane, and the middle lane stays clear beneath the three link stacks. The
+   recently-viewed rail is absent entirely on a device with no history (it cannot SSR), so an implicit
+   placement would silently move the onboarding stack the moment the reader had opened something. */
+.lp-footer__setup {
+	grid-column: 1;
+}
+
+.lp-footer__recent {
+	grid-column: 3;
 }
 /* #endregion */
 
@@ -132,7 +181,9 @@
 	display: none;
 }
 
-.lp-footer__group-title {
+.lp-footer__group-title,
+.lp-footer__block-title {
+	display: block;
 	font-size: 0.8rem;
 	font-weight: 600;
 	letter-spacing: 0.1em;
@@ -450,11 +501,36 @@
 	.lp-footer__nav {
 		grid-column: 1 / -1;
 	}
+	/* Two tracks now, so the secondary row's blocks sit side by side and each states its own column
+	   — the recently-viewed rail is absent on a device with no history, and implicit flow would let
+	   the onboarding stack drift into whichever cell happened to be free. */
+	.lp-footer__aux {
+		grid-template-columns: 1fr 1fr;
+		gap: clamp(2rem, 5vw, 3rem);
+	}
+	.lp-footer__setup {
+		grid-column: 1;
+	}
+	.lp-footer__recent {
+		grid-column: 2;
+	}
 }
 
 @media (max-width: 640px) {
 	.lp-footer__inner {
 		grid-template-columns: 1fr;
+	}
+
+	/* One column: the two secondary blocks stack, and both are pinned to it explicitly for the same
+	   reason as above. The gap tightens to the section rhythm — at this width the masthead clamp is
+	   generous enough to read as a page break rather than a group separation. */
+	.lp-footer__aux {
+		grid-template-columns: 1fr;
+		gap: var(--space-7);
+	}
+	.lp-footer__setup,
+	.lp-footer__recent {
+		grid-column: 1;
 	}
 
 	/* The link stacks become real accordions: chevron shown, summary tappable, a hairline per row. */
@@ -478,7 +554,9 @@
 	.lp-footer__group[open] .lp-footer__group-chevron {
 		transform: rotate(180deg);
 	}
-	.lp-footer__links {
+	/* Scoped to the accordion: the secondary row's stacks are not `<details>` and still need the gap
+	   between their title and their first link. */
+	.lp-footer__group .lp-footer__links {
 		margin-block: 0 var(--space-4);
 	}
 

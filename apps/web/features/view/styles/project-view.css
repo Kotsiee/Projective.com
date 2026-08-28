@@ -53,10 +53,17 @@
 .vw-projhead__owner:hover {
 	background: var(--surface-2);
 }
+/*
+ * The crest sizes off the `--icon-*` ramp, like its twins on the profile surface. 0.9rem resolved to
+ * 14.4px — a fractional box half-pixels the stroke (§B.7.3), and this is the one mark on the header
+ * that has to look precise to mean anything. `--icon-sm` is the nearest step.
+ */
 .vw-projhead__verified {
-	inline-size: 0.9rem;
-	block-size: 0.9rem;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 	color: var(--primary);
+	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+	--icon-knockout: var(--on-primary);
 }
 .vw-projhead__dot {
 	inline-size: 3px;

@@ -157,3 +157,10 @@ INSERT INTO security.platform_params (key, value, description) VALUES
     ('finance_simulation_enabled', 'false'::jsonb,
         'When false (the default), finance.simulate_wallet_transaction refuses every call. When true it lets an authenticated caller move REAL balances between wallets they control, for ledger debugging. Fail-closed; flipping it is a human decision and must stay false wherever real money is held.')
 ON CONFLICT (key) DO NOTHING;
+
+
+-- from the service-booking pass (Add to Projects / the 30-day draft sweep)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('service_draft_idle_days', '30'::jsonb,
+        'Days of inactivity before an un-funded instantiated pipeline draft is soft-archived by projects.fn_archive_stale_service_drafts. Mirrored by DRAFT_IDLE_DAYS in @projective/types/services, which the interface reads to tell the buyer when their draft expires — the two must agree.')
+ON CONFLICT (key) DO NOTHING;

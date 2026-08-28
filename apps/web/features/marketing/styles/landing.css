@@ -588,14 +588,21 @@
 	background: var(--surface-2);
 	border-radius: var(--lp-r-lg);
 	overflow: clip;
-	transition:
-		transform var(--dur-medium) var(--spring-standard),
-		box-shadow var(--dur-medium) var(--ease-standard);
+	transition: background-color var(--dur-medium) var(--ease-standard);
 }
 
+/*
+ * Hover is a colour change and nothing else, matching `.ex-card`.
+ *
+ * This is a SEPARATE family — `.lp-card` is the landing page's own project tile, the one deliberate
+ * fork left when the other three marketing twins moved onto the shared `.ex-card` contract — but both
+ * render on `/`, in adjacent bands. Measured there: 20 `.ex-card` and 6 `.lp-card` on one page, one
+ * set rising and casting a shadow while the other only warmed. Two hover vocabularies a scroll apart
+ * is the inconsistency the shared contract exists to prevent, and a fork is not a licence to answer
+ * the same question two ways.
+ */
 .lp-card:hover {
-	transform: translateY(var(--card-hover-lift));
-	box-shadow: var(--elevation-high);
+	background: color-mix(in srgb, var(--on-surface) 6%, var(--surface-2));
 }
 
 /* The canonical two-tone focus composite (`theme-engine.ts`), not the legacy flat outline: no single
@@ -746,9 +753,11 @@
 		gap: var(--space-4);
 	}
 
-	.lp-footer__inner {
-		grid-template-columns: 1fr;
-	}
+	/* The footer's own responsive table lives in `footer.css` and is the only one — an unscoped
+	   `.lp-footer__inner` override sat here, which made the footer reflow at 768px on `/` and at 900px
+	   everywhere else, and a matching `.lp-footer__nav` rule below it broke the mobile accordion by
+	   splitting it into two columns. Do not reintroduce either: this sheet is landing-page scope, and
+	   the footer is shared by every public surface. */
 
 	.lp-masonry {
 		columns: 2 12rem;
@@ -767,10 +776,6 @@
 	   stays compact and the actions are always fully visible (Part 4). */
 	.lp-hero__inner--center .lp-hero__stats {
 		display: none;
-	}
-
-	.lp-footer__nav {
-		grid-template-columns: repeat(2, 1fr);
 	}
 
 	.lp-masonry {

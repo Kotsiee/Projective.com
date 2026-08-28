@@ -1538,8 +1538,33 @@ export function addItem(input: AddBasketItem, query: BasketQuery): MutationOutco
 	const stageId = input.stageId ?? null;
 	const quantity = input.quantity ?? 1;
 
+	/*
+	 * What makes two adds THE SAME LINE.
+	 *
+	 * For an untimed purchase it is `(itemType, itemId, stageId)`: two copies of a UI kit is one line
+	 * of quantity two, which is what a buyer means.
+	 *
+	 * For a TIMED one it is that plus the booked instant, and the difference is not cosmetic. A session
+	 * booked for Monday 14:00 and the same session booked for Thursday 10:00 are two distinct
+	 * commitments on two distinct dates. Merging them kept whichever `scheduledAt` was stored FIRST and
+	 * silently raised the quantity — so the buyer paid for two sittings and the basket named a time
+	 * neither of them had chosen. Measured on a real add: booking Mon 20 July 14:00 produced a line
+	 * reading 23 July, quantity 2.
+	 *
+	 * `needsSchedule` is the discriminator rather than "did this payload carry a `scheduledAt`", because
+	 * it is the SSOT's own statement about the kind (`itemKindMeta`) — a timed kind that arrived with a
+	 * null instant is a defect to be surfaced by the checkout's own gate, not a licence to merge it into
+	 * somebody else's booking.
+	 */
+	// Compared as epoch ms, which is what the STORED line carries (`scheduledAtMs`). Comparing the ISO
+	// strings would compare a string to `undefined` and match nothing, quietly restoring the very
+	// stacking this key exists to control — the same shape of mistake in the opposite direction.
+	const scheduledMs = meta.needsSchedule && input.scheduledAt
+		? Date.parse(input.scheduledAt)
+		: null;
 	const existing = liveLines(basket).find((l) =>
 		l.itemType === input.itemType && l.itemId === input.itemId && l.stageId === stageId &&
+		(!meta.needsSchedule || l.scheduledAtMs === scheduledMs) &&
 		!l.savedForLater
 	);
 	if (existing) {

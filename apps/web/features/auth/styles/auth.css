@@ -493,7 +493,6 @@ body:has(.auth) {
 	min-height: 0;
 	overflow-y: auto;
 	overflow-x: hidden;
-	scrollbar-width: thin;
 	/*
 	 * Focus / hover breathing room. This is a scroll container (overflow-y:auto forces overflow-x to
 	 * clip too), so focus rings, the active choice card's 2px ring + lift, and hover shadows would be

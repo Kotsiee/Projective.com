@@ -131,6 +131,47 @@ export type TicketPrice = z.infer<typeof TicketPriceSchema>;
 export const StageSeatKind = z.enum(["seats", "roles"]);
 export type StageSeatKind = z.infer<typeof StageSeatKind>;
 
+/**
+ * A stage's revision allowance — how many rounds are included, and what one costs after that.
+ *
+ * It sits on the STAGE rather than on the listing because a revision is scoped to a deliverable: a
+ * discovery stage and a production stage are revised against different acceptance criteria, and a
+ * seller who includes three rounds on the artwork does not thereby owe three rounds on the brief. The
+ * listing-level figure a seller declares is the DEFAULT every stage inherits; a stage may state its
+ * own without the two contradicting each other, because only the stage's is ever rendered.
+ *
+ * `extraPrice` reuses {@link TicketPriceSchema} verbatim — a revision is billed as a ticket, so
+ * forking a second money shape here would give the surface two ways to round the same amount.
+ */
+export const StageRevisionsSchema = z.object({
+	/** Rounds included at no extra cost. `0` means none are included, which is a real offer. */
+	free: z.number().int().min(0),
+	/** The per-round cost once the free allowance is spent. `min === max === 0` means free beyond it. */
+	extraPrice: TicketPriceSchema,
+});
+export type StageRevisions = z.infer<typeof StageRevisionsSchema>;
+
+/**
+ * Which of the three offers a revision allowance actually is.
+ *
+ * The two numbers interact, and reading them independently produces sentences that contradict
+ * themselves: "2 free revisions, then free" says the 2 means something when it does not. So the
+ * classification is made ONCE, here, and every surface that renders an allowance asks this rather than
+ * branching on the fields itself — the lane, the stage ledger and the listing's trust row would
+ * otherwise be three chances to describe one commitment differently.
+ *
+ * - `unlimited` — further rounds cost nothing, so the included count is irrelevant.
+ * - `included`  — N rounds are part of the price, and the ones after that are billed.
+ * - `metered`   — nothing is included; every round is billed.
+ */
+export type RevisionAllowanceKind = "unlimited" | "included" | "metered";
+
+/** Classify a stage's revision allowance. Pure and total. */
+export function revisionAllowanceKind(revisions: StageRevisions): RevisionAllowanceKind {
+	if (revisions.extraPrice.max <= 0) return "unlimited";
+	return revisions.free > 0 ? "included" : "metered";
+}
+
 /** One named open role in a stage's Open Roles structure — its title, open-seat count, and ticket price. */
 export const StageRoleSchema = z.object({
 	name: z.string(),
@@ -175,6 +216,11 @@ export const ProjectStageSchema = z.object({
 	turnaround: z.string().optional(),
 	/** A human dependency note (`After Discovery`) — the preceding stage this one follows. */
 	dependency: z.string().optional(),
+	/**
+	 * The stage's revision allowance (§Stages). Optional so a project pipeline that has never declared
+	 * one simply renders no revision row, rather than claiming zero included rounds.
+	 */
+	revisions: StageRevisionsSchema.optional(),
 });
 export type ProjectStage = z.infer<typeof ProjectStageSchema>;
 
@@ -376,8 +422,126 @@ export const ServiceViewSchema = z.object({
 	seatsPerSession: z.number().optional(),
 	/** Session / Group Session — a one-line summary of the booking format (duration · cadence). */
 	bookingSummary: z.string().optional(),
+	/**
+	 * How many sessions a single purchase commits to. `1` (or absent) is an ordinary Session; `> 1` is
+	 * a **set-session block** — a course or a multi-session package sold as one unit.
+	 *
+	 * Additive, and it is what lets the booking layer distinguish `service_session` from `set_session`
+	 * (both of which `finance.purchasable_item_kind` has always carried) WITHOUT adding a sixth member
+	 * to {@link ServiceModel}. That vocabulary is the five delivery models of Decision #45, documented
+	 * across four spec files and driving exhaustive `Record<ServiceType, …>` maps in the pricing,
+	 * query, catalogue and card layers; a block of six sessions is not a sixth way of delivering work,
+	 * it is a quantity of the fifth.
+	 *
+	 * Absent on every non-session model, where a count would be meaningless rather than one.
+	 */
+	sessionCount: z.number().int().min(1).max(52).optional(),
+	/**
+	 * Each session's length in minutes, from the provider's own service settings.
+	 *
+	 * The buyer never chooses it — `PRODUCT_SPEC.md` §Why Sessions are Fixed — so it is a property of
+	 * the listing rather than of the booking, and the slot picker derives its grid from it rather than
+	 * offering a duration control that would imply otherwise.
+	 */
+	sessionMinutes: z.number().int().min(5).max(600).optional(),
 });
 export type ServiceViewExtra = z.infer<typeof ServiceViewSchema>;
+// #endregion
+
+// #region Product view — format, file manifest, specification ledger, licence
+/**
+ * explore.view (products) — the extra composed data the **Digital Product** template renders on top
+ * of the base {@link EntityViewSchema}. Present only when `item.type` is `products`.
+ *
+ * A digital product is bought sight-unseen, so the specification ledger IS the offer: a buyer who
+ * cannot see the formats, the payload size, the host-application compatibility and the licence terms
+ * has not been told what they are purchasing. Every field here is therefore resolved SERVER-side and
+ * rendered as given — a client that derives a file manifest re-derives it differently the moment a
+ * fixture changes.
+ */
+
+/** The product format the template dispatches its live preview on. */
+export const ProductFormat = z.enum([
+	"template",
+	"asset-3d",
+	"audio",
+	"video-preset",
+	"code-kit",
+	"graphic",
+]);
+export type ProductFormat = z.infer<typeof ProductFormat>;
+
+/** One file in the delivered bundle. `bytes` is the UNCOMPRESSED payload — what the buyer unpacks. */
+export const ProductFileSchema = z.object({
+	/** Extension including the dot (`.blend`, `.wav`). */
+	extension: z.string(),
+	/** Human name for the format (`Blender scene`, `24-bit WAV stem`). */
+	label: z.string(),
+	/** Uncompressed size in bytes. */
+	bytes: z.number(),
+	/** Pre-formatted size (`412 MB`) — formatted once, server-side, so two surfaces cannot round differently. */
+	sizeLabel: z.string(),
+});
+export type ProductFile = z.infer<typeof ProductFileSchema>;
+
+/** One row in the key–value specification ledger (dimensions, sample rate, poly count, …). */
+export const ProductSpecSchema = z.object({ label: z.string(), value: z.string() });
+export type ProductSpec = z.infer<typeof ProductSpecSchema>;
+
+/** One host application the bundle is verified against, and the versions it covers. */
+export const ProductCompatSchema = z.object({ app: z.string(), versions: z.string() });
+export type ProductCompat = z.infer<typeof ProductCompatSchema>;
+
+/**
+ * A single licence permission, stated as an explicit allowed/denied pair rather than a list of only
+ * the things that are permitted. An omitted permission reads as an oversight; a denied one reads as a
+ * term, and the buyer needs to see the terms.
+ */
+export const ProductPermissionSchema = z.object({ label: z.string(), allowed: z.boolean() });
+export type ProductPermission = z.infer<typeof ProductPermissionSchema>;
+
+/** The licence attached to the sale — never abbreviated to a label, because it is a term of the sale. */
+export const ProductLicenceSchema = z.object({
+	name: z.string(),
+	summary: z.string(),
+	permissions: z.array(ProductPermissionSchema),
+});
+export type ProductLicence = z.infer<typeof ProductLicenceSchema>;
+
+/**
+ * The live artefact the 16:10 canvas plays, rather than a screenshot of it. `kind` selects the
+ * renderer; the remaining fields are populated per kind and the box itself never changes size, so
+ * switching product format causes no reflow.
+ */
+export const ProductPreviewSchema = z.object({
+	kind: z.enum(["image", "audio", "video", "code", "model"]),
+	src: z.string(),
+	poster: z.string().optional(),
+	/** audio: clip length + waveform envelope for `AudioVisualizer`. */
+	durationMs: z.number().optional(),
+	durationLabel: z.string().optional(),
+	peaks: z.array(z.number()).optional(),
+	/** code: the excerpt and its language hint. */
+	code: z.string().optional(),
+	language: z.string().optional(),
+});
+export type ProductPreview = z.infer<typeof ProductPreviewSchema>;
+
+/** The products-only extension bundle attached to {@link EntityViewSchema}. */
+export const ProductViewSchema = z.object({
+	format: ProductFormat,
+	/** Human format label (`3D asset`, `Audio stems`) — rendered as inline meta, never a chip (§B.11). */
+	formatLabel: z.string(),
+	files: z.array(ProductFileSchema),
+	/** Total uncompressed payload across `files`, summed server-side. */
+	payloadBytes: z.number(),
+	payloadLabel: z.string(),
+	specs: z.array(ProductSpecSchema),
+	compatibility: z.array(ProductCompatSchema),
+	licence: ProductLicenceSchema,
+	preview: ProductPreviewSchema.optional(),
+});
+export type ProductViewExtra = z.infer<typeof ProductViewSchema>;
 // #endregion
 
 // #region Composed page payload
@@ -391,6 +555,18 @@ export const EntityViewSchema = z.object({
 	gallery: z.array(EntityMediaSchema),
 	pricing: EntityPricingSchema,
 	trust: z.array(TrustFactSchema),
+	/**
+	 * The seller's median first-reply time, in MINUTES.
+	 *
+	 * The same datum the `response` trust fact prints as prose, carried as a number because the
+	 * conversion lane's "Fast replies" badge is a THRESHOLD and cannot be a string match — deriving a
+	 * gate from presentation text means a copy change silently retires the badge. One value, so the
+	 * badge and the trust row can never claim different response times.
+	 *
+	 * Optional: a listing whose owner has no measured reply history gets no badge rather than an
+	 * inferred one.
+	 */
+	responseMinutes: z.number().int().positive().optional(),
 	/** Deliverables / key specifications rendered in the right details column. */
 	deliverables: z.array(z.string()),
 	/** Other items by the same creator (the "More by …" rail). */
@@ -418,6 +594,13 @@ export const EntityViewSchema = z.object({
 	 * `item.type === "services"`. The custom Services template reads this.
 	 */
 	service: ServiceViewSchema.optional(),
+	/**
+	 * Products-only extension — the resolved format, file manifest, specification ledger, host
+	 * compatibility matrix and full licence terms. Present iff `item.type === "products"`. The Digital
+	 * Product template reads this; without it the template degrades to the media canvas and summary
+	 * rather than fabricating a manifest.
+	 */
+	product: ProductViewSchema.optional(),
 });
 export type EntityView = z.infer<typeof EntityViewSchema>;
 // #endregion

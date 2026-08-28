@@ -27,11 +27,52 @@ import { withCoordination } from "./coordination-fixtures.ts";
  * `scheduling.*` + the service's own recurrence rule) fills in behind the same gate.
  */
 
-function hostRules(): AvailabilityRule[] {
+/**
+ * The host's weekly bands — broad working hours, plus the narrower **call windows** the booking
+ * layer actually offers slots inside.
+ *
+ * Both kinds are emitted for the reason `availability_kind` exists at all (Decision #56): "I am at my
+ * desk" and "interrupt me" are different claims, and a slot builder handed only the broad band would
+ * publish the provider's whole working week as bookable by strangers. The seed varies which days
+ * open, so the rail always contains at least one working day with no slots on it — the state a picker
+ * that only ever sees full days will render wrongly.
+ */
+function hostRules(seed: number): AvailabilityRule[] {
 	const out: AvailabilityRule[] = [];
-	for (const wd of [1, 2, 3, 4, 5]) {
-		out.push({ weekday: wd, startMinute: 9 * 60, endMinute: 12 * 60 + 30, label: "Morning" });
-		out.push({ weekday: wd, startMinute: 13 * 60 + 30, endMinute: 18 * 60, label: "Afternoon" });
+	const workdays = [1, 2, 3, 4, 5];
+	for (const wd of workdays) {
+		out.push({
+			weekday: wd,
+			startMinute: 9 * 60,
+			endMinute: 12 * 60 + 30,
+			label: "Morning",
+			kind: "working_hours",
+		});
+		out.push({
+			weekday: wd,
+			startMinute: 13 * 60 + 30,
+			endMinute: 18 * 60,
+			label: "Afternoon",
+			kind: "working_hours",
+		});
+	}
+	const closedDay = workdays[seed % workdays.length];
+	for (const wd of workdays) {
+		if (wd === closedDay) continue;
+		out.push({
+			weekday: wd,
+			startMinute: 10 * 60,
+			endMinute: 12 * 60,
+			label: "Bookable",
+			kind: "call_window",
+		});
+		out.push({
+			weekday: wd,
+			startMinute: 14 * 60,
+			endMinute: 17 * 60,
+			label: "Bookable",
+			kind: "call_window",
+		});
 	}
 	return out;
 }
@@ -112,7 +153,7 @@ export function findSchedulePage(
 		timezone: tz,
 		ownerHandle: item.owner.handle,
 		viewerCanBook: true,
-		availability: { timezone: tz, rules: hostRules(), blackouts: [] },
+		availability: { timezone: tz, rules: hostRules(seed), blackouts: [] },
 		events: ordered.map((event) =>
 			withCoordination(event, {
 				surfaceKey: `schedule:${item.id}`,

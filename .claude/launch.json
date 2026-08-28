@@ -553,6 +553,54 @@
 				"--strictPort"
 			],
 			"port": 9773
+		},
+		{
+			"name": "web-exhome",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9873",
+				"--strictPort"
+			],
+			"port": 9873
+		},
+		{
+			"name": "web-booking",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9983",
+				"--strictPort"
+			],
+			"port": 9983
+		},
+		{
+			"name": "web-evp",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"9973",
+				"--strictPort"
+			],
+			"port": 9973
+		},
+		{
+			"name": "web-scrollbar",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10073",
+				"--strictPort"
+			],
+			"port": 10073
 		}
 	]
 }

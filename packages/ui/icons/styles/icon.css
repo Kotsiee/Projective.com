@@ -88,3 +88,26 @@
 	fill: currentColor;
 	stroke: none;
 }
+
+/*
+ * THE KNOCKOUT PART — the one sanctioned two-tone channel in the set.
+ *
+ * `data-filled` floods the WHOLE `<svg>`, every child, which is correct for a star or a bookmark and
+ * wrong for the one shape a badge is: a solid mark with a symbol cut out of it. Filling a verification
+ * crest that way turns its checkmark into a blob, because the check is an open polyline and filling an
+ * open path closes it.
+ *
+ * So a glyph may nominate exactly one part `data-knockout`. Filled, that part keeps its stroke and
+ * takes `--icon-knockout` — the colour of whatever the mark is sitting ON. Unfilled, the rule does not
+ * apply at all and the glyph is the ordinary outline, so the two states still cannot drift apart
+ * geometrically, which is the whole point of `data-filled` being an attribute.
+ *
+ * §B.7.6 ("no token reference inside a glyph") is preserved BY THE DIRECTION OF THE DEPENDENCY: the
+ * glyph declares only that a part is a knockout, and the CALL SITE says what colour the ground is.
+ * `--surface` is the default because that is what a mark on a page surface is cut out of; a crest on a
+ * `--primary` fill sets `--icon-knockout: var(--on-primary)` at its own call site.
+ */
+.ui-icon[data-filled="true"] [data-knockout] {
+	fill: none;
+	stroke: var(--icon-knockout, var(--surface));
+}

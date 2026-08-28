@@ -7,13 +7,13 @@
  */
 
 :root {
-	color-scheme: light dark;
+    color-scheme: light dark;
 }
 
 body {
-	margin: 0;
-	font-family: var(--font-sans, system-ui, sans-serif);
-	/*
+    margin: 0;
+    font-family: var(--font-sans, system-ui, sans-serif);
+    /*
 	 * The document's base size and leading. Both were previously unset, so every element that did not
 	 * declare its own inherited the UA defaults — and critically `line-height: normal`, which is about
 	 * 1.2 on a system sans. 1,080 of the repo's 1,372 font-size declarations (78.8%) have no sibling
@@ -24,81 +24,81 @@ body {
 	 * Setting them here makes the ~22 downstream line-height declarations deliberate overrides rather
 	 * than the only leading anyone gets.
 	 */
-	font-size: var(--text-base);
-	line-height: var(--leading-normal);
-	letter-spacing: var(--tracking-normal);
-	color: var(--on-surface);
-	background: var(--bg);
-	/* Long words, URLs and CJK strings wrap instead of forcing a horizontal scrollbar. */
-	overflow-wrap: break-word;
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    letter-spacing: var(--tracking-normal);
+    color: var(--on-surface);
+    background: var(--bg);
+    /* Long words, URLs and CJK strings wrap instead of forcing a horizontal scrollbar. */
+    overflow-wrap: break-word;
 }
 
 /* Signature corner-curve app frame (DESIGN_SYSTEM.md Part D.1). */
 .app-frame {
-	min-block-size: 100dvh;
-	padding: clamp(0px, 1vw, 12px);
-	box-sizing: border-box;
+    min-block-size: 100dvh;
+    padding: clamp(0px, 1vw, 12px);
+    box-sizing: border-box;
 }
 
 .app-frame__canvas {
-	min-block-size: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
-	border-radius: var(--radius-xl);
-	background: var(--surface);
-	overflow: clip;
+    min-block-size: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    overflow: clip;
 }
 
 /* Skeleton page body — replaced by real feature layouts. */
 .page {
-	padding: clamp(1rem, 4vw, 3rem);
+    padding: clamp(1rem, 4vw, 3rem);
 }
 
 .page__title {
-	margin: 0 0 var(--space-1);
-	/* `rem + vw`, never bare `vw`: a pure-viewport slope ignores the reader's font size everywhere
+    margin: 0 0 var(--space-1);
+    /* `rem + vw`, never bare `vw`: a pure-viewport slope ignores the reader's font size everywhere
 	   between the two bounds, so zooming or raising the browser's base size moves nothing. */
-	font-size: clamp(var(--text-2xl), 1.15rem + 1.6vw, 2rem);
-	line-height: var(--leading-tight);
-	letter-spacing: var(--tracking-tight);
-	text-wrap: balance;
+    font-size: clamp(var(--text-2xl), 1.15rem + 1.6vw, 2rem);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    text-wrap: balance;
 }
 
 .page__path {
-	margin: 0 0 var(--space-4);
-	color: var(--text-secondary);
-	font-size: var(--text-md);
+    margin: 0 0 var(--space-4);
+    color: var(--text-secondary);
+    font-size: var(--text-md);
 }
 
 .page__note {
-	color: var(--text-secondary);
-	/* Logical property: `max-width` is physical and §A.6 prohibits it. Harmless in a horizontal
+    color: var(--text-secondary);
+    /* Logical property: `max-width` is physical and §A.6 prohibits it. Harmless in a horizontal
 	   writing mode, but this is the global sheet authors copy the house pattern from. */
-	max-inline-size: var(--measure);
+    max-inline-size: var(--measure);
 }
 
 /* Shell brand slot + middle-nav lane (app-side chrome around @projective/ui/navigation). */
 .brand {
-	font-weight: var(--fw-bold);
-	letter-spacing: var(--tracking-tight);
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-tight);
 }
 
 .lane-nav {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	padding-block: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-block: var(--space-2);
 }
 
 /* Nested-theme scope wrapper (DesignSystemProvider, non-root). */
 .ds-scope {
-	display: contents;
+    display: contents;
 }
 
 /* Demo topbar hosting the theme toggle. */
 .app-frame__topbar {
-	display: flex;
-	justify-content: flex-end;
-	padding-block: var(--space-2);
-	padding-inline: clamp(1rem, 4vw, 3rem);
+    display: flex;
+    justify-content: flex-end;
+    padding-block: var(--space-2);
+    padding-inline: clamp(1rem, 4vw, 3rem);
 }
 
 /*
@@ -108,23 +108,102 @@ body {
  * fail loudly, not quietly render last year's palette.
  */
 .theme-toggle {
-	border: 1px solid var(--outline);
-	background: var(--surface-1);
-	color: var(--on-surface);
-	border-radius: var(--radius-base);
-	padding-block: var(--space-1);
-	padding-inline: var(--space-3);
-	font: inherit;
-	font-weight: var(--fw-medium);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    border: 1px solid var(--outline);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    border-radius: var(--radius-base);
+    padding-block: var(--space-1);
+    padding-inline: var(--space-3);
+    font: inherit;
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .theme-toggle:hover {
-	background: var(--surface-2);
+    background: var(--surface-2);
 }
 
 .theme-toggle:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: 2px;
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
 }
+
+/* #region Scrollbar tracks — app-side surface roots */
+/*
+ * The unified scrollbar lives in `@projective/ui/styles`: one always-visible 10px bar on the root
+ * document and on every inner scroll container, coloured from `--scrollbar-thumb` /
+ * `--scrollbar-thumb-hover` (theme engine) over `--scrollbar-track`. The TRACK is not a palette
+ * entry — it is whatever surface the scroller happens to sit on — so it is declared once at `:root`
+ * as `var(--bg)` and re-scoped on each container that establishes a surface. Custom properties
+ * inherit, so only the surface ROOT needs a rule and every scroller inside it follows.
+ *
+ * The package sheet scopes the `@projective/ui` primitives and the navigation shell. This block
+ * scopes the app's own hand-rolled overlays, which need it MORE rather than less: each one mounts
+ * through `BodyPortal` into `document.body`, so it hangs outside the shell entirely and would
+ * otherwise inherit the page ground `--bg` — a visibly darker (dark theme) or lighter (light theme)
+ * gutter running down a panel that is painted `--surface`. They are listed here, beside each other,
+ * rather than one line at a time across twelve feature sheets, because the contrast requirement is
+ * "the thumb clears 3:1 against EVERY track variant" and that is a claim you can only check against
+ * the whole set at once.
+ */
+.tagselect__menu,
+.evm__panel,
+.dev-log__list,
+.apk__panel,
+.fsh__panel,
+.drv__panel,
+.fx-modal__panel,
+.fx-modal__menu,
+.fx-modal__aside,
+.pcm__panel,
+.proj-stage-modal__panel,
+.proj-modifier__menu,
+.proj-combo__menu,
+.subm-modal__panel,
+.subm-confirm__panel,
+.subm-review__panel,
+.tkv__panel,
+.vw-lightbox__panel {
+    --scrollbar-track: var(--surface);
+}
+
+.evm__side,
+.dev-log__payload,
+.cko-rail,
+.tkv__side,
+/*
+ * The entity-view conversion rail. Decision #79 moved this lane OUT of the shell and into the page
+ * as its end column, so it hangs off neither `.ui-app-shell__content` nor `.ui-guest-aside` and was
+ * inheriting the page ground: a `--bg` gutter down the scroll edge of a panel painted `--surface-1`.
+ * Found by measuring the painted ground behind every scroller against its resolved track, not by
+ * reading the stylesheet — the rail's `overflow` is declared in `profile.css` (it reuses the
+ * `.pf-lane` skeleton) while its background is declared here, so no single-file audit sees both.
+ */
+.evp-lane__full,
+.evp-canvas__stage,
+.evp-canvas__code,
+.wsp-chart__card,
+.wlt-deck--expanded .wlt-deck__wrap,
+.vw-lightbox__stage {
+    --scrollbar-track: var(--surface-1);
+}
+
+.ex-actions__menu,
+.shv__stage,
+.site-header__entity-menu,
+.hero-search__menu {
+    --scrollbar-track: var(--surface-2);
+}
+
+/*
+ * Translucent chrome takes `transparent`, never a tone. The drawer's ground is a `color-mix` veil
+ * over whatever it is drawn on top of, so an opaque track would put a hard seam down its scroll edge
+ * in exactly the case the veil exists to avoid. The floating guest aside is scoped the same way in
+ * `features/shell/styles/guest-shell.css`, where its own veil is declared.
+ */
+.site-header__drawer {
+    --scrollbar-track: transparent;
+}
+
+/* #endregion */

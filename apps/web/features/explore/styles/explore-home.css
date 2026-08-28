@@ -1,0 +1,940 @@
+/*
+ * Explore Home — the above-the-fold block and the body's rail sections.
+ *
+ * Split out of `explore.css` because it is a LAYOUT sheet, not a card sheet: nothing here styles an
+ * item, and the card family it arranges is shared with `/view`, `/@handle` and the landing page,
+ * which do not want any of this. Pure CSS + strict BEM, token-only.
+ *
+ * DELIVERY: imported by `explore.css` (which the server-rendered `ExploreScreen` imports) AND by the
+ * Home islands. Both carriers are deliberate — a stylesheet reached only from a server component is
+ * hoisted into a shared chunk as soon as a second entry imports it, at which point the route's own
+ * CSS list silently drops it, because the manifest flattening in `vite.config.ts` is gated to the
+ * CLIENT consumer. An island import is the carrier that cannot be hoisted away.
+ */
+
+/* #region The above-the-fold block */
+/*
+ * THE FOLD — hero, category chips, and the Recommended panel, sized to the first screen.
+ *
+ * It is sized by CONSTRUCTION rather than by adding up guesses: a definite `block-size` and a
+ * `minmax(0, 1fr)` last row, so whatever is left after the hero and the chips is exactly what the
+ * Recommended panel gets, and the cards inside it shrink into it. Summing paddings and hoping is how
+ * a fold survives one viewport height and breaks at the next.
+ *
+ * ## DEVIATION from DESIGN_SYSTEM.md Part D, stated rather than hidden
+ *
+ * Part D says: "A surface that is meant to fit the screen fills its grid row; it does not re-derive
+ * one… rather than computing `100dvh` minus a guess at the chrome above and below. Those guesses
+ * cannot be made correct: a band's height is whatever the route mounts into it, and which bands exist
+ * changes per route." It also forbids such a surface carrying a `min-block-size` floor. This block
+ * does both, deliberately, for two reasons:
+ *
+ * 1. **The fill technique cannot express "the first screenful".** Its precedents (`.brd`, the calendar
+ *    surface) are the ENTIRE page — `flex: 1 1 0` down the canvas column works because nothing follows
+ *    them. This fold is followed by a long scrolling body, so a `1fr` basis would resolve to whatever
+ *    is left after that body, which is nothing.
+ * 2. **On this route the chrome is not a guess.** `/explore` mounts no middle-nav bands in either
+ *    shell — no lane, no header band, no footer band — so the space above is exactly the top bar in
+ *    the L-shell (whose content row IS `100dvh - --shell-topbar-h` by app-shell.css's own grid) and
+ *    exactly the reserved header band in the guest shell. The page never has to know which it is in:
+ *    the SHELL sets the token below, so the route contributes no guess at all. A route that later
+ *    mounted a band here would break this, which is precisely why the value is a token and not a
+ *    literal.
+ *
+ * The `min-block-size` floor is the escape valve, and the rule's stated objection to floors does not
+ * bite here: it warns that a floor taller than the region grows a scrollbar on a fit-to-screen PAGE.
+ * This page scrolls by design — there is a whole body beneath. The floor only decides whether a very
+ * short window gets crushed cards or one extra scroll, and one extra scroll is the better answer.
+ *
+ * The chrome height is a token the SHELL sets, so `.ui-app-shell__content .ex` (0,2,0) wins over the
+ * bare `.ex` (0,1,0) default without either selector knowing anything about the other's route.
+ */
+.ex {
+	--ex-fold-chrome: var(--site-header-h);
+}
+
+.ui-app-shell__content .ex {
+	--ex-fold-chrome: var(--shell-topbar-h);
+}
+
+.ex-fold {
+	display: grid;
+	/*
+	* `minmax(0, 1fr)`, not the implicit `auto` column. An `auto` track's automatic minimum is its
+	* content's MIN-content, so one wide child sets the width of the whole fold — measured at a 375px
+	* viewport, the hero's search bar (a fixed 44rem) pushed `.ex-fold` to 936px and `.site`'s
+	* `overflow-x: clip` then hid two thirds of it with no scrollbar to say so. Same failure the
+	* middle-nav frame had to fix on its own `1fr` content track.
+	*/
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto auto minmax(0, 1fr);
+	gap: var(--space-4);
+	block-size: calc(100dvh - var(--ex-fold-chrome));
+	min-block-size: 34rem;
+	padding-block-end: var(--space-4);
+	overflow: clip;
+}
+
+/*
+ * The fold's inner measure — shared by the chip bar and the Recommended panel so their leading edges
+ * line up with each other and with every section heading below the fold.
+ *
+ * FULL WIDTH: no `max-inline-size`. The page fills the main content area, which is already inset by
+ * whatever chrome the shell renders — the guest shell's page gutter, or the L-shell's rail and frame.
+ * Capping it a second time at `--container-xl` stranded up to 300px of the region on a wide screen
+ * while the shell was still reserving its own inset outside that, so the surface read as narrower than
+ * every other page in the product at exactly the width where it had the most to show.
+ */
+.ex-fold__inner {
+	inline-size: 100%;
+	padding-inline: var(--ex-pad-x);
+	box-sizing: border-box;
+	min-block-size: 0;
+}
+/* #endregion */
+
+/* #region Category chip bar */
+/*
+ * A single non-looping row of category chips with paging arrows and edge fades.
+ *
+ * The fade is a MASK, not a gradient overlay. An overlay has to know the colour behind it and would
+ * be wrong the moment the page ground changes; a mask dissolves the chips into whatever is actually
+ * there. The two sides are independent lengths driven by the island's boundary state, so the fade and
+ * its arrow disappear together at each end — an affordance for scrolling that persists when there is
+ * nothing left to scroll is a control that lies.
+ *
+ * Both are logical: the island reports "at start" / "at end" in reading order, and the RTL rule flips
+ * only the gradient's direction, because `mask-image` has no logical-direction keyword.
+ */
+/*
+ * Centred, and the centring lives on the OUTER row rather than on the scroller.
+ *
+ * `justify-content: center` on a scroll container is the classic trap: once the content overflows,
+ * the overflow is split across both ends and the first item becomes unreachable in several engines —
+ * you cannot scroll back past the start. Centring the row and letting the scroller shrink to its
+ * content (`flex: 0 1 auto`) gives the same result when the chips fit, and degrades correctly to a
+ * full-width scroller anchored at the start when they do not.
+ */
+.ex-chips {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ex-chips__scroller {
+	--ex-fade-w: 2.5rem;
+	--ex-fade-s: 0px;
+	--ex-fade-e: 0px;
+
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	overflow-x: auto;
+	overflow-y: hidden;
+	/*
+	* No `scroll-behavior: smooth` here. `pageScroll` already passes an explicit `behavior` and drops it
+	* to `auto` under `prefers-reduced-motion` — declaring smoothness in CSS as well would make EVERY
+	* programmatic scroll of this element animate, including the ones that have nothing to do with the
+	* arrows, and it would do so past the reduced-motion check the arrows honour.
+	*/
+	scroll-snap-type: x proximity;
+	scrollbar-width: none;
+	padding-block: var(--space-1);
+	-webkit-mask-image: linear-gradient(
+		to right,
+		transparent 0,
+		#000 var(--ex-fade-s),
+		#000 calc(100% - var(--ex-fade-e)),
+		transparent 100%
+	);
+	mask-image: linear-gradient(
+		to right,
+		transparent 0,
+		#000 var(--ex-fade-s),
+		#000 calc(100% - var(--ex-fade-e)),
+		transparent 100%
+	);
+}
+
+[dir="rtl"] .ex-chips__scroller {
+	-webkit-mask-image: linear-gradient(
+		to left,
+		transparent 0,
+		#000 var(--ex-fade-s),
+		#000 calc(100% - var(--ex-fade-e)),
+		transparent 100%
+	);
+	mask-image: linear-gradient(
+		to left,
+		transparent 0,
+		#000 var(--ex-fade-s),
+		#000 calc(100% - var(--ex-fade-e)),
+		transparent 100%
+	);
+}
+
+.ex-chips__scroller::-webkit-scrollbar {
+	display: none;
+}
+
+.ex-chips__scroller[data-at-start="false"] {
+	--ex-fade-s: var(--ex-fade-w);
+}
+
+.ex-chips__scroller[data-at-end="false"] {
+	--ex-fade-e: var(--ex-fade-w);
+}
+
+/*
+ * The chip itself — a subtle rounded rectangle, matching the tag family's corner rather than the
+ * `--radius-full` pill §B.8.4 reserves for floating controls.
+ *
+ * NO BORDER. §B.4 tier 5 licenses a full contour on an interactive element, but it licenses it as ONE
+ * device — and a solid tonal fill is already carrying this chip. Nine outlined boxes in a row read as
+ * a form; nine filled ones read as a set of choices, which is what they are. The fill is what changes
+ * on hover, so the interactive affordance is not lost with the outline.
+ */
+.ex-chip {
+	flex: 0 0 auto;
+	scroll-snap-align: start;
+	display: inline-flex;
+	align-items: center;
+	padding: var(--space-2) var(--space-4);
+	border: 0;
+	border-radius: var(--radius-base);
+	background: var(--ex-tag-bg);
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: 1.25;
+	white-space: nowrap;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-chip:hover {
+	background: color-mix(in srgb, var(--primary) 18%, var(--ex-tag-bg));
+}
+
+.ex-chip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The paging arrow. Shared by the chip bar and every rail section, so the reader learns one control.
+ * It is icon-only, so the accessible name lives on the button (§B.7.5), and it takes a real hit-target
+ * floor rather than the glyph's own box.
+ */
+.ex-railbtn {
+	flex: 0 0 auto;
+	display: inline-grid;
+	place-items: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: 1px solid var(--ex-hair);
+	border-radius: var(--radius-full);
+	background: none;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ex-railbtn:hover:not(:disabled) {
+	color: var(--on-surface);
+	border-color: var(--ex-hair-strong);
+}
+
+.ex-railbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * At a boundary the arrow is DISABLED, not removed. Removing it would reflow the header row every
+ * time the reader reached an end, moving the other arrow under their cursor mid-click.
+ */
+.ex-railbtn:disabled {
+	opacity: 0.32;
+	cursor: default;
+}
+
+/* The chip bar's arrows are the one place the brief asks for the control to disappear at a boundary —
+   there it is a scroll AFFORDANCE paired with the fade, and the two must agree. */
+.ex-chips .ex-railbtn:disabled {
+	visibility: hidden;
+}
+/* #endregion */
+
+/* #region Recommended panel (20 / 80) */
+/*
+ * A 20/80 split: a vertical stack of category toggles on the left, the selected category's rail on
+ * the right. The toggles are real fragment links, so the panel is navigable and shareable before any
+ * script runs; the island upgrades them to in-place switches.
+ *
+ * All four lists are rendered server-side and switched by CSS. That is what makes the first paint
+ * correct and the switch instant — a client-fetched panel would show an empty box for one round trip
+ * on the surface the reader lands on first.
+ */
+.ex-rec {
+	display: grid;
+	grid-template-columns: minmax(9rem, 20%) minmax(0, 1fr);
+	/*
+	* The head row is `auto`; the panel row takes everything else. Without this BOTH rows are auto, and
+	* because the grid has a definite height (`block-size: 100%` inside the fold's `minmax(0, 1fr)` row)
+	* `align-content: normal` stretches them EQUALLY — so half of every pixel saved anywhere else came
+	* straight back to the eyebrow. Measured: reducing the row gap alone made the head band 8px TALLER,
+	* not shorter, and left a 32px control row sitting inside a 102px band. With an explicit
+	* `minmax(0, 1fr)` on the panel the head collapses to its natural 32px and the cards take the ~70px
+	* that were being spent on air.
+	*/
+	grid-template-rows: auto minmax(0, 1fr);
+	/*
+	* Two gaps, not one. The column gap separates the toggles from the rail and wants room; the ROW gap
+	* only separates the "Recommended" eyebrow from the panel beneath it, and at `--space-5` it was
+	* spending 24px on a label that is already set apart by size, weight and colour — height the fold
+	* has to take out of the cards.
+	*/
+	gap: var(--space-2) var(--space-5);
+	min-inline-size: 0;
+	min-block-size: 0;
+	block-size: 100%;
+}
+
+.ex-rec__head {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+/* "Recommended" is a small muted label, not a heading that competes with the hero above it. */
+.ex-rec__label {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--on-surface-variant);
+}
+
+.ex-rec__nav {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/* The toggle column. */
+.ex-rec__tabs {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-inline-size: 0;
+}
+
+.ex-rec__tab {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-3);
+	border: 0;
+	border-radius: var(--radius-base);
+	background: none;
+	color: var(--on-surface-variant);
+	font: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-align: start;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-rec__tab:hover {
+	background: var(--ex-tag-bg);
+	color: var(--on-surface);
+}
+
+.ex-rec__tab:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The active toggle. Three redundant channels — a tonal fill, a heavier weight, and a full-contrast
+ * ink — so the state does not rest on colour alone (§A.5). `aria-current` is the hook rather than a
+ * class, because the attribute is the thing assistive tech reads and a class that could disagree with
+ * it is a second source of truth for one fact.
+ */
+.ex-rec__tab[aria-current="true"] {
+	background: color-mix(in srgb, var(--primary) 16%, transparent);
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+
+.ex-rec__tab-icon {
+	flex: 0 0 auto;
+	color: var(--on-surface-variant);
+}
+
+.ex-rec__tab[aria-current="true"] .ex-rec__tab-icon {
+	color: var(--primary);
+}
+
+.ex-rec__tab-label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * The right column. It holds all four tracks; exactly one is displayed, and each keeps its own scroll
+ * position — so a reader who scrolls into the products rail, looks at services, then comes back finds
+ * products where they left it rather than reset to the start.
+ */
+.ex-rec__stage {
+	min-inline-size: 0;
+	min-block-size: 0;
+	block-size: 100%;
+}
+
+/*
+ * `.ex-rec .ex-rec__panel`, not a bare `.ex-rec__panel`. A panel IS a `.ex-rail__track`, whose own
+ * `display: flex` is declared LATER in this sheet at the same (0,1,0) specificity — so a single-class
+ * `display: none` lost the cascade and every panel rendered at once, stacked. Measured: all four
+ * reported `display: flex`. The descendant selector puts the hide rule a class ahead of the track's
+ * layout, and the active rule an attribute ahead of that.
+ */
+.ex-rec .ex-rec__panel {
+	display: none;
+}
+
+.ex-rec[data-active="services"] [data-rec-panel="services"],
+.ex-rec[data-active="products"] [data-rec-panel="products"],
+.ex-rec[data-active="projects"] [data-rec-panel="projects"],
+.ex-rec[data-active="people"] [data-rec-panel="people"] {
+	display: flex;
+}
+/* #endregion */
+
+/* #region The rail — one horizontal section module, used by every Home section */
+.ex-rail {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	min-block-size: 0;
+}
+
+/*
+ * The header: title on the left, the scroll-progress bar through the middle, the paging arrows on the
+ * right. The arrows are deliberately OUT of the card area — an arrow floating over a card covers the
+ * thing the reader is trying to look at, and on touch it competes with the swipe it duplicates.
+ */
+.ex-rail__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.ex-rail__title {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.4rem);
+	line-height: 1.25;
+	letter-spacing: -0.015em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.ex-rail__titlelink {
+	color: inherit;
+	text-decoration: none;
+}
+
+.ex-rail__titlelink:hover .ex-rail__lead {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.ex-rail__titlelink:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-xs);
+}
+
+/* The category half — bold italic, the strong statement of what this row is. */
+.ex-rail__lead {
+	font-weight: var(--fw-bold);
+	font-style: italic;
+	color: var(--on-surface);
+}
+
+/* The qualifier half — regular weight, muted, so the eye reads the category first. */
+.ex-rail__tail {
+	font-weight: var(--fw-normal);
+	color: var(--on-surface-variant);
+}
+
+/*
+ * The progress separator. A hairline track through the middle of the header with a primary fill that
+ * tracks how far through the rail the reader has scrolled — so the header IS the separator the
+ * section needs (§B.4 tier 4, one device) rather than a rule plus an indicator.
+ *
+ * The fill's `inline-size` ENCODES the scroll position, so it carries no transition: a background tab
+ * freezes the animation clock and a transitioned width would then report a position the rail is not
+ * at. Motion in this codebase decorates `transform`/`opacity` and never the property carrying a value.
+ *
+ * `aria-hidden` on the track: the state it shows is already carried by the arrows' disabled state, and
+ * a progress bar announcing a percentage on every scroll tick is noise, not information.
+ */
+.ex-rail__progress {
+	flex: 1 1 auto;
+	min-inline-size: var(--space-6);
+	block-size: 3px;
+	border-radius: var(--radius-full);
+	background: var(--ex-hair-strong);
+	overflow: clip;
+}
+
+/*
+ * The fill is an explicit horizontal PRIMARY gradient — a deliberate exception to this codebase's
+ * usual flat-fill discipline, and the one place on the page a gradient earns its keep: the bar has no
+ * text, no edge and no shape of its own, so the ramp from faint to full IS the encoding of direction.
+ * A flat bar of one colour reads as a segment; a ramp reads as travel.
+ *
+ * `to right` is physical, so the RTL rule below flips it. A gradient has no logical-direction keyword,
+ * and reversing the stops is what keeps "faint at the start you came from, full at the end you reached"
+ * true in both reading directions.
+ */
+.ex-rail__progressfill {
+	display: block;
+	block-size: 100%;
+	inline-size: calc(var(--ex-rail-progress, 0) * 100%);
+	min-inline-size: 2px;
+	border-radius: inherit;
+	background: linear-gradient(
+		to right,
+		color-mix(in srgb, var(--primary) 30%, transparent) 0%,
+		color-mix(in srgb, var(--primary) 75%, transparent) 55%,
+		var(--primary) 100%
+	);
+}
+
+[dir="rtl"] .ex-rail__progressfill {
+	background: linear-gradient(
+		to left,
+		color-mix(in srgb, var(--primary) 30%, transparent) 0%,
+		color-mix(in srgb, var(--primary) 75%, transparent) 55%,
+		var(--primary) 100%
+	);
+}
+
+/* A rail that does not overflow has no progress to report, so the track is withheld entirely rather
+   than shown permanently full — a full bar and a bar with nothing to fill look identical. */
+.ex-rail[data-scrollable="false"] .ex-rail__progress {
+	visibility: hidden;
+}
+
+.ex-rail__nav {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/* The inline section search — currently the Articles section only. */
+.ex-rail__search {
+	flex: 0 1 14rem;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-3);
+	border: 1px solid var(--ex-hair);
+	border-radius: var(--radius-base);
+	background: var(--ex-tag-bg);
+	color: var(--on-surface-variant);
+}
+
+.ex-rail__search:focus-within {
+	border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+	color: var(--on-surface);
+}
+
+.ex-rail__search-input {
+	inline-size: 100%;
+	min-inline-size: 0;
+	border: 0;
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-sm);
+	line-height: 1.6;
+}
+
+.ex-rail__search-input:focus {
+	outline: none;
+}
+
+.ex-rail__search-input::placeholder {
+	color: var(--on-surface-variant);
+}
+
+/*
+ * The track. A native overflow scroller rather than a transform slider, because the drag-and-fling
+ * interaction the rails share writes `scrollLeft` directly — which is also what lets the progress
+ * bar stay in step during a fling with no second animation loop.
+ *
+ * The block padding is load-bearing: `overflow-x: auto` forces the block axis to `auto` too, so a
+ * card's hover lift and its ambient glow would be clipped without room reserved for them.
+ */
+.ex-rail__track {
+	--ex-cell-w: clamp(15rem, 21vw, 19rem);
+
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-4);
+	min-inline-size: 0;
+	min-block-size: 0;
+	margin: 0;
+	padding: var(--space-2) 0 var(--space-4);
+	list-style: none;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-snap-type: x proximity;
+	scroll-padding-inline-start: var(--space-1);
+	scrollbar-width: none;
+	cursor: grab;
+}
+
+.ex-rail__track::-webkit-scrollbar {
+	display: none;
+}
+
+/* `attachDragScroll` stamps this while a pointer drag is live. Snap and smooth scrolling both fight a
+   1:1 pan, so both come off for the duration. */
+.ex-rail__track.is-dragging {
+	cursor: grabbing;
+	scroll-snap-type: none;
+	scroll-behavior: auto;
+}
+
+/*
+ * THE UNIFORM-HEIGHT CONTRACT. Every cell in a rail is the same width and stretches to the same
+ * height, and the card inside already fills its cell on both axes — so a services rail, a mixed
+ * "continue" rail and a projects rail all produce one flat top edge and one flat bottom edge.
+ *
+ * Without the explicit width, a lean card shrinks to its min-content and strands the cell; without
+ * `align-items: stretch` on the track, a short card floats and the row develops a ragged base.
+ */
+.ex-rail__cell {
+	flex: 0 0 auto;
+	inline-size: var(--ex-cell-w);
+	min-inline-size: 0;
+	display: flex;
+	scroll-snap-align: start;
+}
+
+/*
+ * THE GRID VARIANT — a section laid out as a fixed 2×2 block instead of a scrolling track.
+ *
+ * It shares the rail's heading and its section rhythm and nothing else: no track, no snap, no
+ * `overflow`, so there is nothing to clip a card against and nothing to cut one off at the trailing
+ * edge. That last part is the reason the bleed rule below explicitly exempts it — the rail's
+ * negative trailing margin exists to let the NEXT card peek past the page gutter, and a grid has no
+ * next card to peek.
+ *
+ * Two columns hold at every width the section is legible at. Below the phone cusp they collapse to
+ * one, because a project card at ~167px is the failure Decision #74 had to add a container query to
+ * survive and there is no reason to reproduce it here.
+ */
+.ex-rail__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-4);
+	min-inline-size: 0;
+	padding-block: var(--space-2) var(--space-1);
+}
+
+.ex-rail__gridcell {
+	display: flex;
+	min-inline-size: 0;
+}
+
+/* Nothing to show. A rail that renders an empty track is a layout with a hole in it. */
+.ex-rail__empty {
+	padding: var(--space-5) 0;
+	color: var(--on-surface-variant);
+	font-size: var(--text-sm);
+}
+
+/*
+ * INSIDE THE FOLD the rail's height is whatever the grid has left over, so the cards have to be able
+ * to give way — otherwise a card at its natural height simply overflows and the fold clips it.
+ *
+ * The media keeps its aspect ratio as a PREFERRED size and is allowed to shrink below it
+ * (`flex: 0 1 auto` + `min-block-size: 0`, which together let a flex item compress past its
+ * aspect-derived basis); `object-fit: cover` on the image means compressing the frame crops rather
+ * than distorts. The cells also run narrower here than in the body, because the fold's rail is
+ * competing for height and a narrower card is a shorter one.
+ *
+ * Scoped to `.ex-fold` rather than to a rail modifier: the Recommended panel builds its own tracks
+ * rather than composing `HomeRail`, so a modifier on the rail component would miss the one place in
+ * the product where this is actually needed.
+ */
+.ex-fold .ex-rail__track {
+	--ex-cell-w: clamp(13rem, 18vw, 16rem);
+
+	flex: 1 1 auto;
+	block-size: 100%;
+	padding-block: var(--space-1) var(--space-3);
+}
+
+/*
+ * The MEDIA is the flexible band and the body is fixed — not the other way round.
+ *
+ * Measured: with `.ex-card__body` left free to grow and the media the only shrinkable item, the media
+ * resolved to **0px** on every card in the fold. Its `aspect-ratio` only ever supplies a PREFERRED
+ * size, and a preferred size loses to a sibling that is growing into the same free space. So the media
+ * takes the slack instead, with a floor so a tight viewport crops the picture rather than deleting it,
+ * and `object-fit: cover` on the image means growing or shrinking the frame re-crops rather than
+ * distorts.
+ */
+.ex-fold .ex-card__body,
+.ex-fold .ex-pcard__body {
+	flex: 0 0 auto;
+}
+
+.ex-fold .ex-media,
+.ex-fold .ex-pcard__banner {
+	flex: 1 1 auto;
+	min-block-size: 4.5rem;
+}
+
+/*
+ * COMPACT COPY FOR THE FOLD. Measured before this block existed: the card body's natural height
+ * (224px) plus the media's 72px floor came to 296px inside a 256px card, so the body overflowed by up
+ * to 48px and the fold's `overflow: clip` cut the PRICE off the bottom of every card. A compact card
+ * is not a normal card in a smaller box; it has to give something up.
+ *
+ * What it gives up, and why each is safe to lose here:
+ *  - One line of title. The full text is one click away and is printed whole in the card's accessible
+ *    name either way.
+ *  - The classification chip. The panel's own toggle already says which category the reader is
+ *    looking at, and for a service the delivery model survives in the price's unit — `/ ticket`,
+ *    `/ session`, `/ seat` say it more precisely than the chip did.
+ *  - The foot's generous top padding, which exists to separate the price from a long body it no
+ *    longer has.
+ * What it does NOT give up: the seller, the title, the rating and the price.
+ */
+.ex-fold .ex-card__body {
+	padding: var(--space-2);
+	gap: var(--space-2);
+}
+
+.ex-fold .ex-card__title {
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+}
+
+.ex-fold .ex-card__kindrow {
+	display: none;
+}
+
+.ex-fold .ex-card__foot {
+	padding-block-start: var(--space-1);
+}
+
+/*
+ * The profile card needs the same treatment and one more cut. It is the tallest card in the family —
+ * a banner, an overlapping avatar, a centred identity block, a two-line headline, a metadata line and
+ * a foot — and it was the one member still overflowing its compact box by a measured 17px.
+ *
+ * The metadata line goes. `location • languages` is the card's most qualifying fact and its least
+ * scannable: it is the reason a reader opens a profile, not the reason they pick it out of a row of
+ * eight, and it is the only band here that says nothing when both of its halves are missing.
+ */
+.ex-fold .ex-pcard__body {
+	padding: 0 var(--space-2) var(--space-2);
+	gap: var(--space-1);
+}
+
+.ex-fold .ex-pcard__headline {
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+	margin-block-start: var(--space-1);
+}
+
+.ex-fold .ex-pcard__meta {
+	display: none;
+}
+
+.ex-fold .ex-pcard__foot {
+	padding-block-start: var(--space-1);
+}
+
+/* The project card has no media to absorb the difference, so its variable field gives way instead. */
+.ex-fold .ex-proj__desc {
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+}
+/* #endregion */
+
+/* #region "Continue where you left off" */
+/*
+ * The one section that is offset toward the trailing edge. It is a re-entry point, not a discovery
+ * feed: it belongs to the reader rather than to the marketplace, and sitting it off the shared left
+ * edge every other section runs down is what says so before the words do.
+ *
+ * It renders only when the reader HAS a history. The store is per-device `localStorage` and cannot be
+ * read on the server, so this section paints nothing at all on the first byte and reveals after
+ * hydration — a "Continue where you left off" heading over an empty row would be claiming a history
+ * the reader does not have.
+ */
+.ex-continue {
+	margin-inline-start: auto;
+	/*
+	* A PROPORTION, not an absolute measure. `min(100%, 72rem)` was the first attempt and it produced no
+	* offset at all on an ordinary desktop: the authed shell's content region is ~1073px inside its
+	* padding, the cap never bound, and the section sat flush with every other one — measured 64px of
+	* gutter on both sides. The inset has to be relative to whatever width the section is actually given,
+	* because the offset IS the signal and a signal that only appears above 1152px is not a signal.
+	*/
+	max-inline-size: 88%;
+}
+
+.ex-continue .ex-rail__head {
+	justify-content: flex-end;
+}
+
+.ex-continue .ex-rail__title {
+	order: -1;
+	margin-inline-end: auto;
+}
+/* #endregion */
+
+/* #region Home body layout */
+.ex-home {
+	display: flex;
+	flex-direction: column;
+	gap: clamp(2rem, 3.5vw, 3.25rem);
+	padding-block: clamp(1.5rem, 3vw, 2.75rem);
+}
+
+/* Every section shares one measure — full width, page gutter only — so the headings and the first card
+   of every rail line up with each other and with the fold above them. */
+.ex-home__section {
+	inline-size: 100%;
+	padding-inline: var(--ex-pad-x);
+	box-sizing: border-box;
+	min-inline-size: 0;
+}
+
+/*
+ * A rail BLEEDS its trailing edge past the measure, so the next card is cut by the viewport rather
+ * than by a margin — that peek is the whole affordance that says "this row continues". A GRID has no
+ * next card and no scroll, so it takes none of this: bleeding it would push its second column under
+ * the page gutter and clip the card, which is the one thing a fixed grid must never do.
+ */
+.ex-home__section .ex-rail__track {
+	margin-inline-end: calc(var(--ex-pad-x) * -1);
+	padding-inline-end: var(--ex-pad-x);
+}
+/* #endregion */
+
+/* #region Responsive */
+/*
+ * Below the tablet cusp the fold gives up its guarantee. Three stacked regions cannot fit a phone
+ * screen without each of them becoming too small to use, and the honest outcome is a page that
+ * scrolls rather than a fold that technically fits and shows nothing.
+ */
+@media (max-width: 900px) {
+	.ex-fold {
+		block-size: auto;
+		min-block-size: 0;
+		overflow: visible;
+	}
+
+	.ex-rec {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-3);
+	}
+
+	/* The toggle column becomes a horizontal row — it is still a switch, just laid out along the axis
+	   that has room. */
+	.ex-rec__tabs {
+		flex-direction: row;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.ex-rec__tabs::-webkit-scrollbar {
+		display: none;
+	}
+
+	.ex-rec__tab {
+		inline-size: auto;
+		flex: 0 0 auto;
+	}
+
+	.ex-fold .ex-rail__track {
+		block-size: auto;
+	}
+
+	.ex-fold .ex-media,
+	.ex-fold .ex-pcard__banner {
+		flex: 0 0 auto;
+	}
+
+	.ex-continue {
+		max-inline-size: none;
+	}
+}
+
+@media (max-width: 767.98px) {
+	.ex-rail__track {
+		--ex-cell-w: min(78vw, 17rem);
+	}
+
+	/* One column. Half a phone width is not a project brief, it is a column of ellipses. */
+	.ex-rail__grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.ex-fold .ex-rail__track {
+		--ex-cell-w: min(72vw, 15rem);
+	}
+
+	/* The progress track needs room the phone header does not have; the arrows carry the state alone. */
+	.ex-rail__progress {
+		display: none;
+	}
+
+	.ex-rail__search {
+		flex-basis: 9rem;
+	}
+}
+/* #endregion */

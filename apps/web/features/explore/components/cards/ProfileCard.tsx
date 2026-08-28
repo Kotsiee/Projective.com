@@ -31,6 +31,13 @@ import type { ExploreItem, ProfileItem } from "../../types/explore-types.ts";
  * The centre-then-left break is deliberate: identity is a single focal object and centres under the
  * avatar, while the headline and metadata are running text that a reader scans down a shared left
  * edge. Centring those too would give the card no anchor line at all.
+ *
+ * The hover HIGHLIGHTS strip — four thumbnails of recent work, revealed on hover for freelancers and
+ * teams — has been removed. It was `aria-hidden` decoration, so it said nothing to assistive tech; it
+ * changed the card's height mid-hover inside a row of equalised cards; and it spent four image
+ * requests per card on pictures with no caption, no link, and no way for the reader to tell what they
+ * were looking at. The card's job is to make one profile comparable with the next, and the strip was
+ * the only part of it that appeared on some cards and not others.
  */
 export function ProfileCard(
 	{ item, ctx = { scope: "explore" }, onSelect, authed = false }: {
@@ -47,11 +54,12 @@ export function ProfileCard(
 	// One line, two facts, one separator — and the separator only appears when both sides exist, so a
 	// profile missing a location never renders a leading bullet.
 	const meta = [item.location, languages].filter(Boolean).join(" • ");
-	const isTeamLike = item.type === "teams" || item.type === "businesses";
 
 	return (
 		<article
 			class="ex-card ex-card--profile"
+			data-item-id={item.id}
+			data-item-type={item.type}
 			data-ambient-src={item.cover}
 			style={vars({ "--ex-accent": cardAccent(item.id) })}
 		>
@@ -123,19 +131,6 @@ export function ProfileCard(
 						</ul>
 					)}
 				</div>
-
-				{/* Freelancers and teams reveal a strip of top-rated work on hover; nothing else has one. */}
-				{!isTeamLike && item.highlights?.length
-					? (
-						<div class="ex-pcard__highlights" aria-hidden="true">
-							{item.highlights.slice(0, 4).map((src) => (
-								<span class="ex-pcard__thumb" key={src}>
-									<img src={src} alt="" loading="lazy" decoding="async" />
-								</span>
-							))}
-						</div>
-					)
-					: null}
 			</div>
 		</article>
 	);

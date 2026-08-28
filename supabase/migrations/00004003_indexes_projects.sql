@@ -25,3 +25,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_stage_assignment_active_assignee
         COALESCE(freelancer_profile_id, team_id)
     )
     WHERE status NOT IN ('released', 'cancelled', 'declined', 'completed');
+
+
+-- Service instantiation + the 30-day draft sweep.
+--
+-- The sweep scans for `(status = 'draft', source_blueprint_id NOT NULL, last_activity_at < cutoff)`
+-- daily, and the app resolves "does this buyer already have a draft for this listing?" on every
+-- listing-page render — which is the hot one, since it decides whether the primary CTA reads "Add to
+-- projects" or "Open project".
+--
+-- PARTIAL on `source_blueprint_id IS NOT NULL`: a project created from scratch is never in either
+-- query's scope, and the overwhelming majority of rows will be exactly that.
+CREATE INDEX IF NOT EXISTS idx_projects_source_blueprint
+    ON projects.projects (source_blueprint_id, owner_user_id, status)
+    WHERE source_blueprint_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_projects_stale_drafts
+    ON projects.projects (last_activity_at)
+    WHERE status = 'draft' AND source_blueprint_id IS NOT NULL;

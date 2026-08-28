@@ -496,10 +496,17 @@
 	white-space: nowrap;
 }
 
+/*
+ * On the ramp, not near it. 0.95rem resolves to 15.2px, and a fractional box half-pixels the crest's
+ * stroke on every device-pixel boundary it crosses (§B.7.3) — a mark whose whole job is to look
+ * authoritative rendered slightly soft. `--icon-sm` is 1rem, the nearest step.
+ */
 .pf-stickyhead__verified {
-	inline-size: 0.95rem;
-	block-size: 0.95rem;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 	color: var(--primary);
+	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+	--icon-knockout: var(--on-primary);
 }
 
 .pf-stickyhead__handle {
@@ -1070,6 +1077,8 @@
 	inline-size: var(--icon-sm);
 	block-size: var(--icon-sm);
 	color: var(--primary);
+	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+	--icon-knockout: var(--on-primary);
 	flex: none;
 }
 
@@ -1078,8 +1087,14 @@
 	background: var(--primary);
 }
 
+/*
+ * The architect chip inverts: the crest sits ON `--primary`, so the seal takes the chip's ink and the
+ * knockout has to become the chip's own fill. Without the second line the check would be cut out in
+ * `--on-primary` on a seal that is ALSO `--on-primary`, and the tick would vanish into the star.
+ */
 .pf-tier[data-tier="architect"] .pf-tier__mark {
 	color: var(--on-primary);
+	--icon-knockout: var(--primary);
 }
 
 .pf-tiers[data-size="sm"] .pf-tier {
@@ -1360,10 +1375,13 @@
 	font-weight: 600;
 }
 
+/* Same crest, same ramp step (§B.7.3): 0.9rem was 14.4px, an off-ramp fractional box. */
 .pf-clientcard__check {
-	inline-size: 0.9rem;
-	block-size: 0.9rem;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 	color: var(--primary);
+	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+	--icon-knockout: var(--on-primary);
 	flex: none;
 }
 

@@ -56,7 +56,13 @@
 	min-block-size: 0;
 	/* A rail is a fixed column of squares, so it scrolls inside itself rather than lengthening the frame. */
 	overflow-y: auto;
+	/* Both engines, not just Firefox: `scrollbar-width` alone left Chromium drawing the shared 10px bar
+	   down a 64px icon rail. Every sibling rail hides both. */
 	scrollbar-width: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .bsk-lane__rail::-webkit-scrollbar {
+	display: none;
 }
 
 /*

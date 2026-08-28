@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
 import { Avatar, Carousel } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import "../styles/profile.css";
 import { profileHref } from "@features/explore/core/routing.ts";
-import { ProfileIcon } from "../components/profile-glyphs.tsx";
 import type { NotableClient } from "../types/profile-types.ts";
 
 /**
@@ -28,7 +28,7 @@ function ClientCard(client: NotableClient): JSX.Element {
 			/>
 			<span class="pf-clientcard__name">
 				{client.name}
-				{client.verified ? <ProfileIcon name="verified" class="pf-clientcard__check" /> : null}
+				{client.verified ? <Icon name="verified" class="pf-clientcard__check" filled /> : null}
 			</span>
 		</>
 	);

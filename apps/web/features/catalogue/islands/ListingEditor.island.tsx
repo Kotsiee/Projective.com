@@ -100,6 +100,17 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 	const seats = useSignal(
 		initial.pricing.seatsPerSession ? String(initial.pricing.seatsPerSession) : "8",
 	);
+	/*
+	 * Revisions. Both seed from `?? ""` and NOT from `|| ""`: a declared `0` is a real, distinct offer
+	 * on each field — no rounds included, and further rounds free — and `||` would erase both back to
+	 * "not declared", which is what the corpus default then fills in.
+	 */
+	const freeRevisions = useSignal(
+		initial.pricing.freeRevisions !== null ? String(initial.pricing.freeRevisions) : "",
+	);
+	const extraRevision = useSignal(
+		initial.pricing.extraRevisionPrice !== null ? String(initial.pricing.extraRevisionPrice) : "",
+	);
 	const mediaUrl = useSignal("");
 	// Availability
 	const avWeekdays = useSignal<number[]>(initial.availability?.weekdays ?? [1, 2, 3, 4, 5]);
@@ -114,6 +125,16 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 	// #endregion
 
 	// #region Derived (preview detail + publish gate)
+	/**
+	 * Whether this listing delivers something a buyer can send back for another round.
+	 *
+	 * Every service model except the two SESSION ones: a sitting is consumed as it happens, so there is
+	 * no artefact to revise and no honest number to put in the field. A product is a finished download,
+	 * bought as-is.
+	 */
+	const revisable = isService && serviceType.value !== "Session" &&
+		serviceType.value !== "Group Session";
+
 	const pricing = useComputed<ListingPricing>(() => ({
 		amount: num(amount.value),
 		ticketPrice: isService && serviceType.value === "Pipeline" ? numOrNull(ticket.value) : null,
@@ -124,6 +145,16 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 		seatsPerSession: isService && serviceType.value === "Group Session"
 			? numOrNull(seats.value) ?? 8
 			: null,
+		/*
+		 * Only a service that actually DELIVERS something revisable carries an allowance. A sitting that
+		 * has already happened cannot be revised, so a Session listing publishes `null` rather than a
+		 * zero — the absence is the honest statement, and a zero would render as "0 included".
+		 *
+		 * `numOrNull` maps "" to null and "0" to 0, which is exactly the distinction these two fields
+		 * need to keep.
+		 */
+		freeRevisions: revisable ? numOrNull(freeRevisions.value) : null,
+		extraRevisionPrice: revisable ? numOrNull(extraRevision.value) : null,
 	}));
 
 	const availability = useComputed<ListingAvailability | null>(() => {
@@ -466,6 +497,36 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 										/>
 									</label>
 								)}
+							</div>
+						)}
+						{revisable && (
+							<div class="cat-field-row">
+								<label class="cat-field">
+									<span class="cat-field__label">Free revisions / stage</span>
+									<InputText
+										value={freeRevisions}
+										onValueChange={touch}
+										type="number"
+										block
+										placeholder="1"
+										aria-label="Free revisions per stage"
+									/>
+									<p class="cat-field__hint">Rounds included in every stage at no extra cost.</p>
+								</label>
+								<label class="cat-field">
+									<span class="cat-field__label">Extra revision ($)</span>
+									<InputText
+										value={extraRevision}
+										onValueChange={touch}
+										type="number"
+										block
+										placeholder="0"
+										aria-label="Cost of an additional revision"
+									/>
+									<p class="cat-field__hint">
+										What one further round costs. Enter 0 for unlimited revisions.
+									</p>
+								</label>
 							</div>
 						)}
 						{isService && (

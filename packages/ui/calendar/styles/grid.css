@@ -233,8 +233,7 @@
 }
 
 .cal-tg__scroll::-webkit-scrollbar {
-	inline-size: 0;
-	block-size: 0;
+	display: none;
 }
 
 /* Inset, because the scroller fills its region edge to edge and `.cal`'s `overflow: hidden` would

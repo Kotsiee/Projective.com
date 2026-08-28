@@ -35,7 +35,7 @@ export function ProjectCard(
 	const posted = postedLabel(item.createdAt);
 
 	return (
-		<article class="ex-card ex-card--project">
+		<article class="ex-card ex-card--project" data-item-id={item.id} data-item-type={item.type}>
 			<CardLink
 				item={item}
 				ctx={ctx}

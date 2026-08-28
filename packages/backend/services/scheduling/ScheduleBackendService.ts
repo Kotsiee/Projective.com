@@ -7,6 +7,7 @@ import {
 import { isReservedHandle } from "@projective/types/profile";
 import type {
 	AvailabilityParams,
+	BookableSlot,
 	CalendarEvent,
 	CalendarPage,
 	CalendarParams,
@@ -21,6 +22,8 @@ import type {
 	SchedulingSim,
 	SchedulingTarget,
 	SchedulingViewer,
+	SlotGrid,
+	SlotQuery,
 } from "@projective/types/scheduling";
 import {
 	ANONYMOUS_VIEWER,
@@ -28,6 +31,7 @@ import {
 	canReschedule,
 	eligibleVoterCount,
 	eventLiveStatus,
+	findSlot,
 	isEventParty,
 	isProposalOnBallot,
 	isRescheduleClosed,
@@ -46,6 +50,7 @@ import { findPersonalCalendarPage } from "./personal-fixtures.ts";
 import { availabilitySurfaceKey, findAvailabilityPage } from "./availability-fixtures.ts";
 import { findSchedulePage, scheduleSurfaceKey } from "./schedule-fixtures.ts";
 import { overlayKey, writeRescheduleOverlay, writeRsvpOverlay } from "./coordination-fixtures.ts";
+import { buildSlotGrid, type SlotGridInput } from "./slot-fixtures.ts";
 import { NOW } from "./derive.ts";
 
 /**
@@ -531,4 +536,104 @@ export class ScheduleBackendService {
 			? ok({ event: redactEventForViewer(after.event, viewer) })
 			: fail(500, { message: "The change was recorded but the event could not be re-read." });
 	}
+
+	/**
+	 * The **bookable slot grid** behind a session listing's Book modal and the discovery-call
+	 * handshake: a window of days in the VIEWER's zone, and the offerable start times inside each.
+	 *
+	 * It is derived from the very same {@link SchedulePage} the public schedule surface renders, so a
+	 * buyer who reads a free hour on the listing's calendar is offered that hour in the picker. Two
+	 * derivations of one provider's availability is precisely how those two views come to disagree,
+	 * and the disagreement is invisible until somebody books.
+	 *
+	 * **The grid discloses no more than the public schedule already does.** It reports that a time is
+	 * free or spoken for, never who has it — the `masked` projection of §Part 1.4 — so it is safe on a
+	 * guest-reachable listing page. Cohort occurrences report a seat COUNT, which is the one figure a
+	 * public group session may show precisely because it names nobody.
+	 *
+	 * `handle` grids ride {@link isProfileBackendLive} (the availability corpus); listing grids ride
+	 * {@link isExploreBackendLive}. Neither is a new gate: this read is a projection of data those two
+	 * already own.
+	 */
+	static slots(
+		query: SlotQuery,
+		input: Omit<SlotGridInput, "page" | "purpose" | "subjectId">,
+		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+		sim?: SchedulingSim,
+	): ServiceResult<{ grid: SlotGrid }> {
+		const page = query.purpose === "discovery_call"
+			? findAvailabilityPage(query.subjectId, viewer, sim)
+			: findSchedulePage(query.subjectId, viewer, sim);
+		if (!page) {
+			return fail(404, {
+				message: query.purpose === "discovery_call"
+					? `No profile found for "${query.subjectId}".`
+					: `No item found for id "${query.subjectId}".`,
+			});
+		}
+		return ok({
+			grid: buildSlotGrid(query, {
+				...input,
+				page,
+				purpose: query.purpose,
+				subjectId: query.subjectId,
+			}),
+		});
+	}
+
+	/**
+	 * Re-resolve one slot through the same reader the grid was drawn from, and answer whether it can
+	 * still be taken.
+	 *
+	 * Every write path calls this rather than trusting the instants a caller sends. That is the
+	 * {@link SchedulingTarget} rule applied to bookings, and it is load-bearing for the same reason: a
+	 * caller who supplies their own start time can address a slot outside the provider's call windows,
+	 * inside their blackout, or one somebody else already holds — none of which the reader would ever
+	 * have offered them.
+	 */
+	static resolveSlot(
+		query: SlotQuery,
+		input: Omit<SlotGridInput, "page" | "purpose" | "subjectId">,
+		slotId: string,
+		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+	): ServiceResult<{ slot: BookableSlot; grid: SlotGrid }> {
+		const read = ScheduleBackendService.slots(query, input, viewer);
+		if (!read.ok || !read.data) return fail(read.status, { message: read.message });
+		const grid = read.data.grid;
+		const slot = findSlot(grid, slotId);
+		if (!slot) {
+			return fail(409, {
+				message: "That time is no longer on this schedule. Pick another slot.",
+				errors: { slotId: "slot_unavailable" },
+			});
+		}
+		if (!slot.available) {
+			return fail(409, {
+				message: SLOT_REFUSAL_COPY[slot.reason ?? "slot_unavailable"] ??
+					"That time is no longer available.",
+				errors: { slotId: slot.reason ?? "slot_unavailable" },
+			});
+		}
+		return ok({ slot, grid });
+	}
 }
+
+/**
+ * The sentence a refused slot is explained with.
+ *
+ * Server-authored so the copy has ONE home: the picker's pre-flight check and the write's refusal
+ * must say the same thing, or a buyer is told two different reasons for one failure depending on how
+ * fast they clicked. Falls through to a neutral sentence for a reason this map has not been taught,
+ * which is a missing string rather than a missing explanation.
+ */
+const SLOT_REFUSAL_COPY: Partial<Record<string, string>> = {
+	taken: "Someone booked that time first. Pick another slot.",
+	past: "That time has already passed.",
+	blackout: "The provider is away then.",
+	slot_unavailable: "That time is no longer available.",
+	inside_minimum_notice: "That is too soon — this provider needs more notice.",
+	beyond_booking_horizon: "That is further ahead than this provider's calendar is open.",
+	outside_call_window: "The provider does not take bookings at that time.",
+	weekly_courtesy_cap_reached: "This provider has no free calls left this week.",
+	requester_in_cooldown: "You have had a free call with this provider recently. Try again later.",
+};

@@ -38,9 +38,31 @@ CREATE TABLE projects.projects (
   -- Folded (0311): protected-phase / Projective Unlock handover state.
   handover_unlocked_at timestamptz,
 
+  -- Service instantiation ("Add to Projects" on a Pipeline listing).
+  --
+  -- The blueprint this project was copied from, or NULL for one created from scratch. It is what
+  -- makes a repeated press idempotent — the app resolves an existing draft by (owner, blueprint)
+  -- rather than creating a second identical pipeline — and it is what the 30-day sweep scopes on, so
+  -- a project somebody built by hand is never in its reach.
+  source_blueprint_id uuid,
+
+  -- Last meaningful activity. Distinct from `updated_at`, which any write touches (a title fix, a
+  -- description tweak, a trigger): idleness has to mean "nothing has HAPPENED here", or the sweep
+  -- measures the wrong thing and spares a draft that was merely renamed.
+  last_activity_at timestamptz NOT NULL DEFAULT now(),
+
+  -- When the project was soft-archived. Nothing is hard-deleted (root CLAUDE.md §7), so this is the
+  -- audit half of `status = 'archived'`: the status says what, this says when.
+  archived_at timestamptz,
+
   CONSTRAINT projects_pkey PRIMARY KEY (id),
   CONSTRAINT projects_client_business_id_fkey FOREIGN KEY (client_business_id) REFERENCES org.business_profiles(id),
-  CONSTRAINT projects_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id)
+  CONSTRAINT projects_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id),
+  CONSTRAINT projects_source_blueprint_id_fkey FOREIGN KEY (source_blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
+  -- An archived project carries its timestamp, and a live one does not. Without this the two halves
+  -- can disagree, and the row then answers "is this archived?" differently depending on which column
+  -- the reader happens to look at.
+  CONSTRAINT ck_projects_archived_at CHECK ((status = 'archived') = (archived_at IS NOT NULL))
 );
 
 CREATE TABLE projects.project_stages (

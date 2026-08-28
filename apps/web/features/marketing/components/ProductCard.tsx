@@ -39,7 +39,9 @@ export function ProductCard({ product }: { product: ProductShowcase }): JSX.Elem
 				</div>
 				<div class="ex-card__foot">
 					<span />
-					<span class="ex-pricebadge">{product.price}</span>
+					<span class="ex-pricebadge">
+						<span class="ex-pricebadge__amount">{product.price}</span>
+					</span>
 				</div>
 			</div>
 		</article>

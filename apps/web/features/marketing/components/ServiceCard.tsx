@@ -45,7 +45,9 @@ export function ServiceCard({ service }: { service: ServiceShowcase }): JSX.Elem
 				</div>
 				<div class="ex-card__foot">
 					<span />
-					<span class="ex-pricebadge">{service.price}</span>
+					<span class="ex-pricebadge">
+						<span class="ex-pricebadge__amount">{service.price}</span>
+					</span>
 				</div>
 			</div>
 		</article>

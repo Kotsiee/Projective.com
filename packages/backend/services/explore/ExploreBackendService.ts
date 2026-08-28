@@ -1,6 +1,7 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isExploreBackendLive } from "../../core/supabase.ts";
 import {
+	allItems,
 	expandItems,
 	findItem as lookupItem,
 	getResults,
@@ -98,6 +99,26 @@ export class ExploreBackendService {
 		const item = lookupItem(id);
 		if (!item) return fail(404, { message: `No item found for id "${id}".` });
 		return ok({ item });
+	}
+
+	/**
+	 * Resolve a BATCH of ids in one pass — the "Continue where you left off" rail hands over the dozen
+	 * or so references it has stored, rather than issuing a dozen `item()` round trips.
+	 *
+	 * Two deliberate properties. Results come back **in the order the ids were given**: that order is
+	 * the reader's own recency, it is the only thing the stored list actually knows, and re-ranking it
+	 * here would silently rewrite their history into ours. And an id that resolves to nothing is simply
+	 * **omitted** rather than failing the batch: a stored reference goes stale the moment its listing
+	 * is unpublished, and one dead entry must not cost the reader the other eleven.
+	 */
+	static items(ids: string[]): ServiceResult<ExploreItem[]> {
+		const byId = new Map(allItems().map((it) => [it.id, it]));
+		const found: ExploreItem[] = [];
+		for (const id of ids) {
+			const item = byId.get(id);
+			if (item) found.push(item);
+		}
+		return ok(found);
 	}
 
 	/**

@@ -82,5 +82,18 @@ export interface HomeFeed {
 	sponsored: SponsoredSlot[];
 	helpArticles: HelpArticle[];
 	ctas: { freelancer: CtaBanner; team: CtaBanner };
+	/**
+	 * The Recommended panel's four ranked lists. Ranked by the SAME global quality heuristic the
+	 * search path's default sort uses — verified first, then rating/score — NOT by anything
+	 * per-viewer: `homeFeed()` takes no viewer argument and there is no view history on the server.
+	 * It is "recommended" in the sense of "what this marketplace would put forward", and the surface
+	 * must not imply otherwise.
+	 */
+	recommended: {
+		services: ServiceItem[];
+		products: ProductItem[];
+		projects: ProjectItem[];
+		people: ProfileItem[];
+	};
 }
 // #endregion
