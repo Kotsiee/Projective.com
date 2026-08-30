@@ -75,6 +75,31 @@ GRANT ALL ON TABLES TO authenticated;
 ALTER DEFAULT PRIVILEGES IN SCHEMA comms
 GRANT ALL ON SEQUENCES TO authenticated;
 
+-- TRUNCATE is not row-level, so RLS does not bound it. `GRANT ALL` above includes
+-- it, which means the policies added in 00002012 could be stepped around entirely:
+-- a caller who cannot SELECT one row of comms.dm_messages could still discard the
+-- whole table. Revoked here, and again from the default privileges so a table added
+-- tomorrow does not quietly re-acquire it.
+--
+-- Nothing in the application truncates as `authenticated`; truncation is a
+-- maintenance act and belongs to the service role, which is unaffected by this.
+--
+-- SCOPE, stated rather than assumed: the same `GRANT ALL` pattern is used for
+-- `org`, `public`, `files`, `projects`, `marketplace` and `reviews`, so the same
+-- reasoning applies to every one of them. Only `comms` is revoked here because
+-- that is the schema this change is about; the rest is recorded in
+-- documentation/architecture/READ_API_FINDINGS.md for a human to decide, since a
+-- platform-wide privilege change deserves its own review rather than riding along.
+
+REVOKE TRUNCATE ON ALL TABLES IN SCHEMA comms
+FROM
+    authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA comms
+REVOKE TRUNCATE ON TABLES
+FROM
+    authenticated;
+
 GRANT USAGE ON SCHEMA files TO anon, authenticated, service_role;
 
 GRANT ALL ON ALL TABLES IN SCHEMA files TO authenticated,

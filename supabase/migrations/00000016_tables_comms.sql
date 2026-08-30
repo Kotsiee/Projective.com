@@ -7,6 +7,12 @@
 --   * comms.notifications     += event-envelope columns + 3 constraints              (20260724090000)
 --   * comms.notification_prefs+= recurring quiet hours / digest / snooze cols + CHECKs (091000)
 --   * comms.device_tokens     += push registration columns                           (091000)
+-- Folded columns (audit gap-close):
+--   * comms.notification_prefs+= read_receipts, show_typing_indicator, sound, auto_responses_enabled
+--   * comms.dm_threads        += kind, title
+--   * comms.dm_participants   += last_read_at, is_starred, is_archived, is_muted, deleted_at
+-- New tables (audit gap-close): comms.auto_responses, comms.message_reactions, comms.message_pins,
+--   comms.message_favorites, comms.newsletter_subscriptions.
 -- =============================================================================================
 
 CREATE TABLE comms.notification_prefs (
@@ -28,6 +34,20 @@ CREATE TABLE comms.notification_prefs (
     muted_until timestamptz,
     locale text,
     escalate_after interval NOT NULL DEFAULT '15 minutes',
+    -- Messaging-surface preferences. They live here rather than on org.user_preferences because they
+    -- govern what this schema emits to OTHER people (a receipt, a typing ping, an automated reply) —
+    -- the same outbound-signalling concern the rest of this row already owns.
+    -- Both default true: the messaging UI has always shown receipts and typing, so a false default
+    -- would silently change behaviour for every existing user the moment the live path lands.
+    read_receipts boolean NOT NULL DEFAULT true,
+    show_typing_indicator boolean NOT NULL DEFAULT true,
+    -- Audible new-message cue. A client-side rendering choice, but stored so it follows the account
+    -- across devices like every other toggle in the Message Settings modal.
+    sound boolean NOT NULL DEFAULT true,
+    -- Master switch gating comms.auto_responses: a rule fires only when this AND the rule are on.
+    -- Kept as a separate switch (not "disable every rule") so a user can silence automation for a
+    -- fortnight without losing the rules they spent time writing.
+    auto_responses_enabled boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT notification_prefs_pkey PRIMARY KEY (user_id),
@@ -104,6 +124,13 @@ CREATE TABLE comms.notifications (
 
 CREATE TABLE comms.dm_threads (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
+    -- Not derivable from the participant count: a two-person group and a DM are structurally
+    -- identical rows, and an inbound service inquiry is a DM that opened for a commercial reason.
+    -- The inbox branches on this for the row avatar, the header sub-line and the Members tab.
+    kind comms.conversation_kind NOT NULL DEFAULT 'dm',
+    -- A group's name, which nothing else can supply. NULL for a DM, where the counterparty's own
+    -- name is the title — storing a copy there would go stale the moment they rename themselves.
+    title text,
     created_by_user_id uuid NOT NULL,
     created_at timestamp
     with
@@ -116,6 +143,20 @@ CREATE TABLE comms.dm_participants (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     thread_id uuid NOT NULL,
     user_id uuid NOT NULL,
+    -- Per-viewer conversation state. It belongs on the participant row, not the thread: two people
+    -- in one conversation star, mute and read it independently, so a thread-level column could only
+    -- ever record one of them. Until this existed the inbox kept all of it in localStorage, so it
+    -- did not survive a device change.
+    -- NULL = never opened, which is deliberately distinct from "opened and read nothing" — the
+    -- unread count is messages after this watermark, and a zero timestamp would fake a read.
+    last_read_at timestamptz,
+    is_starred boolean NOT NULL DEFAULT false,
+    is_archived boolean NOT NULL DEFAULT false,
+    is_muted boolean NOT NULL DEFAULT false,
+    -- Soft delete (root CLAUDE.md §5 — nothing is hard-deleted). Kept separate from is_archived
+    -- because the inbox row menu offers Archive and Delete as two different intents: folding them
+    -- together would make un-archiving resurrect a conversation the user meant to be rid of.
+    deleted_at timestamptz,
     joined_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
@@ -220,6 +261,82 @@ CREATE TABLE comms.message_attachments (
         CONSTRAINT message_attachments_pkey PRIMARY KEY (id),
         CONSTRAINT message_attachments_attachment_id_fkey FOREIGN KEY (attachment_id) REFERENCES files.items (id)
 );
+
+-- #region Message interactions — reactions, pins, favourites
+-- All three follow the (message_table, message_id) polymorphic convention comms.message_attachments
+-- already uses, so one table covers a project channel message and a DM alike. Like that table there
+-- is no FK on message_id: Postgres cannot point a single column at two parents, and splitting each
+-- of these into a project half and a DM half would double the tables and every query over them. The
+-- CHECK on message_table is what keeps the discriminator honest.
+--
+-- These are toggles, not records, so un-reacting / un-pinning / un-favouriting deletes the row. That
+-- is not the hard delete root CLAUDE.md section 5 forbids — no user-authored content is lost, the
+-- message itself is untouched, and keeping tombstones would make the natural uniqueness keys below
+-- unenforceable (you could never re-pin something you had once unpinned).
+
+CREATE TABLE comms.message_reactions (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    message_table text NOT NULL CHECK (
+        message_table IN (
+            'comms.project_messages',
+            'comms.dm_messages'
+        )
+    ),
+    message_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    -- The grapheme itself, not a shortcode: the feed renders exactly what was picked, and a
+    -- shortcode table would have to be kept in step with whatever emoji set the client ships.
+    emoji text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT message_reactions_pkey PRIMARY KEY (id),
+    CONSTRAINT message_reactions_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    -- One person, one instance of a given emoji: the chip count is COUNT(*) over this key and the
+    -- viewer mine flag is whether their own row exists, so a duplicate would inflate a number the
+    -- reader interprets as "how many people".
+    CONSTRAINT message_reactions_unique UNIQUE (message_table, message_id, user_id, emoji),
+    -- A bound, so this column cannot quietly become a second message body.
+    CONSTRAINT message_reactions_emoji_length CHECK (char_length(emoji) BETWEEN 1 AND 16)
+);
+
+CREATE TABLE comms.message_pins (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    message_table text NOT NULL CHECK (
+        message_table IN (
+            'comms.project_messages',
+            'comms.dm_messages'
+        )
+    ),
+    message_id uuid NOT NULL,
+    pinned_by_user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT message_pins_pkey PRIMARY KEY (id),
+    CONSTRAINT message_pins_pinned_by_user_id_fkey
+        FOREIGN KEY (pinned_by_user_id) REFERENCES org.users_public (user_id),
+    -- A pin is channel-wide, not per-viewer, so a message is either pinned or it is not. Two rows
+    -- would put the same message in the sticky banner twice.
+    CONSTRAINT message_pins_unique UNIQUE (message_table, message_id)
+);
+
+CREATE TABLE comms.message_favorites (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    message_table text NOT NULL CHECK (
+        message_table IN (
+            'comms.project_messages',
+            'comms.dm_messages'
+        )
+    ),
+    message_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT message_favorites_pkey PRIMARY KEY (id),
+    CONSTRAINT message_favorites_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    -- The favourite mark is private to one reader, which is why it is a separate table from the
+    -- channel-wide pin above and not a second column on it.
+    CONSTRAINT message_favorites_unique UNIQUE (user_id, message_table, message_id)
+);
+-- #endregion
 
 -- #region Notification engine — catalog (20260724090000_comms_notification_catalog.sql)
 CREATE TABLE comms.notification_types (
@@ -384,5 +501,90 @@ CREATE TABLE comms.channel_suppressions (
     CONSTRAINT channel_suppressions_source_event_id_fkey
         FOREIGN KEY (source_event_id) REFERENCES comms.delivery_events (id) ON DELETE SET NULL,
     CONSTRAINT channel_suppressions_channel_check CHECK (channel IN ('email', 'sms', 'push'))
+);
+-- #endregion
+
+-- #region Messaging automation — auto-responses
+CREATE TABLE comms.auto_responses (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    -- Per-rule switch, distinct from comms.notification_prefs.auto_responses_enabled: the master
+    -- switch silences every rule at once, this one retires a single rule without deleting it.
+    enabled boolean NOT NULL DEFAULT false,
+    name text NOT NULL,
+    trigger text NOT NULL,
+    -- Scope columns, each meaningful for exactly one trigger. The CHECK below makes every other
+    -- combination unrepresentable, so a rule can never claim to match a service while also carrying
+    -- a keyword the matcher would then have to guess about.
+    service_id uuid,
+    product_id uuid,
+    keyword text,
+    -- The reply body, sent verbatim when ai_assist is false.
+    message text NOT NULL,
+    -- Forward-looking: hand this rule to the AI assistant instead of sending the stored body as
+    -- written. Stored now so enabling the assistant later is a behaviour change, not a migration.
+    ai_assist boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT auto_responses_pkey PRIMARY KEY (id),
+    CONSTRAINT auto_responses_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT auto_responses_service_id_fkey
+        FOREIGN KEY (service_id) REFERENCES marketplace.service_blueprints (id) ON DELETE CASCADE,
+    CONSTRAINT auto_responses_trigger_check CHECK (trigger IN ('any', 'service', 'product', 'keyword')),
+    -- One trigger, one scope column populated. Without this a keyword rule with a NULL keyword is
+    -- storable and the matcher has no defined behaviour for it.
+    CONSTRAINT auto_responses_scope_check CHECK (
+        (trigger = 'any'     AND service_id IS NULL     AND product_id IS NULL     AND keyword IS NULL) OR
+        (trigger = 'service' AND service_id IS NOT NULL AND product_id IS NULL     AND keyword IS NULL) OR
+        (trigger = 'product' AND product_id IS NOT NULL AND service_id IS NULL     AND keyword IS NULL) OR
+        (trigger = 'keyword' AND keyword    IS NOT NULL AND service_id IS NULL     AND product_id IS NULL)
+    )
+);
+-- #endregion
+
+-- #region Newsletter opt-in
+-- The audit proposed a dedicated newsletter schema for this single table. It lives in comms instead:
+-- comms already owns every outbound-email concern on the platform (notification channels, delivery
+-- attempts, bounce/complaint suppressions in comms.channel_suppressions), and the seeded
+-- marketing.newsletter notification type in 00005010 routes through exactly that machinery. A
+-- fifteenth schema holding one table would put the subscriber list on the far side of a boundary
+-- from the suppression list that has to gate every send to it.
+-- FLAGGED for a human: this deviates from the audit proposal, and the Zod SSOT docblock in
+-- packages/types/newsletter/subscribe.ts still names newsletter.subscriptions as the target.
+CREATE TABLE comms.newsletter_subscriptions (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    -- Stored lowercase, and enforced, because the capture is public and anonymous: the address is
+    -- the only identity this row has, so two casings would mean two sends and two unsubscribe links
+    -- that each only work half the time.
+    email text NOT NULL,
+    -- Where the capture happened, matching NewsletterSource in packages/types/newsletter.
+    source text NOT NULL DEFAULT 'footer',
+    -- Nullable by design: the footer capture never requires an account, and linking one later must
+    -- not be a precondition for subscribing. ON DELETE SET NULL because closing an account is not
+    -- the same act as unsubscribing — the opt-in survives and stays honoured.
+    user_id uuid,
+    locale text,
+    -- Double opt-in. NULL means captured but unconfirmed, so a send-eligible row is exactly
+    -- (confirmed_at IS NOT NULL AND unsubscribed_at IS NULL) and neither state needs a boolean that
+    -- could end up contradicting its own timestamp.
+    confirmed_at timestamptz,
+    unsubscribed_at timestamptz,
+    unsubscribed_reason text,
+    -- The opaque handle carried in the confirm / unsubscribe link. One-click unsubscribe cannot ask
+    -- the reader to sign in first, so the link itself has to be the credential.
+    token uuid NOT NULL DEFAULT gen_random_uuid (),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT newsletter_subscriptions_pkey PRIMARY KEY (id),
+    CONSTRAINT newsletter_subscriptions_user_id_fkey
+        FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE SET NULL,
+    -- One row per address. A re-subscribe updates this row (clearing unsubscribed_at) rather than
+    -- inserting a second one, which is what lets the service answer alreadySubscribed truthfully
+    -- without leaking list membership through a differently shaped response.
+    CONSTRAINT newsletter_subscriptions_email_key UNIQUE (email),
+    CONSTRAINT newsletter_subscriptions_token_key UNIQUE (token),
+    CONSTRAINT newsletter_subscriptions_email_lowercase CHECK (email = lower(email)),
+    CONSTRAINT newsletter_subscriptions_source_check CHECK (source IN ('footer', 'landing', 'explore'))
 );
 -- #endregion

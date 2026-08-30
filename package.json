@@ -1,0 +1,31 @@
+{
+  "name": "projective",
+  "private": true,
+  "type": "module",
+  "//": [
+    "This project is Deno-native. There was no package.json before, so `npm run dev` did not exist —",
+    "the only entry point was `deno task dev`. This file adds the npm aliases and nothing else: every",
+    "script delegates straight to the matching Deno task, so the two entry points cannot drift and",
+    "`deno.json` stays the single place a command is actually defined.",
+    "",
+    "It declares NO dependencies on purpose. Deno 2 auto-detects a package.json and will install what",
+    "it lists; an empty one leaves module resolution exactly as it was (verified with `deno task check`",
+    "and the full 469-test suite both before and after adding it). Do not add dependencies here —",
+    "they belong in the `imports` map in deno.json.",
+    "",
+    "npm run dev       -> database  (USE_MOCKS=false)",
+    "npm run dev:mock  -> fixtures  (USE_MOCKS=true, overrides every per-domain gate)"
+  ],
+  "scripts": {
+    "dev": "deno task dev",
+    "dev:mock": "deno task dev:mock",
+    "build": "deno task build",
+    "start": "deno task start",
+    "preview": "deno task preview",
+    "check": "deno task check",
+    "lint": "deno task lint",
+    "test": "deno task test",
+    "data:where": "deno run --allow-env --allow-read packages/backend/core/data-source.ts",
+    "seed:generate": "deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts"
+  }
+}

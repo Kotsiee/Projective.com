@@ -3,6 +3,7 @@ import type { UserContext } from "@projective/types/auth";
 import ProjectStickyHeader from "@features/view/islands/ProjectStickyHeader.island.tsx";
 import ProjectPreviewTabs from "../islands/ProjectPreviewTabs.island.tsx";
 import { resolveProjectShowcase } from "./showcase-ssr.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * project-header-slot — the SSR-idiomatic resolver for the ROLE-BASED middle-nav header on the Project
@@ -23,7 +24,11 @@ import { resolveProjectShowcase } from "./showcase-ssr.ts";
  * Server-only (it reaches `@server/services` via {@link resolveProjectShowcase}); never imported by an
  * island.
  */
-export function projectHeaderFor(url: URL, context: UserContext): ComponentChildren {
+export async function projectHeaderFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean); // ["projects", slug, ...rest]
 	if (segs[0] !== "projects" || segs.length < 2 || segs[1] === "create") return null;
 
@@ -37,7 +42,7 @@ export function projectHeaderFor(url: URL, context: UserContext): ComponentChild
 		: null;
 	if (!mode) return null;
 
-	const { detail, showcase, viewerIsClient } = resolveProjectShowcase(slug, context);
+	const { detail, showcase, viewerIsClient } = await resolveProjectShowcase(slug, context, actor);
 	if (!detail || !showcase) return null;
 
 	if (viewerIsClient) {

@@ -2,6 +2,7 @@ import type { UserContext } from "@projective/types/auth";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import { buildProjectShowcase, type ProjectShowcase } from "./showcase-model.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * showcase-ssr — the SERVER-ONLY bootstrap for the `/projects/[projectId]` Preview body. It resolves
@@ -26,11 +27,12 @@ export interface ProjectShowcaseBootstrap {
 }
 
 /** Resolve the Project Preview showcase bootstrap for a routed slug + the acting user context. */
-export function resolveProjectShowcase(
+export async function resolveProjectShowcase(
 	slug: string,
 	_context: UserContext,
-): ProjectShowcaseBootstrap {
-	const res = ProjectBackendService.detail(slug);
+	actor: ReadActor,
+): Promise<ProjectShowcaseBootstrap> {
+	const res = await ProjectBackendService.detail(slug, actor);
 	const detail = res.ok && res.data ? res.data.detail : null;
 	return {
 		detail,

@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveMemberRoster } from "@web/features/projects/core/members-ssr.ts";
 import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Members tab — the channel/stage-scoped roster (`/projects/[projectId]/[channelId]/members`): the
@@ -11,8 +12,9 @@ import { MembersView } from "@web/features/projects/components/workspace-views.t
  * `MembersService` when the Dev Context Switcher changes. The channel header (with the active Members
  * tab) is mounted by the shell — this route renders only the workspace body.
  */
-export default define.page(function ChannelMembersPage(ctx) {
+export default define.page(async function ChannelMembersPage(ctx) {
+	const actor = readActor(ctx);
 	const { projectId, channelId } = ctx.params;
-	const { page } = resolveMemberRoster(projectId, channelId);
+	const { page } = await resolveMemberRoster(projectId, actor, channelId);
 	return <MembersView scope="channel" id={projectId} channelId={channelId} initial={page} />;
 });

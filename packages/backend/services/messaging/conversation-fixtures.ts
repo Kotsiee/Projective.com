@@ -8,6 +8,7 @@ import type {
 	ConversationSummary,
 	MessagingContact,
 } from "@projective/types/messaging";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * messaging conversation fixtures — the fat {@link MessagingBackendService}'s in-memory answer for the
@@ -22,7 +23,7 @@ import type {
 
 // #region Avatars (same Unsplash face crops as the projects corpus — identities stay consistent)
 const FACE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	mockAvatar(id);
 
 const MARA = FACE("photo-1494790108377-be9c29b29330");
 const DANIEL = FACE("photo-1500648767791-00dcc994a43e");
@@ -33,7 +34,7 @@ const OMAR = FACE("photo-1506794778202-cad84cf45f1d");
 const SOFIA = FACE("photo-1534528741775-53994a69daeb");
 const NOAH = FACE("photo-1531427186611-ecfd6d936c79");
 const GROUP =
-	"https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=96&h=96&q=80";
+	mockCover("photo-1522071820081-009f0129c71c", 96, 96);
 
 /** Entity ids shared with the projects corpus (`fixtures.ts`). */
 const TEAM_NORTHWIND = "t_northwind";

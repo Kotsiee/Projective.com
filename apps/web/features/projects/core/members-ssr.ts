@@ -1,5 +1,6 @@
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { MemberRosterPage } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * members-ssr — the server-only bootstrap for the Members roster's first paint. Calls the fat
@@ -13,10 +14,14 @@ export interface MemberRosterBootstrap {
 }
 
 /** Resolve the initial roster page. `channelId` unset → project scope (all participants). */
-export function resolveMemberRoster(
+export async function resolveMemberRoster(
 	projectId: string,
+	actor: ReadActor,
 	channelId?: string | null,
-): MemberRosterBootstrap {
-	const res = ProjectBackendService.members({ projectId, channelId: channelId ?? null });
+): Promise<MemberRosterBootstrap> {
+	const res = await ProjectBackendService.members(
+		{ projectId, channelId: channelId ?? null },
+		actor,
+	);
 	return { page: res.ok && res.data ? res.data.page : null };
 }

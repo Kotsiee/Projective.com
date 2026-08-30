@@ -1,6 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * detail-ssr — the SERVER-ONLY bootstrap the `(dashboard)` layout uses to paint the Project Details
@@ -19,7 +20,11 @@ export interface ProjectDetailBootstrap {
 }
 
 /** Resolve the Project Details sidebar bootstrap for a routed slug + the acting user context. */
-export function resolveProjectDetail(slug: string, _context: UserContext): ProjectDetailBootstrap {
-	const res = ProjectBackendService.detail(slug);
+export async function resolveProjectDetail(
+	slug: string,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ProjectDetailBootstrap> {
+	const res = await ProjectBackendService.detail(slug, actor);
 	return { detail: res.ok && res.data ? res.data.detail : null, slug };
 }

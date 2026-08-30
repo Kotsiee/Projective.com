@@ -26,7 +26,15 @@ import {
 	messageGroup,
 } from "../core/file-model.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
-import { filesZoom, gridColWidth, viewMode, zoom } from "../core/view-state.ts";
+import {
+	filesZoom,
+	gridColWidth,
+	listRowHeight,
+	listShowsThumbnails,
+	viewMode,
+	zoom,
+} from "../core/view-state.ts";
+import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { FileCard } from "../components/FileCard.tsx";
 import { FileTable } from "../components/FileTable.tsx";
 import { FileChannelTree } from "../components/FileChannelTree.tsx";
@@ -62,6 +70,9 @@ export interface FileExplorerProps {
 
 const GRID_GAP = 16;
 const CARD_META = 62;
+/** Placeholder extent floor/ceiling — enough to fill a viewport without drawing a whole corpus. */
+const SKELETON_MIN = 8;
+const SKELETON_MAX = 24;
 
 interface WorkspaceViewProps {
 	items: FileItem[];
@@ -73,14 +84,45 @@ interface WorkspaceViewProps {
 	onOpen: (file: AssetItem) => void;
 	onReachEnd: () => void;
 	loadingMore: boolean;
+	/** A refine has been pending long enough to be worth drawing (the delay gate, not the raw flag). */
+	loading: boolean;
+	/** How many placeholders to draw — the outgoing item count, so a refine redraws at that extent. */
+	skeletonCount: number;
 }
 
 /**
  * WorkspaceView — the zoom-reactive body (grid ⇄ list). It reads {@link viewMode}/{@link zoom} HERE
  * (not at the island root), so a `Ctrl`+wheel / slider tick confines its re-render to the workspace —
  * the toolbar, channels tree, and the mounted preview modal are left untouched.
+ *
+ * The loading placeholder lives here too, for the same reason: it is built from the very expressions
+ * that configure the real viewport below it (`gridColWidth(zoom)` · `listRowHeight(zoom)` ·
+ * {@link GRID_GAP} · {@link CARD_META}), so a cell or a row can never be a different size than the
+ * one about to replace it.
  */
 function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
+	if (p.loading) {
+		return viewMode.value === "grid"
+			? (
+				<ProjectSkeleton
+					shape="grid"
+					label="Loading files…"
+					count={p.skeletonCount}
+					colWidth={gridColWidth(zoom.value)}
+					gap={GRID_GAP}
+					metaHeight={CARD_META}
+				/>
+			)
+			: (
+				<ProjectSkeleton
+					shape="list"
+					label="Loading files…"
+					count={p.skeletonCount}
+					rowHeight={listRowHeight(zoom.value)}
+					thumbnails={listShowsThumbnails(zoom.value)}
+				/>
+			);
+	}
 	if (p.isEmpty) {
 		return (
 			<div class="fx-empty" role="status">
@@ -143,6 +185,12 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
 	const openId = useSignal<string | null>(null);
+	/**
+	 * The placeholder gate. `loading` still drives the empty-state suppression the moment a request
+	 * starts; this only decides whether the wait has been long enough to draw, so the stubbed backend
+	 * (which resolves within a tick) never strobes a skeleton on every debounced keystroke.
+	 */
+	const skeleton = useSkeletonDelay();
 
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
@@ -168,9 +216,15 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	async function reload(): Promise<void> {
 		const my = ++reqId.current;
 		loading.value = true;
+		skeleton.begin();
 		const res = await FilesService.list(baseParams(null));
+		// A superseded request leaves both flags alone: the request that replaced it owns them, and
+		// clearing here would drop the placeholder back to stale rows mid-flight.
 		if (my !== reqId.current) return;
 		loading.value = false;
+		// Cleared BEFORE the payload check, so a failed refine surfaces its stale rows again rather
+		// than leaving the placeholder up for the life of the page.
+		skeleton.end();
 		if (res.ok && res.data) {
 			const page = res.data.page;
 			items.value = page.items;
@@ -264,6 +318,8 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 			onOpen={open}
 			onReachEnd={loadMore}
 			loadingMore={loadingMore.value}
+			loading={skeleton.visible.value}
+			skeletonCount={Math.min(Math.max(items.value.length, SKELETON_MIN), SKELETON_MAX)}
 		/>
 	);
 

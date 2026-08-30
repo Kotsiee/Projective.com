@@ -11,6 +11,7 @@ import {
 	rowIndexOfMessage,
 } from "../core/message-model.ts";
 import { MessagesService } from "../core/MessagesService.ts";
+import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { MessageBubble } from "../components/MessageBubble.tsx";
 import { SystemMessage } from "../components/SystemMessage.tsx";
 import { PinnedBanner } from "../components/PinnedBanner.tsx";
@@ -61,6 +62,12 @@ export default function ChatFeed(
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const loadingOlder = useSignal(false);
+	/**
+	 * The placeholder gate, kept separate from {@link loadingOlder} on purpose: that flag is the
+	 * re-entrancy guard and has to flip the instant a fetch starts, while this one only decides
+	 * whether the wait has lasted long enough to be worth drawing.
+	 */
+	const skeleton = useSkeletonDelay();
 	const highlightId = useSignal<string | null>(null);
 	const canPin = initial?.permissions.canPin ?? false;
 	const total = initial?.total ?? 0;
@@ -94,6 +101,7 @@ export default function ChatFeed(
 	async function loadOlder(): Promise<void> {
 		if (loadingOlder.value || !hasMore.value || !cursor.value) return;
 		loadingOlder.value = true;
+		skeleton.begin();
 		const doc = document.scrollingElement ?? document.documentElement;
 		anchorRef.current = doc.scrollHeight;
 		try {
@@ -113,6 +121,7 @@ export default function ChatFeed(
 			anchorRef.current = null;
 		} finally {
 			loadingOlder.value = false;
+			skeleton.end();
 		}
 	}
 
@@ -229,10 +238,16 @@ export default function ChatFeed(
 
 			<div class="chat-feed__viewport" ref={viewportRef}>
 				<div class="chat-feed__sentinel" ref={sentinelRef} aria-hidden="true" />
-				{loadingOlder.value && (
-					<div class="chat-feed__older" role="status" aria-live="polite">
-						<span class="chat-feed__spinner" aria-hidden="true" />
-						<span class="ui-visually-hidden">Loading earlier messages…</span>
+				{
+					/*
+					 * `.chat-feed__older` is an absolutely-positioned, pointer-transparent overlay, so the
+					 * placeholder costs the stream no height: the document grows only by the prepended
+					 * messages, and the layout effect below re-anchors by exactly that delta.
+					 */
+				}
+				{skeleton.visible.value && (
+					<div class="chat-feed__older">
+						<ProjectSkeleton shape="chat" label="Loading earlier messages…" />
 					</div>
 				)}
 

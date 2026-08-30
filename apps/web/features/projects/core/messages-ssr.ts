@@ -1,5 +1,6 @@
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { MessagePage } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * messages-ssr — the SERVER-ONLY bootstrap the Chat tab uses to paint the message feed's first byte on
@@ -17,7 +18,11 @@ export interface MessageFeedBootstrap {
 }
 
 /** Resolve the latest message page for a channel (SSR first paint). */
-export function resolveMessageFeed(projectId: string, channelId: string): MessageFeedBootstrap {
-	const res = ProjectBackendService.messages({ projectId, channelId });
+export async function resolveMessageFeed(
+	projectId: string,
+	channelId: string,
+	actor: ReadActor,
+): Promise<MessageFeedBootstrap> {
+	const res = await ProjectBackendService.messages({ projectId, channelId }, actor);
 	return { page: res.ok && res.data ? res.data.page : null };
 }

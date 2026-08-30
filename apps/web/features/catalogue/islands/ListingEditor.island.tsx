@@ -40,6 +40,7 @@ import {
 	type UpdateListingInput,
 } from "../types/catalogue-types.ts";
 import { Icon } from "@projective/ui/icons";
+import { MOCK_SAMPLE_MEDIA } from "@web/utils/mock-assets.ts";
 
 /**
  * ListingEditor — the manage page BODY: the rich editor form (left) beside a LIVE preview rendering
@@ -65,11 +66,7 @@ const SAVE_DEBOUNCE_MS = 800;
 /** The Asset Picker routing key for listing media — one editor is open at a time. */
 const MEDIA_PICKER_ID = "catalogue-media";
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-const SAMPLE_MEDIA = [
-	"https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&h=600&q=72",
-	"https://images.unsplash.com/photo-1545235617-9465d2a55698?auto=format&fit=crop&w=800&h=600&q=72",
-	"https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?auto=format&fit=crop&w=800&h=600&q=72",
-];
+const SAMPLE_MEDIA = MOCK_SAMPLE_MEDIA;
 
 const num = (s: string): number => Number(s.replace(/[^0-9.]/g, "")) || 0;
 const numOrNull = (s: string): number | null => {

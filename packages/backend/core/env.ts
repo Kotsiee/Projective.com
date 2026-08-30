@@ -40,6 +40,27 @@ export interface ServerEnv {
 	/** Supabase service-role key — bypasses RLS; server-only, never sent to the client. */
 	supabaseServiceRoleKey: string | undefined;
 	/**
+	 * The MASTER mock switch, and the only flag that can override every other gate.
+	 *
+	 * `true` forces every domain to its fixture path regardless of that domain's own
+	 * `*_BACKEND_LIVE` value. `false` — the default — changes nothing: each domain follows its own
+	 * gate exactly as before, so an environment that never sets this behaves identically to one that
+	 * predates it.
+	 *
+	 * The direction is deliberate and one-way. It can only ever turn a database read OFF, never on.
+	 * A switch that could force a domain live would let one variable enable a half-wired mutation
+	 * against a real project, which is the exact failure the per-domain gates exist to prevent — so
+	 * this composes with them by AND, never by OR.
+	 *
+	 * Read from `USE_MOCKS`, or `VITE_USE_MOCKS` as an alias. The canonical name carries no prefix
+	 * because it is resolved SERVER-side: islands never read the environment (root CLAUDE.md §2), and
+	 * the fixture-vs-database decision is made in the fat service layer, so a client-exposed
+	 * `VITE_`/`NEXT_PUBLIC_` variable would advertise a choice the browser does not make. The alias is
+	 * accepted so a `VITE_USE_MOCKS` already set in a shell or CI job is honoured rather than silently
+	 * ignored.
+	 */
+	useMocks: boolean;
+	/**
 	 * Master switch for LIVE auth-backend behaviour. Defaults **off**: the fat services run their
 	 * safe stub paths until the real Supabase/GoTrue calls are implemented and verified, then flip
 	 * this to `true` per environment. Prevents half-wired queries from firing against a real project.
@@ -150,6 +171,7 @@ export function serverEnv(): ServerEnv {
 		supabaseUrl: firstEnv("SUPABASE_URL"),
 		supabaseAnonKey: firstEnv("SUPABASE_ANON_KEY"),
 		supabaseServiceRoleKey: firstEnv("SUPABASE_SERVICE_ROLE_KEY"),
+		useMocks: (firstEnv("USE_MOCKS", "VITE_USE_MOCKS") ?? "false").toLowerCase() === "true",
 		authBackendLive: (firstEnv("AUTH_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		exploreBackendLive: (firstEnv("EXPLORE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		newsletterBackendLive: (firstEnv("NEWSLETTER_BACKEND_LIVE") ?? "false").toLowerCase() ===

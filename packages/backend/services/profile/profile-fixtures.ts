@@ -23,6 +23,7 @@ import {
 	USERS,
 } from "../explore/fixtures.ts";
 import { resolveSkills } from "../explore/skills.ts";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * profile fixtures — the fat {@link ProfileBackendService}'s in-memory answer for a public profile
@@ -57,11 +58,11 @@ function pick<T>(pool: readonly T[], n: number, seed: number): T[] {
 }
 
 function unsplash(id: string, w: number, h: number): string {
-	return `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&h=${h}&q=75`;
+	return mockCover(id, w, h, 75);
 }
 
 function face(id: string): string {
-	return `https://images.unsplash.com/photo-${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	return mockAvatar(id);
 }
 // #endregion
 

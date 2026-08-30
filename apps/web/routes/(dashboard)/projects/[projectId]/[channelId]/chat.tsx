@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveMessageFeed } from "@web/features/projects/core/messages-ssr.ts";
 import ChatFeed from "@web/features/projects/islands/ChatFeed.island.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Chat tab — the default channel view (`/projects/[projectId]/[channelId]/chat`, and the bare index).
@@ -10,8 +11,9 @@ import ChatFeed from "@web/features/projects/islands/ChatFeed.island.tsx";
  * {@link ChatComposer} is the middle-nav frame's sticky footer band (Decision #31), not part of this
  * body, so the stream scrolls unhindered beneath it.
  */
-export default define.page(function ChannelChatPage(ctx) {
+export default define.page(async function ChannelChatPage(ctx) {
+	const actor = readActor(ctx);
 	const { projectId, channelId } = ctx.params;
-	const { page } = resolveMessageFeed(projectId, channelId);
+	const { page } = await resolveMessageFeed(projectId, channelId, actor);
 	return <ChatFeed projectId={projectId} channelId={channelId} initial={page} />;
 });

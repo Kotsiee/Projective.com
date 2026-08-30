@@ -28,6 +28,7 @@ import {
 import { messageAttachmentFacets } from "@projective/types/files";
 import type { ContextType } from "@projective/types/auth";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { mockCover } from "../../mocks/assets.ts";
 
 /**
  * projects board fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Kanban
@@ -268,7 +269,7 @@ const FILE_NAMES: readonly { name: string; ext: string; kind: string; category: 
 ];
 
 const UNSPLASH =
-	"https://images.unsplash.com/photo-1558655146-9f40138edfeb?auto=format&fit=crop&w=600&q=60";
+	mockCover("photo-1558655146-9f40138edfeb", 600, undefined, 60);
 
 /** A deterministic {@link FileItem} for a ticket attachment or a submitted deliverable. */
 function makeFile(

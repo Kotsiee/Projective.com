@@ -9,6 +9,7 @@ import type {
 	ProjectViewExtra,
 	TicketPrice,
 } from "@projective/types/explore";
+import { mockCover } from "@web/utils/mock-assets.ts";
 
 /**
  * showcase-model — the PURE (client-safe, no `@server`) adapter that projects a deep
@@ -53,7 +54,7 @@ const BANNERS = [
 function bannerFor(detail: ProjectDetail): string {
 	if (detail.bannerImage) return detail.bannerImage;
 	const id = BANNERS[hash(detail.slug) % BANNERS.length];
-	return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1600&h=460&q=80`;
+	return mockCover(id, 1600, 460);
 }
 
 /** URL-safe slug fallback when a party carries no `@handle`. */

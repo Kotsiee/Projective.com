@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { resolveConversationRoster } from "@web/features/messaging/core/conversations-ssr.ts";
 import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
 import { ConversationNotFound } from "@web/features/messaging/components/ConversationNotFound.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Members tab — the conversation participants (`/messages/[conversationId]/members`). Resolves the
@@ -10,9 +11,10 @@ import { ConversationNotFound } from "@web/features/messaging/components/Convers
  * gets the identical table, avatar stacks, role tags, and management actions rather than a lookalike
  * list. A conversation has no stages and no invitation queue, so those columns simply stay empty.
  */
-export default define.page(function ConversationMembersPage(ctx) {
+export default define.page(async function ConversationMembersPage(ctx) {
+	const actor = readActor(ctx);
 	const { conversationId } = ctx.params;
-	const page = resolveConversationRoster(conversationId);
+	const page = await resolveConversationRoster(conversationId, actor);
 	if (!page) return <ConversationNotFound />;
 	return (
 		<MembersView

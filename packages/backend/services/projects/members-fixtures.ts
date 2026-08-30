@@ -12,6 +12,7 @@ import type {
 	StageAssignment,
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
  * projects members fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Members
@@ -35,7 +36,7 @@ const NOW = Date.parse("2026-07-17T16:20:00.000Z");
 const DAY = 86_400_000;
 
 const FACE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	mockAvatar(id);
 
 /**
  * A supporting cast that fills the roster out so EVERY role badge is demonstrable on any engagement

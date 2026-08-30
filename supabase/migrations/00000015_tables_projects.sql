@@ -13,7 +13,30 @@ CREATE TABLE projects.projects (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   client_business_id uuid,
   owner_user_id uuid NOT NULL,
+
+  -- The workspace an engagement is filed under — together these resolve `ProjectSummary.scopeType`
+  -- / `scopeId`, which the feed groups and filters on. Personal scope is the ABSENCE of all three:
+  -- `owner_user_id` alone answers it, so there is no fourth column and no sentinel row to keep in
+  -- step. A Team is the seller-side workspace (a Team is a Freelancer with multiple members); an
+  -- Organisation is a buyer-side one (Organisations are client-only). They are separate typed
+  -- columns rather than one polymorphic (scope_type, scope_id) pair because a pair cannot carry a
+  -- foreign key, and an owning workspace that has been deleted is exactly the dangling reference
+  -- this schema should refuse rather than discover at read time.
+  owner_team_id uuid,
+  owner_organisation_id uuid,
+
   title text NOT NULL,
+
+  -- The public address. Every /projects route resolves an engagement by SLUG, never by uuid — the
+  -- route tree is /projects/[projectId] where projectId IS this value — so it is globally unique
+  -- rather than unique per owner: the URL carries no scope segment with which to disambiguate two
+  -- identical slugs.
+  --
+  -- NOT NULL with a generated fallback, rather than NOT NULL bare, because `projects.create_project`
+  -- inserts without one; a bare NOT NULL would make that RPC fail at runtime, and a nullable slug
+  -- would let a project exist with no address at all. The application overwrites this with the
+  -- readable title-derived form — the fallback only guarantees the addressable-ness, not the prose.
+  slug text NOT NULL DEFAULT ('p-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
   description jsonb NOT NULL DEFAULT '{}'::jsonb,
   description_text text NOT NULL DEFAULT ''::text,
   format project_format NOT NULL DEFAULT 'pipeline'::project_format,
@@ -58,11 +81,20 @@ CREATE TABLE projects.projects (
   CONSTRAINT projects_pkey PRIMARY KEY (id),
   CONSTRAINT projects_client_business_id_fkey FOREIGN KEY (client_business_id) REFERENCES org.business_profiles(id),
   CONSTRAINT projects_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id),
+  CONSTRAINT projects_owner_team_id_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id),
+  CONSTRAINT projects_owner_organisation_id_fkey FOREIGN KEY (owner_organisation_id) REFERENCES org.organisations(id),
+  CONSTRAINT projects_slug_key UNIQUE (slug),
   CONSTRAINT projects_source_blueprint_id_fkey FOREIGN KEY (source_blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
   -- An archived project carries its timestamp, and a live one does not. Without this the two halves
   -- can disagree, and the row then answers "is this archived?" differently depending on which column
   -- the reader happens to look at.
-  CONSTRAINT ck_projects_archived_at CHECK ((status = 'archived') = (archived_at IS NOT NULL))
+  CONSTRAINT ck_projects_archived_at CHECK ((status = 'archived') = (archived_at IS NOT NULL)),
+  -- The slug is interpolated into a URL path segment verbatim, so a slash, a space, a dot or an
+  -- uppercase letter is not a cosmetic problem but an unroutable project. Constraining the shape
+  -- here makes that unrepresentable instead of a 404 found in production. Deliberately permissive
+  -- about repeated and trailing hyphens: the app slugifies, truncates at 80 characters and then
+  -- appends a disambiguator, which legitimately produces both.
+  CONSTRAINT ck_projects_slug_shape CHECK (slug ~ '^[a-z0-9-]{1,96}$')
 );
 
 CREATE TABLE projects.project_stages (
@@ -117,13 +149,43 @@ CREATE TABLE projects.tickets (
     current_stage_id uuid REFERENCES projects.project_stages(id) ON DELETE SET NULL,
     current_assignee_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
 
+    -- The CLIENT-side member accountable for this ticket inside a multi-member workspace. Kept
+    -- distinct from `current_assignee_id`, the provider-side freelancer who claimed it: one is who
+    -- commissioned the work and answers for it, the other is who is doing it, and only in a
+    -- workspace of one do they coincide. Stored rather than derived from ticket_history because it
+    -- is directly settable — the ticket modal renders a Select over the workspace's client members —
+    -- so a history scan would be reconstructing a value somebody chose. Nullable: a personal-scope
+    -- project has nobody to name that the project owner does not already answer for.
+    owner_user_id uuid CONSTRAINT tickets_owner_user_id_fkey REFERENCES org.users_public(user_id) ON DELETE SET NULL,
+
     title text NOT NULL,
     description jsonb NOT NULL DEFAULT '{}'::jsonb,
     text_description text NOT NULL DEFAULT '', -- Flattened rich text for search functionality
 
     status ticket_status NOT NULL DEFAULT 'backlog'::ticket_status,
+
+    -- Triage rank, and deliberately none of the three things it sits beside: `status` says where the
+    -- ticket IS, `workload_intensity` says what it COSTS in capacity and money, and this says only
+    -- which of two equally-available tickets a reader should look at first. It moves neither the
+    -- escrow figure nor W_i. NOT NULL with a default rather than nullable so every board sort has a
+    -- total order without a COALESCE, and so "nobody set a priority" and "normal" are the same
+    -- state rather than two that render identically and sort differently.
+    priority projects.ticket_priority NOT NULL DEFAULT 'normal'::projects.ticket_priority,
     attachment_count smallint NOT NULL DEFAULT 0,
     required_stages jsonb NOT NULL DEFAULT '[]'::jsonb, -- Format: [{"stage_id": "uuid", "order": 1}]
+
+    -- This ticket's own checklist. Format: [{"id": "uuid", "text": "...", "done": bool,
+    -- "completed_by": ["user_id", ...]}].
+    --
+    -- jsonb rather than a child table because the list is always read, written and reordered as one
+    -- whole with its ticket, is never queried or aggregated across tickets, and its ORDER is part of
+    -- its meaning — a child table would buy a join and a sort_order column to serve no query this
+    -- product makes. It is also three things at once that already exist separately and must not be
+    -- conflated: projects.project_stages.default_tasks is the stage TEMPLATE a ticket's list is
+    -- seeded from, and projects.stage_submissions.checked_item_ids records which items one
+    -- submission ticked. Neither is the ticket's own list, which is what the card's
+    -- checklistDone/checklistTotal counts.
+    tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
 
     due_date timestamp with time zone NULL,
     workload_intensity numeric(4,2) NOT NULL DEFAULT 1.00,
@@ -473,5 +535,62 @@ CREATE TABLE projects.stage_open_seat_skills (
     seat_id  uuid NOT NULL REFERENCES projects.stage_open_seats (id) ON DELETE CASCADE,
     skill_id uuid NOT NULL REFERENCES org.skills (id),
     CONSTRAINT stage_open_seat_skills_pkey PRIMARY KEY (seat_id, skill_id)
+);
+-- #endregion
+
+-- #region Project-scoped invitations
+-- Deliberately NOT org.org_invitations. That table is ORG-scoped: it has no project_id, no
+-- project_stage_id, and its check_invitation_target CHECK requires exactly one of team_id /
+-- business_id to be NOT NULL — so a project-scoped, stage-targeted invite is not merely absent from
+-- it, it is structurally inexpressible in it. The shape below otherwise mirrors that sibling
+-- (token / status / target_email) so the two accept paths stay recognisably the same flow.
+CREATE TABLE projects.project_invitations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+
+  -- The stage the invitee is assigned to on acceptance, or NULL for a whole-project invite. The
+  -- nullability IS the distinction the roster draws between the two kinds of invitation, which is
+  -- why there is no separate scope column that could disagree with it.
+  project_stage_id uuid,
+
+  -- The invitee is addressed by email because at invite time they may have no account at all — this
+  -- is the one participant reference in the schema that cannot be a user_id, and turning it into one
+  -- is what ACCEPTANCE does.
+  target_email text NOT NULL,
+
+  -- The role held once the invite is accepted. Constrained to the roles the acceptance path can
+  -- actually grant, so an invitation cannot promise a seat that does not exist.
+  role text NOT NULL,
+
+  inviter_user_id uuid NOT NULL,
+
+  -- The capability: whoever holds this value can accept. UNIQUE because it is the lookup key on the
+  -- accept path, and a second row sharing it would make "which invitation is this?" ambiguous at the
+  -- exact moment access is granted.
+  token text NOT NULL UNIQUE,
+
+  status text NOT NULL DEFAULT 'pending'::text,
+
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+
+  -- NULL means the invitation does not expire. Expiry is a timestamp rather than a boolean so a
+  -- reader can tell "expires next Tuesday" from "expired last Tuesday" without a sweep having run;
+  -- `status = 'expired'` is the sweep's record that it noticed.
+  expires_at timestamp with time zone,
+
+  -- The audit half of status = 'accepted' (nothing here is hard-deleted, root CLAUDE.md §7): the
+  -- status says what, this says when — and when somebody joined is a question the roster asks.
+  accepted_at timestamp with time zone,
+
+  CONSTRAINT project_invitations_pkey PRIMARY KEY (id),
+  CONSTRAINT project_invitations_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE CASCADE,
+  CONSTRAINT project_invitations_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id) ON DELETE CASCADE,
+  CONSTRAINT project_invitations_inviter_user_id_fkey FOREIGN KEY (inviter_user_id) REFERENCES org.users_public(user_id),
+  CONSTRAINT project_invitations_role_check CHECK (role IN ('client', 'owner', 'admin', 'manager', 'freelancer', 'member', 'guest')),
+  CONSTRAINT project_invitations_status_check CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
+  -- An accepted invitation carries its timestamp and an outstanding one does not. Without this the
+  -- two halves can disagree, and the row then answers "was this accepted?" differently depending on
+  -- which column the reader happens to look at.
+  CONSTRAINT ck_project_invitations_accepted_at CHECK ((status = 'accepted') = (accepted_at IS NOT NULL))
 );
 -- #endregion

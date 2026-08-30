@@ -1,7 +1,8 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { canSkipDetails } from "@projective/types/finance";
-import { departmentsFor } from "@server/services/finance/buyer-fixtures.ts";
+import { CheckoutBackendService } from "@server/services/finance/CheckoutBackendService.ts";
+import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
 import { define } from "@web/utils/state.ts";
 import CheckoutDetailsScreen from "@features/checkout/islands/CheckoutDetailsScreen.island.tsx";
 import { checkoutStepHref } from "@features/checkout/core/basket-model.ts";
@@ -62,10 +63,17 @@ export const handler = define.handlers({
 		 * The departments each billing identity declares, resolved server-side because that is the
 		 * entity's fact rather than the buyer's. An identity with none yields an empty list, which the
 		 * form renders as absence — an entity with no departments is a real state, not a blank field.
+		 *
+		 * Read through the fat service rather than from the fixture module. This route previously
+		 * imported `departmentsFor` from `buyer-fixtures.ts` directly — the only place in the app that
+		 * did — which compiled and rendered correctly while bypassing `isFinanceBackendLive()`
+		 * entirely, so this one field would have kept serving fixtures after the finance backend went
+		 * live and `USE_MOCKS` could never have reached it.
 		 */
-		const departments: DetailsDepartments = Object.fromEntries(
-			bootstrap.session.billingContexts.map((entry) => [entry.id, departmentsFor(entry.id)]),
+		const resolved = CheckoutBackendService.departments(
+			basketQueryFrom(ctx.url.searchParams, context),
 		);
+		const departments: DetailsDepartments = resolved.data?.departments ?? {};
 
 		ctx.state.title = "Delivery & billing · Checkout · Projective";
 		return page({ bootstrap, departments });

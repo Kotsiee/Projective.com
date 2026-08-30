@@ -4,6 +4,7 @@ import ChatComposer from "@web/features/projects/islands/ChatComposer.island.tsx
 import ViewControlRig from "@web/features/projects/islands/ViewControlRig.island.tsx";
 import { activeConversationTabOf, conversationHref } from "./conversation-model.ts";
 import { resolveConversation } from "./conversations-ssr.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * conversation-footer-slot — the SSR-idiomatic resolver for the middle-nav frame's FOOTER band on a
@@ -22,12 +23,16 @@ import { resolveConversation } from "./conversations-ssr.ts";
  * Server-only (it reaches `@server/services` via {@link resolveConversation}); never imported by an
  * island.
  */
-export function conversationFooterFor(url: URL, _context: UserContext): ComponentChildren {
+export async function conversationFooterFor(
+	url: URL,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean); // ["messages", conversationId, ...tab]
 	if (segs[0] !== "messages" || segs.length < 2) return null;
 
 	const conversationId = segs[1];
-	const detail = resolveConversation(conversationId);
+	const detail = await resolveConversation(conversationId, actor);
 	if (!detail) return null;
 
 	const base = conversationHref(conversationId);

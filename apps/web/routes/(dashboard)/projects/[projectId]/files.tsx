@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveFilePage } from "@web/features/projects/core/files-ssr.ts";
 import { FilesView } from "@web/features/projects/components/workspace-views.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Project-scoped File Explorer (`/projects/[projectId]/files`) — every attachment across the project's
@@ -10,8 +11,9 @@ import { FilesView } from "@web/features/projects/components/workspace-views.tsx
  * to the {@link FileExplorer} island. This is a project-view path (not a channel), so the shell mounts
  * no channel header — only the Project Details lane + the footer View Control Rig.
  */
-export default define.page(function ProjectFilesPage(ctx) {
+export default define.page(async function ProjectFilesPage(ctx) {
+	const actor = readActor(ctx);
 	const { projectId } = ctx.params;
-	const { page } = resolveFilePage(projectId);
+	const { page } = await resolveFilePage(projectId, actor);
 	return <FilesView scope="project" id={projectId} initial={page} />;
 });

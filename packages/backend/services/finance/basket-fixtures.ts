@@ -32,6 +32,7 @@ import { parsePriceMajor, PIPELINE_LOW, unitPriceMajor } from "../explore/pricin
 import { switcher, toMoney } from "./wallet-fixtures.ts";
 import { FX_FIXTURE_AS_OF, FX_FIXTURE_BASE } from "./fx-fixtures.ts";
 import type { BasketQuery, BasketSim } from "./basket-query.ts";
+import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
  * basket fixtures — the fat {@link BasketBackendService}'s deterministic purchasing world while
@@ -162,7 +163,7 @@ interface OwnerSeed {
 
 /** An Unsplash face URL (the shared avatar convention across the fixture cast). */
 function face(id: string): string {
-	return `https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	return mockAvatar(id);
 }
 
 /**

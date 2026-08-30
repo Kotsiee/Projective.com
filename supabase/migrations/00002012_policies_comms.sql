@@ -122,3 +122,216 @@ SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
 
 CREATE POLICY "Users view own suppressions" ON comms.channel_suppressions FOR
 SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
+
+
+-- =============================================================================
+-- DM STACK — SELECT policies (the read path for /messages)
+--
+-- These five tables have had RLS ENABLED since 00002001 with ZERO policies. RLS
+-- with no policy is DEFAULT DENY, so as `authenticated` every one of them
+-- returned `200 []` — never an error, never a hint — and the entire global inbox
+-- was unreadable the moment MESSAGING_BACKEND_LIVE was switched on. The fixture
+-- corpus masked it, because with the gate off nothing reached Postgres at all.
+--
+-- SELECT ONLY, deliberately. The write path (who may post into a thread, who may
+-- join one, who may mark a message read) is a larger surface with its own
+-- consequences, and adding INSERT/UPDATE policies here would be granting rights
+-- the read API does not need. A missing write policy fails closed and visibly;
+-- a wrong one does not.
+--
+-- Membership is expressed as "the caller has an undeleted participant row in
+-- this thread". `deleted_at` is a SOFT DELETE of the participation, not of the
+-- thread, so a member who deleted the conversation stops being able to read it
+-- while everyone else is unaffected — which is what the column was added for.
+--
+-- NOTE ON THE REMAINING HOLE, which these policies do NOT close:
+-- comms.message_reactions, comms.message_pins, comms.message_favorites,
+-- comms.auto_responses and comms.newsletter_subscriptions were never added to
+-- 00002001, so RLS is OFF on them entirely, while 00002500 grants
+-- `ALL ON ALL TABLES IN SCHEMA comms TO authenticated`. Any signed-in user can
+-- therefore read and write every other user's reactions, pins, favourites,
+-- auto-response rules and the whole newsletter subscriber list. Closing that
+-- needs ENABLE ROW LEVEL SECURITY plus policies, which changes existing WRITE
+-- behaviour, so it is surfaced for a human decision rather than folded in here.
+-- =============================================================================
+
+CREATE POLICY "view_own_dm_participation" ON comms.dm_participants FOR
+SELECT TO authenticated USING (user_id = auth.uid ());
+
+-- OWN ROW ONLY. An earlier draft added a second arm — `OR comms.is_dm_participant(thread_id)` — so
+-- that the inbox could read the other members of a thread for its roster. That is a disclosure, not
+-- a convenience: RLS is ROW-level, not column-level, and every private per-viewer field lives on
+-- this same row (`last_read_at`, `is_starred`, `is_archived`, `is_muted`, `deleted_at`). Returning a
+-- co-participant's row at all tells the caller whether that person muted the conversation, archived
+-- it, deleted it, and exactly when they last read it. There is no column-level fallback: 00002500
+-- grants the whole table to `authenticated`, so a policy that admits the row admits all of it.
+--
+-- The roster the inbox genuinely needs is identity, not state, and it is served by
+-- `comms.dm_thread_roster()` (00001300), which returns thread_id + user_id + joined_at and nothing
+-- else.
+CREATE POLICY "view_dm_threads_if_participant" ON comms.dm_threads FOR
+SELECT TO authenticated USING (comms.is_dm_participant (id));
+
+CREATE POLICY "view_dm_messages_if_participant" ON comms.dm_messages FOR
+SELECT TO authenticated USING (comms.is_dm_participant (thread_id));
+
+CREATE POLICY "view_channel_files_if_member" ON comms.channel_files FOR
+SELECT TO authenticated USING (
+    -- The discriminator vocabulary here is the BARE 'project' / 'dm' pair, not
+    -- the schema-qualified 'comms.project_messages' / 'comms.dm_messages' that
+    -- message_attachments, message_reactions, message_pins and message_favorites
+    -- use. Two vocabularies for one concept inside one schema; matching the wrong
+    -- one returns no rows rather than erroring.
+    (
+        channel_type = 'project'
+        AND comms.has_channel_access (channel_id)
+    )
+    OR (
+        channel_type = 'dm'
+        AND comms.is_dm_participant (channel_id)
+    )
+);
+
+CREATE POLICY "view_channel_participants_if_member" ON comms.project_channel_participants FOR
+SELECT TO authenticated USING (
+    -- Keyed on the CHANNEL rather than on the row's own (profile_type,
+    -- profile_id): this table has no user_id, so "is this row mine" is not a
+    -- question it can answer. Access to the channel is what grants sight of its
+    -- roster, which is the predicate every other channel policy already uses.
+    comms.has_channel_access (channel_id)
+);
+
+-- =============================================================================
+-- MESSAGE INTERACTIONS, AUTO-RESPONSES, NEWSLETTER
+--
+-- These five tables had RLS switched OFF entirely (00002001 never named them)
+-- while 00002500 grants `ALL ON ALL TABLES IN SCHEMA comms TO authenticated`.
+-- The combination is not weak protection, it is none: any signed-in user could
+-- read and rewrite every other user's reactions, pins, favourites and auto-reply
+-- rules, and read the whole newsletter list including each row's unsubscribe
+-- token. RLS is enabled on all five in 00002001; these are their policies.
+--
+-- The three interaction tables share one predicate, comms.can_read_message()
+-- (00001300), because they share one question: may the caller read the message
+-- this row hangs off? Writing it three times would be three places for the
+-- project half and the DM half to drift.
+-- =============================================================================
+
+-- --- reactions: visible to the room, owned by the reactor ---
+--
+-- A reaction is public WITHIN the conversation — the whole point is that everyone
+-- sees it — so SELECT follows the message. Writing one is personal: the UNIQUE is
+-- (message_table, message_id, user_id, emoji), so a row belongs to exactly one
+-- person and only that person may add or remove it. The `user_id = auth.uid()`
+-- arm on INSERT is what stops a caller reacting AS someone else.
+
+CREATE POLICY "view_reactions_on_readable_messages" ON comms.message_reactions FOR
+SELECT TO authenticated USING (comms.can_read_message (message_table, message_id));
+
+CREATE POLICY "react_as_self_on_readable_messages" ON comms.message_reactions FOR
+INSERT TO authenticated
+WITH
+    CHECK (
+        user_id = auth.uid ()
+        AND comms.can_read_message (message_table, message_id)
+    );
+
+CREATE POLICY "remove_own_reaction" ON comms.message_reactions FOR
+DELETE TO authenticated USING (user_id = auth.uid ());
+
+-- --- pins: a SHARED act, not a personal one ---
+--
+-- Note the UNIQUE is (message_table, message_id) with no user_id in it: a message
+-- is pinned once for the whole channel, so pinning and un-pinning act on everyone
+-- else's view. That makes DELETE the sharp edge here, and it is deliberately NOT
+-- restricted to the pinner: in a two-person DM the counterparty must be able to
+-- clear a pin, and in a channel a stale pin outliving whoever set it is the state
+-- this avoids.
+--
+-- What this CANNOT express is the product's finer rule — MessagePage.permissions
+-- .canPin is "anyone in a DM; owner-granted in a project/team channel" — because
+-- no column records that grant. Channel access is the closest the schema can get,
+-- and the app layer holds the narrower gate. Recorded rather than silently
+-- approximated: a reader comparing the policy to the product rule should find the
+-- difference named.
+
+CREATE POLICY "view_pins_on_readable_messages" ON comms.message_pins FOR
+SELECT TO authenticated USING (comms.can_read_message (message_table, message_id));
+
+CREATE POLICY "pin_readable_messages" ON comms.message_pins FOR
+INSERT TO authenticated
+WITH
+    CHECK (
+        pinned_by_user_id = auth.uid ()
+        AND comms.can_read_message (message_table, message_id)
+    );
+
+CREATE POLICY "unpin_in_readable_conversations" ON comms.message_pins FOR
+DELETE TO authenticated USING (comms.can_read_message (message_table, message_id));
+
+-- --- favourites: entirely private ---
+--
+-- The UNIQUE is (user_id, message_table, message_id) and nothing renders another
+-- person's favourites, so every verb is own-row-only. There is deliberately NO
+-- `can_read_message` arm on SELECT/DELETE: a favourite that outlives the caller's
+-- access to its message should still be listable and removable by its owner, and
+-- the row carries no content to leak.
+
+CREATE POLICY "view_own_favorites" ON comms.message_favorites FOR
+SELECT TO authenticated USING (user_id = auth.uid ());
+
+CREATE POLICY "favorite_readable_messages" ON comms.message_favorites FOR
+INSERT TO authenticated
+WITH
+    CHECK (
+        user_id = auth.uid ()
+        AND comms.can_read_message (message_table, message_id)
+    );
+
+CREATE POLICY "remove_own_favorite" ON comms.message_favorites FOR
+DELETE TO authenticated USING (user_id = auth.uid ());
+
+-- --- auto-responses: a user's own automation ---
+--
+-- Split into four policies rather than one FOR ALL so that UPDATE carries both a
+-- USING and a WITH CHECK. FOR ALL would apply the single expression to both, which
+-- reads as equivalent and is not: without the WITH CHECK arm a caller can UPDATE
+-- their own row and set user_id to somebody else in the same statement, handing
+-- the row away. That is the same shape as the files.items defect recorded in
+-- Decision #67.
+
+CREATE POLICY "view_own_auto_responses" ON comms.auto_responses FOR
+SELECT TO authenticated USING (user_id = auth.uid ());
+
+CREATE POLICY "create_own_auto_responses" ON comms.auto_responses FOR
+INSERT TO authenticated
+WITH
+    CHECK (user_id = auth.uid ());
+
+CREATE POLICY "update_own_auto_responses" ON comms.auto_responses FOR
+UPDATE TO authenticated USING (user_id = auth.uid ())
+WITH
+    CHECK (user_id = auth.uid ());
+
+CREATE POLICY "delete_own_auto_responses" ON comms.auto_responses FOR
+DELETE TO authenticated USING (user_id = auth.uid ());
+
+-- --- newsletter subscriptions: NO POLICY, ON PURPOSE ---
+--
+-- Read this before adding one. RLS is enabled in 00002001 and no policy follows,
+-- so the table is default-deny for `anon` and `authenticated` alike and reachable
+-- only through the service-role key, which bypasses RLS.
+--
+-- That is the correct shape here and NOT the bug this same pass fixed on the DM
+-- stack. There the app genuinely needed to read those tables as the signed-in
+-- user, so default-deny silently returned an empty inbox. Here nothing should
+-- ever read this table as a user: every row is somebody's email address paired
+-- with a `token` that is the unsubscribe capability, so a SELECT policy wide
+-- enough to be useful is a subscriber-list dump, and a per-row one would still
+-- confirm whether a given address is subscribed.
+--
+-- The public subscribe form therefore posts to /api/newsletter/subscribe, and
+-- NewsletterBackendService performs the upsert with the service-role client. A
+-- direct PostgREST INSERT from the browser is not a capability this table wants:
+-- it would let anyone enumerate addresses by observing unique-violation errors.
+

@@ -444,6 +444,37 @@ export class CheckoutBackendService {
 	}
 
 	/**
+	 * The selectable spend departments for each billing identity the viewer may bill through.
+	 *
+	 * This exists because `/checkout/details` was reaching into `buyer-fixtures.ts` DIRECTLY — the only
+	 * place in the app where a route imported a fixture module instead of calling its fat service. That
+	 * import compiled and rendered correctly, which is exactly why it mattered: it bypassed
+	 * `isFinanceBackendLive()` entirely, so the page would have kept serving fixture departments after
+	 * the finance backend went live, and `USE_MOCKS` could never have reached it either.
+	 *
+	 * Keyed by billing-identity id rather than returned as a flat list: a buyer with two billable
+	 * identities has two different department sets, and the form needs to switch between them without a
+	 * second round trip.
+	 *
+	 * An entity that declares no departments yields an empty array, which is a real answer — "this
+	 * organisation does not break spend down by department" — and not a missing one.
+	 */
+	static departments(
+		query: BasketQuery,
+	): ServiceResult<{ departments: Record<string, readonly { id: string; label: string }[]> }> {
+		if (isFinanceBackendLive()) {
+			// LIVE: read `org.organisations.departments` for every entity the caller may bill through,
+			// under their own JWT so RLS scopes it — not yet implemented; fall back to fixtures.
+		}
+		const { billingContexts } = detailsFor(query);
+		return ok({
+			departments: Object.fromEntries(
+				billingContexts.map((entry) => [entry.id, buyer.departmentsFor(entry.id)]),
+			),
+		});
+	}
+
+	/**
 	 * Save the buyer's delivery + billing details for the active identity.
 	 *
 	 * Returns the refreshed record AND the whole checkout session, deliberately: saving is what clears

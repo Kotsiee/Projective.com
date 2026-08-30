@@ -1,4 +1,5 @@
 import type { ProjectSummary, ScopeOption, ServiceOption } from "@projective/types/projects";
+import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
  * projects fixtures — the in-memory corpus the fat {@link ProjectBackendService} answers the
@@ -24,7 +25,7 @@ export const ORG_HELIOS = "o_helios";
 
 // #region Avatars (Unsplash face crops — open registry, DESIGN_SYSTEM.md §C.4)
 const FACE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	mockAvatar(id);
 
 const MARA = FACE("photo-1494790108377-be9c29b29330");
 const DANIEL = FACE("photo-1500648767791-00dcc994a43e");

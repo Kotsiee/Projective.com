@@ -27,6 +27,7 @@ import { categorizeFile, categoryToKind, wasDownloadedBy } from "@projective/typ
 import type { FileItem } from "@projective/types/projects";
 import { findFilePage } from "../projects/files-fixtures.ts";
 import { findConversationFilePage } from "../messaging/workspace-fixtures.ts";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * files assets fixtures — the fat {@link FilesBackendService}'s in-memory answer for the `/files` asset
@@ -140,7 +141,7 @@ export const HUB_VIEWER: AssetActor = {
 	id: "viewer",
 	name: "You",
 	avatar:
-		"https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80",
+		mockAvatar("photo-1531123897727-8f129e1688ce"),
 	handle: "you",
 };
 
@@ -158,7 +159,7 @@ function isViewerLibrary(ownerType: AssetOwnerType, ownerId: string): boolean {
 // #region Media + link pools
 
 const IMG = (id: string, w: number, h: number) => ({
-	url: `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&h=${h}&q=80`,
+	url: mockCover(id, w, h),
 	w,
 	h,
 });

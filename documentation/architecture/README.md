@@ -4,9 +4,10 @@ Technical architecture and system directives for Projective.
 
 ## Files
 
-| File                                               | Purpose                                                                                                                                                                                                                                                                                                 |
-| :------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | **Canonical technical source of truth** (renamed from `brain2.md`). System Directives, Islands boundary, SOLID, the `@projective/ui` taxonomy, package overviews (Fields/Data/UI/Charts/WASM), Database conventions, Security, Caching, State Hydration, Integration Blueprints, Testing, Env contract. |
+| File                                                                     | Purpose                                                                                                                                                                                                                                                                                                                        |
+| :----------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md)                       | **Canonical technical source of truth** (renamed from `brain2.md`). System Directives, Islands boundary, SOLID, the `@projective/ui` taxonomy, package overviews (Fields/Data/UI/Charts/WASM), Database conventions, Security, Caching, State Hydration, Integration Blueprints, Testing, Env contract.                        |
+| [`QUERY_OPERATOR_RECOMMENDATIONS.md`](QUERY_OPERATOR_RECOMMENDATIONS.md) | **Evaluation, not binding.** Whether the fifteen `/api/{projects,messaging}` read endpoints should adopt the proposed HTTP `QUERY` method. Per-endpoint audit, measured URL/body sizes, caching consequences, verified Fresh/Deno blockers, and a phased transition roadmap. Current recommendation: **do not implement yet**. |
 
 ## Relationship to the other pillars
 

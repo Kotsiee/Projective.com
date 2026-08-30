@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext, type UserContext } from "@projective/types/auth";
 import { NavItem, type ShellChrome } from "@projective/ui/navigation";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
@@ -48,6 +49,7 @@ import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * Dashboard shell — the authenticated app surface. Delegates the full unified matrix (DESIGN_SYSTEM.md
@@ -97,11 +99,16 @@ function projectSlugOf(pathname: string): string | null {
  * `/projects/[id]`, else nothing. Composed so exactly one owns the single footer slot per URL. Every
  * navigation is a full page render, so this simply resolves fresh each time.
  */
-function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
-	return channelFooterFor(url, context) ?? channelFilesFooterFor(url, context) ??
+async function middleNavFooterFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
+	return await channelFooterFor(url, context, actor) ?? channelFilesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
-		projectFooterFor(url, context) ??
-		inboxFooterFor(url, context) ?? conversationFooterFor(url, context) ??
+		(await projectFooterFor(url, context, actor)) ??
+		(await inboxFooterFor(url, context, actor)) ??
+		(await conversationFooterFor(url, context, actor)) ??
 		catalogueFooterFor(url, context) ??
 		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
 		filesFooterFor(url, context) ?? basketFooterFor(url, context) ??
@@ -113,9 +120,15 @@ function middleNavFooterFor(url: URL, context: UserContext): ComponentChildren {
  * Preview/Edit header on the bare engagement, or the global-inbox conversation header on a
  * `/messages/[conversationId]` route. Exactly one owns the single header slot per URL.
  */
-function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
-	return channelHeaderFor(url, context) ?? projectHeaderFor(url, context) ??
-		inboxHeaderFor(url, context) ?? conversationHeaderFor(url, context) ??
+async function middleNavHeaderFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
+	return await channelHeaderFor(url, context, actor) ??
+		(await projectHeaderFor(url, context, actor)) ??
+		(await inboxHeaderFor(url, context, actor)) ??
+		(await conversationHeaderFor(url, context, actor)) ??
 		catalogueHeaderFor(url, context) ??
 		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
 		filesHeaderFor(url, context) ?? basketHeaderFor(url, context) ??
@@ -127,7 +140,11 @@ function middleNavHeaderFor(url: URL, context: UserContext): ComponentChildren {
  * `/projects/{slug}`, the projects feed on the `/projects` root (+ `/projects/create`), else the
  * default section switcher.
  */
-function laneFor(url: URL, context: UserContext): ComponentChildren {
+async function laneFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	// The asset hub (`/files`) hosts its directory tree, its scope map (library ⁄ mounted ⁄ drives) and
 	// the storage allowance. Resolved BEFORE the `/projects` fall-through — `/files` is its own
 	// top-level surface and must not inherit the projects feed.
@@ -144,7 +161,7 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 	}
 
 	// The global inbox: the scope map on the `/messages` root, the conversation list beside an open one.
-	if (url.pathname.startsWith("/messages")) return messagesLaneFor(url, context);
+	if (url.pathname.startsWith("/messages")) return await messagesLaneFor(url, context, actor);
 
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
 	if (url.pathname.startsWith("/catalogue")) return catalogueLaneFor(url, context);
@@ -162,7 +179,7 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 
 	const slug = projectSlugOf(url.pathname);
 	if (slug) {
-		const { detail } = resolveProjectDetail(slug, context);
+		const { detail } = await resolveProjectDetail(slug, context, actor);
 		// The SSR archetype baseline (from the engagement format); the island re-derives it live from
 		// the dev Context Switcher so a simulated session swaps the sidebar body without a reload.
 		const sessionKind = detail ? resolveSessionKind(detail.format, null) : "none";
@@ -171,7 +188,7 @@ function laneFor(url: URL, context: UserContext): ComponentChildren {
 		);
 	}
 
-	const feed = resolveProjectsFeed(url, context);
+	const feed = await resolveProjectsFeed(url, context, actor);
 	return (
 		<ProjectsLane
 			initialParams={feed.params}
@@ -193,18 +210,29 @@ function chromeFor(url: URL): ShellChrome {
 	return checkoutChromeFor(url) ?? "full";
 }
 
-export default define.page(function DashboardLayout(ctx) {
+export default define.page(async function DashboardLayout(ctx) {
 	const path = ctx.url.pathname;
 	const context = asAuthenticatedContext(ctx.state.userContext);
+	// The acting reader, derived from the session the middleware hydrated — never from the URL.
+	const actor = readActor(ctx);
+
+	// Resolved together rather than in series: the three slots are independent, and awaiting each
+	// behind the last would add all three latencies to every dashboard navigation.
+	const [lane, middleNavHeader, middleNavFooter] = await Promise.all([
+		laneFor(ctx.url, context, actor),
+		middleNavHeaderFor(ctx.url, context, actor),
+		middleNavFooterFor(ctx.url, context, actor),
+	]);
+
 	return (
 		<UserShell
 			path={path}
 			context={context}
 			protectedRoute
 			chrome={chromeFor(ctx.url)}
-			lane={laneFor(ctx.url, context)}
-			middleNavHeader={middleNavHeaderFor(ctx.url, context)}
-			middleNavFooter={middleNavFooterFor(ctx.url, context)}
+			lane={lane}
+			middleNavHeader={middleNavHeader}
+			middleNavFooter={middleNavFooter}
 		>
 			{/* Global floating "Pop Out Chat" host — survives navigations, re-seeds from sessionStorage. */}
 			<ChatPopoutHost path={path} />

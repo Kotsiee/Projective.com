@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import ProjectPreviewRig from "../islands/ProjectPreviewRig.island.tsx";
 import { resolveProjectShowcase } from "./showcase-ssr.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * project-footer-slot — the SSR-idiomatic resolver for the engagement preview's action rig in the
@@ -23,11 +24,15 @@ import { resolveProjectShowcase } from "./showcase-ssr.ts";
  * Server-only (it reaches `@server/services` via {@link resolveProjectShowcase}); never imported by
  * an island.
  */
-export function projectFooterFor(url: URL, context: UserContext): ComponentChildren {
+export async function projectFooterFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean); // ["projects", slug]
 	if (segs[0] !== "projects" || segs.length !== 2 || segs[1] === "create") return null;
 
-	const { showcase, viewerIsClient } = resolveProjectShowcase(segs[1], context);
+	const { showcase, viewerIsClient } = await resolveProjectShowcase(segs[1], context, actor);
 	if (!showcase || viewerIsClient) return null;
 
 	return <ProjectPreviewRig item={showcase.item} authed />;

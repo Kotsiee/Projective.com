@@ -35,6 +35,30 @@ ALTER TABLE comms.project_channels ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE comms.project_messages ENABLE ROW LEVEL SECURITY;
 
+
+-- --- the five tables 0201 never covered ---
+--
+-- comms.message_reactions, message_pins, message_favorites, auto_responses and
+-- newsletter_subscriptions were defined in 00000016 and never enabled here, while
+-- 00002500 grants `ALL ON ALL TABLES IN SCHEMA comms TO authenticated`. RLS off
+-- plus a blanket grant is not a gap in depth — it is no protection at all: any
+-- signed-in user could read and write every other user's reactions, pins,
+-- favourites and auto-reply rules, and read the entire newsletter subscriber list
+-- together with each row's unsubscribe token.
+--
+-- Their policies are in 00002012. newsletter_subscriptions DELIBERATELY receives
+-- none: see the note there before "fixing" it.
+
+ALTER TABLE comms.message_reactions ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE comms.message_pins ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE comms.message_favorites ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE comms.auto_responses ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE comms.newsletter_subscriptions ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE marketplace.service_blueprints ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE ops.admin_users ENABLE ROW LEVEL SECURITY;

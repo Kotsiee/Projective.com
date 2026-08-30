@@ -1,7 +1,10 @@
 import { define } from "@web/utils/state.ts";
-import { toMessagingResponse } from "@features/messaging/core/respond.ts";
+import { readActor } from "@web/utils/api-session.ts";
+import { defineReadRoute } from "@web/utils/read-endpoint.ts";
+import { toMessagingBody } from "@features/messaging/core/respond.ts";
 import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
 import type {
+	ConversationListPage,
 	ConversationListParams,
 	ConversationRelation,
 	ConversationView,
@@ -9,14 +12,19 @@ import type {
 } from "@projective/types/messaging";
 
 /**
- * `GET /api/messaging/conversations?q=…&view=…&unread=1&role=…&rel=…&svc=…&prod=…&entity=…&member=…&cursor=…`
+ * `GET | HEAD | OPTIONS /api/messaging/conversations?q=…&view=…&unread=1&role=…&rel=…&svc=…&prod=…&entity=…&member=…&cursor=…`
  * — thin route: parse the sidebar's search + partition + advanced-filter facets (each facet a repeated
  * param → an OR-set), then delegate to the fat {@link MessagingBackendService} for a filtered, paged,
  * most-recently-active page (the inbox list, with the `messageCount > 0` visibility rule applied).
  *
+ * The three read verbs come from {@link defineReadRoute}, which resolves the payload ONCE and derives
+ * the responses from it — so `HEAD` cannot drift from `GET`, and the `ETag`/`If-None-Match`
+ * revalidation is identical on both. See that module for the caching and CORS decisions.
+ *
  * `POST /api/messaging/conversations` — start a conversation from the picked contacts (a stub that
  * returns the deterministic conversation id; persistence lands with the backend behind
- * `MESSAGING_BACKEND_LIVE`).
+ * `MESSAGING_BACKEND_LIVE`). It is a mutation and so is hand-written alongside the generated read
+ * handlers rather than produced by the factory.
  */
 function parseParams(url: URL): ConversationListParams {
 	const p = url.searchParams;
@@ -42,10 +50,16 @@ function parseParams(url: URL): ConversationListParams {
 	};
 }
 
+const read = defineReadRoute<{ page: ConversationListPage }>({
+	resolve: (ctx) => MessagingBackendService.conversations(parseParams(ctx.url), readActor(ctx)),
+	toBody: toMessagingBody,
+	// This route also serves POST (start a conversation), so `Allow` and the preflight must say so.
+	// Advertising only the read verbs tells a browser the write is not permitted, which it honours.
+	alsoAllows: ["POST"],
+});
+
 export const handler = define.handlers({
-	GET(ctx) {
-		return toMessagingResponse(MessagingBackendService.conversations(parseParams(ctx.url)));
-	},
+	...read,
 	async POST(ctx) {
 		const body = await ctx.req.json().catch(() => null);
 		const contactIds: string[] = Array.isArray(body?.contactIds)

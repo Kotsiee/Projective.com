@@ -8,6 +8,8 @@
  * discovery API lands; the shapes below are intentionally close to their Zod-validated counterparts.
  */
 
+import { mockCover } from "@web/utils/mock-assets.ts";
+
 // #region Search
 /**
  * The canonical search scopes offered by the hero, header, and `/explore` search selectors. Single
@@ -60,7 +62,7 @@ export const routes = {
  * a calm panel rather than a void.
  */
 export function unsplash(id: string, w = 900, h = 1100): string {
-	return `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&h=${h}&q=72`;
+	return mockCover(id, w, h, 72);
 }
 // #endregion
 

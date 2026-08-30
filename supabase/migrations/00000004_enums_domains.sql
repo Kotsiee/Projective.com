@@ -362,3 +362,106 @@ CREATE TYPE files.owner_kind AS ENUM ('user', 'team', 'business', 'organisation'
 -- unauthenticated actor can reach), which is why the two are never collapsed into one flag.
 CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'api');
 -- #endregion
+
+-- #region catalogue
+-- `listing_kind` — what a seller listed. Two members only, and deliberately not an open text column:
+-- the whole console (tab filter, editor field set, publish gate, pricing projection) branches on this
+-- value, so a third spelling would silently render a listing that no branch handles.
+CREATE TYPE catalogue.listing_kind AS ENUM ('product', 'service');
+
+-- `listing_status` — the publication lifecycle, mirroring @projective/types/catalogue ListingStatus
+-- exactly and in the same order.
+--
+-- `archived` is a VISIBILITY state of one listing, not a delete: root CLAUDE.md §5 says nothing is
+-- ever hard-deleted, and `paused` is deliberately distinct from it — paused means the seller intends
+-- to return, archived means they do not. Collapsing them would lose the only signal that separates a
+-- seasonal listing from an abandoned one.
+CREATE TYPE catalogue.listing_status AS ENUM ('draft', 'published', 'paused', 'archived');
+
+-- `product_format` — how a digital product is delivered to the buyer after purchase. Drives the
+-- /view product template's spec ledger and the post-checkout fulfilment branch.
+CREATE TYPE catalogue.product_format AS ENUM (
+    'download', 'template', 'preset', 'font', 'course', 'ebook', 'source_code', 'bundle'
+);
+-- #endregion
+
+-- #region Cross-domain enums added with the catalogue / coordination / workspace tables
+-- Each of these mirrors a Zod enum in `packages/types` MEMBER FOR MEMBER and in the same order. That
+-- is the whole contract: the SSOT rule (root CLAUDE.md §1) is that a schema change lands with its
+-- matching Zod schema, and an enum that drifts from its TypeScript twin fails at insert time on a
+-- value the type-checker happily allowed.
+
+-- `service_delivery_model` — the five ways a service is staffed and priced.
+-- Mirrors @projective/types/explore ServiceType. The Zod members are title-cased display strings
+-- ("Direct Deliverable"); these are snake_case because a database enum is an identifier, not a label,
+-- and the display string is the presentation layer's job. The mapping is positional and total.
+CREATE TYPE marketplace.service_delivery_model AS ENUM (
+    'pipeline', 'one_off', 'direct_deliverable', 'session', 'group_session'
+);
+
+-- `conversation_kind` — mirrors @projective/types/messaging ConversationKind.
+-- `service_inquiry` is deliberately distinct from `dm`: a first-contact enquiry from a listing has no
+-- prior relationship and different notification and auto-response rules, so collapsing it into `dm`
+-- would lose the only signal that says why the thread exists.
+CREATE TYPE comms.conversation_kind AS ENUM ('dm', 'group', 'service_inquiry');
+
+-- `ticket_priority` — mirrors @projective/types/projects TicketPriority.
+-- NOT the same axis as `workload_intensity`, which is the Architect's Override and moves both the
+-- price and the freelancer's capacity. Priority is ordering only and moves no money.
+CREATE TYPE projects.ticket_priority AS ENUM ('low', 'normal', 'high', 'urgent');
+
+-- `payout_status` — the in-flight lifecycle of a withdrawal.
+-- It exists because `finance.transactions` records only COMPLETED movements: a pending payout has
+-- nowhere to live, and a failed one moves no money and so leaves no trace at all. Without this table
+-- and enum the buyer-visible "your payout failed" row could not be produced.
+CREATE TYPE finance.payout_status AS ENUM ('pending', 'paid', 'failed', 'cancelled');
+
+-- `order_status` — mirrors @projective/types/finance OrderStatus, member for member.
+--
+-- `awaiting_payment` and `invoiced` are the two that earn their place. The first says the order
+-- exists but the charge does not yet (3-D Secure, a PayPal approval); the second says the money was
+-- never going to be charged now because it is raised against a monthly statement. Collapsing either
+-- into `processing` would make "why has this not been paid" unanswerable from the row.
+CREATE TYPE finance.order_status AS ENUM (
+    'confirmed', 'processing', 'awaiting_payment', 'invoiced', 'refunded', 'cancelled'
+);
+
+-- `fulfilment_kind` — how one purchased line is delivered. Mirrors @projective/types/finance
+-- FulfilmentKind. `pending` is a real member: a line whose delivery route is not yet decided is
+-- distinct from one with nothing to deliver.
+CREATE TYPE finance.fulfilment_kind AS ENUM ('download', 'engagement', 'session', 'pending');
+
+-- `rsvp_response` — mirrors @projective/types/scheduling RsvpResponse.
+-- `pending` is a real member, not the absence of a row: an invited attendee who has not answered is a
+-- different thing from someone who was never invited, and the quorum denominator counts the former.
+CREATE TYPE scheduling.rsvp_response AS ENUM ('accepted', 'rejected', 'tentative', 'pending');
+
+-- `attendee_role` — mirrors @projective/types/scheduling AttendeeRole.
+-- `optional` is separate from `participant` because it changes the vote arithmetic: an optional
+-- attendee is not part of the majority denominator that decides a reschedule.
+CREATE TYPE scheduling.attendee_role AS ENUM ('host', 'participant', 'optional');
+
+-- `workspace_capability` — mirrors @projective/types/workspace WorkspaceCapability, in its declared
+-- order, including its section grouping.
+--
+-- Modelled as a real enum rather than text because it is stored as an ARRAY on two member tables
+-- (`granted_capabilities` / `revoked_capabilities`) and the effective permission set is computed as
+-- `role ∪ granted − revoked`. A typo in a text[] would silently grant or fail to revoke authority,
+-- which is the one class of bug in this domain that must not be storable.
+CREATE TYPE org.workspace_capability AS ENUM (
+    -- Membership
+    'invite_members', 'remove_members', 'manage_roles',
+    -- Presence & identity
+    'edit_profile', 'manage_settings',
+    -- Delivery (team)
+    'bind_seat', 'manage_projects', 'publish_listings',
+    -- Commerce (business)
+    'purchase', 'hire',
+    -- Money
+    'contribute_funds', 'spend_funds', 'withdraw_funds', 'manage_finances', 'approve_spend',
+    -- Oversight
+    'view_analytics', 'view_audit',
+    -- Terminal
+    'archive_entity'
+);
+-- #endregion

@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { safeRedirect, withRedirect } from "@features/auth/core/redirect.ts";
 import { oauthStoreCookies } from "@web/utils/auth-cookies.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
+import { MOCK_OAUTH_AVATAR } from "@web/utils/mock-assets.ts";
 
 /**
  * `GET /api/auth/oauth/google` — Google OAuth entry point.
@@ -36,8 +37,7 @@ export const handler = define.handlers({
 			firstName: "Ada",
 			lastName: "Lovelace",
 			email: "ada.lovelace@gmail.com",
-			avatar:
-				"https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=128&h=128&fit=crop&crop=faces",
+			avatar: MOCK_OAUTH_AVATAR,
 			redirectTo,
 		});
 		return new Response(null, { status: 303, headers: { location: `/join?${params.toString()}` } });

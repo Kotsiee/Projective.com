@@ -18,6 +18,7 @@ import type {
 } from "@projective/types/projects";
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * projects submissions fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the
@@ -92,7 +93,7 @@ function slug(s: string): string {
 
 // #region Media pool (Unsplash crops — open registry, §C.4)
 const IMG = (id: string, w: number, h: number) => ({
-	url: `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&h=${h}&q=80`,
+	url: mockCover(id, w, h),
 	w,
 	h,
 });
@@ -159,7 +160,7 @@ const VIEWER: MessageSender = {
 	id: "viewer",
 	name: "You",
 	avatar:
-		"https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80",
+		mockAvatar("photo-1531123897727-8f129e1688ce"),
 	handle: "you",
 };
 

@@ -3,6 +3,7 @@ import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
 import ProjectEditor from "@features/projects/islands/ProjectEditor.island.tsx";
 import { resolveProjectShowcase } from "@features/projects/core/showcase-ssr.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `/projects/[projectId]/edit` — the CLIENT/owner's project editor (root brief §Part 1.1). Thin
@@ -13,11 +14,12 @@ import { resolveProjectShowcase } from "@features/projects/core/showcase-ssr.ts"
  * The real stage names/order seed the editor; the rest of each stage starts blank to be filled in.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const slug = ctx.params.projectId;
-		const { detail, viewerIsClient } = resolveProjectShowcase(
+		const { detail, viewerIsClient } = await resolveProjectShowcase(
 			slug,
 			asAuthenticatedContext(ctx.state.userContext),
+			readActor(ctx),
 		);
 		if (!detail || !viewerIsClient) {
 			return new Response(null, { status: 303, headers: { location: `/projects/${slug}` } });

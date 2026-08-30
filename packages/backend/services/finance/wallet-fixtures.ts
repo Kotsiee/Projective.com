@@ -63,6 +63,7 @@ import {
 	walletVariant,
 } from "@projective/types/finance";
 import { FX_FIXTURE_BASE, FX_FIXTURE_RATES } from "./fx-fixtures.ts";
+import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
  * wallet fixtures — the fat {@link WalletBackendService}'s deterministic finance world while
@@ -113,7 +114,7 @@ function frac(seed: string): number {
 
 /** An Unsplash face URL (the shared avatar convention). */
 function face(id: string): string {
-	return `https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	return mockAvatar(id);
 }
 
 /** `today` / `2 days ago` / `12 Jul` relative to {@link NOW}. */

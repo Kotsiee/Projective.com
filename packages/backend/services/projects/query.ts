@@ -178,14 +178,61 @@ export function withResolvableScope(params: ProjectFeedParams): ProjectFeedParam
 // #endregion
 
 // #region Public selectors
-/** Run the feed query: filter → sort. */
+/**
+ * Run the feed query — filter → sort — over an EXPLICIT row set.
+ *
+ * The row-taking form exists so the live path can reuse these rules rather than restate them in SQL,
+ * and that is not a convenience: `applySort`'s `priority` key is a computed weight
+ * (`(unread ? 0 : 2) + (status === "active" ? 0 : 1)`) with no column behind it, `matchesView`
+ * folds `involvement` against a per-viewer projection, and the search matches across four
+ * pre-formatted labels. An `ORDER BY` that reproduced any of them would be a second implementation
+ * of a business rule, free to drift from this one the first time either changed.
+ *
+ * So the division of labour is: SQL narrows to the rows the viewer may see (which is RLS's job
+ * anyway), and these functions decide what the feed MEANS. See {@link getFeed} for the stub entry
+ * point, which is now just this applied to the fixture corpus.
+ */
+export function getFeedFrom(
+	rows: readonly ProjectSummary[],
+	params: ProjectFeedParams,
+): ProjectSummary[] {
+	return applySort(applyFilters(rows, params), params.sort);
+}
+
+/** Run the feed query over the fixture corpus. */
 export function getFeed(params: ProjectFeedParams): ProjectSummary[] {
-	return applySort(applyFilters(allProjects(), params), params.sort);
+	return getFeedFrom(allProjects(), params);
+}
+
+/** {@link incomingCount} over an explicit row set. */
+export function incomingCountFrom(
+	rows: readonly ProjectSummary[],
+	params: ProjectFeedParams,
+): number {
+	return countIncoming(rows, params);
 }
 
 /** How many engagements in the current view + scope are inbound requests awaiting acceptance. */
 export function incomingCount(params: ProjectFeedParams): number {
 	return countIncoming(allProjects(), params);
+}
+
+/**
+ * {@link scopeOptions} over an explicit row set and workspace list.
+ *
+ * Live, the workspaces come from the actor's memberships rather than the fixture matrix, so both
+ * halves have to be injectable; the COUNTING rule (view-scoped, facet-independent, so each workspace
+ * word holds still while the other filters move) stays here where it cannot drift.
+ */
+export function scopeOptionsFrom(
+	rows: readonly ProjectSummary[],
+	scopes: readonly ScopeOption[],
+	view: ProjectView,
+): ScopeOption[] {
+	return scopes.map((scope) => ({
+		...scope,
+		count: rows.filter((r) => matchesView(r, view) && r.scopeId === scope.id).length,
+	}));
 }
 
 /** The context sections for a matched set (empty when a single scope). */
@@ -198,11 +245,7 @@ export function groupFeed(rows: ProjectSummary[]): ProjectGroup[] {
  * the other facets) so each workspace word shows how many items it holds in the current view.
  */
 export function scopeOptions(view: ProjectView): ScopeOption[] {
-	const rows = allProjects();
-	return allScopes().map((scope) => ({
-		...scope,
-		count: rows.filter((r) => matchesView(r, view) && r.scopeId === scope.id).length,
-	}));
+	return scopeOptionsFrom(allProjects(), allScopes(), view);
 }
 
 /** The actor's provider services (for the client-by-service filter). */

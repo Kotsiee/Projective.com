@@ -1,8 +1,8 @@
 import { ok, type ServiceResult } from "../ServiceResult.ts";
 import { isNewsletterBackendLive } from "../../core/supabase.ts";
 import {
-	NewsletterSubscribeSchema,
 	type NewsletterSubscribeResult,
+	NewsletterSubscribeSchema,
 } from "@projective/types/newsletter";
 
 /**

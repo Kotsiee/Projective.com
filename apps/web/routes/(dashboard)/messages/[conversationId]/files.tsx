@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { resolveConversationFiles } from "@web/features/messaging/core/conversations-ssr.ts";
 import { FilesView } from "@web/features/projects/components/workspace-views.tsx";
 import { ConversationNotFound } from "@web/features/messaging/components/ConversationNotFound.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Files tab — the conversation's shared attachments (`/messages/[conversationId]/files`). Resolves the
@@ -13,11 +14,12 @@ import { ConversationNotFound } from "@web/features/messaging/components/Convers
  *
  * The header (with the active Files tab) is mounted by the shell; this route renders only the body.
  */
-export default define.page(function ConversationFilesPage(ctx) {
+export default define.page(async function ConversationFilesPage(ctx) {
+	const actor = readActor(ctx);
 	const { conversationId } = ctx.params;
 	// Guarded like the Chat and Members tabs: an unresolvable conversation must render the not-found
 	// body, not a File Explorer over a null projection.
-	const initial = resolveConversationFiles(conversationId);
+	const initial = await resolveConversationFiles(conversationId, actor);
 	if (!initial) return <ConversationNotFound />;
 	return (
 		<FilesView

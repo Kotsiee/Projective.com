@@ -90,6 +90,19 @@ CREATE TABLE files.items (
   -- enum, NOT NULL.
   status files.file_status NOT NULL DEFAULT 'pending_upload',
   is_archived boolean DEFAULT false,
+  -- The owner's shelf mark, driving the hub's Starred filter and its star-first sort. A column
+  -- rather than a `metadata` key because it is a FILTER and an ORDER BY predicate on the hub's
+  -- hottest read, and a jsonb key cannot be constrained NOT NULL nor indexed as cheaply — the two
+  -- reasons metadata is the wrong home for anything the list query touches.
+  --
+  -- NOT NULL DEFAULT false (unlike `is_archived` above, which predates this and is nullable): a
+  -- star is a two-valued fact, and a third "unknown" state would force every reader to COALESCE.
+  --
+  -- ⚠️ SCOPE (flagged, not silently decided): this is the OWNER's star on their OWN asset, which is
+  -- what /files toggles. It is deliberately NOT a per-viewer mark — a second person viewing a
+  -- shared asset would see and toggle the owner's star. If per-viewer starring is ever required,
+  -- that is a (user_id, item_id) pivot, not a widening of this column.
+  starred boolean NOT NULL DEFAULT false,
 
   -- #region Ownership + sharing
   -- WHERE the bytes live. `supabase` is the only source that consumes OUR quota; a connector source

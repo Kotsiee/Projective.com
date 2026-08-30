@@ -1,11 +1,23 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isProjectsBackendLive } from "../../core/supabase.ts";
+import { cachedRead, cacheKey, projectsReadCache } from "../../core/cache.ts";
+import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
+import { fetchProjectBySlug, fetchProjectRows, scopesFromRows } from "./live-queries.ts";
+import { fetchBoardPage } from "./live-board.ts";
+import { fetchProjectDetail } from "./live-detail.ts";
+import { fetchFilePage } from "./live-files.ts";
+import { fetchMemberRoster as fetchLiveMemberRoster } from "./live-members.ts";
+import { fetchChannelMessagePage } from "./live-messages.ts";
+import { fetchSubmissionPage } from "./live-submissions.ts";
 import {
 	findProject,
 	getFeed,
+	getFeedFrom,
 	groupFeed,
 	incomingCount,
+	incomingCountFrom,
 	scopeOptions,
+	scopeOptionsFrom,
 	serviceOptions,
 	withResolvableScope,
 } from "./query.ts";
@@ -15,12 +27,7 @@ import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
 import { findMemberRoster } from "./members-fixtures.ts";
-import {
-	archiveDraft,
-	getDraft,
-	instantiateDraft,
-	sweepStaleDrafts,
-} from "./draft-store.ts";
+import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { buildViewPage } from "../explore/view-fixtures.ts";
 import { findItem } from "../explore/query.ts";
 import type {
@@ -76,26 +83,128 @@ function buildFeed(params: ProjectFeedParams): ProjectFeedPayload {
 	};
 }
 
+/**
+ * Compose the feed payload from LIVE rows.
+ *
+ * The same selectors as {@link buildFeed}, applied to rows from Postgres instead of to the fixture
+ * corpus — so the feed's meaning (what `priority` sorts by, what the involvement quick-filters
+ * select, what a group is) is defined in exactly one place regardless of where the rows came from.
+ *
+ * `services` is empty rather than fixture-derived: the provider-service list comes from
+ * `marketplace.service_blueprints`, a schema `supabase/config.toml` does NOT expose to PostgREST, so
+ * there is no live source for it. An empty list renders as "no service filter available", which is
+ * true; the fixture list would render as a filter that selects nothing.
+ */
+function buildLiveFeed(
+	rows: readonly ProjectSummary[],
+	params: ProjectFeedParams,
+): ProjectFeedPayload {
+	const items = getFeedFrom(rows, params);
+	return {
+		count: items.length,
+		incomingCount: incomingCountFrom(rows, params),
+		items,
+		groups: groupFeed(items),
+		scopes: scopeOptionsFrom(rows, scopesFromRows(rows), params.view),
+		services: [],
+	};
+}
+
+/**
+ * Record that a live read failed and the fixtures answered instead.
+ *
+ * Warned rather than thrown or swallowed: thrown, a transient broker error takes down a surface the
+ * fixtures could still render; swallowed, a permanently broken live path is indistinguishable from a
+ * working one. Falling back cannot disclose anything — the fixture corpus belongs to nobody.
+ */
+function liveFailed(method: string, error: unknown): void {
+	const reason = error instanceof Error ? error.message : String(error);
+	console.warn(`[ProjectBackendService.${method}] live read failed, serving fixtures: ${reason}`);
+}
+
+/**
+ * Run a cached live read, or return `undefined` to mean "the caller should use the fixtures".
+ *
+ * Six methods share this shape exactly, and writing it out six times is six chances for one of them
+ * to forget the actor check, the cache key, or the try/catch. The `undefined` return is deliberately
+ * distinct from the `null` a resolver returns for "no such row": `undefined` means the live path did
+ * not run or could not answer, and the fixture branch takes over; `null` means the database was
+ * asked and said no, which is a real 404 the caller must NOT paper over with a fabricated fixture.
+ */
+async function liveRead<T>(
+	method: string,
+	actor: ReadActor | undefined,
+	namespace: string,
+	key: unknown,
+	run: (actor: ReadActor & { accessToken: string }) => Promise<T | null>,
+): Promise<T | null | undefined> {
+	if (!isProjectsBackendLive() || !actor || !canReadLive(actor)) return undefined;
+	try {
+		return await cachedRead(
+			projectsReadCache,
+			cacheKey(tenantOf(actor), namespace, key),
+			() => run(actor),
+		);
+	} catch (error) {
+		liveFailed(method, error);
+		return undefined;
+	}
+}
+
 export class ProjectBackendService {
 	/**
 	 * The context-scoped `/projects` feed: matched engagement rows, context groups, and the scope +
 	 * service option matrices for the filter panel.
 	 */
-	static list(params: ProjectFeedParams): ServiceResult<ProjectFeedPayload> {
-		if (!isProjectsBackendLive()) {
+	static async list(
+		params: ProjectFeedParams,
+		actor: ReadActor,
+	): Promise<ServiceResult<ProjectFeedPayload>> {
+		if (!isProjectsBackendLive() || !canReadLive(actor)) {
 			// Stub mode: drop a phantom scope pin (a real auth contextId matches no fixture workspace)
 			// so the lane shows the acting account's feed instead of stranding empty. See
 			// {@link withResolvableScope}. This covers BOTH the SSR first paint and the thin
 			// `/api/projects/list` refetch (a stale cached scopeId), the single chokepoint they share.
+			//
+			// It runs on the guest path too: an unauthenticated caller cannot reach the live branch,
+			// and `anon` holds no USAGE on the `projects` schema anyway, so the query would fail 42501
+			// rather than return an empty feed.
 			return ok(buildFeed(withResolvableScope(params)));
 		}
-		// LIVE: query the RLS-scoped projects.* + org.* membership tables (not yet implemented) — fall
-		// back to the fixture-backed query so behaviour is preserved until that path lands.
-		return ok(buildFeed(params));
+		try {
+			// The ROWS are cached, not the composed payload: the filter/sort facets change on every
+			// keystroke of the lane's search, and caching per-facet-combination would miss constantly
+			// while holding many near-identical copies of one tenant's projects.
+			const key = cacheKey(tenantOf(actor), "projects.rows");
+			const rows = await cachedRead(projectsReadCache, key, () => fetchProjectRows(actor));
+			return ok(buildLiveFeed(rows, params));
+		} catch (error) {
+			liveFailed("list", error);
+			return ok(buildFeed(withResolvableScope(params)));
+		}
 	}
 
 	/** Look up a single engagement by slug — backs deep-link prefetch / row focus. */
-	static item(slug: string): ServiceResult<{ item: ProjectSummary }> {
+	static async item(
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ item: ProjectSummary }>> {
+		if (isProjectsBackendLive() && canReadLive(actor)) {
+			try {
+				const key = cacheKey(tenantOf(actor), "projects.item", { slug });
+				const item = await cachedRead(
+					projectsReadCache,
+					key,
+					() => fetchProjectBySlug(actor, slug),
+				);
+				// A live miss is a real 404 — the slug does not exist, or RLS withholds it. Falling
+				// through to the fixtures would answer a genuine "no" with a fabricated "yes".
+				if (item) return ok({ item });
+				return fail(404, { message: `No project found for slug "${slug}".` });
+			} catch (error) {
+				liveFailed("item", error);
+			}
+		}
 		const item = findProject(slug);
 		if (!item) return fail(404, { message: `No project found for slug "${slug}".` });
 		return ok({ item });
@@ -106,17 +215,36 @@ export class ProjectBackendService {
 	 * (`/projects/[projectId]`): the contextual header, core view links data, member roster, and the
 	 * four-group communication channel tree. SSR calls this directly for first paint; the sidebar
 	 * island refines via the thin route.
+	 *
+	 * **Live behind `PROJECTS_BACKEND_LIVE`.** The contradiction below is now RESOLVED in the
+	 * mapping layer rather than blocking the read; it is kept because it is why certain fields are
+	 * neutral rather than absent:
+	 * `projects.project_stages.status` is the 8-member `stage_status` enum (open/assigned/in_progress/
+	 * submitted/approved/revisions/paid/cancelled) while `StageChannel.status` reuses the 5-member
+	 * `ProjectStatus` (draft/active/on_hold/completed/cancelled). The ONLY member they share is
+	 * `cancelled`, so every live stage would land on a value the projection cannot express, and
+	 * `stageLocked(stage) = stage.status !== "draft"` is written against a value the database can
+	 * never produce. A mapping table is a decision about what a stage MEANS, not a cast.
 	 */
-	static detail(slug: string): ServiceResult<{ detail: ProjectDetail }> {
-		if (!isProjectsBackendLive()) {
-			const detail = findProjectDetail(slug);
-			if (!detail) return fail(404, { message: `No project found for slug "${slug}".` });
-			return ok({ detail });
+	static async detail(
+		slug: string,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ detail: ProjectDetail }>> {
+		const live = await liveRead(
+			"detail",
+			actor,
+			"projects.detail",
+			{ slug },
+			(a) => fetchProjectDetail(a, slug),
+		);
+		if (live !== undefined) {
+			if (!live) return fail(404, { message: `No project found for slug "${slug}".` });
+			return ok({ detail: live });
 		}
-		// LIVE: read the RLS-scoped projects.* + projects.channels + assigned org.team_members graph
-		// (not yet implemented) — fall back to the fixture-backed projection so behaviour is preserved.
 		const detail = findProjectDetail(slug);
-		if (!detail) return fail(404, { message: `No project found for slug "${slug}".` });
+		if (!detail) {
+			return fail(404, { message: `No project found for slug "${slug}".` });
+		}
 		return ok({ detail });
 	}
 
@@ -126,15 +254,33 @@ export class ProjectBackendService {
 	 * the latest page, a `before` cursor yields the strictly-older page (the scroll-up load). Also carries
 	 * the sticky pinned set + the viewer's pin capability. SSR calls this directly for first paint; the
 	 * feed island refines / paginates via the thin `MessagesService`.
+	 *
+	 * **Live behind `PROJECTS_BACKEND_LIVE`.** The contradiction below is now RESOLVED in the
+	 * mapping layer rather than blocking the read; it is kept because it is why certain fields are
+	 * neutral rather than absent:
+	 * `comms.project_messages` IS readable (it has a real SELECT policy), but the projection is not
+	 * reachable: `comms.message_attachments` is polymorphic with NO foreign key on `message_id`, so
+	 * PostgREST cannot embed it (it needs its own keyed query); and a project channel has NO
+	 * per-viewer read watermark anywhere, so `unread` has no backing. The pins/reactions/favourites
+	 * tables are no longer a blocker — they had RLS switched off entirely and now carry policies.
+	 * Separately, `trg_mask_message_pii` may have rewritten the body in place with no field on
+	 * `ChatMessage` to disclose that it did.
 	 */
-	static messages(params: MessagePageParams): ServiceResult<{ page: MessagePage }> {
-		if (!isProjectsBackendLive()) {
-			const page = findMessagePage(params);
-			if (!page) return fail(404, { message: "No such project channel." });
-			return ok({ page });
+	static async messages(
+		params: MessagePageParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: MessagePage }>> {
+		const live = await liveRead(
+			"messages",
+			actor,
+			"projects.messages",
+			params,
+			(a) => fetchChannelMessagePage(a, params),
+		);
+		if (live !== undefined) {
+			if (!live) return fail(404, { message: "No such project channel." });
+			return ok({ page: live });
 		}
-		// LIVE: read the RLS-scoped `messages.*` thread unified by `chatId` (not yet implemented) — fall
-		// back to the fixture-backed page so behaviour is preserved until that path lands.
 		const page = findMessagePage(params);
 		if (!page) return fail(404, { message: "No such project channel." });
 		return ok({ page });
@@ -147,17 +293,37 @@ export class ProjectBackendService {
 	 * navigator renders); set narrows to that channel. The page is already sorted + filtered + cursor-
 	 * paged for the virtualized grid/list. SSR calls this directly for first paint; the explorer island
 	 * refines (sort/filter/scroll-load) via the thin `FilesService`.
+	 *
+	 * **Live behind `PROJECTS_BACKEND_LIVE`.** The contradiction below is now RESOLVED in the
+	 * mapping layer rather than blocking the read; it is kept because it is why certain fields are
+	 * neutral rather than absent:
+	 * `FileItem` is a NARROWING of `AssetItemSchema` that re-mandates `channelId`/`channelName`/
+	 * `channelKind`/`messageId`/`messageText`/`sender` as non-null `min(1)`, and `comms.channel_files`
+	 * has no `message_id` column at all — so a channel-level file can satisfy the broader `AssetItem`
+	 * and can NEVER satisfy `FileItem`. Constructing one also needs the required 28-member
+	 * `FileCategory` and fifteen hub facets that no column supplies.
 	 */
-	static files(params: FileListParams): ServiceResult<{ page: FileListPage }> {
-		if (!isProjectsBackendLive()) {
-			const page = findFilePage(params);
-			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
-			return ok({ page });
+	static async files(
+		params: FileListParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: FileListPage }>> {
+		const live = await liveRead(
+			"files",
+			actor,
+			"projects.files",
+			params,
+			(a) => fetchFilePage(a, params),
+		);
+		if (live !== undefined) {
+			if (!live) {
+				return fail(404, { message: `No project found for id "${params.projectId}".` });
+			}
+			return ok({ page: live });
 		}
-		// LIVE: read the RLS-scoped `files.*` / `messages.*` attachments (not yet implemented) — fall
-		// back to the fixture-backed page so behaviour is preserved until that path lands.
 		const page = findFilePage(params);
-		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		if (!page) {
+			return fail(404, { message: `No project found for id "${params.projectId}".` });
+		}
 		return ok({ page });
 	}
 
@@ -169,17 +335,37 @@ export class ProjectBackendService {
 	 * path resolves to a submission unit — the review projection the review workspace modal renders. SSR
 	 * calls this directly for first paint; the explorer island refines / navigates via the thin
 	 * `SubmissionsService`.
+	 *
+	 * **Live behind `PROJECTS_BACKEND_LIVE`.** The contradiction below is now RESOLVED in the
+	 * mapping layer rather than blocking the read; it is kept because it is why certain fields are
+	 * neutral rather than absent:
+	 * A hard spelling mismatch: Zod `SubmissionStatus` has `revision_requested` (singular) while the
+	 * CHECK on `projects.stage_submissions.status` writes `revisions_requested` (plural). Every
+	 * revision row would fail Zod parse. Compounding it, the column is NULLABLE and a SQL CHECK is
+	 * NULL-tolerant, so an explicit NULL is storable, passes the constraint, and fails the required
+	 * Zod field. Reconciling the two spellings is a data decision.
 	 */
-	static submissions(params: SubmissionListParams): ServiceResult<{ page: SubmissionListPage }> {
-		if (!isProjectsBackendLive()) {
-			const page = findSubmissionPage(params);
-			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
-			return ok({ page });
+	static async submissions(
+		params: SubmissionListParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: SubmissionListPage }>> {
+		const live = await liveRead(
+			"submissions",
+			actor,
+			"projects.submissions",
+			params,
+			(a) => fetchSubmissionPage(a, params),
+		);
+		if (live !== undefined) {
+			if (!live) {
+				return fail(404, { message: `No project found for id "${params.projectId}".` });
+			}
+			return ok({ page: live });
 		}
-		// LIVE: read the RLS-scoped `submissions.*` / `files.*` graph (not yet implemented) — fall back
-		// to the fixture-backed page so behaviour is preserved until that path lands.
 		const page = findSubmissionPage(params);
-		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		if (!page) {
+			return fail(404, { message: `No project found for id "${params.projectId}".` });
+		}
 		return ok({ page });
 	}
 
@@ -190,18 +376,37 @@ export class ProjectBackendService {
 	 * (for the ticket modal + Stages/Status toggle), and the viewer capability flags that gate client-only
 	 * moves + creation. SSR calls this directly for first paint; the board island refines (search/filter/
 	 * view) via the thin `BoardService`.
+	 *
+	 * **Live behind `PROJECTS_BACKEND_LIVE`.** The contradiction below is now RESOLVED in the
+	 * mapping layer rather than blocking the read; it is kept because it is why certain fields are
+	 * neutral rather than absent:
+	 * `BoardStageRef.categoryWeight` is bounded 0..10 and has NO column anywhere — it drives the
+	 * workload figure `W_i`, so inventing it makes the number plausible and wrong (already flagged by
+	 * Decision #64(b)). `TicketPaymentEntry` needs the `finance` schema, on which `authenticated`
+	 * holds no USAGE. And `BoardListParams` has no cursor at all, so a live board would serialise
+	 * every ticket's full attachment/history/submission/payment graph in one unpaged response.
 	 */
-	static board(params: BoardListParams): ServiceResult<{ page: BoardPage }> {
-		if (!isProjectsBackendLive()) {
-			const page = findBoardPage(params);
-			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
-			return ok({ page });
+	static async board(
+		params: BoardListParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: BoardPage }>> {
+		const live = await liveRead(
+			"board",
+			actor,
+			"projects.board",
+			params,
+			(a) => fetchBoardPage(a, params),
+		);
+		if (live !== undefined) {
+			if (!live) {
+				return fail(404, { message: `No project found for id "${params.projectId}".` });
+			}
+			return ok({ page: live });
 		}
-		// LIVE: read the RLS-scoped `projects.tickets` / `project_stages` graph and drive moves through the
-		// `projects.move_ticket` / `reorder_stages` RPCs (not yet implemented) — fall back to the fixture-
-		// backed page so behaviour is preserved until that path lands.
 		const page = findBoardPage(params);
-		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		if (!page) {
+			return fail(404, { message: `No project found for id "${params.projectId}".` });
+		}
 		return ok({ page });
 	}
 
@@ -213,17 +418,38 @@ export class ProjectBackendService {
 	 * management actions. Also honours the DEV-ONLY simulation hints (`simViewer`/`simProjectType`/
 	 * `simPendingInvites`) so the surface can be exercised across every role/type/invite state. SSR calls
 	 * this directly for first paint; the roster island refines / re-simulates via the thin `MembersService`.
+	 *
+	 * **Live behind `PROJECTS_BACKEND_LIVE`.** The contradiction below is now RESOLVED in the
+	 * mapping layer rather than blocking the read; it is kept because it is why certain fields are
+	 * neutral rather than absent:
+	 * There is no presence column in either schema, so `MemberPresence` — which is required, not
+	 * nullable — has no source. `InviteStatus` is `(pending, expired)` while the DB CHECK on
+	 * `projects.project_invitations.role` allows `('pending','accepted','expired','revoked')`, so two
+	 * storable values fail parse. `projects.project_participants.role` is unconstrained free text
+	 * whose only written value is `'assignee'` — not a member of `ProjectViewerRole` at all. And
+	 * `ProjectMemberRow.email` has no column on `org.users_public`.
 	 */
-	static members(params: MemberRosterParams): ServiceResult<{ page: MemberRosterPage }> {
-		if (!isProjectsBackendLive()) {
-			const page = findMemberRoster(params);
-			if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
-			return ok({ page });
+	static async members(
+		params: MemberRosterParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: MemberRosterPage }>> {
+		const live = await liveRead(
+			"members",
+			actor,
+			"projects.members",
+			params,
+			(a) => fetchLiveMemberRoster(a, params),
+		);
+		if (live !== undefined) {
+			if (!live) {
+				return fail(404, { message: `No project found for id "${params.projectId}".` });
+			}
+			return ok({ page: live });
 		}
-		// LIVE: read the RLS-scoped `projects.project_participants` + `org.*_members` + `projects.invitations`
-		// graph (not yet implemented) — fall back to the fixture-backed roster so behaviour is preserved.
 		const page = findMemberRoster(params);
-		if (!page) return fail(404, { message: `No project found for id "${params.projectId}".` });
+		if (!page) {
+			return fail(404, { message: `No project found for id "${params.projectId}".` });
+		}
 		return ok({ page });
 	}
 

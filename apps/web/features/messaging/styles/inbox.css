@@ -298,6 +298,17 @@
 /* #endregion */
 
 /* #region Loading skeleton */
+/*
+ * Geometry only. The blocks themselves are the shared `Skeleton` primitive
+ * (`@projective/ui/feedback`), which owns the tone, the shimmer and the reduced-motion collapse;
+ * these rules set that primitive's own `--skeleton-*` custom properties rather than re-declaring
+ * `inline-size`/`background`/`border-radius` on top of it. Two sheets declaring the same paint at
+ * equal specificity would be settled by bundle order, which is not a decision this file can make.
+ *
+ * Every measurement mirrors `.inbox-row`: the row's block padding, its `--space-4` column gap, the
+ * 2.5rem avatar that sets the comfortable row's height, and the `--space-1` step between rows. The
+ * list therefore holds its height when the real conversations replace the placeholders.
+ */
 .inbox__skeleton {
 	display: flex;
 	flex-direction: column;
@@ -310,11 +321,10 @@
 	padding: var(--space-3);
 }
 .inbox__skel-avatar {
+	--skeleton-width: 2.5rem;
+	--skeleton-height: 2.5rem;
+	--skeleton-radius: var(--radius-full);
 	flex: none;
-	inline-size: 2.5rem;
-	block-size: 2.5rem;
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
 }
 .inbox__skel-lines {
 	flex: 1;
@@ -323,43 +333,108 @@
 	gap: var(--space-2);
 }
 .inbox__skel-line {
-	block-size: 0.625rem;
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
+	--skeleton-height: 0.625rem;
+	--skeleton-radius: var(--radius-full);
 }
 .inbox__skel-line--name {
-	inline-size: 22%;
+	--skeleton-width: 22%;
 }
 .inbox__skel-line--preview {
-	inline-size: 58%;
+	--skeleton-width: 58%;
 }
 .inbox__skel-row:nth-child(even) .inbox__skel-line--preview {
-	inline-size: 44%;
+	--skeleton-width: 44%;
 }
 /*
- * The shimmer decorates; it never encodes. Every skeleton bar holds its width and its tone with the
- * animation removed, so a frozen or reduced-motion clock still renders the same placeholder shape.
+ * The shimmer decorates; it never encodes. Every bar holds its width and its tone with the animation
+ * removed, so a frozen or reduced-motion clock still renders the same placeholder shape. The stagger
+ * is a delay on an animation the primitive already drops under reduced motion, and the duration
+ * tokens collapse to `0ms` there anyway.
  */
-@media (prefers-reduced-motion: no-preference) {
-	.inbox__skel-avatar,
-	.inbox__skel-line {
-		animation: inbox-pulse 1.6s var(--ease-standard) infinite;
-	}
-	.inbox__skel-row:nth-child(2n) .inbox__skel-line {
-		animation-delay: 0.08s;
-	}
-	.inbox__skel-row:nth-child(3n) .inbox__skel-line {
-		animation-delay: 0.16s;
-	}
+.inbox__skel-row:nth-child(2n) .inbox__skel-line {
+	animation-delay: var(--dur-fast);
 }
-@keyframes inbox-pulse {
-	0%,
-	100% {
-		opacity: 1;
-	}
-	50% {
-		opacity: 0.55;
-	}
+.inbox__skel-row:nth-child(3n) .inbox__skel-line {
+	animation-delay: var(--dur-medium);
+}
+
+/* Compact density: the real row drops to a 2rem avatar, a tighter box, and no step between rows. */
+.inbox[data-density="compact"] .inbox__skeleton {
+	gap: 0;
+}
+.inbox[data-density="compact"] .inbox__skel-row {
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+}
+.inbox[data-density="compact"] .inbox__skel-avatar {
+	--skeleton-width: 2rem;
+	--skeleton-height: 2rem;
+}
+/* #endregion */
+
+/* #region Lane loading skeleton */
+/*
+ * The placeholder for the inbox LANE (`MessagesSidebar`). It is declared here beside the body's so
+ * the two `/messages` placeholders stay in step; the lane island imports this sheet for it.
+ *
+ * The lane row is text-led, not avatar-led: its stacked name and preview run taller than the 2.5rem
+ * avatar beside them, so the row's height comes from the line boxes. Each placeholder line therefore
+ * reserves the real line box — `font-size × line-height`, from the very tokens `.msg-conv__name` and
+ * `.msg-conv__preview` resolve, so an accessibility overlay that widens leading moves both together
+ * — and centres a thinner bar inside it. Sizing the bars alone left every row ~22px short.
+ */
+.inbox-skel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.inbox-skel__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2);
+}
+.inbox-skel__avatar {
+	--skeleton-width: 2.5rem;
+	--skeleton-height: 2.5rem;
+	--skeleton-radius: var(--radius-full);
+	flex: none;
+}
+.inbox-skel__body {
+	flex: 1;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.inbox-skel__line {
+	display: flex;
+	align-items: center;
+}
+.inbox-skel__line--name {
+	block-size: calc(var(--text-md) * var(--leading-normal));
+}
+.inbox-skel__line--preview {
+	block-size: calc(var(--text-sm) * var(--leading-normal));
+}
+.inbox-skel__bar {
+	--skeleton-height: 0.625rem;
+	--skeleton-radius: var(--radius-full);
+}
+.inbox-skel__bar--name {
+	--skeleton-width: 52%;
+}
+.inbox-skel__bar--preview {
+	--skeleton-width: 76%;
+}
+.inbox-skel__row:nth-child(even) .inbox-skel__bar--preview {
+	--skeleton-width: 58%;
+}
+.inbox-skel__row:nth-child(2n) .inbox-skel__bar {
+	animation-delay: var(--dur-fast);
+}
+.inbox-skel__row:nth-child(3n) .inbox-skel__bar {
+	animation-delay: var(--dur-medium);
 }
 /* #endregion */
 

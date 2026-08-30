@@ -165,6 +165,22 @@ UPDATE TO public USING (auth.uid () = owner_user_id);
 CREATE POLICY "Users can view own projects" ON projects.projects FOR
 SELECT TO public USING (auth.uid () = owner_user_id);
 
+-- The missing arm. Until this policy existed the only two SELECT paths on this
+-- table were "I own it" and "it is active AND public", so a freelancer hired onto
+-- a private project could not read the project row at all — the engagement they
+-- were working on was invisible to them, while every stranger's public listing was
+-- not. Every dependent read (detail, board, members, files, submissions) inherited
+-- that hole, because each of them resolves the project first.
+--
+-- projects.has_project_access() is the predicate the rest of this schema already
+-- uses for exactly this question — owner, freelancer participant, business
+-- participant, stage assignee, or a member of an assigned team — so the definition
+-- of "involved" stays in one place rather than being restated here. It is
+-- SECURITY DEFINER, so reading projects.projects inside it does not re-enter this
+-- policy.
+CREATE POLICY "Participants can view their projects" ON projects.projects FOR
+SELECT TO authenticated USING (projects.has_project_access (id));
+
 CREATE POLICY "Manage own revisions" ON projects.stage_revision_requests FOR ALL TO public USING (requested_by = auth.uid ());
 
 CREATE POLICY "View revisions" ON projects.stage_revision_requests FOR

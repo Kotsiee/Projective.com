@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveSubmissionPage } from "@web/features/projects/core/submissions-ssr.ts";
 import SubmissionExplorer from "@web/features/projects/islands/SubmissionExplorer.island.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Submissions tab — the channel-scoped Submissions explorer
@@ -13,11 +14,17 @@ import SubmissionExplorer from "@web/features/projects/islands/SubmissionExplore
  * The channel header (with the active Submissions tab) and the footer View Control Rig + Review trigger
  * are mounted by the shell — this route renders only the workspace body.
  */
-export default define.page(function ChannelSubmissionsPage(ctx) {
+export default define.page(async function ChannelSubmissionsPage(ctx) {
+	const actor = readActor(ctx);
 	const { projectId, channelId } = ctx.params;
 	const path = (ctx.params.path ?? "").split("/").filter(Boolean);
-	const { page } = resolveSubmissionPage(projectId, channelId, path);
+	const { page } = await resolveSubmissionPage(projectId, actor, channelId, path);
 	return (
-		<SubmissionExplorer scope="channel" projectId={projectId} channelId={channelId} initial={page} />
+		<SubmissionExplorer
+			scope="channel"
+			projectId={projectId}
+			channelId={channelId}
+			initial={page}
+		/>
 	);
 });

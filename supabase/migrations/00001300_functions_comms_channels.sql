@@ -303,3 +303,161 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+-- =============================================================================
+-- DM thread membership — the predicate the /messages read policies are built on.
+--
+-- SECURITY DEFINER is not a convenience here, it is the whole point. The natural
+-- way to write "may I read this thread" is an EXISTS over comms.dm_participants,
+-- and the policy ON comms.dm_participants would then subquery its own table —
+-- which re-enters the policy and fails at runtime with 42P17 (infinite recursion
+-- detected in policy for relation "dm_participants"). A definer function runs as
+-- the owner, so the lookup inside it is NOT re-filtered by RLS and the cycle is
+-- broken. This is the same shape comms.has_channel_access already uses for the
+-- project-channel side.
+--
+-- It answers membership ONLY. It grants nothing by itself: every caller is a
+-- policy that has already narrowed to a specific row, and a bare `true` from
+-- here still has to survive the policy it is embedded in.
+--
+-- `deleted_at IS NULL` is load-bearing. A participant row is soft-deleted when
+-- that member deletes the conversation for themselves, and treating a deleted
+-- participation as membership would resurrect a thread the user meant to be rid
+-- of — for them alone, since everyone else's row is untouched.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION comms.is_dm_participant(p_thread_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, comms, auth
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM comms.dm_participants p
+        WHERE
+            p.thread_id = p_thread_id
+            AND p.user_id = auth.uid()
+            AND p.deleted_at IS NULL
+    );
+$$;
+
+COMMENT ON FUNCTION comms.is_dm_participant(uuid) IS
+'True when the calling user has an undeleted participant row in the given DM thread. SECURITY DEFINER so the RLS policies on comms.dm_participants can use it without recursing into themselves.';
+
+-- =============================================================================
+-- DM thread roster — identity WITHOUT per-viewer state.
+--
+-- The inbox needs to know who else is in a thread: to title a DM after its
+-- counterparty and to draw a group's roster. It does NOT need to know whether
+-- those people muted, archived, deleted or last read the conversation, and the
+-- policy on comms.dm_participants deliberately will not tell it (see 00002012) —
+-- RLS is row-level, so admitting a co-participant's row admits every private
+-- column on it.
+--
+-- This function is the narrow answer: three columns, and none of them is state.
+-- SECURITY DEFINER so it can read past that own-row-only policy, with the
+-- membership check done here instead: a caller only ever receives rosters for
+-- threads they are themselves an undeleted participant of.
+--
+-- Note what is NOT filtered: a co-participant whose own `deleted_at` is set is
+-- still returned. They are still in the conversation as far as everyone else is
+-- concerned — deleting it for yourself is not leaving it — and omitting them
+-- would silently rewrite a group's roster for the remaining members.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION comms.dm_thread_roster(p_thread_ids uuid[])
+RETURNS TABLE (thread_id uuid, user_id uuid, joined_at timestamptz)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, comms, auth
+AS $$
+    SELECT p.thread_id, p.user_id, p.joined_at
+    FROM comms.dm_participants p
+    WHERE
+        p.thread_id = ANY (p_thread_ids)
+        AND EXISTS (
+            SELECT 1
+            FROM comms.dm_participants mine
+            WHERE
+                mine.thread_id = p.thread_id
+                AND mine.user_id = auth.uid()
+                AND mine.deleted_at IS NULL
+        );
+$$;
+
+COMMENT ON FUNCTION comms.dm_thread_roster(uuid[]) IS
+'Thread membership as identity only (thread_id, user_id, joined_at) for threads the caller participates in. Exists so the inbox can draw a roster without the own-row-only SELECT policy on comms.dm_participants having to disclose other members private per-viewer state.';
+
+-- =============================================================================
+-- Message readability — the one predicate behind reactions, pins and favourites.
+--
+-- comms.message_reactions, message_pins, message_favorites and message_attachments
+-- are all POLYMORPHIC on (message_table, message_id): Postgres cannot point one
+-- column at two parents, so there is no foreign key and no join a policy can
+-- lean on. Each therefore needs the same question answered — "may the caller read
+-- the message this row hangs off?" — and answering it four times in four policies
+-- is four places for the project half and the DM half to drift apart.
+--
+-- SECURITY DEFINER for the same reason comms.is_dm_participant is: the lookups
+-- inside reach comms.project_messages and comms.dm_messages, both of which carry
+-- their own SELECT policies, and a policy that re-enters another policy is at best
+-- a performance cliff and at worst a recursion error. Running as owner makes the
+-- inner reads plain table reads and the authority decision explicit, right here.
+--
+-- The discriminator vocabulary is the SCHEMA-QUALIFIED pair
+-- ('comms.project_messages' / 'comms.dm_messages') that the CHECK constraints on
+-- those four tables use — NOT the bare 'project'/'dm' pair comms.channel_files
+-- uses for the same concept. Two vocabularies for one idea inside one schema;
+-- matching the wrong one returns false rather than erroring, which is why this is
+-- written once.
+--
+-- An unrecognised discriminator returns FALSE, not NULL: a policy treats NULL as
+-- "no", but returning it explicitly means a future third message table fails
+-- closed and visibly rather than by accident.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION comms.can_read_message(
+    p_message_table text,
+    p_message_id uuid
+) RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, comms, projects, org, auth
+AS $$
+DECLARE
+    v_channel uuid;
+    v_thread  uuid;
+BEGIN
+    IF p_message_id IS NULL THEN
+        RETURN false;
+    END IF;
+
+    IF p_message_table = 'comms.project_messages' THEN
+        SELECT channel_id INTO v_channel
+        FROM comms.project_messages
+        WHERE id = p_message_id AND deleted_at IS NULL;
+
+        IF v_channel IS NULL THEN
+            RETURN false;
+        END IF;
+        RETURN comms.has_channel_access(v_channel);
+    END IF;
+
+    IF p_message_table = 'comms.dm_messages' THEN
+        SELECT thread_id INTO v_thread
+        FROM comms.dm_messages
+        WHERE id = p_message_id AND deleted_at IS NULL;
+
+        IF v_thread IS NULL THEN
+            RETURN false;
+        END IF;
+        RETURN comms.is_dm_participant(v_thread);
+    END IF;
+
+    RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.can_read_message(text, uuid) IS
+'True when the calling user may read the message identified by the polymorphic (message_table, message_id) pair — channel access for a project message, thread participation for a DM. SECURITY DEFINER so the policies on the interaction tables do not re-enter the policies on the message tables.';

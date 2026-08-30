@@ -64,7 +64,15 @@ import {
 } from "../core/submission-tasks.ts";
 import { wantsReview } from "../core/ticket-view.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
-import { filesZoom, gridColWidth, viewMode, zoom } from "../core/view-state.ts";
+import {
+	filesZoom,
+	gridColWidth,
+	listRowHeight,
+	listShowsThumbnails,
+	viewMode,
+	zoom,
+} from "../core/view-state.ts";
+import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { FileCard } from "../components/FileCard.tsx";
 import { FileTable } from "../components/FileTable.tsx";
 import { FreelancerCard } from "../components/FreelancerCard.tsx";
@@ -107,6 +115,9 @@ export interface SubmissionExplorerProps {
 
 const GRID_GAP = 16;
 const CARD_META = 62;
+/** Placeholder extent floor/ceiling — enough to fill a viewport without drawing a whole corpus. */
+const SKELETON_MIN = 8;
+const SKELETON_MAX = 24;
 
 // #region Workspace view (zoom-reactive body)
 interface WorkspaceViewProps {
@@ -124,6 +135,10 @@ interface WorkspaceViewProps {
 	onOpenNode: (node: SubmissionTreeNode) => void;
 	onReachEnd: () => void;
 	loadingMore: boolean;
+	/** A refine has been pending long enough to be worth drawing (the delay gate, not the raw flag). */
+	loading: boolean;
+	/** How many placeholders to draw — the outgoing item count, so a refine redraws at that extent. */
+	skeletonCount: number;
 }
 
 /** Dispatch a child node to its card by kind (submitter → Freelancer, otherwise Submission/stage/dir). */
@@ -133,7 +148,45 @@ function nodeCard(node: SubmissionTreeNode, onOpen: (n: SubmissionTreeNode) => v
 		: <SubmissionCard node={node} onOpen={onOpen} />;
 }
 
+/**
+ * The loading placeholder, resolved through the SAME two branches the real body is
+ * ({@link showNodes} then {@link viewMode}) and configured from the same expressions — so whichever
+ * viewport is about to render, the placeholder standing in for it occupies an identical box.
+ */
+function workspaceSkeleton(p: WorkspaceViewProps): JSX.Element {
+	if (viewMode.value === "grid") {
+		// Node cards and file cards share the VirtualGrid parameters AND the 62px meta strip, so one
+		// grid placeholder is exact for both.
+		return (
+			<ProjectSkeleton
+				shape="grid"
+				label="Loading submissions…"
+				count={p.skeletonCount}
+				colWidth={gridColWidth(zoom.value)}
+				gap={GRID_GAP}
+				metaHeight={CARD_META}
+			/>
+		);
+	}
+	if (p.showNodes) {
+		return (
+			<ProjectSkeleton shape="node-list" label="Loading submissions…" count={p.skeletonCount} />
+		);
+	}
+	return (
+		<ProjectSkeleton
+			shape="list"
+			label="Loading submissions…"
+			count={p.skeletonCount}
+			rowHeight={listRowHeight(zoom.value)}
+			thumbnails={listShowsThumbnails(zoom.value)}
+		/>
+	);
+}
+
 function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
+	if (p.loading) return workspaceSkeleton(p);
+
 	// Drill-down mode: the current node's children are shown as navigable cards / rows.
 	if (p.showNodes) {
 		if (p.nodes.length === 0) {
@@ -245,6 +298,12 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
 	const openId = useSignal<string | null>(null);
+	/**
+	 * The placeholder gate. `loading` still suppresses the empty state the moment a request starts;
+	 * this only decides whether the wait has been long enough to draw, so the stubbed backend (which
+	 * resolves within a tick) never strobes a skeleton on every debounced keystroke or tree click.
+	 */
+	const skeleton = useSkeletonDelay();
 
 	// The DEV Context Switcher override (null = the real session); tracked so capabilities live-update.
 	const seam = useSignal<DevSeamState | null>(null);
@@ -319,9 +378,15 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	async function reload(nextPath: string[]): Promise<void> {
 		const my = ++reqId.current;
 		loading.value = true;
+		skeleton.begin();
 		const res = await SubmissionsService.list(baseParams(nextPath, null));
+		// A superseded request leaves both flags alone: the request that replaced it owns them, and
+		// clearing here would drop the placeholder back to stale rows mid-flight.
 		if (my !== reqId.current) return;
 		loading.value = false;
+		// Cleared BEFORE the payload check, so a failed refine surfaces its stale rows again rather
+		// than leaving the placeholder up for the life of the page.
+		skeleton.end();
 		if (res.ok && res.data) {
 			const page = res.data.page;
 			items.value = page.items;
@@ -558,6 +623,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			onOpenNode={(n) => navigate([...path.value, n.segment])}
 			onReachEnd={loadMore}
 			loadingMore={loadingMore.value}
+			loading={skeleton.visible.value}
+			skeletonCount={Math.min(
+				Math.max(showNodes ? childNodes.length : items.value.length, SKELETON_MIN),
+				SKELETON_MAX,
+			)}
 		/>
 	);
 

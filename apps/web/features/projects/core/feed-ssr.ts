@@ -2,6 +2,7 @@ import type { UserContext } from "@projective/types/auth";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import { parseProjectParams } from "./projects-state.ts";
 import type { ProjectFeedParams, ProjectFeedPayload } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * feed-ssr — the SERVER-ONLY bootstrap the `(dashboard)` layout uses to paint the projects lane's
@@ -38,7 +39,11 @@ const EMPTY_PAYLOAD: ProjectFeedPayload = {
 };
 
 /** Resolve the projects feed for a request + the acting user context. */
-export function resolveProjectsFeed(url: URL, context: UserContext): FeedBootstrap {
+export async function resolveProjectsFeed(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<FeedBootstrap> {
 	const parsed = parseProjectParams(url.searchParams);
 	const activeContextId = context.contextId;
 	const canOfferServices = context.isFreelancer;
@@ -60,7 +65,7 @@ export function resolveProjectsFeed(url: URL, context: UserContext): FeedBootstr
 	// instead of stranding empty (see `query.withResolvableScope`) — this covers the thin refetch path
 	// too. Mirror that here so the params we hand the island (cached + serialized) don't carry a scope id
 	// that names no real workspace. The live path pins a real workspace, so this is a no-op there.
-	const res = ProjectBackendService.list(params);
+	const res = await ProjectBackendService.list(params, actor);
 	const payload = res.ok && res.data ? res.data : EMPTY_PAYLOAD;
 	if (params.scopeId && !payload.scopes.some((s) => s.id === params.scopeId)) {
 		params = { ...params, scopeId: "" };

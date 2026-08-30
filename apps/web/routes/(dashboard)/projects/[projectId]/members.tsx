@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveMemberRoster } from "@web/features/projects/core/members-ssr.ts";
 import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Project-scoped Members management (`/projects/[projectId]/members`) — every participant across the
@@ -11,8 +12,9 @@ import { MembersView } from "@web/features/projects/components/workspace-views.t
  * to the {@link MemberRoster} island. This is a project-view path (not a channel), so the shell mounts
  * no channel header — only the Project Details lane.
  */
-export default define.page(function ProjectMembersPage(ctx) {
+export default define.page(async function ProjectMembersPage(ctx) {
+	const actor = readActor(ctx);
 	const { projectId } = ctx.params;
-	const { page } = resolveMemberRoster(projectId);
+	const { page } = await resolveMemberRoster(projectId, actor);
 	return <MembersView scope="project" id={projectId} initial={page} />;
 });

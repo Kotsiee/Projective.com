@@ -1,0 +1,230 @@
+/*
+ * Project skeletons — placeholders built at the REAL geometry of the rows they stand in for.
+ *
+ * Every metric here is either the token the live component reads or a custom property the island
+ * passes down from the SAME source of truth the virtualizer uses (`gridColWidth(zoom)`,
+ * `listRowHeight(zoom)`, the grid gap, the card meta strip). A placeholder whose geometry is
+ * approximated re-flows the moment real data lands, which is the jump the skeleton exists to avoid.
+ *
+ * The blocks themselves are `@projective/ui` `Skeleton`s — this sheet is layout only, so the tonal
+ * fill, the pulse and its reduced-motion collapse stay owned by the primitive.
+ *
+ * §B.4: no four-sided borders on placeholder content. Separation is spacing and the same single
+ * hairline the live table and board columns already spend.
+ */
+
+.pj-skel {
+	inline-size: 100%;
+	min-inline-size: 0;
+	animation: pj-skel-in var(--dur-medium) var(--ease-standard) both;
+}
+
+@keyframes pj-skel-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* #region Grid — mirrors VirtualGrid: auto-fill columns at the live minimum width, a square
+   thumbnail, and a fixed meta strip, so a cell measures exactly `cellWidth + meta` and the row
+   pitch exactly `cellWidth + meta + gap`. The trailing gap matches the sizer's final row padding. */
+.pj-skel__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--pj-skel-col, 10rem), 1fr));
+	gap: var(--pj-skel-gap, 16px);
+	padding-block-end: var(--pj-skel-gap, 16px);
+}
+
+.pj-skel__cell {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.pj-skel__thumb {
+	flex: 0 0 auto;
+	inline-size: 100%;
+	aspect-ratio: var(--card-media-ratio-square);
+}
+
+.pj-skel__meta {
+	flex: 0 0 auto;
+	block-size: var(--pj-skel-meta, 3.875rem);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-1) 0;
+}
+/* #endregion */
+
+/* #region List — mirrors the file table: a sticky-height header strip over rows at the live row
+   height. The header is built from the live control's own ingredients (its padding and label
+   leading) rather than a fixed number, so it tracks the accessibility type overlays too. */
+.pj-skel__table {
+	inline-size: 100%;
+}
+
+.pj-skel__thead {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	min-block-size: calc(var(--space-2) * 2 + 0.6875rem * var(--leading-normal));
+	padding-inline: var(--space-2);
+	border-block-end: var(--hairline);
+}
+
+.pj-skel__th {
+	flex: 0 0 auto;
+	inline-size: 4.5rem;
+}
+
+.pj-skel__th:first-child {
+	flex: 1 1 auto;
+	max-inline-size: 12rem;
+}
+
+.pj-skel__row {
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	block-size: var(--pj-skel-row, 3rem);
+	padding-inline: var(--space-2);
+	border-block-end: 1px solid var(--hairline-color);
+}
+
+.pj-skel__rowmark {
+	flex: 0 0 auto;
+}
+
+.pj-skel__rowname {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.pj-skel__rowcell {
+	flex: 0 0 auto;
+	inline-size: 4.5rem;
+}
+
+/* Below the thumbnail threshold the live row drops its inline media for a category glyph, so the
+   placeholder's leading mark narrows with it rather than reserving width the row will not use. */
+.pj-skel--compact .pj-skel__rowmark {
+	inline-size: 1.25rem;
+}
+/* #endregion */
+
+/* #region Node list — mirrors the submissions drill-down row, which is content-sized rather than
+   virtualized: the same padding, the same lead square and the same two-line identity stack, so the
+   placeholder's height is produced the same way the real row's is instead of being guessed. */
+.pj-skel__nodelist {
+	display: flex;
+	flex-direction: column;
+}
+
+.pj-skel__noderow {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.pj-skel__nodelead {
+	flex: none;
+}
+
+.pj-skel__nodeid {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+}
+
+.pj-skel__nodecount {
+	flex: none;
+}
+/* #endregion */
+
+/* #region Board — mirrors the Kanban lane: fixed-width columns on the shared surface step, a header
+   band at the live column-header height, then ticket placeholders. */
+.pj-skel__board {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-1) var(--space-4);
+	overflow: hidden;
+}
+
+.pj-skel__col {
+	flex: 0 0 var(--kanban-col-w, 17.5rem);
+	inline-size: var(--kanban-col-w, 17.5rem);
+	display: flex;
+	flex-direction: column;
+	background: var(--surface-1);
+	border-radius: var(--radius-lg);
+}
+
+.pj-skel__colhead {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2.5rem;
+	padding: var(--space-2) var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.pj-skel__colbody {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+}
+
+.pj-skel__ticket {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+}
+/* #endregion */
+
+/* #region Chat — the older-history placeholder. It renders inside `.chat-feed__older`, which is an
+   absolutely-positioned, pointer-transparent overlay, so this costs the stream no height at all and
+   the prepend re-anchor stays exact. */
+.pj-skel__chat {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding-inline: var(--space-3);
+}
+
+.pj-skel__msg {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.pj-skel__msg--own {
+	flex-direction: row-reverse;
+}
+
+.pj-skel__bubble {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: min(60%, 22rem);
+	padding: var(--space-3);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+}
+/* #endregion */

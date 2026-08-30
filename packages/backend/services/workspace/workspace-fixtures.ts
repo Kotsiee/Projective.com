@@ -56,6 +56,7 @@ import {
 	walletHrefFor,
 	workspaceHref,
 } from "@projective/types/workspace";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * workspace fixtures — the fat {@link WorkspaceBackendService}'s in-memory answer for the `/teams` and
@@ -105,12 +106,12 @@ function hash(s: string): number {
 
 /** An Unsplash face crop — the shared avatar convention (DESIGN_SYSTEM §C.4). */
 function face(id: string): string {
-	return `https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	return mockAvatar(id);
 }
 
 /** An Unsplash landscape crop used as an entity banner (reused from the public profile presentation). */
 function banner(id: string): string {
-	return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1440&h=360&q=80`;
+	return mockCover(id, 1440, 360);
 }
 
 /**

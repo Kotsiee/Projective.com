@@ -6,6 +6,7 @@ import { resolveSessionKind } from "./session-model.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
 import type { ChannelMeta } from "./channel-view.ts";
 import type { ProjectDetail, ProjectStatus } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * channel-header-slot — the SSR-idiomatic resolver for the middle-nav content pane's configurable
@@ -96,12 +97,16 @@ function buildDetailInfo(detail: ProjectDetail, meta: ChannelMeta): ChannelDetai
  * set — so a project-view path that shares the URL space (e.g. `/projects/{slug}/board`) is NOT a
  * channel and correctly yields no header.
  */
-export function channelHeaderFor(url: URL, context: UserContext): ComponentChildren {
+export async function channelHeaderFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean); // ["projects", projectId, channelId, ...tab]
 	if (segs[0] !== "projects" || segs.length < 3 || segs[1] === "create") return null;
 
 	const [, projectId, channelId] = segs;
-	const { detail } = resolveProjectDetail(projectId, context);
+	const { detail } = await resolveProjectDetail(projectId, context, actor);
 	if (!detail) return null;
 
 	const meta = resolveChannelMeta(detail, channelId);

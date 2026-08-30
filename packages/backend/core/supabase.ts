@@ -21,54 +21,73 @@ export function isSupabaseConfigured(): boolean {
 	return !!env.supabaseUrl && !!env.supabaseAnonKey;
 }
 
+/**
+ * True when the MASTER mock switch is on (`USE_MOCKS` / `VITE_USE_MOCKS`).
+ *
+ * Every `isXBackendLive()` predicate below is ANDed with `!useMocks()`, so one variable can send the
+ * whole platform to its fixture corpus without touching thirteen per-domain flags — the single
+ * control a developer, a demo environment or an offline CI run actually wants.
+ *
+ * It composes by AND rather than OR on purpose: this can only ever turn a database path OFF. Making
+ * it able to force one ON would mean a single misconfigured variable could fire a half-wired money
+ * or storage mutation at a real project, which is precisely what the per-domain gates were
+ * introduced to prevent.
+ *
+ * Default `false` — so an environment that has never heard of this flag behaves exactly as it did
+ * before it existed.
+ */
+export function useMocks(): boolean {
+	return serverEnv().useMocks;
+}
+
 /** True when LIVE backend behaviour is enabled AND Supabase is configured. */
 export function isAuthBackendLive(): boolean {
-	return serverEnv().authBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().authBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE discovery-backend behaviour is enabled AND Supabase is configured. */
 export function isExploreBackendLive(): boolean {
-	return serverEnv().exploreBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().exploreBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE newsletter-backend behaviour is enabled AND Supabase is configured. */
 export function isNewsletterBackendLive(): boolean {
-	return serverEnv().newsletterBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().newsletterBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE projects-backend behaviour is enabled AND Supabase is configured. */
 export function isProjectsBackendLive(): boolean {
-	return serverEnv().projectsBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().projectsBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE profile-backend behaviour is enabled AND Supabase is configured. */
 export function isProfileBackendLive(): boolean {
-	return serverEnv().profileBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().profileBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE messaging-backend behaviour is enabled AND Supabase is configured. */
 export function isMessagingBackendLive(): boolean {
-	return serverEnv().messagingBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().messagingBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE catalogue-backend behaviour is enabled AND Supabase is configured. */
 export function isCatalogueBackendLive(): boolean {
-	return serverEnv().catalogueBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().catalogueBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE logging-backend behaviour is enabled AND Supabase is configured. */
 export function isLoggingBackendLive(): boolean {
-	return serverEnv().loggingBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().loggingBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE finance-backend behaviour is enabled AND Supabase is configured. */
 export function isFinanceBackendLive(): boolean {
-	return serverEnv().financeBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().financeBackendLive && isSupabaseConfigured();
 }
 
 /** True when LIVE files/asset-hub backend behaviour is enabled AND Supabase is configured. */
 export function isFilesBackendLive(): boolean {
-	return serverEnv().filesBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().filesBackendLive && isSupabaseConfigured();
 }
 
 /**
@@ -79,7 +98,7 @@ export function isFilesBackendLive(): boolean {
  * enveloped secret, so an unconfigured project cannot reach a provider regardless of the flag.
  */
 export function isIntegrationsBackendLive(): boolean {
-	return serverEnv().integrationsBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().integrationsBackendLive && isSupabaseConfigured();
 }
 
 /**

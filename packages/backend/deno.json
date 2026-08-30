@@ -25,7 +25,11 @@
 		"./services/scheduling/ScheduleBackendService.ts": "./services/scheduling/ScheduleBackendService.ts",
 		"./services/user/UserBackendService.ts": "./services/user/UserBackendService.ts",
 		"./services/workspace/WorkspaceBackendService.ts": "./services/workspace/WorkspaceBackendService.ts",
+		"./mocks": "./mocks/mod.ts",
+		"./mocks/assets.ts": "./mocks/assets.ts",
+		"./mocks/registry.ts": "./mocks/registry.ts",
 		"./core/env.ts": "./core/env.ts",
+		"./core/data-source.ts": "./core/data-source.ts",
 		"./core/supabase.ts": "./core/supabase.ts"
 	},
 	"exclude": ["dist", "coverage"]

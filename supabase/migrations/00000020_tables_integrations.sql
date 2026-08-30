@@ -58,6 +58,65 @@ CREATE TABLE integrations.providers (
 );
 -- #endregion
 
+-- #region integrations.consent_states
+-- The IN-FLIGHT consent handshake: one row per started OAuth authorization, consumed exactly once
+-- when the provider redirects back. It sits between the catalogue above and the connection below
+-- because that is the order the handshake runs in — a connection row does not exist yet.
+--
+-- It cannot live on any of the sibling tables: user_connections is the POST-consent row (it has a
+-- status, granted scopes and an account, none of which are known yet), connection_secrets is the
+-- token vault keyed on a connection that has not been created, and connection_audit is append-only
+-- history. It also cannot live in process memory: the round trip leaves our origin entirely and
+-- comes back through an unauthenticated provider redirect, so a per-process Map is lost across a
+-- restart, a deploy or a second instance — and losing it means the CSRF check silently cannot run.
+--
+-- DEFINER-ONLY, like user_connections: RLS on, no policy, no `authenticated` grant. The `state` IS
+-- the credential the callback presents, so any client able to read this table could complete
+-- somebody else's consent. (Grants/policies are category 2 — flagged for the integrator.)
+CREATE TABLE integrations.consent_states (
+    -- The opaque CSRF binding, minted from crypto.getRandomValues. It is the primary key because it
+    -- is the only thing the callback carries: an unauthenticated redirect presenting a state we
+    -- never issued is refused outright, which is the whole point of the row existing.
+    state text PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    provider_slug text NOT NULL REFERENCES integrations.providers (slug) ON DELETE RESTRICT,
+    -- The PKCE verifier. NULL for a provider whose `auth_config.pkce` is false — absent and empty
+    -- are different claims, so this is nullable rather than defaulted to ''.
+    --
+    -- Stored as plaintext rather than in the envelope-encrypted vault deliberately: a verifier is
+    -- not a bearer credential (it authorises nothing on its own — it only proves the party
+    -- redeeming the authorization code is the party that requested it), it is useless the moment
+    -- `consumed_at` is stamped or `expires_at` passes, and connection_secrets is keyed on a
+    -- connection row that by definition does not exist yet. Its protection is this table's
+    -- definer-only grant plus the ~10 minute window, not encryption at rest.
+    code_verifier text,
+    -- What StartConnection.kinds asked for, so the callback can compare granted against requested
+    -- and record a narrowed consent instead of assuming it got everything.
+    requested_kinds integrations.provider_kind[] NOT NULL DEFAULT '{}',
+    -- The SERVER-VALIDATED same-origin path to land on afterwards. The CHECK makes an open redirect
+    -- structurally unrepresentable rather than merely refused by whichever code path happens to
+    -- read it: an absolute URL is rejected, and so is a protocol-relative '//evil.com', which
+    -- starts with '/' and would otherwise pass a naive same-origin test while leaving our domain.
+    return_to text CONSTRAINT ck_consent_return_to_relative CHECK (
+        return_to IS NULL
+        OR (return_to LIKE '/%' AND return_to NOT LIKE '//%')
+    ),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    -- The short authorization window startConnection already returns to the caller. NOT NULL: a
+    -- state that never expires is a permanently replayable one.
+    expires_at timestamptz NOT NULL,
+    -- Single-use marker. A timestamp rather than a boolean (root CLAUDE.md §5) because WHEN a state
+    -- was redeemed is exactly what an investigation into a replayed callback needs; a spent row is
+    -- swept, never used to authorise a second time.
+    consumed_at timestamptz,
+    CONSTRAINT ck_consent_window CHECK (expires_at > created_at),
+    -- 22 characters is 128 bits in base64url — the same entropy floor a share slug is minted at.
+    -- A guessable state is not a CSRF binding at all, so a short one is refused at the storage
+    -- layer rather than trusted to stay long in every future caller.
+    CONSTRAINT ck_consent_state_entropy CHECK (char_length(state) >= 22)
+);
+-- #endregion
+
 -- #region integrations.user_connections
 -- One row per (user, provider, external account) — a user's stored authorization. `id` is the
 -- stable identity scheduling.events / discovery_calls reference. DEFINER-ONLY: RLS on, no policy,

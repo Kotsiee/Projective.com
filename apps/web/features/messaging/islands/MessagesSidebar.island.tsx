@@ -1,7 +1,8 @@
 import type { JSX, RefObject } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/messages.css";
+import "../styles/inbox.css";
 import { Popover } from "@projective/ui/feedback";
 import {
 	LaneBar,
@@ -21,6 +22,11 @@ import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { ConversationRow } from "../components/ConversationRow.tsx";
+import {
+	ConversationListSkeleton,
+	InboxLoadingStatus,
+	skeletonRowCount,
+} from "../components/InboxSkeletons.tsx";
 import { MessagesFilterPanel } from "../components/MessagesFilterPanel.tsx";
 import { MessagesRail } from "../components/MessagesRail.tsx";
 import { NewConversationModal } from "../components/NewConversationModal.tsx";
@@ -88,6 +94,16 @@ interface ConvPref {
 const SEARCH_DEBOUNCE_MS = 220;
 const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 
+/**
+ * How long a refine must stay in flight before the placeholder replaces the list.
+ *
+ * Search is debounced at {@link SEARCH_DEBOUNCE_MS} and the fixtures answer in single-digit
+ * milliseconds, so a threshold-free placeholder would flash between one keystroke and the next — a
+ * strobe that reads as breakage rather than progress. Past this point the wait is long enough to be
+ * worth explaining.
+ */
+const SKELETON_DELAY_MS = 180;
+
 /** The inbox partitions — subtle icon toggles (a single-select `ui-lane-toggles` row) rather than a
  * prominent underline tab strip, matching the non-freelancer `/projects` sidebar chrome (§B.6). */
 const VIEW_TOGGLES: readonly LaneToggleOption<ConversationView>[] = [
@@ -141,25 +157,40 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	// #endregion
 
 	// #region Fetch + refine
+	/**
+	 * The in-flight flag is cleared in a `finally`, under the request-staleness guard.
+	 *
+	 * Every other arrangement leaks it on some path, and a leaked flag is now load-bearing: the
+	 * placeholder is gated on it, so a flag that never clears is a placeholder that never stops. The
+	 * guard is what keeps a superseded request from clearing anything — the newer request it lost to
+	 * owns both the flag and the answer.
+	 */
 	async function apply(): Promise<void> {
 		const id = ++reqId.current;
 		loading.value = true;
-		const res = await MessagingService.conversations({
-			q: q.value || undefined,
-			role: role.value,
-			unread: unread.value || undefined,
-			filter: activeFilterCount({ filter: filter.value }) > 0 ? filter.value : undefined,
-		});
-		if (id !== reqId.current) return; // a newer request superseded this one
-		loading.value = false;
-		if (res.ok && res.data) {
-			serverList.value = res.data.page.conversations;
-			error.value = null;
-		} else {
-			// Previously the message was dropped and the stale list stayed on screen with no signal.
-			error.value = res.message ?? "Couldn't refresh your conversations.";
+		try {
+			const res = await MessagingService.conversations({
+				q: q.value || undefined,
+				role: role.value,
+				unread: unread.value || undefined,
+				filter: activeFilterCount({ filter: filter.value }) > 0 ? filter.value : undefined,
+			});
+			if (id !== reqId.current) return; // a newer request superseded this one
+			if (res.ok && res.data) {
+				serverList.value = res.data.page.conversations;
+				error.value = null;
+			} else {
+				// Previously the message was dropped and the stale list stayed on screen with no signal.
+				error.value = res.message ?? "Couldn't refresh your conversations.";
+			}
+			persistFilters();
+		} catch {
+			// The transport folds its own failures into a soft result rather than throwing, so reaching
+			// here means something below it did not. It still resolves to a stated failure.
+			if (id === reqId.current) error.value = "Couldn't refresh your conversations.";
+		} finally {
+			if (id === reqId.current) loading.value = false;
 		}
-		persistFilters();
 	}
 
 	function persistFilters(): void {
@@ -249,6 +280,32 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	const entities = useComputed(() => entityOptions(optionSource.value));
 	const filterCount = useComputed(() => activeFilterCount({ filter: filter.value }));
 	const activeQuick = useComputed<QuickKey[]>(() => (unread.value ? ["unread"] : []));
+	// #endregion
+
+	// #region Loading placeholder
+	/*
+	 * Gated on the FETCH LIFECYCLE and on nothing else — never on how many rows are on screen. A
+	 * partition or a search that legitimately matches nothing is empty, so an emptiness-gated
+	 * placeholder covers the empty state that exists to explain it, and a wait that resolves badly
+	 * ends up showing neither. Emptiness is an answer, not a stage.
+	 *
+	 * The row COUNT is a different question, and there the visible list is exactly the right input:
+	 * the placeholder mirrors what it replaces, so the lane does not jump.
+	 */
+	const skeleton = useSignal(false);
+	const skeletonRows = useSignal(0);
+
+	useSignalEffect(() => {
+		if (!loading.value) {
+			skeleton.value = false;
+			return;
+		}
+		const timer = setTimeout(() => {
+			skeletonRows.value = skeletonRowCount(displayed.peek().length);
+			skeleton.value = true;
+		}, SKELETON_DELAY_MS);
+		return () => clearTimeout(timer);
+	});
 	// #endregion
 
 	// #region Conversation-state actions (optimistic, persisted locally)
@@ -375,7 +432,17 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 					/>
 				</LaneHead>
 
-				<LaneList label="Conversations" busy={loading.value}>
+				{
+					/*
+					 * `busy` recedes the list to say the rows on screen are stale, which is the right answer
+					 * for as long as they are still the rows on screen. Once the placeholder has replaced
+					 * them there is nothing stale left to recede, and the list's opacity would take the
+					 * placeholder down with it — a child cannot climb back out of its parent's opacity
+					 * group. The announcement carries the state for assistive technology in both phases.
+					 */
+				}
+				<LaneList label="Conversations" busy={loading.value && !skeleton.value}>
+					<InboxLoadingStatus busy={skeleton.value} label="Loading conversations…" />
 					{error.value && (
 						<div class="msg-lane-error" role="alert">
 							<p class="msg-lane-error__text">{error.value}</p>
@@ -384,7 +451,9 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 							</button>
 						</div>
 					)}
-					{displayed.value.length === 0
+					{skeleton.value
+						? <ConversationListSkeleton rows={skeletonRows.value} />
+						: displayed.value.length === 0
 						? (
 							<LaneEmpty
 								icon={<MessagingIcon name="inbox" />}

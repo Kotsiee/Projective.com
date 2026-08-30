@@ -9,6 +9,7 @@ import type {
 	MessagingSettings,
 } from "../types/messaging-types.ts";
 import { defaultMessagingRole } from "./conversation-model.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * conversations-ssr — the SERVER-ONLY bootstrap the `/messages` routes use to paint their first byte
@@ -24,10 +25,13 @@ export interface ConversationListBootstrap {
 }
 
 /** Resolve the initial conversation-list page for the inbox sidebar (SSR first paint). */
-export function resolveConversationList(context: UserContext): ConversationListBootstrap {
+export async function resolveConversationList(
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ConversationListBootstrap> {
 	const role = defaultMessagingRole(context);
 	// No `view` → the full non-empty set; the sidebar overlays its local prefs + view partition client-side.
-	const res = MessagingBackendService.conversations({ role });
+	const res = await MessagingBackendService.conversations({ role }, actor);
 	const page = res.ok && res.data
 		? res.data.page
 		: { conversations: [], hasMore: false, nextCursor: null, total: 0 };
@@ -35,14 +39,20 @@ export function resolveConversationList(context: UserContext): ConversationListB
 }
 
 /** Resolve a single conversation's metadata (the view header + Members tab), or null. */
-export function resolveConversation(id: string): ConversationDetail | null {
-	const res = MessagingBackendService.conversation(id);
+export async function resolveConversation(
+	id: string,
+	actor: ReadActor,
+): Promise<ConversationDetail | null> {
+	const res = await MessagingBackendService.conversation(id, actor);
 	return res.ok && res.data ? res.data.detail : null;
 }
 
 /** Resolve the latest message page for a conversation (the Chat tab first paint). */
-export function resolveConversationMessages(id: string): MessagePage | null {
-	const res = MessagingBackendService.messages({ conversationId: id });
+export async function resolveConversationMessages(
+	id: string,
+	actor: ReadActor,
+): Promise<MessagePage | null> {
+	const res = await MessagingBackendService.messages({ conversationId: id }, actor);
 	return res.ok && res.data ? res.data.page : null;
 }
 
@@ -51,8 +61,11 @@ export function resolveConversationMessages(id: string): MessagePage | null {
  * {@link FileListPage} projection the engagement File Explorer reads, so the route hands it straight to
  * the shared `FilesView` — mirrors {@link resolveFilePage}.
  */
-export function resolveConversationFiles(id: string): FileListPage | null {
-	const res = MessagingBackendService.files({ projectId: id, channelId: id });
+export async function resolveConversationFiles(
+	id: string,
+	actor: ReadActor,
+): Promise<FileListPage | null> {
+	const res = await MessagingBackendService.files({ projectId: id, channelId: id }, actor);
 	return res.ok && res.data ? res.data.page : null;
 }
 
@@ -61,13 +74,19 @@ export function resolveConversationFiles(id: string): FileListPage | null {
  * {@link MemberRosterPage} projection the engagement Members tab reads — mirrors
  * {@link resolveMemberRoster}.
  */
-export function resolveConversationRoster(id: string): MemberRosterPage | null {
-	const res = MessagingBackendService.members(id);
+export async function resolveConversationRoster(
+	id: string,
+	actor: ReadActor,
+): Promise<MemberRosterPage | null> {
+	const res = await MessagingBackendService.members(id, actor);
 	return res.ok && res.data ? res.data.page : null;
 }
 
 /** Resolve the Message Settings projection for the acting view (settings modal first paint). */
-export function resolveMessagingSettings(context: UserContext): MessagingSettings | null {
-	const res = MessagingBackendService.settings(defaultMessagingRole(context));
+export async function resolveMessagingSettings(
+	context: UserContext,
+	actor: ReadActor,
+): Promise<MessagingSettings | null> {
+	const res = await MessagingBackendService.settings(defaultMessagingRole(context), actor);
 	return res.ok && res.data ? res.data.settings : null;
 }

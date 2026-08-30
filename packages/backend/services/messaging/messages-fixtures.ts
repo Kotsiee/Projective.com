@@ -6,6 +6,7 @@ import type {
 } from "@projective/types/projects";
 import type { ConversationSummary } from "@projective/types/messaging";
 import { findConversationSummary } from "./conversation-fixtures.ts";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * messaging message-page fixtures — the fat {@link MessagingBackendService}'s in-memory answer for the
@@ -60,7 +61,7 @@ function fakePeaks(seed: number, n: number): number[] {
 }
 
 const IMG = (id: string, w: number, h: number) => ({
-	url: `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&h=${h}&q=80`,
+	url: mockCover(id, w, h),
 	w,
 	h,
 });
@@ -77,7 +78,7 @@ const VIEWER: MessageSender = {
 	id: "viewer",
 	name: "You",
 	avatar:
-		"https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80",
+		mockAvatar("photo-1531123897727-8f129e1688ce"),
 	handle: "you",
 };
 

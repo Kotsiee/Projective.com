@@ -14,6 +14,7 @@ import type {
 import { money, publishReadiness, resolveListingPricing } from "@projective/types/catalogue";
 import type { ExploreOwner, ProductItem, ServiceItem } from "@projective/types/explore";
 import { PRODUCTS, SERVICES } from "../explore/fixtures.ts";
+import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
  * catalogue fixtures — the fat {@link CatalogueBackendService}'s in-memory answer for the seller
@@ -75,7 +76,7 @@ const ACTING_SELLER: ExploreOwner = {
 	handle: "@ahmed",
 	name: "Ahmed K.",
 	avatar:
-		"https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=facearea&facepad=3&w=160&h=160&q=80",
+		mockAvatar("photo-1506794778202-cad84cf45f1d", 160),
 	kind: "freelancer",
 	verified: true,
 };

@@ -11,6 +11,7 @@ import type {
 	ServiceType,
 	SponsoredSlot,
 } from "@projective/types/explore";
+import { mockCover } from "../../mocks/assets.ts";
 
 /**
  * Explore — static discovery fixtures (server side).
@@ -26,7 +27,7 @@ import type {
  * helper). Fixed transform params keep every thumbnail crisp, format-negotiated, and bandwidth-light.
  */
 function unsplash(id: string, w = 900, h = 1100): string {
-	return `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&h=${h}&q=72`;
+	return mockCover(id, w, h, 72);
 }
 
 // #region Rating helpers

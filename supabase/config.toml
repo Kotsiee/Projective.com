@@ -60,7 +60,18 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# The numbered files under `seeds/` are GENERATED from the consolidated mock corpus
+# (`packages/backend/mocks/`) by `seeds/generate.ts`, and their NUMBERS are the dependency order —
+# identities before the entities that reference them, entities before listings, listings before the
+# search index that projects them. A lexicographic glob sorts them into exactly that order.
+#
+# This is a glob rather than a single `seed.sql` of `\ir` includes because the CLI executes seed
+# files through a Go SQL driver, not psql: a psql meta-command is a plain syntax error there
+# (`failed to send batch: ERROR: syntax error at or near "\"`). Keep these files pure SQL.
+#
+# Regenerate after changing the corpus:
+#   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
+sql_paths = ["./seeds/*.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.

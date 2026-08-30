@@ -6,6 +6,7 @@ import InboxScopeLane from "../islands/InboxScopeLane.island.tsx";
 import MessagesSidebar from "../islands/MessagesSidebar.island.tsx";
 import { resolveConversationList, resolveMessagingSettings } from "./conversations-ssr.ts";
 import { DEFAULT_MESSAGING_SETTINGS } from "./messaging-defaults.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * inbox-slots — the SSR-idiomatic resolvers for the `/messages` ROOT's three shell regions, mirroring
@@ -39,15 +40,29 @@ function isInboxRoot(url: URL): boolean {
  * which excludes archived conversations, so counting the whole page made the header's first paint
  * disagree with the list beneath it by however many were archived.
  */
-export function inboxHeaderFor(url: URL, context: UserContext): ComponentChildren {
+export async function inboxHeaderFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!isInboxRoot(url)) return null;
-	const { page, role } = resolveConversationList(context);
+	const { page, role } = await resolveConversationList(context, actor);
 	const initialCount = page.conversations.filter((c) => !c.archived).length;
 	return <InboxHeader role={role} initialCount={initialCount} />;
 }
 
-/** The `/messages` root footer band — actions + density. */
-export function inboxFooterFor(url: URL, _context: UserContext): ComponentChildren {
+/**
+ * The `/messages` root footer band — actions + density.
+ *
+ * Synchronous, unlike its two siblings: it renders a static control rig and reads nothing. It keeps
+ * the actor in its signature so the layout can call all three slots uniformly, and so the day it
+ * needs a capability-filtered action set it does not have to change shape at every call site.
+ */
+export function inboxFooterFor(
+	url: URL,
+	_context: UserContext,
+	_actor: ReadActor,
+): ComponentChildren {
 	if (!isInboxRoot(url)) return null;
 	return <InboxFooter />;
 }
@@ -56,10 +71,14 @@ export function inboxFooterFor(url: URL, _context: UserContext): ComponentChildr
  * The `/messages` lane. On the root it is the scope map; beside an open conversation it is the
  * conversation list ({@link MessagesSidebar}) — navigation among siblings.
  */
-export function messagesLaneFor(url: URL, context: UserContext): ComponentChildren {
+export async function messagesLaneFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!url.pathname.startsWith("/messages")) return null;
-	const { page, role } = resolveConversationList(context);
-	const settings = resolveMessagingSettings(context) ?? DEFAULT_MESSAGING_SETTINGS;
+	const { page, role } = await resolveConversationList(context, actor);
+	const settings = (await resolveMessagingSettings(context, actor)) ?? DEFAULT_MESSAGING_SETTINGS;
 
 	if (isInboxRoot(url)) return <InboxScopeLane role={role} settings={settings} />;
 	return <MessagesSidebar initial={page} role={role} path={url.pathname} settings={settings} />;

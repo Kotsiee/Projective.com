@@ -3,6 +3,7 @@ import type { UserContext } from "@projective/types/auth";
 import ChatComposer from "../islands/ChatComposer.island.tsx";
 import { activeTabOf, resolveChannelMeta } from "./channel-view.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * channel-footer-slot — the SSR-idiomatic resolver for the middle-nav frame's configurable FOOTER band
@@ -24,12 +25,16 @@ import { resolveProjectDetail } from "./detail-ssr.ts";
  * `/projects/{slug}/board` yields no composer), and the composer is Chat-only — the Files/Members/…
  * tabs have nothing to compose.
  */
-export function channelFooterFor(url: URL, context: UserContext): ComponentChildren {
+export async function channelFooterFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean); // ["projects", projectId, channelId, ...tab]
 	if (segs[0] !== "projects" || segs.length < 3 || segs[1] === "create") return null;
 
 	const [, projectId, channelId] = segs;
-	const { detail } = resolveProjectDetail(projectId, context);
+	const { detail } = await resolveProjectDetail(projectId, context, actor);
 	if (!detail) return null;
 
 	const meta = resolveChannelMeta(detail, channelId);

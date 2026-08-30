@@ -27,6 +27,7 @@ import type { MoneyView } from "@projective/types/finance";
 import { DEFAULT_LOCALE, formatMoney, PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
 import { DAY, hash, HOUR, NOW } from "./derive.ts";
 import { serverEnv } from "../../core/env.ts";
+import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
  * Event COORDINATION fixtures — the deterministic roster, room, money, reschedule negotiation and
@@ -57,7 +58,7 @@ import { serverEnv } from "../../core/env.ts";
 
 // #region Cast
 const FACE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	mockAvatar(id);
 
 /**
  * The fallback cast for a surface that has no real domain parties of its own to draw on.

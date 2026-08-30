@@ -26,6 +26,12 @@ CREATE TABLE org.users_public (
     avatar_file_id uuid REFERENCES files.items(id) ON DELETE SET NULL,
     banner_file_id uuid REFERENCES files.items(id) ON DELETE SET NULL,
     headline text NOT NULL DEFAULT ''::text,
+    -- The city half of the profile location line, which the meta rail renders as "{city}, {country}".
+    -- Nullable rather than NOT NULL DEFAULT '': a profile that has never stated a city must stay
+    -- distinguishable from one that deliberately cleared it, and the rail then degrades to the
+    -- country alone instead of drawing an empty leading segment. address_city exists only on
+    -- business_profiles and organisations, so the individual/freelancer kind had no city at all.
+    city text,
     country text,
     timezone text,
     languages text[] NOT NULL DEFAULT '{}'::text[],
@@ -194,7 +200,15 @@ CREATE TABLE org.business_roles (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     business_id uuid NOT NULL,
     title text NOT NULL,
+    -- One-line remit rendered under the role name in the matrix, the role picker and the invite
+    -- preview. NOT NULL DEFAULT '' rather than nullable because every consumer renders it
+    -- unconditionally: an unwritten summary is the empty string, never a null to branch on.
+    summary text NOT NULL DEFAULT '',
     permissions org.business_permission[] NOT NULL DEFAULT '{}',
+    -- Mirrors org.team_roles.is_system on the buyer side: a PRESET role is a read-only bundle the
+    -- matrix refuses to edit (the escape hatch is "duplicate to a custom role"). The distinction has
+    -- to be storable on both kinds or the one shared roles editor cannot enforce it symmetrically.
+    is_system boolean NOT NULL DEFAULT false,
 
     CONSTRAINT business_roles_pkey PRIMARY KEY (id),
     CONSTRAINT business_roles_business_id_fkey FOREIGN KEY (business_id) REFERENCES org.business_profiles(id) ON DELETE CASCADE
@@ -206,10 +220,27 @@ CREATE TABLE org.business_members (
     user_id uuid NOT NULL,
     role text NOT NULL DEFAULT 'member'::text,
     status text NOT NULL DEFAULT 'active'::text,
+    -- Layer 3 of the three-layer permission model (preset role -> custom role -> per-member
+    -- override). The effective set is `role union granted minus revoked`, so the two arrays are
+    -- stored SEPARATELY rather than as one materialised result: the roster renders the PROVENANCE of
+    -- an override ("+ granted" / "- revoked"), which a flattened set cannot reconstruct, and a later
+    -- edit to the role must keep flowing through to members who never overrode anything themselves.
+    granted_capabilities org.workspace_capability[] NOT NULL DEFAULT '{}',
+    revoked_capabilities org.workspace_capability[] NOT NULL DEFAULT '{}',
+    -- Short job title shown under the name on the roster card, the member table and the org-chart
+    -- node. Per MEMBERSHIP, not per user: the same person is "Design lead" in one workspace and
+    -- "Reviewer" in another, so it cannot live on org.users_public.
+    title text,
+    -- The org-chart edge. Self-referencing, NULL for a root. ON DELETE SET NULL so removing a
+    -- manager re-roots their reports rather than cascading a whole subtree out of the workspace.
+    -- Points at the MEMBERSHIP, not the user, so an edge cannot outlive the reporting party's seat.
+    -- A FK cannot forbid a cycle; detecting one stays the application's job.
+    reports_to uuid,
     joined_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT business_memberships_pkey PRIMARY KEY (id),
     CONSTRAINT business_memberships_business_id_fkey FOREIGN KEY (business_id) REFERENCES org.business_profiles(id),
     CONSTRAINT business_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+    CONSTRAINT business_memberships_reports_to_fkey FOREIGN KEY (reports_to) REFERENCES org.business_members(id) ON DELETE SET NULL,
     CONSTRAINT business_memberships_unique_user_per_business UNIQUE (business_id, user_id)
 );
 
@@ -217,6 +248,10 @@ CREATE TABLE org.team_roles (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	team_id uuid NOT NULL REFERENCES org.teams (id) ON DELETE CASCADE,
 	name text NOT NULL,
+	-- One-line remit rendered under the role name in the matrix, the role picker and the invite
+	-- preview. NOT NULL DEFAULT '' rather than nullable because every consumer renders it
+	-- unconditionally: an unwritten summary is the empty string, never a null to branch on.
+	summary text NOT NULL DEFAULT '',
 	permissions org.team_permission[] NOT NULL DEFAULT '{}'::org.team_permission[],
 	is_system boolean NOT NULL DEFAULT false,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -233,12 +268,26 @@ CREATE TABLE org.team_members (
     status text NOT NULL DEFAULT 'active'::text,
     default_split_share numeric(5,2),
     invited_by uuid,
+    -- Layer 3 of the three-layer permission model. See the identical pair on org.business_members
+    -- for why granted and revoked are kept apart instead of being flattened into one set; the
+    -- capability vocabulary is shared across both kinds so the matrix, the union that resolves an
+    -- effective set, and the server guard are each written once rather than per kind.
+    granted_capabilities org.workspace_capability[] NOT NULL DEFAULT '{}',
+    revoked_capabilities org.workspace_capability[] NOT NULL DEFAULT '{}',
+    -- Short job title shown under the name on the roster card, the member table and the org-chart
+    -- node. Per MEMBERSHIP, not per user: the same person holds a different title in each workspace.
+    title text,
+    -- The org-chart edge. Self-referencing, NULL for a root. ON DELETE SET NULL so removing a
+    -- manager re-roots their reports rather than cascading a whole subtree out of the team. Points
+    -- at the MEMBERSHIP, so an edge cannot outlive the reporting party's seat.
+    reports_to uuid,
     joined_at timestamp with time zone NOT NULL DEFAULT now(),
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT team_memberships_pkey PRIMARY KEY (id),
     CONSTRAINT team_memberships_team_id_fkey FOREIGN KEY (team_id) REFERENCES org.teams(id),
     CONSTRAINT team_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
     CONSTRAINT team_memberships_inviter_fkey FOREIGN KEY (invited_by) REFERENCES auth.users(id),
+    CONSTRAINT team_memberships_reports_to_fkey FOREIGN KEY (reports_to) REFERENCES org.team_members(id) ON DELETE SET NULL,
     CONSTRAINT team_memberships_unique_user_per_team UNIQUE (team_id, user_id)
 );
 
@@ -294,20 +343,134 @@ CREATE TABLE org.user_bookmarks (
         )
 );
 
+-- #region Profile detail (structured tab entries + the public follow graph)
+CREATE TABLE org.education_entries (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    school text NOT NULL,
+    credential text NOT NULL,
+    field text NOT NULL,
+    -- Years are text, not date or integer. A credential is stated as "2019", occasionally as a term
+    -- or a range the holder writes themselves, and a date column would force a month and a day the
+    -- profile never asks for and never renders -- a fabricated precision the reader would trust.
+    start_year text NOT NULL,
+    -- NULL = still studying; the entry renders with no end rather than a placeholder.
+    end_year text,
+    logo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
+    -- Author-controlled ordering. Sorting by start_year alone cannot separate two credentials that
+    -- began in the same year, and the list is a narrative the owner arranges, not a chronology.
+    sort_order integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT education_entries_pkey PRIMARY KEY (id),
+    CONSTRAINT education_entries_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE org.experience_entries (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    -- The employer as the owner wrote it. Free text, with no FK to org.business_profiles or
+    -- org.organisations: most past employers are not Projective entities, and a nullable FK plus a
+    -- fallback string would be two sources for one name that could disagree.
+    org_name text NOT NULL,
+    role text NOT NULL,
+    start_year text NOT NULL,
+    end_year text,
+    -- Renders "Present". Kept as an explicit flag rather than inferred from end_year IS NULL because
+    -- a role can be ongoing while the owner still records an end year for a fixed-term contract; the
+    -- CHECK below makes the one incoherent combination -- current AND ended -- unrepresentable.
+    is_current boolean NOT NULL DEFAULT false,
+    -- NOT NULL DEFAULT '' rather than nullable: the card always renders this line, so an unwritten
+    -- summary is the empty string and no consumer has to branch on a null.
+    summary text NOT NULL DEFAULT '',
+    logo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
+    sort_order integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT experience_entries_pkey PRIMARY KEY (id),
+    CONSTRAINT experience_entries_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT experience_entries_current_check CHECK (NOT is_current OR end_year IS NULL)
+);
+
+CREATE TABLE org.user_languages (
+    user_id uuid NOT NULL,
+    -- Short language code (EN, FR) -- the compact chip label. The full display name is derived from
+    -- the code by the application, so it is deliberately NOT stored: two spellings of "French" that
+    -- disagree is a worse failure than a lookup.
+    code text NOT NULL,
+    -- The proficiency ramp, which is the whole reason this table exists: org.users_public.languages
+    -- is a text[] of codes and an array cannot pair a code with a level. The array is left in place
+    -- because the search weighting engine and the profile views already read it as a match set.
+    -- A CHECK rather than an enum: no language-level type exists yet and creating one belongs to the
+    -- enums file, which this migration does not own.
+    level text NOT NULL,
+    CONSTRAINT user_languages_pkey PRIMARY KEY (user_id, code),
+    CONSTRAINT user_languages_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT user_languages_level_check CHECK (
+        level IN ('native', 'fluent', 'professional', 'conversational', 'basic')
+    )
+);
+
+CREATE TABLE org.profile_follows (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    follower_user_id uuid NOT NULL,
+    -- Polymorphic by entity kind, so no FK is possible on the target -- the same reason
+    -- org.user_bookmarks carries a bare entity_id. Note the vocabulary is 'user', NOT the profile
+    -- kinds 'client'/'freelancer': an individual is ONE row in org.users_public whichever way their
+    -- profile renders, and a per-kind discriminator would let the same person be followed twice and
+    -- counted twice. This is not org.user_bookmarks: a bookmark is a private saved item whose enum
+    -- cannot express a client or an organisation, whereas a follow is a public, counted edge.
+    target_entity_type text NOT NULL,
+    target_entity_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT profile_follows_pkey PRIMARY KEY (id),
+    CONSTRAINT profile_follows_follower_fkey FOREIGN KEY (follower_user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT profile_follows_target_type_check CHECK (
+        target_entity_type IN ('user', 'team', 'business', 'organisation')
+    ),
+    -- A user id can never collide with a team/business/organisation id, so this only ever blocks the
+    -- one bad state it is aimed at: following yourself, which would inflate your own follower count.
+    CONSTRAINT profile_follows_no_self_follow_check CHECK (target_entity_id <> follower_user_id),
+    -- Following is idempotent: the control is a toggle, so a repeat press must not add an edge.
+    CONSTRAINT profile_follows_unique UNIQUE (
+        follower_user_id,
+        target_entity_type,
+        target_entity_id
+    )
+);
+-- #endregion
+
 CREATE TABLE org.org_invitations (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	inviter_user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
-	target_email text NOT NULL,
+	-- An invitation is addressed EITHER to an email (a stranger) or to an existing platform
+	-- identity (the common case, since the invitee usually already has a handle). target_email is
+	-- therefore nullable: keeping it NOT NULL would have forced a by-handle invitation to invent
+	-- an address it does not know. target_handle is kept alongside target_user_id so the queue can
+	-- still render who was invited after the account is gone, and so an invitation may be issued
+	-- against a handle before it is resolved. org_invitations_target_identity_check below makes an
+	-- invitation addressed to nobody unrepresentable.
+	target_email text,
+	target_handle text,
+	target_user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
 	team_id uuid REFERENCES org.teams (id) ON DELETE CASCADE,
 	business_id uuid REFERENCES org.business_profiles (id) ON DELETE CASCADE,
 	role_id uuid NOT NULL, /* Intentionally loosely coupled to support either team or business roles */
 	token text NOT NULL UNIQUE,
+	-- Free-text message from the sender, shown on the invite-queue row. Nullable because most
+	-- invitations carry none, and an empty string would read on the row as an emptied note.
+	note text,
 	status text NOT NULL DEFAULT 'pending'::text,
+	-- When the invitation stops being acceptable. NULL means it does not expire, which is a real
+	-- state (a direct invitation) and not an unset value; a share link sets one. Lapsed rows are
+	-- never deleted -- the queue keeps rendering them so they can be resent.
+	expires_at timestamptz,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
 	CONSTRAINT org_invitations_pkey PRIMARY KEY (id),
 	CONSTRAINT check_invitation_target CHECK (
 		(team_id IS NOT NULL AND business_id IS NULL) OR
 		(team_id IS NULL AND business_id IS NOT NULL)
+	),
+	CONSTRAINT org_invitations_target_identity_check CHECK (
+		target_email IS NOT NULL OR target_handle IS NOT NULL OR target_user_id IS NOT NULL
 	)
 );
 
@@ -356,6 +519,15 @@ CREATE TABLE org.organisation_members (
     user_id uuid NOT NULL,
     role org.organisation_role NOT NULL DEFAULT 'member',
     status text NOT NULL DEFAULT 'active',
+    -- Which departments this member sits in. An array rather than a child table because a member
+    -- belongs to a handful of departments at most and every read wants all of them at once; and
+    -- because the department CATALOGUE is itself org.organisations.departments text[], so a child
+    -- table would give the assignment a stronger shape than the thing it points at. Multi-valued by
+    -- product rule: a member in N departments renders under EACH of them in the grouped Members view
+    -- and carries a multi-department badge, and DepartmentEntry.memberCount counts them in each.
+    -- Values are names drawn from that parent array; PostgreSQL cannot FK an array element, so
+    -- referential agreement is the application's job.
+    departments text[] NOT NULL DEFAULT '{}'::text[],
     invited_by uuid,
     joined_at timestamptz NOT NULL DEFAULT now(),
     created_at timestamptz NOT NULL DEFAULT now(),

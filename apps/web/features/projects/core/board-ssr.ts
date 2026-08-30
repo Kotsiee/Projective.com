@@ -1,5 +1,6 @@
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { BoardPage, BoardView } from "../types/projects-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * board-ssr — the server-only bootstrap for the Kanban board's first paint. Calls the fat
@@ -13,11 +14,15 @@ export interface BoardBootstrap {
 }
 
 /** Resolve the initial board page. `channelId` set → the stage-level Tasks board. */
-export function resolveBoardPage(
+export async function resolveBoardPage(
 	projectId: string,
+	actor: ReadActor,
 	channelId?: string | null,
 	view?: BoardView,
-): BoardBootstrap {
-	const res = ProjectBackendService.board({ projectId, channelId: channelId ?? null, view });
+): Promise<BoardBootstrap> {
+	const res = await ProjectBackendService.board(
+		{ projectId, channelId: channelId ?? null, view },
+		actor,
+	);
 	return { page: res.ok && res.data ? res.data.page : null };
 }

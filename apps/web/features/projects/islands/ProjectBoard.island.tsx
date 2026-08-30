@@ -47,6 +47,7 @@ import {
 	resetBoardState,
 } from "../core/board-state.ts";
 import { BoardService } from "../core/BoardService.ts";
+import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
 import { TicketCard } from "../components/TicketCard.tsx";
 import { BoardColumnHeader } from "../components/BoardColumnHeader.tsx";
@@ -108,6 +109,13 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		(scope === "channel" ? "stage" : "project");
 	const boardTitle = initial?.title ?? "Board";
 	const boardStageId = scope === "channel" ? channelId ?? null : null;
+
+	/**
+	 * The placeholder gate for the ONE fetch this board makes — the defensive fallback taken when SSR
+	 * produced no page. Every other narrowing on this surface is client-side over `cards`, so there is
+	 * nothing else to wait for and no per-refine placeholder to draw.
+	 */
+	const skeleton = useSkeletonDelay();
 
 	const query = useSignal("");
 	const priorityFilter = useSignal<string[]>([]);
@@ -258,7 +266,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	}
 
 	async function loadFallback(): Promise<void> {
+		skeleton.begin();
 		const res = await BoardService.list({ projectId: props.projectId, channelId: boardStageId });
+		// Cleared BEFORE the payload check, so a failed fallback lands on the board's own empty state
+		// rather than leaving the placeholder up for the life of the page.
+		skeleton.end();
 		if (res.ok && res.data) {
 			cards.value = res.data.page.cards;
 			stages.value = res.data.page.stages;
@@ -558,7 +570,15 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		<div class="brd" data-scope={scope}>
 			{toolbar()}
 			<div class="brd-workspace">
-				{viewMode === "kanban"
+				{skeleton.visible.value
+					? (
+						<ProjectSkeleton
+							shape="board"
+							label="Loading board…"
+							columns={Math.max(kanbanColumns.length, 3)}
+						/>
+					)
+					: viewMode === "kanban"
 					? (
 						<KanbanBoard<BoardCard, BoardColumn>
 							columns={kanbanColumns}

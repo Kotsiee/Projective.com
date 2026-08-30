@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { resolveSubmissionPage } from "@web/features/projects/core/submissions-ssr.ts";
 import SubmissionExplorer from "@web/features/projects/islands/SubmissionExplorer.island.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * Project-scoped Submissions ledger (`/projects/[projectId]/submissions/…`) — every deliverable across
@@ -13,9 +14,10 @@ import SubmissionExplorer from "@web/features/projects/islands/SubmissionExplore
  * path (not a channel), so the shell mounts no channel header — only the Project Details lane + the
  * footer View Control Rig + Review trigger.
  */
-export default define.page(function ProjectSubmissionsPage(ctx) {
+export default define.page(async function ProjectSubmissionsPage(ctx) {
+	const actor = readActor(ctx);
 	const { projectId } = ctx.params;
 	const path = (ctx.params.path ?? "").split("/").filter(Boolean);
-	const { page } = resolveSubmissionPage(projectId, null, path);
+	const { page } = await resolveSubmissionPage(projectId, actor, null, path);
 	return <SubmissionExplorer scope="project" projectId={projectId} initial={page} />;
 });

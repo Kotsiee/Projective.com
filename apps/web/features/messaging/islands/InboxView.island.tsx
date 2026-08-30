@@ -1,11 +1,16 @@
 import type { JSX } from "preact";
-import { useComputed } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/inbox.css";
 import { Button } from "@projective/ui/fields";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { InboxRow } from "../components/InboxRow.tsx";
+import {
+	InboxListSkeleton,
+	InboxLoadingStatus,
+	skeletonRowCount,
+} from "../components/InboxSkeletons.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
 import { conversationHref } from "../core/conversation-model.ts";
 import { groupByDay } from "../core/inbox-model.ts";
@@ -63,6 +68,16 @@ export interface InboxViewProps {
 }
 // #endregion
 
+/**
+ * How long a fetch must stay in flight before the placeholder replaces the list.
+ *
+ * The header band's search is debounced at 220ms and the fixtures answer in single-digit
+ * milliseconds, so a threshold-free skeleton would flash between one keystroke and the next — a
+ * strobe that reads as breakage rather than progress. Past this point the wait is long enough to be
+ * worth explaining.
+ */
+const SKELETON_DELAY_MS = 180;
+
 export default function InboxView(props: InboxViewProps): JSX.Element {
 	// #region Local state
 	const reqId = useRef(0);
@@ -88,32 +103,47 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	// #endregion
 
 	// #region Fetch (the one request path)
+	/**
+	 * The in-flight flag is cleared in a `finally`, under the request-staleness guard.
+	 *
+	 * Every other arrangement leaks it on some path, and a leaked flag is now load-bearing: the
+	 * placeholder is gated on it, so a flag that never clears is a placeholder that never stops. The
+	 * guard is what keeps a superseded request from clearing anything — the newer request it lost to
+	 * owns both the flag and the answer.
+	 */
 	async function apply(): Promise<void> {
 		const id = ++reqId.current;
 		inboxLoading.value = true;
 		inboxError.value = null;
 
 		const relations = inboxRelation.value ? [inboxRelation.value] : undefined;
-		const res = await MessagingService.conversations({
-			q: inboxQuery.value || undefined,
-			role: inboxRole.value,
-			unread: inboxUnreadOnly.value || undefined,
-			filter: relations ? { ...inboxFilter.value, relations } : inboxFilter.value,
-		});
+		try {
+			const res = await MessagingService.conversations({
+				q: inboxQuery.value || undefined,
+				role: inboxRole.value,
+				unread: inboxUnreadOnly.value || undefined,
+				filter: relations ? { ...inboxFilter.value, relations } : inboxFilter.value,
+			});
 
-		if (id !== reqId.current) return; // superseded by a newer request
-		inboxLoading.value = false;
+			if (id !== reqId.current) return; // superseded by a newer request
 
-		if (res.ok && res.data) {
-			inboxAll.value = res.data.page.conversations;
-			inboxTotal.value = res.data.page.total;
-			inboxHasMore.value = res.data.page.hasMore;
-		} else {
-			// The transport already returns a soft, human message — surface it rather than rendering
-			// a failed fetch as an empty inbox, which would teach the viewer something untrue.
-			inboxError.value = res.message ?? "Couldn't load your conversations.";
+			if (res.ok && res.data) {
+				inboxAll.value = res.data.page.conversations;
+				inboxTotal.value = res.data.page.total;
+				inboxHasMore.value = res.data.page.hasMore;
+			} else {
+				// The transport already returns a soft, human message — surface it rather than rendering
+				// a failed fetch as an empty inbox, which would teach the viewer something untrue.
+				inboxError.value = res.message ?? "Couldn't load your conversations.";
+			}
+			persist();
+		} catch {
+			// The transport folds its own failures into a soft result rather than throwing, so reaching
+			// here means something below it did not. It still resolves to a stated failure.
+			if (id === reqId.current) inboxError.value = "Couldn't load your conversations.";
+		} finally {
+			if (id === reqId.current) inboxLoading.value = false;
 		}
-		persist();
 	}
 
 	function persist(): void {
@@ -198,6 +228,36 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	const compact = useComputed(() => inboxDensity.value === "compact");
 	// #endregion
 
+	// #region Loading placeholder
+	/*
+	 * The placeholder is gated on the FETCH LIFECYCLE and on nothing else.
+	 *
+	 * The tempting condition is "loading, and there is nothing on screen" — and it is the same trap
+	 * the seed guard above documents, one surface further on. A query that legitimately matches
+	 * nothing is empty, so an emptiness-gated placeholder covers the empty state that was supposed to
+	 * explain it, and pairs with the `!loading` empty state to leave a wait that resolves badly
+	 * showing neither. Emptiness is an answer, not a stage; only the request can say whether one is
+	 * outstanding.
+	 *
+	 * The row COUNT is a different question, and there emptiness is exactly the right input: the
+	 * placeholder mirrors the list it is replacing so the swap costs no height.
+	 */
+	const skeleton = useSignal(false);
+	const skeletonRows = useSignal(0);
+
+	useSignalEffect(() => {
+		if (!inboxLoading.value) {
+			skeleton.value = false;
+			return;
+		}
+		const timer = setTimeout(() => {
+			skeletonRows.value = skeletonRowCount(rows.peek().length);
+			skeleton.value = true;
+		}, SKELETON_DELAY_MS);
+		return () => clearTimeout(timer);
+	});
+	// #endregion
+
 	// #region Optimistic per-conversation actions
 	function updatePref(id: string, patch: ConvPref): void {
 		const next = { ...inboxPrefs.value, [id]: { ...inboxPrefs.value[id], ...patch } };
@@ -223,6 +283,15 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 
 	return (
 		<section class="inbox" data-density={inboxDensity.value} aria-label="Conversations">
+			{
+				/*
+				 * Mounted whether or not anything is loading: a live region has to be in the accessibility
+				 * tree before its text changes, so one that arrives with its message already set is
+				 * routinely never announced. The placeholder itself is decorative and stays silent.
+				 */
+			}
+			<InboxLoadingStatus busy={skeleton.value} label="Loading conversations…" />
+
 			{/* Error — a failed refine must never render as an empty inbox. */}
 			{inboxError.value && (
 				<div class="inbox__error" role="alert">
@@ -245,23 +314,11 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 				</div>
 			)}
 
-			{/* Loading — a visible skeleton, because `aria-busy` alone is invisible to sighted viewers. */}
-			{inboxLoading.value && rows.value.length === 0 && !inboxError.value && (
-				<div class="inbox__skeleton" aria-hidden="true">
-					{[0, 1, 2, 3, 4, 5].map((i) => (
-						<div key={i} class="inbox__skel-row">
-							<span class="inbox__skel-avatar" />
-							<span class="inbox__skel-lines">
-								<span class="inbox__skel-line inbox__skel-line--name" />
-								<span class="inbox__skel-line inbox__skel-line--preview" />
-							</span>
-						</div>
-					))}
-				</div>
-			)}
+			{/* Loading — a visible placeholder, because `aria-busy` alone is invisible to sighted viewers. */}
+			{skeleton.value && !inboxError.value && <InboxListSkeleton rows={skeletonRows.value} />}
 
 			{/* Empty — every variant teaches the action that resolves it. */}
-			{!inboxLoading.value && !inboxError.value && rows.value.length === 0 && (
+			{!skeleton.value && !inboxError.value && rows.value.length === 0 && (
 				<div class="inbox__empty">
 					<span class="inbox__empty-glyph" aria-hidden="true">
 						<MessagingIcon name={emptyCopy.icon} />
@@ -289,8 +346,8 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 				</div>
 			)}
 
-			{/* The list. */}
-			{rows.value.length > 0 && (
+			{/* The list. It yields to the placeholder rather than sitting under it. */}
+			{!skeleton.value && rows.value.length > 0 && (
 				<div class="inbox__list" aria-busy={inboxLoading.value ? "true" : undefined}>
 					{groups.value.map((group) => (
 						<div class="inbox__group" key={group.key}>

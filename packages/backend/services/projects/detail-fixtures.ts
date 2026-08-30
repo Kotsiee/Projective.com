@@ -10,6 +10,7 @@ import type {
 	TeamChannel,
 } from "@projective/types/projects";
 import { allProjects } from "./fixtures.ts";
+import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
  * projects detail fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the deep
@@ -24,9 +25,9 @@ import { allProjects } from "./fixtures.ts";
 
 // #region Avatars & supporting cast (Unsplash crops — open registry, DESIGN_SYSTEM.md §C.4)
 const FACE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+	mockAvatar(id);
 const SCENE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=crop&w=640&h=280&q=80`;
+	mockCover(id, 640, 280);
 
 /** A rotating supporting cast for members / DMs (beyond the row's owner + counterparty). */
 const CAST: readonly ProjectParty[] = [

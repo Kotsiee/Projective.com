@@ -46,6 +46,7 @@ import type {
 	ProjectItem,
 	ServiceItem,
 } from "@projective/types/explore";
+import { mockCover } from "../../mocks/assets.ts";
 
 /**
  * Explore — the Entity View page derivation (server side).
@@ -67,7 +68,7 @@ function hash(s: string): number {
 
 /** Self-contained Unsplash source builder (the backend cannot import the app's marketing helper). */
 function unsplash(id: string, w: number, h: number): string {
-	return `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&h=${h}&q=72`;
+	return mockCover(id, w, h, 72);
 }
 
 /** Rewrite an existing Unsplash URL's crop dimensions (reused for a large `src` + a small `thumb`). */

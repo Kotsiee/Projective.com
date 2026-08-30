@@ -16,7 +16,7 @@ import type {
 } from "@projective/types/workspace";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { serverEnv } from "../../core/env.ts";
-import { isSupabaseConfigured } from "../../core/supabase.ts";
+import { isSupabaseConfigured, useMocks } from "../../core/supabase.ts";
 import {
 	applyRosterSim,
 	applyWorkspaceSim,
@@ -46,7 +46,7 @@ import {
  * single registry, move this to `core/supabase.ts` with the rest rather than keeping two homes.
  */
 export function isWorkspaceBackendLive(): boolean {
-	return serverEnv().workspaceBackendLive && isSupabaseConfigured();
+	return !useMocks() && serverEnv().workspaceBackendLive && isSupabaseConfigured();
 }
 
 /**

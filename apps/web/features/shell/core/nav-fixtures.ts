@@ -5,6 +5,8 @@
  * same shape, with zero component churn. No Supabase / DB access here (islands stay dumb).
  */
 
+import { mockAvatar } from "@web/utils/mock-assets.ts";
+
 // #region Types
 /** A recently-active workspace surfaced under the sidebar's Projects disclosure (YouTube-style). */
 export interface RecentWorkspace {
@@ -93,8 +95,7 @@ export interface NotificationItem {
 
 // #region Fixtures
 /** Unsplash portrait crops (open registry, per DESIGN_SYSTEM.md §C.4) used as owner avatars. */
-const FACE = (id: string) =>
-	`https://images.unsplash.com/${id}?auto=format&fit=facearea&facepad=3&w=96&h=96&q=80`;
+const FACE = (id: string) => mockAvatar(id);
 
 const RECENT_WORKSPACES: readonly RecentWorkspace[] = [
 	{
