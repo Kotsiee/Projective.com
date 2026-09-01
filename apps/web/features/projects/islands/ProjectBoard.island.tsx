@@ -26,6 +26,7 @@ import {
 	type BoardStageRef,
 	type BoardView,
 	buildBoardColumns,
+	type CommitTicket,
 	type TicketStatus,
 } from "../types/projects-types.ts";
 import {
@@ -95,7 +96,70 @@ export interface ProjectBoardProps {
 interface PendingWarning {
 	kind: BoardWarningKind;
 	label: string;
-	apply: () => void;
+	/**
+	 * What the warning authorises.
+	 *
+	 * Widened to an optional promise because the consequential moves are the ones that MOVE MONEY —
+	 * crossing into a new stage charges the ticket, confirming Done releases escrow — so the persist
+	 * has to live inside the acceptance rather than beside it. A synchronous closure could only ever
+	 * mutate the board and let the write race the confirmation.
+	 */
+	apply: () => void | Promise<void>;
+}
+
+/**
+ * Where a card lands when it is dropped into `col`, as a lifecycle transition rather than a lane.
+ *
+ * Deliberately narrow: it resolves `status` and `stageId` and NOTHING else. The board used to
+ * fabricate `claimed`/`escrowHeld` here — a drag into In Progress asserted that a freelancer had
+ * claimed the ticket and that escrow was held for it, which is a financial claim no gesture on this
+ * surface is entitled to make. The server's returned card is the authority on both; until it answers,
+ * the card keeps whatever it already carried.
+ */
+function columnTarget(
+	card: BoardCard,
+	col: BoardColumn,
+): { status: TicketStatus; stageId: string | null } {
+	if (col.kind === "new") return { status: "backlog", stageId: null };
+	if (col.kind === "completed") return { status: "completed", stageId: card.stageId };
+	if (col.kind === "stage") {
+		return { status: card.claimed ? "in_progress" : "todo", stageId: col.stageId };
+	}
+	return { status: col.status as TicketStatus, stageId: card.stageId };
+}
+
+/**
+ * Whether this column is the manual-order lane.
+ *
+ * `sort_order` is writable only while a ticket is in `backlog` (`trg_ticket_ordering_guard` raises
+ * otherwise), so a position sent for any other lane would be dropped server-side at best and refuse
+ * the whole statement at worst.
+ */
+function isManualLane(col: BoardColumn): boolean {
+	return col.kind === "new" || (col.kind === "status" && col.status === "backlog");
+}
+
+/** The ticket as the commit endpoint wants it — the card's own fields, never a re-derived total. */
+function commitPayload(projectId: string, clientId: string, card: BoardCard): CommitTicket {
+	return {
+		projectId,
+		clientId,
+		title: card.title,
+		description: card.description ?? "",
+		status: card.status,
+		stageId: card.stageId,
+		priority: card.priority,
+		intensity: card.intensity,
+		dueDate: card.dueDate,
+		// A party carries a handle, not an id — the handle IS the identifier a member is addressed by
+		// across this product (Decision #3), and the server maps it back to the seat.
+		ownerId: card.owner?.handle ?? null,
+		tasks: card.tasks,
+		stages: card.stages,
+		// The assets already linked to the ticket. The Attachments tab stages a pick as a COUNT and
+		// never writes a fabricated row into `attachments`, so every id here is a real `files.items` id.
+		attachmentIds: card.attachments.map((a) => a.id),
+	};
 }
 
 export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
@@ -285,27 +349,20 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		);
 	}
 
-	/** Rewrite a card's status/stage to match the column it was dropped into. */
-	function applyColumnToCard(card: BoardCard, col: BoardColumn): BoardCard {
-		if (col.kind === "new") {
-			return { ...card, stageId: null, status: "backlog", claimed: false, escrowHeld: false };
-		}
-		if (col.kind === "completed") return { ...card, status: "completed", escrowHeld: false };
-		if (col.kind === "stage") {
-			return { ...card, stageId: col.stageId, status: card.claimed ? "in_progress" : "todo" };
-		}
-		const st = col.status as TicketStatus;
-		if (st === "backlog") return { ...card, status: "backlog", claimed: false, escrowHeld: false };
-		if (st === "todo") return { ...card, status: "todo", claimed: false, escrowHeld: false };
-		if (st === "completed") return { ...card, status: "completed", escrowHeld: false };
-		return { ...card, status: st, claimed: true, escrowHeld: true }; // in_progress / in_review
-	}
-
-	function applyItemMove(move: KanbanItemMove): void {
+	/**
+	 * Splice the card into its new lane, optimistically.
+	 *
+	 * `sortOrder` is written onto the card only for the manual lane, so the number the board renders
+	 * and the number the server is asked to store are the same one.
+	 */
+	function applyItemMove(move: KanbanItemMove, sortOrder: number | null): void {
 		const card = cards.value.find((c) => c.id === move.itemId);
 		const col = boardColumns.find((c) => c.id === move.toColumn);
 		if (!card || !col) return;
-		const updated = applyColumnToCard(card, col);
+		const target = columnTarget(card, col);
+		const updated: BoardCard = sortOrder === null
+			? { ...card, ...target }
+			: { ...card, ...target, sortOrder };
 		const rest = cards.value.filter((c) => c.id !== move.itemId);
 		const dest = rest.filter((c) => laneOf(c) === move.toColumn);
 		let at: number;
@@ -316,7 +373,46 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		cards.value = [...rest.slice(0, at), updated, ...rest.slice(at)];
 	}
 
-	function warn(kind: PendingWarning["kind"], label: string, apply: () => void): void {
+	/**
+	 * Move a ticket and persist it.
+	 *
+	 * The board splices first so the drag lands under the pointer, then asks the server. On the way
+	 * back the RETURNED card replaces the optimistic one wholesale: a move can change claim state,
+	 * escrow and ordering, and the board has no standing to guess any of them. On refusal the whole
+	 * previous array is restored — not just the card's column, because the splice also reordered its
+	 * neighbours — and the reason is stated.
+	 */
+	async function commitMove(move: KanbanItemMove): Promise<void> {
+		const before = cards.value;
+		const card = before.find((c) => c.id === move.itemId);
+		const col = boardColumns.find((c) => c.id === move.toColumn);
+		if (!card || !col) return;
+
+		const target = columnTarget(card, col);
+		const sortOrder = isManualLane(col) ? move.toIndex : null;
+		applyItemMove(move, sortOrder);
+
+		const res = await BoardService.move({
+			projectId: props.projectId,
+			ticketId: card.id,
+			status: target.status,
+			stageId: target.stageId,
+			sortOrder,
+		});
+		if (res.ok && res.data) {
+			const saved = res.data.card;
+			cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+			return;
+		}
+		cards.value = before;
+		toast(res.message ?? "That move could not be saved.");
+	}
+
+	function warn(
+		kind: PendingWarning["kind"],
+		label: string,
+		apply: () => void | Promise<void>,
+	): void {
 		pending.value = { kind, label, apply };
 		warningVisible.value = true;
 	}
@@ -336,10 +432,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		}
 		const kind = classifyMove(card, move.fromColumn, move.toColumn, boardColumns);
 		if (kind === "free") {
-			applyItemMove(move);
+			void commitMove(move);
 			return;
 		}
-		warn(kind === "revision" ? "revision" : "claimed", card.title, () => applyItemMove(move));
+		// The card does not move and nothing is written until the warning is accepted — the whole point
+		// of these three is that the consequence is irreversible once it happens.
+		warn(kind === "revision" ? "revision" : "claimed", card.title, () => commitMove(move));
 	}
 
 	function applyColumnMove(move: KanbanColumnMove): void {
@@ -444,28 +542,71 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	}
 
 	/**
+	 * Re-point the open ticket frame at a different id, keeping whatever sits beneath it.
+	 *
+	 * A ticket's identity changes twice on the way from composer to board — draft id → optimistic id →
+	 * the server's — and the frame was opened on the first of them, so without this the modal would
+	 * resolve to a ticket that no longer exists and unmount under the reader. Guarded on the frame
+	 * still SHOWING the id being replaced: by the time the server answers the reader may have closed
+	 * the modal or opened another ticket, and re-pointing then would haul them back.
+	 */
+	function repointFrame(fromId: string, toId: string, mode: TicketMode): void {
+		const top = ticketStack.top.value;
+		if (!top || top.kind !== "ticket") return;
+		if ((top.input?.ticketId ?? top.id) !== fromId) return;
+		ticketStack.replace(
+			"ticket",
+			toId,
+			mode === "create" ? { ticketId: toId, mode } : { ticketId: toId },
+		);
+	}
+
+	/**
 	 * Commit the modal's working copy — the one write path for both postures.
 	 *
-	 * Money and capacity are re-derived through the SAME {@link reconcileCard} the modal's own footer
-	 * used, so the figure the client agreed to is the figure the board shows; there is no second
-	 * arithmetic path that could round differently. A brand-new ticket joins the board at the top of
-	 * the column it was composed for; an existing one is replaced in place, and the modal stays open
-	 * on it.
+	 * The optimistic card is derived through the SAME {@link reconcileCard} the modal's own footer
+	 * used, so between the press and the answer the board shows the figure the client agreed to and
+	 * not a second one rounded differently. The answer then REPLACES it verbatim: a saved ticket's id,
+	 * dates, claim state and money trail are the server's to state.
+	 *
+	 * The optimistic id is minted with a prefix that no server row can carry. A bare counter produced
+	 * `ticket-1` on the first create of every page load, which is a plausible real ticket id — and an
+	 * optimistic row that can be mistaken for a persisted one is a row nothing can safely roll back.
+	 *
+	 * On refusal the board is restored and the reason is stated. A refused CREATE also puts the
+	 * composer back on the reader's own draft: the working copy they typed is the only copy of it, and
+	 * discarding it because the network failed would lose work that was never the network's to lose.
 	 */
-	function commitTicket(next: BoardCard): void {
+	async function commitTicket(next: BoardCard): Promise<void> {
 		const card = reconcileCard({ ...next, updatedAt: new Date().toISOString() }, stages.value);
-		const exists = cards.value.some((c) => c.id === card.id);
-		if (exists) {
-			cards.value = cards.value.map((c) => (c.id === card.id ? card : c));
+		const clientId = card.id;
+		const existing = cards.value.find((c) => c.id === clientId) ?? null;
+		const optimisticId = existing ? clientId : `optimistic-${++newIdRef.current}`;
+
+		if (existing) {
+			cards.value = cards.value.map((c) => (c.id === clientId ? card : c));
+		} else {
+			cards.value = [{ ...card, id: optimisticId, dateLabel: "Just now" }, ...cards.value];
+			composing.value = null;
+			repointFrame(clientId, optimisticId, "view");
+		}
+
+		const res = await BoardService.commit(commitPayload(props.projectId, clientId, card));
+		if (res.ok && res.data) {
+			const saved = res.data.card;
+			cards.value = cards.value.map((c) => (c.id === optimisticId ? saved : c));
+			if (saved.id !== optimisticId) repointFrame(optimisticId, saved.id, "view");
 			return;
 		}
-		// A saved ticket gets a board id, so the chain has to be re-pointed at it — the frame was
-		// opened on the draft's id and would otherwise resolve to a ticket that no longer exists.
-		const saved: BoardCard = { ...card, id: `ticket-${++newIdRef.current}`, dateLabel: "Just now" };
-		cards.value = [saved, ...cards.value];
-		composing.value = null;
-		ticketStack.close();
-		ticketStack.open("ticket", saved.id, { ticketId: saved.id });
+
+		if (existing) {
+			cards.value = cards.value.map((c) => (c.id === clientId ? existing : c));
+		} else {
+			cards.value = cards.value.filter((c) => c.id !== optimisticId);
+			composing.value = card;
+			repointFrame(optimisticId, clientId, "create");
+		}
+		toast(res.message ?? "That ticket could not be saved.");
 	}
 
 	function onCreateStage(stage: { name: string; description: string }): void {
@@ -493,9 +634,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	}
 
 	function acceptWarning(): void {
-		pending.value?.apply();
+		// The dialog closes on acceptance rather than on completion: the move is optimistic, so holding
+		// the warning up until the round trip returns would make an accepted decision look undecided.
+		const accepted = pending.value;
 		pending.value = null;
 		warningVisible.value = false;
+		void accepted?.apply();
 	}
 	function cancelWarning(): void {
 		pending.value = null;

@@ -24,10 +24,8 @@ import { mockAvatar, mockCover } from "../../mocks/assets.ts";
  */
 
 // #region Avatars & supporting cast (Unsplash crops — open registry, DESIGN_SYSTEM.md §C.4)
-const FACE = (id: string) =>
-	mockAvatar(id);
-const SCENE = (id: string) =>
-	mockCover(id, 640, 280);
+const FACE = (id: string) => mockAvatar(id);
+const SCENE = (id: string) => mockCover(id, 640, 280);
 
 /** A rotating supporting cast for members / DMs (beyond the row's owner + counterparty). */
 const CAST: readonly ProjectParty[] = [

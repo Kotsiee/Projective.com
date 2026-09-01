@@ -1,9 +1,9 @@
 # analytics Schema: Policies
 
 RLS is **always on**. The posture is **read-scoped, write-closed**: a subject may read the telemetry
-attributed to it, and nothing outside `analytics.fn_emit` may write. There is no `UPDATE` or `DELETE`
-policy anywhere in the schema — the substrate is append-only, so history can never be rewritten to
-flatter a subject's Standing or allowance record.
+attributed to it, and nothing outside `analytics.fn_emit` may write. There is no `UPDATE` or
+`DELETE` policy anywhere in the schema — the substrate is append-only, so history can never be
+rewritten to flatter a subject's Standing or allowance record.
 
 ## 🛡️ Shared authorization helper
 
@@ -18,7 +18,7 @@ flatter a subject's Standing or allowance record.
 
 ## 📋 Policies
 
-| Table                       | Policy                     | Effect                                                                  |
+| Table                       | Policy                     | Effect                                                                   |
 | :-------------------------- | :------------------------- | :----------------------------------------------------------------------- |
 | `analytics.event_catalogue` | `Read event catalogue`     | `SELECT` to `authenticated`, `USING (true)` — the vocabulary is public.  |
 | `analytics.events`          | `View own subject events`  | `SELECT` where `analytics.fn_subject_visible(subject_kind, subject_id)`. |

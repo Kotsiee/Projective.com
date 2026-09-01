@@ -41,10 +41,31 @@ CREATE TABLE projects.projects (
   description_text text NOT NULL DEFAULT ''::text,
   format project_format NOT NULL DEFAULT 'pipeline'::project_format,
   structure_variation projects.structure_variation NOT NULL DEFAULT 'standard'::projects.structure_variation,
+  -- 1-1 versus cohort, for a `session` engagement. A separate axis from `format` rather than two more
+  -- enum members, because everything else about a session -- its stages, its pricing, its channels --
+  -- is identical either way, and folding the two into `project_format` would make every exhaustive
+  -- map over that enum grow a case that changes nothing. `none` on any non-session format.
+  session_kind text NOT NULL DEFAULT 'none'
+    CHECK (session_kind IN ('none', 'normal', 'group')),
   status project_status NOT NULL DEFAULT 'draft'::project_status,
   industry_category_id uuid,
   visibility visibility NOT NULL DEFAULT 'public'::visibility,
   currency text NOT NULL DEFAULT 'USD'::text,
+
+  -- The project-level budget. `CreateProjectSchema` has carried this pair since it shipped and
+  -- `projects.create_project` discarded both halves, so a figure the client typed had nowhere to
+  -- live and the setup ladder had nothing to measure "priced" against.
+  --
+  -- The type is the existing `budget_type` rather than a new enum because
+  -- `projects.stage_staffing_roles` already models exactly this (type, amount) pair one level down.
+  -- A second vocabulary for one concept inside one schema is how two surfaces come to disagree
+  -- about what `hourly_cap` means.
+  --
+  -- NULL is "not set", which is a different fact from zero: zero is a decision somebody took, and a
+  -- reader that cannot tell them apart will render "£0.00" over a project nobody has priced.
+  budget_type budget_type NOT NULL DEFAULT 'fixed_price'::budget_type,
+  budget_amount_cents bigint CHECK (budget_amount_cents IS NULL OR budget_amount_cents >= 0),
+
   timeline_preset timeline_preset NOT NULL DEFAULT 'sequential'::timeline_preset,
   target_project_start_date timestamp with time zone,
 
@@ -112,6 +133,10 @@ CREATE TABLE projects.project_stages (
 
   -- Pipeline per-ticket unit price (minor units); source amount for ticket escrow holds.
   unit_price_cents bigint,
+  -- The delivery this stage owes, in the owner's own words: "Homepage + 3 inner pages, in Figma".
+  -- Deliberately free text and NOT a schedule -- `due_date` and the duration modes below answer WHEN,
+  -- and a sentence describing WHAT cannot be reconstructed from either.
+  milestone text NOT NULL DEFAULT ''::text,
 
   start_trigger_type start_trigger_type NOT NULL DEFAULT 'on_project_start'::start_trigger_type,
   fixed_start_date timestamp with time zone,

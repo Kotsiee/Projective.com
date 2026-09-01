@@ -245,10 +245,24 @@ export class FilesBackendService {
 	}
 
 	/**
-	 * Step 3: the object landed. Promotes the row out of `pending_upload`.
+	 * Step 3: the object landed. Promotes the row out of `pending_upload` and files what the browser
+	 * read out of its bytes.
 	 *
 	 * The fixtures go straight to `uploaded`; the live path leaves it `scanning` until the virus/MIME
 	 * check clears, because a row that says `uploaded` is a row the hub will hand to someone.
+	 *
+	 * **`metadata` is the one thing here the server cannot re-derive cheaply.** Dimensions, a poster
+	 * frame, a waveform and a page count all require decoding the file, and the browser has already
+	 * done it — alongside the transfer, so nobody waited for it. The envelope is stored verbatim and
+	 * its measurements are folded onto the row's flat `width`/`height`/`durationLabel`/`thumbnailUrl`
+	 * (see `./media-facts.ts`), which is what lets every existing grid cell, table row and preview
+	 * benefit without a change of its own.
+	 *
+	 * It is treated as a CLIENT CLAIM, not as evidence. It decides how an asset is drawn and nothing
+	 * about who may read it, so the worst a forged envelope buys is a wrong aspect box on the forger's
+	 * own upload; `AssetMetadataSchema` bounds every field at the route so it cannot be a storage
+	 * amplification either. Anything the platform must be able to trust — the content digest, the MIME
+	 * type, the byte length — is re-derived server-side during the scan and never taken from here.
 	 */
 	static async uploadComplete(
 		input: UploadComplete,
@@ -256,9 +270,11 @@ export class FilesBackendService {
 	): Promise<ServiceResult<AssetItem>> {
 		if (!isFilesBackendLive()) return await Promise.resolve(completeUpload(input));
 		// LIVE: re-digest the stored object in full (a sampled fingerprint is never authoritative),
-		// promote the row to `scanning`, and let the scan worker move it to `uploaded`. The row is
-		// addressed by id AND by owner, so a caller cannot finalise an upload they did not start —
-		// not yet implemented; fall back to the fixtures.
+		// write the extraction envelope to `files.items.metadata` (jsonb, NOT NULL DEFAULT '{}' — so an
+		// upload that carried none leaves the default rather than a null), promote the row to
+		// `scanning`, and let the scan worker move it to `uploaded`. The row is addressed by id AND by
+		// owner, so a caller cannot finalise an upload they did not start — not yet implemented; fall
+		// back to the fixtures.
 		void actor;
 		return await Promise.resolve(completeUpload(input));
 	}
@@ -659,9 +675,9 @@ async function initUpload(
 	});
 }
 
-/** Promote a landed object out of `pending_upload`. */
+/** Promote a landed object out of `pending_upload`, folding in what the browser read from its bytes. */
 function completeUpload(input: UploadComplete): ServiceResult<AssetItem> {
-	const item = fx.completeUpload(input.assetId);
+	const item = fx.completeUpload(input.assetId, input.metadata);
 	if (!item) return fail(404, { message: "No such upload." });
 	return ok(item, { message: "Upload complete." });
 }

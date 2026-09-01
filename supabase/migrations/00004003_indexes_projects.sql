@@ -17,6 +17,21 @@ CREATE INDEX IF NOT EXISTS idx_project_status_history_project
 CREATE INDEX IF NOT EXISTS idx_stage_submissions_stage   ON projects.stage_submissions (project_stage_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stage_submissions_ticket  ON projects.stage_submissions (ticket_id, created_at DESC);
 
+-- The board's own two access shapes. Every column of a project's Kanban is a
+-- (project_id, status) narrow, and the backlog lane is additionally ordered by
+-- hand, so it reads (project_id, sort_order). The existing ticket indexes are all
+-- led by current_stage_id or current_assignee_id, which serve a stage's tickets
+-- and a person's tickets — neither answers "this project's board", the query the
+-- board issues on every open.
+CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON projects.tickets (project_id, status);
+CREATE INDEX IF NOT EXISTS idx_tickets_project_sort ON projects.tickets (project_id, sort_order);
+
+-- The submission → files fan-out. Every submission render joins here, and without
+-- it the join is a sequential scan of every attachment link on the platform.
+-- (projects.stage_submissions is already covered for this by
+-- idx_stage_submissions_stage, whose leading column is project_stage_id.)
+CREATE INDEX IF NOT EXISTS idx_submission_files_submission ON projects.submission_files (submission_id);
+
 CREATE INDEX IF NOT EXISTS idx_stage_open_seat_skills_seat ON projects.stage_open_seat_skills (seat_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stage_assignment_active_assignee
     ON projects.stage_assignments (

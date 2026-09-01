@@ -276,10 +276,17 @@ $$;
 --                              a freelancer cannot self-confirm milestone delivery / release escrow.
 -- The status write cascades through the existing ticket triggers (escrow release on completed,
 -- submission ledger on in_review). Every move is written to projects.ticket_history for the timeline.
+--
+-- p_sort_order carries the card's new position within its destination lane, and is DEFAULTED so the
+-- three-argument call sites that predate it keep resolving to this same function. It is honoured
+-- only for a move into `backlog`: projects.fn_ticket_ordering_guard RAISES on any sort_order change
+-- outside that lane, because every other column is ordered by updated_at rather than by hand, so
+-- forwarding a position there would turn an ordinary drag into an error the board cannot explain.
 CREATE OR REPLACE FUNCTION projects.move_ticket(
     p_ticket_id   uuid,
     p_to_status   ticket_status,
-    p_to_stage_id uuid DEFAULT NULL
+    p_to_stage_id uuid DEFAULT NULL,
+    p_sort_order  integer DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -325,6 +332,10 @@ BEGIN
     UPDATE projects.tickets
     SET status = p_to_status,
         current_stage_id = v_to_stage,
+        sort_order = CASE
+            WHEN p_sort_order IS NOT NULL AND p_to_status = 'backlog'::ticket_status THEN p_sort_order
+            ELSE sort_order
+        END,
         updated_at = now()
     WHERE id = p_ticket_id;
 

@@ -8,7 +8,8 @@
  *     with `00005040_seed_storage_buckets.sql`, `00002017_policies_storage.sql` and
  *     `documentation/database/files/Storage.md`.
  *   * **The asset model** — what a thing IS ({@link ./kinds.ts}, {@link ./categories.ts}), the
- *     universal row every card, table, preview and picker renders ({@link ./assets.ts}), the folders
+ *     universal row every card, table, preview and picker renders ({@link ./assets.ts}), what was read
+ *     out of its bytes at upload time ({@link ./metadata.ts}), the folders
  *     and navigation tree it sits in ({@link ./folders.ts}), and the four concerns that surround it:
  *     the allowance it consumes ({@link ./quota.ts}), the read-only capability URLs it can be shared
  *     through ({@link ./sharing.ts}), the content-addressed duplicate check that precedes an upload
@@ -28,6 +29,7 @@ export * from "./kinds.ts";
 export * from "./storage.ts";
 export * from "./categories.ts";
 export * from "./assets.ts";
+export * from "./metadata.ts";
 export * from "./folders.ts";
 export * from "./listing.ts";
 export * from "./quota.ts";

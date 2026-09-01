@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FileKind } from "./kinds.ts";
 import { FileCategory } from "./categories.ts";
+import { AssetMetadataSchema } from "./metadata.ts";
 
 /**
  * files.assets — the Zod SSOT for an asset anywhere on the platform.
@@ -288,6 +289,22 @@ export const AssetItemSchema = z.object({
 	downloadedByViewer: z.boolean(),
 	/** Whether the viewer may rename/move/delete/reshare it. Server-derived; never inferred client-side. */
 	canManage: z.boolean(),
+	/**
+	 * What was read out of the asset's bytes at upload time — dimensions, a BlurHash, a colour
+	 * summary, a duration, a waveform, a page count. Persisted as `files.items.metadata`.
+	 *
+	 * The flat `width` / `height` / `durationLabel` / `thumbnailUrl` fields above are DERIVED from
+	 * this by `services/files/media-facts.ts`, so every existing consumer keeps working untouched.
+	 * This field carries the rest — and the rest is the half that cannot be flattened: a BlurHash is
+	 * the grid's placeholder while the real image loads, and a poster frame is a `data:` URL two
+	 * orders of magnitude longer than the 2,000 characters `thumbnailUrl` accepts.
+	 *
+	 * `.optional()`, not defaulted, so every existing producer of an `AssetItem` literal stays valid
+	 * — and the three states remain distinguishable: absent means nobody has extracted this row,
+	 * `null` means a client tried and could not read the file, and a present envelope records what
+	 * it managed to read plus a note for each thing it did not.
+	 */
+	metadata: AssetMetadataSchema.nullable().optional(),
 });
 export type AssetItem = z.infer<typeof AssetItemSchema>;
 

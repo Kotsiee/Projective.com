@@ -1,8 +1,8 @@
 # integrations Schema: Tables
 
-The `integrations` schema is the platform's **connector + plugin substrate** — a generic
-provider / consent / sync framework, not a per-vendor set of tables. Adding a 50th connector is a
-seed row plus adapter code, never a schema change. See
+The `integrations` schema is the platform's **connector + plugin substrate** — a generic provider /
+consent / sync framework, not a per-vendor set of tables. Adding a 50th connector is a seed row plus
+adapter code, never a schema change. See
 [`SYSTEM_ARCHITECTURE.md` §Integration & Plugin Platform](../../architecture/SYSTEM_ARCHITECTURE.md)
 for the strategy and roadmap.
 
@@ -11,11 +11,11 @@ for the strategy and roadmap.
 
 ## Two subsystems, one schema
 
-| | **A. Connectors** | **B. Plugins** |
-| :--- | :--- | :--- |
-| What | A user's stored authorization to act at a third party | Third-party code injected into governed extension points |
-| Tables | `providers`, `user_connections`, `connection_secrets`, `connection_sync_state`, `webhook_subscriptions`, `webhook_deliveries`, `connection_audit` | `extension_points`, `plugin_scopes`, `plugins`, `plugin_versions`, `plugin_installations`, `plugin_grants`, `plugin_audit` |
-| Roadmap | MVP → V2 | Post-MVP (schema laid now so the later build is not a rewrite) |
+|         | **A. Connectors**                                                                                                                                 | **B. Plugins**                                                                                                             |
+| :------ | :------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------- |
+| What    | A user's stored authorization to act at a third party                                                                                             | Third-party code injected into governed extension points                                                                   |
+| Tables  | `providers`, `user_connections`, `connection_secrets`, `connection_sync_state`, `webhook_subscriptions`, `webhook_deliveries`, `connection_audit` | `extension_points`, `plugin_scopes`, `plugins`, `plugin_versions`, `plugin_installations`, `plugin_grants`, `plugin_audit` |
+| Roadmap | MVP → V2                                                                                                                                          | Post-MVP (schema laid now so the later build is not a rewrite)                                                             |
 
 **Not modelled here, by design:** platform **AUTH** (SSO/OAuth login is GoTrue's; no third-party
 token is retained) and platform **INFRA** (Stripe, Maps — server-owned keys behind the service
@@ -23,12 +23,12 @@ layer). These are four different runtime/trust models; only the last two live in
 
 ## Read this first: authentication ≠ authorization
 
-| | Sign-in OAuth | Connection OAuth (this schema) |
-| :--- | :--- | :--- |
-| Purpose | Prove who you are | Act on your behalf at a third party |
-| Owner | GoTrue (`supabase/config.toml`, `apps/web/features/auth/core/oauth.ts`) | This schema |
-| Token retained? | **No** | Yes — encrypted, in `connection_secrets` |
-| Example | "Sign in with Google" | "Read my Google free/busy", "sync my Drive", "mint a Meet room" |
+|                 | Sign-in OAuth                                                           | Connection OAuth (this schema)                                  |
+| :-------------- | :---------------------------------------------------------------------- | :-------------------------------------------------------------- |
+| Purpose         | Prove who you are                                                       | Act on your behalf at a third party                             |
+| Owner           | GoTrue (`supabase/config.toml`, `apps/web/features/auth/core/oauth.ts`) | This schema                                                     |
+| Token retained? | **No**                                                                  | Yes — encrypted, in `connection_secrets`                        |
+| Example         | "Sign in with Google"                                                   | "Read my Google free/busy", "sync my Drive", "mint a Meet room" |
 
 The two flows **never** share a token store. A user signed in with Google still grants a calendar
 **connection** explicitly, and that connection's token lives in the vault below — never in
@@ -44,20 +44,20 @@ The public, non-sensitive catalogue: one row per integrable **vendor**. Referenc
 provider is a seed row, not a migration. `slug` is the stable identity that `scheduling.*` and the
 connection rows reference.
 
-| Column              | Type                           | Notes                                                                     |
-| :------------------ | :----------------------------- | :------------------------------------------------------------------------ |
-| `slug`              | text (PK)                      | `google`, `github`, `zoom`, …                                             |
-| `label`             | text                           | Display name.                                                             |
-| `category`          | `provider_category`            | Coarse UI family (one value): `calendar`/`storage`/`developer`/…          |
-| `capabilities`      | `provider_kind[]`              | Every capability the vendor can offer (multi-valued). `CHECK` non-empty.  |
-| `auth_scheme`       | `auth_scheme`                  | `oauth2` / `oauth1` / `api_key` / `app_password` / `none`.                |
-| `is_enabled`        | boolean                        | Platform kill-switch — a row may exist (so history resolves) while new consents are refused. Default **false**. |
-| `is_beta`           | boolean                        | Surfaces a "beta" chip.                                                   |
-| `broker`            | text                           | Integration STRATEGY: `direct` / `nylas` / `merge`. Where the adapter routes. |
-| `supports_webhooks` | boolean                        | Whether the provider pushes change notifications (drives `webhook_subscriptions`). |
-| `default_scopes`    | text[]                         | Scopes requested at consent time. **Config/documentation only** — no credential. |
-| `auth_config`       | jsonb                          | Non-secret endpoint/PKCE config. **The client secret is never here** — it is in the Environment Variable Contract. |
-| `docs_url` · `icon_url` · `sort_order` | text · text · int | Presentation.                                          |
+| Column                                 | Type                | Notes                                                                                                              |
+| :------------------------------------- | :------------------ | :----------------------------------------------------------------------------------------------------------------- |
+| `slug`                                 | text (PK)           | `google`, `github`, `zoom`, …                                                                                      |
+| `label`                                | text                | Display name.                                                                                                      |
+| `category`                             | `provider_category` | Coarse UI family (one value): `calendar`/`storage`/`developer`/…                                                   |
+| `capabilities`                         | `provider_kind[]`   | Every capability the vendor can offer (multi-valued). `CHECK` non-empty.                                           |
+| `auth_scheme`                          | `auth_scheme`       | `oauth2` / `oauth1` / `api_key` / `app_password` / `none`.                                                         |
+| `is_enabled`                           | boolean             | Platform kill-switch — a row may exist (so history resolves) while new consents are refused. Default **false**.    |
+| `is_beta`                              | boolean             | Surfaces a "beta" chip.                                                                                            |
+| `broker`                               | text                | Integration STRATEGY: `direct` / `nylas` / `merge`. Where the adapter routes.                                      |
+| `supports_webhooks`                    | boolean             | Whether the provider pushes change notifications (drives `webhook_subscriptions`).                                 |
+| `default_scopes`                       | text[]              | Scopes requested at consent time. **Config/documentation only** — no credential.                                   |
+| `auth_config`                          | jsonb               | Non-secret endpoint/PKCE config. **The client secret is never here** — it is in the Environment Variable Contract. |
+| `docs_url` · `icon_url` · `sort_order` | text · text · int   | Presentation.                                                                                                      |
 
 ### Category vs. capability — two distinct axes
 
@@ -87,51 +87,53 @@ Calendars/conferencing (`google`, `outlook`, `apple`, `samsung`, `calendly`, `zo
 
 One row per **(user, provider, external account)** — a user's stored authorization. `id` is the
 identity `scheduling.events` / `scheduling.discovery_calls` reference. **Definer-only** (RLS on, no
-policy, no `authenticated` grant); clients read [`v_my_connections`](#7-integrationsv_my_connections).
+policy, no `authenticated` grant); clients read
+[`v_my_connections`](#7-integrationsv_my_connections).
 
-| Column                                   | Type                    | Notes                                                          |
-| :--------------------------------------- | :---------------------- | :------------------------------------------------------------- |
-| `id`                                     | uuid (PK)               | Referenced by `scheduling.*`.                                  |
-| `user_id`                                | uuid → `org.users_public` | CASCADE.                                                     |
-| `provider_slug`                          | text → `providers`      | RESTRICT — a provider in use can't vanish.                     |
-| `status`                                 | `connection_status`     | The state machine (below).                                     |
-| `granted_kinds`                          | `provider_kind[]`       | What the consent actually granted — may be narrower than the provider's capabilities. |
-| `granted_scopes`                         | text[]                  | The scopes actually returned.                                  |
-| `sync_direction`                         | `sync_direction`        | `inbound` (MVP default), `outbound`, `bidirectional`.          |
-| `external_account_id` · `external_account_label` | text            | **Which** account is linked — modelling it lets one user connect two accounts (personal + work) per provider without a later migration. |
-| `broker_account_id`                      | text                    | The Nylas/Merge grant id when a unified broker fronts the provider. |
-| `config`                                 | jsonb `NOT NULL DEFAULT '{}'` | **Non-secret, per-connection mount settings**, projected to the client through `v_my_connections`. See below. |
-| `token_expires_at`                       | timestamptz             | **Cached, non-secret** expiry for the "reconnect soon" UI. Authoritative expiry is in `connection_secrets`. |
-| `last_synced_at` · `last_error` · `error_count` | timestamptz · text · int | Operational state.                                    |
-| `connected_at` · `revoked_at`            | timestamptz             | Lifecycle stamps.                                              |
-| UNIQUE                                   | —                       | `(user_id, provider_slug, external_account_id)` **NULLS NOT DISTINCT** — two pending rows collapse. |
+| Column                                           | Type                          | Notes                                                                                                                                   |
+| :----------------------------------------------- | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                             | uuid (PK)                     | Referenced by `scheduling.*`.                                                                                                           |
+| `user_id`                                        | uuid → `org.users_public`     | CASCADE.                                                                                                                                |
+| `provider_slug`                                  | text → `providers`            | RESTRICT — a provider in use can't vanish.                                                                                              |
+| `status`                                         | `connection_status`           | The state machine (below).                                                                                                              |
+| `granted_kinds`                                  | `provider_kind[]`             | What the consent actually granted — may be narrower than the provider's capabilities.                                                   |
+| `granted_scopes`                                 | text[]                        | The scopes actually returned.                                                                                                           |
+| `sync_direction`                                 | `sync_direction`              | `inbound` (MVP default), `outbound`, `bidirectional`.                                                                                   |
+| `external_account_id` · `external_account_label` | text                          | **Which** account is linked — modelling it lets one user connect two accounts (personal + work) per provider without a later migration. |
+| `broker_account_id`                              | text                          | The Nylas/Merge grant id when a unified broker fronts the provider.                                                                     |
+| `config`                                         | jsonb `NOT NULL DEFAULT '{}'` | **Non-secret, per-connection mount settings**, projected to the client through `v_my_connections`. See below.                           |
+| `token_expires_at`                               | timestamptz                   | **Cached, non-secret** expiry for the "reconnect soon" UI. Authoritative expiry is in `connection_secrets`.                             |
+| `last_synced_at` · `last_error` · `error_count`  | timestamptz · text · int      | Operational state.                                                                                                                      |
+| `connected_at` · `revoked_at`                    | timestamptz                   | Lifecycle stamps.                                                                                                                       |
+| UNIQUE                                           | —                             | `(user_id, provider_slug, external_account_id)` **NULLS NOT DISTINCT** — two pending rows collapse.                                     |
 
 ### `config` — non-secret mount settings, and why it is deliberately client-visible
 
 OAuth returns a **credential**, not a **configuration**. Several storage connectors need per-user
 settings the token does not carry and the provider catalogue cannot hold:
 
-| Provider     | What `config` carries                                                      |
-| :----------- | :-------------------------------------------------------------------------- |
-| `s3`         | `endpoint` (R2 / MinIO / Wasabi; `null` = AWS) · `region` · `bucket` · `prefix` · `pathStyle` |
-| `google_drive` | the shared-drive or root folder id the mount is scoped to                |
-| `frameio`    | the team / project id                                                      |
+| Provider       | What `config` carries                                                                         |
+| :------------- | :-------------------------------------------------------------------------------------------- |
+| `s3`           | `endpoint` (R2 / MinIO / Wasabi; `null` = AWS) · `region` · `bucket` · `prefix` · `pathStyle` |
+| `google_drive` | the shared-drive or root folder id the mount is scoped to                                     |
+| `frameio`      | the team / project id                                                                         |
 
-None of this is **catalogue** config — `providers.auth_config` is global to a provider, while a bucket
-and a prefix are per *connection*, and two users of the same provider will have different ones.
+None of this is **catalogue** config — `providers.auth_config` is global to a provider, while a
+bucket and a prefix are per _connection_, and two users of the same provider will have different
+ones.
 
 **It lives here rather than in `connection_secrets` for a reason that is about the UI, not
 convenience.** `connection_secrets` has RLS on, **no policy, no `authenticated` grant, and no
-client-facing view at all** — service-role only. Config placed there would be structurally unreadable
-from any client path, which would leave the settings screen unable to answer the most basic question a
-user has about a mount: *"which bucket did I actually connect?"* A connector you cannot describe is
-one nobody can debug or trust.
+client-facing view at all** — service-role only. Config placed there would be structurally
+unreadable from any client path, which would leave the settings screen unable to answer the most
+basic question a user has about a mount: _"which bucket did I actually connect?"_ A connector you
+cannot describe is one nobody can debug or trust.
 
 So the split is drawn along **secrecy**, not along "everything about a connection":
 
-- **`user_connections.config`** — what the mount *is*. Projected by
+- **`user_connections.config`** — what the mount _is_. Projected by
   [`v_my_connections`](#7-integrationsv_my_connections), which the client reads.
-- **`connection_secrets`** — what the mount can *do on your behalf*. Ciphertext, envelope-encrypted,
+- **`connection_secrets`** — what the mount can _do on your behalf_. Ciphertext, envelope-encrypted,
   never projected by anything.
 
 > ⚠️ **Nothing secret may ever be written to `config`.** There is no access key, no secret key, no
@@ -145,9 +147,9 @@ So the split is drawn along **secrecy**, not along "everything about a connectio
 is a deliberately **flat scalar record** (`Record<string, string | number | boolean> | null`), not a
 nested union of per-provider shapes: it is projected straight out of a `jsonb` column and every
 provider wants different keys, so a provider that needs structure parses this against **its own**
-schema (`S3ConnectionConfigSchema`) rather than widening the shared one. Widening it would force every
-future provider's keys to satisfy every previous provider's schema. There is, and can be, **no field
-for any `connection_secrets` column anywhere in that package.**
+schema (`S3ConnectionConfigSchema`) rather than widening the shared one. Widening it would force
+every future provider's keys to satisfy every previous provider's schema. There is, and can be, **no
+field for any `connection_secrets` column anywhere in that package.**
 
 ### The connection state machine (`connection_status`)
 
@@ -162,15 +164,15 @@ without telling anyone is the classic connector-platform support fire.
 Split from the connection so the security story is **structural, not a policy**: RLS on, **no
 policy, no view, no `authenticated` grant** — service-role (Edge Functions) only.
 
-| Column                        | Type      | Notes                                                            |
-| :---------------------------- | :-------- | :--------------------------------------------------------------- |
-| `connection_id`               | uuid (PK) | → `user_connections` (CASCADE).                                  |
-| `access_token_cipher` · `refresh_token_cipher` | bytea | ⚠️ **Ciphertext only, never plaintext.**              |
-| `token_type`                  | text      | Usually `bearer`.                                                |
-| `access_token_expires_at` · `refresh_token_expires_at` | timestamptz | Authoritative expiries.                    |
-| `key_id`                      | text      | **Envelope encryption:** identifies the wrapping KMS key, for rotation. |
-| `encryption_alg` · `nonce`    | text · bytea | The AEAD algorithm (`aes-256-gcm`) and IV.                    |
-| `rotated_at`                  | timestamptz | Last key rotation.                                             |
+| Column                                                 | Type         | Notes                                                                   |
+| :----------------------------------------------------- | :----------- | :---------------------------------------------------------------------- |
+| `connection_id`                                        | uuid (PK)    | → `user_connections` (CASCADE).                                         |
+| `access_token_cipher` · `refresh_token_cipher`         | bytea        | ⚠️ **Ciphertext only, never plaintext.**                                |
+| `token_type`                                           | text         | Usually `bearer`.                                                       |
+| `access_token_expires_at` · `refresh_token_expires_at` | timestamptz  | Authoritative expiries.                                                 |
+| `key_id`                                               | text         | **Envelope encryption:** identifies the wrapping KMS key, for rotation. |
+| `encryption_alg` · `nonce`                             | text · bytea | The AEAD algorithm (`aes-256-gcm`) and IV.                              |
+| `rotated_at`                                           | timestamptz  | Last key rotation.                                                      |
 
 > ⚠️ **Envelope encryption, KMS-backed.** A per-record data key encrypts the token; the data key is
 > wrapped by a KMS master key identified by `key_id` (not a symmetric secret in an env var). The Zod
@@ -183,14 +185,14 @@ Per-resource sync cursors — the delta tokens that make **incremental** sync po
 resources (primary + shared calendar; drive root + a folder), each with its own cursor. Service-role
 only.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `connection_id` | uuid → `user_connections` | CASCADE. |
-| `resource` | text | `calendar:primary`, `drive:root`, `contacts`. |
-| `kind` | `provider_kind` | Which capability this resource serves. |
-| `sync_token` | text | The provider delta cursor. |
-| `full_sync_completed_at` · `last_delta_at` · `last_error` | timestamptz · text | Progress. |
-| UNIQUE | — | `(connection_id, resource)`. |
+| Column                                                    | Type                      | Notes                                         |
+| :-------------------------------------------------------- | :------------------------ | :-------------------------------------------- |
+| `connection_id`                                           | uuid → `user_connections` | CASCADE.                                      |
+| `resource`                                                | text                      | `calendar:primary`, `drive:root`, `contacts`. |
+| `kind`                                                    | `provider_kind`           | Which capability this resource serves.        |
+| `sync_token`                                              | text                      | The provider delta cursor.                    |
+| `full_sync_completed_at` · `last_delta_at` · `last_error` | timestamptz · text        | Progress.                                     |
+| UNIQUE                                                    | —                         | `(connection_id, resource)`.                  |
 
 ## 5. `integrations.webhook_subscriptions`
 
@@ -199,17 +201,17 @@ Provider **push** channels. A provider's change notifications require a register
 so the expiry is a first-class, indexed column a renewal cron sweeps (`status = 'expiring'`).
 Service-role only.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `connection_id` | uuid → `user_connections` | CASCADE. |
-| `provider_slug` · `resource` | text | What is watched. |
-| `external_channel_id` · `external_resource_id` | text | The provider's channel identifiers. |
-| `verification_token` | text | Provider-issued, echoed on each push to verify it. Not a user credential. |
-| `callback_url` | text | Where the provider posts. |
-| `status` | `webhook_status` | `active` / `expiring` / `expired` / `failed`. |
-| `expires_at` | timestamptz | **THE renewal driver** (indexed). |
-| `last_renewed_at` · `last_delivery_at` · `failure_count` | timestamptz · int | Operational. |
-| UNIQUE | — | `(connection_id, resource)`. |
+| Column                                                   | Type                      | Notes                                                                     |
+| :------------------------------------------------------- | :------------------------ | :------------------------------------------------------------------------ |
+| `connection_id`                                          | uuid → `user_connections` | CASCADE.                                                                  |
+| `provider_slug` · `resource`                             | text                      | What is watched.                                                          |
+| `external_channel_id` · `external_resource_id`           | text                      | The provider's channel identifiers.                                       |
+| `verification_token`                                     | text                      | Provider-issued, echoed on each push to verify it. Not a user credential. |
+| `callback_url`                                           | text                      | Where the provider posts.                                                 |
+| `status`                                                 | `webhook_status`          | `active` / `expiring` / `expired` / `failed`.                             |
+| `expires_at`                                             | timestamptz               | **THE renewal driver** (indexed).                                         |
+| `last_renewed_at` · `last_delivery_at` · `failure_count` | timestamptz · int         | Operational.                                                              |
+| UNIQUE                                                   | —                         | `(connection_id, resource)`.                                              |
 
 ## 6. `integrations.webhook_deliveries`
 
@@ -217,13 +219,13 @@ The **idempotency ledger** for inbound provider pushes. Providers redeliver and 
 dedupes on the provider's own delivery id and records whether the signature verified, so a replayed
 or forged push can't double-process. Same discipline as `comms.delivery_events`. Service-role only.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `subscription_id` | uuid → `webhook_subscriptions` | SET NULL. |
-| `provider_slug` · `external_delivery_id` | text | **UNIQUE together — the idempotency key.** |
-| `signature_verified` | boolean | Whether the push authenticated. |
-| `status` · `payload_digest` · `error` | text | `received`/`processed`/`failed`/`duplicate`. |
-| `received_at` · `processed_at` | timestamptz | Timing. |
+| Column                                   | Type                           | Notes                                        |
+| :--------------------------------------- | :----------------------------- | :------------------------------------------- |
+| `subscription_id`                        | uuid → `webhook_subscriptions` | SET NULL.                                    |
+| `provider_slug` · `external_delivery_id` | text                           | **UNIQUE together — the idempotency key.**   |
+| `signature_verified`                     | boolean                        | Whether the push authenticated.              |
+| `status` · `payload_digest` · `error`    | text                           | `received`/`processed`/`failed`/`duplicate`. |
+| `received_at` · `processed_at`           | timestamptz                    | Timing.                                      |
 
 ## 7. `integrations.v_my_connections`
 
@@ -233,11 +235,11 @@ category / capabilities. Token columns live on a **different table** this view n
 `SELECT` to `authenticated`; mirrored by `UserConnectionSchema`.
 
 It projects the connection's identity and operational state — `status`, `granted_kinds` /
-`granted_scopes`, `sync_direction`, the external account, **`config`** (the non-secret mount settings
-above), the cached `token_expires_at`, `last_synced_at` / `last_error` / `error_count`, and the
-lifecycle stamps.
+`granted_scopes`, `sync_direction`, the external account, **`config`** (the non-secret mount
+settings above), the cached `token_expires_at`, `last_synced_at` / `last_error` / `error_count`, and
+the lifecycle stamps.
 
-> **Column safety here is structural, not a policy.** The view is safe to expose *precisely because*
+> **Column safety here is structural, not a policy.** The view is safe to expose _precisely because_
 > the credentials are in a table it cannot reach — not because someone remembered to omit a column
 > from the `SELECT` list. A projection that had to be kept correct by review would eventually be
 > extended by someone adding `c.*`. Adding a token column to `user_connections` itself would defeat
@@ -245,10 +247,10 @@ lifecycle stamps.
 
 ## 8. `integrations.connection_audit`
 
-The consent trail — *"when did I grant this, and what has happened since?"* Denormalised
-`provider_slug` so a line reads standalone; `action` is the `connection_action` enum
-(`connected` / `refreshed` / `refresh_failed` / `scope_changed` / `sync_*` / `webhook_*` / `revoked`
-/ …). `detail` carries human context but **never a token or PII** beyond the account label.
+The consent trail — _"when did I grant this, and what has happened since?"_ Denormalised
+`provider_slug` so a line reads standalone; `action` is the `connection_action` enum (`connected` /
+`refreshed` / `refresh_failed` / `scope_changed` / `sync_*` / `webhook_*` / `revoked` / …). `detail`
+carries human context but **never a token or PII** beyond the account label.
 
 ---
 
@@ -265,13 +267,13 @@ The **slot registry** — the catalogue of surfaces a plugin may inject into, an
 counterpart of the app's own URL-keyed slot resolvers (`channelHeaderFor`, `laneFor`,
 `middleNavFooterFor`). A plugin can only target a `key` that exists and is enabled. Reference data.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `key` | text (PK) | `messages.tab`, `project.panel`, `dashboard.widget`. |
-| `surface` | `plugin_surface` | `page_tab` / `panel` / `dashboard_widget` / … |
-| `label` · `description` | text | Presentation. |
-| `allowed_runtimes` | `plugin_runtime[]` | Which runtimes may render into this slot. |
-| `is_enabled` | boolean | Platform gate. |
+| Column                  | Type               | Notes                                                |
+| :---------------------- | :----------------- | :--------------------------------------------------- |
+| `key`                   | text (PK)          | `messages.tab`, `project.panel`, `dashboard.widget`. |
+| `surface`               | `plugin_surface`   | `page_tab` / `panel` / `dashboard_widget` / …        |
+| `label` · `description` | text               | Presentation.                                        |
+| `allowed_runtimes`      | `plugin_runtime[]` | Which runtimes may render into this slot.            |
+| `is_enabled`            | boolean            | Platform gate.                                       |
 
 ## 10. `integrations.plugin_scopes`
 
@@ -288,17 +290,17 @@ Developer Kit. `install_count` is a trigger-maintained counter. The currently-pu
 **derived** (see `v_plugin_catalog`), not a stored back-pointer, to avoid a circular FK with
 `plugin_versions`.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `id` | uuid (PK) | |
-| `slug` | text UNIQUE | `email-suite`. |
-| `name` · `tagline` · `description` | text | Listing copy. |
-| `developer_user_id` | uuid → `org.users_public` | SET NULL — the publisher. |
-| `developer_name` · `homepage_url` · `repo_url` · `icon_url` · `category` | text | Presentation + source. |
-| `status` | `plugin_status` | `draft`→`submitted`→`in_review`→`approved`→`published`→`suspended`/`delisted`. |
-| `runtime` | `plugin_runtime` | `iframe` (zero-trust default) / `declarative` / `headless`. |
-| `is_verified` | boolean | First-party / reviewed badge. |
-| `install_count` | int | Trigger-maintained. |
+| Column                                                                   | Type                      | Notes                                                                          |
+| :----------------------------------------------------------------------- | :------------------------ | :----------------------------------------------------------------------------- |
+| `id`                                                                     | uuid (PK)                 |                                                                                |
+| `slug`                                                                   | text UNIQUE               | `email-suite`.                                                                 |
+| `name` · `tagline` · `description`                                       | text                      | Listing copy.                                                                  |
+| `developer_user_id`                                                      | uuid → `org.users_public` | SET NULL — the publisher.                                                      |
+| `developer_name` · `homepage_url` · `repo_url` · `icon_url` · `category` | text                      | Presentation + source.                                                         |
+| `status`                                                                 | `plugin_status`           | `draft`→`submitted`→`in_review`→`approved`→`published`→`suspended`/`delisted`. |
+| `runtime`                                                                | `plugin_runtime`          | `iframe` (zero-trust default) / `declarative` / `headless`.                    |
+| `is_verified`                                                            | boolean                   | First-party / reviewed badge.                                                  |
+| `install_count`                                                          | int                       | Trigger-maintained.                                                            |
 
 ## 12. `integrations.plugin_versions`
 
@@ -307,17 +309,17 @@ contributes (targeted extension points, requested scopes, entry points); `bundle
 sandboxed bundle from a **separate origin** and `bundle_integrity` is its SRI hash; `source_commit`
 pins the GitHub commit.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `plugin_id` | uuid → `plugins` | CASCADE. |
-| `semver` | text | UNIQUE with `plugin_id`. |
-| `status` | `plugin_version_status` | `draft`→…→`published`/`deprecated`/`yanked`. |
-| `runtime` | `plugin_runtime` | May narrow the plugin default. |
-| `manifest` | jsonb | `{ surfaces[], scopes[], config }`. |
-| `bundle_url` · `bundle_integrity` · `source_commit` | text | The served bundle + provenance. |
-| `requested_scopes` | text[] | Keys into `plugin_scopes`. |
-| `min_platform_version` · `changelog` · `reviewed_by` | text · text · uuid | Review metadata. |
-| `submitted_at` · `approved_at` · `published_at` | timestamptz | Review lifecycle. |
+| Column                                               | Type                    | Notes                                        |
+| :--------------------------------------------------- | :---------------------- | :------------------------------------------- |
+| `plugin_id`                                          | uuid → `plugins`        | CASCADE.                                     |
+| `semver`                                             | text                    | UNIQUE with `plugin_id`.                     |
+| `status`                                             | `plugin_version_status` | `draft`→…→`published`/`deprecated`/`yanked`. |
+| `runtime`                                            | `plugin_runtime`        | May narrow the plugin default.               |
+| `manifest`                                           | jsonb                   | `{ surfaces[], scopes[], config }`.          |
+| `bundle_url` · `bundle_integrity` · `source_commit`  | text                    | The served bundle + provenance.              |
+| `requested_scopes`                                   | text[]                  | Keys into `plugin_scopes`.                   |
+| `min_platform_version` · `changelog` · `reviewed_by` | text · text · uuid      | Review metadata.                             |
+| `submitted_at` · `approved_at` · `published_at`      | timestamptz             | Review lifecycle.                            |
 
 ## 13. `integrations.plugin_installations`
 
@@ -325,16 +327,16 @@ A user's (or workspace's) install with the consented scope set. `install_scope` 
 the platform owner axis (personal vs a team/business/org vault); `version_id` is the pinned version.
 Uninstall is soft (`status = revoked`).
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `plugin_id` | uuid → `plugins` | RESTRICT. |
-| `version_id` | uuid → `plugin_versions` | RESTRICT — the pinned version. |
-| `installer_user_id` | uuid → `org.users_public` | CASCADE. |
-| `install_scope` · `owner_id` | `install_scope` · uuid | `user` (personal) or a team/business/org vault. |
-| `status` | `install_status` | `active` / `disabled` / `revoked`. |
-| `granted_scopes` | text[] | The scopes the installer **actually consented to** (a subset of the version's request). |
-| `config` · `auto_update` | jsonb · boolean | Per-install config. |
-| UNIQUE | — | `(plugin_id, installer_user_id, install_scope, owner_id)` NULLS NOT DISTINCT. |
+| Column                       | Type                      | Notes                                                                                   |
+| :--------------------------- | :------------------------ | :-------------------------------------------------------------------------------------- |
+| `plugin_id`                  | uuid → `plugins`          | RESTRICT.                                                                               |
+| `version_id`                 | uuid → `plugin_versions`  | RESTRICT — the pinned version.                                                          |
+| `installer_user_id`          | uuid → `org.users_public` | CASCADE.                                                                                |
+| `install_scope` · `owner_id` | `install_scope` · uuid    | `user` (personal) or a team/business/org vault.                                         |
+| `status`                     | `install_status`          | `active` / `disabled` / `revoked`.                                                      |
+| `granted_scopes`             | text[]                    | The scopes the installer **actually consented to** (a subset of the version's request). |
+| `config` · `auto_update`     | jsonb · boolean           | Per-install config.                                                                     |
+| UNIQUE                       | —                         | `(plugin_id, installer_user_id, install_scope, owner_id)` NULLS NOT DISTINCT.           |
 
 ## 14. `integrations.plugin_grants`
 
@@ -342,12 +344,12 @@ OAuth-client-style credentials for **headless/automation** plugins that call the
 server-to-server. The secret is stored **hashed** (never ciphertext-decryptable, never plaintext) —
 a leaked row can't be replayed. Service-role only.
 
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `installation_id` | uuid → `plugin_installations` | CASCADE. |
-| `client_id` | text UNIQUE | Public identifier. |
-| `secret_hash` | text | **Hashed** client secret. |
-| `scopes` · `last_used_at` · `expires_at` · `revoked_at` | text[] · timestamptz | Grant state. |
+| Column                                                  | Type                          | Notes                     |
+| :------------------------------------------------------ | :---------------------------- | :------------------------ |
+| `installation_id`                                       | uuid → `plugin_installations` | CASCADE.                  |
+| `client_id`                                             | text UNIQUE                   | Public identifier.        |
+| `secret_hash`                                           | text                          | **Hashed** client secret. |
+| `scopes` · `last_used_at` · `expires_at` · `revoked_at` | text[] · timestamptz          | Grant state.              |
 
 ## 15. `integrations.plugin_audit`
 

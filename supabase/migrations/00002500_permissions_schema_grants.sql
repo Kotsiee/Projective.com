@@ -132,6 +132,31 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA projects
 GRANT ALL ON SEQUENCES TO authenticated,
 service_role;
 
+-- Same reasoning as the `comms` revoke above, and now the same need: with RLS
+-- newly enabled on projects.ticket_history, user_preferences,
+-- project_required_skills and project_invitations (00002001), `GRANT ALL` would
+-- otherwise leave TRUNCATE as a way straight around every policy in 00002011 —
+-- TRUNCATE is not row-level, so a caller who cannot SELECT one row of the ticket
+-- audit log could still discard the whole table, which is exactly the outcome
+-- those policies exist to prevent.
+--
+-- Nothing in the application truncates as `authenticated`; truncation is a
+-- maintenance act and belongs to the service role, which is unaffected.
+--
+-- SCOPE, unchanged: `org`, `public`, `files`, `marketplace` and `reviews` still
+-- carry the same `GRANT ALL` pattern and are recorded in
+-- documentation/architecture/READ_API_FINDINGS.md for a human, since a
+-- platform-wide privilege change deserves its own review.
+
+REVOKE TRUNCATE ON ALL TABLES IN SCHEMA projects
+FROM
+    authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA projects
+REVOKE TRUNCATE ON TABLES
+FROM
+    authenticated;
+
 GRANT USAGE ON SCHEMA search TO anon, authenticated, service_role;
 
 GRANT SELECT ON ALL TABLES IN SCHEMA search TO anon, authenticated;

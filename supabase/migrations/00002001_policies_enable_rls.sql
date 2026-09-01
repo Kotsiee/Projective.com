@@ -129,6 +129,39 @@ ALTER TABLE projects.ticket_workload_reports ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.waitlists ENABLE ROW LEVEL SECURITY;
 
+
+-- --- the four `projects` tables 0201 never covered ---
+--
+-- projects.ticket_history, user_preferences, project_required_skills and
+-- project_invitations were defined in 00000015 and never enabled here, while
+-- 00002500 grants `ALL ON ALL TABLES IN SCHEMA projects TO authenticated`. The
+-- combination is not weak protection, it is none, and each one costs something
+-- different:
+--
+--   * ticket_history is the ticket AUDIT LOG — who moved what, when, and out of
+--     which status. Every row is written by a SECURITY DEFINER RPC, so with RLS
+--     off a client could forge entries into somebody else's timeline and delete
+--     the ones recording what actually happened. An audit trail anyone can edit
+--     is worse than none, because it is still believed.
+--   * user_preferences is every user's starred / archived / last-viewed state,
+--     world-readable and world-writable.
+--   * project_required_skills is the staffing requirement list, editable by
+--     anyone on any project.
+--   * project_invitations exposes `token`, which that table's own comment calls
+--     the capability: whoever holds it can accept. Reading this table was
+--     therefore direct project-access escalation, not merely a disclosure.
+--
+-- Their policies are in 00002011. ticket_history DELIBERATELY receives no client
+-- write policy: see the note there before adding one.
+
+ALTER TABLE projects.ticket_history ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE projects.user_preferences ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE projects.project_required_skills ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE projects.project_invitations ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE finance.escrows ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.spending_limits ENABLE ROW LEVEL SECURITY;

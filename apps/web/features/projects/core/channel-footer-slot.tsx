@@ -43,5 +43,5 @@ export async function channelFooterFor(
 	const base = `/projects/${projectId}/${channelId}`;
 	if (activeTabOf(url.pathname, base) !== "chat") return null;
 
-	return <ChatComposer projectId={projectId} channelId={channelId} />;
+	return <ChatComposer scope="project" projectId={projectId} channelId={channelId} />;
 }

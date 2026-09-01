@@ -11,6 +11,8 @@ import {
 	rowIndexOfMessage,
 } from "../core/message-model.ts";
 import { MessagesService } from "../core/MessagesService.ts";
+import { MESSAGE_SENT_EVENT, type MessageSentDetail } from "@web/utils/lane-events.ts";
+import { ChatMessageSchema } from "@projective/types/projects";
 import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { MessageBubble } from "../components/MessageBubble.tsx";
 import { SystemMessage } from "../components/SystemMessage.tsx";
@@ -148,6 +150,34 @@ export default function ChatFeed(
 		const timers = [60, 220, 480].map((ms) => setTimeout(() => vs.scrollToEnd("auto"), ms));
 		return () => timers.forEach(clearTimeout);
 	}, []);
+	// #endregion
+
+	// #region Appending what the composer just sent
+	/**
+	 * The composer lives in the footer BAND and this feed in the body, so they are separate hydration
+	 * roots that cannot call each other. It announces a persisted message on `window`; this appends it
+	 * and re-pins to the bottom, which is what makes a send visible without a reload.
+	 *
+	 * Guarded three ways, because the event is global: the channel must match (a pop-out chat on
+	 * another conversation is on the same page), the payload must actually parse as a message (it
+	 * crosses an untyped `CustomEvent` boundary), and an id already present is ignored — a re-send or
+	 * a second listener must not double the row.
+	 */
+	useEffect(() => {
+		function onSent(event: Event): void {
+			const detail = (event as CustomEvent<MessageSentDetail>).detail;
+			if (!detail || detail.channelId !== channelId) return;
+			const parsed = ChatMessageSchema.safeParse(detail.message);
+			if (!parsed.success) return;
+			if (messages.value.some((m) => m.id === parsed.data.id)) return;
+			messages.value = [...messages.value, parsed.data];
+			// After the row has been laid out, not before — the feed virtualizes against the window, so
+			// pinning in the same tick scrolls to where the end USED to be.
+			requestAnimationFrame(() => vs.scrollToEnd("auto"));
+		}
+		globalThis.addEventListener(MESSAGE_SENT_EVENT, onSent);
+		return () => globalThis.removeEventListener(MESSAGE_SENT_EVENT, onSent);
+	}, [channelId]);
 	// #endregion
 
 	// #region Message actions (optimistic, immutable)

@@ -20,6 +20,7 @@ import { Icon, type IconName } from "@projective/ui/icons";
 import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { DuplicatePrompt } from "../components/DuplicatePrompt.tsx";
 import { FilesService } from "../core/FilesService.ts";
+import { awaitExtraction, extractMetadata } from "../core/media/extract.ts";
 import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
 import { uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
@@ -582,6 +583,17 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 
 		patchUpload(id, { phase: "uploading", progress: 0, error: null });
 
+		/**
+		 * Started here and awaited after the transfer, so reading the file happens ALONGSIDE moving it.
+		 * A 200 MB video must not wait on a poster frame — the bytes are the thing the person is
+		 * waiting for, and a placeholder that arrives with them costs nothing.
+		 *
+		 * Inside `uploadOne` rather than at the moment the queue is claimed, so it inherits
+		 * {@link UPLOAD_CONCURRENCY}: a fifty-file drop would otherwise start fifty video decodes at
+		 * once and make the transfers it was meant to overlap slower than doing nothing.
+		 */
+		const extraction = extractMetadata(task.file);
+
 		const init = await FilesService.uploadInit({
 			name: task.name,
 			mimeType: task.mimeType,
@@ -617,9 +629,14 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 		}
 
 		patchUpload(id, { phase: "finalising", progress: 1 });
+		// Bounded: an extraction still running when the bytes have landed is worth less than the upload
+		// finishing, so it falls back to a `generic` row carrying the reason rather than holding the
+		// queue open. It never rejects and never throws — the file is already safe by this point.
+		const metadata = await awaitExtraction(extraction);
 		const finalised = await FilesService.uploadComplete({
 			assetId: ticket.assetId,
 			etag: put.etag,
+			metadata,
 		});
 		if (!finalised.ok) {
 			patchUpload(id, {

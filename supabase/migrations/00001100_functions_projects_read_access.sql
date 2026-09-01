@@ -611,8 +611,13 @@ BEGIN
         RETURN v_from;
     END IF;
 
-    -- Terminal states are immutable.
-    IF v_from IN ('completed'::project_status, 'cancelled'::project_status) THEN
+    -- Terminal states are immutable. `archived` is one of them: it is the soft delete, so re-opening
+    -- an archived engagement behind its own status history would let a project that was put away
+    -- reappear with no record of the decision being reversed. Restoring one is a deliberate act that
+    -- belongs to its own path, not a side effect of setting a status.
+    IF v_from IN (
+        'completed'::project_status, 'cancelled'::project_status, 'archived'::project_status
+    ) THEN
         RAISE EXCEPTION 'Project is % and can no longer change state.', v_from
             USING ERRCODE = 'check_violation';
     END IF;
@@ -665,13 +670,29 @@ BEGIN
         -- Allowed from any non-terminal state (already guarded above).
         NULL;
 
+    ELSIF p_to_status = 'archived'::project_status THEN
+        -- Archiving is the soft DELETE, so it is reachable from any non-terminal state and asks for
+        -- nothing: an owner putting an engagement away must not be blocked by the same conditions
+        -- that gate finishing it. It is deliberately one-way — `archived` joins the terminal set
+        -- guarded above, so an archived project cannot be quietly re-activated behind its history.
+        NULL;
+
     ELSE
         RAISE EXCEPTION 'Unsupported target status %.', p_to_status USING ERRCODE = 'check_violation';
     END IF;
 
     -- ----- Apply -----
+    -- `archived_at` is written in the SAME statement as the status, never a second one.
+    -- `ck_projects_archived_at` is bidirectional — it asserts `(status = 'archived') = (archived_at
+    -- IS NOT NULL)` — so a two-statement archive fails on the first half before the second can run,
+    -- and the row can never be caught disagreeing with itself.
     UPDATE projects.projects
-    SET status = p_to_status, updated_at = now()
+    SET status = p_to_status,
+        archived_at = CASE
+            WHEN p_to_status = 'archived'::project_status THEN COALESCE(archived_at, now())
+            ELSE NULL
+        END,
+        updated_at = now()
     WHERE id = p_project_id;
 
     INSERT INTO projects.project_status_history (project_id, actor_user_id, from_status, to_status, reason)

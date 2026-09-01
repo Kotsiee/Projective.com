@@ -153,6 +153,17 @@ export function Select(props: SelectProps): JSX.Element {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 
+	/**
+	 * The whole field box.
+	 *
+	 * Dismissal containment is measured against THIS, not against the trigger button: the chevron
+	 * and the clear control are siblings of the trigger, so a press on the chevron read as an
+	 * OUTSIDE click while the panel was open — it closed, and the click that followed reopened it
+	 * through the surface handler. Net effect, the chevron could open the panel and never close it.
+	 * Widening containment to the box is the same move as delegating the click to it: the field is
+	 * one control, so every part of it has to count as inside.
+	 */
+	const rootRef = useRef<HTMLSpanElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
@@ -187,7 +198,13 @@ export function Select(props: SelectProps): JSX.Element {
 	// order. Without this a Select opened UNDER a later overlay silently eats that overlay's Escape.
 	// Outside-pointer dismissal is governed by containment and stays live regardless, so this cannot
 	// make the panel undismissable.
-	useDismiss({ open, enabled: stack.isTop, onDismiss: () => close(), panelRef, triggerRef });
+	useDismiss({
+		open,
+		enabled: stack.isTop,
+		onDismiss: () => close(),
+		panelRef,
+		triggerRef: rootRef,
+	});
 
 	// #region Open / close
 	const openPanel = () => {
@@ -200,6 +217,30 @@ export function Select(props: SelectProps): JSX.Element {
 		nav.reset();
 	};
 	const toggle = () => (open ? close() : openPanel());
+
+	/**
+	 * Open/close from anywhere on the field box that is not already an interactive control.
+	 *
+	 * The chevron and the clear button are SIBLINGS of `<button class="ui-select__trigger">`, not its
+	 * children — a nested `<button>` inside a `<button>` is invalid HTML, and the clear control has to
+	 * be its own button — so the trigger occupies only the label track of the flex row. Without this
+	 * the chevron was a rendered, `cursor: pointer` affordance whose click reached nothing, which is
+	 * the §3 gate-11 defect (a control that renders must do something): only the label opened the menu.
+	 *
+	 * Delegation rather than `pointer-events: none` on the glyph, because the chevron does not OVERLAY
+	 * the trigger — it sits beside it, so a click that passed through it would land on the root and
+	 * still reach no handler. The guard is `closest()` rather than a target identity check because the
+	 * event target inside the glyph is an `<svg>`/`<path>`, and because it must keep the trigger's own
+	 * `onClick` from firing twice: a real click on the label bubbles here, so anything already handled
+	 * by a control is skipped rather than toggled again.
+	 */
+	const onSurfaceClick = (e: JSX.TargetedMouseEvent<HTMLSpanElement>) => {
+		if (disabled || readOnly) return;
+		const target = e.target as Element | null;
+		if (target?.closest(".ui-select__trigger, .ui-select__clear")) return;
+		toggle();
+		triggerRef.current?.focus();
+	};
 
 	// Seed the active index to the selected row and focus the filter when opening.
 	useEffect(() => {
@@ -417,6 +458,8 @@ export function Select(props: SelectProps): JSX.Element {
 				...fieldModifiers("ui-field", { size, status, fluid, disabled, readOnly, open }),
 				className,
 			)}
+			ref={rootRef}
+			onClick={onSurfaceClick}
 		>
 			<button
 				ref={triggerRef}

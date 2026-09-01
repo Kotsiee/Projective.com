@@ -7,8 +7,8 @@ Policies: the tail of
 (there is deliberately no `policies_files` file — the files policies have always lived there).
 Grants: [`00002500`](../../../supabase/migrations/00002500_permissions_schema_grants.sql) ·
 [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql) ·
-[`00002520`](../../../supabase/migrations/00002520_permissions_table_grants.sql).
-Storage-object policies: [`00002017`](../../../supabase/migrations/00002017_policies_storage.sql).
+[`00002520`](../../../supabase/migrations/00002520_permissions_table_grants.sql). Storage-object
+policies: [`00002017`](../../../supabase/migrations/00002017_policies_storage.sql).
 
 ---
 
@@ -31,7 +31,8 @@ It meant literally what it said. **Any** authenticated account — a brand-new s
 an unrelated project, a client who had never met the owner — could read **every row of the table**:
 every other tenant's `display_name` / `original_name`, `mime_type`, `size_bytes`, `bucket_id`,
 `storage_path`, `link_url` and `share_slug`, across every project, every DM, every private drive and
-every KYC-adjacent upload on the platform. `SELECT * FROM files.items` was a full platform inventory.
+every KYC-adjacent upload on the platform. `SELECT * FROM files.items` was a full platform
+inventory.
 
 It did not leak the **bytes** — `storage.objects` has always been separately policed per bucket
 (`00002017`) — but it leaked the complete metadata index, which is enough to reconstruct who is
@@ -50,10 +51,10 @@ schema-wide grant in `00002500` hands `authenticated` full DML on every table in
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA files TO authenticated;
 ```
 
-With no `ENABLE ROW LEVEL SECURITY`, a grant is the *whole* access decision — there is no policy
+With no `ENABLE ROW LEVEL SECURITY`, a grant is the _whole_ access decision — there is no policy
 layer left to filter it. So every signed-in user could **read, rename, re-parent and delete every
-other user's folder tree**, including re-parenting a stranger's folder into their own (`parent_folder_id`
-was writable) and cascading a `DELETE` through it.
+other user's folder tree**, including re-parenting a stranger's folder into their own
+(`parent_folder_id` was writable) and cascading a `DELETE` through it.
 
 This is the more instructive of the two: the `files.items` hole at least required someone to write a
 wrong predicate. This one required only that a table be **forgotten**, and a blanket schema grant
@@ -82,11 +83,12 @@ behaviour differ only in row count.
 | `UPDATE` | `authenticated` | `USING` **and** `WITH CHECK` `(owner_user_id = auth.uid())` |
 | `DELETE` | `authenticated` | `owner_user_id = auth.uid()`                                |
 
-**The `UPDATE` `WITH CHECK` arm is new.** The shipped policy had `USING` only, and an `UPDATE` policy
-without a `WITH CHECK` validates the row you **started** from, never the row you are **writing**. A
-user could take their own row and set `owner_user_id` to someone else (donating a row into another
-tenancy), or repoint `bucket_id`/`storage_path` at another tenant's stored object and read it back
-through their own now-legitimate row. Re-asserting ownership on the post-image closes both.
+**The `UPDATE` `WITH CHECK` arm is new.** The shipped policy had `USING` only, and an `UPDATE`
+policy without a `WITH CHECK` validates the row you **started** from, never the row you are
+**writing**. A user could take their own row and set `owner_user_id` to someone else (donating a row
+into another tenancy), or repoint `bucket_id`/`storage_path` at another tenant's stored object and
+read it back through their own now-legitimate row. Re-asserting ownership on the post-image closes
+both.
 
 **Note on cost:** the `SELECT` predicate is a per-row function call. It is correct first; if the
 hub's list queries ever need it, the owner-scoped arms are index-backed
@@ -105,9 +107,9 @@ project's tree is the channel tree, not a folder.
 Only one policy — `"Creators manage their share links" FOR ALL TO authenticated` — and its two arms
 are **not** symmetrical:
 
-| Arm          | Predicate                                                                              |
-| :----------- | :-------------------------------------------------------------------------------------- |
-| `USING`      | `created_by = auth.uid()`                                                              |
+| Arm          | Predicate                                                                                |
+| :----------- | :--------------------------------------------------------------------------------------- |
+| `USING`      | `created_by = auth.uid()`                                                                |
 | `WITH CHECK` | `created_by = auth.uid()` **AND** the target is owned by the caller (both clauses below) |
 
 ```sql
@@ -150,16 +152,18 @@ publish.
 
 > **Deliberately strict, and it fails CLOSED.** Authority is `owner_user_id = auth.uid()`, so an
 > **entity-owned** (team / business / organisation) asset cannot currently be shared by a member who
-> is not its owner — even though that member can *read* it. That is the correct direction to be wrong
-> in while the entity share-capability question is open (the same owner-axis question flagged for
-> connections, Decision #59). Widening it belongs with whoever settles that question, not with a
+> is not its owner — even though that member can _read_ it. That is the correct direction to be
+> wrong in while the entity share-capability question is open (the same owner-axis question flagged
+> for connections, Decision #59). Widening it belongs with whoever settles that question, not with a
 > passing edit.
 
 > ### ⚠️ Deviation from the brief, flagged rather than silently resolved
 >
-> The specification asked for `anon SELECT ... USING (revoked_at IS NULL AND (expires_at IS NULL OR
-> expires_at > now()))`. Taken literally that is a **credential leak**: RLS filters rows, and cannot
-> require that the caller already knew the slug. An anon grant plus that predicate permits
+> The specification asked for
+> `anon SELECT ... USING (revoked_at IS NULL AND (expires_at IS NULL OR
+> expires_at > now()))`.
+> Taken literally that is a **credential leak**: RLS filters rows, and cannot require that the
+> caller already knew the slug. An anon grant plus that predicate permits
 >
 > ```sql
 > SELECT slug FROM files.share_links
@@ -182,30 +186,31 @@ publish.
 ## `files.download_events`
 
 `SELECT` for the actor or the item's owner. **No `INSERT` policy anywhere** — that absence is the
-point: _"this asset was downloaded"_ is a server observation, not a claim a browser gets to make (the
-same discipline as `comms.notifications`). The schema-wide `INSERT` grant in `00002500` is harmless
-precisely because RLS is on and no `INSERT` policy exists.
+point: _"this asset was downloaded"_ is a server observation, not a claim a browser gets to make
+(the same discipline as `comms.notifications`). The schema-wide `INSERT` grant in `00002500` is
+harmless precisely because RLS is on and no `INSERT` policy exists.
 
 ## `files.storage_usage`
 
-`SELECT` for the owning user or an active member of the owning entity, so the hub can render
-_"12.4 GB of 25 GB used"_ without a round trip. **No write policy at all** — the rollup is maintained
-exclusively by `files.fn_usage_trigger` (a `SECURITY DEFINER` trigger) and the service role. A client
-that could write it could write itself unlimited storage.
+`SELECT` for the owning user or an active member of the owning entity, so the hub can render _"12.4
+GB of 25 GB used"_ without a round trip. **No write policy at all** — the rollup is maintained
+exclusively by `files.fn_usage_trigger` (a `SECURITY DEFINER` trigger) and the service role. A
+client that could write it could write itself unlimited storage.
 
 ---
 
 ## Grants
 
 | Grant                                   | Where      | Why                                                              |
-| :-------------------------------------- | :--------- | :---------------------------------------------------------------- |
+| :-------------------------------------- | :--------- | :--------------------------------------------------------------- |
 | `USAGE ON SCHEMA files TO anon`         | `00002500` | Pre-existing.                                                    |
 | `SELECT ON files.items TO anon`         | `00002520` | The schema's **only** anon table grant — the `public` tier.      |
 | `EXECUTE ON files.fn_resolve_share`     | `00002510` | To `anon`; the one visitor door into `share_links`.              |
 | `REVOKE` on the four internal functions | `00002510` | `fn_recompute_usage`, the two trigger fns, `fn_mint_share_slug`. |
 
 `files.fn_can_read` is deliberately left executable by `PUBLIC`: it **is** the `SELECT` policy on
-`files.items`, and a policy expression runs as the invoking role — revoking it would deny every read.
+`files.items`, and a policy expression runs as the invoking role — revoking it would deny every
+read.
 
 ---
 
@@ -218,13 +223,13 @@ themselves.
 Four policies, anchored on `{entity_id}` and gated by **active membership** of that entity — team
 **or** business **or** organisation, OR-ed because one uuid anchor may name any of the three.
 Deliberately **not** `auth.uid() = owner`: an entity asset must outlive the member who uploaded it.
-`DELETE` is narrower than `UPDATE` on purpose (any member may revise a shared asset; only the uploader
-may destroy one).
+`DELETE` is narrower than `UPDATE` on purpose (any member may revise a shared asset; only the
+uploader may destroy one).
 
-> Multiple permissive `SELECT` policies on `storage.objects` are **OR-combined**. The workspace rules
-> are written as the sole policies for that bucket; adding a broad "any authenticated" read would not
-> loosen `workspace` alone. Do not add one (the same warning `00002017`'s own header carries for the
-> `project` and `messages` buckets).
+> Multiple permissive `SELECT` policies on `storage.objects` are **OR-combined**. The workspace
+> rules are written as the sole policies for that bucket; adding a broad "any authenticated" read
+> would not loosen `workspace` alone. Do not add one (the same warning `00002017`'s own header
+> carries for the `project` and `messages` buckets).
 
 Full predicate, path convention and the metering consequence:
 [Storage.md → `workspace`](Storage.md#workspace-private).

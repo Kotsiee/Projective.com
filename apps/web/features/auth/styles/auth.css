@@ -723,7 +723,10 @@ body:has(.auth) {
 .auth .ui-input:focus-within,
 .auth .ui-password__control:focus-within,
 .auth .ui-select__trigger:focus-visible,
-.auth .ui-select--open .ui-select__trigger,
+/* `.ui-field--open`, not `.ui-select--open`. A field root writes its modifiers under the SHARED
+   `ui-field` block, so the component-block form named a class no element is ever given and an open
+   select on this surface kept its resting fill. */
+.auth .ui-field--open .ui-select__trigger,
 .auth .ui-multiselect__trigger:focus-visible,
 .auth .ui-datepicker__trigger:focus-within,
 .auth .ui-chips:focus-within,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AssetOwnerType, AssetVisibility } from "./assets.ts";
 import { ContentFingerprintSchema, DedupVerdictSchema } from "./dedup.ts";
+import { AssetMetadataSchema } from "./metadata.ts";
 import { StorageBucket } from "./storage.ts";
 
 /**
@@ -84,10 +85,20 @@ export const UploadTicketSchema = z.object({
 });
 export type UploadTicket = z.infer<typeof UploadTicketSchema>;
 
-/** Step 3 — the object landed. `etag` is the storage provider's receipt; `null` when it returned none. */
+/**
+ * Step 3 — the object landed. `etag` is the storage provider's receipt; `null` when it returned none.
+ *
+ * `metadata` arrives here rather than at init because extraction reads the file's BYTES, and at init
+ * there are none: the browser decodes dimensions, a poster frame, a waveform or a page count while the
+ * PUT is in flight and hands the result over once both have finished. It is optional so every caller
+ * that predates extraction stays valid, and nullable so a client that TRIED and could not read the
+ * file says so explicitly — an absent field and a null one are the same row to a reader that only
+ * checks for truthiness, and they are not the same fact.
+ */
 export const UploadCompleteSchema = z.object({
 	assetId,
 	etag: z.string().max(120).nullable(),
+	metadata: AssetMetadataSchema.nullable().optional(),
 });
 export type UploadComplete = z.infer<typeof UploadCompleteSchema>;
 

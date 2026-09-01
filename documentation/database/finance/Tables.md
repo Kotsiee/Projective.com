@@ -140,11 +140,12 @@ reports `provider`/`asOf` so a seeded or stale rate is always distinguishable fr
 > The FX **snapshot columns** on `finance.transactions` and `finance.escrows` are listed with those
 > tables above. `fx_base` carries `DEFAULT 'GBP'` so a stamped `fx_rate` is never orphaned from the
 > currency it was quoted against; both snapshots are **immutable once written** — a statement or
-> invoice reprints the rate that was actually applied, never today's. **Store-in-origin is already satisfied everywhere** — every priced entity already
-> carries a `currency` (`finance.*`, `projects.projects`, `projects.tickets`/`project_stages` via
-> the project, `marketplace.service_blueprints`), so **no** currency column is added to a priced
-> entity here. ⚠️ **FX economics (who bears the spread / how the conversion fee is charged) is
-> OPEN** — flagged in root `CLAUDE.md` §8, not decided in schema.
+> invoice reprints the rate that was actually applied, never today's. **Store-in-origin is already
+> satisfied everywhere** — every priced entity already carries a `currency` (`finance.*`,
+> `projects.projects`, `projects.tickets`/`project_stages` via the project,
+> `marketplace.service_blueprints`), so **no** currency column is added to a priced entity here. ⚠️
+> **FX economics (who bears the spread / how the conversion fee is charged) is OPEN** — flagged in
+> root `CLAUDE.md` §8, not decided in schema.
 
 ---
 

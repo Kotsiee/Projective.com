@@ -94,6 +94,79 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ---------------------------------------------------------------------------------------------
+-- projects.create_stage(p_project_id, p_name, p_description, p_description_text, p_unit_price_cents)
+-- Appends a stage to a project and provisions its room in the same transaction.
+--
+-- The channel call is not a convenience. `comms.get_stage_channels` provisions a stage's rooms
+-- LAZILY, on first open, and the channel tree the app renders is built from the channels that
+-- already exist — so a stage created without one is a stage nobody can see or navigate to. Opening
+-- the General room here is what makes a newly-created stage reachable the moment it exists.
+--
+-- SECURITY DEFINER because it writes through `comms.project_channels`, whose RLS the caller does not
+-- otherwise satisfy; the ownership check below is therefore the ONLY thing standing between a signed
+-- in caller and somebody else's pipeline, and it is deliberately the first thing the body does.
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.create_stage(
+  p_project_id       uuid,
+  p_name             text,
+  p_description      jsonb DEFAULT '{}'::jsonb,
+  p_description_text text DEFAULT '',
+  p_unit_price_cents bigint DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, comms, auth
+AS $$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_stage uuid;
+  v_order integer;
+  -- Resolved ONCE, because the stage row and its channel must be given the same name. Passing the raw
+  -- argument to the channel meant an empty or blank name produced a stage called "Untitled stage" and
+  -- a room called "" -- one thing under two names, in the two places a reader looks for it.
+  v_name  text;
+BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Sign in to add a stage.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  v_name := COALESCE(NULLIF(btrim(p_name), ''), 'Untitled stage');
+
+  IF NOT EXISTS (
+    SELECT 1 FROM projects.projects p
+    WHERE p.id = p_project_id AND p.owner_user_id = v_actor
+  ) THEN
+    RAISE EXCEPTION 'Only the project owner may add a stage.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  -- Append. COALESCE covers the first stage, where MAX over an empty set is NULL and a bare +1 would
+  -- make the whole expression NULL against a NOT NULL column.
+  SELECT COALESCE(MAX(ps.sort_order) + 1, 0) INTO v_order
+  FROM projects.project_stages ps
+  WHERE ps.project_id = p_project_id;
+
+  INSERT INTO projects.project_stages (project_id, name, description, description_text, sort_order, unit_price_cents)
+  VALUES (
+    p_project_id,
+    v_name,
+    COALESCE(p_description, '{}'::jsonb),
+    COALESCE(p_description_text, ''),
+    v_order,
+    p_unit_price_cents
+  )
+  RETURNING id INTO v_stage;
+
+  PERFORM comms.get_or_create_project_channel(p_project_id, v_stage, v_name);
+
+  RETURN v_stage;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint) IS
+'Appends a stage to a project the caller owns and opens its General channel, so the new stage is immediately visible in the channel tree. Returns the new stage id.';
+
+-- ---------------------------------------------------------------------------------------------
 -- projects.delete_stage(p_project_id, p_stage_id)
 -- Deleting an active stage:
 --   1. Releases escrow for every actively-claimed ticket currently in the stage.
@@ -110,6 +183,34 @@ RETURNS void AS $$
 DECLARE
   r record;
 BEGIN
+  -- 🚨 This block is the whole security of the function, and it is strictly more load-bearing here
+  -- than on `reorder_stages` below: this one RELEASES ESCROW to freelancers and then hard-deletes the
+  -- stage. It is SECURITY DEFINER with the default PUBLIC EXECUTE, so without a caller check any
+  -- signed-in account could wipe an unrelated project's pipeline — and, once a stage reconciler
+  -- reached it over HTTP, could do so in one request.
+  --
+  -- Ownership rather than `has_project_access`: an assigned freelancer legitimately reads the
+  -- pipeline and must never be able to delete the stage their own escrow is held against.
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Sign in to delete a stage.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM projects.projects p
+    WHERE p.id = p_project_id AND p.owner_user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the project owner may delete a stage.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  -- The stage must belong to the project named. Without this the ownership check above proves only
+  -- that the caller owns SOME project, and a stage id from another one would still be deleted.
+  IF NOT EXISTS (
+    SELECT 1 FROM projects.project_stages ps
+    WHERE ps.id = p_stage_id AND ps.project_id = p_project_id
+  ) THEN
+    RAISE EXCEPTION 'Stage % does not belong to project %.', p_stage_id, p_project_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
   -- 1. Release escrow for claimed tickets sitting in this stage.
   FOR r IN
     SELECT id FROM projects.tickets
@@ -150,25 +251,45 @@ BEGIN
 
   DELETE FROM projects.project_stages WHERE id = p_stage_id AND project_id = p_project_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance;
+-- `auth` on the path so `auth.uid()` resolves for the ownership guard above.
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, auth;
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.reorder_stages(p_project_id, p_ordered_ids)
 -- Atomic bulk reorder that preserves each column's internal ticket array/order (ticket
 -- sort_order is independent of stage sort_order, so simply restamping stage order is safe).
+--
+-- 🚨 The authorisation block below is the whole security of this function. It is SECURITY DEFINER,
+-- so the UPDATE inside runs as the owner and RLS never sees it, and it keeps the default PUBLIC
+-- EXECUTE grant every other RPC in this file relies on. Without a caller check that combination
+-- means any signed-in caller who knows a project id and its stage ids can reorder somebody else's
+-- pipeline — and stage order is the execution sequence, so a reorder is a change to what gets built
+-- when, not a cosmetic one.
+--
+-- Ownership rather than `has_project_access`: an assigned freelancer legitimately reads the pipeline
+-- and must not be able to rewrite the client's sequencing.
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION projects.reorder_stages(p_project_id uuid, p_ordered_ids uuid[])
 RETURNS void AS $$
 DECLARE
   i integer;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Sign in to reorder stages.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM projects.projects p WHERE p.id = p_project_id AND p.owner_user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the project owner may reorder its stages.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
   FOR i IN 1 .. array_length(p_ordered_ids, 1) LOOP
     UPDATE projects.project_stages
     SET sort_order = i - 1
     WHERE id = p_ordered_ids[i] AND project_id = p_project_id;
   END LOOP;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
 
 -- ---------------------------------------------------------------------------------------------
 -- 3. projects.force_complete_stage(p_ticket_id)

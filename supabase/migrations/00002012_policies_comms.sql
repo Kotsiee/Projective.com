@@ -40,11 +40,45 @@ WITH
 CREATE POLICY "view_channels_if_member" ON comms.project_channels FOR SELECT TO authenticated
 USING (comms.has_channel_access (id));
 
+-- 🚨 The `sender_user_id = auth.uid()` arm is not redundant with channel access.
+-- Channel access answers "may this person post here"; it says nothing about WHOSE
+-- name goes on the message. Without it any member of a channel could insert a row
+-- attributed to another member of the same channel — and a chat message is read as
+-- a statement its named author made, so this is impersonation inside the one
+-- surface where a client and a freelancer negotiate scope and agree changes. The
+-- feed renders the claimed sender verbatim; nothing downstream can tell the
+-- difference.
 CREATE POLICY "send_messages_if_member" ON comms.project_messages FOR INSERT TO authenticated
-WITH CHECK (comms.has_channel_access (channel_id));
+WITH CHECK (
+    sender_user_id = auth.uid ()
+    AND comms.has_channel_access (channel_id)
+);
 
 CREATE POLICY "view_messages_if_member" ON comms.project_messages FOR SELECT TO authenticated
 USING (comms.has_channel_access (channel_id));
+
+-- Editing and soft-deleting are the sender's own acts, so `edited_at` and
+-- `deleted_at` had no writer at all: the table carried both columns and no UPDATE
+-- policy, which made them unwritable by any client and the edit path silently
+-- impossible rather than refused.
+--
+-- The WITH CHECK arm re-asserts authorship on the POST-image. Postgres would
+-- substitute `USING` for it anyway, so it is explicit rather than corrective —
+-- but what it constrains is real and worth reading without knowing that rule: a
+-- sender must not be able to edit their own message and set `sender_user_id` to
+-- somebody else in the same statement, turning their own words into that person's,
+-- which is the impersonation the INSERT policy above closes, reached from the
+-- other side. Channel access is re-checked too so an edit cannot outlive the
+-- sender's membership of the room.
+CREATE POLICY "edit_own_messages" ON comms.project_messages FOR UPDATE TO authenticated
+USING (
+    sender_user_id = auth.uid ()
+    AND comms.has_channel_access (channel_id)
+)
+WITH CHECK (
+    sender_user_id = auth.uid ()
+    AND comms.has_channel_access (channel_id)
+);
 
 CREATE POLICY "view_attachments_if_member" ON comms.message_attachments FOR SELECT TO authenticated
 USING (
@@ -144,15 +178,9 @@ SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
 -- thread, so a member who deleted the conversation stops being able to read it
 -- while everyone else is unaffected — which is what the column was added for.
 --
--- NOTE ON THE REMAINING HOLE, which these policies do NOT close:
--- comms.message_reactions, comms.message_pins, comms.message_favorites,
--- comms.auto_responses and comms.newsletter_subscriptions were never added to
--- 00002001, so RLS is OFF on them entirely, while 00002500 grants
--- `ALL ON ALL TABLES IN SCHEMA comms TO authenticated`. Any signed-in user can
--- therefore read and write every other user's reactions, pins, favourites,
--- auto-response rules and the whole newsletter subscriber list. Closing that
--- needs ENABLE ROW LEVEL SECURITY plus policies, which changes existing WRITE
--- behaviour, so it is surfaced for a human decision rather than folded in here.
+-- The five interaction / auto-response / newsletter tables that 00002001 once
+-- missed are covered further down this file; their own section explains what the
+-- gap cost and why newsletter_subscriptions deliberately still has no policy.
 -- =============================================================================
 
 CREATE POLICY "view_own_dm_participation" ON comms.dm_participants FOR
@@ -191,6 +219,32 @@ SELECT TO authenticated USING (
         AND comms.is_dm_participant (channel_id)
     )
 );
+
+-- The register had SELECT and nothing else, so a channel attachment could be read
+-- and never recorded — which is precisely what the message-send path has to do:
+-- an attachment reaches the Files tab through this table, so without an INSERT
+-- policy a file sent in a channel is visible in its message and absent from the
+-- channel's own file list.
+--
+-- Same predicate as the read, on purpose: the right to put a file into a room is
+-- the right to be in it. Note again the BARE 'project' / 'dm' vocabulary — the
+-- sibling tables discriminate on the schema-qualified
+-- 'comms.project_messages' / 'comms.dm_messages' pair, and a policy written
+-- against the wrong one of the two admits nothing and raises nothing, so it fails
+-- as a silently empty file list rather than an error anybody would chase.
+CREATE POLICY "register_channel_files_if_member" ON comms.channel_files FOR
+INSERT TO authenticated
+WITH
+    CHECK (
+        (
+            channel_type = 'project'
+            AND comms.has_channel_access (channel_id)
+        )
+        OR (
+            channel_type = 'dm'
+            AND comms.is_dm_participant (channel_id)
+        )
+    );
 
 CREATE POLICY "view_channel_participants_if_member" ON comms.project_channel_participants FOR
 SELECT TO authenticated USING (

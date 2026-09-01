@@ -35,8 +35,7 @@ import { mockAvatar } from "../../mocks/assets.ts";
 const NOW = Date.parse("2026-07-17T16:20:00.000Z");
 const DAY = 86_400_000;
 
-const FACE = (id: string) =>
-	mockAvatar(id);
+const FACE = (id: string) => mockAvatar(id);
 
 /**
  * A supporting cast that fills the roster out so EVERY role badge is demonstrable on any engagement

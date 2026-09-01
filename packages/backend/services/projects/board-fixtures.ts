@@ -268,8 +268,7 @@ const FILE_NAMES: readonly { name: string; ext: string; kind: string; category: 
 	{ name: "walkthrough.mp4", ext: "mp4", kind: "video", category: "video" },
 ];
 
-const UNSPLASH =
-	mockCover("photo-1558655146-9f40138edfeb", 600, undefined, 60);
+const UNSPLASH = mockCover("photo-1558655146-9f40138edfeb", 600, undefined, 60);
 
 /** A deterministic {@link FileItem} for a ticket attachment or a submitted deliverable. */
 function makeFile(

@@ -24,8 +24,7 @@ export const ORG_HELIOS = "o_helios";
 // #endregion
 
 // #region Avatars (Unsplash face crops — open registry, DESIGN_SYSTEM.md §C.4)
-const FACE = (id: string) =>
-	mockAvatar(id);
+const FACE = (id: string) => mockAvatar(id);
 
 const MARA = FACE("photo-1494790108377-be9c29b29330");
 const DANIEL = FACE("photo-1500648767791-00dcc994a43e");
@@ -299,6 +298,86 @@ const PROJECTS: readonly ProjectSummary[] = [
 		totalStages: 20,
 		budgetLabel: "$3,200 / mo",
 		updatedAt: "2026-07-05T09:00:00Z",
+	},
+
+	// —— Owner-side engagements the SETUP surface needs to be reachable at all ——————
+	//
+	// Every other owner/admin row above is an ACTIVE pipeline or one-off. The Details surface branches
+	// four ways on (format × structure) and gates itself on `status = 'draft'`, so without these three
+	// the draft state and two of the four branches were unreachable in the running app while every
+	// type-check and unit test passed — a branch no fixture can reach is dead code, and this corpus has
+	// shipped that before.
+	{
+		id: "33333333-3333-4333-8333-333333333304",
+		slug: "monarch-onboarding-revamp",
+		title: "Onboarding Revamp",
+		kind: "project",
+		format: "pipeline",
+		// The one owner-side DRAFT: nothing is priced and no stage exists, so the setup ladder opens
+		// well short of complete and the Preview tab renders locked. That is the state the surface is
+		// designed around, and it had no row to render from.
+		status: "draft",
+		viewerRole: "owner",
+		scopeType: "business",
+		scopeId: BUSINESS_MONARCH,
+		scopeLabel: "Monarch Labs",
+		owner: party("Priya Nair", PRIYA, "priya"),
+		counterparty: null,
+		serviceId: null,
+		unread: false,
+		starred: false,
+		completedStages: 0,
+		totalStages: 0,
+		budgetLabel: null,
+		updatedAt: "2026-07-18T11:30:00Z",
+	},
+	{
+		id: "33333333-3333-4333-8333-333333333305",
+		slug: "monarch-research-sessions",
+		title: "Discovery Research Sessions",
+		kind: "project",
+		// The session branch: the form swaps ticket pricing for a per-session rate and duration, and
+		// `sessionKindOf` reads 1-1 versus group from the presence of team channels rather than a hash.
+		format: "session",
+		status: "active",
+		viewerRole: "owner",
+		scopeType: "business",
+		scopeId: BUSINESS_MONARCH,
+		scopeLabel: "Monarch Labs",
+		owner: party("Priya Nair", PRIYA, "priya"),
+		counterparty: party("Sofia Almeida", SOFIA, "sofia"),
+		serviceId: null,
+		unread: false,
+		starred: false,
+		completedStages: 2,
+		totalStages: 6,
+		budgetLabel: "$320 / session",
+		updatedAt: "2026-07-16T15:05:00Z",
+	},
+	{
+		id: "33333333-3333-4333-8333-333333333306",
+		slug: "monarch-launch-teardown",
+		title: "Launch Teardown",
+		kind: "project",
+		// The Direct Deliverable: a one-off that takes NO stages and is staffed by named roles instead.
+		// `setup-fixtures.ts` names this slug explicitly rather than inferring the shape, because
+		// "a one-off with no stages" also describes a one-off nobody has added a stage to yet, and the
+		// two put a different required step on the ladder.
+		format: "one_off",
+		status: "active",
+		viewerRole: "owner",
+		scopeType: "business",
+		scopeId: BUSINESS_MONARCH,
+		scopeLabel: "Monarch Labs",
+		owner: party("Priya Nair", PRIYA, "priya"),
+		counterparty: party("Theo Bennett", THEO, "theo"),
+		serviceId: null,
+		unread: false,
+		starred: false,
+		completedStages: 0,
+		totalStages: 0,
+		budgetLabel: "$4,800",
+		updatedAt: "2026-07-17T08:40:00Z",
 	},
 
 	// —— Helios Corp (Organisation, buyer-only) ——————————————————————————————————

@@ -6,7 +6,12 @@ import { Message, Popover, Tooltip } from "@projective/ui/feedback";
 import { useId } from "@projective/ui/hooks";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
+import { extractMetadata } from "@web/features/files/core/media/extract.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
+import { AccountService } from "@web/features/shell/core/AccountService.ts";
+import { MessagesService } from "../core/MessagesService.ts";
+import { MESSAGE_SENT_EVENT, type MessageSentDetail } from "@web/utils/lane-events.ts";
+import { uploadForProject } from "../core/upload.ts";
 import { CloseIcon, PlusIcon, TrashIcon } from "../components/glyphs.tsx";
 import {
 	FileTypeGlyph,
@@ -65,10 +70,14 @@ import type {
  * while looking at the button they just pressed.
  *
  * THIN: send assembles a real {@link ComposerPayload} — the voice memo becomes an actual `File` with
- * its envelope already resampled to the persisted cap — and hands it to the host; persistence lands
- * with the live messaging backend behind `PROJECTS_BACKEND_LIVE`, matching the rest of the projects
- * feature. Text and voice drafts are mutually exclusive by construction (the textarea is replaced by
- * the waveform while a memo exists).
+ * its envelope already resampled to the persisted cap — uploads every device file through the shared
+ * files handshake ({@link uploadForProject}, so bytes never transit an application route), and posts
+ * the resulting asset ids to `/api/projects/messages/send`. Text and voice drafts are mutually
+ * exclusive by construction (the textarea is replaced by the waveform while a memo exists).
+ *
+ * Nothing is ever dropped quietly. The draft is cleared only by a SUCCESS, and only the parts that
+ * were actually sent — so a refusal leaves the words on screen to retry, and a person who kept typing
+ * while the request was in flight does not lose the sentence they added.
  */
 
 /** An imperative handle an external drop zone (e.g. the pop-out popover) uses to enqueue files. */
@@ -78,10 +87,24 @@ export interface ComposerHandle {
 }
 
 export interface ChatComposerProps {
-	/** The engagement route slug (thread scoping for the eventual send). */
+	/** The engagement route slug (thread scoping for the send). */
 	projectId: string;
 	/** The channel route segment (its unified `chatId` is resolved server-side when live). */
 	channelId: string;
+	/**
+	 * Which surface this composer is posting into.
+	 *
+	 * `project` posts to `/api/projects/messages/send`. `conversation` is the standalone inbox, which
+	 * has no send endpoint of its own yet — so it composes, hands the payload to {@link onSend} and
+	 * clears, exactly as this composer did everywhere before the projects write path landed. Naming
+	 * the scope here rather than inferring it is what lets the messaging endpoint be wired later
+	 * without a second composer.
+	 *
+	 * A STRING and not a callback on purpose: island props must be serialisable, and a function prop
+	 * fails the whole render ("Serializing functions is not supported"), which is why the server slot
+	 * resolvers that mount this composer pass no handlers at all.
+	 */
+	scope?: "project" | "conversation";
 	/**
 	 * Fired once after mount with an imperative {@link ComposerHandle}, so an external surface — the
 	 * floating "Pop Out Chat" popover's whole-panel drop zone (task §1) — can push dropped files into
@@ -112,6 +135,33 @@ const PERMISSION_KINDS: ReadonlySet<RecorderError["kind"]> = new Set([
 	"device_lost",
 ]);
 
+/**
+ * What one send consumed.
+ *
+ * Captured before the request leaves so a success can clear exactly that and nothing else. The
+ * composer stays editable while a large attachment uploads, and blanking the textarea on the way back
+ * would delete a sentence typed after the send — the one kind of data loss a person cannot see
+ * happening.
+ */
+interface SentDraft {
+	/** The raw textarea value at send time; cleared only if it is still that. */
+	text: string;
+	/** The {@link DraftAttachment} ids consumed — by id, because the tray may have grown since. */
+	attachmentIds: string[];
+	/** The collapsed paste blocks consumed. */
+	pastedIds: string[];
+	/** Whether the voice memo went with it. */
+	voice: boolean;
+}
+
+/** A send that did not land, phrased for the inline notice rather than for a log. */
+interface SendFailure {
+	/** The one-line statement of what happened. */
+	title: string;
+	/** What to do about it, and what was kept. */
+	detail?: string;
+}
+
 /** The one sentence announced on each capture phase transition (see the `role="status"` line). */
 function voiceStatus(phase: RecorderPhase, durationMs: number): string {
 	switch (phase) {
@@ -129,11 +179,15 @@ function voiceStatus(phase: RecorderPhase, durationMs: number): string {
 }
 
 export default function ChatComposer(
-	{ projectId, channelId, onReady, onSend }: ChatComposerProps,
+	{ projectId, channelId, scope = "project", onReady, onSend }: ChatComposerProps,
 ): JSX.Element {
 	// #region State
 	const text = useSignal("");
 	const attachments = useSignal<DraftAttachment[]>([]);
+	/** A send is in flight — the Send control is held so one press cannot become two messages. */
+	const sending = useSignal(false);
+	/** Why the last send did not land; cleared when the next one starts. */
+	const sendError = useSignal<SendFailure | null>(null);
 	/**
 	 * This composer's Asset Picker routing key.
 	 *
@@ -156,6 +210,15 @@ export default function ChatComposer(
 	const pressAtRef = useRef(0);
 	const holdingRef = useRef(false);
 	const shortcutRef = useRef(false);
+	/**
+	 * The acting principal an upload is filed against, resolved once and remembered.
+	 *
+	 * A REQUEST rather than the answer: `/api/files/upload-init` derives the real owner from the
+	 * session and the fat service decides which library the bytes land in, so nothing here is trusted.
+	 * It is asked for at all because a signed-out caller has no library, and finding that out at the
+	 * point of upload is what turns a silent failure into a sentence.
+	 */
+	const ownerRef = useRef<string | null>(null);
 	// #endregion
 
 	// #region Derived
@@ -170,6 +233,16 @@ export default function ChatComposer(
 	const canSend = phase === "recorded" ? !oversize : (!hasVoice && hasContent);
 	const atCapacity = attachments.value.length >= MAX_ATTACHMENTS;
 	const micBlocked = rec.permission.value === "denied" || rec.permission.value === "unsupported";
+	/**
+	 * Whether this composer has a project channel to post into.
+	 *
+	 * The scope prop names it, and the id pair confirms it: a conversation mount passes the same
+	 * conversation id as both `projectId` and `channelId`, which no project channel ever does. Both
+	 * checks are here because the two hosts that mount this composer over a conversation — the pop-out
+	 * chat panel and the profile quick-message popover — do not pass a scope yet, and posting a DM to
+	 * the projects endpoint would spend a request only to be told the project does not exist.
+	 */
+	const dispatches = scope === "project" && projectId !== channelId;
 	// #endregion
 
 	// #region Attachments + paste
@@ -332,13 +405,24 @@ export default function ChatComposer(
 	// #endregion
 
 	// #region Send
-	function resetDraft(): void {
-		text.value = "";
-		for (const a of attachments.value) releasePreview(a);
-		attachments.value = [];
-		pasted.value = [];
-		rec.discard();
-		setTimeout(() => auto.resize(), 0);
+	/**
+	 * Clear exactly what went, and nothing else.
+	 *
+	 * The text is cleared only when it is still the text that was sent: anything typed while the
+	 * request was in flight is a NEW draft, and blanking it would delete work the person can see
+	 * themselves having done. Attachments and pastes are matched by id for the same reason.
+	 */
+	function clearSent(sent: SentDraft): void {
+		if (text.value === sent.text) {
+			text.value = "";
+			setTimeout(() => auto.resize(), 0);
+		}
+		const consumedFiles = new Set(sent.attachmentIds);
+		for (const a of attachments.value) if (consumedFiles.has(a.id)) releasePreview(a);
+		attachments.value = attachments.value.filter((a) => !consumedFiles.has(a.id));
+		const consumedPastes = new Set(sent.pastedIds);
+		pasted.value = pasted.value.filter((p) => !consumedPastes.has(p.id));
+		if (sent.voice) rec.discard();
 	}
 
 	/**
@@ -376,19 +460,135 @@ export default function ChatComposer(
 		};
 	}
 
-	function send(): void {
-		if (!canSend) return;
-		// Optimistic/stubbed transport — the payload below is real and complete; only its dispatch waits
-		// on the messaging backend behind `PROJECTS_BACKEND_LIVE`. `onSend` lets a host (the profile
-		// quick-message popover) react to the first send (create + link the conversation).
-		onSend?.(buildPayload());
-		resetDraft();
+	/** The library an upload asks to be filed in, resolved from the session on first use. */
+	async function actingOwnerId(): Promise<string | null> {
+		if (ownerRef.current) return ownerRef.current;
+		const me = await AccountService.current();
+		ownerRef.current = me?.userId ?? null;
+		return ownerRef.current;
+	}
+
+	/**
+	 * Turn every device file into a `files.items` id, in the caller's order.
+	 *
+	 * A partial upload REFUSES the send. The files module is right that three of four attachments
+	 * arriving is still a drop worth keeping — but a chat message is not a drop: it is a statement
+	 * about the things attached to it, and one that quietly arrives missing an attachment is worse
+	 * than one that does not arrive at all. Nothing is cleared, so the person can drop the file that
+	 * failed and press Send again; the ones that did land are already in their library and dedupe on
+	 * their fingerprint rather than costing a second slice of quota.
+	 */
+	async function uploadDraftFiles(files: File[]): Promise<{ ids: string[] } | SendFailure> {
+		if (files.length === 0) return { ids: [] };
+		const ownerId = await actingOwnerId();
+		if (!ownerId) {
+			return {
+				title: "Your attachments could not be uploaded.",
+				detail: "We could not tell whose library to file them in — sign in again and retry.",
+			};
+		}
+		const outcome = await uploadForProject(files, {
+			ownerType: "user",
+			ownerId,
+			// Runs alongside the transfer, so a poster frame never delays the bytes; a reader that
+			// cannot answer degrades to `generic` rather than failing the upload.
+			metadataFor: extractMetadata,
+		});
+		if (outcome.failures.length > 0) {
+			const names = outcome.failures.map((f) => f.name).join(", ");
+			return {
+				title: outcome.failures.length === files.length
+					? "Nothing could be uploaded, so the message was not sent."
+					: "Some attachments did not upload, so the message was not sent.",
+				detail: `${names} — remove them or try again. Your message is still here.`,
+			};
+		}
+		// Every file landed, and `assetIds` is written positionally, so index i is file i.
+		return { ids: outcome.assetIds };
+	}
+
+	/**
+	 * Send the draft.
+	 *
+	 * {@link onSend} fires FIRST and unconditionally, because a host may navigate on it (the profile
+	 * quick-message popover opens the thread on the first message) and a hook that only ran on a
+	 * successful round trip would make that behaviour depend on the network.
+	 */
+	async function send(): Promise<void> {
+		if (!canSend || sending.value) return;
+		const draft = buildPayload();
+		const sent: SentDraft = {
+			text: text.value,
+			attachmentIds: attachments.value.map((a) => a.id),
+			pastedIds: pasted.value.map((p) => p.id),
+			voice: draft.voice !== null,
+		};
+		onSend?.(draft);
+		if (!dispatches) {
+			clearSent(sent);
+			return;
+		}
+
+		sending.value = true;
+		sendError.value = null;
+
+		// The memo goes LAST so its id is the last one back — it is the only attachment whose id the
+		// payload needs individually, and a positional answer is cheaper than a second round trip.
+		const memo = draft.voice;
+		const uploaded = await uploadDraftFiles(memo ? [...draft.files, memo.file] : draft.files);
+		if (!("ids" in uploaded)) {
+			sending.value = false;
+			sendError.value = uploaded;
+			return;
+		}
+		const memoId = memo ? uploaded.ids[uploaded.ids.length - 1] ?? null : null;
+		const res = await MessagesService.send({
+			projectId,
+			channelId,
+			text: draft.text,
+			attachmentIds: [
+				...(memo ? uploaded.ids.slice(0, draft.files.length) : uploaded.ids),
+				...draft.libraryAssetIds,
+				...(memoId ? [memoId] : []),
+			],
+			audio: memo && memoId
+				? {
+					// The server resolves the playable address from the asset the memo was uploaded as;
+					// a URL minted here would be an object URL that dies with this page.
+					url: "",
+					durationMs: memo.durationMs,
+					durationLabel: memo.durationLabel,
+					peaks: memo.peaks,
+				}
+				: null,
+		});
+		sending.value = false;
+		if (res.ok) {
+			clearSent(sent);
+			// Tell whatever feed is on the page that a row now exists. The composer cannot reach the
+			// feed directly — they are separate hydration roots in different bands — and without this
+			// the message lands in the database while the surface shows nothing, which reads to the
+			// sender as a failure. The SERVER's message is what travels, so the feed appends the row
+			// that was actually stored rather than a hopeful copy of the draft.
+			if (res.data?.message) {
+				globalThis.dispatchEvent(
+					new CustomEvent<MessageSentDetail>(MESSAGE_SENT_EVENT, {
+						detail: { channelId, message: res.data.message },
+					}),
+				);
+			}
+			return;
+		}
+		sendError.value = {
+			title: res.message ?? "That message could not be sent.",
+			detail: "Nothing was cleared — press Send to try again.",
+		};
 	}
 
 	function onTextareaKeyDown(event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>): void {
 		if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
 			event.preventDefault();
-			send();
+			void send();
 		}
 	}
 	// #endregion
@@ -702,13 +902,17 @@ export default function ChatComposer(
 							// A finished memo always shows Send, disabled when it is too large to upload.
 							// Falling back to the Mic here would leave an enabled control that does nothing —
 							// the press guard rejects a `recorded` phase — and hide the only correct action.
-							<Tooltip content={oversize ? "Too large to send" : "Send"} placement="top">
+							<Tooltip
+								content={sending.value ? "Sending…" : oversize ? "Too large to send" : "Send"}
+								placement="top"
+							>
 								<button
 									type="button"
 									class="chat-composer__btn chat-composer__btn--send"
 									aria-label={oversize ? "Send message — recording too large" : "Send message"}
-									disabled={!canSend}
-									onClick={send}
+									disabled={!canSend || sending.value}
+									aria-busy={sending.value ? "true" : undefined}
+									onClick={() => void send()}
 								>
 									{SendIcon}
 								</button>
@@ -763,11 +967,36 @@ export default function ChatComposer(
 				)}
 
 				{
+					/* A send that did not land, stated where the Send button is rather than in a corner
+				    toast — and never a silent drop, because the message still looks written. */
+				}
+				{sendError.value && (
+					<div class="chat-composer__notice">
+						<Message
+							severity="danger"
+							variant="subtle"
+							size="sm"
+							closable
+							onClose={() => (sendError.value = null)}
+						>
+							<span class="chat-composer__notice-body">
+								<span class="chat-composer__notice-title">{sendError.value.title}</span>
+								{sendError.value.detail && (
+									<span class="chat-composer__notice-detail">{sendError.value.detail}</span>
+								)}
+							</span>
+						</Message>
+					</div>
+				)}
+
+				{
 					/* Phase transitions announced once each, so a non-sighted viewer knows capture began,
-				    paused, and ended without the clock talking over everything. */
+				    paused, and ended without the clock talking over everything. The send takes the same
+				    line while it runs — the two states cannot overlap, and one live region interrupts
+				    less than two. */
 				}
 				<p class="chat-composer__sr" role="status" aria-live="polite">
-					{voiceStatus(phase, memo?.durationMs ?? 0)}
+					{sending.value ? "Sending your message." : voiceStatus(phase, memo?.durationMs ?? 0)}
 				</p>
 			</div>
 

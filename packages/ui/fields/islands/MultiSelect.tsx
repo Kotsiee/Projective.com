@@ -156,6 +156,17 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 
+	/**
+	 * The whole field box.
+	 *
+	 * Dismissal containment is measured against THIS, not against the trigger button: the chevron
+	 * and the clear control are siblings of the trigger, so a press on the chevron read as an
+	 * OUTSIDE click while the panel was open — it closed, and the click that followed reopened it
+	 * through the surface handler. Net effect, the chevron could open the panel and never close it.
+	 * Widening containment to the box is the same move as delegating the click to it: the field is
+	 * one control, so every part of it has to count as inside.
+	 */
+	const rootRef = useRef<HTMLSpanElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
@@ -186,7 +197,13 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 	// they run in registration order, not stacking order — without this an open MultiSelect under a
 	// later overlay eats that overlay's Escape. Outside-pointer dismissal is governed by containment
 	// and stays live regardless.
-	useDismiss({ open, enabled: stack.isTop, onDismiss: () => close(), panelRef, triggerRef });
+	useDismiss({
+		open,
+		enabled: stack.isTop,
+		onDismiss: () => close(),
+		panelRef,
+		triggerRef: rootRef,
+	});
 
 	// #region Open / close
 	const openPanel = () => {
@@ -199,6 +216,22 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 		nav.reset();
 	};
 	const toggle = () => (open ? close() : openPanel());
+
+	/**
+	 * Open/close from anywhere on the field box that is not already an interactive control — the same
+	 * delegation `Select` carries, and for the same reason: the chevron and the clear button are
+	 * siblings of `<button class="ui-multiselect__trigger">` (a nested button is invalid HTML), so the
+	 * trigger covers only the chip track and a click on the chevron reached nothing. Chips render
+	 * INSIDE the trigger, so the first arm of the guard already covers their remove buttons and a chip
+	 * dismissal never also toggles the panel.
+	 */
+	const onSurfaceClick = (e: JSX.TargetedMouseEvent<HTMLSpanElement>) => {
+		if (disabled || readOnly) return;
+		const target = e.target as Element | null;
+		if (target?.closest(".ui-multiselect__trigger, .ui-multiselect__clear")) return;
+		toggle();
+		triggerRef.current?.focus();
+	};
 
 	useEffect(() => {
 		if (!open) return;
@@ -376,6 +409,8 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 				...fieldModifiers("ui-field", { size, status, fluid, disabled, readOnly, open }),
 				className,
 			)}
+			ref={rootRef}
+			onClick={onSurfaceClick}
 		>
 			<button
 				ref={triggerRef}

@@ -46,7 +46,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION search.sync_project_to_index() RETURNS TRIGGER AS $$
+-- ⚠️ THE SIX `sync_*_to_index` TRIGGERS ARE `INVOKER`, AND THAT MAKES THEM WRITE BLOCKERS.
+--
+-- Each one fires on a write to a table `authenticated` is supposed to be able to write, and each one
+-- then writes a `search.*_index` row on that caller's behalf. But `00002500` grants `authenticated`
+-- only SELECT on this schema, so an ordinary client UPDATE raises
+-- `permission denied for table <x>_index` — inside a trigger, from a statement the caller never wrote.
+-- Widening the grant does NOT fix it either: every index table has RLS on with a SELECT-only policy,
+-- so DML then raises `new row violates row-level security policy`. Two layers, both blocking.
+--
+-- `SECURITY DEFINER` is the fix, and it is what every OTHER function in this file already is: the
+-- index is derived, internal, and nobody's row-level property — it is maintained BY the platform, not
+-- by whoever happened to trigger it.
+--
+-- Only the PROJECT sync is corrected here, because a client write to `projects.projects` is a live
+-- path (the engagement editor's `PATCH /api/projects/[id]`) and was measurably failing on it.
+-- `sync_team_to_index`, `sync_freelancer_to_index`, `sync_user_to_index`, `sync_business_to_index`
+-- and `sync_service_to_index` carry the IDENTICAL defect and are latent only because their own client
+-- write paths are still stub-first. They are not fixed here on purpose — each one gates a different
+-- domain's writes and belongs to that domain's pass, not to this one.
+CREATE OR REPLACE FUNCTION search.sync_project_to_index() RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, search, projects
+AS $$
 BEGIN
     INSERT INTO search.projects_index (project_id, title, fts, industry_category_id, status, target_start_date, is_active, updated_at)
     VALUES (
@@ -61,7 +84,7 @@ BEGIN
         is_active = EXCLUDED.is_active, updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 CREATE OR REPLACE FUNCTION search.sync_user_to_index() RETURNS TRIGGER AS $$
 BEGIN

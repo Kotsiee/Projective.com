@@ -4,6 +4,7 @@ import type {
 	AssetFolder,
 	AssetItem,
 	AssetListParams,
+	AssetMetadata,
 	AssetOwnerType,
 	AssetSource,
 	AssetTreeNode,
@@ -27,6 +28,7 @@ import { categorizeFile, categoryToKind, wasDownloadedBy } from "@projective/typ
 import type { FileItem } from "@projective/types/projects";
 import { findFilePage } from "../projects/files-fixtures.ts";
 import { findConversationFilePage } from "../messaging/workspace-fixtures.ts";
+import { applyMediaFacts } from "./media-facts.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
@@ -140,8 +142,7 @@ function splitName(name: string): { stem: string; ext: string } {
 export const HUB_VIEWER: AssetActor = {
 	id: "viewer",
 	name: "You",
-	avatar:
-		mockAvatar("photo-1531123897727-8f129e1688ce"),
+	avatar: mockAvatar("photo-1531123897727-8f129e1688ce"),
 	handle: "you",
 };
 
@@ -1419,25 +1420,39 @@ export function createPendingAsset(input: UploadInit): AssetItem {
 }
 
 /**
- * Promote a landed object out of quarantine.
+ * Promote a landed object out of quarantine, folding in whatever the browser read from its bytes.
  *
  * The fixtures go straight to `uploaded`; the live path lands the object in `quarantine` as `scanning`
  * and only a clean virus/MIME check promotes it. Modelling the terminal state here keeps the surface
  * exercisable without pretending the scan happened.
+ *
+ * **The stand-in photograph is a stand-in for the PICTURE, never for the file's shape.** With the gate
+ * off no bytes were stored, so a visual asset borrows a stock image to have something to render; its
+ * dimensions were the stock image's, which is a fiction about the file somebody actually uploaded.
+ * {@link applyMediaFacts} replaces every figure the extraction genuinely measured, so the grid draws
+ * the real aspect box, prints the real duration, and leaves the borrowed picture inside it — a
+ * placeholder in the right frame rather than a placeholder claiming to be the wrong size.
+ *
+ * The envelope itself is not kept here: `AssetItem` carries no `metadata` field, so a stub-side store
+ * of it would be a row nothing could ever read. The live path writes it to `files.items.metadata`,
+ * which is the column sized for a poster frame.
  */
-export function completeUpload(assetId: string): AssetItem | null {
+export function completeUpload(
+	assetId: string,
+	metadata?: AssetMetadata | null,
+): AssetItem | null {
 	const item = ASSETS.get(assetId);
 	if (!item) return null;
 	const isVisual = item.kind === "image" || item.kind === "video";
 	const photo = pick(PHOTOS, hash(item.id));
-	const next: AssetItem = {
+	const next = applyMediaFacts({
 		...item,
 		status: "uploaded",
 		url: isVisual ? photo.url : "#",
 		thumbnailUrl: isVisual ? photo.url : null,
 		width: isVisual ? photo.w : null,
 		height: isVisual ? photo.h : null,
-	};
+	}, metadata);
 	ASSETS.set(assetId, next);
 	recomputeFolderStats();
 	return next;

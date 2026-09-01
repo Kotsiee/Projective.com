@@ -46,36 +46,36 @@ substrate for the subscription, entitlement and Standing systems.
 
 ### Billing (`domain = 'billing'`)
 
-| Event                     | Emitted when                            | Key properties                                         |
-| :------------------------ | :-------------------------------------- | :------------------------------------------------------ |
-| `subscription.started`    | A plan became active for a subject.     | `plan_code`, `tier`, `audience`, `price_cents`, `interval` |
-| `subscription.changed`    | A subject moved between plans.          | `from_plan`, `to_plan`, `direction`, `reason`          |
-| `subscription.cancelled`  | Cancelled or allowed to lapse.          | `plan_code`, `at_period_end`, `reason`                 |
+| Event                    | Emitted when                        | Key properties                                             |
+| :----------------------- | :---------------------------------- | :--------------------------------------------------------- |
+| `subscription.started`   | A plan became active for a subject. | `plan_code`, `tier`, `audience`, `price_cents`, `interval` |
+| `subscription.changed`   | A subject moved between plans.      | `from_plan`, `to_plan`, `direction`, `reason`              |
+| `subscription.cancelled` | Cancelled or allowed to lapse.      | `plan_code`, `at_period_end`, `reason`                     |
 
 ### Entitlements & allowances (`domain = 'allowance'`)
 
-| Event                           | Emitted when                                         | Key properties                                            |
-| :------------------------------ | :--------------------------------------------------- | :--------------------------------------------------------- |
-| `entitlement.checked`           | A limit was resolved for a subject.                  | `key`, `effective_limit`, `source`                        |
-| `entitlement.denied`            | An action was blocked by a cap — **the upgrade signal**. | `key`, `effective_limit`, `attempted`                 |
-| `allowance.consumed`            | A metered unit was spent (one proposal).             | `key`, `units`, `remaining`, `from_buffer`, `period_start` |
-| `allowance.exhausted`           | A subject hit zero.                                  | `key`, `granted`, `period_start`                          |
-| `allowance.period_rolled`       | A new period opened with a fresh grant.              | `key`, `granted`, `base`, `standing_bonus`, `plan_code`   |
-| `allowance.buffer_replenished`  | The rolling drip topped the buffer back up.          | `key`, `units`, `buffer_cap`                              |
+| Event                          | Emitted when                                             | Key properties                                             |
+| :----------------------------- | :------------------------------------------------------- | :--------------------------------------------------------- |
+| `entitlement.checked`          | A limit was resolved for a subject.                      | `key`, `effective_limit`, `source`                         |
+| `entitlement.denied`           | An action was blocked by a cap — **the upgrade signal**. | `key`, `effective_limit`, `attempted`                      |
+| `allowance.consumed`           | A metered unit was spent (one proposal).                 | `key`, `units`, `remaining`, `from_buffer`, `period_start` |
+| `allowance.exhausted`          | A subject hit zero.                                      | `key`, `granted`, `period_start`                           |
+| `allowance.period_rolled`      | A new period opened with a fresh grant.                  | `key`, `granted`, `base`, `standing_bonus`, `plan_code`    |
+| `allowance.buffer_replenished` | The rolling drip topped the buffer back up.              | `key`, `units`, `buffer_cap`                               |
 
 `entitlement.denied` is the metric that matters commercially: it is simultaneously the anti-spam
 proof (caps are binding) and the conversion funnel (who is hitting them, on which lever).
 
 ### Standing & gamification (`domain = 'standing'`)
 
-| Event                    | Emitted when                              | Key properties                                       |
-| :----------------------- | :---------------------------------------- | :---------------------------------------------------- |
-| `standing.recomputed`    | The composite was recalculated.           | `score`, `level`, `components`                       |
-| `standing.level_changed` | A subject moved a rung.                   | `from_level`, `to_level`, `direction`, `score`       |
-| `mastery.progressed`     | CREATE-category mastery advanced.         | `category`, `stages_completed`, `mastery_level`, `share_bp` |
-| `achievement.awarded`    | A milestone/designation was granted.      | `code`, `tier`                                       |
-| `streak.extended`        | A quality streak was extended.            | `kind`, `current_count`, `best_count`                |
-| `streak.broken`          | A quality streak lapsed.                  | `kind`, `previous_count`                             |
+| Event                    | Emitted when                         | Key properties                                              |
+| :----------------------- | :----------------------------------- | :---------------------------------------------------------- |
+| `standing.recomputed`    | The composite was recalculated.      | `score`, `level`, `components`                              |
+| `standing.level_changed` | A subject moved a rung.              | `from_level`, `to_level`, `direction`, `score`              |
+| `mastery.progressed`     | CREATE-category mastery advanced.    | `category`, `stages_completed`, `mastery_level`, `share_bp` |
+| `achievement.awarded`    | A milestone/designation was granted. | `code`, `tier`                                              |
+| `streak.extended`        | A quality streak was extended.       | `kind`, `current_count`, `best_count`                       |
+| `streak.broken`          | A quality streak lapsed.             | `kind`, `previous_count`                                    |
 
 Emitters: `org.fn_recompute_standing`, `org.fn_award_achievement`, `org.fn_touch_streak`,
 `org.fn_record_mastery` (migration `20260724111000`); `finance.fn_current_allowance`,

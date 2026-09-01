@@ -67,7 +67,9 @@
 	color: var(--on-surface-variant);
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
-.ui-multiselect--open .ui-multiselect__chevron {
+/* `.ui-field--open`, not `.ui-multiselect--open` — see the note in `select.css`; the root's modifiers
+   are written under the shared `ui-field` block, so the component-block selector never matched. */
+.ui-field--open .ui-multiselect__chevron {
 	transform: rotate(180deg);
 }
 .ui-multiselect__clear {

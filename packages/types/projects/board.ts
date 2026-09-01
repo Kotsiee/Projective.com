@@ -838,3 +838,63 @@ export function buildBoardColumns(
 	return cols;
 }
 // #endregion
+
+// #region Board write payloads
+/**
+ * Create or replace one ticket.
+ *
+ * `clientId` rides along so the answer can be RECONCILED rather than appended: the board splices an
+ * optimistic card in before the request leaves, and without the echo the response would arrive as a
+ * second card sitting beside the one the reader is already looking at. It is the client's optimistic
+ * id when creating and the real ticket id when editing — the server tells the two apart, the client
+ * never has to.
+ *
+ * There is deliberately no price field, for the same reason {@link CreateTicketSchema} has none: a
+ * ticket's cost is the sum of its stages at the multipliers the client chose, so a typed total would
+ * be a second arithmetic path that can round differently from the one the card renders.
+ *
+ * `attachmentIds` are `files.items` ids, uploaded through the files handshake BEFORE this call. Bytes
+ * never transit an application route, which is the whole reason `/api/files/upload-init` exists.
+ */
+export const CommitTicketSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	/** The client-minted id (`draft-…`/`ticket-…`) or a real ticket id when editing. */
+	clientId: z.string().min(1).max(120),
+	title: z.string().min(1).max(200),
+	description: z.string().max(8000),
+	status: TicketStatus,
+	stageId: z.string().max(80).nullable(),
+	priority: TicketPriority,
+	intensity: TicketIntensity,
+	dueDate: z.string().max(40).nullable(),
+	ownerId: z.string().max(80).nullable(),
+	tasks: z.array(TicketTaskSchema).max(100),
+	stages: z.array(TicketStageRefSchema).max(50),
+	attachmentIds: z.array(z.string().min(1).max(120)).max(50).default([]),
+});
+export type CommitTicket = z.infer<typeof CommitTicketSchema>;
+
+/**
+ * A board drag, resolved to what the server must do.
+ *
+ * The client sends the RESOLVED destination — the column's `ticket_status` and the stage it lands in —
+ * rather than a column id, because the column vocabulary is a display concern
+ * ({@link cardColumnId} maps one card into three different lanes depending on the view) and the server
+ * must never have to reverse-engineer a lifecycle transition from a rendering decision.
+ *
+ * `sortOrder` is honoured only in the backlog lane: `trg_ticket_ordering_guard` raises if `sort_order`
+ * changes while `status <> 'backlog'`, so a manual position sent for any other lane is dropped rather
+ * than passed through to a statement that would fail.
+ */
+export const MoveTicketSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	ticketId: z.string().min(1).max(120),
+	/** The resolved target status (the column's `ticket_status`). */
+	status: TicketStatus,
+	/** The stage the ticket lands in; `null` for the New/Completed lanes. */
+	stageId: z.string().max(80).nullable(),
+	/** New manual position within the destination lane. Honoured only in the backlog lane. */
+	sortOrder: z.number().int().min(0).nullable(),
+});
+export type MoveTicket = z.infer<typeof MoveTicketSchema>;
+// #endregion

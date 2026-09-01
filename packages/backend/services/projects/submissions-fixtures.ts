@@ -159,8 +159,7 @@ function sizeFor(kind: FileKind, n: number): number {
 const VIEWER: MessageSender = {
 	id: "viewer",
 	name: "You",
-	avatar:
-		mockAvatar("photo-1531123897727-8f129e1688ce"),
+	avatar: mockAvatar("photo-1531123897727-8f129e1688ce"),
 	handle: "you",
 };
 
@@ -547,16 +546,21 @@ function buildRoots(
 			channelName: chan?.name ?? "Channel",
 			channelKind: chan?.kind ?? "general",
 		};
+		// A stage channel IS a stage, so its units carry that stage's identity — the channel id is a
+		// different identifier and is not interchangeable with it. Null on a general channel, which has
+		// no stage to anchor to.
+		const stage = stageForChannel(detail, channelId);
+		const stageMeta = stage ? { id: stage.id, name: stage.name, status: stage.status } : null;
 		const single = submitters.length === 1;
 		if (single) {
 			return {
-				roots: buildSubmitterUnits(submitters[0], null, prov, `${detail.slug}:${channelId}`),
+				roots: buildSubmitterUnits(submitters[0], stageMeta, prov, `${detail.slug}:${channelId}`),
 				singleFreelancer: true,
 				self,
 			};
 		}
 		return {
-			roots: submitters.map((s) => submitterNode(s, null, prov, `${detail.slug}:${channelId}`)),
+			roots: submitters.map((s) => submitterNode(s, stageMeta, prov, `${detail.slug}:${channelId}`)),
 			singleFreelancer: false,
 			self,
 		};
@@ -591,6 +595,20 @@ function buildRoots(
 	});
 	// When isolating a freelancer every stage carries only their own units (submitters === [self]).
 	return { roots, singleFreelancer: isolateFreelancer, self };
+}
+
+/**
+ * The stage a channel belongs to, or null for a general/team/DM channel.
+ *
+ * The mapping only exists on the server: a URL carries `stage-2` while a submission row wants the
+ * stage's own id, and a client that treated the two as one would anchor every delivery to an id no
+ * stage has.
+ */
+function stageForChannel(
+	detail: ProjectDetail,
+	channelId: string,
+): ProjectDetail["channels"]["stages"][number] | null {
+	return detail.channels.stages.find((s) => s.channel.id === channelId) ?? null;
 }
 
 function resolveChannel(
@@ -782,6 +800,7 @@ export function findSubmissionPage(params: SubmissionListParams): SubmissionList
 		projectTitle: detail.title,
 		format: detail.format,
 		channelId,
+		stageId: channelId ? stageForChannel(detail, channelId)?.id ?? null : null,
 		tree: roots.map(toWire),
 		path: resolvedPath,
 		breadcrumbs,

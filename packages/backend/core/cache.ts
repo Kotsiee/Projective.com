@@ -447,17 +447,32 @@ export class ArcCache<V> {
 	}
 
 	/**
-	 * Drop everything belonging to one tenant — the invalidation a mutation performs.
+	 * Drop every key beginning with `prefix`, from the resident lists AND both ghost lists.
+	 *
+	 * The ghosts go too, and that is not tidiness. A ghost is capacity evidence — "I evicted this and
+	 * I may have been wrong" — and after an invalidation the evidence is about a value that no longer
+	 * exists. Leaving it would let the next `set` of the same key take the Case II/III path and shift
+	 * `p` on the strength of a key the cache was told to forget.
 	 *
 	 * O(n) over the directory, which is acceptable because it runs on writes rather than reads and
 	 * the directory is bounded at `2 × maxEntries`.
 	 */
-	clearTenant(tenant: CacheTenant): void {
-		const prefix = tenantPrefix(tenant);
+	deletePrefix(prefix: string): void {
 		for (const key of [...this.#t1.keys()]) if (key.startsWith(prefix)) this.#t1.delete(key);
 		for (const key of [...this.#t2.keys()]) if (key.startsWith(prefix)) this.#t2.delete(key);
 		for (const key of [...this.#b1]) if (key.startsWith(prefix)) this.#b1.delete(key);
 		for (const key of [...this.#b2]) if (key.startsWith(prefix)) this.#b2.delete(key);
+	}
+
+	/**
+	 * Drop everything belonging to one tenant — the invalidation a mutation performs.
+	 *
+	 * Expressed through {@link deletePrefix} rather than repeating the four-list sweep, because the
+	 * tenant prefix IS a key prefix ({@link tenantPrefix}) and two sweeps would be two places for a
+	 * future fifth list to be forgotten.
+	 */
+	clearTenant(tenant: CacheTenant): void {
+		this.deletePrefix(tenantPrefix(tenant));
 	}
 
 	/** Drop every entry and reset the adaptation. Counters are preserved. */
@@ -534,6 +549,24 @@ export function cachedRead<T>(
 	compute: () => Promise<T>,
 ): Promise<T> {
 	return cache.through(key, compute as () => Promise<unknown>) as Promise<T>;
+}
+
+/**
+ * Evict every entry under a key prefix — what a WRITE must do before it answers.
+ *
+ * Without it the GET that follows a mutation is served the pre-mutation entry for up to
+ * {@link READ_CACHE_TTL_MS}, and the change looks lost while the database is perfectly correct. That
+ * failure is worth naming precisely because nothing in the write path can be blamed for it: the
+ * statement committed, the service returned `ok`, the row is right, and the surface still shows the
+ * old board. Every write in the projects domain therefore calls this with
+ * {@link tenantPrefix}`(tenantOf(actor))` before returning.
+ *
+ * A prefix rather than a key list because one write invalidates several namespaces at once — moving
+ * a ticket changes the board, the detail projection's counts and the feed row's progress meter — and
+ * enumerating them at each call site is how one of them comes to be forgotten.
+ */
+export function invalidatePrefix(cache: ArcCache<unknown>, prefix: string): void {
+	cache.deletePrefix(prefix);
 }
 
 // #endregion

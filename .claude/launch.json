@@ -601,6 +601,18 @@
 				"--strictPort"
 			],
 			"port": 10073
+		},
+		{
+			"name": "web-projdomain",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10173",
+				"--strictPort"
+			],
+			"port": 10173
 		}
 	]
 }

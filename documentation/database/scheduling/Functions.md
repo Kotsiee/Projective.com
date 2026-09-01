@@ -2,8 +2,8 @@
 
 The booking engine. Every predicate is pure and `STABLE`, so **the same function backs the
 pre-flight "is this slot bookable?" check the UI makes and the hard gate the trigger applies at
-INSERT** — the rules cannot drift between the two. Added 2026-07-24 by migrations
-`20260724100000`, `20260724102000` and `20260724104000`.
+INSERT** — the rules cannot drift between the two. Added 2026-07-24 by migrations `20260724100000`,
+`20260724102000` and `20260724104000`.
 
 > Why in the database at all: the booking rules protect a person's calendar and (for a paid call)
 > their money, so they are enforced where RLS is — not only in a service.
@@ -23,8 +23,8 @@ Covered in [Policies.md](Policies.md): `fn_owner_visible` · `fn_owner_manages` 
 
 ## 2. Time primitives (`20260724104000`)
 
-| Function                                         | Returns  | Notes                                                                     |
-| :----------------------------------------------- | :------- | :-------------------------------------------------------------------------- |
+| Function                                          | Returns  | Notes                                                                      |
+| :------------------------------------------------ | :------- | :------------------------------------------------------------------------- |
 | `fn_local_minute_of_day(at timestamptz, tz text)` | integer  | Minutes from **local** midnight. `AT TIME ZONE` does the DST work, not us. |
 | `fn_local_weekday(at timestamptz, tz text)`       | smallint | 0 = Sunday … 6 = Saturday, matching the `weekday` column and JS `getDay`.  |
 
@@ -71,7 +71,7 @@ span, which is what the function does — so stored rows need no per-row buffer 
 
 The **blackout** test deliberately uses the **raw** span: a blackout is an absolute boundary, and a
 call that ends exactly when time-off begins is legitimate. Buffers exist to stop back-to-back
-*calls*, not to erode declared time off.
+_calls_, not to erode declared time off.
 
 ---
 
@@ -80,23 +80,23 @@ call that ends exactly when time-off begins is legitimate. Buffers exist to stop
 ### `scheduling.fn_call_request_refusal(schedule, requester, type, starts_at, ends_at) → text`
 
 Returns **NULL when the request is allowed**, or a machine-readable reason code when it is not.
-Returning a *reason* rather than a bare boolean lets the UI explain a refusal without re-deriving
+Returning a _reason_ rather than a bare boolean lets the UI explain a refusal without re-deriving
 the rules client-side. The codes are mirrored in `packages/types/scheduling/calls.ts`
 (`CallRefusalReason` + `CALL_REFUSAL_COPY`) — keep the two in step.
 
-| Code                            | Cause                                                                  |
-| :------------------------------ | :---------------------------------------------------------------------- |
-| `calls_not_offered`             | No settings row, or `accepts_calls = false`.                            |
-| `courtesy_not_offered`          | `courtesy_enabled = false`.                                             |
-| `paid_not_offered`              | `paid_enabled = false`.                                                 |
-| `duration_mismatch`             | The span isn't the configured length for that call type.                |
-| `duration_exceeds_platform_max` | Beyond `discovery_call_max_duration_minutes`.                           |
-| `inside_minimum_notice`         | Closer than `min_notice_minutes`.                                       |
-| `beyond_booking_horizon`        | Further ahead than `max_advance_days`.                                  |
-| `outside_call_window`           | Not covered by a `call_window` band.                                    |
-| `slot_unavailable`              | Fails `fn_slot_is_free` (blackout / conflict / buffer collision).       |
-| `weekly_courtesy_cap_reached`   | `courtesy_max_per_week` already met in that ISO week.                   |
-| `requester_in_cooldown`         | This requester had a free call inside `courtesy_cooldown_days`.         |
+| Code                            | Cause                                                             |
+| :------------------------------ | :---------------------------------------------------------------- |
+| `calls_not_offered`             | No settings row, or `accepts_calls = false`.                      |
+| `courtesy_not_offered`          | `courtesy_enabled = false`.                                       |
+| `paid_not_offered`              | `paid_enabled = false`.                                           |
+| `duration_mismatch`             | The span isn't the configured length for that call type.          |
+| `duration_exceeds_platform_max` | Beyond `discovery_call_max_duration_minutes`.                     |
+| `inside_minimum_notice`         | Closer than `min_notice_minutes`.                                 |
+| `beyond_booking_horizon`        | Further ahead than `max_advance_days`.                            |
+| `outside_call_window`           | Not covered by a `call_window` band.                              |
+| `slot_unavailable`              | Fails `fn_slot_is_free` (blackout / conflict / buffer collision). |
+| `weekly_courtesy_cap_reached`   | `courtesy_max_per_week` already met in that ISO week.             |
+| `requester_in_cooldown`         | This requester had a free call inside `courtesy_cooldown_days`.   |
 
 **The duration is the provider's, not the requester's**: a booking must match the configured length
 exactly, so the grid and the calendar always agree. The two anti-abuse checks apply to **courtesy
@@ -110,11 +110,11 @@ The boolean face of the same gate (`refusal IS NULL`), for a pre-flight UI check
 
 ## 5. Enforcement triggers
 
-| Trigger                        | Timing               | Function                          |
-| :----------------------------- | :------------------- | :--------------------------------- |
-| `trg_enforce_call_request`     | BEFORE INSERT        | `fn_enforce_call_request()`       |
-| `trg_enforce_call_transition`  | BEFORE UPDATE        | `fn_enforce_call_transition()`    |
-| `trg_log_call_event`           | AFTER INSERT/UPDATE  | `fn_log_call_event()`             |
+| Trigger                       | Timing              | Function                       |
+| :---------------------------- | :------------------ | :----------------------------- |
+| `trg_enforce_call_request`    | BEFORE INSERT       | `fn_enforce_call_request()`    |
+| `trg_enforce_call_transition` | BEFORE UPDATE       | `fn_enforce_call_transition()` |
+| `trg_log_call_event`          | AFTER INSERT/UPDATE | `fn_log_call_event()`          |
 
 **`fn_enforce_call_request`** raises `check_violation` with the refusal code when the gate refuses.
 
@@ -143,12 +143,12 @@ Inserted additively into the existing `security.platform_params` table (migratio
 knobs live with every other tunable rather than in a new config surface.
 
 | Key                                        | Default | Meaning                                                                 |
-| :----------------------------------------- | :------ | :------------------------------------------------------------------------ |
-| `discovery_call_cancellation_window_hours` | `24`    | Inside this, a cancel is flagged `is_late_cancel`.                       |
-| `discovery_call_default_buffer_minutes`    | `10`    | Trailing buffer when a provider hasn't set their own.                    |
-| `discovery_call_max_duration_minutes`      | `240`   | Hard ceiling on any single call.                                         |
-| `discovery_call_reminder_lead_minutes`     | `60`    | How far ahead the reminder is dispatched.                                |
-| `discovery_call_proposal_ttl_hours`        | `72`    | How long an unanswered proposal stays live before the sweep expires it.  |
+| :----------------------------------------- | :------ | :---------------------------------------------------------------------- |
+| `discovery_call_cancellation_window_hours` | `24`    | Inside this, a cancel is flagged `is_late_cancel`.                      |
+| `discovery_call_default_buffer_minutes`    | `10`    | Trailing buffer when a provider hasn't set their own.                   |
+| `discovery_call_max_duration_minutes`      | `240`   | Hard ceiling on any single call.                                        |
+| `discovery_call_reminder_lead_minutes`     | `60`    | How far ahead the reminder is dispatched.                               |
+| `discovery_call_proposal_ttl_hours`        | `72`    | How long an unanswered proposal stays live before the sweep expires it. |
 
 > The **cancellation window flags** a late cancel; it does not price one. A **courtesy** call has no
 > money, so a late cancel carries no financial consequence at all. For a **paid** call the

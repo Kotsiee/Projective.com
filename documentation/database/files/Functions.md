@@ -1,6 +1,7 @@
 # files: Functions
 
-Migration: [`00001160_functions_files.sql`](../../../supabase/migrations/00001160_functions_files.sql)
+Migration:
+[`00001160_functions_files.sql`](../../../supabase/migrations/00001160_functions_files.sql)
 (functions) and
 [`00001880_triggers_files.sql`](../../../supabase/migrations/00001880_triggers_files.sql) (the
 triggers that bind them).
@@ -16,34 +17,33 @@ item row itself, or `security.platform_params`.
 
 ## The seven
 
-| Function                                    | Kind      | Definer | Reachable by                    | Purpose                                                      |
-| :------------------------------------------ | :-------- | :------ | :------------------------------ | :------------------------------------------------------------ |
-| `fn_touch_updated_at()`                     | trigger   | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.             |
-| `fn_recompute_usage(owner_kind, uuid)`      | `void`    | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch.       |
-| `fn_usage_trigger()`                        | trigger   | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change.  |
-| `fn_can_read(uuid) → boolean`               | `STABLE`  | ✅      | `PUBLIC` (it **is** the policy) | **The** read predicate for `files.items`.                    |
-| `fn_check_storage_quota()`                  | trigger   | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                                |
-| `fn_resolve_share(text) → TABLE`            | `STABLE`  | ✅      | `anon` · `authenticated` · svc  | The **only** door from a slug into `share_links`.            |
-| `fn_mint_share_slug() → text`               | `VOLATILE`| —       | `service_role`                  | Mints the opaque capability token.                           |
+| Function                               | Kind       | Definer | Reachable by                    | Purpose                                                     |
+| :------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
+| `fn_touch_updated_at()`                | trigger    | —       | trigger only (`REVOKE`d)        | `updated_at` maintenance on `items` + `folders`.            |
+| `fn_recompute_usage(owner_kind, uuid)` | `void`     | ✅      | `service_role`                  | Rebuilds one owner's `storage_usage` row from scratch.      |
+| `fn_usage_trigger()`                   | trigger    | ✅      | trigger only (`REVOKE`d)        | Adapter — recomputes **both** sides of an ownership change. |
+| `fn_can_read(uuid) → boolean`          | `STABLE`   | ✅      | `PUBLIC` (it **is** the policy) | **The** read predicate for `files.items`.                   |
+| `fn_check_storage_quota()`             | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
+| `fn_resolve_share(text) → TABLE`       | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The **only** door from a slug into `share_links`.           |
+| `fn_mint_share_slug() → text`          | `VOLATILE` | —       | `service_role`                  | Mints the opaque capability token.                          |
 
-Grants are in
-[`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql); the reasoning
-for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants).
+Grants are in [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql);
+the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants).
 
 ### Triggers bound in `00001880`
 
-| Trigger                    | Timing                                                                                             | Function                  |
-| :------------------------- | :--------------------------------------------------------------------------------------------------- | :------------------------ |
-| `trg_files_items_touch`    | `BEFORE UPDATE ON files.items`                                                                     | `fn_touch_updated_at`     |
-| `trg_files_folders_touch`  | `BEFORE UPDATE ON files.folders`                                                                   | `fn_touch_updated_at`     |
-| `trg_files_items_usage`    | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id OR DELETE`  | `fn_usage_trigger`        |
-| `trg_files_items_quota`    | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                             | `fn_check_storage_quota`  |
+| Trigger                   | Timing                                                                                            | Function                 |
+| :------------------------ | :------------------------------------------------------------------------------------------------ | :----------------------- |
+| `trg_files_items_touch`   | `BEFORE UPDATE ON files.items`                                                                    | `fn_touch_updated_at`    |
+| `trg_files_folders_touch` | `BEFORE UPDATE ON files.folders`                                                                  | `fn_touch_updated_at`    |
+| `trg_files_items_usage`   | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id OR DELETE` | `fn_usage_trigger`       |
+| `trg_files_items_quota`   | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                            | `fn_check_storage_quota` |
 
 > **The usage trigger's `UPDATE OF` list is deliberately wider than `size_bytes, deleted_at`.**
 > `source` decides whether a row counts **at all** (a hub-native upload that becomes a mounted
 > reference stops consuming our bytes), and `owner_type` / `owner_entity_id` decide **whose** rollup
-> it counts against. Narrowing the list back to two columns would leave a re-owned or re-sourced asset
-> charged to the wrong principal until some unrelated write happened to fire the trigger.
+> it counts against. Narrowing the list back to two columns would leave a re-owned or re-sourced
+> asset charged to the wrong principal until some unrelated write happened to fire the trigger.
 
 ---
 
@@ -63,8 +63,8 @@ correct when the application remembered to set it.
 
 Recomputes one owner's stored-byte total from scratch and upserts `files.storage_usage`.
 
-- **Recompute, not increment — deliberately.** An incremental counter drifts silently the first
-  time a write path is missed, and a storage total that is quietly wrong is worse than one that is
+- **Recompute, not increment — deliberately.** An incremental counter drifts silently the first time
+  a write path is missed, and a storage total that is quietly wrong is worse than one that is
   momentarily expensive.
 - Counts **only what we actually store**: `source = 'supabase'` and `deleted_at IS NULL`. A mounted
   Drive/Dropbox/S3/Frame.io file consumes the **provider's** quota; a `link` consumes none.
@@ -74,10 +74,10 @@ Recomputes one owner's stored-byte total from scratch and upserts `files.storage
 ### `files.fn_usage_trigger()`
 
 `RETURNS trigger` · `SECURITY DEFINER`. The adapter that lets a trigger call the function above (a
-trigger function must be `RETURNS trigger` with no declared parameters). It recomputes **both sides**
-of an ownership change: moving an asset from a personal library into a team vault has to debit one
-rollup and credit the other, and a single-sided recompute would leave the origin permanently
-overstated.
+trigger function must be `RETURNS trigger` with no declared parameters). It recomputes **both
+sides** of an ownership change: moving an asset from a personal library into a team vault has to
+debit one rollup and credit the other, and a single-sided recompute would leave the origin
+permanently overstated.
 
 ---
 
@@ -160,13 +160,13 @@ RLS filters **rows**. It cannot require that the caller **already knew the slug*
 SELECT slug FROM files.share_links;
 ```
 
-through PostgREST and harvest **every live share credential on the platform**. The slug *is* the
+through PostgREST and harvest **every live share credential on the platform**. The slug _is_ the
 credential, so it must be an **input**, never an output of an unfiltered read — an enumerable
 credential is not a credential, and revocation becomes meaningless.
 
-Same structural discipline as `integrations.connection_secrets`: RLS on, **no** visitor policy, **no**
-visitor table grant, and one sanctioned operation exposed as a definer function. `EXECUTE` to `anon`
-grants nothing on its own, because holding it without holding a slug returns zero rows.
+Same structural discipline as `integrations.connection_secrets`: RLS on, **no** visitor policy,
+**no** visitor table grant, and one sanctioned operation exposed as a definer function. `EXECUTE` to
+`anon` grants nothing on its own, because holding it without holding a slug returns zero rows.
 
 ### The whole liveness predicate lives here, in one place
 
@@ -179,9 +179,9 @@ WHERE s.slug = p_slug
         SELECT 1 FROM files.items i WHERE i.id = s.item_id AND i.deleted_at IS NULL))
 ```
 
-so a route that forgets to check **cannot resurrect a revoked link**. The last clause is easy to miss
-and matters: a share of a **soft-deleted** asset resolves to nothing, because a link outliving its
-target would otherwise present as a broken download rather than an honest 404.
+so a route that forgets to check **cannot resurrect a revoked link**. The last clause is easy to
+miss and matters: a share of a **soft-deleted** asset resolves to nothing, because a link outliving
+its target would otherwise present as a broken download rather than an honest 404.
 
 ### What it does not do
 
@@ -192,12 +192,12 @@ target would otherwise present as a broken download rather than an honest 404.
   credential. That is exactly why the `WITH CHECK` ownership arm on the `share_links` policy is
   load-bearing (see [Policies.md](Policies.md)) — this function will faithfully resolve a **forged**
   link, so forgery has to be impossible at write time.
-- **It does not distinguish its failures.** All four failure modes return zero rows. The client-facing
-  `ShareResolution` union (`not_found` / `expired` / `revoked` / `exhausted`, in
+- **It does not distinguish its failures.** All four failure modes return zero rows. The
+  client-facing `ShareResolution` union (`not_found` / `expired` / `revoked` / `exhausted`, in
   `@projective/types/files/sharing.ts`) exists so the **service** can log and meter them; the route
-  maps all four to the same 404 with the same body, because telling an anonymous caller *"this link
-  expired"* rather than *"no such link"* confirms a link existed — precisely the fact a scanner probes
-  for.
+  maps all four to the same 404 with the same body, because telling an anonymous caller _"this link
+  expired"_ rather than _"no such link"_ confirms a link existed — precisely the fact a scanner
+  probes for.
 
 ---
 

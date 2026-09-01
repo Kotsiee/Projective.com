@@ -10,50 +10,50 @@
 
 /* #region Size ramp — resolved into per-control custom properties */
 .ui-field {
-    --field-height: var(--fld-h-md);
-    --field-px: var(--fld-px-md);
-    --field-font: var(--fld-fs-md);
-    --field-gap: var(--space-2);
-    --field-radius: var(--fld-r-md);
-    --field-border: var(--fld-rest-bd);
-    --field-bg: var(--fld-rest-bg);
-    --field-fg: var(--fld-rest-fg);
-    --field-accent: var(--primary);
-    --field-on-accent: var(--on-primary);
-    /* The status icon channel (§A.5). Unset at rest; a status sets it and the `__mark` slot paints. */
-    --field-mark: transparent;
+	--field-height: var(--fld-h-md);
+	--field-px: var(--fld-px-md);
+	--field-font: var(--fld-fs-md);
+	--field-gap: var(--space-2);
+	--field-radius: var(--fld-r-md);
+	--field-border: var(--fld-rest-bd);
+	--field-bg: var(--fld-rest-bg);
+	--field-fg: var(--fld-rest-fg);
+	--field-accent: var(--primary);
+	--field-on-accent: var(--on-primary);
+	/* The status icon channel (§A.5). Unset at rest; a status sets it and the `__mark` slot paints. */
+	--field-mark: transparent;
 
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--field-gap);
-    block-size: var(--field-height);
-    padding-inline: var(--field-px);
-    font-family: var(--font-sans);
-    font-size: var(--field-font);
-    line-height: 1.4;
-    color: var(--field-fg);
-    background: var(--field-bg);
-    border: var(--fld-bw) solid var(--field-border);
-    border-radius: var(--field-radius);
-    transition:
-        border-color var(--dur-fast) var(--ease-standard),
-        box-shadow var(--dur-fast) var(--ease-standard),
-        background-color var(--dur-fast) var(--ease-standard);
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--field-gap);
+	block-size: var(--field-height);
+	padding-inline: var(--field-px);
+	font-family: var(--font-sans);
+	font-size: var(--field-font);
+	line-height: 1.4;
+	color: var(--field-fg);
+	background: var(--field-bg);
+	border: var(--fld-bw) solid var(--field-border);
+	border-radius: var(--field-radius);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .ui-field--size-sm {
-    --field-height: var(--fld-h-sm);
-    --field-px: var(--fld-px-sm);
-    --field-font: var(--fld-fs-sm);
-    --field-radius: var(--fld-r-sm);
+	--field-height: var(--fld-h-sm);
+	--field-px: var(--fld-px-sm);
+	--field-font: var(--fld-fs-sm);
+	--field-radius: var(--fld-r-sm);
 }
 
 .ui-field--size-lg {
-    --field-height: var(--fld-h-lg);
-    --field-px: var(--fld-px-lg);
-    --field-font: var(--fld-fs-lg);
-    --field-radius: var(--fld-r-lg);
+	--field-height: var(--fld-h-lg);
+	--field-px: var(--fld-px-lg);
+	--field-font: var(--fld-fs-lg);
+	--field-radius: var(--fld-r-lg);
 }
 
 /*
@@ -63,24 +63,23 @@
  * the document base instead. The CONTROL keeps its height, so nothing reflows around it.
  */
 @media (max-width: 767px) and (pointer: coarse) {
-
-    .ui-field__input,
-    .ui-field__input::placeholder {
-        font-size: max(var(--field-font), var(--text-base));
-    }
+	.ui-field__input,
+	.ui-field__input::placeholder {
+		font-size: max(var(--field-font), var(--text-base));
+	}
 }
 
 /* #endregion */
 
 /* #region Variants */
 .ui-field--filled {
-    --field-bg: var(--surface-2);
-    --field-border: transparent;
+	--field-bg: var(--surface-2);
+	--field-border: transparent;
 }
 
 .ui-field--transparent {
-    --field-bg: transparent;
-    --field-border: transparent;
+	--field-bg: transparent;
+	--field-border: transparent;
 }
 
 /*
@@ -91,44 +90,44 @@
  * focus rules, otherwise a border reappears — this is why `--transparent` alone is not truly bare.
  */
 .ui-field--bare {
-    --field-bg: transparent;
-    --field-border: transparent;
-    --field-radius: var(--fld-r-sm);
-    padding-inline: var(--space-2);
+	--field-bg: transparent;
+	--field-border: transparent;
+	--field-radius: var(--fld-r-sm);
+	padding-inline: var(--space-2);
 }
 
 .ui-field--bare:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
-    --field-border: transparent;
-    --field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	--field-border: transparent;
+	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .ui-field--bare.ui-field--focused,
 .ui-field--bare:focus-within {
-    /* --field-border: transparent; */
-    /* background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent); */
-    /* box-shadow: var(--focus-ring-shadow); */
-    --field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	/* --field-border: transparent; */
+	/* background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent); */
+	/* box-shadow: var(--focus-ring-shadow); */
+	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .ui-field--fluid {
-    display: flex;
-    inline-size: 100%;
+	display: flex;
+	inline-size: 100%;
 }
 
 /* #endregion */
 
 /* #region Interaction states */
 .ui-field:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
-    /* --field-border: var(--fld-hover-bd); */
-    --field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	/* --field-border: var(--fld-hover-bd); */
+	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .ui-field--focused,
 .ui-field:focus-within {
-    /* --field-border: var(--field-accent); */
-    box-shadow: 0 2px 0 var(--primary);
-    outline: none;
-    --field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	/* --field-border: var(--field-accent); */
+	box-shadow: 0 2px 0 var(--primary);
+	outline: none;
+	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 /*
@@ -141,56 +140,56 @@
  * activation by the native `disabled` attribute / `aria-disabled` on the control itself.
  */
 .ui-field--disabled {
-    --field-fg: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--field-bg));
-    --field-border: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--field-bg));
-    cursor: not-allowed;
-    user-select: none;
+	--field-fg: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--field-bg));
+	--field-border: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--field-bg));
+	cursor: not-allowed;
+	user-select: none;
 }
 
 .ui-field--disabled .ui-field__input,
 .ui-field--disabled .ui-field__input::placeholder {
-    cursor: not-allowed;
+	cursor: not-allowed;
 }
 
 /* Read-only keeps full ink — the value is authoritative and selectable; only the invitation to
    edit is withdrawn. */
 .ui-field--readonly {
-    --field-bg: var(--fld-readonly-bg);
-    --field-border: var(--fld-readonly-bd);
-    cursor: default;
+	--field-bg: var(--fld-readonly-bg);
+	--field-border: var(--fld-readonly-bd);
+	cursor: default;
 }
 
 /* Loading — a control awaiting its own data (AutoComplete fetching, a Select hydrating options).
    The control stays focusable and keyboard-operable; only its content reads as provisional. */
 .ui-field--loading {
-    --field-fg: var(--fld-loading-fg);
-    cursor: progress;
+	--field-fg: var(--fld-loading-fg);
+	cursor: progress;
 }
 
 .ui-field--loading .ui-field__input {
-    cursor: progress;
+	cursor: progress;
 }
 
 /* #endregion */
 
 /* #region Validation statuses — colour PLUS a mark, never hue alone (§A.5) */
 .ui-field--invalid {
-    --field-border: var(--fld-invalid-bd);
-    --field-accent: var(--fld-invalid-bd);
-    --field-mark: var(--fld-invalid-mark);
+	--field-border: var(--fld-invalid-bd);
+	--field-accent: var(--fld-invalid-bd);
+	--field-mark: var(--fld-invalid-mark);
 }
 
 .ui-field--success {
-    --field-border: var(--fld-valid-bd);
-    --field-accent: var(--fld-valid-bd);
-    --field-mark: var(--fld-valid-mark);
+	--field-border: var(--fld-valid-bd);
+	--field-accent: var(--fld-valid-bd);
+	--field-mark: var(--fld-valid-mark);
 }
 
 .ui-field--warning {
-    --field-border: var(--fld-warning-bd);
-    --field-accent: var(--fld-warning-bd);
-    --field-bg: var(--fld-warning-bg);
-    --field-mark: var(--fld-warning-mark);
+	--field-border: var(--fld-warning-bd);
+	--field-accent: var(--fld-warning-bd);
+	--field-bg: var(--fld-warning-bg);
+	--field-mark: var(--fld-warning-mark);
 }
 
 /*
@@ -200,17 +199,17 @@
  * hairline — still §B.4-clean (the field is interactive, so a full outline is allowed).
  */
 .ui-field--required {
-    --field-border: var(--fld-required-bd);
-    --field-accent: var(--fld-required-bd);
-    --field-bg: var(--fld-required-bg);
-    --field-mark: var(--fld-invalid-mark);
+	--field-border: var(--fld-required-bd);
+	--field-accent: var(--fld-required-bd);
+	--field-bg: var(--fld-required-bg);
+	--field-mark: var(--fld-invalid-mark);
 }
 
 .ui-field--gate {
-    --field-border: var(--fld-gate-bd);
-    --field-accent: var(--fld-gate-bd);
-    --field-bg: var(--fld-gate-bg);
-    --field-mark: var(--fld-warning-mark);
+	--field-border: var(--fld-gate-bd);
+	--field-accent: var(--fld-gate-bd);
+	--field-bg: var(--fld-gate-bg);
+	--field-mark: var(--fld-warning-mark);
 }
 
 /*
@@ -220,56 +219,56 @@
  * must differ by more than hue.
  */
 .ui-field__mark {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 0;
-    overflow: hidden;
-    color: var(--field-mark);
-    transition: inline-size var(--dur-fast) var(--ease-standard);
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 0;
+	overflow: hidden;
+	color: var(--field-mark);
+	transition: inline-size var(--dur-fast) var(--ease-standard);
 }
 
-.ui-field--invalid>.ui-field__mark,
-.ui-field--success>.ui-field__mark,
-.ui-field--warning>.ui-field__mark,
-.ui-field--required>.ui-field__mark,
-.ui-field--gate>.ui-field__mark,
-.ui-field--loading>.ui-field__mark {
-    inline-size: 1em;
-    margin-inline-start: var(--space-1);
+.ui-field--invalid > .ui-field__mark,
+.ui-field--success > .ui-field__mark,
+.ui-field--warning > .ui-field__mark,
+.ui-field--required > .ui-field__mark,
+.ui-field--gate > .ui-field__mark,
+.ui-field--loading > .ui-field__mark {
+	inline-size: 1em;
+	margin-inline-start: var(--space-1);
 }
 
 /* Loading has no status hue of its own — the spinner reads as secondary ink, not as an alarm. */
-.ui-field--loading>.ui-field__mark {
-    color: var(--fld-loading-fg);
+.ui-field--loading > .ui-field__mark {
+	color: var(--fld-loading-fg);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .ui-field__mark {
-        transition: none;
-    }
+	.ui-field__mark {
+		transition: none;
+	}
 }
 
 /* #endregion */
 
 /* #region The raw editable element inside a control */
 .ui-field__input {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    appearance: none;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    padding: 0;
-    block-size: 100%;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	appearance: none;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	padding: 0;
+	block-size: 100%;
 }
 
 .ui-field__input::placeholder {
-    color: var(--fld-placeholder-fg);
-    opacity: 1;
+	color: var(--fld-placeholder-fg);
+	opacity: 1;
 }
 
 /*
@@ -281,24 +280,24 @@
  * at 2.30:1 on the one control where reading the greyed-out dates IS the information.
  */
 .ui-field--disabled .ui-field__input::placeholder {
-    color: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--field-bg));
+	color: color-mix(in srgb, var(--fld-rest-fg) var(--fld-disabled-mix), var(--field-bg));
 }
 
 /* #endregion */
 
 /* #region Label / hint / error helpers (separation via weight + tint, not borders — §B.4) */
 .ui-field-label {
-    display: inline-block;
-    margin-block-end: var(--space-1);
-    font-family: var(--font-sans);
-    font-size: var(--fld-label-fs);
-    font-weight: var(--fld-label-fw);
-    color: var(--fld-label-fg);
+	display: inline-block;
+	margin-block-end: var(--space-1);
+	font-family: var(--font-sans);
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
 }
 
 .ui-field-label__required {
-    margin-inline-start: 0.15em;
-    color: var(--danger);
+	margin-inline-start: 0.15em;
+	color: var(--danger);
 }
 
 /*
@@ -307,23 +306,23 @@
  * height, so a two-line error still grows.
  */
 .ui-field-hint {
-    margin-block-start: var(--space-1);
-    min-block-size: var(--fld-hint-min-h);
-    font-size: var(--fld-hint-fs);
-    line-height: var(--fld-hint-min-h);
-    color: var(--fld-hint-fg);
+	margin-block-start: var(--space-1);
+	min-block-size: var(--fld-hint-min-h);
+	font-size: var(--fld-hint-fs);
+	line-height: var(--fld-hint-min-h);
+	color: var(--fld-hint-fg);
 }
 
 .ui-field-hint--error {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    color: var(--danger);
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	color: var(--danger);
 }
 
 .ui-field-hint__icon {
-    flex: 0 0 auto;
-    line-height: 0;
+	flex: 0 0 auto;
+	line-height: 0;
 }
 
 /*
@@ -331,35 +330,35 @@
  * `required` renders this once, near its submit action.
  */
 .ui-field-legend {
-    margin: 0;
-    font-size: var(--fld-hint-fs);
-    color: var(--fld-hint-fg);
+	margin: 0;
+	font-size: var(--fld-hint-fs);
+	color: var(--fld-hint-fg);
 }
 
 .ui-field-legend__mark {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 /* #endregion */
 
 /* #region Busy spinner (shared by every `loading` control) */
 .ui-field-busy {
-    animation: ui-field-spin 900ms linear infinite;
-    transform-origin: 50% 50%;
+	animation: ui-field-spin 900ms linear infinite;
+	transform-origin: 50% 50%;
 }
 
 @keyframes ui-field-spin {
-    to {
-        transform: rotate(360deg);
-    }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 /* Jump to a settled state rather than stopping mid-sweep — a frozen partial ring still reads as
    "not finished", which is the whole message (§B.5 reduced-motion). */
 @media (prefers-reduced-motion: reduce) {
-    .ui-field-busy {
-        animation: none;
-    }
+	.ui-field-busy {
+		animation: none;
+	}
 }
 
 /* #endregion */

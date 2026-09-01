@@ -193,3 +193,34 @@ export const MessagePageParamsSchema = z.object({
 });
 export type MessagePageParams = z.infer<typeof MessagePageParamsSchema>;
 // #endregion
+
+// #region Send payload
+/**
+ * The composer payload as it reaches the server.
+ *
+ * Device bytes are ALREADY uploaded through the files handshake before this is sent, so the wire shape
+ * carries asset ids and never files: a 500 MB attachment streamed through a Deno handler occupies a
+ * request worker for minutes and buys nothing, which is the reason `/api/files/upload-init` exists.
+ * A library-picked attachment and a just-uploaded one are therefore the same thing here, which is what
+ * keeps the picker and the drop zone on one code path.
+ *
+ * There is deliberately no client-side correlation id on this payload, unlike {@link CommitTicketSchema}.
+ * The board renders an optimistic card and therefore needs to match the answer back to it; the composer
+ * renders nothing until the row exists, and the feed appends the SERVER's message keyed on the id the
+ * database assigned. So a correlation id here would be a field nothing reads — which is what it was
+ * before this comment replaced it.
+ */
+export const SendProjectMessageSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	channelId: z.string().min(1).max(120),
+	text: z.string().max(8000),
+	/** Every attachment, device-uploaded and library-picked alike, as `files.items` ids. */
+	attachmentIds: z.array(z.string().min(1).max(120)).max(20).default([]),
+	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
+	audio: MessageAudioSchema.nullable().default(null),
+}).refine(
+	(v) => v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.audio !== null,
+	{ message: "Write a message, attach a file, or record a memo." },
+);
+export type SendProjectMessage = z.infer<typeof SendProjectMessageSchema>;
+// #endregion

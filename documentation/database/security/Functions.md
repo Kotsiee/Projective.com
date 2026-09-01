@@ -5,10 +5,10 @@ Context resolution + JWT claim stamping for the `security` schema. Other `securi
 
 ## Context switching & the access-token hook
 
-These functions are the origin of **User Context Hydration** (root
-[`CLAUDE.md`](../../../CLAUDE.md) Decisions #16/#17). `security.session_context` holds the acting
-context; the switch RPCs mutate it; the access-token hook copies it into every issued JWT so both
-Row-Level Security and the web chrome read one consistent source.
+These functions are the origin of **User Context Hydration** (root [`CLAUDE.md`](../../../CLAUDE.md)
+Decisions #16/#17). `security.session_context` holds the acting context; the switch RPCs mutate it;
+the access-token hook copies it into every issued JWT so both Row-Level Security and the web chrome
+read one consistent source.
 
 ### `security.switch_session_context(p_type public.profile_type, p_id uuid)`
 
@@ -22,8 +22,8 @@ and organisation slots** so the four active slots stay mutually exclusive. Write
 
 `SECURITY DEFINER`, granted to `authenticated`. Validates that the caller is the owner or an active
 member of the organisation (the buyer-only entity, Decisions #9/#10), then sets it as the active
-context and clears the profile/team slots. Writes a `session.switch_context` audit entry.
-(Migration `20260715120000`.)
+context and clears the profile/team slots. Writes a `session.switch_context` audit entry. (Migration
+`20260715120000`.)
 
 ### `security.current_context()`
 
@@ -47,11 +47,11 @@ the token's claims:
    four-context matrix (`personal` | `team` | `business` | `organisation`); `role` collapses
    ownership/admin membership to `admin`, else `member`; `isClient`/`isFreelancer` are resolved
    authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active context.
-   `displayCurrency` + `locale` are read from `org.user_preferences`
-   (`preferred_display_currency` / `locale`, defaulting to `GBP` / `en-GB` when no preferences row
-   exists yet) so the very first SSR byte formats every money figure in the viewer's own currency —
-   they ride this claim rather than a second one because a figure that paints in one currency and
-   corrects itself after hydration is a worse failure than a stale symbol.
+   `displayCurrency` + `locale` are read from `org.user_preferences` (`preferred_display_currency` /
+   `locale`, defaulting to `GBP` / `en-GB` when no preferences row exists yet) so the very first SSR
+   byte formats every money figure in the viewer's own currency — they ride this claim rather than a
+   second one because a figure that paints in one currency and corrects itself after hydration is a
+   worse failure than a stale symbol.
 
 > **Presentation, never settlement.** `displayCurrency` selects a **formatting** target only. Every
 > stored amount keeps its origin `(amount_minor, currency)`, and every settlement reproduces the
@@ -62,10 +62,11 @@ the token's claims:
 `SECURITY DEFINER` (reads org/security tables past RLS), `SET search_path = ''` (fully-qualified
 identifiers, hijack-hardened), and wrapped so it **never raises** — any failure returns the event
 unchanged so a chrome-only claim can never break login. `EXECUTE` is granted only to
-`supabase_auth_admin` and revoked from `authenticated`/`anon`/`public`. (Migration `20260715120000`.)
+`supabase_auth_admin` and revoked from `authenticated`/`anon`/`public`. (Migration
+`20260715120000`.)
 
 > **Security boundary.** These claims decide chrome + feed RLS inputs; they are not themselves an
 > access grant beyond what the RLS policies enforce. The web app treats the decoded
-> `app_metadata.active_context` as a read-only visual guide (it decodes the JWT **unverified**), so a
-> tampered client only changes what that browser draws — RLS and the `(dashboard)` guard remain the
-> real gates.
+> `app_metadata.active_context` as a read-only visual guide (it decodes the JWT **unverified**), so
+> a tampered client only changes what that browser draws — RLS and the `(dashboard)` guard remain
+> the real gates.

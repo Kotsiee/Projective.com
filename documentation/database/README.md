@@ -24,20 +24,20 @@ every custom enum type with its literal values.
 Each domain below gets its own folder with up to four files: `Tables.md`, `Policies.md`,
 `Functions.md`, and (for `files/` only) `Storage.md`.
 
-| Domain         | Tables | Policies | Functions | Notes                                                              |
-| :------------- | :----: | :------: | :-------: | :----------------------------------------------------------------- |
-| `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24            |
-| `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                     |
+| Domain         | Tables | Policies | Functions | Notes                                                                                              |
+| :------------- | :----: | :------: | :-------: | :------------------------------------------------------------------------------------------------- |
+| `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24                                            |
+| `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                                                     |
 | `files`        |   ✅   |    ✅    |    ✅     | Asset management, 2026-08-04. Plus [Storage.md](files/Storage.md) (10-bucket storage architecture) |
-| `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation |
+| `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation                                 |
 | `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |
-| `marketplace`  |   —    |    —     |     —     | Not yet documented                                                 |
-| `ops`          |   —    |    —     |     —     | Not yet documented                                                 |
-| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs + the 2026-07-24 Standing & progression ladder |
-| `projects`     |   ✅   |    —     |     —     |                                                                    |
-| `scheduling`   |   ✅   |    ✅    |    ✅     | Availability, calendar events & discovery calls, 2026-07-24        |
-| `search`       |   —    |    —     |     —     | Not yet documented                                                 |
-| `security`     |   ✅   |    —     |     —     |                                                                    |
+| `marketplace`  |   —    |    —     |     —     | Not yet documented                                                                                 |
+| `ops`          |   —    |    —     |     —     | Not yet documented                                                                                 |
+| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs + the 2026-07-24 Standing & progression ladder                                 |
+| `projects`     |   ✅   |    —     |     —     |                                                                                                    |
+| `scheduling`   |   ✅   |    ✅    |    ✅     | Availability, calendar events & discovery calls, 2026-07-24                                        |
+| `search`       |   —    |    —     |     —     | Not yet documented                                                                                 |
+| `security`     |   ✅   |    —     |     —     |                                                                                                    |
 
 ✅ = populated with real schema detail. `—` = stub file stamped `_Not yet documented._` — this is an
 intentional placeholder, not a deletion or accident. `comms/`, `files/`, `finance/`, `integrations/`
@@ -49,7 +49,7 @@ foundation; the OAuth capability predicates; the discovery-call booking gate); t
 > **A `—` in the Policies column is a documentation gap, not a statement that the schema is
 > unpoliced — and the two were recently shown to diverge.** `files/Policies.md` was a stub while
 > `files.items` carried a live `USING (true)` `SELECT` policy and `files.folders` had no RLS at all
-> (both now closed, both written up in that file). Treat a stub Policies column as *unknown*, and
+> (both now closed, both written up in that file). Treat a stub Policies column as _unknown_, and
 > read the migration before assuming a table is safe. `projects/` and `security/` are the two
 > remaining stubs.
 

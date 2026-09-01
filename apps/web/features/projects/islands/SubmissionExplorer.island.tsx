@@ -11,6 +11,7 @@ import "../styles/file-table.css";
 import "../styles/submission-card.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
+import { Message } from "@projective/ui/feedback";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import type {
 	AssetItem,
@@ -83,7 +84,10 @@ import { SubmissionBreadcrumbs } from "../components/SubmissionBreadcrumbs.tsx";
 import { SubmissionActionBar } from "../components/SubmissionActionBar.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
-import { CreateSubmissionModal } from "../components/CreateSubmissionModal.tsx";
+import {
+	CreateSubmissionModal,
+	type CreateSubmissionPayload,
+} from "../components/CreateSubmissionModal.tsx";
 import { UploadFilesModal } from "../components/UploadFilesModal.tsx";
 import { DeleteSubmissionDialog } from "../components/DeleteSubmissionDialog.tsx";
 import { PreSubmitModal } from "../components/PreSubmitModal.tsx";
@@ -266,6 +270,8 @@ function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
 export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.Element {
 	const { scope, projectId, channelId, initial } = props;
 	const base = submissionsBase(scope, projectId, channelId);
+	/** The stage this scope anchors deliveries to — scope-constant, so it is read once, not tracked. */
+	const stageAnchor = initial?.stageId ?? null;
 
 	// #region State
 	const items = useSignal<FileItem[]>(initial?.items ?? []);
@@ -308,7 +314,17 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// The DEV Context Switcher override (null = the real session); tracked so capabilities live-update.
 	const seam = useSignal<DevSeamState | null>(null);
 	// The freelancer's in-progress, self-created draft submission (before it exists in the tree).
-	const localDraft = useSignal<{ name: string; status: SubmissionStatus } | null>(null);
+	/**
+	 * The submission currently being assembled.
+	 *
+	 * `id` is null only while the row does not exist yet — the modal opens a placeholder before the
+	 * create round-trips. Once the server answers, its id is held here, because "send this for review"
+	 * has to name the draft it is sending: without an id the endpoint can only insert, and the same
+	 * delivery is filed twice.
+	 */
+	const localDraft = useSignal<
+		{ id: string | null; name: string; status: SubmissionStatus } | null
+	>(null);
 	// The shared stage/ticket task checklist (bound by both the Tasks panel and the Pre-Submit modal).
 	const checklist = useSignal<TaskChecklist>(buildTaskChecklist(base, { hasTickets: true }));
 
@@ -327,6 +343,16 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	 * surface, pending `PROJECTS_BACKEND_LIVE`.
 	 */
 	const libraryPicks = useSignal<AssetItem[]>([]);
+	/** A create/submit write is in flight — held so one press cannot become two submissions. */
+	const workflowBusy = useSignal(false);
+	/**
+	 * Why the last create/submit did not land.
+	 *
+	 * Rendered in the sticky bar rather than as a toast: a refused delivery leaves the surface looking
+	 * exactly as it did when it succeeded, so the statement has to stay on screen next to the control
+	 * that produced it until the person dismisses it.
+	 */
+	const workflowError = useSignal<string | null>(null);
 
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
@@ -492,10 +518,86 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	}
 	// #endregion
 
-	// #region Freelancer workflow actions (create · upload · delete · submit — optimistic stubs)
-	function onCreateSubmission(payload: { name: string }): void {
-		localDraft.value = { name: payload.name, status: "draft" };
+	// #region Freelancer workflow actions (create · upload · delete · submit)
+	/**
+	 * The stage a new submission is anchored to.
+	 *
+	 * In CHANNEL scope it is the server-resolved anchor. A channel id and a stage id are different
+	 * identifiers — the URL carries `stage-2` while `projects.stage_submissions.stage_id` wants the
+	 * stage's own uuid — so this cannot be inferred from the route, and passing the channel id here
+	 * refused every create. It is null on a general channel, which has no deliverables to anchor.
+	 *
+	 * In PROJECT scope it is the stage crumb — the synthetic root crumb also carries kind `stage` but a
+	 * zero-length path, so it has to be excluded — with the resolved unit's own stage as the fallback
+	 * for a node deeper than the trail.
+	 */
+	function activeStageId(): string | null {
+		if (scope === "channel") return stageAnchor ?? activeUnit.value?.stageId ?? null;
+		const crumb = breadcrumbs.value.find((c) => c.kind === "stage" && c.path.length > 0);
+		return crumb?.path[0] ?? activeUnit.value?.stageId ?? null;
+	}
+
+	/** The checklist lines this delivery claims to satisfy — completion is claimed here, not on the ticket. */
+	function checkedItemIds(): string[] {
+		return [...checklist.value.stage, ...checklist.value.ticket]
+			.filter((item) => item.done)
+			.map((item) => item.id);
+	}
+
+	/**
+	 * Adopt the unit the server created, replacing the local draft that stood in for it.
+	 *
+	 * The tree is reloaded rather than patched: a new unit changes the navigator, the file counts and
+	 * the crumb trail, and a surface that showed the submission only in the one place this tab happened
+	 * to write it would be telling the freelancer their delivery exists in a way nobody else can see.
+	 */
+	function adoptUnit(unit: SubmissionUnit): void {
+		// The unit's path is a segment chain ending in the submission's own id (`live-submissions.ts`).
+		localDraft.value = {
+			id: unit.path[unit.path.length - 1] ?? null,
+			name: unit.name,
+			status: unit.status,
+		};
+		void reload(path.value);
+	}
+
+	/**
+	 * Create the submission unit.
+	 *
+	 * `submit: false` — this is a private working copy. The draft appears immediately so the freelancer
+	 * can start attaching to it, and is withdrawn again if the write is refused, because a draft nobody
+	 * can add a file to is worse than no draft at all.
+	 */
+	async function onCreateSubmission(payload: CreateSubmissionPayload): Promise<void> {
 		createOpen.value = false;
+		if (workflowBusy.value) return;
+		const stageId = activeStageId();
+		if (!stageId) {
+			workflowError.value = "Open a stage before creating a submission.";
+			return;
+		}
+		localDraft.value = { id: null, name: payload.name, status: "draft" };
+		workflowError.value = null;
+		workflowBusy.value = true;
+		const res = await SubmissionsService.create({
+			projectId,
+			channelId: scope === "channel" ? channelId ?? null : null,
+			stageId,
+			ticketId: payload.ticketId,
+			title: payload.name,
+			description: "",
+			submissionId: null,
+			checkedItemIds: [],
+			fileIds: [],
+			submit: false,
+		});
+		workflowBusy.value = false;
+		if (res.ok && res.data) {
+			adoptUnit(res.data.unit);
+			return;
+		}
+		localDraft.value = null;
+		workflowError.value = res.message ?? "That submission could not be created.";
 	}
 	function onDeleteSubmission(): void {
 		deleteOpen.value = false;
@@ -518,16 +620,62 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		libraryPicks.value = [...libraryPicks.value, ...next];
 	}
 
-	function onConfirmSubmit(): void {
+	/**
+	 * Submit for review — the delivery claim that starts the client's clock.
+	 *
+	 * The staged library picks travel as `fileIds`; they are already `files.items` ids, so there is
+	 * nothing to upload. This surface has no device-file source to upload FROM: `UploadFilesModal` is a
+	 * drop target with no input behind it yet, and building an upload branch over a permanently empty
+	 * list would be a code path nothing on the surface can reach.
+	 *
+	 * A draft that already exists server-side is sent by NAMING it (`submissionId`), which the endpoint
+	 * turns into a status transition. Posting without the id inserts, so the same delivery would be
+	 * filed twice — once as the draft and once as the submission.
+	 */
+	async function onConfirmSubmit(): Promise<void> {
 		preSubmitOpen.value = false;
-		// The picks travel with the submission on the live path; clearing them here keeps a second
-		// review of a different unit from inheriting the last one's staging.
-		libraryPicks.value = [];
-		if (localDraft.value) {
-			localDraft.value = { ...localDraft.value, status: "pending_review" };
-		} else {
+		if (workflowBusy.value) return;
+		const draft = localDraft.value;
+		if (!draft) {
+			libraryPicks.value = [];
 			updateActiveStatus("pending_review");
+			return;
 		}
+
+		const stageId = activeStageId();
+		if (!stageId) {
+			workflowError.value = "Open a stage before submitting.";
+			return;
+		}
+		// Held rather than dropped: a refused submission has to be able to put them back, or the
+		// freelancer re-picks every deliverable to retry.
+		const picks = libraryPicks.value;
+		libraryPicks.value = [];
+		localDraft.value = { ...draft, status: "pending_review" };
+		workflowError.value = null;
+		workflowBusy.value = true;
+		const res = await SubmissionsService.create({
+			projectId,
+			channelId: scope === "channel" ? channelId ?? null : null,
+			stageId,
+			ticketId: activeUnit.value?.ticketId ?? null,
+			// Present once the draft exists server-side, which turns this into a transition. Null only for
+			// a placeholder whose create never landed, where inserting is the correct thing to do.
+			submissionId: draft.id,
+			title: draft.name,
+			description: "",
+			checkedItemIds: checkedItemIds(),
+			fileIds: picks.map((asset) => asset.id),
+			submit: true,
+		});
+		workflowBusy.value = false;
+		if (res.ok && res.data) {
+			adoptUnit(res.data.unit);
+			return;
+		}
+		localDraft.value = draft;
+		libraryPicks.value = picks;
+		workflowError.value = res.message ?? "That submission could not be sent for review.";
 	}
 	function toggleTask(id: string): void {
 		checklist.value = toggleChecklistItem(checklist.value, id);
@@ -707,6 +855,17 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 							/>
 						</div>
 						{toolbar()}
+						{workflowError.value && (
+							<Message
+								severity="danger"
+								variant="subtle"
+								size="sm"
+								closable
+								onClose={() => (workflowError.value = null)}
+							>
+								{workflowError.value}
+							</Message>
+						)}
 					</div>
 					<div class="fx-workspace" ref={workspaceRef}>{workspaceView}</div>
 				</div>
@@ -755,7 +914,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				stageName={currentStageName}
 				tickets={tickets}
 				onClose={() => (createOpen.value = false)}
-				onCreate={onCreateSubmission}
+				onCreate={(payload) => void onCreateSubmission(payload)}
 			/>
 
 			<UploadFilesModal
@@ -778,7 +937,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				checklist={checklist.value}
 				onToggle={toggleTask}
 				onClose={() => (preSubmitOpen.value = false)}
-				onConfirm={onConfirmSubmit}
+				onConfirm={() => void onConfirmSubmit()}
 				onAddFromLibrary={addLibraryPicks}
 			/>
 		</div>

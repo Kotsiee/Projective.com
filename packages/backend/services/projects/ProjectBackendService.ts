@@ -1,6 +1,12 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isProjectsBackendLive } from "../../core/supabase.ts";
-import { cachedRead, cacheKey, projectsReadCache } from "../../core/cache.ts";
+import {
+	cachedRead,
+	cacheKey,
+	invalidatePrefix,
+	projectsReadCache,
+	tenantPrefix,
+} from "../../core/cache.ts";
 import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
 import { fetchProjectBySlug, fetchProjectRows, scopesFromRows } from "./live-queries.ts";
 import { fetchBoardPage } from "./live-board.ts";
@@ -9,6 +15,47 @@ import { fetchFilePage } from "./live-files.ts";
 import { fetchMemberRoster as fetchLiveMemberRoster } from "./live-members.ts";
 import { fetchChannelMessagePage } from "./live-messages.ts";
 import { fetchSubmissionPage } from "./live-submissions.ts";
+import { fetchProjectOverview } from "./live-overview.ts";
+import {
+	applyProjectUpdate,
+	archiveProjectRow,
+	commitTicketRow,
+	fetchProjectSetup,
+	insertProjectMessage,
+	insertSubmission,
+	moveTicketRow,
+	type WriteOutcome,
+	type WriteRefusal,
+} from "./live-writes.ts";
+import { findProjectSetup } from "./setup-fixtures.ts";
+import { findProjectOverview } from "./overview-fixtures.ts";
+import {
+	appendChannelMessage,
+	appendSubmission,
+	buildStubCard,
+	buildStubMessage,
+	buildStubSubmissionUnit,
+	mergeSetupPatch,
+	mintTicketId,
+	movedStubCard,
+	isStoredArchived,
+	overlayBoardPage,
+	overlayFeed,
+	overlayOverview,
+	overlayDetail,
+	overlayMessagePage,
+	overlaySetup,
+	overlaySummary,
+	overlaySubmissionPage,
+	putTicketCard,
+	recordProjectArchive,
+	sentMessageCount,
+	setupPatchFrom,
+	storedTicketCard,
+	submissionCount,
+	submitStoredSubmission,
+	writeOwnerOf,
+} from "./write-store.ts";
 import {
 	findProject,
 	getFeed,
@@ -35,22 +82,35 @@ import type {
 	InstantiateServiceInput,
 	PipelineDraft,
 } from "@projective/types/services";
+import { reconcileSetup } from "@projective/types/projects";
 import type {
+	ArchiveProject,
+	BoardCard,
 	BoardListParams,
 	BoardPage,
+	ChatMessage,
+	CommitTicket,
 	CreateProject,
+	CreateSubmission,
 	FileListPage,
 	FileListParams,
 	MemberRosterPage,
 	MemberRosterParams,
 	MessagePage,
 	MessagePageParams,
+	MessageSender,
+	MoveTicket,
 	ProjectDetail,
 	ProjectFeedParams,
 	ProjectFeedPayload,
+	ProjectOverview,
+	ProjectSetup,
 	ProjectSummary,
+	SendProjectMessage,
 	SubmissionListPage,
 	SubmissionListParams,
+	SubmissionUnit,
+	UpdateProject,
 } from "@projective/types/projects";
 
 /**
@@ -151,6 +211,115 @@ async function liveRead<T>(
 	}
 }
 
+// #region Write plumbing
+/**
+ * Evict this tenant's cached reads.
+ *
+ * Called after EVERY successful write, before the result is returned. Without it the GET that
+ * follows a mutation is served the pre-mutation entry for the whole cache TTL, and the change looks
+ * lost while the database is perfectly correct — a failure nothing in the write path can be blamed
+ * for, because the statement committed, the service returned `ok`, and the row is right.
+ *
+ * The whole tenant prefix rather than the one namespace that changed: moving a ticket alters the
+ * board, the detail projection's stage counts, the setup ladder's staffing step and the feed row's
+ * progress meter, and a list of namespaces maintained by hand at each call site is a list one write
+ * eventually forgets to extend.
+ */
+function invalidateProjects(actor: ReadActor): void {
+	invalidatePrefix(projectsReadCache, tenantPrefix(tenantOf(actor)));
+}
+
+/**
+ * The refusal a write returns when nobody is signed in.
+ *
+ * A write genuinely needs an identity, unlike the reads, which answer a guest from the fixture
+ * corpus. This is the service's own guard and not an authorisation decision: RLS remains the real
+ * gate (root CLAUDE.md §6), and no capability is checked here, because the Dev Context Switcher's
+ * simulated persona never reaches the server and a capability bounce would fire on it
+ * (Decision #53(b)).
+ */
+function requireIdentity<T>(actor: ReadActor, action: string): ServiceResult<T> | null {
+	if (actor.userId.length > 0) return null;
+	return fail<T>(401, { message: `Sign in to ${action}.` });
+}
+
+/** The uniform 404 for a slug or id that resolved to nothing the viewer can see. */
+function noSuchProject<T>(id: string): ServiceResult<T> {
+	return fail<T>(404, { message: `No project found for "${id}".` });
+}
+
+/**
+ * The thing a write could not find, named for the reader.
+ *
+ * A write's `null` outcome means "the subject did not resolve", and the subject is not always a
+ * project: sending a message resolves a CHANNEL, moving a ticket resolves a TICKET, filing a
+ * submission resolves a STAGE. Reporting all four as "No project found for <a channel uuid>" is wrong
+ * on both counts — the id is not a project's and the project is usually right there and readable.
+ */
+function notFound<T>(noun: string, id: string): ServiceResult<T> {
+	return fail<T>(404, { message: `No ${noun} found for "${id}".` });
+}
+
+/** Map a {@link WriteRefusal} onto the service envelope, preserving the database's own wording. */
+function refused<T>(refusal: WriteRefusal): ServiceResult<T> {
+	return fail<T>(refusal.status, { message: refusal.message, errors: refusal.errors });
+}
+
+/**
+ * Run a live write, or return `undefined` to mean "the caller should use the stub store".
+ *
+ * The mirror of {@link liveRead} with one deliberate asymmetry: a live read that throws falls back
+ * to the fixtures, and a live WRITE that throws must not. Falling back would run the stub, store the
+ * change in memory and answer `ok` for a mutation Postgres never accepted — reporting a save that
+ * did not happen, which is the one outcome worse than reporting a failure. So a thrown live write
+ * surfaces as a `502` and the caller is told to try again.
+ */
+async function liveWrite<T>(
+	method: string,
+	actor: ReadActor,
+	subject: string,
+	message: string,
+	run: (actor: ReadActor & { accessToken: string }) => Promise<WriteOutcome<T>>,
+	/** What `subject` names — see {@link notFound}. Defaults to a project, which most writes resolve. */
+	noun = "project",
+): Promise<ServiceResult<T> | undefined> {
+	if (!isProjectsBackendLive() || !canReadLive(actor)) return undefined;
+	try {
+		const outcome = await run(actor);
+		if (outcome === null) return notFound<T>(noun, subject);
+		if ("refusal" in outcome) return refused<T>(outcome.refusal);
+		invalidateProjects(actor);
+		return ok(outcome.data, { message });
+	} catch (error) {
+		liveFailed(method, error);
+		return fail<T>(502, { message: "That change could not be saved — please try again." });
+	}
+}
+
+/**
+ * The identity a stub-written row is authored by.
+ *
+ * Read out of the corpus rather than minted, by finding the viewer's own most recent message in the
+ * channel. The fixture corpus already has a face and a name for the acting viewer, and a second
+ * identity built here would put two different people's avatars on one person's messages inside a
+ * single conversation.
+ *
+ * The fallback is deliberately plain. A message with an unnamed author is legible; one attributed to
+ * a fabricated participant is a claim about who said it.
+ */
+function viewerSenderFor(projectId: string, channelId: string | null): MessageSender {
+	const channels = channelId
+		? [channelId]
+		: findProjectDetail(projectId)?.channels.general.map((channel) => channel.id) ?? [];
+	for (const id of channels) {
+		const page = findMessagePage({ projectId, channelId: id });
+		const own = page?.messages.filter((message) => message.isOwn).at(-1);
+		if (own?.sender) return own.sender;
+	}
+	return { id: "viewer", name: "You", avatar: null, handle: null };
+}
+// #endregion
+
 export class ProjectBackendService {
 	/**
 	 * The context-scoped `/projects` feed: matched engagement rows, context groups, and the scope +
@@ -169,7 +338,7 @@ export class ProjectBackendService {
 			// It runs on the guest path too: an unauthenticated caller cannot reach the live branch,
 			// and `anon` holds no USAGE on the `projects` schema anyway, so the query would fail 42501
 			// rather than return an empty feed.
-			return ok(buildFeed(withResolvableScope(params)));
+			return ok(overlayFeed(buildFeed(withResolvableScope(params)), actor));
 		}
 		try {
 			// The ROWS are cached, not the composed payload: the filter/sort facets change on every
@@ -180,7 +349,7 @@ export class ProjectBackendService {
 			return ok(buildLiveFeed(rows, params));
 		} catch (error) {
 			liveFailed("list", error);
-			return ok(buildFeed(withResolvableScope(params)));
+			return ok(overlayFeed(buildFeed(withResolvableScope(params)), actor));
 		}
 	}
 
@@ -205,7 +374,12 @@ export class ProjectBackendService {
 				liveFailed("item", error);
 			}
 		}
-		const item = findProject(slug);
+		const found = findProject(slug);
+		if (!found) return fail(404, { message: `No project found for slug "${slug}".` });
+		// The same overlay the feed takes. Without it a rename made on the setup surface was visible
+		// there and stale on the card beside it, and an archived project answered as though it were
+		// live — `overlaySummary` returns null for one, which is a 404 here.
+		const item = overlaySummary(found, actor);
 		if (!item) return fail(404, { message: `No project found for slug "${slug}".` });
 		return ok({ item });
 	}
@@ -245,7 +419,7 @@ export class ProjectBackendService {
 		if (!detail) {
 			return fail(404, { message: `No project found for slug "${slug}".` });
 		}
-		return ok({ detail });
+		return ok({ detail: overlayDetail(detail, actor) });
 	}
 
 	/**
@@ -283,7 +457,10 @@ export class ProjectBackendService {
 		}
 		const page = findMessagePage(params);
 		if (!page) return fail(404, { message: "No such project channel." });
-		return ok({ page });
+		// Only the LATEST page takes the fold. A sent message postdates the whole channel, so folding
+		// it into an older page fetched by the scroll-up cursor would insert it into history it comes
+		// after — and the feed would then render the same message twice on the way back down.
+		return ok({ page: overlayMessagePage(page, params.projectId, !params.before, actor) });
 	}
 
 	/**
@@ -366,7 +543,7 @@ export class ProjectBackendService {
 		if (!page) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
-		return ok({ page });
+		return ok({ page: overlaySubmissionPage(page, actor) });
 	}
 
 	/**
@@ -407,7 +584,7 @@ export class ProjectBackendService {
 		if (!page) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
-		return ok({ page });
+		return ok({ page: overlayBoardPage(page, actor) });
 	}
 
 	/**
@@ -451,6 +628,385 @@ export class ProjectBackendService {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
 		return ok({ page });
+	}
+
+	/**
+	 * The owner's editable configuration for one engagement, plus its derived setup ladder — the
+	 * Details half of `/projects/[projectId]` and the progress bar in its header band.
+	 *
+	 * `steps`, `completeness` and `previewReady` are computed by `reconcileSetup` on both sides of
+	 * the gate, so the bar the owner reads and the gate that unlocks Preview can never disagree about
+	 * the same project. They are never accepted from a client (root CLAUDE.md §6).
+	 */
+	static async setup(
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
+		const live = await liveRead(
+			"setup",
+			actor,
+			"projects.setup",
+			{ slug },
+			(a) => fetchProjectSetup(a, slug),
+		);
+		if (live !== undefined) {
+			if (!live) return noSuchProject(slug);
+			return ok({ setup: live });
+		}
+		const setup = findProjectSetup(slug);
+		if (!setup) return noSuchProject(slug);
+		return ok({ setup: overlaySetup(setup, actor) });
+	}
+
+	/**
+	 * The member dashboard for one engagement — the half of `/projects/[projectId]` a viewer who is
+	 * not the client sees: the hero, recent updates, channel quick-entries, their own assignments and
+	 * their own money position.
+	 *
+	 * The finance block is VIEWER-PERTINENT and server-computed. It answers what this person is owed
+	 * on this project and never what the project is worth, and every figure arrives as a `MoneyView`
+	 * so the client renders a string rather than totalling anything itself.
+	 */
+	static async overview(
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ overview: ProjectOverview }>> {
+		const live = await liveRead(
+			"overview",
+			actor,
+			"projects.overview",
+			{ slug },
+			(a) => fetchProjectOverview(a, slug),
+		);
+		if (live !== undefined) {
+			if (!live) return noSuchProject(slug);
+			return ok({ overview: live });
+		}
+		const found = findProjectOverview(slug);
+		if (!found) return noSuchProject(slug);
+		if (isStoredArchived(slug, actor)) return noSuchProject(slug);
+		return ok({ overview: overlayOverview(found, slug, actor) });
+	}
+
+	/**
+	 * Save the setup form — the PUT/PATCH behind the Details surface.
+	 *
+	 * Returns the RE-DERIVED configuration rather than echoing the payload, because the ladder and
+	 * the percentage are functions of what is now stored: echoing would report a completeness the
+	 * project does not have, and the footer's dirty state is measured against this response
+	 * (Decision #61), so an echo would also leave the form permanently dirty after a successful save.
+	 */
+	static async updateProject(
+		slug: string,
+		input: UpdateProject,
+		actor: ReadActor,
+		/**
+		 * Whether this is a FULL replace (`PUT`) rather than a merge (`PATCH`).
+		 *
+		 * It decides one thing and it is the destructive one: whether a stage or role the payload does
+		 * not mention is DELETED. A PATCH sends the section that changed, so treating an absent stage
+		 * as a removal turns a title-only save into a pipeline wipe — and deleting a stage releases its
+		 * escrow. Only a caller who said "here is the whole resource" gets that.
+		 */
+		replace = false,
+	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
+		const denied = requireIdentity<{ setup: ProjectSetup }>(actor, "edit this project");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ setup: ProjectSetup }>(
+			"updateProject",
+			actor,
+			slug,
+			"Project saved.",
+			async (a) => {
+				const outcome = await applyProjectUpdate(a, slug, input, replace);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: { setup: outcome.data } };
+			},
+		);
+		if (live) return live;
+
+		const base = findProjectSetup(slug);
+		if (!base) return noSuchProject(slug);
+		const owner = writeOwnerOf(actor);
+		const merged = mergeSetupPatch(owner, slug, setupPatchFrom(input, overlaySetup(base, actor)));
+		invalidateProjects(actor);
+		return ok({ setup: reconcileSetup(base, merged) }, { message: "Project saved." });
+	}
+
+	/**
+	 * Archive an engagement — the DELETE, which is a soft archive and never a row removal
+	 * (root CLAUDE.md §5).
+	 *
+	 * Idempotent: archiving an already-archived project returns the ORIGINAL instant rather than
+	 * restamping it, so a double-press or a retry after an unseen timeout cannot rewrite when the
+	 * decision was taken.
+	 */
+	static async archiveProject(
+		slug: string,
+		input: ArchiveProject,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ slug: string; archivedAt: string }>> {
+		type Archived = { slug: string; archivedAt: string };
+		const denied = requireIdentity<Archived>(actor, "archive this project");
+		if (denied) return denied;
+
+		const live = await liveWrite<Archived>(
+			"archiveProject",
+			actor,
+			slug,
+			"Project archived.",
+			(a) => archiveProjectRow(a, slug, input),
+		);
+		if (live) return live;
+
+		if (!findProjectSetup(slug)) return noSuchProject(slug);
+		const archivedAt = recordProjectArchive(
+			writeOwnerOf(actor),
+			slug,
+			new Date().toISOString(),
+		);
+		invalidateProjects(actor);
+		return ok({ slug, archivedAt }, { message: "Project archived." });
+	}
+
+	/**
+	 * Create or update one ticket, and return the card the board renders.
+	 *
+	 * The returned `id` is always SERVER-minted. The composer sends its own optimistic id so the
+	 * answer can be reconciled against the card it spliced in, and echoing that id back would leave
+	 * the board holding a key no later write could address.
+	 *
+	 * Two of `projects.tickets`' eleven triggers are mirrored here so the stub refuses exactly what
+	 * the database refuses. A rule enforced on only one side of the gate is a rule whose violations
+	 * appear the day the gate flips, in a save that was working the day before.
+	 */
+	static async commitTicket(
+		input: CommitTicket,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ card: BoardCard }>> {
+		const denied = requireIdentity<{ card: BoardCard }>(actor, "save a ticket");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ card: BoardCard }>(
+			"commitTicket",
+			actor,
+			input.projectId,
+			"Ticket saved.",
+			async (a) => {
+				const outcome = await commitTicketRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				// Evicted the moment the row lands, not after the read-back. The ticket exists from here
+				// on whatever happens next, so a re-read that fails must still leave the cache holding
+				// nothing rather than the board as it was before the ticket was created.
+				invalidateProjects(a);
+				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
+				const card = page?.cards.find((c) => c.id === outcome.data);
+				// The board is re-read rather than a second card assembled here: composing one needs the
+				// ticket's history, submissions, attachments and money trail, and a second assembler is a
+				// second answer to what a ticket costs.
+				if (!card) return { refusal: { status: 502, message: "Ticket saved but not readable." } };
+				return { data: { card } };
+			},
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const page = overlayBoardPage(board, actor);
+		// Overlaid, like its sibling reads. The base fixture has `allowDeadlineBonuses: false`, so
+		// reading it raw meant an owner could turn deadline bonuses on, see the toggle stay on, and have
+		// every due date refused anyway — the write they had just made was invisible to the check.
+		const base = findProjectSetup(input.projectId);
+		const setup = base ? overlaySetup(base, actor) : null;
+
+		// `fn_enforce_ticket_due_date` RAISES when a due date is set on a project that has not agreed
+		// to deadline bonus terms. Refusing with the reason is the difference between a form the owner
+		// can correct and a save that aborts with nothing to act on.
+		if (input.dueDate && setup && !setup.rules.allowDeadlineBonuses) {
+			return fail(422, {
+				message: "Turn on deadline bonuses for this project before setting a ticket due date.",
+				errors: { dueDate: "deadline_bonuses_disabled" },
+			});
+		}
+		// `fn_enforce_ticket_checkout_desc` RAISES on entering `claimed`/`in_progress` with an empty
+		// description — the purchasing gate (PRODUCT_SPEC §Creation & Purchasing Gate), enforced in the
+		// database as well as in the composer.
+		const claiming = input.status === "claimed" || input.status === "in_progress";
+		if (claiming && input.description.trim().length === 0) {
+			return fail(422, {
+				message: "Describe the work before it can be claimed.",
+				errors: { description: "description_required" },
+			});
+		}
+
+		const owner = writeOwnerOf(actor);
+		const existing = storedTicketCard(owner, input.projectId, input.clientId) ??
+			page.cards.find((card) => card.id === input.clientId);
+		const id = existing?.id ?? mintTicketId();
+		const card = buildStubCard(input, page.stages, existing, id, Date.now());
+		putTicketCard(owner, input.projectId, card);
+		invalidateProjects(actor);
+		return ok({ card }, { message: "Ticket saved." });
+	}
+
+	/**
+	 * Move one ticket between board columns.
+	 *
+	 * The live path goes through `projects.move_ticket` and NEVER a status column write, because
+	 * `trg_ticket_escrow_sync` fires on one: a plain `UPDATE ... SET status = 'completed'` releases
+	 * escrow to the freelancer. Status is a money-moving column, and `move_ticket` is where the
+	 * delivery-authority check and the audit row live.
+	 *
+	 * The stub moves the card and moves no money. Nothing here may flip `escrowHeld` or write a
+	 * payment line, because a ledger with no transaction behind it is worse than no ledger.
+	 */
+	static async moveTicket(
+		input: MoveTicket,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ card: BoardCard }>> {
+		const denied = requireIdentity<{ card: BoardCard }>(actor, "move a ticket");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ card: BoardCard }>(
+			"moveTicket",
+			actor,
+			input.ticketId,
+			"Ticket moved.",
+			async (a) => {
+				const outcome = await moveTicketRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				// The move has committed — and it may have released escrow through
+				// `trg_ticket_escrow_sync`. Evict before the read-back so a failed re-read cannot leave a
+				// board cached in the column the ticket has already left.
+				invalidateProjects(a);
+				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
+				const card = page?.cards.find((c) => c.id === outcome.data);
+				if (!card) return { refusal: { status: 502, message: "Ticket moved but not readable." } };
+				return { data: { card } };
+			},
+			"ticket",
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const owner = writeOwnerOf(actor);
+		const page = overlayBoardPage(board, actor);
+		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
+			page.cards.find((card) => card.id === input.ticketId);
+		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+
+		const card = movedStubCard(current, input, Date.now());
+		putTicketCard(owner, input.projectId, card);
+		invalidateProjects(actor);
+		return ok({ card }, { message: "Ticket moved." });
+	}
+
+	/**
+	 * Post one message into a project channel.
+	 *
+	 * Attachments arrive as `files.items` ids, never as bytes: the device upload already went through
+	 * the files handshake before this call, which is why `/api/files/upload-init` exists. An
+	 * application route is not a file transport.
+	 */
+	static async sendMessage(
+		input: SendProjectMessage,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ message: ChatMessage }>> {
+		const denied = requireIdentity<{ message: ChatMessage }>(actor, "send a message");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ message: ChatMessage }>(
+			"sendMessage",
+			actor,
+			input.channelId,
+			"Message sent.",
+			async (a) => {
+				const outcome = await insertProjectMessage(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: { message: outcome.data } };
+			},
+			"channel",
+		);
+		if (live) return live;
+
+		const page = findMessagePage({ projectId: input.projectId, channelId: input.channelId });
+		if (!page) return fail(404, { message: "No such project channel." });
+
+		const owner = writeOwnerOf(actor);
+		const message = buildStubMessage(
+			input,
+			viewerSenderFor(input.projectId, input.channelId),
+			sentMessageCount(owner, input.projectId, input.channelId),
+			Date.now(),
+		);
+		appendChannelMessage(owner, input.projectId, input.channelId, message);
+		invalidateProjects(actor);
+		return ok({ message }, { message: "Message sent." });
+	}
+
+	/**
+	 * Create one submission unit against a stage.
+	 *
+	 * `submit` is the whole difference between two outcomes. A draft is editable and makes no
+	 * delivery claim; `pending_review` starts the reviewer's clock. Conflating them would tell a
+	 * client that work is waiting on them which the freelancer has not finished.
+	 */
+	static async createSubmission(
+		input: CreateSubmission,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ unit: SubmissionUnit }>> {
+		const denied = requireIdentity<{ unit: SubmissionUnit }>(actor, "create a submission");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ unit: SubmissionUnit }>(
+			"createSubmission",
+			actor,
+			input.stageId,
+			input.submit ? "Submitted for review." : "Draft saved.",
+			async (a) => {
+				const outcome = await insertSubmission(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: { unit: outcome.data } };
+			},
+			"stage",
+		);
+		if (live) return live;
+
+		const detail = findProjectDetail(input.projectId);
+		if (!detail) return noSuchProject(input.projectId);
+		const stage = detail.channels.stages.find((s) => s.id === input.stageId);
+
+		const owner = writeOwnerOf(actor);
+		const unit = buildStubSubmissionUnit(
+			input,
+			viewerSenderFor(input.projectId, input.channelId),
+			stage?.name ?? null,
+			submissionCount(owner, input.projectId) + 1,
+			Date.now(),
+		);
+		// Sending a draft that already exists is a transition here too, exactly as it is live: appending
+		// would leave the freelancer looking at their delivery twice, once as a draft they can no longer
+		// send and once as the submission.
+		const sent = input.submit && input.submissionId
+			? submitStoredSubmission(owner, input.projectId, input.submissionId, {
+				...unit,
+				path: [...unit.path.slice(0, -1), input.submissionId],
+			})
+			: null;
+		if (!sent) {
+			appendSubmission(owner, input.projectId, {
+				unit,
+				stageId: input.stageId,
+				channelId: input.channelId,
+			});
+		}
+		invalidateProjects(actor);
+		return ok({ unit: sent?.unit ?? unit }, {
+			status: sent ? 200 : 201,
+			message: input.submit ? "Submitted for review." : "Draft saved.",
+		});
 	}
 
 	/**

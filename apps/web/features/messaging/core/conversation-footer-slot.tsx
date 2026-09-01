@@ -40,5 +40,14 @@ export async function conversationFooterFor(
 	if (tab === "files") return <ViewControlRig />;
 	if (tab !== "chat") return null;
 
-	return <ChatComposer projectId={conversationId} channelId={conversationId} />;
+	// The scope is stated rather than left to the default: a conversation has no send endpoint of its
+	// own yet, and a composer that assumed the projects one would post an inbox thread at a project
+	// slug. Naming it here is what lets the messaging endpoint be wired without touching the composer.
+	return (
+		<ChatComposer
+			scope="conversation"
+			projectId={conversationId}
+			channelId={conversationId}
+		/>
+	);
 }

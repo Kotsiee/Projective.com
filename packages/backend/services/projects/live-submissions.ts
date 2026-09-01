@@ -1333,6 +1333,10 @@ export async function fetchSubmissionPage(
 		projectTitle: clampOr(project.title, 160, "Untitled project"),
 		format: (FORMATS.has(project.format) ? project.format : "pipeline") as ProjectFormat,
 		channelId: channelId ? clamp(channelId, 120) : null,
+		// In channel scope `resolveStages` has already narrowed to the one stage that channel belongs to
+		// (and to NOTHING when the channel is general or not this project's), so the single survivor is
+		// the anchor. Null in project scope, where the stage is whichever one the reader navigates into.
+		stageId: projectScope ? null : (stages[0]?.id ?? null),
 		tree: roots.map(toWire),
 		path: resolvedPath,
 		breadcrumbs,

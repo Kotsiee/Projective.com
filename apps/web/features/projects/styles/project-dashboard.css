@@ -1,0 +1,683 @@
+/*
+ * The member dashboard body of `/projects/[projectId]` — the half of that route a viewer who is not
+ * the client sees. Pure CSS + strict BEM, token-only, logical properties throughout so the whole
+ * surface mirrors under `dir="rtl"`.
+ *
+ * The rules this sheet is built to satisfy, stated so a later edit knows what it is allowed to spend:
+ *
+ *   §A.4   Four registers. The title is the ONE display element and it is `--fw-medium`, never bold.
+ *          Section headers are the `--text-xs` uppercase register, which costs no ink. Every figure
+ *          that can change on a currency switch is `tabular-nums`.
+ *   §B.4   One separation device per boundary. Blocks are separated by SPACING alone; rows inside a
+ *          block by a single hairline; nothing on this surface is boxed, and no region background is
+ *          translucent — a hover tint is a solid step up the ramp (`--surface-1`), not an alpha wash.
+ *   §B.11  Anti-tagification. There is exactly ONE filled pill here (`.pjd-status`) and it carries a
+ *          lifecycle state, which is the fact a fill is allowed to encode. The type, the format and
+ *          the workspace are what the engagement permanently IS, so they are inline middot text.
+ *
+ * Sizing is driven by CONTAINER queries, never viewport media queries: this body renders inside the
+ * middle-nav content region, and the shell can take ~344px of a viewport before this element sees a
+ * pixel of it. A media query here would read a box more than twice the size of the one that is
+ * actually too narrow.
+ */
+
+/* #region Local token layer
+ *
+ * On `:root`, not on `.pjd`. Nothing on this surface portals today, but the `--wlt-*` lesson is that
+ * a scoped token layer silently falls back the first time any part of a surface renders outside its
+ * own subtree, and the failure is invisible in source. Every name is `--pjd-` prefixed so the global
+ * namespace stays legible.
+ */
+:root {
+	/*
+	 * The tier-1 separator, and deliberately ~4x the heading gap: once those two are within 2x of
+	 * each other spacing has stopped doing tier-1 work and the next author reaches for a border.
+	 */
+	--pjd-gap-block: var(--space-7);
+	--pjd-gap-heading: var(--space-3);
+	--pjd-gap-row: var(--space-3);
+
+	/* The page gutter. One value so the hero and every block share an edge. */
+	--pjd-pad-inline: var(--space-6);
+	--pjd-pad-block: var(--space-6);
+
+	/* The stage meter. A definite height so an empty track is still a legible affordance. */
+	--pjd-track-h: 0.375rem;
+
+	/* The unread mark (Part D.1 — a dot, never a count). */
+	--pjd-dot-size: 0.4375rem;
+}
+/* #endregion */
+
+/* #region Screen
+ *
+ * Two elements, not one, and the reason is mechanical: an element cannot query the container it
+ * establishes. `.pjd` carries the container so `.pjd__inner` can read its width and step the gutter
+ * down on a phone; a single element declaring both would silently never match its own query.
+ */
+.pjd {
+	container-type: inline-size;
+	container-name: pjd;
+	display: block;
+	inline-size: 100%;
+	min-inline-size: 0;
+	color: var(--on-surface);
+}
+
+.pjd__inner {
+	display: block;
+	min-inline-size: 0;
+	padding: var(--pjd-pad-block) var(--pjd-pad-inline);
+}
+
+/*
+ * The four blocks. `auto-fit` over `minmax(min(100%, 22rem), 1fr)` rather than named areas so the
+ * DOM order IS the reading order at every width — a grid that places blocks out of source order
+ * reads correctly to the eye and wrongly to a screen reader and to the keyboard.
+ */
+.pjd__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+	gap: var(--pjd-gap-block);
+	margin-block-start: var(--pjd-gap-block);
+}
+/* #endregion */
+
+/* #region Hero */
+.pjd-hero {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.pjd-hero__identity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+/*
+ * The owner link. Underlined only on hover/focus so the identity row reads as a name rather than as
+ * a control at rest, but it carries a real focus ring in both states — this is the surface's route
+ * to the person accountable for the engagement.
+ */
+.pjd-hero__owner {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pjd-hero__owner:hover {
+	color: var(--on-surface);
+}
+
+.pjd-hero__owner:hover .pjd-hero__handle {
+	text-decoration: underline;
+}
+
+.pjd-hero__owner:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.pjd-hero__owner-name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.pjd-hero__handle {
+	flex: none;
+	color: var(--text-secondary);
+}
+
+/* The owner's name with no public profile behind it — the same line, minus the affordance. */
+.pjd-hero__owner-static {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* Display register (§A.4): size and tracking carry the claim, so the weight stays at medium. */
+.pjd-hero__title {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.pjd-hero__facts {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+
+@container pjd (min-width: 44rem) {
+	.pjd-hero__title {
+		font-size: var(--text-3xl);
+	}
+}
+/* #endregion */
+
+/* #region Meta line (§B.11.2) */
+.pjd-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0;
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.pjd-meta__item {
+	display: inline-flex;
+	align-items: baseline;
+}
+
+/*
+ * The separator recedes one step below its siblings. `--text-disabled` is the token §B.11.2 names and
+ * this theme's engine does not generate one, so the fallback is the sibling colour rather than an
+ * unresolved custom property — an invalid `color` computes to `inherit` and the intent disappears
+ * without a symptom.
+ */
+.pjd-meta__sep {
+	padding-inline: var(--space-2);
+	color: var(--text-disabled, var(--text-secondary));
+}
+/* #endregion */
+
+/* #region Status — the ONE fill this sheet permits (§B.11.3)
+ *
+ * The ink mixes the role toward `--on-surface` rather than using the paired `--on-<role>`, because
+ * four of the theme's seven pairs measure ~3.17:1 in LIGHT mode. The mix is self-correcting in both
+ * themes: `--on-surface` is near-white in dark and near-black in light, so it always moves the ink
+ * away from the fill.
+ */
+.pjd-status {
+	--pjd-status-role: var(--info);
+
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	line-height: var(--leading-snug);
+	text-transform: uppercase;
+	white-space: nowrap;
+	background: color-mix(in srgb, var(--pjd-status-role) 16%, var(--surface-1));
+	color: color-mix(in srgb, var(--pjd-status-role) 28%, var(--on-surface));
+}
+
+.pjd-status[data-status="active"] {
+	--pjd-status-role: var(--success);
+}
+
+.pjd-status[data-status="on_hold"] {
+	--pjd-status-role: var(--warning);
+}
+
+.pjd-status[data-status="cancelled"] {
+	--pjd-status-role: var(--danger);
+}
+
+/* A draft has no semantic colour to spend — it is the absence of a state, not a state. */
+.pjd-status[data-status="draft"] {
+	--pjd-status-role: var(--on-surface-variant);
+}
+/* #endregion */
+
+/* #region Block */
+.pjd-block {
+	display: block;
+	min-inline-size: 0;
+}
+
+/*
+ * The asymmetry §B.4.1 requires: `--pjd-gap-block` above (owned by the grid's `gap`) against
+ * `--pjd-gap-heading` below. One declaration owns each side, so the two can never add.
+ */
+.pjd-block__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin-block-end: var(--pjd-gap-heading);
+	min-inline-size: 0;
+}
+
+/* Section-header register (§A.4): a boundary that costs no ink. */
+.pjd-block__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	line-height: var(--leading-snug);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.pjd-block__more {
+	flex: none;
+	font-size: var(--text-sm);
+	color: var(--primary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+.pjd-block__more:hover {
+	text-decoration: underline;
+}
+
+.pjd-block__more:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * An empty block is a fact, not a blank. Meta register, so it recedes from the populated blocks
+ * beside it without becoming a second thing to read.
+ */
+.pjd-block__empty {
+	margin: 0;
+	max-inline-size: var(--measure-narrow);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Rows
+ *
+ * One hairline per boundary and none at the ends: the block's own spacing already closes it, and a
+ * trailing rule would be a second device on a boundary that is already resolved.
+ */
+.pjd-list {
+	display: flex;
+	flex-direction: column;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	min-inline-size: 0;
+}
+
+.pjd-list > li + li {
+	border-block-start: var(--hairline);
+}
+
+.pjd-row {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding-block: var(--pjd-gap-row);
+	padding-inline: var(--space-2);
+	margin-inline: calc(var(--space-2) * -1);
+	border-radius: var(--radius-md);
+	color: inherit;
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+/* A solid step up the ramp, never an alpha wash (§B.4.2). */
+a.pjd-row:hover {
+	background: var(--surface-1);
+}
+
+a.pjd-row:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.pjd-row__icon {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-block-start: 0.1em;
+	color: var(--text-secondary);
+}
+
+.pjd-row__body {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.pjd-row__text {
+	margin: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.pjd-row__title {
+	margin: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pjd-row__sub {
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Micro register — a timestamp never competes with the sentence it dates. */
+.pjd-row__time {
+	flex: none;
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	padding-block-start: 0.15em;
+}
+
+.pjd-row__end {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block-start: 0.1em;
+}
+/* #endregion */
+
+/* #region Unread mark (Part D.1 — a pulsing dot, never a count) */
+.pjd-dot {
+	flex: none;
+	inline-size: var(--pjd-dot-size);
+	block-size: var(--pjd-dot-size);
+	border-radius: var(--radius-full);
+	background: var(--primary);
+	animation: pjd-dot-pulse 2.4s var(--ease-standard) infinite;
+}
+/* #endregion */
+
+/* #region Assignment status
+ *
+ * A ticket state is iconographic, not a second pill: §B.11.5 — two adjacent non-interactive fills on
+ * one row means at least one of them is metadata wearing a control's clothes, and the hero already
+ * spends this surface's one fill on the engagement's own lifecycle. The tone rides the GLYPH, and the
+ * word sits beside it in Meta register so the colour is never the only channel.
+ */
+.pjd-tstate {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	white-space: nowrap;
+	color: var(--text-secondary);
+}
+
+.pjd-tstate__mark {
+	inline-size: var(--pjd-dot-size);
+	block-size: var(--pjd-dot-size);
+	border-radius: var(--radius-full);
+	background: currentColor;
+}
+
+.pjd-tstate[data-tone="info"] {
+	color: color-mix(in srgb, var(--info) 32%, var(--on-surface));
+}
+
+.pjd-tstate[data-tone="progress"] {
+	color: color-mix(in srgb, var(--primary) 32%, var(--on-surface));
+}
+
+.pjd-tstate[data-tone="review"] {
+	color: color-mix(in srgb, var(--warning) 32%, var(--on-surface));
+}
+
+.pjd-tstate[data-tone="success"] {
+	color: color-mix(in srgb, var(--success) 32%, var(--on-surface));
+}
+
+.pjd-tstate[data-tone="warning"] {
+	color: color-mix(in srgb, var(--warning) 32%, var(--on-surface));
+}
+/* #endregion */
+
+/* #region Stage progress
+ *
+ * The fill's `inline-size` is set DIRECTLY from the server figure and is never transitioned into
+ * place. A backgrounded tab freezes the animation clock, and a bar whose geometry arrives through a
+ * transition renders at 0% there — a meter that reports no progress on a project that has some.
+ * Motion on this surface may decorate `transform`/`opacity` and nothing else.
+ */
+.pjd-progress {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-end: var(--space-5);
+	min-inline-size: 0;
+}
+
+.pjd-progress__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.pjd-progress__value {
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.pjd-progress__track {
+	display: block;
+	inline-size: 100%;
+	block-size: var(--pjd-track-h);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	overflow: hidden;
+}
+
+.pjd-progress__fill {
+	display: block;
+	inline-size: var(--pjd-fill, 0%);
+	block-size: 100%;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
+/* #endregion */
+
+/* #region Earnings
+ *
+ * A definition list, because that is what it is: three named positions on one engagement. The figures
+ * are `MoneyView` instances, so they carry their own `tabular-nums` and re-project themselves on a
+ * currency switch; nothing here totals, splits or converts them.
+ */
+.pjd-money {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	min-inline-size: 0;
+}
+
+.pjd-money__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--pjd-gap-row);
+	min-inline-size: 0;
+}
+
+.pjd-money__row + .pjd-money__row {
+	border-block-start: var(--hairline);
+}
+
+.pjd-money__term {
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.pjd-money__value {
+	margin: 0;
+	flex: none;
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.pjd-money__note {
+	margin-block-start: var(--space-3);
+	margin-block-end: 0;
+	max-inline-size: var(--measure-narrow);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.pjd-money__link {
+	color: var(--primary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+.pjd-money__link:hover {
+	text-decoration: underline;
+}
+
+.pjd-money__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Not found
+ *
+ * The same calm miss the showcase gives an unresolvable slug: say what happened, quote what was
+ * asked for, and offer the one route back rather than leaving the reader to guess at the URL.
+ */
+.pjd-miss {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding-block: var(--space-7);
+	max-inline-size: var(--measure);
+}
+
+.pjd-miss__title {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.pjd-miss__note {
+	margin: 0;
+	font-size: var(--text-md);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.pjd-miss__cta {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pjd-miss__cta:hover {
+	background: var(--surface-1);
+}
+
+.pjd-miss__cta:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Motion + density */
+@keyframes pjd-dot-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+
+	50% {
+		opacity: 0.35;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pjd-hero__owner,
+	.pjd-row,
+	.pjd-miss__cta {
+		transition: none;
+	}
+
+	/* Jump to final: the dot is a state, and it reads at rest. */
+	.pjd-dot {
+		animation: none;
+	}
+}
+
+/* A phone gives the body the whole window, so the page gutter steps down with it. */
+@container pjd (max-width: 30rem) {
+	.pjd__inner {
+		--pjd-pad-inline: var(--space-4);
+		--pjd-gap-block: var(--space-6);
+	}
+}
+/* #endregion */

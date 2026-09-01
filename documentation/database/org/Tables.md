@@ -157,16 +157,16 @@ Per-user preferences (one row per user, seeded by the `org.seed_user_preferences
 #47 — which inserts only the PK and relies on column DEFAULTs). Zod SSOT in
 `packages/types/org/preferences.ts`.
 
-| Column                       | Type                   | Notes                                                                                                                                                              |
-| :--------------------------- | :--------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_id`                    | uuid                   | PK, FK → `auth.users.id` (CASCADE).                                                                                                                                |
-| `theme`                      | text                   | `system` (default) / `light` / `dark`.                                                                                                                             |
-| `notification_email`         | boolean                | Default `true`.                                                                                                                                                    |
-| `notification_push`          | boolean                | Default `false`.                                                                                                                                                   |
-| `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`. **This is the language source.**                                                                               |
+| Column                       | Type                   | Notes                                                                                                                                                                                                                                                                                                          |
+| :--------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`                    | uuid                   | PK, FK → `auth.users.id` (CASCADE).                                                                                                                                                                                                                                                                            |
+| `theme`                      | text                   | `system` (default) / `light` / `dark`.                                                                                                                                                                                                                                                                         |
+| `notification_email`         | boolean                | Default `true`.                                                                                                                                                                                                                                                                                                |
+| `notification_push`          | boolean                | Default `false`.                                                                                                                                                                                                                                                                                               |
+| `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`. **This is the language source.**                                                                                                                                                                                                                           |
 | `preferred_display_currency` | char(3)                | **Additive (`20260723090000`).** Presentational display-conversion target (ISO-4217), `DEFAULT 'GBP'`, `CHECK ~ '^[A-Z]{3}$'`; `NULL` = follow origin (an explicitly cleared preference, distinct from the default). Never affects stored/settled amounts. Stamped into the JWT by `custom_access_token_hook`. |
-| `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction. See `DESIGN_SYSTEM.md` §A.6.              |
-| `ui_settings`                | jsonb                  | Misc client UI state.                                                                                                                                              |
+| `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction. See `DESIGN_SYSTEM.md` §A.6.                                                                                                                                                          |
+| `ui_settings`                | jsonb                  | Misc client UI state.                                                                                                                                                                                                                                                                                          |
 
 > **Reconciliation (flagged, root `CLAUDE.md` §8):** `locale` already carries the BCP-47 locale, so
 > **no** separate `preferred_locale`/`language` column was added (avoids duplication);
@@ -234,31 +234,31 @@ Join table mapping users to organisations with a role — the multi-tenant link.
 Added in `supabase/migrations/20260724111000_standing_reputation.sql`; Zod SSOT in
 `packages/types/org/standing.ts`.
 
-**Standing is the discretised rung of the continuous Reliability Index ($R_i$)** already specified in
-`PRODUCT_SPEC.md` §Reputation & Discovery. It does **not** fork or replace $R_i$ —
+**Standing is the discretised rung of the continuous Reliability Index ($R_i$)** already specified
+in `PRODUCT_SPEC.md` §Reputation & Discovery. It does **not** fork or replace $R_i$ —
 `entity_standing.score` _is_ the composite, and `level` is the ladder derived from it. The existing
 caches (`org.users_public.rating_average`, `org.freelancer_profiles.rating_*`, `finance.ratings`,
 `security.penalties`) are untouched and are the **inputs** this layer reads.
 
-> ⚠️ **Standing can never be purchased.** No subscription plan, entitlement grant or payment writes to
-> any table below — every mutating function is `SECURITY DEFINER` and revoked from `public`. The paid
-> ladder (`finance.plans`) accelerates _capacity_; only delivery moves a rung. Keeping the two ladders
-> strictly separate is what makes the rung a trustworthy signal to a client.
+> ⚠️ **Standing can never be purchased.** No subscription plan, entitlement grant or payment writes
+> to any table below — every mutating function is `SECURITY DEFINER` and revoked from `public`. The
+> paid ladder (`finance.plans`) accelerates _capacity_; only delivery moves a rung. Keeping the two
+> ladders strictly separate is what makes the rung a trustworthy signal to a client.
 
 ### `org.standing_levels`
 
 The tunable ladder. Money perks live in `finance.standing_commission_tiers`; this table holds only
 the non-money rungs.
 
-| Column                 | Type          | L1     | L2          | L3      | L4     | L5    |
-| :--------------------- | :------------ | :----- | :---------- | :------ | :----- | :---- |
-| `level` (PK)           | smallint      | 1      | 2           | 3       | 4      | 5     |
-| `code` / `label`       | text          | New    | Established | Trusted | Expert | Elite |
-| `min_score`            | numeric(5,2)  | 0      | 55          | 70      | 82     | 92    |
-| `min_completed_stages` | integer       | 0      | 5           | 20      | 50     | 120   |
-| `listing_base`         | integer       | 10     | 15          | 20      | 30     | 50    |
-| `proposal_bonus`       | integer       | 0      | +10         | +20     | +30    | +40   |
-| `discovery_weight_bp`  | integer       | 10000  | 10500       | 11000   | 11500  | 12000 |
+| Column                 | Type         | L1    | L2          | L3      | L4     | L5    |
+| :--------------------- | :----------- | :---- | :---------- | :------ | :----- | :---- |
+| `level` (PK)           | smallint     | 1     | 2           | 3       | 4      | 5     |
+| `code` / `label`       | text         | New   | Established | Trusted | Expert | Elite |
+| `min_score`            | numeric(5,2) | 0     | 55          | 70      | 82     | 92    |
+| `min_completed_stages` | integer      | 0     | 5           | 20      | 50     | 120   |
+| `listing_base`         | integer      | 10    | 15          | 20      | 30     | 50    |
+| `proposal_bonus`       | integer      | 0     | +10         | +20     | +30    | +40   |
+| `discovery_weight_bp`  | integer      | 10000 | 10500       | 11000   | 11500  | 12000 |
 
 `min_completed_stages` is a **volume floor** — a flawless single engagement must not vault a subject
 to the top of the ladder.
@@ -269,19 +269,19 @@ One row per earning subject (`subject_type` ∈ `user` | `freelancer` | `team`; 
 `(subject_type, subject_id)`). Buyers are deliberately **not** ranked here — they carry the separate
 Client Trust Score.
 
-| Column                                             | Type          | Notes                                                                 |
-| :------------------------------------------------- | :------------ | :---------------------------------------------------------------------- |
-| `level`                                            | smallint      | FK → `org.standing_levels.level`. Default `1`.                        |
-| `score`                                            | numeric(5,2)  | 0–100 composite.                                                      |
-| `stages_completed`                                 | integer       | Volume, for the floor above.                                          |
-| `completion_rate` / `on_time_rate`                 | numeric(5,4)  | 0–1 rates.                                                            |
-| `client_rating_avg` / `peer_rating_avg`            | numeric(3,2)  | The **dual-track** reviews (§Reciprocal Reviews).                     |
-| `dispute_rate`                                     | numeric(5,4)  | 0–1.                                                                  |
-| `workload_reliability`                             | numeric(5,4)  | Delivering at capacity without dropping tickets — the $W_i$ signal.   |
-| `tenure_days`                                      | integer       | —                                                                     |
-| `penalty_severity`                                 | numeric(6,2)  | Active `security.penalties` aggregate, subtracted at recompute.       |
-| `components`                                       | jsonb         | Per-component contribution, for the "why am I this rung" surface.     |
-| `level_changed_at` / `computed_at`                 | timestamptz   | —                                                                     |
+| Column                                  | Type         | Notes                                                               |
+| :-------------------------------------- | :----------- | :------------------------------------------------------------------ |
+| `level`                                 | smallint     | FK → `org.standing_levels.level`. Default `1`.                      |
+| `score`                                 | numeric(5,2) | 0–100 composite.                                                    |
+| `stages_completed`                      | integer      | Volume, for the floor above.                                        |
+| `completion_rate` / `on_time_rate`      | numeric(5,4) | 0–1 rates.                                                          |
+| `client_rating_avg` / `peer_rating_avg` | numeric(3,2) | The **dual-track** reviews (§Reciprocal Reviews).                   |
+| `dispute_rate`                          | numeric(5,4) | 0–1.                                                                |
+| `workload_reliability`                  | numeric(5,4) | Delivering at capacity without dropping tickets — the $W_i$ signal. |
+| `tenure_days`                           | integer      | —                                                                   |
+| `penalty_severity`                      | numeric(6,2) | Active `security.penalties` aggregate, subtracted at recompute.     |
+| `components`                            | jsonb        | Per-component contribution, for the "why am I this rung" surface.   |
+| `level_changed_at` / `computed_at`      | timestamptz  | —                                                                   |
 
 > **Every input is client-valued.** Raw earnings and raw proposal counts are deliberately absent:
 > ranking by spend or by volume is exactly the pay-to-win trap this ladder exists to avoid.
@@ -298,16 +298,16 @@ Specialisation **derived** from delivered work, never self-declared. UNIQUE on
 `(subject_type, subject_id, category)` over `org.create_category` (`create` · `run` · `educate` ·
 `advise` · `test` · `empower` — `PRODUCT_SPEC.md` §The CREATE Framework).
 
-| Column                | Type          | Notes                                                                  |
-| :-------------------- | :------------ | :----------------------------------------------------------------------- |
-| `stages_completed`    | integer       | —                                                                       |
+| Column                | Type          | Notes                                                                      |
+| :-------------------- | :------------ | :------------------------------------------------------------------------- |
+| `stages_completed`    | integer       | —                                                                          |
 | `intensity_delivered` | numeric(10,2) | $W_i$-weighted, so a hard Create stage counts for more than a trivial one. |
-| `on_time_rate`        | numeric(5,4)  | Running average.                                                        |
-| `share_bp`            | integer       | This category's share of delivered intensity (0–10000).                 |
-| `mastery_level`       | smallint      | 0–5.                                                                    |
+| `on_time_rate`        | numeric(5,4)  | Running average.                                                           |
+| `share_bp`            | integer       | This category's share of delivered intensity (0–10000).                    |
+| `mastery_level`       | smallint      | 0–5.                                                                       |
 
-`share_bp` is a real **matching** signal: it routes Create-heavy stages to proven Create specialists.
-No other marketplace can compute this, because none have the stage taxonomy.
+`share_bp` is a real **matching** signal: it routes Create-heavy stages to proven Create
+specialists. No other marketplace can compute this, because none have the stage taxonomy.
 
 ### `org.achievements` + `org.entity_achievements`
 
@@ -324,9 +324,9 @@ Consecutive good outcomes over `org.streak_kind` (`on_time_delivery` · `fast_re
 `dispute_free` · `client_repeat`) with `current_count` / `best_count` / `last_event_at` /
 `broken_at`.
 
-> **There is deliberately no login/attendance streak kind.** A streak must celebrate good work, never
-> mere presence — the guilt mechanic is hostile to freelancer wellbeing and attracts exactly the
-> behaviour this platform is trying to avoid.
+> **There is deliberately no login/attendance streak kind.** A streak must celebrate good work,
+> never mere presence — the guilt mechanic is hostile to freelancer wellbeing and attracts exactly
+> the behaviour this platform is trying to avoid.
 
 ### 🏷 Enums
 

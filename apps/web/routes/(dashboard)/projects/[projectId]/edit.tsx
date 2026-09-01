@@ -1,50 +1,22 @@
-import { page } from "fresh";
-import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
-import ProjectEditor from "@features/projects/islands/ProjectEditor.island.tsx";
-import { resolveProjectShowcase } from "@features/projects/core/showcase-ssr.ts";
-import { readActor } from "@web/utils/api-session.ts";
 
 /**
- * `/projects/[projectId]/edit` — the CLIENT/owner's project editor (root brief §Part 1.1). Thin
- * controller with a hard ROLE GUARD: the editor is client-only, so a non-owner (or a slug that resolves
- * to nothing) is bounced to the Preview (`/projects/[id]`) — the same route the hidden Edit tab points
- * at. `viewerIsClient` is re-derived server-side from the acting context (never trusted from the client,
- * root CLAUDE.md §6), so the redirect is authoritative even though the Edit tab is also hidden in the UI.
- * The real stage names/order seed the editor; the rest of each stage starts blank to be filled in.
+ * `/projects/[projectId]/edit` — retired, and kept as a permanent redirect rather than deleted.
+ *
+ * The editor used to be a separate page beside a read-only Preview. It is now the Details half of
+ * `/projects/[projectId]` itself, so the engagement has ONE working address and the owner is never
+ * looking at a stale copy of a form that lives somewhere else.
+ *
+ * `308` rather than `303`: the move is permanent and the method must be preserved, so a bookmark, a
+ * link in an old notification and anything that had this URL stored all land on the surface that
+ * replaced it instead of a 404. The file stays for exactly that reason — deleting the route would
+ * make every one of those a dead end.
  */
 export const handler = define.handlers({
-	async GET(ctx) {
-		const slug = ctx.params.projectId;
-		const { detail, viewerIsClient } = await resolveProjectShowcase(
-			slug,
-			asAuthenticatedContext(ctx.state.userContext),
-			readActor(ctx),
-		);
-		if (!detail || !viewerIsClient) {
-			return new Response(null, { status: 303, headers: { location: `/projects/${slug}` } });
-		}
-		ctx.state.title = `Edit ${detail.title} · Projective`;
-		return page({
-			slug,
-			title: detail.title,
-			description: detail.description,
-			format: detail.format,
-			stages: [...detail.channels.stages]
-				.sort((a, b) => a.order - b.order)
-				.map((s) => ({ id: s.id, name: s.name })),
+	GET(ctx) {
+		return new Response(null, {
+			status: 308,
+			headers: { location: `/projects/${ctx.params.projectId}` },
 		});
 	},
-});
-
-export default define.page<typeof handler>(function ProjectEditPage({ data }) {
-	return (
-		<ProjectEditor
-			slug={data.slug}
-			initialTitle={data.title}
-			initialDescription={data.description}
-			initialFormat={data.format}
-			initialStages={data.stages}
-		/>
-	);
 });

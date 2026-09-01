@@ -8,20 +8,20 @@ marketplace layers without architectural friction.
 
 The following schemas are initialized to isolate data by business domain:
 
-| Schema             | Responsibility                                                                                                                               |
-| :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`org`**          | Identity, Freelancer/Business profiles, Teams, and Skills.                                                                                   |
-| **`projects`**     | Project headers, modular stages, assignments, and submissions.                                                                               |
-| **`finance`**      | Wallets, escrows, the transaction ledger, disputes, invoicing/statements, multi-currency/FX, KYC/KYB, payment methods, and vault governance. |
-| **`comms`**        | Real-time project channels, DM threads, and notification delivery.                                                                           |
-| **`security`**     | Session context, JWT-linked RLS helpers, and audit logging.                                                                                  |
-| **`files`**        | User file library, folder structures, and storage item metadata.                                                                             |
-| **`marketplace`**  | Digital asset listings, versions, and purchase history.                                                                                      |
-| **`search`**       | Full-text search indexes and semantic embeddings (pgvector).                                                                                 |
-| **`ops`**          | Platform administration, moderation flags, and outbound webhooks.                                                                            |
-| **`analytics`**    | Event logging and pre-calculated daily rollups.                                                                                              |
+| Schema             | Responsibility                                                                                                                                                                                                                   |
+| :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`org`**          | Identity, Freelancer/Business profiles, Teams, and Skills.                                                                                                                                                                       |
+| **`projects`**     | Project headers, modular stages, assignments, and submissions.                                                                                                                                                                   |
+| **`finance`**      | Wallets, escrows, the transaction ledger, disputes, invoicing/statements, multi-currency/FX, KYC/KYB, payment methods, and vault governance.                                                                                     |
+| **`comms`**        | Real-time project channels, DM threads, and notification delivery.                                                                                                                                                               |
+| **`security`**     | Session context, JWT-linked RLS helpers, and audit logging.                                                                                                                                                                      |
+| **`files`**        | User file library, folder structures, and storage item metadata.                                                                                                                                                                 |
+| **`marketplace`**  | Digital asset listings, versions, and purchase history.                                                                                                                                                                          |
+| **`search`**       | Full-text search indexes and semantic embeddings (pgvector).                                                                                                                                                                     |
+| **`ops`**          | Platform administration, moderation flags, and outbound webhooks.                                                                                                                                                                |
+| **`analytics`**    | Event logging and pre-calculated daily rollups.                                                                                                                                                                                  |
 | **`integrations`** | The connector + plugin substrate: third-party OAuth connections (calendar/storage/dev…) with a KMS token vault, sync + webhook machinery, and the plugin ecosystem (registry, versions, extension points, scoped installations). |
-| **`scheduling`**   | Availability (working hours, call windows, blackouts), calendar events, and discovery/courtesy calls.                                        |
+| **`scheduling`**   | Availability (working hours, call windows, blackouts), calendar events, and discovery/courtesy calls.                                                                                                                            |
 
 ---
 
@@ -103,8 +103,8 @@ CREATE TYPE comms.digest_frequency      AS ENUM ('off', 'daily', 'weekly');
 CREATE TYPE comms.device_platform       AS ENUM ('web', 'ios', 'android');
 ```
 
-`notification_category` is a **UI taxonomy** (preference-centre groups and inbox tabs), not the event
-namespace — event keys live in the `comms.notification_types` catalog as dotted `domain.event`
+`notification_category` is a **UI taxonomy** (preference-centre groups and inbox tabs), not the
+event namespace — event keys live in the `comms.notification_types` catalog as dotted `domain.event`
 strings. See [comms/Tables.md](comms/Tables.md).
 
 ### Subscriptions, Standing & Analytics (migrations `20260724110000`–`20260724113000`)
@@ -140,9 +140,9 @@ CREATE TYPE finance.entitlement_key     AS ENUM (
 );
 ```
 
-> `finance.entitlement_key` is a **closed** vocabulary on purpose: adding a lever requires a migration
-> plus a matching change in `@projective/types/finance/entitlements.ts` in the same commit. That
-> friction is what stops the tier matrix drifting away from the SSOT.
+> `finance.entitlement_key` is a **closed** vocabulary on purpose: adding a lever requires a
+> migration plus a matching change in `@projective/types/finance/entitlements.ts` in the same
+> commit. That friction is what stops the tier matrix drifting away from the SSOT.
 
 ### Availability, Integrations & Discovery Calls (schema-scoped, migrations `20260724100000`–`20260724104000`)
 
@@ -201,8 +201,8 @@ A twelfth schema was added later, by migration `20260724100000_scheduling_schema
 CREATE SCHEMA IF NOT EXISTS scheduling;
 ```
 
-> `scheduling` was **not** part of the original eleven, even though
-> `@projective/types/scheduling` had described itself as a read projection "over the eventual
-> `scheduling.*` tables" since 2026-07-21 (root `CLAUDE.md` §8 Decision #37). Creating it is
-> additive; the pre-existing `projects.session_events` / `cohorts` / `session_attendance` tables
-> remain the SSOT for a **paid Session Service's delivery** and were not touched.
+> `scheduling` was **not** part of the original eleven, even though `@projective/types/scheduling`
+> had described itself as a read projection "over the eventual `scheduling.*` tables" since
+> 2026-07-21 (root `CLAUDE.md` §8 Decision #37). Creating it is additive; the pre-existing
+> `projects.session_events` / `cohorts` / `session_attendance` tables remain the SSOT for a **paid
+> Session Service's delivery** and were not touched.

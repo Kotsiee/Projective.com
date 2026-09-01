@@ -113,8 +113,7 @@ const PHOTOS = [
 const VIEWER: MessageSender = {
 	id: "viewer",
 	name: "You",
-	avatar:
-		mockAvatar("photo-1531123897727-8f129e1688ce"),
+	avatar: mockAvatar("photo-1531123897727-8f129e1688ce"),
 	handle: "you",
 };
 

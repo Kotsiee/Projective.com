@@ -202,6 +202,17 @@ export const SubmissionListPageSchema = z.object({
 	 */
 	format: ProjectFormat,
 	channelId: z.string().max(120).nullable(),
+	/**
+	 * The stage this scope is anchored to — non-null in CHANNEL scope on a stage channel, null in
+	 * project scope (where the stage is whichever one the reader has navigated into) and on a
+	 * non-stage channel, which has no deliverables to anchor.
+	 *
+	 * It exists because a channel id and a stage id are different identifiers for related things: the
+	 * URL carries `stage-2`, `projects.stage_submissions.stage_id` wants the stage's own uuid, and only
+	 * the server holds the mapping. Deriving it on the client from a unit already in the tree works
+	 * everywhere except the one case that matters — the FIRST submission, where the tree is empty.
+	 */
+	stageId: z.string().max(80).nullable().default(null),
 	/** The full navigation tree for the scope (root nodes; the client navigates it in-memory). */
 	tree: z.array(SubmissionTreeNodeSchema),
 	/** The resolved current path (may be `[]` for the scope root). */
@@ -226,4 +237,44 @@ export const SubmissionListPageSchema = z.object({
 	singleFreelancer: z.boolean(),
 });
 export type SubmissionListPage = z.infer<typeof SubmissionListPageSchema>;
+// #endregion
+
+// #region Create payload
+/**
+ * Create a submission unit against a stage.
+ *
+ * `submit` is the whole difference between a private working copy and the start of somebody else's
+ * clock: a draft stays editable and invisible to the client, while `pending_review` is a delivery
+ * claim that puts the engagement in front of a reviewer. Two states rather than an implicit one,
+ * because a freelancer must be able to assemble a submission over several sittings without every save
+ * reading as "I am finished".
+ *
+ * `fileIds` are `files.items` ids, uploaded through the files handshake before this call — bytes never
+ * transit an application route. `checkedItemIds` are the ticket task lines this delivery satisfies:
+ * completion is claimed HERE, where the work that satisfies it is attached and reviewable, and never
+ * from the ticket surface (see {@link TicketTaskSchema}).
+ */
+export const CreateSubmissionSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	/**
+	 * The draft this call is SENDING, when one already exists.
+	 *
+	 * Null on a create. Set with `submit: true` it makes the call a status transition rather than a
+	 * second insert — without it, creating a draft and then sending it filed the same delivery twice,
+	 * because stage + ticket + title is not an identity the endpoint can safely reconcile against
+	 * (a freelancer may legitimately submit twice against one ticket, and a revision is exactly that).
+	 */
+	submissionId: z.string().max(80).nullable().default(null),
+	channelId: z.string().max(120).nullable().default(null),
+	stageId: z.string().min(1).max(80),
+	ticketId: z.string().max(80).nullable().default(null),
+	title: z.string().min(1).max(200),
+	description: z.string().max(8000).default(""),
+	checkedItemIds: z.array(z.string().min(1).max(80)).max(200).default([]),
+	/** `files.items` ids — uploaded through the files handshake before this call. */
+	fileIds: z.array(z.string().min(1).max(120)).max(100).default([]),
+	/** Draft vs submit-for-review. A draft is editable; `pending_review` starts the client's clock. */
+	submit: z.boolean().default(false),
+});
+export type CreateSubmission = z.infer<typeof CreateSubmissionSchema>;
 // #endregion

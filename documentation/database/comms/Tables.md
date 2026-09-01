@@ -29,25 +29,25 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 The routing matrix **as data**: one row per event key declaring how that event is delivered. 81 keys
 are seeded (money · work · messages · schedule · discovery · account · system · marketing).
 
-⚠️ **Deliberately NOT referenced by a foreign key** from `comms.notifications.type`. An
-unregistered key must never raise inside a money-movement RPC — `fn_notify` auto-registers it as
+⚠️ **Deliberately NOT referenced by a foreign key** from `comms.notifications.type`. An unregistered
+key must never raise inside a money-movement RPC — `fn_notify` auto-registers it as
 `system`/`medium` and carries on. The catalog is policy, not a gate.
 
-| Column                  | Type                          | Notes                                                                          |
-| :---------------------- | :---------------------------- | :----------------------------------------------------------------------------- |
-| `key`                   | text                          | PK. Canonical dotted `domain.event` form, enforced by CHECK.                    |
-| `aliases`               | text[]                        | Legacy keys resolving here (see the conflict note below). GIN-indexed.          |
-| `category`              | `comms.notification_category` | The preference-centre / inbox-tab grouping.                                     |
-| `urgency`               | `comms.notification_urgency`  | `critical` pierces a global snooze.                                             |
-| `default_channels`      | `comms.notification_channel[]`| Fan-out **before** preferences. Preferences may only narrow it.                 |
-| `mandatory`             | boolean                       | User cannot mute. Preference centre renders these read-only.                    |
-| `overrides_quiet_hours` | boolean                       | Push/SMS still fire inside quiet hours.                                         |
-| `digestible`            | boolean                       | May be rolled into a daily/weekly digest.                                       |
-| `audit`                 | boolean                       | Also writes a `security.audit_logs` row.                                        |
-| `group_window`          | interval                      | Collapse window; a same-`group_key` event inside it refreshes rather than adds. |
-| `action_url_template`   | text                          | `{id}` / `{entity_id}` / `{context_id}` substituted server-side.                |
-| `default_lead_time`     | interval                      | Suggested lead time for reminder-style events.                                  |
-| `enabled`               | boolean                       | `false` retires an event without deleting the row (root CLAUDE.md §5).          |
+| Column                  | Type                           | Notes                                                                           |
+| :---------------------- | :----------------------------- | :------------------------------------------------------------------------------ |
+| `key`                   | text                           | PK. Canonical dotted `domain.event` form, enforced by CHECK.                    |
+| `aliases`               | text[]                         | Legacy keys resolving here (see the conflict note below). GIN-indexed.          |
+| `category`              | `comms.notification_category`  | The preference-centre / inbox-tab grouping.                                     |
+| `urgency`               | `comms.notification_urgency`   | `critical` pierces a global snooze.                                             |
+| `default_channels`      | `comms.notification_channel[]` | Fan-out **before** preferences. Preferences may only narrow it.                 |
+| `mandatory`             | boolean                        | User cannot mute. Preference centre renders these read-only.                    |
+| `overrides_quiet_hours` | boolean                        | Push/SMS still fire inside quiet hours.                                         |
+| `digestible`            | boolean                        | May be rolled into a daily/weekly digest.                                       |
+| `audit`                 | boolean                        | Also writes a `security.audit_logs` row.                                        |
+| `group_window`          | interval                       | Collapse window; a same-`group_key` event inside it refreshes rather than adds. |
+| `action_url_template`   | text                           | `{id}` / `{entity_id}` / `{context_id}` substituted server-side.                |
+| `default_lead_time`     | interval                       | Suggested lead time for reminder-style events.                                  |
+| `enabled`               | boolean                        | `false` retires an event without deleting the row (root CLAUDE.md §5).          |
 
 ⚠️ **Flagged conflict (root CLAUDE.md §8, Decision #56).** Two key conventions exist: this file has
 always documented **dotted** keys (`message.new`), while the live callers in migrations 0305 / 0311
@@ -62,29 +62,29 @@ The central ledger of all system-generated alerts. Real-time delivery is via Sup
 (published since migration 0206). The 0008 columns are unchanged; everything below the rule is
 additive.
 
-| Column          | Type                           | Notes                                                                |
-| :-------------- | :----------------------------- | :------------------------------------------------------------------- |
-| `id`            | uuid                           | PK.                                                                   |
-| `user_id`       | uuid                           | Recipient.                                                            |
-| `type`          | text                           | Canonical event key, e.g. `stage.funded`.                             |
-| `title`/`body`  | text                           | Rendered copy.                                                        |
-| `entity_table`  | text                           | Source table for the event.                                           |
-| `entity_id`     | uuid                           | Specific row ID related to the alert.                                 |
-| `read_at`       | timestamptz                    | Null if unread.                                                       |
-| —               |                                | _additive from `20260724090000`_                                      |
+| Column          | Type                           | Notes                                                                      |
+| :-------------- | :----------------------------- | :------------------------------------------------------------------------- |
+| `id`            | uuid                           | PK.                                                                        |
+| `user_id`       | uuid                           | Recipient.                                                                 |
+| `type`          | text                           | Canonical event key, e.g. `stage.funded`.                                  |
+| `title`/`body`  | text                           | Rendered copy.                                                             |
+| `entity_table`  | text                           | Source table for the event.                                                |
+| `entity_id`     | uuid                           | Specific row ID related to the alert.                                      |
+| `read_at`       | timestamptz                    | Null if unread.                                                            |
+| —               |                                | _additive from `20260724090000`_                                           |
 | `category`      | `comms.notification_category`  | Denormalised at write time, so a re-classification never rewrites history. |
-| `urgency`       | `comms.notification_urgency`   | Denormalised likewise.                                                |
-| `actor_user_id` | uuid                           | Who caused it. NULL = the platform (cron, webhook, system).           |
-| `context_type`  | text                           | `personal`/`project`/`team`/`business`/`organisation`/`conversation`. |
-| `context_id`    | uuid                           | Scopes the inbox to the active context (Decision #16).                |
-| `action_url`    | text                           | Resolved deep link, or NULL — never a broken one.                     |
-| `payload`       | jsonb                          | Render/localization data only. **Never PII, never secrets.**          |
-| `group_key`     | text                           | Collapse key for the catalog's `group_window`.                        |
-| `group_count`   | integer                        | How many source events this row represents (1 = not collapsed).       |
-| `channels`      | `comms.notification_channel[]` | What the router resolved. **Empty = recorded, delivered nowhere.**    |
-| `seen_at`       | timestamptz                    | Badge cleared. **Distinct from `read_at`** — do not conflate.         |
-| `archived_at`   | timestamptz                    | Dismissed. Nothing is hard-deleted.                                   |
-| `expires_at`    | timestamptz                    | Stops surfacing in the live inbox; swept to archived by cron.         |
+| `urgency`       | `comms.notification_urgency`   | Denormalised likewise.                                                     |
+| `actor_user_id` | uuid                           | Who caused it. NULL = the platform (cron, webhook, system).                |
+| `context_type`  | text                           | `personal`/`project`/`team`/`business`/`organisation`/`conversation`.      |
+| `context_id`    | uuid                           | Scopes the inbox to the active context (Decision #16).                     |
+| `action_url`    | text                           | Resolved deep link, or NULL — never a broken one.                          |
+| `payload`       | jsonb                          | Render/localization data only. **Never PII, never secrets.**               |
+| `group_key`     | text                           | Collapse key for the catalog's `group_window`.                             |
+| `group_count`   | integer                        | How many source events this row represents (1 = not collapsed).            |
+| `channels`      | `comms.notification_channel[]` | What the router resolved. **Empty = recorded, delivered nowhere.**         |
+| `seen_at`       | timestamptz                    | Badge cleared. **Distinct from `read_at`** — do not conflate.              |
+| `archived_at`   | timestamptz                    | Dismissed. Nothing is hard-deleted.                                        |
+| `expires_at`    | timestamptz                    | Stops surfacing in the live inbox; swept to archived by cron.              |
 
 Nine partial indexes back the feed, the badge, category tabs, collapse lookup, entity
 back-references, context scoping, the expiry sweep and the escalation job.
@@ -94,20 +94,20 @@ back-references, context scoping, the expiry sweep and the escalation job.
 Per-user delivery configuration. One row per user, seeded on signup by
 `comms.seed_notification_prefs`.
 
-| Column                                | Type                     | Notes                                                    |
-| :------------------------------------ | :----------------------- | :------------------------------------------------------- |
-| `user_id`                             | uuid                     | PK, FK → `org.users_public.user_id`.                      |
-| `email` / `push` / `in_app` / `sms`   | boolean                  | Transport master switches. `sms` is additive.             |
-| `digest_frequency`                    | `comms.digest_frequency` | Authoritative cadence. `off` = deliver in real time.      |
-| `digest_hour` / `digest_weekday`      | smallint                 | Local delivery time; weekday is ISO (1 = Mon … 7 = Sun).  |
-| `timezone`                            | text                     | IANA zone the local-time columns are evaluated in.        |
-| `quiet_hours_enabled`                 | boolean                  | Master switch for the recurring window.                   |
-| `quiet_hours_start` / `_end`          | time                     | Local wall clock. `start > end` = the window crosses midnight. |
-| `muted_until`                         | timestamptz              | Global snooze. `critical` still pierces it.               |
-| `locale`                              | text                     | Email/push copy language; falls back to `org.user_preferences.locale`. |
-| `escalate_after`                      | interval                 | Unread wait before the email fallback (default 15 min).   |
-| `quiet_hours`                         | tstzrange                | ⚠️ **Legacy** (0008) — see below.                          |
-| `digest`                              | boolean                  | ⚠️ **Legacy** (0008) — see below.                          |
+| Column                              | Type                     | Notes                                                                  |
+| :---------------------------------- | :----------------------- | :--------------------------------------------------------------------- |
+| `user_id`                           | uuid                     | PK, FK → `org.users_public.user_id`.                                   |
+| `email` / `push` / `in_app` / `sms` | boolean                  | Transport master switches. `sms` is additive.                          |
+| `digest_frequency`                  | `comms.digest_frequency` | Authoritative cadence. `off` = deliver in real time.                   |
+| `digest_hour` / `digest_weekday`    | smallint                 | Local delivery time; weekday is ISO (1 = Mon … 7 = Sun).               |
+| `timezone`                          | text                     | IANA zone the local-time columns are evaluated in.                     |
+| `quiet_hours_enabled`               | boolean                  | Master switch for the recurring window.                                |
+| `quiet_hours_start` / `_end`        | time                     | Local wall clock. `start > end` = the window crosses midnight.         |
+| `muted_until`                       | timestamptz              | Global snooze. `critical` still pierces it.                            |
+| `locale`                            | text                     | Email/push copy language; falls back to `org.user_preferences.locale`. |
+| `escalate_after`                    | interval                 | Unread wait before the email fallback (default 15 min).                |
+| `quiet_hours`                       | tstzrange                | ⚠️ **Legacy** (0008) — see below.                                      |
+| `digest`                            | boolean                  | ⚠️ **Legacy** (0008) — see below.                                      |
 
 ⚠️ **Flagged supersessions (Decision #56).** Both legacy columns are **kept** under the Additive
 Rule but are no longer the source of truth:
@@ -116,11 +116,11 @@ Rule but are no longer the source of truth:
   07:00 tomorrow" but not "quiet 22:00–07:00 every night in Europe/London". Superseded by the
   recurring `quiet_hours_*` + `timezone` columns; still honoured as an extra absolute window so an
   existing row keeps working.
-- `digest boolean` is superseded by `digest_frequency`, which is **backfilled** from it
-  (`true` → `daily`) so nobody silently loses an opted-in digest.
+- `digest boolean` is superseded by `digest_frequency`, which is **backfilled** from it (`true` →
+  `daily`) so nobody silently loses an opted-in digest.
 
-⚠️ Also flagged: `org.user_preferences` (0213) carries `notification_email` / `notification_push` — a
-second, coarser copy of the same two toggles. `comms.notification_prefs` is the engine's source of
+⚠️ Also flagged: `org.user_preferences` (0213) carries `notification_email` / `notification_push` —
+a second, coarser copy of the same two toggles. `comms.notification_prefs` is the engine's source of
 truth; the two are **not reconciled** (that is a data decision) — reconcile with a human.
 
 ### `comms.notification_category_prefs`
@@ -141,15 +141,15 @@ type is stored but **ignored** by the router. Lapsed mutes are kept, not deleted
 Push registration. The 0008 shape stored a string; these additive columns make it possible to
 actually send.
 
-| Column                       | Type                    | Notes                                                   |
-| :--------------------------- | :---------------------- | :------------------------------------------------------ |
-| `platform`                   | `comms.device_platform` | `web` (VAPID) · `ios` (APNs) · `android` (FCM).          |
-| `endpoint`                   | text                    | Web Push subscription endpoint.                          |
-| `p256dh` / `auth_key`        | text                    | Web Push subscription keys — see the note below.          |
-| `label` / `user_agent`       | text                    | For the device list in settings.                          |
-| `last_seen_at`               | timestamptz             | Drives the stale-device reaper.                           |
-| `revoked_at` / `_reason`     | timestamptz / text      | Soft retirement; the router skips revoked tokens.         |
-| `failure_count`              | smallint                | Consecutive gateway failures; auto-revoked at threshold.  |
+| Column                   | Type                    | Notes                                                    |
+| :----------------------- | :---------------------- | :------------------------------------------------------- |
+| `platform`               | `comms.device_platform` | `web` (VAPID) · `ios` (APNs) · `android` (FCM).          |
+| `endpoint`               | text                    | Web Push subscription endpoint.                          |
+| `p256dh` / `auth_key`    | text                    | Web Push subscription keys — see the note below.         |
+| `label` / `user_agent`   | text                    | For the device list in settings.                         |
+| `last_seen_at`           | timestamptz             | Drives the stale-device reaper.                          |
+| `revoked_at` / `_reason` | timestamptz / text      | Soft retirement; the router skips revoked tokens.        |
+| `failure_count`          | smallint                | Consecutive gateway failures; auto-revoked at threshold. |
 
 A partial unique index on `(user_id, token) WHERE revoked_at IS NULL` means re-registering a browser
 **updates** rather than accumulating duplicates that each cost a push request.

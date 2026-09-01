@@ -1,4 +1,25 @@
 -- Indexes: comms notifications (from 20260724090000, 20260724091000, 20260724092000)
+--          plus the messaging read/write paths.
+
+-- Messaging had NO indexes at all beyond its primary keys, while the chat feed is
+-- the platform's hottest read: it pages a channel newest-first and re-reads it on
+-- every navigation. DESC matches the order the feed actually asks for, so the
+-- cursor walk is an index scan rather than a sort over the channel's whole
+-- history.
+CREATE INDEX IF NOT EXISTS idx_project_messages_channel_recent
+    ON comms.project_messages (channel_id, created_at DESC);
+
+-- The polymorphic attachment lookup. There is no foreign key on message_id —
+-- Postgres cannot point one column at two parents — so the discriminator pair is
+-- the only way in, and every rendered message asks it.
+CREATE INDEX IF NOT EXISTS idx_message_attachments_message
+    ON comms.message_attachments (message_table, message_id);
+
+-- The channel Files tab. Same shape, different vocabulary: this table
+-- discriminates on the BARE 'project' / 'dm' pair, not the schema-qualified one
+-- above.
+CREATE INDEX IF NOT EXISTS idx_channel_files_channel
+    ON comms.channel_files (channel_type, channel_id);
 
 CREATE INDEX IF NOT EXISTS idx_notification_types_aliases ON comms.notification_types USING gin (aliases);
 CREATE INDEX IF NOT EXISTS idx_notification_types_category ON comms.notification_types (category) WHERE enabled;

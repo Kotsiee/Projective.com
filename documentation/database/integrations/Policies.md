@@ -1,29 +1,29 @@
 # integrations Schema: Policies
 
 RLS is **always on** for `integrations`. The schema deliberately mixes three postures because it
-mixes three kinds of data: **public catalogues**, **secret / operational stores**, and
-**user-owned records**.
+mixes three kinds of data: **public catalogues**, **secret / operational stores**, and **user-owned
+records**.
 
 ## Posture at a glance
 
-| Object | RLS | `authenticated` grant | Policy |
-| :--- | :-- | :--- | :--- |
-| **Public catalogues** | | | |
-| `providers` · `extension_points` · `plugin_scopes` | on | `SELECT` | `USING (true)` — reference data |
-| **Secret / operational — no policy, service-role only** | | | |
-| `user_connections` | on | **none** | **none — definer-only** |
-| `connection_secrets` | on | **none** | **none — the token vault** |
-| `connection_sync_state` · `webhook_subscriptions` · `webhook_deliveries` | on | **none** | **none** |
-| `plugin_grants` | on | **none** | **none — hashed client secrets** |
-| **Safe projections (views)** | | | |
-| `v_my_connections` | — | `SELECT` | definer view, filtered to `auth.uid()` |
-| `v_plugin_catalog` | — | `SELECT` | definer view, filtered to `status = 'published'` |
-| **User-owned records** | | | |
-| `connection_audit` | on | `SELECT` | own rows or admin |
-| `plugins` | on | `SELECT`+`INSERT`+`UPDATE` | published, or own (publisher), or admin |
-| `plugin_versions` | on | `SELECT`+`INSERT`+`UPDATE` | published, or own plugin, or admin |
-| `plugin_installations` | on | `SELECT`+`INSERT`+`UPDATE` | own (installer) or admin |
-| `plugin_audit` | on | `SELECT` | own, or own-plugin publisher, or admin |
+| Object                                                                   | RLS | `authenticated` grant      | Policy                                           |
+| :----------------------------------------------------------------------- | :-- | :------------------------- | :----------------------------------------------- |
+| **Public catalogues**                                                    |     |                            |                                                  |
+| `providers` · `extension_points` · `plugin_scopes`                       | on  | `SELECT`                   | `USING (true)` — reference data                  |
+| **Secret / operational — no policy, service-role only**                  |     |                            |                                                  |
+| `user_connections`                                                       | on  | **none**                   | **none — definer-only**                          |
+| `connection_secrets`                                                     | on  | **none**                   | **none — the token vault**                       |
+| `connection_sync_state` · `webhook_subscriptions` · `webhook_deliveries` | on  | **none**                   | **none**                                         |
+| `plugin_grants`                                                          | on  | **none**                   | **none — hashed client secrets**                 |
+| **Safe projections (views)**                                             |     |                            |                                                  |
+| `v_my_connections`                                                       | —   | `SELECT`                   | definer view, filtered to `auth.uid()`           |
+| `v_plugin_catalog`                                                       | —   | `SELECT`                   | definer view, filtered to `status = 'published'` |
+| **User-owned records**                                                   |     |                            |                                                  |
+| `connection_audit`                                                       | on  | `SELECT`                   | own rows or admin                                |
+| `plugins`                                                                | on  | `SELECT`+`INSERT`+`UPDATE` | published, or own (publisher), or admin          |
+| `plugin_versions`                                                        | on  | `SELECT`+`INSERT`+`UPDATE` | published, or own plugin, or admin               |
+| `plugin_installations`                                                   | on  | `SELECT`+`INSERT`+`UPDATE` | own (installer) or admin                         |
+| `plugin_audit`                                                           | on  | `SELECT`                   | own, or own-plugin publisher, or admin           |
 
 ## 🔓 Public catalogues
 
@@ -73,8 +73,8 @@ token even by accident.
 
 A **definer** view (like `v_my_connections`) with an explicit `WHERE status = 'published'`, so it
 exposes only published plugins to everyone without needing base-table grants for `anon`. A publisher
-sees their own drafts through the base `plugins` table (their RLS grant), not this catalogue. Granted
-`SELECT` to `anon`, `authenticated`.
+sees their own drafts through the base `plugins` table (their RLS grant), not this catalogue.
+Granted `SELECT` to `anon`, `authenticated`.
 
 ## 📜 `connection_audit` — own history
 
@@ -86,8 +86,8 @@ be forged or backdated.
 
 The predicates in [Functions.md](Functions.md) — `fn_has_capability`, `fn_conferencing_provider`,
 `fn_plugin_installed`, `fn_plugin_has_scope`, `fn_is_plugin_publisher` — are `SECURITY DEFINER` and
-return **only a boolean or a slug**. They are the sanctioned way to ask *"can this user mint a
-room?"* or *"may this plugin read messages?"* with no path to the credentials or the other users'
+return **only a boolean or a slug**. They are the sanctioned way to ask _"can this user mint a
+room?"_ or _"may this plugin read messages?"_ with no path to the credentials or the other users'
 rows that would answer it.
 
 ---

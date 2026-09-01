@@ -58,7 +58,16 @@
 	color: var(--on-surface-variant);
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
-.ui-select--open .ui-select__chevron {
+/*
+ * `.ui-field--open`, NOT `.ui-select--open`. The root writes its modifiers under the SHARED field
+ * block — `fieldModifiers("ui-field", { …, open })` emits `ui-field--open` — so a selector scoped to
+ * the component block matched nothing and the chevron never rotated at all. `autocomplete.css`,
+ * `cascadeselect.css` and `treeselect.css` were already correct; this and `multiselect.css` were not,
+ * and the failure is invisible in the source because both class names are plausible and both files
+ * parse. The transition pair matches the SortControl reference (`--dur-fast` is 150ms, `--ease-standard`
+ * is the shared curve) — token-only, so the ramp stays authored in one place (§3).
+ */
+.ui-field--open .ui-select__chevron {
 	transform: rotate(180deg);
 }
 .ui-select__clear {

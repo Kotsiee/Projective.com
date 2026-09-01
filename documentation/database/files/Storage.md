@@ -16,18 +16,18 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 
 ## 🪣 Bucket Overview
 
-| Bucket          | Access       | Size / MIME               | Path anchor        | Governs                                                  |
-| :-------------- | :----------- | :------------------------ | :----------------- | :------------------------------------------------------ |
-| `quarantine`    | Private      | 50 MiB · any              | `{user_id}`        | Virus-scan / MIME-validation landing zone for all uploads. |
-| `project`       | Private      | 50 MiB · any              | `{project_id}`     | Project / channel / stage collaboration files.          |
-| `messages`      | Private      | 50 MiB · any              | `{thread_id}`      | Global DM / inbox attachments (not project-scoped).     |
-| `personal`      | Private      | 50 MiB · any              | owner (`auth.uid`) | Owner-only drive: drafts, personal templates, WIP.      |
-| `workspace`     | Private      | 50 MiB · any              | `{entity_id}`      | **Entity-owned** drive: the team / business / organisation counterpart of `personal`. |
-| `invoices`      | Private      | 20 MiB · pdf              | `{owner_id}`       | Wallet statements / invoices / receipts.                |
-| `verification`  | **Service**  | 20 MiB · img,pdf          | `{subject_id}`     | KYC / KYB identity documents — service-role only.       |
-| `public_assets` | Public       | 10 MiB · img              | `{owner_id}`       | Misc public assets (general/legacy).                    |
-| `avatars`       | Public       | 5 MiB · img               | `{entity_id}`      | Profile / team / business / org branding.               |
-| `catalogue`     | Public       | 10 MiB · img              | `{seller_id}`      | Marketplace storefront media (products, service showcase). |
+| Bucket          | Access      | Size / MIME      | Path anchor        | Governs                                                                               |
+| :-------------- | :---------- | :--------------- | :----------------- | :------------------------------------------------------------------------------------ |
+| `quarantine`    | Private     | 50 MiB · any     | `{user_id}`        | Virus-scan / MIME-validation landing zone for all uploads.                            |
+| `project`       | Private     | 50 MiB · any     | `{project_id}`     | Project / channel / stage collaboration files.                                        |
+| `messages`      | Private     | 50 MiB · any     | `{thread_id}`      | Global DM / inbox attachments (not project-scoped).                                   |
+| `personal`      | Private     | 50 MiB · any     | owner (`auth.uid`) | Owner-only drive: drafts, personal templates, WIP.                                    |
+| `workspace`     | Private     | 50 MiB · any     | `{entity_id}`      | **Entity-owned** drive: the team / business / organisation counterpart of `personal`. |
+| `invoices`      | Private     | 20 MiB · pdf     | `{owner_id}`       | Wallet statements / invoices / receipts.                                              |
+| `verification`  | **Service** | 20 MiB · img,pdf | `{subject_id}`     | KYC / KYB identity documents — service-role only.                                     |
+| `public_assets` | Public      | 10 MiB · img     | `{owner_id}`       | Misc public assets (general/legacy).                                                  |
+| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile / team / business / org branding.                                             |
+| `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase).                            |
 
 ---
 
@@ -115,9 +115,9 @@ workspace/
 ```
 
 **The anchor is the entity id, not the uploader's user id, and that is the whole design.** An entity
-asset must **outlive the member who uploaded it**: anchoring on the uploader would strand a departing
-member's files behind a personal gate, so a team would lose its own brand assets the day someone left.
-The gate is therefore **active membership of the anchor**, not object ownership:
+asset must **outlive the member who uploaded it**: anchoring on the uploader would strand a
+departing member's files behind a personal gate, so a team would lose its own brand assets the day
+someone left. The gate is therefore **active membership of the anchor**, not object ownership:
 
 ```sql
 bucket_id = 'workspace' AND (
@@ -128,17 +128,18 @@ bucket_id = 'workspace' AND (
 ```
 
 The three helpers are OR-ed because **one uuid anchor may name any of the three entity kinds** — the
-caller passes exactly one and the other two return `false`. (There is no discriminator in the path, by
-design: adding one would mean a folder rename whenever an entity changed class.)
+caller passes exactly one and the other two return `false`. (There is no discriminator in the path,
+by design: adding one would mean a folder rename whenever an entity changed class.)
 
-`DELETE` is **narrower than `UPDATE`** on purpose — any member may revise a shared asset, but only the
-uploader (`auth.uid() = owner`, *and* still a member) may destroy one. Entity-wide deletion authority
-belongs behind a capability check in the fat service, not in a blanket storage policy.
+`DELETE` is **narrower than `UPDATE`** on purpose — any member may revise a shared asset, but only
+the uploader (`auth.uid() = owner`, _and_ still a member) may destroy one. Entity-wide deletion
+authority belongs behind a capability check in the fat service, not in a blanket storage policy.
 
 > ⚠️ These four are written as the **sole** policies for this bucket. Multiple permissive `SELECT`
-> policies on `storage.objects` are **OR-combined**, so adding a broad "any authenticated" read would
-> not loosen `workspace` alone — it would loosen it *and* leave the intended rule looking correct. Do
-> not add one. (The same warning `00002017`'s header carries for `project` and `messages`.)
+> policies on `storage.objects` are **OR-combined**, so adding a broad "any authenticated" read
+> would not loosen `workspace` alone — it would loosen it _and_ leave the intended rule looking
+> correct. Do not add one. (The same warning `00002017`'s header carries for `project` and
+> `messages`.)
 
 Metering is the matching half: a `workspace` object's `files.items` row carries
 `owner_type ∈ {team, business, organisation}` with `owner_entity_id` = the anchor, so its bytes are
@@ -186,34 +187,35 @@ quarantine/
 
 Never hardcode a bucket id or hand-build an object path. Every path is emitted by a builder in
 [`@projective/types/files/storage.ts`](../../../packages/types/files/storage.ts), and each one
-**emits the RLS anchor as its first segment** — so a path produced there is guaranteed to satisfy the
-matching policy's `WITH CHECK`. `BUCKETS` / `bucketMeta()` mirror the `00005040` seed field-for-field
-(access tier, `maxBytes`, `allowedMime`, anchor), and `rlsAnchor(path)` reads back what a policy would
-check.
+**emits the RLS anchor as its first segment** — so a path produced there is guaranteed to satisfy
+the matching policy's `WITH CHECK`. `BUCKETS` / `bucketMeta()` mirror the `00005040` seed
+field-for-field (access tier, `maxBytes`, `allowedMime`, anchor), and `rlsAnchor(path)` reads back
+what a policy would check.
 
-| Builder                                                    | Emits                                                      |
-| :---------------------------------------------------------- | :----------------------------------------------------------- |
-| `quarantineLocation(userId, sessionId, filename)`          | `quarantine/{userId}/{sessionId}/{filename}`               |
-| `projectLocation(projectId, ...segments)`                  | `project/{projectId}/…`                                    |
-| `stageSubmissionLocation(...)` · `channelAttachmentLocation(...)` | the two `project/` conventions above                 |
-| `messageAttachmentLocation(threadId, messageId, filename)` | `messages/{threadId}/{messageId}/{filename}`               |
-| `personalLocation(userId, ...segments)`                    | `personal/users/{userId}/…`                                |
-| **`workspaceLocation(entityId, ...segments)`**             | **`workspace/{entityId}/…`**                               |
-| `invoiceLocation(...)` · `verificationLocation(...)`       | `invoices/…` · `verification/…`                            |
-| `avatarLocation(...)` · `catalogueLocation(...)` · `publicAssetLocation(...)` | the three public buckets                 |
+| Builder                                                                       | Emits                                        |
+| :---------------------------------------------------------------------------- | :------------------------------------------- |
+| `quarantineLocation(userId, sessionId, filename)`                             | `quarantine/{userId}/{sessionId}/{filename}` |
+| `projectLocation(projectId, ...segments)`                                     | `project/{projectId}/…`                      |
+| `stageSubmissionLocation(...)` · `channelAttachmentLocation(...)`             | the two `project/` conventions above         |
+| `messageAttachmentLocation(threadId, messageId, filename)`                    | `messages/{threadId}/{messageId}/{filename}` |
+| `personalLocation(userId, ...segments)`                                       | `personal/users/{userId}/…`                  |
+| **`workspaceLocation(entityId, ...segments)`**                                | **`workspace/{entityId}/…`**                 |
+| `invoiceLocation(...)` · `verificationLocation(...)`                          | `invoices/…` · `verification/…`              |
+| `avatarLocation(...)` · `catalogueLocation(...)` · `publicAssetLocation(...)` | the three public buckets                     |
 
-> **`workspaceLocation()` is the one builder whose misuse is silent.** It takes the **team / business
-> / organisation id**, and is the entity counterpart of `personalLocation()`. Reaching for
-> `personalLocation()` for an entity asset does **two** wrong things at once: it mis-names the object
-> *and* it resolves against the wrong predicate — `personal` is gated on `auth.uid() = owner`, so the
-> write would still **succeed** for the uploader and then be invisible to every teammate, which is the
-> worst available failure mode (no error, no bytes lost, just an asset nobody else can ever see).
+> **`workspaceLocation()` is the one builder whose misuse is silent.** It takes the **team /
+> business / organisation id**, and is the entity counterpart of `personalLocation()`. Reaching for
+> `personalLocation()` for an entity asset does **two** wrong things at once: it mis-names the
+> object _and_ it resolves against the wrong predicate — `personal` is gated on
+> `auth.uid() = owner`, so the write would still **succeed** for the uploader and then be invisible
+> to every teammate, which is the worst available failure mode (no error, no bytes lost, just an
+> asset nobody else can ever see).
 >
 > The two also differ in shape, and the reason is worth knowing: `personalLocation()` interposes a
-> literal `users/` segment (`personal/users/{userId}/…`) — harmless, because that bucket's policy reads
-> `storage.objects.owner` and never looks at the path — whereas `workspaceLocation()` puts the entity
-> id **first**, because `workspace` **is** path-anchored and `(storage.foldername(name))[1]` is exactly
-> what its four policies check.
+> literal `users/` segment (`personal/users/{userId}/…`) — harmless, because that bucket's policy
+> reads `storage.objects.owner` and never looks at the path — whereas `workspaceLocation()` puts the
+> entity id **first**, because `workspace` **is** path-anchored and `(storage.foldername(name))[1]`
+> is exactly what its four policies check.
 
 ## 🔗 Database Integration
 
@@ -243,27 +245,27 @@ WHERE ss.id = :submission_id;
 
 - **Path anchor = RLS anchor.** Each policy checks `(storage.foldername(name))[1]` against the id in
   the table above. Uploading to the wrong prefix fails the `WITH CHECK`.
-- **Signed URLs.** All private buckets (`quarantine`, `project`, `messages`, `personal`, `workspace`,
-  `invoices`, `verification`) are downloaded via short-lived signed URLs; the public buckets
-  (`avatars`, `catalogue`, `public_assets`) serve directly from the edge cache. A signed URL is a
-  **bearer capability**: it is minted per request by the fat service, never cached onto a row, and
-  never persisted into a projection the client reads.
+- **Signed URLs.** All private buckets (`quarantine`, `project`, `messages`, `personal`,
+  `workspace`, `invoices`, `verification`) are downloaded via short-lived signed URLs; the public
+  buckets (`avatars`, `catalogue`, `public_assets`) serve directly from the edge cache. A signed URL
+  is a **bearer capability**: it is minted per request by the fat service, never cached onto a row,
+  and never persisted into a projection the client reads.
 - **Per-bucket limits.** Each bucket sets its own `file_size_limit` and `allowed_mime_types` in the
   seed — nothing inherits the global 50 MiB / any-MIME default.
 - **Promote, don't cross.** Moving a file from `quarantine` to any destination bucket is an atomic
   operation performed by a `SECURITY DEFINER` function or the service role, so a user can never
-  bypass a project-access, DM-membership, or verification check by writing straight to a
-  restricted bucket.
+  bypass a project-access, DM-membership, or verification check by writing straight to a restricted
+  bucket.
 
 ## 🏷️ File classification
 
 On upload, a file is classified into a rich, searchable **`FileCategory`** (~27 categories:
 `Document`, `Image`, `Vector`, `Audio`, `Video`, `Code`, `3D`, `CAD`, `Data`, `Database`, …) by the
-Zod SSOT at
-[`@projective/types/files`](../../../packages/types/files/categories.ts) — `categorizeFile(name,
-mimeType)` / `describeFile(name, mimeType)`. It is pure and isomorphic, so the **fat backend**
-classifies authoritatively on upload (the server-of-record for search/analytics) and an island can
-classify identically for instant UI.
+Zod SSOT at [`@projective/types/files`](../../../packages/types/files/categories.ts) —
+`categorizeFile(name,
+mimeType)` / `describeFile(name, mimeType)`. It is pure and isomorphic, so the
+**fat backend** classifies authoritatively on upload (the server-of-record for search/analytics) and
+an island can classify identically for instant UI.
 
 - **Two layers, one source.** `FileCategory` (rich taxonomy, for search/filter/facets/analytics)
   maps to the coarse `FileKind` (the 8 rendering buckets — glyph + inline preview renderer) via
@@ -271,8 +273,8 @@ classify identically for instant UI.
 - **What to persist.** `files.items.category` (a `files.file_category` enum whose values are the
   canonical `FileCategory` literals — indexed in `00004011_indexes_files.sql`) holds the taxonomy
   for faceting. `kind` is derivable from `category` via `CATEGORY_META` for rendering, and the
-  human-readable `application` ("Adobe Photoshop Document") rides `metadata jsonb`. On upload the fat
-  backend calls `describeFile(original_name, mime_type)` and writes `category`.
+  human-readable `application` ("Adobe Photoshop Document") rides `metadata jsonb`. On upload the
+  fat backend calls `describeFile(original_name, mime_type)` and writes `category`.
 - **Icons.** `CATEGORY_META[c].icon` is a semantic slug. For now the UI resolves it through `kind`
   to the existing 8-glyph set (`file-glyphs.tsx`); a future per-file-type icon pack (e.g. VSCode
   Material Icons) maps to that slug or the raw extension without touching call sites. Any icon pack
@@ -285,8 +287,8 @@ classify identically for instant UI.
 ## 🚧 Deferred / live-path TODOs
 
 - **AV-scan promotion is modelled, not wired.** `files.items.target_bucket` / `target_path` describe
-  the quarantine → destination move, but the Edge Function that scans and promotes clean files is not
-  yet implemented.
+  the quarantine → destination move, but the Edge Function that scans and promotes clean files is
+  not yet implemented.
 - **Image transformation is off.** `[storage.image_transformation]` is commented out in
   `supabase/config.toml`; enable it (imgproxy) before relying on server-side avatar/thumbnail
   resizing.

@@ -40,6 +40,7 @@ import { IntegrationsService } from "../core/IntegrationsService.ts";
 import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
 import { breadcrumbsFor, pathKey } from "../core/asset-model.ts";
 import { fingerprintFile } from "../core/fingerprint.ts";
+import { awaitExtraction, extractMetadata } from "../core/media/extract.ts";
 import {
 	anchorId,
 	clearFinishedUploads,
@@ -1166,6 +1167,12 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		}).catch(() => null);
 
 		patchUpload(id, { phase: "checking", fingerprint, progress: 0 });
+
+		// Reading the file runs ALONGSIDE the handshake and the transfer, never before them: the bytes
+		// are what the person is waiting for, and a poster frame that is not ready in time is dropped
+		// rather than allowed to hold the upload open. See `../core/media/extract.ts`.
+		const extraction = extractMetadata(file);
+
 		const init = await FilesService.uploadInit({
 			name: file.name,
 			mimeType: file.type || "application/octet-stream",
@@ -1216,7 +1223,11 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 				return;
 			}
 			patchUpload(id, { phase: "finalising", progress: 1, ticket: { ...ticket } });
-			const done = await FilesService.uploadComplete({ assetId: ticket.assetId, etag });
+			const done = await FilesService.uploadComplete({
+				assetId: ticket.assetId,
+				etag,
+				metadata: await awaitExtraction(extraction),
+			});
 			if (!done.ok || !done.data) {
 				patchUpload(id, {
 					phase: "error",
@@ -1230,7 +1241,11 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		}
 
 		patchUpload(id, { phase: "finalising", progress: 1 });
-		const done = await FilesService.uploadComplete({ assetId: ticket.assetId, etag: null });
+		const done = await FilesService.uploadComplete({
+			assetId: ticket.assetId,
+			etag: null,
+			metadata: await awaitExtraction(extraction),
+		});
 		if (!done.ok || !done.data) {
 			patchUpload(id, {
 				phase: "error",
