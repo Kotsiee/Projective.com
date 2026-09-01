@@ -78,7 +78,12 @@ export default define.page(function ProfileLayout(ctx) {
 			);
 		}
 		return (
-			<GuestShell lane={lane} header={header} footer={footer}>
+			<GuestShell
+				lane={lane}
+				header={header}
+				footer={footer}
+				returnTo={ctx.url.pathname + ctx.url.search}
+			>
 				{children}
 			</GuestShell>
 		);

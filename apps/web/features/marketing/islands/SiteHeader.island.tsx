@@ -11,6 +11,7 @@ import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { MEGA_MENUS, SECONDARY_LINKS } from "../core/megamenu-data.ts";
 import { Icon } from "@projective/ui/icons";
 import { Logo } from "@web/components/Logo.tsx";
+import { withRedirect } from "@features/auth/core/redirect.ts";
 
 /**
  * SiteHeader — the public navigation. Full-width and **completely transparent/borderless at the top
@@ -29,7 +30,13 @@ import { Logo } from "@web/components/Logo.tsx";
 const SEARCH_ICON =
 	"M8.5 3a5.5 5.5 0 1 0 3.4 9.8l3.6 3.7 1.4-1.4-3.7-3.6A5.5 5.5 0 0 0 8.5 3Zm0 2a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z";
 
-export default function SiteHeader({ authenticated = false }: { authenticated?: boolean }) {
+export default function SiteHeader(
+	{ authenticated = false, returnTo }: { authenticated?: boolean; returnTo?: string },
+) {
+	// Sign-in / sign-up links carry the page the visitor is ON, so authenticating returns them here
+	// instead of dropping them on the default landing page. Sanitised by `withRedirect`.
+	const signInHref = withRedirect("/login", returnTo ?? "");
+	const joinHref = withRedirect("/join", returnTo ?? "");
 	const menuOpen = useSignal(false); // mobile slide-out drawer
 	const scrolled = useSignal(false); // scroll-driven glass state
 	const entity = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE); // header search scope
@@ -291,8 +298,8 @@ export default function SiteHeader({ authenticated = false }: { authenticated?: 
 						: (
 							<>
 								<ThemeToggle />
-								<a class="site-header__signin" href="/login">Sign in</a>
-								<a class="site-header__cta" href="/join" data-magnetic>Get started</a>
+								<a class="site-header__signin" href={signInHref}>Sign in</a>
+								<a class="site-header__cta" href={joinHref} data-magnetic>Get started</a>
 							</>
 						)}
 				</div>
@@ -400,10 +407,10 @@ export default function SiteHeader({ authenticated = false }: { authenticated?: 
 						? <a class="site-header__cta site-header__cta--block" href="/projects">Dashboard</a>
 						: (
 							<>
-								<a class="site-header__signin site-header__signin--block" href="/login">
+								<a class="site-header__signin site-header__signin--block" href={signInHref}>
 									Sign in
 								</a>
-								<a class="site-header__cta site-header__cta--block" href="/join">
+								<a class="site-header__cta site-header__cta--block" href={joinHref}>
 									Get started
 								</a>
 							</>

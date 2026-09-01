@@ -282,7 +282,7 @@ function StepFields(
 				<div class="auth-divider">
 					<span>or</span>
 				</div>
-				<OAuthButtons redirectTo={store.redirectTo} label="Sign up" />
+				<OAuthButtons redirectTo={store.redirectTo} label="Sign up" mode="signup" />
 			</>
 		);
 	}
@@ -711,7 +711,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		: true;
 	// Individuals can reach for Google at any step; org sign-up is corporate-credential based.
 	const showInlineOAuth = !store.isOrg.value && !store.isOAuth && step.id !== "account";
-	const oauthHref = withRedirect("/api/auth/oauth/google", store.redirectTo);
+	const oauthHref = withRedirect("/api/auth/oauth/google?mode=signup", store.redirectTo);
 
 	return (
 		<div class="auth-wizard">

@@ -52,7 +52,7 @@ export default define.page(function PublicLayout(ctx) {
 		);
 	}
 	return (
-		<GuestShell lane={filterLane} header={viewHeader}>
+		<GuestShell lane={filterLane} header={viewHeader} returnTo={ctx.url.pathname + ctx.url.search}>
 			<ctx.Component />
 		</GuestShell>
 	);

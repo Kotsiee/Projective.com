@@ -21,6 +21,10 @@ Parenthesized folders group routes **without** adding a URL segment:
 - `routes/_middleware.ts` — global security headers (no auth).
 - `routes/(dashboard)/_middleware.ts` — **auth guard** (skeleton: session-cookie check → `/login`;
   swap in real Supabase JWT verification via `@server/services`).
+- `routes/(public)/(auth)/_middleware.ts` — the **inverse guard**: an already-authenticated visitor to
+  `/login` or `/join` is returned to their captured `redirectTo` (or `/home`) instead of being asked
+  to authenticate again or walked back through onboarding. `/join?oauth=…` is exempt — the OAuth
+  callback signs a NEW identity in and then sends them there to create their profile.
 - `_layout.tsx` per group — shell chrome; `(dashboard)` mounts the dual-nav + Splitter.
 
 ## Dynamic segments (examples in the skeleton)

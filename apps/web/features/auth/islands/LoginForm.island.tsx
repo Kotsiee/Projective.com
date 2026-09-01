@@ -106,7 +106,7 @@ export default function LoginForm(
 				)
 				: null}
 
-			<OAuthButtons redirectTo={redirectTo} label="Sign in" />
+			<OAuthButtons redirectTo={redirectTo} label="Sign in" mode="signin" />
 
 			<div class="auth-oauth">
 				<button
