@@ -23,6 +23,11 @@ export interface GuestShellProps {
 	header?: ComponentChildren;
 	/** Render the marketing {@link PublicFooter} at the body's end (default true; off for full-page surfaces). */
 	footer?: boolean;
+	/**
+	 * The page the visitor is currently on, threaded into the header's Sign in / Get started links as
+	 * a `redirectTo` so authenticating returns them HERE rather than to the default landing page.
+	 */
+	returnTo?: string;
 	/** The page body. */
 	children: ComponentChildren;
 }
@@ -43,7 +48,7 @@ export interface GuestShellProps {
  * `ui-app-shell__sidebar` — that nested L-shell is reserved for authenticated users.
  */
 export function GuestShell(
-	{ lane, header, footer = true, children }: GuestShellProps,
+	{ lane, header, footer = true, returnTo, children }: GuestShellProps,
 ): JSX.Element {
 	const hasAside = !!lane;
 	return (
@@ -52,7 +57,7 @@ export function GuestShell(
 			data-has-aside={hasAside ? "true" : "false"}
 			data-has-subheader={header ? "true" : "false"}
 		>
-			<SiteHeader authenticated={false} />
+			<SiteHeader authenticated={false} returnTo={returnTo} />
 			{header ? <div class="guest-shell__subheader">{header}</div> : null}
 			{hasAside
 				? (

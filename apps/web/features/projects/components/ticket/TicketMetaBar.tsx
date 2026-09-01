@@ -264,7 +264,7 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 				<MetaEditor
 					editable={canEdit}
 					label={`Change the due date. Currently ${card.dueLabel ?? "not set"}.`}
-					openSelector=".ui-datepicker__trigger .ui-field__input"
+					openSelector=".ui-datepicker__entry"
 					display={
 						<span class="tkv-meta__v" data-overdue={overdue ? "true" : undefined}>
 							{card.dueLabel ?? "No date"}

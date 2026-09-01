@@ -191,6 +191,110 @@ function uiModuleSideEffects(id: string): boolean {
 }
 
 /**
+ * Collects every bare specifier the Deno import maps point at a REGISTRY (`jsr:` / `https:`),
+ * across the root `deno.json` and each workspace member's.
+ *
+ * Derived rather than hard-coded so a version bump in `deno.json` never has to be mirrored here.
+ * A specifier mapped to two different targets by two files is skipped — the correct answer then
+ * depends on the importer, which is the Deno resolver's job, not ours.
+ *
+ * `npm:` targets are deliberately excluded: those DO legitimately live in `node_modules`, and
+ * Vite's own resolution of them is correct.
+ */
+function collectDenoRegistrySpecifiers(): Map<string, string> {
+	const collected = new Map<string, string>();
+	const ambiguous = new Set<string>();
+
+	const rootManifest = JSON.parse(
+		fs.readFileSync(path.resolve(ROOT, "deno.json"), "utf8"),
+	) as { workspace?: string[]; imports?: Record<string, string> };
+
+	const manifests = [
+		"deno.json",
+		...(rootManifest.workspace ?? []).map(
+			(member) => path.join(member, "deno.json"),
+		),
+	];
+
+	for (const relative of manifests) {
+		let imports: Record<string, string>;
+		try {
+			const raw = fs.readFileSync(path.resolve(ROOT, relative), "utf8");
+			imports = (JSON.parse(raw) as { imports?: Record<string, string> }).imports ?? {};
+		} catch {
+			continue;
+		}
+
+		for (const [specifier, target] of Object.entries(imports)) {
+			if (!/^(jsr|https):/.test(target)) continue;
+
+			const existing = collected.get(specifier);
+			if (existing !== undefined && existing !== target) {
+				ambiguous.add(specifier);
+				continue;
+			}
+			collected.set(specifier, target);
+		}
+	}
+
+	for (const specifier of ambiguous) collected.delete(specifier);
+	return collected;
+}
+
+/**
+ * Pins the import map's registry-backed bare specifiers to their `jsr:`/`https:` target, so Node
+ * resolution can never answer for one.
+ *
+ * `@fresh/plugin-vite`'s `deno` plugin already tries to be first (`enforce: "pre"`) and to discard
+ * anything `vite:resolve` hands back — but its guard is `tmp.resolvedBy !== "vite:resolve"`, and
+ * Vite's DEV plugin container returns a resolution with **no `resolvedBy` field at all**. The guard
+ * therefore never fires in `vite dev`: the deno plugin adopts Vite's answer as its own input and
+ * re-resolves that, so whatever Node resolution found wins.
+ *
+ * That is harmless for a specifier whose npm copy is the intended one (`preact`, `zod` — the repo's
+ * own `node_modules` answers first and answers correctly), and fatal for a JSR-ONLY name that also
+ * exists on npm. `fresh` is exactly that: the framework lives only on JSR, while npm's `fresh` is
+ * jshttp's CommonJS HTTP-freshness helper. With no copy inside the repo, Node resolution walks the
+ * ancestor chain PAST the project root and will happily bind to one in a parent directory or the
+ * user's home — `C:\Users\<user>\node_modules\fresh` on the machine this was diagnosed on. The
+ * module then loads as CJS interop exporting `{ default, __require }`, and `apps/web/utils/state.ts`
+ * dies on `createDefine is not a function` before a single route renders.
+ *
+ * Rewriting to the explicit registry target closes it by construction: `jsr:@fresh/core@^2.2.2` is
+ * not a package name, so Vite's resolver cannot claim it and the deno plugin is the only thing left
+ * that can answer.
+ *
+ * Keep this ahead of `fresh()` in the plugin list — it only works while it runs before the `deno`
+ * plugin it is protecting.
+ */
+function pinDenoRegistrySpecifiers(): Plugin {
+	const pinned = collectDenoRegistrySpecifiers();
+	// Longest first, so `fresh/` is tested before `fresh` can prefix-match the same specifier.
+	const prefixes = [...pinned.entries()]
+		.filter(([specifier]) => specifier.endsWith("/"))
+		.sort(([a], [b]) => b.length - a.length);
+
+	return {
+		name: "projective:pin-deno-registry-specifiers",
+		enforce: "pre",
+		async resolveId(source, importer, options) {
+			let target = pinned.get(source);
+
+			if (target === undefined) {
+				const prefix = prefixes.find(([specifier]) => source.startsWith(specifier));
+				if (prefix === undefined) return null;
+				target = prefix[1] + source.slice(prefix[0].length);
+			}
+
+			return await this.resolve(target, importer, {
+				...options,
+				skipSelf: true,
+			});
+		},
+	};
+}
+
+/**
  * Collapses Windows path separators in resolved module ids, so one source file is never built as
  * two modules.
  *
@@ -324,6 +428,7 @@ export default defineConfig(({ mode }) => {
 		root: "apps/web",
 
 		plugins: [
+			pinDenoRegistrySpecifiers(),
 			normalizeModuleIds(),
 			dedupeFreshStaticAssets(),
 			flattenManifestCss(),
