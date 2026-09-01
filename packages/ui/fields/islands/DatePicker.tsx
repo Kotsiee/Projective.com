@@ -11,10 +11,26 @@ import { useDismiss } from "../hooks/useDismiss.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
-import { formatDatePattern } from "../core/datetime.ts";
+import {
+	clampDayToMonth,
+	formatDatePattern,
+	MONTH_NAMES,
+	toLocalIsoDate,
+	WEEKDAY_NAMES,
+} from "../core/datetime.ts";
+import {
+	type DateParts,
+	type DateSegmentKind,
+	emptyParts,
+	parseSegmentLayout,
+	partsFromDate,
+	partsToDate,
+} from "../core/date-segments.ts";
+import { DateSegmentedInput } from "../components/DateSegmentedInput.tsx";
+import { CalendarHeader } from "../components/CalendarHeader.tsx";
+import { CalendarMonthTrack } from "../components/CalendarMonthTrack.tsx";
 import type { BaseFieldProps, Bindable, Option, ValueChange } from "../types/mod.ts";
 import { Icon } from "../../icons/mod.ts";
-import { Select } from "./Select.tsx";
 
 // #region Types
 
@@ -26,6 +42,9 @@ export type DateValue = Date | Date[] | null;
 
 /** Custom day-cell renderer — receives the cell's date, returns the inner content. */
 export type DateTemplate = (date: Date) => VNode | string;
+
+/** Which part of the control keyboard focus currently belongs to. */
+type FocusOwner = "segments" | "grid" | null;
 
 export interface DatePickerProps extends BaseFieldProps {
 	/** Bound value — raw (uncontrolled) or `Signal` (controlled). `Date|null`, or `Date[]`. */
@@ -48,8 +67,16 @@ export interface DatePickerProps extends BaseFieldProps {
 	maxDate?: Date;
 	/** Explicit list of non-selectable dates. */
 	disabledDates?: Date[];
-	/** Display format tokens: `d dd m mm yy yyyy` (default `mm/dd/yy`). */
+	/** Display format tokens: `d dd D DD m mm M MM yy yyyy` (default `mm/dd/yy`). */
 	dateFormat?: string;
+	/**
+	 * Type the date directly, in `DD` / `MM` / `YYYY` boxes (default `true` for `single`).
+	 *
+	 * Ignored for `multiple` and `range`, which name two dates or many and so have nothing three
+	 * boxes can hold; those keep the read-only display. Set `false` to opt a single-date picker back
+	 * out — the calendar remains the only way in.
+	 */
+	segmented?: boolean;
 	/** First day of the week: `0` Sun … `1` Mon (default `1`). */
 	firstDayOfWeek?: 0 | 1;
 	/**
@@ -61,7 +88,7 @@ export interface DatePickerProps extends BaseFieldProps {
 	 * matching option.
 	 */
 	yearSpan?: number;
-	/** Input placeholder (popup mode). */
+	/** Input placeholder. The segmented presentation shows its own per-segment placeholders. */
 	placeholder?: string;
 	/** Show a Today / Clear button bar under the grid. */
 	showButtonBar?: boolean;
@@ -79,30 +106,6 @@ export interface DatePickerProps extends BaseFieldProps {
 // #endregion
 
 // #region Date math helpers
-
-const MONTH_NAMES = [
-	"January",
-	"February",
-	"March",
-	"April",
-	"May",
-	"June",
-	"July",
-	"August",
-	"September",
-	"October",
-	"November",
-	"December",
-];
-const WEEKDAY_NAMES = [
-	"Sunday",
-	"Monday",
-	"Tuesday",
-	"Wednesday",
-	"Thursday",
-	"Friday",
-	"Saturday",
-];
 
 /** Midnight copy of a date (strips time). */
 function atMidnight(d: Date): Date {
@@ -130,6 +133,11 @@ function addMonths(d: Date, delta: number): Date {
 /** Shift a date by whole days. */
 function addDays(d: Date, delta: number): Date {
 	return new Date(d.getFullYear(), d.getMonth(), d.getDate() + delta);
+}
+
+/** Absolute month number, so two months compare without wrap arithmetic. */
+function monthIndex(d: Date): number {
+	return d.getFullYear() * 12 + d.getMonth();
 }
 
 /** Stable per-day key for lookups / focus targeting. */
@@ -178,30 +186,6 @@ function weekdayHeaders(firstDayOfWeek: number): { narrow: string; long: string 
 
 // #endregion
 
-// #region Header picker constants
-
-/** Month options for the header picker — built once; the labels never change. */
-const MONTH_OPTIONS: Option[] = MONTH_NAMES.map((label, i) => ({ value: String(i), label }));
-
-/**
- * Row height for the two windowed header lists, px.
- *
- * The windowed renderer positions rows absolutely, so it needs a concrete number where the rest of
- * the taxonomy reads a token. This is `Select`'s own `virtualItemSize` default — stated rather than
- * inherited, so a change to that default cannot silently misalign a two-hundred-entry list.
- *
- * BOTH header lists are windowed on it, including the twelve-row month list that does not need the
- * windowing, because the alternative is two adjacent dropdowns with different row heights: an
- * unwindowed `.ui-select__option` is `max(--fld-opt-h, line-box + 2 × --space-2)`, which at the
- * default root size resolves to ~38.5px rather than the token's 36px — and, being a function of the
- * root font size, to a different number again at any other. No px constant can equal that, so the
- * two lists are made to agree with each OTHER instead of each disagreeing separately. The real fix
- * is for `Select` to measure its own row; this constant goes when it does.
- */
-const NAV_ROW_H = 40;
-
-// #endregion
-
 // #region Formatting
 
 /*
@@ -232,15 +216,37 @@ function toDates(v: DateValue): Date[] {
 	return v instanceof Date ? [v] : [];
 }
 
+/** An empty per-segment buffer set. */
+function emptyBuffers(): Record<DateSegmentKind, string> {
+	return { day: "", month: "", year: "" };
+}
+
 // #endregion
 
 /**
  * DatePicker — a token-only calendar adapted from PrimeNG's Calendar/DatePicker. Signal-first
  * (pass a `Signal` for controlled use). Supports single / multiple / range selection, an optional
  * time picker, N side-by-side months, min/max + disabled dates, an inline or popup presentation,
- * and a Today/Clear button bar. The grid is a full ARIA `grid` with roving-focus keyboard control
- * (arrows move ±1 day / ±7 days, PageUp/Down change month, Home/End hit week edges, Enter/Space
- * selects). Composes the shared `.ui-field` geometry for the popup trigger.
+ * and a Today/Clear button bar.
+ *
+ * A single-date picker is typed into directly through three `DD`/`MM`/`YYYY` segments whose order
+ * follows the caller's own `dateFormat`, and every keystroke moves the calendar with it. The rules
+ * that decide what a keystroke means — when focus advances, what a two-digit year widens to, what
+ * happens to the 31st when February is chosen — are pure functions in `core/date-segments.ts` and
+ * are unit-tested there rather than being reachable only by dispatching events.
+ *
+ * KEYBOARD. The two halves of the control own the same four arrow keys with different meanings, and
+ * which one answers is settled by which element holds focus rather than by a mode flag — so there is
+ * no third state in which both believe they are active:
+ *
+ * | Key            | A segment has focus       | The grid has focus       |
+ * | :------------- | :------------------------ | :----------------------- |
+ * | Left / Right   | previous / next segment   | previous / next day      |
+ * | Up / Down      | step this segment's value | previous / next week     |
+ * | Enter          | open the calendar / close | select the focused day   |
+ * | Space          | open the calendar         | select the focused day   |
+ * | Backspace      | clear THIS segment only   | —                        |
+ * | Tab            | ordinary focus traversal, in and out of the control       |
  *
  * In popup mode the PANEL is projected into `document.body` via {@link BodyPortal} and claims a live
  * stacking index from {@link useOverlayStack}, so it escapes any ancestor that would clip it
@@ -261,6 +267,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		maxDate,
 		disabledDates,
 		dateFormat = "mm/dd/yy",
+		segmented = true,
 		firstDayOfWeek = 1,
 		yearSpan = 100,
 		placeholder,
@@ -290,6 +297,9 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	const rootId = useId(id, "datepicker");
 	const panelId = `${rootId}-panel`;
 
+	/** Three boxes can hold one date, so the other two cardinalities keep the read-only display. */
+	const useSegments = segmented && selectionMode === "single";
+
 	// #region Local UI state
 	const seed = toDates(ctrl.get())[0] ?? new Date();
 	const open = useRef(signal(false)).current;
@@ -298,6 +308,22 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	const timeH = useRef(signal(seed.getHours())).current;
 	const timeM = useRef(signal(seed.getMinutes())).current;
 	const timeS = useRef(signal(seed.getSeconds())).current;
+
+	/**
+	 * Which half of the control owns focus.
+	 *
+	 * Load-bearing, not bookkeeping: the roving-focus effect below moves focus onto the highlighted
+	 * day whenever it changes, and typing a date changes it on every keystroke. Without an owner the
+	 * grid would pull focus out of the segment mid-entry and the second digit would land nowhere.
+	 */
+	const focusOwner = useRef(signal<FocusOwner>(null)).current;
+
+	/** The segmented input's working value, and the raw text of the segment being typed into. */
+	const parts = useRef(signal<DateParts>(seedParts(ctrl.get()))).current;
+	const buffers = useRef(signal(emptyBuffers())).current;
+	const activeSegment = useRef(signal<DateSegmentKind | null>(null)).current;
+	/** The segments name a whole date that `minDate`/`maxDate`/`disabledDates` refuse. */
+	const outOfRange = useRef(signal(false)).current;
 
 	const triggerRef = useRef<HTMLDivElement>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
@@ -327,14 +353,33 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		enabled: stack.isTop,
 	});
 
-	// Move keyboard focus onto the active day whenever it (or the open state) changes.
+	// Move keyboard focus onto the active day whenever it (or the open state) changes — but only when
+	// the GRID is what the reader is driving. While a segment holds focus the highlight still tracks
+	// every keystroke; it just does not chase focus across the control to do it.
 	useSignalEffect(() => {
 		const key = dayKey(focusedDate.value);
 		if (!(inline || open.value)) return;
+		if (focusOwner.value !== "grid") return;
 		const host = panelRef.current;
 		if (!host) return;
 		const el = host.querySelector<HTMLElement>(`[data-day="${key}"]`);
 		el?.focus();
+	});
+
+	/**
+	 * Adopt a value the caller changed from outside.
+	 *
+	 * Skipped while a segment holds focus: during entry the SEGMENTS are the truth and the bound value
+	 * is downstream of them, so echoing it back would overwrite a half-typed date between two
+	 * keystrokes. `peek` throughout, so writing `parts` here cannot re-trigger this effect.
+	 */
+	useSignalEffect(() => {
+		const next = seedParts(ctrl.signal.value);
+		if (!useSegments || activeSegment.peek() !== null) return;
+		const cur = parts.peek();
+		if (cur.day !== next.day || cur.month !== next.month || cur.year !== next.year) {
+			parts.value = next;
+		}
 	});
 	// #endregion
 
@@ -377,6 +422,26 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		if (!Number.isInteger(y)) return;
 		const vd = viewDate.peek();
 		viewDate.value = new Date(y, vd.getMonth(), 1);
+	};
+	const stepMonths = (months: number) => {
+		viewDate.value = addMonths(viewDate.peek(), months);
+	};
+
+	/**
+	 * Would stepping by `months` put the whole view outside the selectable range?
+	 *
+	 * The year dropdown is already bounded by `minDate`/`maxDate`, so without this the chevrons could
+	 * navigate to months the dropdown says do not exist — one control contradicting another about the
+	 * same range. Only a step that leaves NO selectable day on screen is refused; a partly-bounded
+	 * month is still worth showing, because its live days are exactly the edge of the window.
+	 */
+	const stepBlocked = (months: number): boolean => {
+		if (disabled) return true;
+		const target = monthIndex(addMonths(viewDate.value, months));
+		const span = Math.max(1, numberOfMonths) - 1;
+		if (minDate && target + span < monthIndex(minDate)) return true;
+		if (maxDate && target > monthIndex(maxDate)) return true;
+		return false;
 	};
 	// #endregion
 
@@ -421,6 +486,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 
 	const commitSingle = (d: Date) => {
 		ctrl.set(withTime(d));
+		if (useSegments) parts.value = partsFromDate(d);
 		if (!inline && !showTime) open.value = false;
 	};
 	const commitMultiple = (d: Date) => {
@@ -443,6 +509,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	const selectDay = (d: Date) => {
 		if (disabled || readOnly || isDisabledDate(d)) return;
 		if (d.getMonth() !== viewDate.peek().getMonth()) viewDate.value = startOfMonth(d);
+		focusOwner.value = "grid";
 		focusedDate.value = atMidnight(d);
 		if (selectionMode === "multiple") commitMultiple(d);
 		else if (selectionMode === "range") commitRange(d);
@@ -456,6 +523,11 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 
 	const clearValue = () => {
 		ctrl.set(selectionMode === "single" ? null : []);
+		if (useSegments) {
+			parts.value = emptyParts();
+			buffers.value = emptyBuffers();
+			outOfRange.value = false;
+		}
 		if (!inline) open.value = false;
 	};
 	const selectToday = () => {
@@ -465,12 +537,65 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	};
 	// #endregion
 
+	// #region Segment editing
+	/**
+	 * Adopt an edit from the segmented input and move everything downstream of it.
+	 *
+	 * One write, three consequences, in a fixed order: the segments show it, the calendar travels to
+	 * it, and the bound value takes it once there is a whole date to take. The middle one is what the
+	 * brief asks for by "typing the month snaps the calendar to that month while keeping day 06
+	 * selected" — the highlight follows a day the reader has typed even before the year exists, so
+	 * `focusedDate` is moved from the parts and the view together rather than waiting for a complete
+	 * date.
+	 *
+	 * An incomplete date does NOT clear the bound value. A reader who backspaces one segment and walks
+	 * away has not asked for the field to be emptied, and the effect above puts the committed value
+	 * back the moment focus leaves. Emptying every segment IS that request, and is honoured.
+	 *
+	 * A typed date the calendar would refuse — outside `minDate`/`maxDate`, or explicitly disabled —
+	 * is NOT committed. The grid enforces those bounds by disabling cells, and a typing surface that
+	 * quietly accepted what the grid refuses would make the same picker answer one question two ways.
+	 * It is not clamped either, because rewriting `2099` to today's date under the reader's hands is a
+	 * worse answer than showing them that 2099 is not available: the segments keep what was typed and
+	 * mark themselves invalid, and the calendar travels there so the greyed-out month says why.
+	 */
+	const onSegmentEdit = (next: DateParts) => {
+		parts.value = next;
+
+		const view = viewDate.peek();
+		const year = next.year ?? view.getFullYear();
+		const month = next.month ?? view.getMonth();
+		const target = new Date(year, month, 1);
+		if (target.getTime() !== view.getTime()) viewDate.value = target;
+		if (next.day !== null) {
+			focusedDate.value = new Date(year, month, clampDayToMonth(year, month, next.day));
+		}
+
+		const date = partsToDate(next);
+		if (date) {
+			const refused = isDisabledDate(date);
+			outOfRange.value = refused;
+			if (!refused) ctrl.set(withTime(date));
+			return;
+		}
+		outOfRange.value = false;
+		if (next.day === null && next.month === null && next.year === null) ctrl.set(null);
+	};
+
+	const openPanel = (owner: FocusOwner) => {
+		if (disabled || readOnly) return;
+		focusOwner.value = owner;
+		open.value = true;
+	};
+	// #endregion
+
 	// #region Focus / navigation
 	const setFocus = (d: Date) => {
+		focusOwner.value = "grid";
 		focusedDate.value = atMidnight(d);
-		const fm = d.getFullYear() * 12 + d.getMonth();
+		const fm = monthIndex(d);
 		const vd = viewDate.peek();
-		const vmStart = vd.getFullYear() * 12 + vd.getMonth();
+		const vmStart = monthIndex(vd);
 		if (fm < vmStart || fm > vmStart + numberOfMonths - 1) viewDate.value = startOfMonth(d);
 	};
 
@@ -631,63 +756,17 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		);
 	};
 
-	/**
-	 * The month header, laid out the way the mini-month calendar is: the period on the leading side,
-	 * the two step buttons grouped together on the trailing side.
-	 *
-	 * The month and year controls are the package's own {@link Select}, not native `<select>`s. A
-	 * native dropdown is drawn by the OS: it ignores the token layer, cannot be windowed, and — the
-	 * reason it had to go — renders a century of years as a single unbounded list. Because both open
-	 * from a trigger that lives INSIDE this (already portalled) panel, the overlay registry reads them
-	 * as this overlay's children, so choosing a month is not an outside click on the calendar.
-	 */
 	const renderHeaderNav = (): VNode => (
-		<div class="ui-datepicker__nav">
-			{numberOfMonths === 1
-				? (
-					<div class="ui-datepicker__nav-selects">
-						<Select
-							class="ui-field--bare ui-datepicker__nav-select"
-							size="sm"
-							aria-label="Month"
-							options={MONTH_OPTIONS}
-							value={monthValue}
-							virtualScroll
-							virtualItemSize={NAV_ROW_H}
-							onValueChange={pickMonth}
-						/>
-						<Select
-							class="ui-field--bare ui-datepicker__nav-select"
-							size="sm"
-							aria-label="Year"
-							options={yearOptions}
-							value={yearValue}
-							virtualScroll
-							virtualItemSize={NAV_ROW_H}
-							onValueChange={pickYear}
-						/>
-					</div>
-				)
-				: <div class="ui-datepicker__nav-spacer" />}
-			<div class="ui-datepicker__nav-btns">
-				<button
-					type="button"
-					class="ui-datepicker__nav-btn"
-					aria-label="Previous month"
-					onClick={() => (viewDate.value = addMonths(viewDate.peek(), -1))}
-				>
-					<Icon name="chevron-left" />
-				</button>
-				<button
-					type="button"
-					class="ui-datepicker__nav-btn"
-					aria-label="Next month"
-					onClick={() => (viewDate.value = addMonths(viewDate.peek(), 1))}
-				>
-					<Icon name="chevron-right" />
-				</button>
-			</div>
-		</div>
+		<CalendarHeader
+			monthValue={monthValue}
+			yearValue={yearValue}
+			yearOptions={yearOptions}
+			onPickMonth={pickMonth}
+			onPickYear={pickYear}
+			onStep={stepMonths}
+			stepBlocked={stepBlocked}
+			compact={numberOfMonths !== 1}
+		/>
 	);
 
 	const renderTime = (): VNode => {
@@ -740,29 +819,48 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		);
 	};
 
-	const renderPanelBody = (): VNode => {
+	/**
+	 * The month area.
+	 *
+	 * One month gets the swipeable strip; several keep the plain side-by-side layout, because a
+	 * gesture that moves a two-month view by one month leaves the reader looking at a page they were
+	 * already half looking at, and a strip of pages three months wide does not fit a popover.
+	 */
+	const renderMonths = (): VNode => {
+		if (numberOfMonths === 1) {
+			return (
+				<CalendarMonthTrack
+					viewDate={viewDate.value}
+					renderMonth={(monthDate) => renderGrid(monthDate, 0)}
+					onStep={stepMonths}
+					stepBlocked={stepBlocked}
+				/>
+			);
+		}
 		const months: VNode[] = [];
 		for (let i = 0; i < Math.max(1, numberOfMonths); i++) {
 			months.push(renderGrid(addMonths(viewDate.value, i), i));
 		}
-		return (
-			<>
-				{headerTemplate}
-				{renderHeaderNav()}
-				<div class="ui-datepicker__months">{months}</div>
-				{showTime && renderTime()}
-				{footerTemplate}
-				{showButtonBar && (
-					<div class="ui-datepicker__buttonbar">
-						<button type="button" class="ui-datepicker__bar-btn" onClick={selectToday}>
-							Today
-						</button>
-						<button type="button" class="ui-datepicker__bar-btn" onClick={clearValue}>Clear</button>
-					</div>
-				)}
-			</>
-		);
+		return <div class="ui-datepicker__months">{months}</div>;
 	};
+
+	const renderPanelBody = (): VNode => (
+		<>
+			{headerTemplate}
+			{renderHeaderNav()}
+			{renderMonths()}
+			{showTime && renderTime()}
+			{footerTemplate}
+			{showButtonBar && (
+				<div class="ui-datepicker__buttonbar">
+					<button type="button" class="ui-datepicker__bar-btn" onClick={selectToday}>
+						Today
+					</button>
+					<button type="button" class="ui-datepicker__bar-btn" onClick={clearValue}>Clear</button>
+				</div>
+			)}
+		</>
+	);
 
 	const displayValue = (): string => {
 		const dates = toDates(ctrl.signal.value);
@@ -799,8 +897,11 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	// #region Popup presentation
 	const toggleOpen = () => {
 		if (disabled || readOnly) return;
-		open.value = !open.value;
+		if (open.value) open.value = false;
+		else openPanel("grid");
 	};
+
+	const layout = parseSegmentLayout(dateFormat);
 
 	return (
 		<div class={cx("ui-datepicker", fluid && "ui-datepicker--fluid", className)}>
@@ -809,6 +910,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 				class={cx(
 					"ui-field",
 					"ui-datepicker__trigger",
+					useSegments && "ui-datepicker__trigger--segmented",
 					...fieldModifiers("ui-field", {
 						size,
 						status,
@@ -816,35 +918,68 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						disabled,
 						readOnly,
 						open: open.value,
+						focused: useSegments && activeSegment.value !== null,
 					}),
 				)}
 			>
-				<input
-					id={rootId}
-					name={name}
-					type="text"
-					class="ui-field__input"
-					readOnly
-					disabled={disabled}
-					required={required}
-					placeholder={placeholder}
-					value={displayValue()}
-					role="combobox"
-					aria-haspopup="grid"
-					aria-expanded={open.value}
-					aria-controls={panelId}
-					aria-label={ariaLabel}
-					aria-describedby={ariaDescribedby}
-					aria-invalid={ariaInvalid(status)}
-					aria-required={required || undefined}
-					onClick={toggleOpen}
-					onKeyDown={(e) => {
-						if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
-							e.preventDefault();
-							open.value = true;
-						}
-					}}
-				/>
+				{useSegments
+					? (
+						<DateSegmentedInput
+							layout={layout}
+							parts={parts.value}
+							buffers={buffers.value}
+							open={open.value}
+							panelId={panelId}
+							inputId={rootId}
+							disabled={disabled}
+							readOnly={readOnly}
+							required={required}
+							outOfRange={outOfRange.value}
+							aria-label={ariaLabel}
+							aria-describedby={ariaDescribedby}
+							aria-invalid={ariaInvalid(status)}
+							onEdit={onSegmentEdit}
+							onBuffer={(kind, buffer) => {
+								buffers.value = { ...buffers.peek(), [kind]: buffer };
+							}}
+							onActivate={(kind) => {
+								activeSegment.value = kind;
+								if (kind !== null) focusOwner.value = "segments";
+								else if (focusOwner.peek() === "segments") focusOwner.value = null;
+							}}
+							// A click keeps focus where it is so typing continues; Enter hands the calendar
+							// focus, which is what makes the second Enter select a day.
+							onRequestOpen={openPanel}
+							onRequestClose={() => (open.value = false)}
+						/>
+					)
+					: (
+						<input
+							id={rootId}
+							type="text"
+							class="ui-field__input ui-datepicker__entry"
+							readOnly
+							disabled={disabled}
+							required={required}
+							placeholder={placeholder}
+							value={displayValue()}
+							role="combobox"
+							aria-haspopup="grid"
+							aria-expanded={open.value}
+							aria-controls={panelId}
+							aria-label={ariaLabel}
+							aria-describedby={ariaDescribedby}
+							aria-invalid={ariaInvalid(status)}
+							aria-required={required || undefined}
+							onClick={toggleOpen}
+							onKeyDown={(e) => {
+								if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									openPanel("grid");
+								}
+							}}
+						/>
+					)}
 				{showIcon && (
 					<button
 						type="button"
@@ -859,6 +994,20 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 					</button>
 				)}
 			</div>
+
+			{
+				/* The wire form is a hidden field, so the visible control stays free to print whatever
+				   `dateFormat` asks for without a form receiving a string it cannot parse. Single mode
+				   only: there is no agreed wire shape for a set of dates or a range. */
+			}
+			{name !== undefined && selectionMode === "single" && (
+				<input
+					type="hidden"
+					name={name}
+					value={selected[0] ? toLocalIsoDate(selected[0]) : ""}
+				/>
+			)}
+
 			{open.value && (
 				<BodyPortal>
 					<div
@@ -890,3 +1039,13 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	);
 	// #endregion
 }
+
+// #region Seeding
+
+/** The segment values a bound value implies. A set, a range or nothing all seed empty. */
+function seedParts(v: DateValue): DateParts {
+	const first = toDates(v)[0];
+	return first ? partsFromDate(first) : emptyParts();
+}
+
+// #endregion

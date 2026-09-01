@@ -51,7 +51,110 @@
 }
 /* #endregion */
 
+/* #region Segmented input */
+/*
+ * The `DD` / `MM` / `YYYY` typing surface. It replaces the read-only display for a single-date
+ * picker, so it has to behave like `.ui-field__input` did — fill the row, inherit the field's ink,
+ * and add no furniture of its own — while being three focusable boxes rather than one.
+ */
+.ui-datepicker__segments {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	min-inline-size: 0;
+	/* The field owns the outer height; the segments sit on its baseline grid. */
+	block-size: 100%;
+}
+
+.ui-datepicker__seg {
+	flex: 0 0 auto;
+	min-inline-size: 0;
+	padding: 0;
+	appearance: none;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+	border-radius: var(--radius-xs);
+	cursor: text;
+}
+
+/* An empty segment is a placeholder, and reads as one — the same ink `::placeholder` uses, so an
+   unfilled date field looks like every other unfilled field in the taxonomy. */
+.ui-datepicker__seg[data-empty] {
+	color: var(--fld-placeholder-fg);
+}
+
+/*
+ * Sized in `ch` against TABULAR figures, so a box is exactly as wide as the digits it can hold and
+ * no segment shifts as its value changes — the §A.4 rule for a changing figure, which a date being
+ * typed into is the most literal case of. One character wider than the digit count, because the
+ * empty state prints `DD` / `YYYY` and letters are wider than the digits `ch` measures.
+ */
+.ui-datepicker__seg[data-segment="day"],
+.ui-datepicker__seg[data-segment="month"] {
+	inline-size: 3ch;
+}
+.ui-datepicker__seg[data-segment="year"] {
+	inline-size: 5ch;
+}
+
+/*
+ * The focused segment is tinted rather than ringed. A focus RING on one of three adjacent boxes
+ * inside a field that already draws its own focus border would be two rings nested a pixel apart;
+ * the tint says the same thing in the space available, and the field's own `--focused` border is
+ * what says the control has focus at all.
+ */
+.ui-datepicker__seg:focus-visible,
+.ui-datepicker__seg:focus {
+	outline: none;
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	color: var(--on-surface);
+}
+
+/*
+ * A typed date the calendar refuses — outside `minDate`/`maxDate`, or explicitly disabled. The
+ * segments keep what was typed rather than clamping it, so the ink has to say the value is not
+ * available; the calendar travelling to that month, with its days greyed out, says why.
+ *
+ * Colour PLUS the `aria-invalid` the first segment carries, never hue alone (§A.5): the same two
+ * channels `.ui-field--invalid` spends, at the one place inside the field that is actually wrong.
+ */
+.ui-datepicker__segments[data-out-of-range] .ui-datepicker__seg {
+	color: var(--fld-invalid-bd);
+}
+
+.ui-datepicker__seg-sep {
+	flex: 0 0 auto;
+	color: var(--text-secondary);
+	user-select: none;
+	white-space: pre;
+}
+
+.ui-field--disabled .ui-datepicker__seg,
+.ui-field--readonly .ui-datepicker__seg {
+	cursor: default;
+}
+/* #endregion */
+
 /* #region Panel */
+/*
+ * The grid's geometry, declared on the two roots so BOTH the grid and the month track above it can
+ * read it. See the Grid region for why these numbers are these tokens, and why they cannot live on
+ * `.ui-datepicker`.
+ */
+.ui-datepicker__panel,
+.ui-datepicker--inline {
+	--dp-cell: var(--fld-opt-h);
+	--dp-gap: var(--space-px);
+	/* One month, exactly: seven cells and the six seams between them. The track is a paged scroller,
+	   so its page width has to be a number rather than "whatever the content came to". */
+	--dp-month-w: calc(7 * var(--dp-cell) + 6 * var(--dp-gap));
+}
+
 .ui-datepicker__panel {
 	/*
 	 * The panel's own height ceiling, independent of the positioner. Deliberately NOT
@@ -126,21 +229,29 @@
 /* #endregion */
 
 /* #region Header navigation */
-/* Period on the leading side, the two step buttons grouped on the trailing side — the mini-month's
-   head, with the month/year controls standing in for its static title. */
+/*
+ * The period CENTRED, with a paired step control on each side — year then month going out from the
+ * middle, so distance from the centre reads as size of step.
+ *
+ * A three-track grid, not `space-between`: the middle track is the panel's true centre line and the
+ * dropdowns stay on it even when a step button is disabled at a `minDate`/`maxDate` bound. Under
+ * `space-between` the centre drifts by whatever the two button groups differ by, which a reader
+ * sees as the header moving when they navigate.
+ */
 .ui-datepicker__nav {
-	display: flex;
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
-	justify-content: space-between;
 	gap: var(--space-2);
 	margin-block-end: var(--space-2);
 }
 .ui-datepicker__nav-spacer {
-	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 .ui-datepicker__nav-selects {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: var(--space-1);
 	min-inline-size: 0;
 }
@@ -152,11 +263,37 @@
 .ui-datepicker__nav-select {
 	font-weight: var(--fw-semibold);
 }
-/* The button group. `--space-px` keeps the pair reading as one control rather than two. */
+/* The button group. `--space-px` keeps the pair reading as one control rather than two. The lead
+   group hugs the leading edge and the trail group the trailing one, so the two sit at the panel's
+   extremes with the period between them. */
 .ui-datepicker__nav-btns {
 	display: flex;
 	flex: 0 0 auto;
 	gap: var(--space-px);
+}
+.ui-datepicker__nav-btns--lead {
+	justify-self: start;
+}
+.ui-datepicker__nav-btns--trail {
+	justify-self: end;
+}
+/* A step that would leave the selectable range entirely. Ink and border fade together on the one
+   disabled ratio the field contract declares; the box does not, so the header keeps its rhythm. */
+.ui-datepicker__nav-btn:disabled {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+.ui-datepicker__nav-btn:disabled:hover {
+	background: transparent;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+}
+/*
+ * The doubled chevrons are the same glyph twice, so at the shared `--icon-sm` they read heavier than
+ * the single ones beside them — a difference in weight where the only real difference is distance.
+ * A step down on the year buttons alone puts the four back on one visual footing.
+ */
+.ui-datepicker__nav-btn--year {
+	font-size: var(--icon-2xs);
 }
 .ui-datepicker__nav-btn {
 	display: inline-flex;
@@ -214,6 +351,65 @@
 }
 /* #endregion */
 
+/* #region Month track — the swipeable single-month presentation */
+/*
+ * Three month pages on one horizontal scroller: the month in view, and its two neighbours for a
+ * gesture to travel to. Native scroll-snap does the work, so touch and trackpad get the platform's
+ * own momentum and rubber-banding for free and only a mouse drag needs script.
+ *
+ * The scrollbar is hidden HERE and nowhere else in the taxonomy, and it is one of the sanctioned
+ * opt-outs rather than an oversight: the track is a paged carousel with exactly three pages and a
+ * visible bar would report a scrollable extent that is an implementation detail, not a range the
+ * reader is meant to explore. Both engines are named, because hiding it in one and not the other is
+ * the defect that put a 10px bar down a 64px icon rail.
+ */
+.ui-datepicker__track {
+	display: flex;
+	inline-size: var(--dp-month-w);
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-snap-type: x mandatory;
+	scroll-behavior: smooth;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+	/* Vertical panning stays with the page; the horizontal axis is this control's. */
+	touch-action: pan-y;
+}
+.ui-datepicker__track::-webkit-scrollbar {
+	display: none;
+}
+.ui-datepicker__page {
+	flex: 0 0 var(--dp-month-w);
+	scroll-snap-align: center;
+	scroll-snap-stop: always;
+}
+/* The header's dropdowns already name the month in view, so the grid's own title would say it a
+   second time. It survives for the multi-month layout, where each grid needs its own. */
+.ui-datepicker__track .ui-datepicker__month-title {
+	display: none;
+}
+/*
+ * Mid-drag the position is being written directly, so the snap has to stand down or it fights every
+ * pointer move, and the smooth behaviour has to stand down or the track lags the cursor.
+ */
+.ui-datepicker__track[data-dragging] {
+	scroll-snap-type: none;
+	scroll-behavior: auto;
+	cursor: grabbing;
+	user-select: none;
+}
+/*
+ * Jump to the final position rather than gliding. The month shown never depends on the animation —
+ * every scroll this component performs also lands synchronously — so removing it removes motion and
+ * nothing else.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.ui-datepicker__track {
+		scroll-behavior: auto;
+	}
+}
+/* #endregion */
+
 /* #region Months layout */
 .ui-datepicker__months {
 	display: flex;
@@ -240,10 +436,6 @@
  */
 .ui-datepicker__grid {
 	/*
-	 * Declared HERE, not on `.ui-datepicker`: the popup panel is a `document.body` child, so a custom
-	 * property scoped to the component root would silently fall back for the whole popup presentation.
-	 * `__grid` is the one ancestor every consumer shares in both presentations.
-	 *
 	 * `--fld-opt-h` is the option row's FLOOR (a `min-block-size` everywhere else in the taxonomy),
 	 * reused here as an exact square. That is deliberately not a claim that a day cell and a dropdown
 	 * row render at the same height — the option row's line box plus its `--space-2` padding pushes it
@@ -253,10 +445,14 @@
 	 *
 	 * `--space-px` is the pixel-grid step — the token for a graphical seam between adjacent marks,
 	 * which is exactly what separates one day from the next.
+	 *
+	 * The declarations themselves live on the two PANEL roots (see the Panel region) rather than
+	 * here, because the month track needs `--dp-month-w` to size a page and sits above the grid. They
+	 * cannot go on `.ui-datepicker` either: the popup panel is a `document.body` child, so a property
+	 * scoped to the component root would silently fall back for the whole popup presentation — the
+	 * trap the `--wlt-*` layer hit. `.ui-datepicker__panel` and `.ui-datepicker--inline` are the two
+	 * roots every consumer actually has.
 	 */
-	--dp-cell: var(--fld-opt-h);
-	--dp-gap: var(--space-px);
-
 	display: grid;
 	row-gap: var(--dp-gap);
 }
@@ -324,7 +520,9 @@
    argument's specificity, so this selector already weighs (0,4,0) against the in-range hover rule's
    (0,3,0) — leaving that rule dead, and a hovered interior day painting the lighter generic tint it
    was written to prevent. Naming the exclusion is what actually hands the day over. */
-.ui-datepicker__day:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--selected):not(.ui-datepicker__day--in-range) {
+.ui-datepicker__day:hover:not(.ui-datepicker__day--disabled):not(.ui-datepicker__day--selected):not(
+	.ui-datepicker__day--in-range
+) {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 .ui-datepicker__day:focus-visible {

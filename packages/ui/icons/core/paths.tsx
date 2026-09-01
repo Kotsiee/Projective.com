@@ -110,6 +110,18 @@ const DIRECTION = {
 	"chevron-right": () => <path d="M9 6l6 6-6 6" />,
 	"chevron-up": () => <path d="M6 15l6-6 6 6" />,
 	"chevron-down": () => <path d="M6 9l6 6 6-6" />,
+	/**
+	 * A DOUBLED chevron — one step of a LARGER unit than its single partner (a year beside a month, a
+	 * page beside a row).
+	 *
+	 * Two copies of `chevron-left` on the same 6-unit vertical extent, spanning x 6→18 so the pair
+	 * stays centred on the box and sits on the same grid as the single. Drawing it wider would make a
+	 * year button look heavier than the month button beside it, which is a claim about emphasis where
+	 * the only real difference is distance.
+	 */
+	"chevrons-left": () => <path d="M18 6l-6 6 6 6M12 6l-6 6 6 6" />,
+	/** The trailing partner of {@link DIRECTION["chevrons-left"]}. */
+	"chevrons-right": () => <path d="M6 6l6 6-6 6M12 6l6 6-6 6" />,
 	"arrow-left": () => <path d="M20 12H4M10 6l-6 6 6 6" />,
 	"arrow-right": () => <path d="M4 12h16M14 6l6 6-6 6" />,
 	"arrow-up": () => <path d="M12 20V4M6 10l6-6 6 6" />,

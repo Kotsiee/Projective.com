@@ -2,10 +2,11 @@
  * Pure date-time arithmetic shared by the picker family (DatePicker · TimeTumbler · DateTimePicker).
  *
  * Every function here is total, side-effect free and framework-free, so the awkward parts — which
- * minutes a boundary day actually allows, what a drag of N pixels means — can be reasoned about and
- * unit-tested without a DOM. That is not incidental tidiness: the pickers commit values from pointer
- * and wheel handlers, and a value the reader must TRUST may never be a function of whether an
- * animation frame happened to run (root CLAUDE.md §8 Decision #60).
+ * minutes a boundary day actually allows, how many days February has this year, what a drag of N
+ * pixels means — can be reasoned about and unit-tested without a DOM. That is not incidental
+ * tidiness: the pickers commit values from pointer, wheel and keystroke handlers, and a value the
+ * reader must TRUST may never be a function of whether an animation frame happened to run (root
+ * CLAUDE.md §8 Decision #60).
  *
  * Everything works in LOCAL WALL-CLOCK FIELDS, never in elapsed milliseconds. A day is not always
  * 1440 minutes long — the two DST transitions make one 1380 and one 1500 — so `(a - b) / 60000` is
@@ -20,6 +21,41 @@
  * the year, including the two that are not 24 hours long).
  */
 export const MINUTES_PER_DAY = 1440;
+
+/** Full month names, January first — the vocabulary `MM` prints and the header dropdown lists. */
+export const MONTH_NAMES = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+] as const;
+
+/** Full weekday names, Sunday first, indexed to match `Date.prototype.getDay`. */
+export const WEEKDAY_NAMES = [
+	"Sunday",
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+] as const;
+
+/**
+ * Days in each month for a COMMON year, January first.
+ *
+ * February's entry is the common-year 28; {@link daysInMonth} adds the leap day rather than this
+ * table carrying two versions of itself.
+ */
+const COMMON_YEAR_MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
 // #endregion
 
@@ -37,10 +73,70 @@ export function pad2(n: number): string {
 
 // #endregion
 
+// #region Calendar arithmetic
+
+/**
+ * Is `year` a leap year in the proleptic Gregorian calendar?
+ *
+ * All three clauses are load-bearing and the third is the one that gets dropped: 1900 and 2100 are
+ * divisible by 4 and are NOT leap years, while 2000 is divisible by 100 and IS one. A picker whose
+ * year span reaches a century boundary — every date-of-birth field does — offers a 29th of February
+ * that does not exist without it.
+ */
+export function isLeapYear(year: number): boolean {
+	return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+/**
+ * How many days month `month` (0 = January) has in `year`.
+ *
+ * Read from a table rather than from `new Date(year, month + 1, 0).getDate()`, which is the usual
+ * trick and works, because a table cannot be moved by the constructor's own normalisation and reads
+ * the same in a test as it does in a handler. Out-of-range months wrap into the calendar year, so a
+ * caller stepping a month counter past December never indexes past the end of the table.
+ */
+export function daysInMonth(year: number, month: number): number {
+	const m = ((Math.trunc(month) % 12) + 12) % 12;
+	return m === 1 && isLeapYear(year) ? 29 : COMMON_YEAR_MONTH_LENGTHS[m];
+}
+
+/**
+ * `day` if `year`/`month` can hold it, otherwise that month's last day.
+ *
+ * The accommodation applied when the MONTH is what the reader just changed: they asked for February,
+ * so February is what they get, and the 31 they had selected yields to the 28th or 29th.
+ */
+export function clampDayToMonth(year: number, month: number, day: number): number {
+	return clampToRange(Math.trunc(day), 1, daysInMonth(year, month));
+}
+
+// #endregion
+
 // #region Formatting
 
 /**
- * Format a date with the taxonomy's token grammar (`d dd m mm yy yyyy`).
+ * Format a date with the taxonomy's token grammar.
+ *
+ * | Token  | Renders                   | Example     |
+ * | :----- | :------------------------ | :---------- |
+ * | `d`    | day of month, unpadded    | `5`         |
+ * | `dd`   | day of month, two digits  | `05`        |
+ * | `D`    | weekday name, abbreviated | `Wed`       |
+ * | `DD`   | weekday name, full        | `Wednesday` |
+ * | `m`    | month number, unpadded    | `4`         |
+ * | `mm`   | month number, two digits  | `04`        |
+ * | `M`    | month name, abbreviated   | `Apr`       |
+ * | `MM`   | month name, full          | `April`     |
+ * | `yy`   | year, two digits          | `23`        |
+ * | `yyyy` | year, four digits         | `2023`      |
+ *
+ * The four NAME tokens are case-distinguished from their numeric partners, which is the grammar
+ * PrimeNG's Calendar uses and the one every caller in this repo was already written against. They
+ * were absent from the implementation while three shipping surfaces asked for them, so
+ * `dateFormat="dd M yy"` emitted the letter itself and a date of `12/05/2023` printed as
+ * `12 M 2023`. An unrecognised token is passed through verbatim, so that class of failure is silent
+ * by construction: the only defence is that the grammar the docblock advertises and the grammar the
+ * regex implements are the same set.
  *
  * Deliberately not `Intl.DateTimeFormat`: the callers expose an explicit `dateFormat` prop, so the
  * order of the fields is the caller's decision rather than the runtime locale's, and two pickers on
@@ -50,12 +146,18 @@ export function formatDatePattern(d: Date, format: string): string {
 	const map: Record<string, string> = {
 		yyyy: String(d.getFullYear()),
 		yy: pad2(d.getFullYear() % 100),
+		MM: MONTH_NAMES[d.getMonth()],
+		M: MONTH_NAMES[d.getMonth()].slice(0, 3),
 		mm: pad2(d.getMonth() + 1),
 		m: String(d.getMonth() + 1),
+		DD: WEEKDAY_NAMES[d.getDay()],
+		D: WEEKDAY_NAMES[d.getDay()].slice(0, 3),
 		dd: pad2(d.getDate()),
 		d: String(d.getDate()),
 	};
-	return format.replace(/yyyy|yy|mm|m|dd|d/g, (t) => map[t] ?? t);
+	// Longest-first within each letter (`yyyy` before `yy`, `MM` before `M`), or the shorter token
+	// matches first and the remaining character falls through to the literal branch.
+	return format.replace(/yyyy|yy|MM|M|mm|m|DD|D|dd|d/g, (t) => map[t] ?? t);
 }
 
 /**
@@ -66,8 +168,12 @@ export function formatDatePattern(d: Date, format: string): string {
  * previous day for anything before the offset, which is the classic "my booking moved" bug.
  */
 export function toLocalIsoMinute(d: Date): string {
-	const date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-	return `${date}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+	return `${toLocalIsoDate(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** The wire form a date is submitted in: `YYYY-MM-DD` in LOCAL fields, for the same reason. */
+export function toLocalIsoDate(d: Date): string {
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 /**
