@@ -51,6 +51,51 @@ export function filesDb(actor: ReadActor & { accessToken: string }): SupabaseCli
 
 // #endregion
 
+// #region Addresses
+/**
+ * A canonical uuid, as `projects.projects.id` stores one.
+ *
+ * Declared once here and re-exported rather than re-declared: six modules in this directory each
+ * carried a private copy of the identical literal, so a project addressed by uuid resolved or did not
+ * depending on which read happened to serve it.
+ */
+export const PROJECT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve a `/projects/[projectId]` path segment, which may be either address.
+ *
+ * The route tree addresses an engagement by SLUG, and that is what every link in the product carries.
+ * But `create` returns a durable `id` alongside it, a slug can be rewritten and a uuid cannot, and
+ * five of this directory's resolvers already accepted both while two accepted only a slug — so the
+ * same identifier resolved on `/files` and 404'd on the sidebar beside it.
+ *
+ * Slug FIRST, uuid second, and only when the segment could be one: a slug is what the routes carry,
+ * so the common case costs one query, and a segment that is not uuid-shaped can never match an id
+ * column — asking anyway would be a guaranteed-empty round trip on every miss.
+ *
+ * Throws on a genuine query failure and returns `null` for an address that matches nothing this
+ * viewer may see. The two are deliberately distinguishable: a caller must be able to tell an outage
+ * from a 404.
+ */
+export async function resolveProjectRef<T>(
+	db: SupabaseClient,
+	columns: string,
+	projectId: string,
+): Promise<T | null> {
+	const bySlug = await db.from("projects").select(columns).eq("slug", projectId).maybeSingle();
+	if (bySlug.error) {
+		throw new Error(`projects.projects slug read failed: ${bySlug.error.message}`);
+	}
+	if (bySlug.data) return bySlug.data as unknown as T;
+
+	if (!PROJECT_UUID_RE.test(projectId)) return null;
+
+	const byId = await db.from("projects").select(columns).eq("id", projectId).maybeSingle();
+	if (byId.error) throw new Error(`projects.projects id read failed: ${byId.error.message}`);
+	return byId.data ? byId.data as unknown as T : null;
+}
+// #endregion
+
 // #region Text
 
 /**

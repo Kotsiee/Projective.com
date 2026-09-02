@@ -21,6 +21,7 @@ import {
 	archiveProjectRow,
 	commitTicketRow,
 	fetchProjectSetup,
+	insertProject,
 	insertProjectMessage,
 	insertSubmission,
 	moveTicketRow,
@@ -35,19 +36,24 @@ import {
 	buildStubCard,
 	buildStubMessage,
 	buildStubSubmissionUnit,
+	createdDetail,
+	createdSetup,
+	createdSummary,
+	isStoredArchived,
+	isStoredCreated,
 	mergeSetupPatch,
 	mintTicketId,
 	movedStubCard,
-	isStoredArchived,
 	overlayBoardPage,
-	overlayFeed,
-	overlayOverview,
 	overlayDetail,
+	overlayFeed,
 	overlayMessagePage,
+	overlayOverview,
 	overlaySetup,
-	overlaySummary,
 	overlaySubmissionPage,
+	overlaySummary,
 	putTicketCard,
+	recordCreatedProject,
 	recordProjectArchive,
 	sentMessageCount,
 	setupPatchFrom,
@@ -82,7 +88,7 @@ import type {
 	InstantiateServiceInput,
 	PipelineDraft,
 } from "@projective/types/services";
-import { reconcileSetup } from "@projective/types/projects";
+import { createFormatToColumns, projectSlugFrom, reconcileSetup } from "@projective/types/projects";
 import type {
 	ArchiveProject,
 	BoardCard,
@@ -90,6 +96,7 @@ import type {
 	BoardPage,
 	ChatMessage,
 	CommitTicket,
+	CreatedProject,
 	CreateProject,
 	CreateSubmission,
 	FileListPage,
@@ -238,6 +245,33 @@ function invalidateProjects(actor: ReadActor): void {
  * simulated persona never reaches the server and a capability bounce would fire on it
  * (Decision #53(b)).
  */
+/**
+ * A slug no engagement this viewer has already drafted is using.
+ *
+ * The stub needs the collision discipline the database gets from its unique index: without it, two
+ * projects named the same thing map to one key, and creating the second silently replaces the first —
+ * which reads, from the feed, as the create having renamed something rather than added anything.
+ *
+ * The suffix is a counter rather than random, because the stub store is per-process and a stable
+ * second address is easier to reason about than a fresh one on every attempt.
+ */
+function uniqueStubSlug(base: string, actor: ReadActor): string {
+	// Taken by ANY project the reads can resolve, not just one this viewer drafted. The fixture corpus
+	// is the other half: `createdSetup` is consulted BEFORE `findProjectSetup`, so a draft that landed
+	// on a fixture's slug would not collide — it would SHADOW it, replacing a fully populated
+	// engagement with a blank draft at the same address. Titling a new project "Monarch Design System"
+	// did exactly that.
+	const taken = (slug: string) => isStoredCreated(slug, actor) || findProjectSetup(slug) !== null;
+
+	const seed = base || `p-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+	if (!taken(seed)) return seed;
+	for (let n = 2; n < 100; n++) {
+		const candidate = `${seed}-${n}`;
+		if (!taken(candidate)) return candidate;
+	}
+	return `${seed}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
 function requireIdentity<T>(actor: ReadActor, action: string): ServiceResult<T> | null {
 	if (actor.userId.length > 0) return null;
 	return fail<T>(401, { message: `Sign in to ${action}.` });
@@ -374,6 +408,9 @@ export class ProjectBackendService {
 				liveFailed("item", error);
 			}
 		}
+		const drafted = createdSummary(slug, actor);
+		if (drafted) return ok({ item: drafted });
+
 		const found = findProject(slug);
 		if (!found) return fail(404, { message: `No project found for slug "${slug}".` });
 		// The same overlay the feed takes. Without it a rename made on the setup surface was visible
@@ -415,6 +452,13 @@ export class ProjectBackendService {
 			if (!live) return fail(404, { message: `No project found for slug "${slug}".` });
 			return ok({ detail: live });
 		}
+		// A project this viewer DRAFTED has no fixture underneath it. Asked first, because this is the
+		// read the `/projects/[projectId]` role dispatcher branches on: a null detail defaults
+		// `viewerIsClient` to false and sends the creator to the member dashboard, which then renders
+		// "Project not found" over a project that was created perfectly well.
+		const created = createdDetail(slug, actor);
+		if (created) return ok({ detail: created });
+
 		const detail = findProjectDetail(slug);
 		if (!detail) {
 			return fail(404, { message: `No project found for slug "${slug}".` });
@@ -653,6 +697,13 @@ export class ProjectBackendService {
 			if (!live) return noSuchProject(slug);
 			return ok({ setup: live });
 		}
+		// An engagement this viewer DRAFTED has no fixture underneath it, so the store is asked first.
+		// Without this the stub create persists and the read cannot see it — which is the same "Project
+		// not found" over a project that was created perfectly well that the live path exists to fix,
+		// reproduced one layer up and in the mode that ships by default.
+		const created = createdSetup(slug, actor);
+		if (created) return ok({ setup: created });
+
 		const setup = findProjectSetup(slug);
 		if (!setup) return noSuchProject(slug);
 		return ok({ setup: overlaySetup(setup, actor) });
@@ -1010,20 +1061,81 @@ export class ProjectBackendService {
 	}
 
 	/**
-	 * Create a new engagement. STUB: validation + shaping is real, but persistence is deferred to the
-	 * live path (the `fn_create_project` RPC + escrow wiring). Returns the slug the client routes to.
+	 * Create a new engagement, and return the two identifiers it can be addressed by.
+	 *
+	 * `slug` is what the client navigates to — every `/projects/*` route resolves an engagement by
+	 * slug — and `id` is the primary key, the only thing a later write may safely reference. Both are
+	 * returned because a caller given one would have to read the row back for the other.
+	 *
+	 * The slug is NOT the title slugified and hoped for. It is whatever the database settled on, which
+	 * may carry a disambiguating suffix (two people can name a project the same thing) or be the
+	 * generated `p-<hex>` form (a title with no Latin characters slugifies to nothing). Returning the
+	 * client's guess instead was the original defect: it navigated to an address that did not exist.
+	 *
+	 * A created engagement is always a `draft`, and always `unlisted`. Neither is read from the
+	 * payload — see `projects.create_project`.
 	 */
-	static create(input: CreateProject): ServiceResult<{ slug: string }> {
-		const slug = input.title
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-+|-+$/g, "")
-			.slice(0, 80) || "untitled-project";
-		if (!isProjectsBackendLive()) {
-			return ok({ slug }, { status: 201, message: "Project drafted." });
-		}
-		// LIVE: insert via the RLS-scoped `projects.create_project` RPC (not yet implemented).
-		return ok({ slug }, { status: 201, message: "Project drafted." });
+	static async create(
+		input: CreateProject,
+		actor: ReadActor,
+	): Promise<ServiceResult<CreatedProject>> {
+		const denied = requireIdentity<CreatedProject>(actor, "create a project");
+		if (denied) return denied;
+
+		const live = await liveWrite<CreatedProject>(
+			"create",
+			actor,
+			input.title,
+			"Project drafted.",
+			(a) => insertProject(a, input),
+			"workspace",
+		);
+		if (live) return { ...live, status: live.ok ? 201 : live.status };
+
+		// STUB. It persists, and that is not decoration: stub mode is the default, and a create that
+		// returns a slug the next request cannot resolve reproduces the exact 404 the live path exists
+		// to fix. `reconcileSetup` builds the projection so a drafted engagement measures its own
+		// completeness with the same function that measures a live one's.
+		const owner = writeOwnerOf(actor);
+		const id = crypto.randomUUID();
+		const { format, structure } = createFormatToColumns(input.format);
+		const slug = uniqueStubSlug(projectSlugFrom(input.title), actor);
+		const setup = reconcileSetup({
+			slug,
+			title: input.title,
+			format,
+			structure,
+			sessionKind: "none",
+			status: "draft",
+			archivedAt: null,
+			description: input.scope,
+			budget: input.budget
+				? {
+					budgetType: input.budget.budgetType,
+					amountCents: input.budget.amountCents,
+					currency: input.budget.currency,
+				}
+				: undefined,
+			stages: input.stages.map((stage, index) => ({
+				id: `stage-${index + 1}`,
+				name: stage.name,
+				order: index,
+				description: stage.description,
+				unitPriceCents: stage.unitPriceCents,
+				milestone: stage.milestone,
+				skills: [],
+			})),
+			roles: input.roles.map((role, index) => ({
+				id: `role-${index + 1}`,
+				name: role.name,
+				skills: role.skills,
+				budgetCents: null,
+			})),
+			viewerIsClient: true,
+		});
+		recordCreatedProject(owner, id, setup, Date.now());
+		invalidateProjects(actor);
+		return ok({ id, slug }, { status: 201, message: "Project drafted." });
 	}
 
 	/**

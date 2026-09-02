@@ -3,30 +3,92 @@
 -- Consolidated verbatim from: 0101_create_project.sql, 0103_get_dashboard_projects.sql, 0104_get_dashboard_stage_details.sql, 0105_has_project_access.sql, 0114_update_entity_project_counts.sql, 0116_project_details_deadline_bonuses.sql, 0118_project_roster.sql, 0119_project_lifecycle.sql, 0122_project_card_summary.sql, 0308_stage_workspace_access.sql, 0311_e7_private_channels_pii_handover.sql
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION projects.create_project(payload jsonb)
-RETURNS uuid
+-- ---------------------------------------------------------------------------------------------
+-- projects.create_project(payload jsonb) -> jsonb {id, slug}
+--
+-- The one atomic write behind POST /api/projects/create. Everything a new engagement needs -- the
+-- row, its owning workspace, its stages, their staffing roles, the participant record and the
+-- readable address -- lands in ONE transaction, because a project with stages and no participant, or
+-- an address nothing can resolve, is a half-created engagement the client has already navigated to.
+--
+-- WHY AN RPC AND NOT FOUR TABLE WRITES. PostgREST gives the application one statement per call, so a
+-- TypeScript create would be four round trips with no transaction around them and no way to undo the
+-- first three when the fourth is refused. It also runs `projects.update_entity_project_counts`, an
+-- AFTER INSERT trigger that is SECURITY INVOKER and writes `org.users_public` -- a table the caller
+-- has no business updating directly. Running the insert inside a DEFINER function puts that trigger
+-- in the definer's context, where it belongs.
+--
+-- WHAT DEFINER OBLIGES. Bypassing RLS means every ownership claim in the payload has to be checked
+-- HERE or not at all. `owner_user_id` is never read from the payload -- it is always `auth.uid()` --
+-- and each of the three workspace columns is verified against active membership below. A caller may
+-- file a project under a workspace they belong to and under no other.
+--
+-- RETURNS jsonb rather than the uuid it used to, because the caller needs the SLUG in the same
+-- breath: every /projects route addresses an engagement by slug, so returning only the id would force
+-- a second read to find out where the client should navigate. The return type change requires
+-- DROP + CREATE (Postgres will not replace a function's return type), which is safe here -- the old
+-- signature had no caller in the application.
+-- ---------------------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS projects.create_project (jsonb);
+
+CREATE FUNCTION projects.create_project (payload jsonb)
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, projects, auth
+SET search_path = public, projects, org, comms, auth
 AS $$
 DECLARE
     v_project_id uuid;
     v_owner_id uuid;
     v_business_id uuid;
+    v_team_id uuid;
+    v_org_id uuid;
+    v_scope_count integer;
+    v_title text;
+    v_slug text;
+    v_slug_base text;
+    v_attempt integer := 0;
+    v_constraint text;
     v_stage jsonb;
+    v_role jsonb;
+    v_stage_id uuid;
+    v_stage_name text;
+    v_first_stage_id uuid;
+    v_sort integer := 0;
     v_attachment_id text;
 BEGIN
-    -- 1. Identity Verification
+    -- 1. Identity. Never taken from the payload: the whole point of a DEFINER function is that the
+    -- caller cannot name themselves.
     v_owner_id := auth.uid();
     IF v_owner_id IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
+        RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
     END IF;
 
-    v_project_id := (payload->>'id')::uuid;
+    -- An explicit id is honoured so a caller can be idempotent against its own retry; otherwise one
+    -- is generated. Previously this was a bare cast, so a payload without an id inserted NULL into a
+    -- NOT NULL column -- the DEFAULT never applied, because an explicit NULL is not an absent value.
+    v_project_id := COALESCE(NULLIF(payload->>'id', '')::uuid, gen_random_uuid());
 
-    -- Resolve the acting organisation context. A project may be owned personally
-    -- (client_business_id NULL) or by a business the caller is an active member of.
+    v_title := NULLIF(btrim(COALESCE(payload->>'title', '')), '');
+    IF v_title IS NULL THEN
+        RAISE EXCEPTION 'Name your project.' USING ERRCODE = '23514';
+    END IF;
+
+    -- 2. The owning workspace. Personal scope is the ABSENCE of all three columns, so nothing is
+    -- written for it. Each of the other three is checked against ACTIVE membership: this function
+    -- bypasses RLS, so an unchecked id here would let any signed-in caller file a project under
+    -- somebody else's team.
     v_business_id := NULLIF(payload->>'client_business_id', '')::uuid;
+    v_team_id     := NULLIF(payload->>'owner_team_id', '')::uuid;
+    v_org_id      := NULLIF(payload->>'owner_organisation_id', '')::uuid;
+
+    v_scope_count := (v_business_id IS NOT NULL)::int
+                   + (v_team_id IS NOT NULL)::int
+                   + (v_org_id IS NOT NULL)::int;
+    IF v_scope_count > 1 THEN
+        RAISE EXCEPTION 'A project belongs to one workspace.' USING ERRCODE = '23514';
+    END IF;
+
     IF v_business_id IS NOT NULL THEN
         IF NOT EXISTS (
             SELECT 1 FROM org.business_members bm
@@ -38,107 +100,165 @@ BEGIN
         END IF;
     END IF;
 
-    -- 2. Insert into core projects relation. The AFTER-INSERT triggers on
-    -- projects.projects (search sync + entity project counts) are correct and must
-    -- run here; they are intentionally NOT suppressed.
-    INSERT INTO projects.projects (
-        id,
-        owner_user_id,
-        client_business_id,
-        title,
-        description,
-        description_text,
-        format,
-        industry_category_id,
-        visibility,
-        currency,
-        timeline_preset,
-        target_project_start_date,
-        ip_ownership_mode,
-        nda_required,
-        portfolio_display_rights,
-        location_restriction,
-        language_requirement,
-        screening_questions
-    ) VALUES (
-        v_project_id,
-        v_owner_id,
-        v_business_id,
-        payload->>'title',
-        COALESCE(payload->'description', '{}'::jsonb),
-        COALESCE(payload->>'description_text', ''),
-        COALESCE((payload->>'format')::project_format, 'pipeline'::project_format),
-        NULLIF(payload->>'industry_category_id', '')::uuid,
-        COALESCE((payload->>'visibility')::visibility, 'public'::visibility),
-        COALESCE(payload->>'currency', 'USD'),
-        COALESCE((payload->>'timeline_preset')::timeline_preset, 'sequential'::timeline_preset),
-        (payload->>'target_project_start_date')::timestamptz,
-        COALESCE((payload->>'ip_ownership_mode')::ip_option_mode, 'exclusive_transfer'::ip_option_mode),
-        COALESCE((payload->>'nda_required')::boolean, false),
-        COALESCE((payload->>'portfolio_display_rights')::portfolio_rights, 'allowed'::portfolio_rights),
-        COALESCE(ARRAY(SELECT jsonb_array_elements_text(payload->'location_restriction')), '{}'::text[]),
-        COALESCE(ARRAY(SELECT jsonb_array_elements_text(payload->'language_requirement')), '{}'::text[]),
-        COALESCE(payload->'screening_questions', '[]'::jsonb)
-    );
+    IF v_team_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM org.team_members tm
+            WHERE tm.team_id = v_team_id
+              AND tm.user_id = v_owner_id
+              AND tm.status = 'active'
+        ) THEN
+            RAISE EXCEPTION 'You are not an active member of this team' USING ERRCODE = '42501';
+        END IF;
+    END IF;
 
-    -- 3. Insert nested stages. Persist the per-stage IP override (AC4) and the
-    -- timeline-sequencing fields (AC5) so the CREATE-framework builder round-trips.
-    -- Stage rows are inserted first with their (optional) client-supplied ids, then a
-    -- second pass wires start_dependency_stage_id so intra-batch references resolve
-    -- regardless of stage order.
+    IF v_org_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM org.organisation_members om
+            WHERE om.organisation_id = v_org_id
+              AND om.user_id = v_owner_id
+              AND om.status = 'active'
+        ) THEN
+            RAISE EXCEPTION 'You are not an active member of this organisation' USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    -- 3. The address. The application sends a title-derived slug; this normalises it to the column's
+    -- CHECK shape and falls back to the generated form when a title has nothing usable in it (all
+    -- punctuation, or a non-Latin script) rather than inventing prose the author did not write.
+    v_slug_base := COALESCE(NULLIF(payload->>'slug', ''), lower(v_title));
+    v_slug_base := regexp_replace(lower(v_slug_base), '[^a-z0-9]+', '-', 'g');
+    v_slug_base := btrim(v_slug_base, '-');
+    v_slug_base := left(v_slug_base, 80);
+    v_slug_base := btrim(v_slug_base, '-');
+    IF v_slug_base = '' THEN
+        v_slug_base := 'p-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
+    END IF;
+    v_slug := v_slug_base;
+
+    -- 4. Insert, retrying on a slug collision.
+    --
+    -- The retry is on the CONSTRAINT, not on a prior SELECT: two callers naming a project the same
+    -- thing in the same instant both see the slug free, and only the unique index resolves that.
+    -- Bounded so a genuinely unrecoverable conflict surfaces as an error instead of spinning.
+    --
+    -- The AFTER-INSERT triggers on projects.projects (search sync + entity project counts) are
+    -- correct and must run here; they are intentionally NOT suppressed.
+    LOOP
+        BEGIN
+            INSERT INTO projects.projects (
+                id, owner_user_id, client_business_id, owner_team_id, owner_organisation_id,
+                title, slug, description, description_text,
+                format, structure_variation, session_kind, status,
+                budget_type, budget_amount_cents,
+                industry_category_id, visibility, currency,
+                timeline_preset, target_project_start_date,
+                ip_ownership_mode, nda_required, portfolio_display_rights,
+                location_restriction, language_requirement, screening_questions
+            ) VALUES (
+                v_project_id, v_owner_id, v_business_id, v_team_id, v_org_id,
+                v_title, v_slug,
+                COALESCE(payload->'description', '{}'::jsonb),
+                COALESCE(payload->>'description_text', ''),
+                COALESCE((payload->>'format')::project_format, 'pipeline'::project_format),
+                COALESCE(
+                    (payload->>'structure_variation')::projects.structure_variation,
+                    'standard'::projects.structure_variation
+                ),
+                COALESCE(NULLIF(payload->>'session_kind', ''), 'none'),
+                -- A new engagement is always a draft. Not from the payload: `status` gates the public
+                -- footprint trigger and the escrow lifecycle, and neither should be reachable by a
+                -- create call that has collected nothing yet.
+                'draft'::project_status,
+                COALESCE((payload->>'budget_type')::budget_type, 'fixed_price'::budget_type),
+                NULLIF(payload->>'budget_amount_cents', '')::bigint,
+                NULLIF(payload->>'industry_category_id', '')::uuid,
+                -- Unlisted, and NOT from the payload -- for the same reason `status` is not. Visibility
+                -- is a publication decision, the create modal collects none, and this function is
+                -- EXECUTE-granted to `authenticated`, so anything it reads out of the payload is
+                -- reachable directly over PostgREST. A caller was able to publish a project in the act
+                -- of naming it; now publishing is a later, deliberate write that goes through the
+                -- setup path and its footprint cap.
+                'unlisted'::visibility,
+                COALESCE(NULLIF(payload->>'currency', ''), 'USD'),
+                COALESCE((payload->>'timeline_preset')::timeline_preset, 'sequential'::timeline_preset),
+                NULLIF(payload->>'target_project_start_date', '')::timestamptz,
+                COALESCE((payload->>'ip_ownership_mode')::ip_option_mode, 'exclusive_transfer'::ip_option_mode),
+                COALESCE((payload->>'nda_required')::boolean, false),
+                COALESCE((payload->>'portfolio_display_rights')::portfolio_rights, 'allowed'::portfolio_rights),
+                COALESCE(ARRAY(SELECT jsonb_array_elements_text(payload->'location_restriction')), '{}'::text[]),
+                COALESCE(ARRAY(SELECT jsonb_array_elements_text(payload->'language_requirement')), '{}'::text[]),
+                COALESCE(payload->'screening_questions', '[]'::jsonb)
+            );
+            EXIT;
+        EXCEPTION WHEN unique_violation THEN
+            -- ONLY the slug's constraint. `projects.projects` has two unique indexes, and a caller who
+            -- supplies an `id` that is already taken trips the PRIMARY KEY -- which a bare handler
+            -- caught, retried five times with fresh slugs against the same doomed id, and then reported
+            -- as "Could not find a free address". The address was never the problem, and the caller was
+            -- told to fix the one thing that was fine.
+            GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+            IF v_constraint IS DISTINCT FROM 'projects_slug_key' THEN
+                RAISE;
+            END IF;
+
+            v_attempt := v_attempt + 1;
+            IF v_attempt > 5 THEN
+                RAISE EXCEPTION 'Could not find a free address for this project.' USING ERRCODE = '23505';
+            END IF;
+            -- Re-truncate the base so base + suffix always fits the column's 96-character CHECK.
+            v_slug := left(v_slug_base, 80) || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
+        END;
+    END LOOP;
+
+    -- 5. Stages, in payload order. `sort_order` is assigned here rather than trusted from the payload:
+    -- it is the execution sequence, and a client that omitted it or repeated a value would produce a
+    -- pipeline whose order depends on how the rows happen to come back.
     IF payload ? 'stages' AND jsonb_typeof(payload->'stages') = 'array' THEN
         FOR v_stage IN SELECT * FROM jsonb_array_elements(payload->'stages')
         LOOP
+            v_stage_id := COALESCE(NULLIF(v_stage->>'id', '')::uuid, gen_random_uuid());
+            -- Resolved ONCE so the stage row and its channel are given the same name. Computing it
+            -- twice is how one thing comes to be called two things in the two places a reader looks.
+            v_stage_name := COALESCE(
+                NULLIF(btrim(COALESCE(v_stage->>'name', v_stage->>'title', '')), ''),
+                'Untitled stage'
+            );
             INSERT INTO projects.project_stages (
-                id,
-                project_id,
-                name,
-                description,
-                description_text,
-                sort_order,
-                file_upload_required,
-                default_tasks,
-                skills,
-                start_trigger_type,
-                fixed_start_date,
-                start_dependency_lag_days,
-                hire_trigger_active,
-                file_revisions_allowed,
-                file_duration_mode,
-                file_duration_days,
-                file_due_date,
-                session_duration_minutes,
-                session_count,
-                session_preferred_days,
-                session_end_date,
-                ip_ownership_override,
-                ip_mode
+                id, project_id, name, description, description_text, sort_order,
+                unit_price_cents, milestone,
+                file_upload_required, default_tasks, skills,
+                start_trigger_type, fixed_start_date, start_dependency_lag_days, hire_trigger_active,
+                file_revisions_allowed, file_duration_mode, file_duration_days, file_due_date,
+                session_duration_minutes, session_count, session_preferred_days, session_end_date,
+                ip_ownership_override, ip_mode
             ) VALUES (
-                COALESCE(NULLIF(v_stage->>'id', '')::uuid, gen_random_uuid()),
+                v_stage_id,
                 v_project_id,
-                COALESCE(v_stage->>'name', v_stage->>'title'),
+                v_stage_name,
                 COALESCE(v_stage->'description', '{}'::jsonb),
                 COALESCE(v_stage->>'description_text', ''),
-                COALESCE((v_stage->>'sort_order')::integer, 0),
+                v_sort,
+                NULLIF(v_stage->>'unit_price_cents', '')::bigint,
+                COALESCE(v_stage->>'milestone', ''),
                 COALESCE((v_stage->>'file_upload_required')::boolean, false),
                 COALESCE(v_stage->'default_tasks', '[]'::jsonb),
                 COALESCE(ARRAY(SELECT jsonb_array_elements_text(v_stage->'skills')), '{}'::text[]),
                 COALESCE((v_stage->>'start_trigger_type')::start_trigger_type, 'on_project_start'::start_trigger_type),
-                (v_stage->>'fixed_start_date')::timestamptz,
-                COALESCE((v_stage->>'start_dependency_lag_days')::integer, 0),
+                NULLIF(v_stage->>'fixed_start_date', '')::timestamptz,
+                COALESCE(NULLIF(v_stage->>'start_dependency_lag_days', '')::integer, 0),
                 COALESCE((v_stage->>'hire_trigger_active')::boolean, true),
-                COALESCE((v_stage->>'file_revisions_allowed')::integer, 0),
+                COALESCE(NULLIF(v_stage->>'file_revisions_allowed', '')::integer, 0),
                 v_stage->>'file_duration_mode',
-                (v_stage->>'file_duration_days')::integer,
-                (v_stage->>'file_due_date')::timestamptz,
-                (v_stage->>'session_duration_minutes')::integer,
-                COALESCE((v_stage->>'session_count')::integer, 1),
+                NULLIF(v_stage->>'file_duration_days', '')::integer,
+                NULLIF(v_stage->>'file_due_date', '')::timestamptz,
+                NULLIF(v_stage->>'session_duration_minutes', '')::integer,
+                COALESCE(NULLIF(v_stage->>'session_count', '')::integer, 1),
                 CASE
                     WHEN v_stage ? 'session_preferred_days'
                     THEN ARRAY(SELECT jsonb_array_elements_text(v_stage->'session_preferred_days'))
                     ELSE NULL
                 END,
-                (v_stage->>'session_end_date')::timestamptz,
+                NULLIF(v_stage->>'session_end_date', '')::timestamptz,
                 NULLIF(v_stage->>'ip_ownership_override', '')::ip_option_mode,
                 COALESCE(
                     NULLIF(v_stage->>'ip_mode', '')::ip_option_mode,
@@ -146,6 +266,19 @@ BEGIN
                     'exclusive_transfer'::ip_option_mode
                 )
             );
+            -- Open the stage's General room in the same transaction.
+            --
+            -- Not a nicety: `comms.get_stage_channels` provisions rooms LAZILY on first open and the
+            -- channel tree is built from the channels that already exist, so a stage created without
+            -- one is (in `projects.create_stage`'s own words) "a stage nobody can see or navigate to".
+            -- The setup form's own stage-adder provisions one; a stage that arrived with the project
+            -- must not be second-class for having been named earlier.
+            PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, v_stage_name);
+
+            IF v_first_stage_id IS NULL THEN
+                v_first_stage_id := v_stage_id;
+            END IF;
+            v_sort := v_sort + 1;
         END LOOP;
 
         -- Second pass: resolve sequential dependencies now that every stage row exists.
@@ -161,23 +294,72 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- 4. Insert Global Attachments
-    IF payload ? 'global_attachments' AND jsonb_typeof(payload->'global_attachments') = 'array' THEN
-        FOR v_attachment_id IN SELECT * FROM jsonb_array_elements_text(payload->'global_attachments')
+    -- 6. Staffing roles.
+    --
+    -- `stage_staffing_roles` hangs off a STAGE, not a project, so a Direct Deliverable -- which the
+    -- client composes as roles and no stages -- needs somewhere for them to live. One is opened here
+    -- rather than refusing, because the alternative is a create that succeeds and silently discards
+    -- what the client typed. `reconcileRoles` does exactly this on the setup path, so the two agree.
+    IF payload ? 'roles' AND jsonb_typeof(payload->'roles') = 'array'
+       AND jsonb_array_length(payload->'roles') > 0 THEN
+        IF v_first_stage_id IS NULL THEN
+            v_stage_id := gen_random_uuid();
+            INSERT INTO projects.project_stages (id, project_id, name, sort_order)
+            VALUES (v_stage_id, v_project_id, 'Delivery', 0);
+            PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, 'Delivery');
+            v_first_stage_id := v_stage_id;
+        END IF;
+
+        FOR v_role IN SELECT * FROM jsonb_array_elements(payload->'roles')
         LOOP
-            INSERT INTO projects.project_attachments (
-                project_id,
-                attachment_id
+            INSERT INTO projects.stage_staffing_roles (
+                project_stage_id, role_title, quantity, budget_type, budget_amount_cents, skills
             ) VALUES (
-                v_project_id,
-                v_attachment_id::uuid
+                v_first_stage_id,
+                COALESCE(NULLIF(btrim(COALESCE(v_role->>'name', v_role->>'role_title', '')), ''), 'Untitled role'),
+                COALESCE((v_role->>'quantity')::integer, 1),
+                COALESCE((v_role->>'budget_type')::budget_type, 'fixed_price'::budget_type),
+                -- NULL, not zero: the create modal collects no budget, and zero would state that the
+                -- seat is free.
+                NULLIF(v_role->>'budget_amount_cents', '')::bigint,
+                COALESCE(ARRAY(SELECT jsonb_array_elements_text(v_role->'skills')), '{}'::text[])
             );
         END LOOP;
     END IF;
 
-    RETURN v_project_id;
+    -- 7. The participant record.
+    --
+    -- Written ONLY for a business-owned project, and that restraint is the point. `profile_type` is
+    -- ('freelancer','business') -- it has no member for an individual buyer -- and
+    -- `projects.has_project_access` resolves a personal owner through `owner_user_id` in its first
+    -- branch, so a personal project needs no participant row to be reachable. Writing one as
+    -- 'freelancer' would be a false claim about who the creator is, and it would match nothing:
+    -- that branch joins `org.freelancer_profiles`, which a client has no row in.
+    IF v_business_id IS NOT NULL THEN
+        INSERT INTO projects.project_participants (project_id, profile_type, profile_id, role)
+        VALUES (v_project_id, 'business', v_business_id, 'owner');
+    END IF;
+
+    -- 8. Global attachments.
+    IF payload ? 'global_attachments' AND jsonb_typeof(payload->'global_attachments') = 'array' THEN
+        FOR v_attachment_id IN SELECT * FROM jsonb_array_elements_text(payload->'global_attachments')
+        LOOP
+            INSERT INTO projects.project_attachments (project_id, attachment_id)
+            VALUES (v_project_id, v_attachment_id::uuid);
+        END LOOP;
+    END IF;
+
+    RETURN jsonb_build_object('id', v_project_id, 'slug', v_slug);
 END;
 $$;
+
+COMMENT ON FUNCTION projects.create_project (jsonb) IS
+'Creates one engagement and everything it arrives with -- stages, staffing roles, the participant record and a readable unique slug -- in a single transaction, owned by auth.uid() and always at status draft. Returns jsonb {id, slug}.';
+
+REVOKE ALL ON FUNCTION projects.create_project (jsonb) FROM PUBLIC;
+
+GRANT
+EXECUTE ON FUNCTION projects.create_project (jsonb) TO authenticated;
 
 CREATE OR REPLACE FUNCTION projects.get_dashboard_projects(
   p_category text,

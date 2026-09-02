@@ -17,6 +17,54 @@ The four `SECURITY DEFINER` helpers every policy and RPC in this domain leans on
 
 ---
 
+## Creation
+
+### `projects.create_project(payload jsonb) → jsonb {id, slug}`
+
+The one atomic write behind `POST /api/projects/create`. Inserts the project row, its stages, their
+staffing roles, the participant record and a readable unique slug in a single transaction.
+
+**Why an RPC rather than four table writes.** PostgREST gives the application one statement per
+round trip and no transaction around them, so a TypeScript create would be four calls with no way to
+undo the first three when the fourth is refused — leaving an engagement the client has already
+navigated to holding half of what they typed. It also runs `projects.update_entity_project_counts`,
+an `AFTER INSERT` trigger that is `SECURITY INVOKER` and writes `org.users_public`; inside a
+`SECURITY DEFINER` function that bookkeeping runs in the definer's context, where it belongs.
+
+**What DEFINER obliges.** Bypassing RLS means every ownership claim in the payload is checked here or
+not at all:
+
+| Field | Source | Note |
+| :--- | :--- | :--- |
+| `owner_user_id` | `auth.uid()` | **Never** from the payload. |
+| `status` | hardcoded `draft` | Not from the payload — it gates the public-footprint trigger and the escrow lifecycle. |
+| `visibility` | hardcoded `unlisted` | Not from the payload — publishing is a later, deliberate write. |
+| `client_business_id` / `owner_team_id` / `owner_organisation_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. |
+
+**The slug.** `payload.slug` (or the title) is normalised to the column's `^[a-z0-9-]{1,96}$` CHECK,
+truncated to 80 characters, and falls back to the generated `p-<12 hex>` form when a title has
+nothing usable in it. On `unique_violation` it appends a 6-hex disambiguator and retries, up to five
+times — the retry is on the CONSTRAINT rather than a prior `SELECT`, because two callers naming a
+project the same thing in the same instant both see the address free.
+
+**The participant row is written only for a business-scoped project**, as
+`('business', client_business_id, 'owner')`. `profile_type` is `('freelancer','business')` and has no
+member for an individual buyer, and `has_project_access` resolves a personal owner through
+`owner_user_id` in its first branch — so a personal project needs no participant row, and writing one
+as `freelancer` would be a false claim that also matches nothing (that branch joins
+`org.freelancer_profiles`).
+
+**Each stage's General room is opened in the same transaction**, matching `create_stage`.
+`comms.get_stage_channels` provisions rooms lazily on first open and the channel tree is built from
+rooms that already exist, so a stage created without one is a stage nobody can navigate to.
+
+Roles hang off a stage, not a project, so a payload with roles and no stages opens a single
+`Delivery` stage to carry them — a Direct Deliverable composes exactly that way.
+
+`EXECUTE` is granted to `authenticated` only.
+
+---
+
 ## Stages
 
 ### `projects.create_stage(p_project_id uuid, p_name text, p_description jsonb DEFAULT '{}', p_description_text text DEFAULT '', p_unit_price_cents bigint DEFAULT NULL) → uuid`

@@ -36,6 +36,7 @@ import {
 } from "../core/projects-state.ts";
 import type { ProjectFeedParams } from "../core/projects-state.ts";
 import type {
+	CreatedProject,
 	ProjectCreateFormat,
 	ProjectFeedPayload,
 	ProjectInvolvement,
@@ -329,11 +330,22 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		modalOpen.value = true;
 	}
 
-	/** A drafted engagement — close the modal and route to its new detail sidebar. */
-	function onCreated(slug: string): void {
+	/**
+	 * A drafted engagement — close the modal and route to it.
+	 *
+	 * The address is the SERVER's slug, never one derived here: the database may have appended a
+	 * disambiguator or fallen back to a generated form, and navigating to a locally guessed slug is
+	 * what used to land the creator on "Project not found" over a project that had been created
+	 * perfectly well.
+	 *
+	 * A full document load rather than a client transition, deliberately: the whole shell re-resolves
+	 * — lane, header band, footer band and body are four independent reads — and the row is committed
+	 * before this callback runs, so there is nothing to wait for.
+	 */
+	function onCreated(created: CreatedProject): void {
 		modalOpen.value = false;
 		try {
-			globalThis.location.assign(`/projects/${slug}`);
+			globalThis.location.assign(`/projects/${created.slug}`);
 		} catch { /* no-op */ }
 	}
 

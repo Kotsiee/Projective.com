@@ -118,6 +118,22 @@ interface OwnerBucket {
 	messages: Map<string, ChatMessage[]>;
 	/** Created submission units, keyed by project id, newest first. */
 	submissions: Map<string, StoredSubmission[]>;
+	/** Engagements this viewer created in stub mode, keyed by slug, newest first. */
+	created: Map<string, StoredProject>;
+}
+
+/**
+ * An engagement created through the stub path.
+ *
+ * The whole record rather than a patch: there is no fixture underneath it to fold over. Stored as a
+ * {@link ProjectSetup} because that is the projection the owner's own surface reads, and because
+ * `reconcileSetup` derives the ladder, the percentage and the gate from it — so a project drafted here
+ * measures its own completeness by exactly the function that measures a live one's.
+ */
+interface StoredProject {
+	id: string;
+	setup: ProjectSetup;
+	createdAt: number;
 }
 
 const buckets = new Map<string, OwnerBucket>();
@@ -131,6 +147,7 @@ function bucketFor(owner: string): OwnerBucket {
 		cards: new Map(),
 		messages: new Map(),
 		submissions: new Map(),
+		created: new Map(),
 	};
 	buckets.set(owner, fresh);
 	return fresh;
@@ -301,6 +318,49 @@ export function submitStoredSubmission(
 	return updated;
 }
 
+// #region Created engagements
+/**
+ * Record an engagement drafted through the stub path.
+ *
+ * Stub mode is the default (`PROJECTS_BACKEND_LIVE` ships off), and without this the create modal
+ * returned a slug, navigated there, and rendered "Project not found" — the exact failure the live
+ * path exists to fix, reproduced one layer up. So the stub persists too, per-process and
+ * per-viewer, and the reads below fold it in.
+ */
+export function recordCreatedProject(
+	owner: string,
+	id: string,
+	setup: ProjectSetup,
+	createdAt: number,
+): void {
+	bucketFor(owner).created.set(setup.slug, { id, setup, createdAt });
+}
+
+/** An engagement this viewer drafted in stub mode, or `null`. */
+export function storedCreatedProject(slug: string, actor?: ReadActor): ProjectSetup | null {
+	return peekBucket(writeOwnerOf(actor))?.created.get(slug)?.setup ?? null;
+}
+
+/** Whether a slug names an engagement this viewer drafted in stub mode. */
+export function isStoredCreated(slug: string, actor?: ReadActor): boolean {
+	return peekBucket(writeOwnerOf(actor))?.created.has(slug) === true;
+}
+
+/**
+ * Every engagement this viewer drafted, newest first.
+ *
+ * Ordered here rather than at the call site so the feed and any other consumer agree on what "newest"
+ * means without each re-sorting a map's insertion order.
+ */
+export function storedCreatedProjects(actor?: ReadActor): { id: string; setup: ProjectSetup }[] {
+	const bucket = peekBucket(writeOwnerOf(actor));
+	if (!bucket) return [];
+	return [...bucket.created.values()]
+		.sort((a, b) => b.createdAt - a.createdAt)
+		.map(({ id, setup }) => ({ id, setup }));
+}
+// #endregion
+
 /** How many submissions this viewer has created in a project — the number a fresh unit takes. */
 export function submissionCount(owner: string, projectId: string): number {
 	return peekBucket(owner)?.submissions.get(projectId)?.length ?? 0;
@@ -315,13 +375,161 @@ export function submissionCount(owner: string, projectId: string): number {
  * owner reads after a save is computed by exactly the code that computed it before one.
  */
 export function overlaySetup(base: ProjectSetup, actor?: ReadActor): ProjectSetup {
-	const stored = peekBucket(writeOwnerOf(actor))?.setups.get(base.slug);
+	const bucket = peekBucket(writeOwnerOf(actor));
+	const stored = bucket?.setups.get(base.slug);
 	if (!stored) return base;
 	// The archive travels with the patch. It was recorded and then read by nothing, so archiving a
 	// project in stub mode returned "Project archived.", navigated the owner to the feed, and left it
 	// listed and editable — a soft delete nobody could see had happened.
 	return reconcileSetup(base, { ...stored.patch, archivedAt: stored.archivedAt });
 }
+
+/**
+ * The setup projection for an engagement that exists ONLY in the store.
+ *
+ * Returns `null` when the slug names nothing this viewer created, which is what lets a caller try the
+ * store first and fall through to the fixture corpus. Any later edits are folded on top, so a project
+ * drafted and then configured reads back as configured rather than as it was named.
+ */
+export function createdSetup(slug: string, actor?: ReadActor): ProjectSetup | null {
+	const owner = writeOwnerOf(actor);
+	const bucket = peekBucket(owner);
+	const record = bucket?.created.get(slug);
+	if (!record) return null;
+	const stored = bucket?.setups.get(slug);
+	if (!stored) return record.setup;
+	return reconcileSetup(record.setup, { ...stored.patch, archivedAt: stored.archivedAt });
+}
+
+/**
+ * The sidebar/dispatcher projection for an engagement that exists ONLY in the store.
+ *
+ * Needed because the ROLE DISPATCHER at `/projects/[projectId]` decides which of the two surfaces to
+ * render from `detail.viewerIsClient`, and a null detail defaults it to `false` — so without this a
+ * freshly drafted project sent its own creator to the MEMBER dashboard, which then rendered "Project
+ * not found" over a project that had just been created successfully.
+ *
+ * NOTHING IS FABRICATED. Facts the store does not hold stay absent rather than being invented: no
+ * members, no teams, no DMs, no banner, no client, and an owner named only as "You" — a project with
+ * an unnamed owner is legible, one attributed to a person who does not exist is a false claim. The
+ * stage rooms ARE listed, because on the live path `create_project` opens them in the same
+ * transaction, so their presence is the truth on both branches rather than a stub convenience.
+ */
+export function createdDetail(slug: string, actor?: ReadActor): ProjectDetail | null {
+	const owner = writeOwnerOf(actor);
+	const record = peekBucket(owner)?.created.get(slug);
+	if (!record) return null;
+	const setup = createdSetup(slug, actor) ?? record.setup;
+
+	return {
+		id: record.id,
+		slug: setup.slug,
+		title: setup.title,
+		// A modal-created project is never a service: `kind` is derived from `source_blueprint_id`,
+		// which only an instantiated blueprint carries.
+		kind: "project",
+		format: setup.format,
+		status: setup.status,
+		typeLabel: TYPE_LABELS[setup.format],
+		description: setup.description.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(
+			0,
+			2000,
+		),
+		viewerRole: "owner",
+		// The creator IS the client — they commissioned it. This is what routes the dispatcher to the
+		// setup surface rather than to somebody else's dashboard.
+		viewerIsClient: true,
+		scopeType: actor?.contextType ?? "personal",
+		scopeLabel: actor?.contextId ? "Workspace" : "Personal",
+		starred: false,
+		owner: { name: "You", avatar: null, handle: null },
+		client: null,
+		bannerImage: null,
+		members: [],
+		// NO CHANNELS, and that is the honest answer rather than a missing feature.
+		//
+		// The live path opens each stage's room inside `create_project`, so a live-created project's
+		// tree is real and every room in it resolves. Nothing provisions a room on THIS path, so
+		// listing one would render a channel the sidebar makes clickable and whose every read — the
+		// message page, the board, files, members — answers 404. A control that renders must do
+		// something (root CLAUDE.md §3 gate 11); mimicking the live tree's appearance without its
+		// substance is worse than differing from it visibly.
+		channels: { general: [], stages: [], teams: [], dms: [] },
+	};
+}
+
+/**
+ * The FEED row for an engagement that exists only in the store.
+ *
+ * Same restraint as {@link createdDetail}: counts that nothing has produced are zero rather than
+ * plausible, and the owner is named "You" rather than fabricated. `scopeId` mirrors the READ path's
+ * `scopeOf`, which reports the user's own id for a personal engagement — so the lane's scope filter
+ * groups a drafted project exactly where it groups a live one.
+ */
+export function createdSummary(slug: string, actor?: ReadActor): ProjectSummary | null {
+	const owner = writeOwnerOf(actor);
+	const record = peekBucket(owner)?.created.get(slug);
+	if (!record) return null;
+	const setup = createdSetup(slug, actor) ?? record.setup;
+	if (setup.archivedAt) return null;
+
+	const scopeType = actor?.contextType ?? "personal";
+	return {
+		id: record.id,
+		slug: setup.slug,
+		title: setup.title,
+		kind: "project",
+		format: setup.format,
+		status: setup.status,
+		viewerRole: "owner",
+		scopeType,
+		scopeId: (scopeType === "personal" ? actor?.userId : actor?.contextId) ?? "",
+		scopeLabel: scopeType === "personal" ? "Personal" : "Workspace",
+		owner: { name: "You", avatar: null, handle: null },
+		// Nobody is on the other side of a project that was named a moment ago.
+		counterparty: null,
+		// Client-architected, not instantiated from one of the actor's own services.
+		serviceId: null,
+		unread: false,
+		starred: false,
+		// `null` rather than 0 for a format with no stage run at all — the meter is absent, not empty.
+		completedStages: setup.stages.length > 0 ? 0 : null,
+		totalStages: setup.stages.length > 0 ? setup.stages.length : null,
+		activity: null,
+		// The record's own creation instant, mirroring the live read's `last_activity_at ?? updated_at`
+		// — a drafted project's creation IS its last activity.
+		updatedAt: new Date(record.createdAt).toISOString(),
+		budgetLabel: setup.budget.amountCents === null ? null : formatCreatedBudget(setup.budget),
+	};
+}
+
+/**
+ * The card's pre-formatted budget.
+ *
+ * Pre-formatted server-side for the same reason every other label on this row is: a string assembled
+ * in the browser is a different string from the one SSR sent, and the two disagreeing is a hydration
+ * mismatch on the face of the card.
+ */
+function formatCreatedBudget(budget: ProjectSetup["budget"]): string | null {
+	if (budget.amountCents === null) return null;
+	try {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency: budget.currency,
+			maximumFractionDigits: 0,
+		}).format(budget.amountCents / 100);
+	} catch {
+		// An unknown currency code throws rather than degrading. No label beats a wrong one.
+		return null;
+	}
+}
+
+/** Engagement-format display labels, so the sidebar names a format the way the rest of the app does. */
+const TYPE_LABELS: Record<ProjectSetup["format"], string> = {
+	pipeline: "Pipeline project",
+	one_off: "One-off project",
+	session: "Session service",
+};
 
 /**
  * Whether this viewer has archived the project — the predicate every stub read filters on.
@@ -370,15 +578,27 @@ export function overlayFeed(page: ProjectFeedPayload, actor?: ReadActor): Projec
 		const folded = overlaySummary(item, actor);
 		if (folded) items.push(folded);
 	}
-	if (items.length === page.items.length) return page;
-	const dropped = page.items.length - items.length;
+
+	// Engagements this viewer DRAFTED, newest first, ahead of the corpus. They have no fixture row to
+	// fold over, so folding alone would leave a created project absent from the very list the create
+	// button sits on — the surface would report success and show nothing.
+	const drafted: ProjectSummary[] = [];
+	for (const { setup } of storedCreatedProjects(actor)) {
+		const row = createdSummary(setup.slug, actor);
+		if (row) drafted.push(row);
+	}
+
+	if (items.length === page.items.length && drafted.length === 0) return page;
+	const next = [...drafted, ...items];
 	return {
 		...page,
-		items,
-		count: Math.max(0, page.count - dropped),
+		items: next,
+		// Recomputed from what actually survives rather than adjusted by a delta: a count that still
+		// includes an archived project, or omits a drafted one, is the surface disagreeing with itself.
+		count: next.length,
 		groups: page.groups.map((group) => ({
 			...group,
-			count: items.filter((item) => item.scopeId === group.scopeId).length,
+			count: next.filter((item) => item.scopeId === group.scopeId).length,
 		})),
 	};
 }

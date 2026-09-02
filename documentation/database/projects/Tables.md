@@ -98,6 +98,23 @@ A registry of all profiles (Business or Freelancer) with access to the project w
 
 Used during the recruitment/staffing phase to define requirements and attract talent.
 
+| Column                | Type     | Notes                                                          |
+| :-------------------- | :------- | :------------------------------------------------------------- |
+| `project_stage_id`    | uuid     | FK → `projects.project_stages.id`. A role hangs off a STAGE.   |
+| `role_title`          | text     | The seat's name.                                                |
+| `budget_amount_cents` | bigint   | Nullable. `NULL` = not priced yet; zero would say it is free.  |
+| `skills`              | text\[]  | Freeform tags. `'{}'` when unset.                               |
+
+**Nullable budget, and a skills column.** Both exist because the Create-Project modal collects a
+role's name and skills but no budget — "quick to onboard, slow to set up". A `NOT NULL` budget forced
+the write to invent a `0`, which the sibling `projects.budget_amount_cents` comment already calls a
+lie: zero is a decision somebody took. The setup form's own save still refuses a budget-less role, so
+the AMBER gate is enforced where the owner can act on it rather than at the moment of naming.
+
+`skills` mirrors `project_stages.skills` rather than joining `org.skills`: these are freeform tags on
+one row, not entities. Without it `CreateProjectRoleSchema.skills` had nowhere to land and the write
+silently discarded it.
+
 ---
 
 ## 🚀 Execution & Quality Control

@@ -9,7 +9,12 @@ import { RichTextEditor } from "@projective/ui/editor";
 import { DndContext, useSortable } from "@projective/ui/dnd";
 import type { Option } from "@projective/ui/fields";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
-import type { CreateProject, ProjectCreateFormat, ProjectView } from "../types/projects-types.ts";
+import type {
+	CreatedProject,
+	CreateProject,
+	ProjectCreateFormat,
+	ProjectView,
+} from "../types/projects-types.ts";
 import { CloseIcon, PlusIcon, TrashIcon } from "./glyphs.tsx";
 import { Icon } from "@projective/ui/icons";
 
@@ -57,7 +62,16 @@ export interface ProjectCreateModalProps {
 	scopeId: string;
 	onClose: () => void;
 	/** Called with the drafted engagement's slug once the create succeeds. */
-	onCreated: (slug: string) => void;
+	/**
+	 * The engagement was drafted.
+	 *
+	 * Carries BOTH identifiers the server settled on. `slug` is what the caller navigates to — every
+	 * `/projects/*` route addresses an engagement by slug — and it is NOT the title slugified: the
+	 * database may have appended a disambiguator (two people can name a project the same thing) or
+	 * fallen back to a generated address (a title with no Latin characters slugifies to nothing).
+	 * Navigating to a locally guessed slug was the original defect, and it 404'd.
+	 */
+	onCreated: (created: CreatedProject) => void;
 }
 
 const TYPE_OPTIONS: Option[] = [
@@ -287,7 +301,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		const res = await ProjectSidebarService.create(buildPayload());
 		submitting.value = false;
 		if (res.ok && res.data) {
-			onCreated(res.data.slug);
+			onCreated(res.data);
 		} else {
 			error.value = res.message ?? "Couldn't create the project. Try again.";
 		}

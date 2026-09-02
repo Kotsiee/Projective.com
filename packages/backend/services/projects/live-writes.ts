@@ -2,12 +2,16 @@ import {
 	type ArchiveProject,
 	type ChatMessage,
 	type CommitTicket,
+	type CreatedProject,
+	createFormatToColumns,
+	type CreateProject,
 	type CreateSubmission,
 	type MoveTicket,
 	type ProjectFormat,
 	type ProjectRoleSetup,
 	type ProjectRules,
 	type ProjectSetup,
+	projectSlugFrom,
 	type ProjectStructure,
 	reconcileSetup,
 	type SendProjectMessage,
@@ -126,7 +130,9 @@ interface StaffingRoleRow {
 	id: string;
 	project_stage_id: string;
 	role_title: string;
-	budget_amount_cents: number;
+	/** Nullable: NULL is "not priced yet", which is a different fact from a seat offered for zero. */
+	budget_amount_cents: number | null;
+	skills: string[] | null;
 }
 
 /** The columns the setup read selects, named once so the row interface and the query cannot drift. */
@@ -223,9 +229,7 @@ function toRoleSetup(row: StaffingRoleRow): ProjectRoleSetup {
 	return {
 		id: row.id,
 		name: clampOr(row.role_title, NAME_MAX, "Role"),
-		// `stage_staffing_roles` has no skills column. An empty list is the honest answer; a list
-		// borrowed from the parent stage would attribute the stage's requirements to one seat.
-		skills: [],
+		skills: (row.skills ?? []).map((skill) => clamp(skill, 60)).filter((s) => s.length > 0),
 		budgetCents: row.budget_amount_cents,
 	};
 }
@@ -333,7 +337,7 @@ async function fetchStaffingRoles(
 	if (stageIds.length === 0) return [];
 	const { data, error } = await projectsDb(actor)
 		.from("stage_staffing_roles")
-		.select("id, project_stage_id, role_title, budget_amount_cents")
+		.select("id, project_stage_id, role_title, budget_amount_cents, skills")
 		.in("project_stage_id", stageIds);
 	if (error) return [];
 	return (data ?? []) as unknown as StaffingRoleRow[];
@@ -639,7 +643,13 @@ async function reconcileRoles(
 	for (const role of roles) {
 		const patch = {
 			role_title: clampOr(role.name, NAME_MAX, "Role"),
-			budget_amount_cents: role.budgetCents ?? 0,
+			skills: role.skills?.map((skill) => clamp(skill, 60)).filter((s) => s.length > 0) ?? [],
+			// `null`, not `0`. The column is nullable and NULL means "not priced yet", where zero is a
+			// decision somebody took — a seat offered for free. `validateUpdate` refuses a budget-less
+			// role on THIS path before any write happens, so the fallback is unreachable here; it is
+			// written honestly anyway, because the create path stores NULL and the two must agree about
+			// what an unpriced seat looks like in the column.
+			budget_amount_cents: role.budgetCents ?? null,
 		};
 		if (isExistingId(role.id, DRAFT_ROLE_PREFIX)) {
 			const { data: touched, error } = await db
@@ -1231,6 +1241,97 @@ export async function insertProjectMessage(
 			favorited: false,
 		},
 	};
+}
+// #endregion
+
+// #region Create
+/**
+ * Create one engagement, and return the two identifiers it can be addressed by.
+ *
+ * The whole write is ONE call to `projects.create_project`, and that is a deliberate departure from
+ * every other write in this module, which goes straight at a table under the caller's own RLS. Three
+ * reasons, in order of weight:
+ *
+ * 1. **It has to be atomic.** A create touches `projects`, `project_stages`, `stage_staffing_roles`
+ *    and `project_participants`. PostgREST gives us one statement per round trip and no transaction
+ *    around them, so a failure on the third leaves an engagement the client has already navigated to
+ *    holding half of what they typed.
+ * 2. **`update_entity_project_counts` is an INVOKER trigger** on `projects.projects` that writes
+ *    `org.users_public`. Inside a `SECURITY DEFINER` function it runs in the definer's context, which
+ *    is where a bookkeeping counter belongs; a direct insert makes it the caller's problem.
+ * 3. **The slug needs a retry loop.** Two people naming a project the same thing in the same instant
+ *    both see the address free; only the unique index resolves it, and only a loop that catches the
+ *    violation can pick a new one and try again.
+ *
+ * The payload is snake_cased here because the function reads columns, not camelCase fields. Nothing
+ * authoritative travels in it: `owner_user_id`, `status` and `visibility` are all set by the function
+ * itself, so a caller who hand-rolls this request cannot name somebody else as owner or publish a
+ * project in the act of creating it.
+ */
+export async function insertProject(
+	actor: ReadActor & { accessToken: string },
+	input: CreateProject,
+): Promise<WriteOutcome<CreatedProject>> {
+	const { format, structure } = createFormatToColumns(input.format);
+	const html = clamp(input.scope, RICH_TEXT_MAX);
+	const title = clamp(input.title, TITLE_MAX);
+
+	// The owning workspace is derived from the ACTOR, never from the payload.
+	//
+	// Not a precaution — the payload's two scope fields contradict each other on every request from a
+	// non-personal context: the modal hardcodes `scopeType: "personal"` while passing the viewer's real
+	// active-context id as `scopeId`. Trusting the type files every project personally; trusting the id
+	// writes a scope the payload denies. Neither errors, and both silently mis-file the project so the
+	// feed's own scope filter never surfaces it.
+	//
+	// `actor.contextType` / `actor.contextId` come off the verified session, which is the same source
+	// the READ path resolves a project's scope from — so what a create files under and what the feed
+	// groups by cannot disagree. The columns are the exact inverse of the read's `scopeOf`: one typed
+	// column per workspace kind, and personal scope is the ABSENCE of all three.
+	//
+	// A scope id that is not a uuid names no workspace row (a personal context reports the user's own
+	// id, which is not a workspace at all), so it maps to personal rather than into a foreign key.
+	const scopeId = actor.contextId.trim();
+	const scoped = scopeId.length > 0 && UUID_RE.test(scopeId);
+	const scopeType = scoped ? actor.contextType : "personal";
+
+	const payload: Record<string, unknown> = {
+		title,
+		slug: projectSlugFrom(input.title),
+		format,
+		structure_variation: structure,
+		description: { html },
+		description_text: flattenRichText(html),
+		client_business_id: scopeType === "business" ? scopeId : null,
+		owner_team_id: scopeType === "team" ? scopeId : null,
+		owner_organisation_id: scopeType === "organisation" ? scopeId : null,
+		budget_type: input.budget?.budgetType ?? "fixed_price",
+		// Sent as a STRING because the function reads it with `->>` and casts; a JSON number would
+		// arrive the same way, but the string keeps the wire shape uniform with every other field and
+		// leaves no room for a float to appear in a minor-unit column.
+		budget_amount_cents: input.budget ? String(input.budget.amountCents) : null,
+		currency: input.budget?.currency ?? "USD",
+		stages: input.stages.map((stage) => ({
+			name: clamp(stage.name, NAME_MAX),
+			description: { html: clamp(stage.description, RICH_TEXT_MAX) },
+			description_text: flattenRichText(clamp(stage.description, RICH_TEXT_MAX)),
+			unit_price_cents: stage.unitPriceCents === null ? null : String(stage.unitPriceCents),
+			milestone: clamp(stage.milestone, 240),
+		})),
+		roles: input.roles.map((role) => ({
+			name: clamp(role.name, NAME_MAX),
+			skills: role.skills.map((skill) => clamp(skill, 60)).filter((skill) => skill.length > 0),
+		})),
+	};
+
+	const { data, error } = await projectsDb(actor).rpc("create_project", { payload });
+	if (error) return { refusal: refusalFrom(error.message, "title") };
+
+	const created = data as { id?: string; slug?: string } | null;
+	if (!created?.id || !created.slug) {
+		return { refusal: refusalFrom("create_project returned no identifier", "title") };
+	}
+	return { data: { id: created.id, slug: created.slug } };
 }
 // #endregion
 

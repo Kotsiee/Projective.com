@@ -390,7 +390,18 @@ CREATE TABLE projects.stage_staffing_roles (
   role_title text NOT NULL,
   quantity integer NOT NULL DEFAULT 1,
   budget_type budget_type NOT NULL DEFAULT 'fixed_price'::budget_type,
-  budget_amount_cents bigint NOT NULL CHECK (budget_amount_cents >= 0),
+  -- Nullable, matching `projects.projects.budget_amount_cents` and for the same reason: NULL is "not
+  -- priced yet", which is a different fact from zero, and zero is a decision somebody took. The
+  -- create modal collects a role's NAME and skills but no budget on purpose (quick to onboard, slow
+  -- to set up), so a role has to be storable before it is priced -- while `reconcileStages`'
+  -- sibling check still refuses to SAVE the setup form until every role carries one. The CHECK is
+  -- NULL-tolerant, so an unpriced role is representable and a negative one is not.
+  budget_amount_cents bigint CHECK (budget_amount_cents IS NULL OR budget_amount_cents >= 0),
+  -- The skills this seat needs. Mirrors `project_stages.skills` rather than inventing a join table:
+  -- these are freeform tags on one row, not entities. Without it `CreateProjectRoleSchema.skills` had
+  -- nowhere to land and was silently dropped by the write -- the same defect class as the stage
+  -- milestone.
+  skills text[] NOT NULL DEFAULT '{}'::text[],
   allow_proposals boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
 

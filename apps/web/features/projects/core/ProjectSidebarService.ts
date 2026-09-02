@@ -3,6 +3,7 @@ import { toSearchParams } from "./projects-state.ts";
 import type { ProjectFeedParams } from "./projects-state.ts";
 import type {
 	ArchiveProject,
+	CreatedProject,
 	CreateProject,
 	ProjectDetail,
 	ProjectFeedPayload,
@@ -43,8 +44,8 @@ export const ProjectSidebarService = {
 	},
 
 	/** Create a new engagement from the Create-Project modal payload. */
-	create(payload: CreateProject): Promise<ProjectsResult<{ slug: string }>> {
-		return postProjects<{ slug: string }>("/api/projects/create", payload);
+	create(payload: CreateProject): Promise<ProjectsResult<CreatedProject>> {
+		return postProjects<CreatedProject>("/api/projects/create", payload);
 	},
 
 	/**

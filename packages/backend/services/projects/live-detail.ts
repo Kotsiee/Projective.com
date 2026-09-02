@@ -21,6 +21,7 @@ import {
 	orgDb,
 	partyOf,
 	projectsDb,
+	resolveProjectRef,
 	toMemberRole,
 	toStageProjectStatus,
 } from "./live-support.ts";
@@ -485,13 +486,20 @@ function buildTeamChannels(
  * throw would take down a page whose identity is already in hand.
  */
 async function fetchDetailRow(db: SupabaseClient, slug: string): Promise<DetailRow | null> {
-	const { data, error } = await db
-		.from("projects")
-		.select("owner_user_id, description_text, client_business_id")
-		.eq("slug", slug)
-		.maybeSingle();
-	if (error || !data) return null;
-	return data as unknown as DetailRow;
+	// Either address. This read is what the sidebar, the header band and the footer band all resolve
+	// through, so a project reachable by uuid on `/files` but not here produced a page whose body
+	// rendered and whose chrome silently collapsed.
+	try {
+		return await resolveProjectRef<DetailRow>(
+			db,
+			"owner_user_id, description_text, client_business_id",
+			slug,
+		);
+	} catch {
+		// This module's contract is that a miss and a failure are both `null` here — the CALLER's
+		// summary read is the gate that distinguishes them (see `fetchProjectDetail`).
+		return null;
+	}
 }
 
 /**

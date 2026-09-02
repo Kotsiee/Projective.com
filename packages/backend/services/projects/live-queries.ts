@@ -10,6 +10,7 @@ import type {
 	ScopeOption,
 } from "@projective/types/projects";
 import type { ContextType } from "@projective/types/auth";
+import { resolveProjectRef } from "./live-support.ts";
 
 /**
  * live-queries — the RLS-scoped Postgres read path for the `/projects` domain.
@@ -647,16 +648,11 @@ export async function fetchProjectBySlug(
 ): Promise<ProjectSummary | null> {
 	const db = projectsClient(actor);
 
-	const { data, error } = await db
-		.from("projects")
-		.select(SUMMARY_COLUMNS)
-		.eq("slug", slug)
-		.maybeSingle();
-
-	if (error) throw new Error(`projects.projects slug read failed: ${error.message}`);
-	if (!data) return null;
-
-	const row = data as unknown as ProjectRow;
+	// Either address — a slug (what every link carries) or the durable uuid `create` returns beside it.
+	// This read is the GATE for both `detail` and `board`, so accepting only one of the two made a
+	// uuid resolve on four surfaces and 404 on those two.
+	const row = await resolveProjectRef<ProjectRow>(db, SUMMARY_COLUMNS, slug);
+	if (!row) return null;
 	const [roles, stages, owners] = await Promise.all([
 		fetchViewerRoles(db, actor, [row.id]),
 		fetchStageCounts(db, [row.id]),

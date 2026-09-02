@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BudgetType } from "./create.ts";
+import { BudgetType, type ProjectCreateFormat } from "./create.ts";
 import { ProjectFormat, ProjectStatus } from "./summary.ts";
 
 /**
@@ -41,6 +41,26 @@ import { ProjectFormat, ProjectStatus } from "./summary.ts";
  */
 export const ProjectStructure = z.enum(["standard", "one_off", "single_task", "single_stage"]);
 export type ProjectStructure = z.infer<typeof ProjectStructure>;
+
+/**
+ * The two columns a {@link ProjectCreateFormat} resolves to.
+ *
+ * The ONE implementation of the reconciliation described above: the create write, the setup read and
+ * the fixtures all call it, so the three cannot drift into disagreeing about what the client chose.
+ *
+ * It lives HERE rather than beside `ProjectCreateFormat` in `./create.ts` for a structural reason —
+ * `create.ts` is the leaf and this module already depends on it, so defining it there would need an
+ * import back the other way and make the pair mutually dependent. That edge survives only while one
+ * side stays `import type`, and a module whose corpus builds at import time turns such a cycle into a
+ * TDZ crash rather than a style problem.
+ */
+export function createFormatToColumns(
+	format: ProjectCreateFormat,
+): { format: ProjectFormat; structure: ProjectStructure } {
+	if (format === "direct_deliverable") return { format: "one_off", structure: "single_task" };
+	if (format === "one_off") return { format: "one_off", structure: "one_off" };
+	return { format: "pipeline", structure: "standard" };
+}
 
 /**
  * 1-1 vs group, meaningful only when `format === "session"`.
