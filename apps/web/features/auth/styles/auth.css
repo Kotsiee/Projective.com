@@ -755,31 +755,25 @@ body:has(.auth) {
 	margin: 0;
 }
 
-/* SelectButton → soft segmented control. */
+/*
+ * SelectButton → the same softening as its siblings, and now ONLY that.
+ *
+ * This block used to restate the state language the region comment above forbids: it re-declared the
+ * selected fill, the selected ink and the idle ink, and zeroed both borders. That mattered beyond
+ * tidiness — the package identifies a selected segment by a brand-tinted hairline, because ink alone
+ * measures 1.78:1 (dark) / 2.65:1 (light) between selected and idle and the tonal step is 1.08:1, so
+ * neither can carry the state under WCAG 2.2 SC 1.4.11. `border: 0` removed the only channel that
+ * could, and `--primary` ink put the state back on hue.
+ *
+ * It is now three token re-points, which is what a surface override is. The track follows the filled
+ * `--surface-2` fill its sibling inputs take here rather than the package's `--surface-1`, so the
+ * group sits on this palette instead of on the default one. Measured on that ground: idle
+ * 5.55:1 light / 7.46:1 dark, selected 17.14:1 / 14.93:1, hairline 5.16:1 / 5.31:1.
+ */
 .auth .ui-select-button {
-	background: var(--surface-1);
-	border-radius: var(--radius-lg);
-	padding: var(--space-1);
-	gap: var(--space-1);
-	border: 0;
-}
-
-.auth .ui-select-button__option {
-	border-radius: var(--radius-base);
-	border: 0;
-	background: transparent;
-	color: var(--text-secondary);
-	font-weight: 600;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-
-.auth .ui-select-button__option[aria-checked="true"],
-.auth .ui-select-button__option[aria-pressed="true"] {
-	background: var(--surface);
-	color: var(--primary);
-	box-shadow: var(--elevation-low);
+	--sb-track: var(--surface-2);
+	--sb-radius: var(--radius-lg);
+	border-color: transparent;
 }
 
 .auth .ui-button--fluid {

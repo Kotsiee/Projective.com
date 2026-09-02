@@ -28,7 +28,15 @@ export interface SelectButtonProps extends BaseFieldProps {
  * SelectButton — a segmented switch across a small option set. In single mode it is a
  * `role="radiogroup"` of `role="radio"` segments (Arrow/Home/End move selection, roving tabindex); in
  * `multiple` mode it is a `role="group"` of `aria-pressed` toggle buttons (Arrow moves focus,
- * Space/Enter toggles). Segments share one outline with single interior hairline seams. Signal-first.
+ * Space/Enter toggles). Signal-first.
+ *
+ * Visually it is an inset track carrying a raised thumb: the group owns the recessed ground and the
+ * shared outline, and the selected segment rises out of it on its own surface, brand-tinted hairline
+ * and shadow. `select-button.css` carries the measurements behind that choice.
+ *
+ * `readOnly` and `loading` are honoured rather than accepted and dropped — the §A.7.3 state matrix
+ * asks every control for the same set, and a read-only segmented control that silently keeps
+ * changing its own value is the worse half of that gap.
  */
 export function SelectButton(props: SelectButtonProps): JSX.Element {
 	const {
@@ -38,6 +46,8 @@ export function SelectButton(props: SelectButtonProps): JSX.Element {
 		multiple,
 		id,
 		disabled,
+		readOnly,
+		loading,
 		required,
 		status = "default",
 		size = "md",
@@ -63,7 +73,7 @@ export function SelectButton(props: SelectButtonProps): JSX.Element {
 	const tabbableIndex = focusIndex.value >= 0 ? focusIndex.value : defaultTabbable;
 
 	const toggle = (i: number) => {
-		if (!isEnabled(i)) return;
+		if (!isEnabled(i) || readOnly) return;
 		const v = options[i].value;
 		if (multiple) {
 			const next = selectedValues.includes(v)
@@ -134,6 +144,8 @@ export function SelectButton(props: SelectButtonProps): JSX.Element {
 				status !== "default" && `ui-select-button--${status}`,
 				fluid && "ui-select-button--fluid",
 				disabled && "ui-select-button--disabled",
+				readOnly && "ui-select-button--readonly",
+				loading && "ui-select-button--loading",
 				className,
 			)}
 			aria-label={ariaLabel}
@@ -141,6 +153,8 @@ export function SelectButton(props: SelectButtonProps): JSX.Element {
 			aria-invalid={ariaInvalid(status)}
 			aria-required={required || undefined}
 			aria-disabled={disabled || undefined}
+			aria-readonly={readOnly || undefined}
+			aria-busy={loading || undefined}
 		>
 			{options.map((opt, i) => {
 				const selected = isSelected(opt.value);

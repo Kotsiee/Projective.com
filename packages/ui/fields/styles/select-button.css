@@ -1,42 +1,105 @@
 /*
- * SelectButton — a segmented single/multi choice. The group owns one shared outline + radius; the
- * options sit flush and are separated by single interior hairlines (§B.4, like input-group). Selected
- * segments fill with the accent. Token-only. Interactive → full outline allowed.
+ * SelectButton — a segmented single/multi choice, drawn as an inset track carrying a raised thumb.
+ *
+ * Geometry and every state read the `--fld-*` contract (§A.7): the track stands exactly as tall as
+ * an `InputText` at the same size, and the first segment's label starts at the same inline offset as
+ * that input's text — the segment's own padding is the field padding MINUS the track inset, so the
+ * two line up rather than nearly lining up. A `Field` label above and its hint below therefore need
+ * no per-surface correction.
+ *
+ * WHY THE SELECTED SEGMENT IS NOT A BRAND SLAB. The obvious treatment — fill with `--primary`, ink
+ * with `--on-primary` — is unshippable on this theme and was measured rather than assumed: that pair
+ * resolves to 3.57:1 in dark and COLLAPSES to 1.75:1 under `data-contrast="high"`, so the
+ * accessibility overlay makes it less readable than no overlay at all. It is the theme-engine defect
+ * logged in root CLAUDE.md §8 and routed around here rather than patched at one call site.
+ *
+ * So the selected state is carried by four channels at once — the §A.7.3 matrix's border · surface ·
+ * ink · ring — with the brand entering as a TINT on the thumb's hairline and nowhere else:
+ *
+ *   ink     --on-surface on the thumb        14.93:1 dark · 17.14:1 light (19.28 / 21.00 under HC)
+ *   border  55% --primary into --outline      5.35:1 dark ·  5.06:1 light ( 7.86 /  7.82 under HC)
+ *   surface --surface over --surface-1        1.08:1 — depth only, never a boundary
+ *   shadow  --elevation-low                   a 5% black wash; real in light, near-nil in dark
+ *
+ * The border is doing load-bearing work, not decoration. Selected-vs-idle INK alone measures
+ * 1.78:1 (dark) / 2.65:1 (light) and the tonal step is 1.08:1, so neither can identify the state
+ * under WCAG 2.2 SC 1.4.11 — only the hairline clears 3:1, and it does so in all four modes. The
+ * brand is mixed into `--outline` rather than `--border-subtle` for the same reason: measured,
+ * `--border-subtle` falls to 2.94:1 (dark) / 2.41:1 (light) at the same ratio.
+ *
+ * Spending border + surface + ink + shadow on one boundary is the state contract (§A.7.3) and the
+ * §A.5 rule that a state never rides on hue alone — not a §B.4 separation-hierarchy breach, which
+ * governs boundaries between static content regions.
+ *
+ * Segments are separated by the gap and nothing else. An interior hairline on top of that gap would
+ * be a second device on one boundary (§B.4).
  */
 
 .ui-select-button {
-	--sb-height: 2.5rem;
-	--sb-px: var(--space-4);
-	--sb-font: 0.9375rem;
+	/*
+	 * Geometry — every value resolves from the shared ramp; nothing control-local (§A.7 merge gate).
+	 * The inner radius is the outer radius minus the inset so the thumb's curve is CONCENTRIC with
+	 * the track's rather than merely similar.
+	 */
+	--sb-h: var(--fld-h-md);
+	--sb-px: var(--fld-px-md);
+	--sb-font: var(--fld-fs-md);
+	--sb-radius: var(--fld-r-md);
+	--sb-inset: var(--space-1);
+	--sb-gap: var(--space-1);
+	--sb-thumb-radius: max(var(--radius-xs), calc(var(--sb-radius) - var(--sb-inset)));
+
+	/*
+	 * Surfaces. `--sb-track` is the recessed group ground and `--sb-thumb` the raised control
+	 * surface — the same semantic pair as `--fld-readonly-bg` / `--fld-rest-bg`, which is what makes
+	 * a selected segment read as "the field's value" beside a sibling input. Both are exposed so a
+	 * surface that already sits ON `--surface-1` can step the pair up in one declaration instead of
+	 * re-styling the block.
+	 */
+	--sb-track: var(--surface-1);
+	--sb-thumb: var(--fld-rest-bg);
+	--sb-accent: var(--primary);
+	--sb-idle-fg: var(--text-secondary);
+	--sb-active-fg: var(--fld-rest-fg);
+	/* The one hairline that identifies the selection. Base is `--outline`, not `--border-subtle`. */
+	--sb-thumb-bd: color-mix(in srgb, var(--sb-accent) 55%, var(--outline));
 
 	display: inline-flex;
 	align-items: stretch;
-	block-size: var(--sb-height);
-	border: 1px solid var(--outline);
-	border-radius: var(--radius-base);
-	background: var(--surface);
-	overflow: hidden;
+	gap: var(--sb-gap);
+	block-size: var(--sb-h);
+	padding: var(--sb-inset);
+	background: var(--sb-track);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--sb-radius);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
+
+/* #region Size ramp */
 .ui-select-button--size-sm {
-	--sb-height: 2rem;
-	--sb-px: var(--space-3);
-	--sb-font: 0.8125rem;
-	border-radius: var(--radius-sm);
+	--sb-h: var(--fld-h-sm);
+	--sb-px: var(--fld-px-sm);
+	--sb-font: var(--fld-fs-sm);
+	--sb-radius: var(--fld-r-sm);
+	/* Half the inset: a 32px track less two 4px insets leaves a 24px thumb sitting exactly on the
+	   `--fld-hit` floor, with nothing in hand. */
+	--sb-inset: calc(var(--space-1) / 2);
 }
+
 .ui-select-button--size-lg {
-	--sb-height: 3rem;
-	--sb-px: var(--space-5);
-	--sb-font: 1.0625rem;
-	border-radius: var(--radius-lg);
+	--sb-h: var(--fld-h-lg);
+	--sb-px: var(--fld-px-lg);
+	--sb-font: var(--fld-fs-lg);
+	--sb-radius: var(--fld-r-lg);
 }
+
 .ui-select-button--fluid {
 	display: flex;
 	inline-size: 100%;
 }
-.ui-select-button--disabled {
-	opacity: 0.55;
-	pointer-events: none;
-}
+/* #endregion */
 
 /* #region Segments */
 .ui-select-button__option {
@@ -45,60 +108,160 @@
 	justify-content: center;
 	gap: var(--space-2);
 	flex: 1 1 auto;
-	padding-inline: var(--sb-px);
+	min-inline-size: 0;
+	/*
+	 * Field padding less the track inset AND the segment's own transparent border — see the
+	 * alignment note in the file header. Measured: dropping the border term put the first label at
+	 * 14px against a sibling input's 13px, which is the kind of miss that reads as sloppy without
+	 * ever looking obviously wrong.
+	 */
+	padding-inline: max(var(--space-1), calc(var(--sb-px) - var(--sb-inset) - var(--fld-bw)));
 	font-family: var(--font-sans);
 	font-size: var(--sb-font);
-	font-weight: 600;
+	/* One weight in every state. A 500 → 600 step on selection re-measures the label and visibly
+	   shifts every segment beside it; the state already has four channels without borrowing a fifth
+	   that costs layout. */
+	font-weight: var(--fw-medium);
 	line-height: 1;
-	color: var(--on-surface);
+	color: var(--sb-idle-fg);
 	background: transparent;
-	border: none;
+	/* Transparent at rest so the selected segment's hairline cannot change the box it sits in. */
+	border: var(--fld-bw) solid transparent;
+	border-radius: var(--sb-thumb-radius);
 	cursor: pointer;
 	user-select: none;
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
-/* Interior seams — a single hairline between adjacent segments. */
-.ui-select-button__option + .ui-select-button__option {
-	border-inline-start: 1px solid var(--border-subtle);
-}
+
+/*
+ * Hover on an UNSELECTED segment only — the same faint ink wash `.ui-field:hover` paints, so a
+ * segmented control and the input beside it answer the pointer identically. Measured on the track:
+ * 12.11:1 dark, 13.81:1 light.
+ */
 .ui-select-button__option:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	color: var(--sb-active-fg);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
-.ui-select-button__option:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+
+/* Selected — single (`aria-checked`) and multiple (`aria-pressed`) are one appearance. */
+.ui-select-button__option[aria-pressed="true"],
+.ui-select-button__option[aria-checked="true"] {
+	color: var(--sb-active-fg);
+	background: var(--sb-thumb);
+	border-color: var(--sb-thumb-bd);
+	box-shadow: var(--elevation-low);
 }
+
+/* A selected segment is already the answer; hovering it warms the hairline rather than re-tinting a
+   surface that must stay the control's value ground. */
+.ui-select-button__option[aria-pressed="true"]:hover:not(:disabled),
+.ui-select-button__option[aria-checked="true"]:hover:not(:disabled) {
+	border-color: var(--sb-accent);
+}
+
+/*
+ * Disabled fades INK and BORDER, never the box, and never pairs with `pointer-events: none` — an
+ * element that takes no pointer events also takes no cursor, so `not-allowed` could never paint
+ * (§A.7.3). One value for the whole taxonomy, widening under `data-contrast="high"`.
+ */
 .ui-select-button__option:disabled {
-	opacity: 0.5;
+	color: color-mix(in srgb, var(--sb-idle-fg) var(--fld-disabled-mix), var(--sb-track));
 	cursor: not-allowed;
 }
 
-/* Selected fill (both single `aria-checked` and multi `aria-pressed`). */
-.ui-select-button__option[aria-pressed="true"],
-.ui-select-button__option[aria-checked="true"] {
-	color: var(--on-primary);
-	background: var(--primary);
+.ui-select-button__option:disabled[aria-pressed="true"],
+.ui-select-button__option:disabled[aria-checked="true"] {
+	color: color-mix(in srgb, var(--sb-active-fg) var(--fld-disabled-mix), var(--sb-thumb));
+	border-color: color-mix(in srgb, var(--sb-thumb-bd) var(--fld-disabled-mix), var(--sb-thumb));
+	box-shadow: none;
+}
+
+.ui-select-button--disabled {
+	border-color: color-mix(in srgb, var(--fld-rest-bd) var(--fld-disabled-mix), var(--sb-track));
+	cursor: not-allowed;
+}
+
+/*
+ * Read-only is not disabled: the value is authoritative and the control stays focusable, so the ink
+ * keeps its full weight and only the invitation to change is withdrawn.
+ *
+ * The withdrawal has to be VISIBLE. Pointing `--sb-track` at `--fld-readonly-bg` was the obvious
+ * move and measured as no change at all — that token resolves to `--surface-1`, which is already the
+ * default track — so the state was declared and drew nothing. What actually differs is the accent:
+ * the brand tint on the hairline says "this is the choice you are making", and a value nobody can
+ * change has no choice to make, so it goes neutral and the thumb stops floating. `--outline` still
+ * clears the 3:1 boundary on its own (6.06:1 dark, 4.48:1 light).
+ */
+.ui-select-button--readonly {
+	--sb-accent: var(--outline);
+	--sb-track: var(--fld-readonly-bg);
+	border-color: var(--fld-readonly-bd);
+}
+
+.ui-select-button--readonly .ui-select-button__option[aria-pressed="true"],
+.ui-select-button--readonly .ui-select-button__option[aria-checked="true"] {
+	box-shadow: none;
+}
+
+.ui-select-button--readonly .ui-select-button__option {
+	cursor: default;
+}
+
+.ui-select-button--readonly .ui-select-button__option:hover:not([aria-checked="true"]):not([aria-pressed="true"]) {
+	color: var(--sb-idle-fg);
+	background: transparent;
+}
+
+/* Loading — awaiting its own options. Focusable and operable; only the content reads provisional. */
+.ui-select-button--loading {
+	--sb-idle-fg: var(--fld-loading-fg);
+}
+
+.ui-select-button--loading .ui-select-button__option {
+	cursor: progress;
 }
 /* #endregion */
 
-/* #region Status accents */
+/* #region Status — one accent, re-pointed
+ *
+ * Every status moves the SAME two variables the default state already reads, so a status can never
+ * drift from the resting appearance the way a per-status `background`/`color` override does. The
+ * §A.5 icon channel is the consumer's `Field` mark; the hue here is the second channel, not the
+ * only one.
+ */
 .ui-select-button--invalid {
-	border-color: var(--danger);
+	--sb-accent: var(--fld-invalid-bd);
+	border-color: var(--fld-invalid-bd);
 }
-.ui-select-button--invalid .ui-select-button__option[aria-pressed="true"],
-.ui-select-button--invalid .ui-select-button__option[aria-checked="true"] {
-	background: var(--danger);
-	color: var(--on-danger);
+
+.ui-select-button--required {
+	--sb-accent: var(--fld-required-bd);
+	border-color: var(--fld-required-bd);
+	--sb-track: var(--fld-required-bg);
 }
+
+.ui-select-button--gate {
+	--sb-accent: var(--fld-gate-bd);
+	border-color: var(--fld-gate-bd);
+	--sb-track: var(--fld-gate-bg);
+}
+
 .ui-select-button--success {
-	border-color: var(--success);
+	--sb-accent: var(--fld-valid-bd);
+	border-color: var(--fld-valid-bd);
 }
+
 .ui-select-button--warning {
-	border-color: var(--warning);
+	--sb-accent: var(--fld-warning-bd);
+	border-color: var(--fld-warning-bd);
+	--sb-track: var(--fld-warning-bg);
 }
 /* #endregion */
 
@@ -106,6 +269,59 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	flex: 0 0 auto;
 	line-height: 0;
-	font-size: 1.05em;
+	font-size: var(--icon-sm);
+}
+
+.ui-select-button__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* #region Focus — declared last, deliberately
+ *
+ * Inset rather than outset: §A.7.1 allows the inset variant only where an outset one would be
+ * clipped by a segmented group's own bounds, which is exactly here — the ring is 4px (6px under
+ * high contrast) against a 4px track inset (2px at `sm`), so an outset ring would spill across the
+ * track's own border and break its frame.
+ *
+ * WHY THIS BLOCK IS AT THE END. The ring and the thumb's elevation are two channels writing one
+ * property, and `:focus-visible` (0,2,0) TIES with `[aria-checked="true"]` (0,2,0) — so with the
+ * ring declared first, the later selected rule silently won and the focused segment showed no
+ * indicator at all. That is not a rare corner: the selected segment is the one holding
+ * `tabindex="0"`, so it is where every keyboard user lands FIRST. Measured before the fix, a real
+ * Tab press produced `box-shadow: rgba(0,0,0,0.05) 0 2px 4px` — the elevation, no ring.
+ *
+ * `auth.css` shipped the same collision between its invalid and focus rules and the fix there was
+ * the same: the two channels COMPOSE. Keeping the block last means no state added later can
+ * outrank the indicator by accident.
+ */
+.ui-select-button__option:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset);
+}
+
+/* The ring paints over the elevation; both survive. */
+.ui-select-button__option[aria-pressed="true"]:focus-visible,
+.ui-select-button__option[aria-checked="true"]:focus-visible {
+	box-shadow: var(--focus-ring-shadow-inset), var(--elevation-low);
+}
+
+/* Read-only flattens the thumb but is still focusable, so it keeps the ring on its own. */
+.ui-select-button--readonly .ui-select-button__option[aria-pressed="true"]:focus-visible,
+.ui-select-button--readonly .ui-select-button__option[aria-checked="true"]:focus-visible {
+	box-shadow: var(--focus-ring-shadow-inset);
+}
+/* #endregion */
+
+/*
+ * §B.5 — the state is carried by colour, and a colour transition settles on its final value even
+ * where the animation clock never runs. Dropping it here costs the polish and nothing else.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.ui-select-button,
+	.ui-select-button__option {
+		transition: none;
+	}
 }
