@@ -209,6 +209,49 @@
 	font-size: var(--text-xs);
 	color: var(--text-secondary);
 }
+/*
+ * The control and its verdict. A wrapper rather than a sibling because it is also what listens for
+ * `focusin`/`focusout` — those bubble where `focus`/`blur` do not, so one element gives every control
+ * inside it the same clear-on-focus lifecycle (§A.7.5).
+ */
+.psu-validated {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+/*
+ * The verdict, once the reader has finished with the field or a refused save has demanded it.
+ *
+ * Hue is never the only channel (§A.5): the sentence itself states the problem, so a reader who
+ * cannot separate amber from red still gets the whole fact. The two ramps map to the two gates the
+ * platform already has — RED is needed to save, AMBER is needed before the engagement is published —
+ * and no third one is invented for the tier taxonomy.
+ */
+.psu-field__problem {
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+.psu-field__problem[data-status="required"],
+.psu-field__problem[data-status="invalid"] {
+	color: var(--danger);
+}
+.psu-field__problem[data-status="gate"],
+.psu-field__problem[data-status="warning"] {
+	color: var(--warning);
+}
+/* A grouping heading inside a disclosure — type, not a container. Nothing here is boxed (§B.4). */
+.psu-subhead {
+	margin: 0;
+	padding-block-start: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
 /* Two fields sharing a row, collapsing to one column where they would each become unreadable. */
 .psu-row {
 	display: grid;
@@ -367,6 +410,58 @@
 	padding: var(--space-4);
 	border-block-start: var(--hairline);
 }
+/*
+ * A conditional group inside a stage, closed by default.
+ *
+ * A native `<details>`: it discloses with no JavaScript and announces its own expanded state, so the
+ * only things this block supplies are the hairline that separates it from the fields above and the
+ * caret that says which way it turns. It carries no border and no fill — the stage row it sits in has
+ * already spent the one contour §B.4 allows an interactive container, and a second box inside it
+ * would be the card-in-card the design system forbids.
+ */
+.psu-adv {
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+.psu-adv__summary {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	/* Above the 24px hit-target floor (WCAG 2.2 AA 2.5.8) before the coarse-pointer bump. */
+	min-block-size: 2rem;
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-sm);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	cursor: pointer;
+	list-style: none;
+}
+.psu-adv__summary::-webkit-details-marker {
+	display: none;
+}
+.psu-adv__summary:hover {
+	color: var(--on-surface);
+}
+.psu-adv__summary:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.psu-adv__mark {
+	display: inline-flex;
+	flex: none;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.psu-adv[open] .psu-adv__mark {
+	transform: rotate(180deg);
+}
+.psu-adv__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding-block-start: var(--space-4);
+}
+
 .psu-role__head {
 	display: flex;
 	align-items: flex-start;
@@ -408,11 +503,15 @@
 		inline-size: 2.5rem;
 		block-size: 2.5rem;
 	}
+	.psu-adv__summary {
+		min-block-size: 2.5rem;
+	}
 }
 @media (prefers-reduced-motion: reduce) {
 	.psu-stage,
 	.psu-role,
-	.psu-add {
+	.psu-add,
+	.psu-adv__mark {
 		transition: none;
 	}
 }

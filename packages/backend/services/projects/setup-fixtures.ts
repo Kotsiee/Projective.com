@@ -2,6 +2,7 @@ import {
 	type BoardStageRef,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
+	DEFAULT_STAGE_SETUP,
 	type ProjectDetail,
 	type ProjectFormat,
 	type ProjectRoleSetup,
@@ -157,9 +158,17 @@ function budgetFromLabel(label: string | null): number | null {
  * board reads — while `milestone` and `skills` are derived, because the board projection has no
  * counterpart for either. Both are seeded on the stage ID, so a stage keeps its delivery note across
  * every render rather than acquiring a new one each time the page is drawn.
+ *
+ * Everything the board has no counterpart for at all — the checklist, the seat cap, the file policy,
+ * the schedule — comes from {@link DEFAULT_STAGE_SETUP}, which is the create payload's OWN defaults.
+ * That is deliberately not a set of plausible values seeded from the slug: a fixture that invented a
+ * seat cap or a deadline would describe configuration its owner never chose, and would tick the
+ * corresponding wizard hint off against a decision nobody took. Spread FIRST so a derived field can
+ * never be silently overwritten by a default of the same name.
  */
 function toStageSetup(stage: BoardStageRef): StageSetup {
 	return {
+		...DEFAULT_STAGE_SETUP,
 		id: stage.id,
 		name: stage.name,
 		order: stage.order,

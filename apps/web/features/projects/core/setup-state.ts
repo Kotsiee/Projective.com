@@ -1,12 +1,15 @@
 import { computed, type ReadonlySignal, signal } from "@preact/signals";
 import {
+	ndaDocumentFor,
+	ndaRequiredFor,
+	type ProjectRules,
 	type ProjectSetup,
 	type ProjectSetupPatch,
 	reconcileSetup,
 	STAGE_ITEM_LABEL,
 	type UpdateProject,
 } from "../types/projects-types.ts";
-import { ProjectSidebarService } from "./ProjectSidebarService.ts";
+import { normalisedExtensions, ProjectSidebarService } from "./ProjectSidebarService.ts";
 
 /**
  * Setup view-state — the cross-island bridge for the owner's Details surface on
@@ -47,46 +50,51 @@ export const setupError = signal<string | null>(null);
 /** The last success, in the words the surface shows. Cleared by the next edit. */
 export const setupNotice = signal<string | null>(null);
 
+/**
+ * The form has demanded every field show its verdict — the submit-time reveal channel.
+ *
+ * It lives in the store rather than in the body island because the control that demands it is in the
+ * FOOTER band, a different hydration root: a `useSignal` in the form could never be raised by the
+ * press that needs it. Every validated field reads it through `useFieldValidation`'s `reveal`, so a
+ * refused save paints the field that refused it even when the owner has never been near it — the one
+ * moment an untouched field legitimately paints (DESIGN_SYSTEM §A.7.5).
+ */
+export const setupReveal = signal<boolean>(false);
+
 /** Which slug the store currently holds, so a second island's seed cannot overwrite live edits. */
 let seededSlug: string | null = null;
 
 /**
+ * A deterministic serialisation of a value, with object keys in sorted order.
+ *
+ * Key order is normalised rather than trusted because two objects carrying the same values in a
+ * different insertion order are the same configuration: `reconcileSetup` rebuilds a stage by
+ * spreading a patch over a base, so an edited row and a freshly-read one legitimately differ in
+ * insertion order alone and must still fingerprint identically.
+ */
+function stableStringify(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+	const entries = Object.entries(value as Record<string, unknown>)
+		.filter(([, entry]) => entry !== undefined)
+		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
+}
+
+/**
  * The data fields, serialised in a fixed key order.
  *
- * `JSON.stringify` over the draft itself would fold in `steps`/`completeness`/`previewReady`, which
- * are derived — so a change that leaves the ladder alone and a change that moves it would compare
- * differently for the wrong reason. Order is fixed by construction rather than by object literal
- * order, because two objects carrying the same values in a different insertion order are the same
- * configuration and must produce the same fingerprint.
+ * Built by REMOVING the three derived fields rather than by listing the data ones. A hand-written
+ * list is a list that goes stale: a stage field added to the schema and edited by the form but absent
+ * from the list would leave the draft measuring clean, so Save would never appear and the owner's
+ * edit would be discarded by the next navigation with nothing to report it. `steps`, `completeness`
+ * and `previewReady` are excluded because they are a pure function of what remains — including them
+ * would make a change that happens to move the ladder compare differently from one that does not,
+ * for a reason unrelated to what the owner typed.
  */
 function fingerprint(setup: ProjectSetup): string {
-	return JSON.stringify([
-		setup.title,
-		setup.format,
-		setup.structure,
-		setup.sessionKind,
-		setup.description,
-		[setup.budget.budgetType, setup.budget.amountCents, setup.budget.currency],
-		[
-			setup.rules.visibility,
-			setup.rules.ipOwnershipMode,
-			setup.rules.ndaRequired,
-			setup.rules.portfolioDisplayRights,
-			setup.rules.timelinePreset,
-			setup.rules.allowDeadlineBonuses,
-			setup.rules.locationRestriction,
-			setup.rules.languageRequirement,
-		],
-		setup.stages.map((s) => [
-			s.id,
-			s.name,
-			s.description,
-			s.unitPriceCents,
-			s.milestone,
-			s.skills,
-		]),
-		setup.roles.map((r) => [r.id, r.name, r.budgetCents, r.skills]),
-	]);
+	const { steps: _steps, completeness: _completeness, previewReady: _ready, ...data } = setup;
+	return stableStringify(data);
 }
 
 /** Whether the draft carries edits the server has not acknowledged. */
@@ -118,6 +126,7 @@ export function seedSetup(setup: ProjectSetup): void {
 	setupBaseline.value = setup;
 	setupError.value = null;
 	setupNotice.value = null;
+	setupReveal.value = false;
 }
 
 /**
@@ -140,6 +149,7 @@ export function discardSetup(): void {
 	setupDraft.value = base;
 	setupError.value = null;
 	setupNotice.value = null;
+	setupReveal.value = false;
 }
 
 /** Clear every signal (the body island calls this on unmount). */
@@ -150,6 +160,7 @@ export function resetSetupState(): void {
 	setupSaving.value = false;
 	setupError.value = null;
 	setupNotice.value = null;
+	setupReveal.value = false;
 }
 // #endregion
 
@@ -157,18 +168,46 @@ export function resetSetupState(): void {
 /**
  * The first reason this draft cannot be persisted, in the owner's words, or `null`.
  *
- * These are the three places the wire schema is STRICTER than the working copy: `title`, a stage
+ * Three of the four are places the wire schema is STRICTER than the working copy: `title`, a stage
  * `name` and a role `name` are all `min(1)`, so an emptied one would come back as a 422 naming a
  * field path rather than a section. Refusing here — rather than blanking the value or omitting the
  * key — keeps the emptied field on screen where the owner can see what they cleared.
+ *
+ * The fourth is the archive. An archived engagement is out of circulation, and the write path
+ * refuses an edit to one with a status code; saying so here means the owner reads a sentence about
+ * their own project instead of a conflict they cannot act on. It is checked FIRST because it is a
+ * fact about whether this row may be written at all, which outranks anything about a single field.
  */
 function firstBlocker(setup: ProjectSetup): string | null {
+	if (setup.archivedAt !== null) {
+		return "This project is archived, so its configuration can no longer be changed.";
+	}
 	if (setup.title.trim().length === 0) return "Give the project a name before saving.";
 	if (setup.stages.some((s) => s.name.trim().length === 0)) {
 		return `Every ${STAGE_ITEM_LABEL[setup.format]} needs a name.`;
 	}
 	if (setup.roles.some((r) => r.name.trim().length === 0)) return "Every team role needs a name.";
 	return null;
+}
+
+/**
+ * The engagement terms, with the two pairs the database refuses to store inconsistently resolved.
+ *
+ * `nda_required` is derived from `nda_mode` and `nda_document_id` is permitted only on a custom NDA
+ * (`ck_projects_nda_document`), while `allow_deadline_bonuses` is permitted only on a pipeline
+ * (`ck_projects_deadline_bonus_format`). The form already normalises each of them at the moment the
+ * control changes; doing it again on the way out is what makes it impossible for this client to post
+ * a body Postgres will answer with a `23514` the owner cannot act on — a stored row that predates
+ * either constraint reaches the draft the same way an edit does.
+ */
+function normalisedRules(setup: ProjectSetup): ProjectRules {
+	const rules = setup.rules;
+	return {
+		...rules,
+		ndaRequired: ndaRequiredFor(rules.ndaMode),
+		ndaDocumentId: ndaDocumentFor(rules.ndaMode, rules.ndaDocumentId),
+		allowDeadlineBonuses: setup.format === "pipeline" && rules.allowDeadlineBonuses,
+	};
 }
 
 /**
@@ -179,6 +218,11 @@ function firstBlocker(setup: ProjectSetup): string | null {
  * service answers against the database, so a client-side diff of two arrays could only ever guess at
  * it. Positions are re-indexed from the rendered order, because the drag reordered the array and
  * `order` is what the server persists.
+ *
+ * A stage step that has been emptied is dropped rather than sent: `StageSetupSchema.tasks` requires
+ * `min(1)` per label, so an in-progress blank row would come back as a 422 against a field path. It
+ * stays in the draft while the owner is typing, and the server's own copy — which the response makes
+ * the new baseline — is what removes it from the form.
  */
 function toPayload(setup: ProjectSetup): UpdateProject {
 	return {
@@ -188,8 +232,13 @@ function toPayload(setup: ProjectSetup): UpdateProject {
 		sessionKind: setup.sessionKind,
 		description: setup.description,
 		budget: setup.budget,
-		rules: setup.rules,
-		stages: setup.stages.map((stage, index) => ({ ...stage, order: index })),
+		rules: normalisedRules(setup),
+		stages: setup.stages.map((stage, index) => ({
+			...stage,
+			order: index,
+			tasks: stage.tasks.map((task) => task.trim()).filter((task) => task.length > 0),
+			allowedFileExtensions: normalisedExtensions(stage.allowedFileExtensions),
+		})),
 		roles: setup.roles,
 	};
 }
@@ -207,6 +256,7 @@ async function commit(slug: string, payload: UpdateProject, notice: string): Pro
 	setupDraft.value = res.data.setup;
 	setupBaseline.value = res.data.setup;
 	setupNotice.value = notice;
+	setupReveal.value = false;
 	return true;
 }
 
@@ -217,6 +267,7 @@ export async function saveSetup(): Promise<boolean> {
 	const blocker = firstBlocker(draft);
 	if (blocker) {
 		setupError.value = blocker;
+		setupReveal.value = true;
 		return false;
 	}
 	return await commit(draft.slug, toPayload(draft), "Saved.");
@@ -232,13 +283,18 @@ export async function saveSetup(): Promise<boolean> {
 export async function publishSetup(): Promise<boolean> {
 	const draft = setupDraft.value;
 	if (!draft || setupSaving.value) return false;
-	if (!draft.previewReady) {
-		setupError.value = "Finish the required steps before publishing.";
-		return false;
-	}
+	// Ordered so the more specific answer wins: "give the project a name" and "this project is
+	// archived" both name the thing to do about it, where "finish the required steps" only says that
+	// one of five is outstanding.
 	const blocker = firstBlocker(draft);
 	if (blocker) {
 		setupError.value = blocker;
+		setupReveal.value = true;
+		return false;
+	}
+	if (!draft.previewReady) {
+		setupError.value = "Finish the required steps before publishing.";
+		setupReveal.value = true;
 		return false;
 	}
 	return await commit(draft.slug, { ...toPayload(draft), status: "active" }, "Published.");
@@ -254,6 +310,10 @@ export async function publishSetup(): Promise<boolean> {
 export async function archiveSetup(): Promise<boolean> {
 	const draft = setupDraft.value;
 	if (!draft || setupSaving.value) return false;
+	if (draft.archivedAt !== null) {
+		setupError.value = "This project is already archived.";
+		return false;
+	}
 	setupSaving.value = true;
 	setupError.value = null;
 	const res = await ProjectSidebarService.archive(draft.slug);

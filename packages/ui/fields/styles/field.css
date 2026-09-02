@@ -173,43 +173,78 @@
 /* #endregion */
 
 /* #region Validation statuses — colour PLUS a mark, never hue alone (§A.5) */
-.ui-field--invalid {
-	--field-border: var(--fld-invalid-bd);
-	--field-accent: var(--fld-invalid-bd);
+
+/*
+ * This region is split in two, and the split IS the state policy (DESIGN_SYSTEM.md §A.7.5).
+ *
+ * The MARK is ungated. It paints in every state, focus included: it is the icon/shape channel the
+ * CVD overlay depends on, and it is also the only part of a validation state that keeps saying what
+ * is wrong while the reader is inside the field putting it right.
+ *
+ * The COLOUR channels — border, surface, accent — are gated on REST. A coloured outline that
+ * survives focus competes with the focus indicator for the same contour, so "where I am" and "what
+ * is wrong" arrive on one edge and the reader can separate neither; and a field that paints red for
+ * the whole time it is being corrected has stopped reporting anything. So the instant a control
+ * takes focus its status paint stands down and the focus treatment owns the outline alone.
+ *
+ * The gate is `:not(.ui-field--focused):not(:focus-within)` — both, because a control may hold focus
+ * natively or track it in a signal and stamp the modifier through `fieldModifiers`, and either one
+ * has to count.
+ *
+ * Nothing in this region declares `box-shadow`, and `core/field_test.ts` asserts it. The focus ring
+ * IS a `box-shadow`, so a status rule declaring one would REPLACE the ring rather than compose with
+ * it — which is exactly how `auth.css` once shipped a focused invalid field carrying no focus
+ * indicator at all. Gating the custom properties composes by construction; a second `box-shadow`
+ * never can.
+ */
+.ui-field--invalid,
+.ui-field--required {
 	--field-mark: var(--fld-invalid-mark);
 }
 
 .ui-field--success {
-	--field-border: var(--fld-valid-bd);
-	--field-accent: var(--fld-valid-bd);
 	--field-mark: var(--fld-valid-mark);
 }
 
-.ui-field--warning {
+.ui-field--warning,
+.ui-field--gate {
+	--field-mark: var(--fld-warning-mark);
+}
+
+.ui-field--invalid:not(.ui-field--focused):not(:focus-within) {
+	--field-border: var(--fld-invalid-bd);
+	--field-accent: var(--fld-invalid-bd);
+}
+
+.ui-field--success:not(.ui-field--focused):not(:focus-within) {
+	--field-border: var(--fld-valid-bd);
+	--field-accent: var(--fld-valid-bd);
+}
+
+.ui-field--warning:not(.ui-field--focused):not(:focus-within) {
 	--field-border: var(--fld-warning-bd);
 	--field-accent: var(--fld-warning-bd);
 	--field-bg: var(--fld-warning-bg);
-	--field-mark: var(--fld-warning-mark);
 }
 
 /*
  * Two-tier creation gate (root CLAUDE.md). `required` = RED initial-creation gate (needed to create
  * the base record); `gate` = AMBER publishing gate (needed to publish/hire, optional to draft). Both
  * carry a faint tonal fill so an unfilled gate reads at a glance in a dense form, not just on the
- * hairline — still §B.4-clean (the field is interactive, so a full outline is allowed).
+ * hairline — still §B.4-clean (the field is interactive, so a full outline is allowed). Both stand
+ * down on focus like every other status: an amber gate is a standing note about what is still
+ * missing, not a running commentary on the field the reader is currently typing into.
  */
-.ui-field--required {
+.ui-field--required:not(.ui-field--focused):not(:focus-within) {
 	--field-border: var(--fld-required-bd);
 	--field-accent: var(--fld-required-bd);
 	--field-bg: var(--fld-required-bg);
-	--field-mark: var(--fld-invalid-mark);
 }
 
-.ui-field--gate {
+.ui-field--gate:not(.ui-field--focused):not(:focus-within) {
 	--field-border: var(--fld-gate-bd);
 	--field-accent: var(--fld-gate-bd);
 	--field-bg: var(--fld-gate-bg);
-	--field-mark: var(--fld-warning-mark);
 }
 
 /*

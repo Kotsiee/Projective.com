@@ -1,0 +1,917 @@
+/*
+ * Project creation wizard (`.pwz-*`) — the six-step surface on `/projects/create`.
+ *
+ * Pure CSS + strict BEM, token-only. Separation is spacing first, then a single hairline (§B.4): a
+ * step panel is a stack of labelled groups with NO card around any of them, because a group of prose
+ * and inputs is static content and boxing it would be the card-in-card the design system forbids.
+ * A full border appears in exactly two places, and both are interactive: a stage row and a role row.
+ *
+ * The prefix is `pwz-`, distinct from `pcm-` (the retired create modal) and `pjs-`/`psu-` (the setup
+ * form on an engagement that already exists), so nothing here can be reached by a selector written
+ * for a different surface.
+ *
+ * TIERS ARE NEVER A PALETTE. The taxonomy has five members and this sheet paints two ramps —
+ * `--fld-required-*` and `--fld-gate-*`, both supplied by the field layer itself. Nothing below
+ * invents a third, because the theme has token backing for exactly those two and a five-colour key
+ * encodes a distinction nobody can read off a swatch.
+ */
+
+/* #region Shell */
+.pwz {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	padding: var(--space-6) var(--space-5) var(--space-8);
+	max-inline-size: 64rem;
+	margin-inline: auto;
+}
+
+.pwz__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+.pwz__eyebrow {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.pwz__title {
+	margin: 0;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	line-height: 1.2;
+	color: var(--on-surface);
+}
+.pwz__lede {
+	margin: 0;
+	max-inline-size: 46rem;
+	font-size: var(--text-sm);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region The step rail */
+.pwz-rail {
+	border-block-end: var(--hairline);
+}
+.pwz-rail__list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pwz-rail__item {
+	display: flex;
+	min-inline-size: 0;
+}
+
+/*
+ * Every rung stays pressable, including one the draft cannot reach. `goToStep` refuses and reveals
+ * the verdicts on the step being left, which says WHAT is wrong; a disabled control says only that
+ * something is.
+ */
+.pwz-rail__button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fld-h-md);
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--spring-standard),
+		background-color var(--dur-fast) var(--spring-standard);
+}
+.pwz-rail__button:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.pwz-rail__button:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.pwz-rail__button[data-state="current"] {
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.pwz-rail__mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border: var(--fld-bw) solid var(--outline);
+	border-radius: var(--radius-full);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+.pwz-rail__button[data-state="current"] .pwz-rail__mark {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+.pwz-rail__button[data-state="done"] .pwz-rail__mark {
+	border-color: var(--success);
+	color: var(--success);
+}
+.pwz-rail__button[data-state="attention"] .pwz-rail__mark {
+	border-color: var(--fld-required-bd, var(--danger));
+	color: var(--danger);
+}
+
+.pwz-rail__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region The panel */
+.pwz__panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
+.pwz__panelhead {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.pwz__steptitle {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+/* The heading takes focus on a step change; it is a destination, not a control. */
+.pwz__steptitle:focus {
+	outline: none;
+}
+.pwz__steptitle:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+.pwz__stepcount {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.pwz__steplede {
+	margin: 0;
+	max-inline-size: 46rem;
+	font-size: var(--text-sm);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+.pwz__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+/* #endregion */
+
+/* #region Fields, rows, groups, notes */
+.pwz-field {
+	min-inline-size: 0;
+}
+
+.pwz-row {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+	gap: var(--space-4);
+	align-items: start;
+}
+
+.pwz-note {
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	border-inline-start: var(--hairline);
+	font-size: var(--text-sm);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+.pwz-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+.pwz-group:first-child {
+	padding-block-start: 0;
+	border-block-start: none;
+}
+.pwz-group__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.pwz-group__title {
+	margin: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+.pwz-group__hint {
+	margin: 0;
+	max-inline-size: 46rem;
+	font-size: var(--text-sm);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+.pwz-group__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+/* Progressive disclosure for the settings a stage rarely needs. Native `<details>`: no island. */
+.pwz-adv {
+	margin-block-start: var(--space-2);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+.pwz-adv__summary {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-block: var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	cursor: pointer;
+	list-style: none;
+}
+.pwz-adv__summary::-webkit-details-marker {
+	display: none;
+}
+.pwz-adv__summary::before {
+	content: "";
+	inline-size: 0;
+	block-size: 0;
+	border-block-start: 0.3rem solid transparent;
+	border-block-end: 0.3rem solid transparent;
+	border-inline-start: 0.4rem solid currentColor;
+	transition: transform var(--dur-fast) var(--spring-standard);
+}
+.pwz-adv[open] > .pwz-adv__summary::before {
+	transform: rotate(90deg);
+}
+.pwz-adv__summary:hover {
+	color: var(--on-surface);
+}
+.pwz-adv__summary:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
+.pwz-adv__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding-block-start: var(--space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pwz-rail__button,
+	.pwz-adv__summary::before {
+		transition: none;
+	}
+}
+/* #endregion */
+
+/* #region The stage workbench */
+.pwz-work {
+	display: grid;
+	grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+	gap: var(--space-5);
+	align-items: start;
+}
+.pwz-work__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.pwz-work__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.pwz-work__title {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+.pwz-work__count {
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.pwz-stages {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pwz-stages__empty {
+	padding: var(--space-3);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+/* A stage row IS interactive, which is what §B.4 reserves a full border for. */
+.pwz-stage {
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-1);
+	border: var(--fld-bw) solid var(--outline);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	overflow: hidden;
+}
+.pwz-stage[data-active] {
+	border-color: var(--primary);
+	background: var(--surface-2);
+}
+.pwz-stage[data-dragging] {
+	opacity: 0.5;
+}
+.pwz-stage[data-over] {
+	border-color: var(--primary);
+}
+
+.pwz-stage__grip,
+.pwz-stage__remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 2rem;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.pwz-stage__grip {
+	cursor: grab;
+}
+.pwz-stage__grip:hover,
+.pwz-stage__remove:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+.pwz-stage__grip:focus-visible,
+.pwz-stage__remove:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset, var(--focus-ring-shadow));
+}
+
+.pwz-stage__main {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	padding: var(--space-3) var(--space-2);
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	text-align: start;
+	cursor: pointer;
+}
+.pwz-stage__main:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow-inset, var(--focus-ring-shadow));
+}
+.pwz-stage__index {
+	flex: none;
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+.pwz-stage__name {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pwz-stage__summary {
+	flex: none;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.pwz-work__add {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-block-size: var(--fld-h-sm);
+	padding: var(--space-2) var(--space-3);
+	border: var(--fld-bw) dashed var(--outline);
+	border-radius: var(--radius-base);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.pwz-work__add:hover {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+.pwz-work__add:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* The inspector is set off by ONE hairline, never a box. */
+.pwz-work__inspector {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+	padding-inline-start: var(--space-5);
+	border-inline-start: var(--hairline);
+}
+.pwz-work__placeholder {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
+@media (max-width: 60rem) {
+	.pwz-work {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.pwz-work__inspector {
+		padding-inline-start: 0;
+		padding-block-start: var(--space-4);
+		border-inline-start: none;
+		border-block-start: var(--hairline);
+	}
+}
+/* #endregion */
+
+/* #region Attachments */
+.pwz-attach {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	align-items: flex-start;
+}
+.pwz-attach__input {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+.pwz-attach__pick {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fld-h-sm);
+	padding: var(--space-2) var(--space-3);
+	border: var(--fld-bw) solid var(--outline);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	font: inherit;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	cursor: pointer;
+}
+.pwz-attach__pick:hover:not(:disabled) {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+.pwz-attach__pick:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.pwz-attach__pick:disabled {
+	opacity: var(--fld-disabled-alpha, 0.5);
+	cursor: not-allowed;
+}
+
+.pwz-attach__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	inline-size: 100%;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pwz-attach__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-2);
+	border-radius: var(--radius-sm);
+	background: var(--surface-2);
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+.pwz-attach__name {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pwz-attach__drop {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.pwz-attach__drop:hover {
+	color: var(--on-surface);
+}
+.pwz-attach__drop:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.pwz-attach__status {
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.pwz-attach__failures {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: var(--text-xs);
+	line-height: 1.5;
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Roles */
+.pwz-roles {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0 0 var(--space-3);
+	padding: 0;
+	list-style: none;
+}
+.pwz-roles__empty {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+/* A role row is interactive throughout — the one other place a full border is earned. */
+.pwz-role {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-3);
+	border: var(--fld-bw) solid var(--outline);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+}
+.pwz-role__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.pwz-role__index {
+	flex: none;
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+.pwz-role__remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.pwz-role__remove:hover {
+	color: var(--danger);
+}
+.pwz-role__remove:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+/* #endregion */
+
+/* #region Review */
+.pwz-meter {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+.pwz-meter__track {
+	position: relative;
+	flex: 1 1 auto;
+	min-inline-size: 4rem;
+	block-size: 0.375rem;
+	border-radius: var(--radius-full);
+	background: var(--surface-3);
+	overflow: hidden;
+}
+/*
+ * NEVER transitioned. The width IS the datum, and a backgrounded tab freezes the animation clock —
+ * a bar that animates in renders at 0% on a draft with real progress.
+ */
+.pwz-meter__fill {
+	display: block;
+	inline-size: var(--pwz-meter-pct, 0%);
+	block-size: 100%;
+	border-radius: inherit;
+	background: var(--primary);
+}
+.pwz-meter__value {
+	flex: none;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.pwz-ladder {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pwz-ladder__row {
+	display: grid;
+	grid-template-columns: 1.25rem minmax(6rem, auto) minmax(0, 1fr);
+	gap: var(--space-3);
+	align-items: baseline;
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+}
+.pwz-ladder__row:last-child {
+	border-block-end: none;
+}
+.pwz-ladder__mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+}
+.pwz-ladder__row[data-done] .pwz-ladder__mark {
+	color: var(--success);
+}
+.pwz-ladder__label {
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+.pwz-ladder__row[data-done] .pwz-ladder__label {
+	font-weight: var(--fw-medium);
+}
+.pwz-ladder__meta {
+	min-inline-size: 0;
+	font-size: var(--text-xs);
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+
+.pwz-disclose {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-inline-start: var(--space-4);
+	border-inline-start: var(--hairline-strong, var(--hairline));
+}
+.pwz-disclose[data-tone="gate"] {
+	border-inline-start-color: var(--warning);
+}
+.pwz-disclose__title {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+.pwz-disclose__body {
+	margin: 0;
+	max-inline-size: 46rem;
+	font-size: var(--text-sm);
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+.pwz-disclose__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	font-size: var(--text-sm);
+	line-height: 1.5;
+	color: var(--text-secondary);
+}
+.pwz-disclose__req {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.pwz-todo {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pwz-todo__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+}
+.pwz-todo__row:last-child {
+	border-block-end: none;
+}
+.pwz-todo__text {
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	line-height: 1.5;
+	color: var(--on-surface);
+}
+.pwz-todo__where {
+	margin-inline-end: var(--space-2);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.pwz-todo__jump {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	flex: none;
+	min-block-size: var(--fld-hit, 1.5rem);
+	padding: var(--space-1) var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--primary);
+	cursor: pointer;
+}
+.pwz-todo__jump:hover {
+	background: var(--surface-2);
+}
+.pwz-todo__jump:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+.pwz-todo__clear {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.pwz-todo__clear svg {
+	color: var(--success);
+}
+/* #endregion */
+
+/* #region Footer */
+.pwz__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+.pwz__status {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	flex: 1 1 20rem;
+	min-inline-size: 0;
+}
+.pwz__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+}
+
+/*
+ * The refusal channel. Two presentations of one block: a flat list when the blocker is on this
+ * screen, and a led list with a route when the refusal was about a step the author is not looking
+ * at — a press that refuses without naming what refused it reads as a control that did nothing.
+ */
+.pwz-alert {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: var(--text-sm);
+	line-height: 1.5;
+	color: var(--danger);
+}
+.pwz-alert > li,
+.pwz-alert__lead {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+}
+.pwz-alert__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding-inline-start: var(--space-6);
+	list-style: disc;
+}
+/* #endregion */
+
+/* #region Narrow viewports */
+@media (max-width: 48rem) {
+	.pwz {
+		padding: var(--space-5) var(--space-4) var(--space-7);
+		gap: var(--space-5);
+	}
+	/*
+	 * The rail becomes a scroller rather than wrapping to three rows: six rungs stacked would push
+	 * the panel below the fold on every step, and the rung the author is on is always scrolled into
+	 * view by the browser when it takes focus.
+	 */
+	.pwz-rail__list {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+	}
+	.pwz-rail__item {
+		flex: none;
+	}
+	.pwz__foot {
+		align-items: stretch;
+	}
+	.pwz__actions {
+		justify-content: flex-end;
+	}
+}
+/* #endregion */

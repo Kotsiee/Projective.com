@@ -98,6 +98,14 @@ CREATE TYPE payment_status AS ENUM ('unpaid', 'escrow_funded', 'partially_releas
 
 CREATE TYPE projects.structure_variation AS ENUM ('standard', 'one_off', 'single_task', 'single_stage');
 
+-- What governs confidentiality on an engagement, NOT how the document arrived. "Re-use one I have
+-- already uploaded" and "upload a new one" are both `custom` plus a `projects.nda_document_id`; a
+-- fourth member would encode the upload route rather than the terms, and every reader that has to
+-- decide whether to gate a file cares only about the terms. `none` is the default because the
+-- absence of an NDA is the absence of an obligation, and it keeps the legacy boolean
+-- `projects.projects.nda_required` derivable as `nda_mode <> 'none'` rather than a second opinion.
+CREATE TYPE projects.nda_mode AS ENUM ('none', 'platform_standard', 'custom');
+
 CREATE TYPE projects.workload_report_status AS ENUM ('open', 'acknowledged', 'adjusted', 'expired_penalized', 'dismissed_bad_faith');
 
 CREATE TYPE projects.cohort_status AS ENUM ('enrolling', 'active', 'completed', 'cancelled');

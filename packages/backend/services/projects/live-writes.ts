@@ -5,21 +5,29 @@ import {
 	type CreatedProject,
 	createFormatToColumns,
 	type CreateProject,
+	type CreateProjectStage,
 	type CreateSubmission,
+	effectiveVisibility,
 	type MoveTicket,
+	ndaDocumentFor,
+	type NdaMode,
+	ndaRequiredFor,
 	type ProjectFormat,
 	type ProjectRoleSetup,
 	type ProjectRules,
 	type ProjectSetup,
 	projectSlugFrom,
 	type ProjectStructure,
+	type ProjectVisibility,
 	reconcileSetup,
 	type SendProjectMessage,
+	type StageDurationMode,
 	type StageSetup,
 	type SubmissionUnit,
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
+import { FileCategory } from "@projective/types/files";
 import type { FieldErrors } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
@@ -104,6 +112,8 @@ interface SetupProjectRow {
 	visibility: string;
 	ip_ownership_mode: string;
 	nda_required: boolean;
+	nda_mode: string;
+	nda_document_id: string | null;
 	portfolio_display_rights: string;
 	timeline_preset: string;
 	allow_deadline_bonuses: boolean;
@@ -123,6 +133,23 @@ interface SetupStageRow {
 	unit_price_cents: number | null;
 	milestone: string | null;
 	skills: string[] | null;
+	/** The checklist a ticket is seeded from — a jsonb array whose elements may be labels or objects. */
+	default_tasks: unknown;
+	file_upload_required: boolean;
+	/** `NULL` is UNLIMITED, not "unset" — the column's own nullable-as-unbounded convention. */
+	seat_limit: number | null;
+	parallel: boolean;
+	nda_override: boolean;
+	/** `NULL` or empty means every category; the column stores `files.file_category` literals. */
+	allowed_file_categories: string[] | null;
+	allowed_file_extensions: string[] | null;
+	/** The stage this one waits on, by id. The projection reports it as an ORDERED INDEX instead. */
+	start_dependency_stage_id: string | null;
+	start_dependency_lag_days: number | null;
+	/** `NULL` is a stage whose owner has not chosen a timing model; it reads as `no_due_date`. */
+	file_duration_mode: string | null;
+	file_duration_days: number | null;
+	file_due_date: string | null;
 }
 
 /** The `projects.stage_staffing_roles` columns a Direct Deliverable's roles map onto. */
@@ -152,6 +179,8 @@ const SETUP_PROJECT_COLUMNS = [
 	"visibility",
 	"ip_ownership_mode",
 	"nda_required",
+	"nda_mode",
+	"nda_document_id",
 	"portfolio_display_rights",
 	"timeline_preset",
 	"allow_deadline_bonuses",
@@ -162,8 +191,28 @@ const SETUP_PROJECT_COLUMNS = [
 ].join(", ");
 
 /** The stage columns the setup form reads and writes. */
-const SETUP_STAGE_COLUMNS =
-	"id, name, sort_order, description, description_text, unit_price_cents, milestone, skills";
+const SETUP_STAGE_COLUMNS = [
+	"id",
+	"name",
+	"sort_order",
+	"description",
+	"description_text",
+	"unit_price_cents",
+	"milestone",
+	"skills",
+	"default_tasks",
+	"file_upload_required",
+	"seat_limit",
+	"parallel",
+	"nda_override",
+	"allowed_file_categories",
+	"allowed_file_extensions",
+	"start_dependency_stage_id",
+	"start_dependency_lag_days",
+	"file_duration_mode",
+	"file_duration_days",
+	"file_due_date",
+].join(", ");
 // #endregion
 
 // #region Rich text
@@ -211,8 +260,86 @@ function isExistingId(id: string | undefined, draftPrefix: string): id is string
 	return UUID_RE.test(id);
 }
 
-/** Project a stage row onto the setup form's stage shape. */
-function toStageSetup(row: SetupStageRow): StageSetup {
+/** A stored string list, clamped to the projection's own bounds. Anything empty is dropped. */
+function textList(values: readonly string[] | null, max: number, itemMax: number): string[] {
+	return (values ?? [])
+		.map((value) => clamp(value, itemMax))
+		.filter((value) => value.length > 0)
+		.slice(0, max);
+}
+
+/**
+ * The checklist labels out of `project_stages.default_tasks`.
+ *
+ * The column is `jsonb` with no shape enforced, so an element may be a bare label or an object a
+ * later ticket-seeding write chose to store. Both are read, and anything else is DROPPED rather than
+ * stringified: `[object Object]` in a checklist is worse than a missing row, because it looks like
+ * something the owner typed.
+ */
+function taskLabels(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const out: string[] = [];
+	for (const entry of value) {
+		if (typeof entry === "string") {
+			const label = clamp(entry, 240);
+			if (label.length > 0) out.push(label);
+			continue;
+		}
+		if (entry && typeof entry === "object") {
+			const record = entry as Record<string, unknown>;
+			const raw = record.label ?? record.text ?? record.title;
+			if (typeof raw === "string") {
+				const label = clamp(raw, 240);
+				if (label.length > 0) out.push(label);
+			}
+		}
+	}
+	return out.slice(0, 50);
+}
+
+/**
+ * The stage's timing model.
+ *
+ * `NULL` reads as `no_due_date` because the projection has no third state for "the owner has not
+ * chosen": the column is NULL-tolerant on purpose, and a reader that had to treat NULL and
+ * `'no_due_date'` as the same answer would be carrying two representations of one state. An
+ * unrecognised value lands there too — the CHECK makes it unreachable, and inventing a fourth mode
+ * for a row that predates the CHECK would put a timing model on the form nobody selected.
+ */
+function durationModeOf(value: string | null): StageDurationMode {
+	if (value === "fixed_deadline" || value === "relative_duration") return value;
+	return "no_due_date";
+}
+
+/** The categories a submission may carry, filtered to the vocabulary both sides actually share. */
+function fileCategoriesOf(values: readonly string[] | null): StageSetup["allowedFileCategories"] {
+	const allowed = new Set<string>(FileCategory.options);
+	return (values ?? []).filter((value): value is StageSetup["allowedFileCategories"][number] =>
+		allowed.has(value)
+	).slice(0, 28);
+}
+
+/** A stored integer, held inside the projection's bounds; anything outside them reads as absent. */
+function boundedInt(value: number | null, min: number, max: number): number | null {
+	if (value === null || !Number.isFinite(value)) return null;
+	const rounded = Math.round(value);
+	if (rounded < min || rounded > max) return null;
+	return rounded;
+}
+
+/**
+ * Project a stage row onto the setup form's stage shape.
+ *
+ * `orderIndex` maps a stage id onto its position in the ORDERED list, because
+ * {@link StageSetup.dependsOnStageIndex} is an index and the column is a uuid. The index is what the
+ * wizard edits — a stage being sketched has no durable identity yet — so the two ends of the round
+ * trip speak the same language and the form never has to resolve a uuid it was not given.
+ *
+ * A dependency the map cannot resolve reads as `null`: `project_stages.start_dependency_stage_id`
+ * carries a foreign key to the TABLE rather than to this project, and a reference this list cannot
+ * place is one the form has no row to point at.
+ */
+function toStageSetup(row: SetupStageRow, orderIndex: ReadonlyMap<string, number>): StageSetup {
 	return {
 		id: row.id,
 		name: clampOr(row.name, NAME_MAX, "Stage"),
@@ -220,7 +347,21 @@ function toStageSetup(row: SetupStageRow): StageSetup {
 		description: richTextOf(row.description, row.description_text),
 		unitPriceCents: row.unit_price_cents,
 		milestone: clamp(row.milestone ?? "", 240),
-		skills: (row.skills ?? []).map((skill) => clamp(skill, 60)).filter((s) => s.length > 0),
+		skills: textList(row.skills, 20, 60),
+		tasks: taskLabels(row.default_tasks),
+		requiresFiles: row.file_upload_required,
+		seatLimit: boundedInt(row.seat_limit, 1, Number.MAX_SAFE_INTEGER),
+		parallel: row.parallel,
+		dependsOnStageIndex: row.start_dependency_stage_id
+			? orderIndex.get(row.start_dependency_stage_id) ?? null
+			: null,
+		lagDays: boundedInt(row.start_dependency_lag_days, 0, 365) ?? 0,
+		ndaOverride: row.nda_override,
+		allowedFileCategories: fileCategoriesOf(row.allowed_file_categories),
+		allowedFileExtensions: textList(row.allowed_file_extensions, 50, 16),
+		durationMode: durationModeOf(row.file_duration_mode),
+		durationDays: boundedInt(row.file_duration_days, 0, 3650),
+		dueDate: row.file_due_date ? clamp(row.file_due_date, 40) : null,
 	};
 }
 
@@ -234,12 +375,28 @@ function toRoleSetup(row: StaffingRoleRow): ProjectRoleSetup {
 	};
 }
 
-/** The engagement rules, read straight off the columns they map 1:1 onto. */
+/** The stored confidentiality mode, defaulting anything unrecognised to `none`. */
+function ndaModeOf(value: string | null): NdaMode {
+	return value === "platform_standard" || value === "custom" ? value : "none";
+}
+
+/**
+ * The engagement rules, read straight off the columns they map 1:1 onto.
+ *
+ * `ndaRequired` is DERIVED from the mode rather than read from its own column. The two are a pair —
+ * the enum governs and the boolean is its shadow — and reading each independently is how a row whose
+ * halves have drifted comes to answer "is this work confidential?" differently depending on which
+ * consumer asks. `ndaDocumentFor` applies the same discipline to the document reference, so a
+ * projection can never name an instrument under a mode that does not cite one.
+ */
 function toRules(row: SetupProjectRow): ProjectRules {
+	const ndaMode = ndaModeOf(row.nda_mode);
 	return {
 		visibility: row.visibility as ProjectRules["visibility"],
 		ipOwnershipMode: row.ip_ownership_mode as ProjectRules["ipOwnershipMode"],
-		ndaRequired: row.nda_required,
+		ndaRequired: ndaRequiredFor(ndaMode),
+		ndaMode,
+		ndaDocumentId: ndaDocumentFor(ndaMode, row.nda_document_id),
 		portfolioDisplayRights: row.portfolio_display_rights as ProjectRules["portfolioDisplayRights"],
 		timelinePreset: row.timeline_preset as ProjectRules["timelinePreset"],
 		allowDeadlineBonuses: row.allow_deadline_bonuses,
@@ -261,6 +418,11 @@ function toSetup(
 	roles: readonly StaffingRoleRow[],
 	viewerId: string,
 ): ProjectSetup {
+	const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
+	// Built BEFORE the projection so a dependency can be reported as the index of the stage it names,
+	// including a FORWARD reference — a stage that waits on one below it is legal, and resolving the
+	// map row by row would report it as unset.
+	const orderIndex = new Map(ordered.map((row, index) => [row.id, index]));
 	return reconcileSetup({
 		slug: row.slug,
 		title: clamp(row.title, TITLE_MAX),
@@ -285,7 +447,7 @@ function toSetup(
 			currency: clampOr(row.currency, 8, "USD"),
 		},
 		rules: toRules(row),
-		stages: [...stages].sort((a, b) => a.sort_order - b.sort_order).map(toStageSetup),
+		stages: ordered.map((stage) => toStageSetup(stage, orderIndex)),
 		roles: roles.map(toRoleSetup),
 		// The setup surface is the OWNER's. `create_stage` and `reorder_stages` both authorise on
 		// ownership, so anything wider here would draw controls the database will refuse.
@@ -387,7 +549,11 @@ function refusalFrom(message: string, field?: string): WriteRefusal {
 	// missing grant is also our configuration error rather than this caller's, which is what a 502
 	// says and a 403 does not.
 	const denied = message.includes("insufficient_privilege") ||
-		message.includes("Only the project owner");
+		message.includes("Only the project owner") ||
+		// `create_project` raises 42501 with this wording when a caller names a workspace they do not
+		// belong to. It is a refusal of THIS caller in the database's own words, which is a 403 — and
+		// the errcode does not travel in the message, so the sentence is what there is to match on.
+		message.includes("not an active member");
 	if (denied) {
 		return {
 			status: 403,
@@ -402,6 +568,10 @@ function refusalFrom(message: string, field?: string): WriteRefusal {
 	const rule = message.includes("cannot be reordered") ||
 		message.includes("can no longer change state") ||
 		message.includes("does not belong to project") ||
+		message.includes("not part of this project") ||
+		message.includes("A project belongs to one workspace") ||
+		message.includes("Name your project") ||
+		message.includes("free address for this project") ||
 		message.includes("are limited to") ||
 		message.includes("still open") ||
 		message.includes("unsettled");
@@ -436,8 +606,71 @@ function notWritten(field?: string): WriteRefusal {
 	};
 }
 
-/** Build the `projects.projects` column patch from the validated payload. */
-function projectColumnPatch(input: UpdateProject): Record<string, unknown> {
+/**
+ * The currency as `ck_projects_currency` will accept it.
+ *
+ * `CurrencyCode` already refuses anything else at the parser, so this is the second half of the same
+ * rule rather than a new one: the fat service is also called from SSR with a typed value that never
+ * passed through Zod, and a lowercase code reaching the column is a `23514` raised in the middle of
+ * a save the owner cannot act on. Uppercasing is ISO 4217's own convention, not a decision taken on
+ * the caller's behalf; anything that is still not three letters is dropped rather than truncated
+ * into a code that means something else.
+ *
+ * Exported because the STUB create stores a currency too, and `projects.create_project` upper-cases
+ * what it is sent — so the two branches have to normalise identically or a project drafted with the
+ * gate off reads back in a different case from the same project drafted with it on.
+ */
+export function normalisedCurrency(value: string): string | null {
+	const code = value.trim().toUpperCase();
+	return /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+/**
+ * Write the NDA triple as one coherent answer, or not at all.
+ *
+ * `nda_mode` governs, `nda_required` is its shadow and `nda_document_id` is only meaningful under
+ * `custom`. The database enforces the last of the three (`ck_projects_nda_document`) and NOTHING
+ * enforces the first two against each other, so an update that touched one half would leave a row
+ * whose columns disagree about whether the work is confidential — and each consumer would get a
+ * different answer depending on which one it happens to read.
+ *
+ * A caller that sends only the legacy boolean is honoured: `true` means the platform's standard
+ * terms, because "an NDA governs this and nobody said which" is exactly what `platform_standard`
+ * names. That is the same reconciliation `projects.create_project` performs, stated once on each
+ * path because the two write through different mechanisms.
+ */
+function ndaPatch(
+	patch: Record<string, unknown>,
+	rules: NonNullable<UpdateProject["rules"]>,
+	row: SetupProjectRow,
+): void {
+	const current = ndaModeOf(row.nda_mode);
+	const mode = rules.ndaMode ??
+		(rules.ndaRequired === undefined
+			? current
+			: (rules.ndaRequired ? "platform_standard" : "none"));
+
+	const touched = rules.ndaMode !== undefined || rules.ndaRequired !== undefined ||
+		rules.ndaDocumentId !== undefined;
+	if (!touched) return;
+
+	const document = rules.ndaDocumentId !== undefined ? rules.ndaDocumentId : row.nda_document_id;
+	patch.nda_mode = mode;
+	patch.nda_required = ndaRequiredFor(mode);
+	// Cleared by the mode, not by the caller: switching away from `custom` has to drop the reference
+	// in the SAME statement, or the CHECK refuses the write for a document the caller never mentioned.
+	patch.nda_document_id = ndaDocumentFor(mode, document ?? null);
+}
+
+/**
+ * Build the `projects.projects` column patch from the validated payload.
+ *
+ * `visibility` is deliberately NOT here. It is the one rule whose stored value is a FUNCTION of the
+ * project's completeness rather than of what the caller asked for, and the completeness is only
+ * knowable once the stages and roles in this same payload have landed — so it is resolved after
+ * them, by {@link resolveVisibility}, against the ladder the write actually produced.
+ */
+function projectColumnPatch(input: UpdateProject, row: SetupProjectRow): Record<string, unknown> {
 	const patch: Record<string, unknown> = {};
 	if (input.title !== undefined) patch.title = clamp(input.title, TITLE_MAX);
 	if (input.format !== undefined) patch.format = input.format;
@@ -458,11 +691,13 @@ function projectColumnPatch(input: UpdateProject): Record<string, unknown> {
 	if (input.budget?.amountCents !== undefined) {
 		patch.budget_amount_cents = input.budget.amountCents;
 	}
-	if (input.budget?.currency !== undefined) patch.currency = clamp(input.budget.currency, 8);
+	if (input.budget?.currency !== undefined) {
+		const currency = normalisedCurrency(input.budget.currency);
+		if (currency) patch.currency = currency;
+	}
 	const rules = input.rules;
-	if (rules?.visibility !== undefined) patch.visibility = rules.visibility;
+	if (rules) ndaPatch(patch, rules, row);
 	if (rules?.ipOwnershipMode !== undefined) patch.ip_ownership_mode = rules.ipOwnershipMode;
-	if (rules?.ndaRequired !== undefined) patch.nda_required = rules.ndaRequired;
 	if (rules?.portfolioDisplayRights !== undefined) {
 		patch.portfolio_display_rights = rules.portfolioDisplayRights;
 	}
@@ -480,6 +715,112 @@ function projectColumnPatch(input: UpdateProject): Record<string, unknown> {
 	// "nothing has HAPPENED here" or the stale-draft sweep spares a project that was merely renamed.
 	if (Object.keys(patch).length > 0) patch.last_activity_at = new Date().toISOString();
 	return patch;
+}
+
+/**
+ * Map a stage's optional configuration onto the snake_case bag BOTH stage writes take.
+ *
+ * One mapping, used by the UPDATE patch and by `create_stage`'s `p_payload`, because the two write
+ * the same columns through different mechanisms and a field folded into one and forgotten in the
+ * other is invisible to the type checker: the create succeeds, the value is silently the column's
+ * default, and the owner discovers it the next time they open the form.
+ *
+ * Only keys the caller actually sent are emitted. That is what makes it safe on a PATCH — an absent
+ * key means "unchanged" for the update and "take the column default" for the RPC — and it is why
+ * `seat_limit` is passed through verbatim rather than defaulted here: absent means the cap stands at
+ * three and an explicit `null` means Unlimited, a distinction `create_project` reads with `?` and a
+ * `?? 3` at this layer would erase.
+ *
+ * The three timing fields are written as ONE answer. `durationMode` decides which of the other two
+ * is meaningful, so a patch that changed the mode and left a stale absolute date behind would leave
+ * a stage claiming a deadline its own mode says it does not have.
+ */
+function stageColumnBag(
+	stage: Partial<StageSetup>,
+	current?: SetupStageRow,
+): Record<string, unknown> {
+	const bag: Record<string, unknown> = {};
+	if (stage.milestone !== undefined) bag.milestone = clamp(stage.milestone, 240);
+	if (stage.skills !== undefined) bag.skills = textList(stage.skills, 20, 60);
+	if (stage.tasks !== undefined) bag.default_tasks = textList(stage.tasks, 50, 240);
+	if (stage.requiresFiles !== undefined) bag.file_upload_required = stage.requiresFiles;
+	if (stage.seatLimit !== undefined) bag.seat_limit = stage.seatLimit;
+	if (stage.parallel !== undefined) bag.parallel = stage.parallel;
+	if (stage.lagDays !== undefined) bag.start_dependency_lag_days = stage.lagDays;
+	if (stage.ndaOverride !== undefined) bag.nda_override = stage.ndaOverride;
+	if (stage.allowedFileCategories !== undefined) {
+		// NULL rather than `{}` for an empty list. Both mean "every category" to every reader, and NULL
+		// is the one that says the owner never narrowed it, where an empty array reads as a list
+		// somebody emptied.
+		const categories = fileCategoriesOf(stage.allowedFileCategories);
+		bag.allowed_file_categories = categories.length > 0 ? categories : null;
+	}
+	if (stage.allowedFileExtensions !== undefined) {
+		bag.allowed_file_extensions = textList(stage.allowedFileExtensions, 50, 16);
+	}
+
+	const timing = stage.durationMode !== undefined || stage.durationDays !== undefined ||
+		stage.dueDate !== undefined;
+	if (timing) {
+		const mode = stage.durationMode ?? durationModeOf(current?.file_duration_mode ?? null);
+		bag.file_duration_mode = mode;
+		bag.file_duration_days = mode === "relative_duration"
+			? stage.durationDays ?? current?.file_duration_days ?? null
+			: null;
+		bag.file_due_date = mode === "fixed_deadline"
+			? stage.dueDate ?? current?.file_due_date ?? null
+			: null;
+	}
+	return bag;
+}
+
+/**
+ * Resolve every stage's `dependsOnStageIndex` against the ids the pass has just settled.
+ *
+ * A SECOND pass, mirroring `projects.create_project`'s own: a stage may legitimately wait on one
+ * declared after it, so an inline resolution would report a forward reference as unset — and a stage
+ * created in this same request has no id until it has been created.
+ *
+ * A self-reference and an out-of-range index are REFUSED rather than dropped. The foreign key names
+ * the table rather than the project, so the database accepts both: a stage waiting on itself never
+ * opens, and an index pointing past the list is a schedule the form drew and the row does not have.
+ */
+async function reconcileDependencies(
+	actor: ReadActor & { accessToken: string },
+	stages: NonNullable<UpdateProject["stages"]>,
+	ordered: readonly string[],
+): Promise<WriteRefusal | null> {
+	const db = projectsDb(actor);
+	for (const [position, stage] of stages.entries()) {
+		if (stage.dependsOnStageIndex === undefined) continue;
+		const index = stage.dependsOnStageIndex;
+		let dependency: string | null = null;
+		if (index !== null) {
+			if (index === position) {
+				return {
+					status: 422,
+					message: "A stage cannot wait on itself.",
+					errors: { stages: "self_dependency" },
+				};
+			}
+			dependency = ordered[index] ?? null;
+			if (!dependency) {
+				return {
+					status: 422,
+					message: "That stage waits on a stage this project does not have.",
+					errors: { stages: "unknown_dependency" },
+				};
+			}
+		}
+		const id = ordered[position];
+		if (!id) continue;
+		const { error } = await db
+			.from("project_stages")
+			.update({ start_dependency_stage_id: dependency })
+			.eq("id", id);
+		if (error) return refusalFrom(error.message, "stages");
+	}
+	return null;
 }
 
 /**
@@ -507,6 +848,7 @@ async function reconcileStages(
 ): Promise<WriteRefusal | null> {
 	const db = projectsDb(actor);
 	const existing = await fetchSetupStages(actor, projectRowId);
+	const byId = new Map(existing.map((row) => [row.id, row]));
 	const keep = new Set<string>();
 	const ordered: string[] = [];
 
@@ -514,14 +856,15 @@ async function reconcileStages(
 		const html = clamp(stage.description ?? "", RICH_TEXT_MAX);
 		const name = clampOr(stage.name, NAME_MAX, `Stage ${index + 1}`);
 		if (isExistingId(stage.id, DRAFT_STAGE_PREFIX)) {
-			const patch: Record<string, unknown> = { name };
+			const patch: Record<string, unknown> = {
+				name,
+				...stageColumnBag(stage, byId.get(stage.id)),
+			};
 			if (stage.description !== undefined) {
 				patch.description = { html };
 				patch.description_text = flattenRichText(html);
 			}
 			if (stage.unitPriceCents !== undefined) patch.unit_price_cents = stage.unitPriceCents;
-			if (stage.milestone !== undefined) patch.milestone = clamp(stage.milestone, 240);
-			if (stage.skills !== undefined) patch.skills = stage.skills;
 			const { data: touched, error } = await db
 				.from("project_stages")
 				.update(patch)
@@ -537,29 +880,22 @@ async function reconcileStages(
 		// `create_stage` provisions the stage's room in the same transaction. That is not a
 		// convenience: a stage with no channel is omitted from the channel tree, so a stage inserted
 		// directly would be invisible in the sidebar that is supposed to show it.
+		//
+		// The whole configuration travels in `p_payload`, the sixth parameter, so the stage lands in
+		// ONE statement. It used to be a create followed by a patch for the fields the signature could
+		// not carry, which is two chances to half-write a stage — and the RPC is the only half that
+		// opens the channel, so a failure between them left a room with no configuration behind it.
 		const { data, error } = await db.rpc("create_stage", {
 			p_project_id: projectRowId,
 			p_name: name,
 			p_description: { html },
 			p_description_text: flattenRichText(html),
 			p_unit_price_cents: stage.unitPriceCents ?? null,
+			p_payload: stageColumnBag(stage),
 		});
 		if (error) return refusalFrom(error.message, "stages");
 		const newId = typeof data === "string" ? data : null;
 		if (!newId) return refusalFrom("create_stage returned no id", "stages");
-		// `create_stage` takes neither skills nor a milestone, so both are a follow-up write rather than
-		// a widened RPC signature — the function is `SECURITY DEFINER` and its argument list is a schema
-		// decision. One statement for the pair, because two would be two chances to half-write a stage.
-		const extras: Record<string, unknown> = {};
-		if (stage.skills?.length) extras.skills = stage.skills;
-		if (stage.milestone) extras.milestone = clamp(stage.milestone, 240);
-		if (Object.keys(extras).length > 0) {
-			const { error: extraError } = await db
-				.from("project_stages")
-				.update(extras)
-				.eq("id", newId);
-			if (extraError) return refusalFrom(extraError.message, "stages");
-		}
 		keep.add(newId);
 		ordered.push(newId);
 	}
@@ -598,7 +934,10 @@ async function reconcileStages(
 		// fault. It is reported against `stages` so the form can say which section did not land.
 		if (error) return refusalFrom(error.message, "stages");
 	}
-	return null;
+
+	// LAST, because a dependency names a stage by its position in the list this pass has just settled:
+	// resolving it earlier would point at the order the project had before the save.
+	return await reconcileDependencies(actor, stages, ordered);
 }
 
 /**
@@ -697,7 +1036,7 @@ async function reconcileRoles(
  * first, which is what stops the most common half-commit rather than pretending to prevent all of
  * them. The complete answer is one RPC doing the whole reconciliation in a single transaction.
  */
-function validateUpdate(input: UpdateProject): WriteRefusal | null {
+function validateUpdate(input: UpdateProject, row: SetupProjectRow): WriteRefusal | null {
 	if (input.roles?.some((role) => role.budgetCents === null || role.budgetCents === undefined)) {
 		return {
 			status: 422,
@@ -705,11 +1044,89 @@ function validateUpdate(input: UpdateProject): WriteRefusal | null {
 			errors: { roles: "budget_required" },
 		};
 	}
+	// `ck_projects_deadline_bonus_format`. The format may be changing in this same payload, so the
+	// pair is evaluated against the post-write shape rather than against the stored one — switching a
+	// pipeline that offers bonuses to a one-off has to clear the flag in the same save, and telling
+	// the owner which of the two to change is the only thing that makes the refusal actionable.
+	const format = input.format ?? (row.format as ProjectFormat);
+	const bonuses = input.rules?.allowDeadlineBonuses ?? row.allow_deadline_bonuses;
+	if (bonuses && format !== "pipeline") {
+		return {
+			status: 422,
+			message: "A deadline bonus is a per-ticket incentive, so only a pipeline can offer one.",
+			errors: { allowDeadlineBonuses: "pipeline_only" },
+		};
+	}
+	if (input.budget?.currency !== undefined && !normalisedCurrency(input.budget.currency)) {
+		return {
+			status: 422,
+			message: "Use a 3-letter currency code, e.g. GBP.",
+			errors: { currency: "invalid_currency" },
+		};
+	}
+	for (const stage of input.stages ?? []) {
+		if (stage.seatLimit !== undefined && stage.seatLimit !== null && stage.seatLimit < 1) {
+			return {
+				status: 422,
+				message: "A stage seat cap is at least one person, or Unlimited.",
+				errors: { stageSeatLimit: "seat_limit_positive" },
+			};
+		}
+		if (
+			stage.unitPriceCents !== undefined && stage.unitPriceCents !== null &&
+			stage.unitPriceCents < 0
+		) {
+			// Not decorative: `finance.fn_hold_ticket_escrow` reads this column as an amount to hold, so
+			// a negative price inverts the direction the money moves.
+			return {
+				status: 422,
+				message: "A stage price cannot be negative.",
+				errors: { stageUnitPrice: "price_negative" },
+			};
+		}
+	}
 	return null;
 }
 
 /** The outcome of a write: the new projection, a refusal, or `null` for "no such project". */
 export type WriteOutcome<T> = { data: T } | { refusal: WriteRefusal } | null;
+
+/**
+ * Store the visibility the project has EARNED, given what its owner asked for.
+ *
+ * The one rule whose written value is not the value the caller sent. A discoverable engagement is a
+ * promise to the freelancers who find it, so `effectiveVisibility` honours the request only once
+ * every required ladder step is done and stores `unlisted` until then — and the ladder is a function
+ * of the stages, roles and budget THIS save has just written, which is why it runs last, against the
+ * re-read projection rather than against the payload.
+ *
+ * It writes only when the answer actually differs from what is stored, so an ordinary save costs no
+ * extra statement, and it patches the returned projection rather than re-reading: the value was just
+ * written by this function, and a second read would be one more round trip to learn something
+ * already known.
+ *
+ * The gap this leaves is deliberate and worth naming: nothing stores what the owner REQUESTED, only
+ * what they earned. A project downgraded to `unlisted` at create stays there until its owner picks
+ * `public` again on a save that satisfies the ladder.
+ */
+async function applyEffectiveVisibility(
+	actor: ReadActor & { accessToken: string },
+	projectRowId: string,
+	requested: ProjectVisibility,
+	setup: ProjectSetup,
+): Promise<WriteOutcome<ProjectSetup>> {
+	const effective = effectiveVisibility(requested, setup.steps);
+	if (effective === setup.rules.visibility) return { data: setup };
+
+	const { data: touched, error } = await projectsDb(actor)
+		.from("projects")
+		.update({ visibility: effective })
+		.eq("id", projectRowId)
+		.select("id");
+	if (error) return { refusal: refusalFrom(error.message, "visibility") };
+	if (!touched || touched.length === 0) return { refusal: notWritten("visibility") };
+	return { data: { ...setup, rules: { ...setup.rules, visibility: effective } } };
+}
 
 /**
  * Apply the setup form's patch and return the RE-DERIVED projection.
@@ -727,14 +1144,16 @@ export async function applyProjectUpdate(
 	input: UpdateProject,
 	replace = false,
 ): Promise<WriteOutcome<ProjectSetup>> {
-	// Before anything is written, so a section that was always going to be refused cannot leave the
-	// earlier sections committed behind it.
-	const invalid = validateUpdate(input);
-	if (invalid) return { refusal: invalid };
-
 	const row = await fetchSetupProject(actor, projectId);
 	if (!row) return null;
 	const db = projectsDb(actor);
+
+	// Before anything is written, so a section that was always going to be refused cannot leave the
+	// earlier sections committed behind it. It needs the stored row because two of the refusals are
+	// about the POST-write pair — a deadline bonus is legal or not depending on a format this same
+	// payload may be changing.
+	const invalid = validateUpdate(input, row);
+	if (invalid) return { refusal: invalid };
 
 	// An archived project is a soft-deleted one. Editing it would let content change underneath a
 	// decision that has already been recorded — and the setup projection has nowhere to SAY it is
@@ -749,7 +1168,7 @@ export async function applyProjectUpdate(
 		};
 	}
 
-	const patch = projectColumnPatch(input);
+	const patch = projectColumnPatch(input, row);
 	if (Object.keys(patch).length > 0) {
 		// `.select()` is what turns an RLS refusal into a refusal. Without it an UPDATE whose `USING`
 		// arm matches nothing affects zero rows and raises nothing, so a caller who may READ the row
@@ -783,7 +1202,8 @@ export async function applyProjectUpdate(
 
 	const setup = await fetchProjectSetup(actor, row.id);
 	if (!setup) return null;
-	return { data: setup };
+	if (input.rules?.visibility === undefined) return { data: setup };
+	return await applyEffectiveVisibility(actor, row.id, input.rules.visibility, setup);
 }
 
 /**
@@ -1246,6 +1666,143 @@ export async function insertProjectMessage(
 
 // #region Create
 /**
+ * The visibility EVERY newly created engagement is stored under, on both sides of the gate.
+ *
+ * Re-exported from the Zod SSOT rather than declared here, because the wizard has to DISCLOSE what a
+ * create will store and cannot import this module to find out — it performs writes and carries a
+ * Supabase client. A second copy of the ceiling on the surface that explains it is how a form comes
+ * to promise `public` over a row the database is about to store `unlisted`.
+ */
+export { CREATED_PROJECT_VISIBILITY } from "@projective/types/projects";
+
+/**
+ * A stage's timing triple as the payload carries it.
+ *
+ * The mode decides which of the other two is meaningful, so all three are emitted together and the
+ * irrelevant one is explicitly `null`. Sending a duration alongside `fixed_deadline` would store a
+ * stage whose columns describe two different schedules and leave every reader to pick one.
+ */
+function stageTimingPayload(stage: CreateProjectStage): Record<string, unknown> {
+	return {
+		file_duration_mode: stage.durationMode,
+		file_duration_days: stage.durationMode === "relative_duration" && stage.durationDays !== null
+			? String(stage.durationDays)
+			: null,
+		file_due_date: stage.durationMode === "fixed_deadline" ? stage.dueDate : null,
+	};
+}
+
+/**
+ * Everything about a create payload that can be refused without asking the database.
+ *
+ * Exported and called by the SERVICE rather than by this module, so the stub branch refuses exactly
+ * what the live branch refuses. A rule enforced on one side of a gate is a rule whose violations
+ * appear the day the gate flips, in a save that was working the day before.
+ *
+ * It refuses INVALID values, never incomplete ones. The wizard's whole design is that only a title
+ * is mandatory and every other field carries a default, so a half-written draft is a legitimate
+ * create and the tier taxonomy gates PUBLISHING, not saving. Everything below is a value the
+ * database would refuse (a CHECK, a cast, a cardinality trigger) or a contradiction the row cannot
+ * hold — reported against the wizard field that owns it, so the step rail can point at the control
+ * rather than showing a sentence with nowhere to go.
+ */
+export function validateCreate(input: CreateProject): WriteRefusal | null {
+	if (clamp(input.title, TITLE_MAX).trim().length === 0) {
+		return {
+			status: 422,
+			message: "Name your project.",
+			errors: { title: "title_required" },
+		};
+	}
+	if (!normalisedCurrency(input.currency)) {
+		return {
+			status: 422,
+			message: "Use a 3-letter currency code, e.g. GBP.",
+			errors: { currency: "invalid_currency" },
+		};
+	}
+	// `ck_projects_deadline_bonus_format`: a deadline bonus is a per-ticket incentive and only a
+	// pipeline has per-ticket work to incentivise.
+	if (input.allowDeadlineBonuses && input.format !== "pipeline") {
+		return {
+			status: 422,
+			message: "A deadline bonus is a per-ticket incentive, so only a pipeline can offer one.",
+			errors: { allowDeadlineBonuses: "pipeline_only" },
+		};
+	}
+	// Both stage-less structures cap the project at ONE stage
+	// (`fn_enforce_structure_variation`), and the cap is a BEFORE INSERT trigger — so a payload with
+	// the toggle off and a list behind it aborts the whole transaction on the second stage, and the
+	// author is told nothing about which of the two answers to change.
+	if (!input.hasStages && input.stages.length > 1) {
+		return {
+			status: 422,
+			message: "Turn stages on, or leave the project with a single stage.",
+			errors: { hasStages: "stages_not_allowed" },
+		};
+	}
+	if (input.ndaDocumentId !== null && !UUID_RE.test(input.ndaDocumentId)) {
+		return {
+			status: 422,
+			message: "That NDA document could not be recognised.",
+			errors: { ndaMode: "invalid_document" },
+		};
+	}
+	// Each id is cast to `uuid` inside `create_project`'s attachment loop, and a `22P02` raised there
+	// aborts a transaction the author has no way to explain. Refused rather than filtered: an
+	// attachment dropped in silence is a reference the brief still claims to carry.
+	if (input.attachmentIds.some((id) => !UUID_RE.test(id))) {
+		return {
+			status: 422,
+			message: "One of those attachments could not be recognised.",
+			errors: { attachmentIds: "invalid_attachment" },
+		};
+	}
+
+	for (const [index, stage] of input.stages.entries()) {
+		if (clamp(stage.name, NAME_MAX).trim().length === 0) {
+			return {
+				status: 422,
+				message: "Give every stage a name.",
+				errors: { stageName: "stage_name_required" },
+			};
+		}
+		if (stage.unitPriceCents !== null && stage.unitPriceCents < 0) {
+			// `finance.fn_hold_ticket_escrow` reads this column as an amount to hold, so a negative
+			// price inverts the direction the money moves.
+			return {
+				status: 422,
+				message: "A stage price cannot be negative.",
+				errors: { stageUnitPrice: "price_negative" },
+			};
+		}
+		if (stage.seatLimit !== null && stage.seatLimit < 1) {
+			return {
+				status: 422,
+				message: "A stage seat cap is at least one person, or Unlimited.",
+				errors: { stageSeatLimit: "seat_limit_positive" },
+			};
+		}
+		if (stage.dependsOnStageIndex === null) continue;
+		if (stage.dependsOnStageIndex === index) {
+			return {
+				status: 422,
+				message: "A stage cannot wait on itself.",
+				errors: { stageDependsOn: "self_dependency" },
+			};
+		}
+		if (!input.stages[stage.dependsOnStageIndex]) {
+			return {
+				status: 422,
+				message: "That stage waits on a stage this project does not have.",
+				errors: { stageDependsOn: "unknown_dependency" },
+			};
+		}
+	}
+	return null;
+}
+
+/**
  * Create one engagement, and return the two identifiers it can be addressed by.
  *
  * The whole write is ONE call to `projects.create_project`, and that is a deliberate departure from
@@ -1266,13 +1823,16 @@ export async function insertProjectMessage(
  * The payload is snake_cased here because the function reads columns, not camelCase fields. Nothing
  * authoritative travels in it: `owner_user_id`, `status` and `visibility` are all set by the function
  * itself, so a caller who hand-rolls this request cannot name somebody else as owner or publish a
- * project in the act of creating it.
+ * project in the act of creating it — see {@link CREATED_PROJECT_VISIBILITY}.
  */
 export async function insertProject(
 	actor: ReadActor & { accessToken: string },
 	input: CreateProject,
 ): Promise<WriteOutcome<CreatedProject>> {
-	const { format, structure } = createFormatToColumns(input.format);
+	// `hasStages` is the author's own toggle and it is NOT a column: it folds into the structure here
+	// (`hasStagesFor` reads it back out). Resolving the pair without it made the toggle inert — every
+	// create resolved to the with-stages structure regardless of what the wizard was showing.
+	const { format, structure } = createFormatToColumns(input.format, input.hasStages);
 	const html = clamp(input.scope, RICH_TEXT_MAX);
 	const title = clamp(input.title, TITLE_MAX);
 
@@ -1295,6 +1855,15 @@ export async function insertProject(
 	const scoped = scopeId.length > 0 && UUID_RE.test(scopeId);
 	const scopeType = scoped ? actor.contextType : "personal";
 
+	// Stage identity is minted HERE, before the write, and that is what makes a dependency expressible
+	// at all. `dependsOnStageIndex` is an index because a stage being sketched in the wizard has no
+	// durable identity, while `start_dependency_stage_id` is a uuid — so somebody has to turn one into
+	// the other, and the only party that can is the one that decides the ids. `create_project`
+	// COALESCEs a supplied stage id, and its dependency pass matches on that same key, so supplying
+	// both makes the whole schedule land inside the one transaction.
+	const stageIds = input.stages.map(() => crypto.randomUUID());
+	const ndaMode = input.ndaMode;
+
 	const payload: Record<string, unknown> = {
 		title,
 		slug: projectSlugFrom(input.title),
@@ -1310,13 +1879,44 @@ export async function insertProject(
 		// arrive the same way, but the string keeps the wire shape uniform with every other field and
 		// leaves no room for a float to appear in a minor-unit column.
 		budget_amount_cents: input.budget ? String(input.budget.amountCents) : null,
-		currency: input.budget?.currency ?? "USD",
-		stages: input.stages.map((stage) => ({
+		// The TOP-LEVEL currency, not the budget's. They duplicate one value and the schema names this
+		// one authoritative; reading the budget's would drop the author's choice for every project that
+		// carries no budget, which is most of them at create time.
+		currency: input.currency,
+		ip_ownership_mode: input.ipOwnershipMode,
+		portfolio_display_rights: input.portfolioDisplayRights,
+		// The mode alone. `nda_required` is DERIVED by the function from it, so sending the boolean too
+		// would be offering a second opinion the function is right to ignore — and would be the value
+		// that disagreed if this layer ever computed it differently.
+		nda_mode: ndaMode,
+		nda_document_id: ndaDocumentFor(ndaMode, input.ndaDocumentId),
+		allow_deadline_bonuses: input.allowDeadlineBonuses,
+		language_requirement: textList(input.languages, 20, 60),
+		location_restriction: textList(input.locations, 20, 60),
+		global_attachments: input.attachmentIds,
+		stages: input.stages.map((stage, index) => ({
+			id: stageIds[index],
 			name: clamp(stage.name, NAME_MAX),
 			description: { html: clamp(stage.description, RICH_TEXT_MAX) },
 			description_text: flattenRichText(clamp(stage.description, RICH_TEXT_MAX)),
 			unit_price_cents: stage.unitPriceCents === null ? null : String(stage.unitPriceCents),
 			milestone: clamp(stage.milestone, 240),
+			default_tasks: textList(stage.tasks, 50, 240),
+			skills: textList(stage.skills, 10, 60),
+			file_upload_required: stage.requiresFiles,
+			// Always present, and `null` when Unlimited. `create_project` reads the KEY with `?` — an
+			// absent key takes the column's cap of three and a present `null` clears it — so omitting the
+			// key for an unlimited stage would silently cap it instead.
+			seat_limit: stage.seatLimit === null ? null : String(stage.seatLimit),
+			parallel: stage.parallel,
+			nda_override: stage.ndaOverride,
+			allowed_file_categories: stage.allowedFileCategories,
+			allowed_file_extensions: textList(stage.allowedFileExtensions, 50, 16),
+			...stageTimingPayload(stage),
+			start_dependency_stage_id: stage.dependsOnStageIndex === null
+				? null
+				: stageIds[stage.dependsOnStageIndex] ?? null,
+			start_dependency_lag_days: String(stage.lagDays),
 		})),
 		roles: input.roles.map((role) => ({
 			name: clamp(role.name, NAME_MAX),

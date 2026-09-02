@@ -284,6 +284,27 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > maps all four to the same 404** — telling an anonymous caller *"this link expired"* rather than
 > *"no such link"* confirms a link existed, which is the fact a scanner is probing for.
 
+> **The Project Creation wizard (2026-09-02) introduces no new lifecycle, and that is a finding
+> rather than an omission.** Its five-tier field taxonomy — T1 Blocker · T2 Required-to-post · T3
+> Recommended · T4 Nice-to-have · T5 Conditional, in `packages/types/projects/create.ts` — is **form
+> logic**. It drives step progression, the publish gate and hint copy, and nothing else: it is not a
+> status, no board column maps to it, and it is never rendered as five colours (the theme backs two
+> gate ramps, not five). `hasStages` is derived (`structure_variation !== 'single_task'`) and never
+> stored, so it cannot drift from the stage list a status gate actually counts. `nda_mode` is a
+> contractual **term** with no transitions — an engagement does not move through
+> `none → platform_standard → custom`; it is set, and it can be changed.
+>
+> **The one state rule it does add is a projection, not a machine.** An engagement's STORED
+> visibility is `effectiveVisibility(requested, steps)`: the author's `public` request is honoured
+> only once every `required` readiness step is done, and until then the row stays `unlisted` —
+> reachable by its owner and by anyone holding the link, absent from Explore. It is recomputed on
+> every write rather than transitioned, it is decided server-side (never on the client, which would
+> be a client deciding its own reach), and a freshly created project has satisfied nothing, so it is
+> never public whatever its control said. §3.1 is untouched and the two axes are orthogonal: a
+> `draft` that is `unlisted` and an `active` that is `unlisted` are both legal, and visibility is not
+> a delivery state. Canonical home: `packages/types/projects/setup.ts` (`effectiveVisibility`,
+> beside the ladder it reads) · `documentation/flows/Projects.md` §5.
+
 **Rules:** (1) these never appear as delivery-board columns (§6 maps only §3.1 states); (2) nothing
 is hard-deleted — a retired verification/invoice/dispute goes to a terminal state, never a `DELETE`
 (§5.4); (3) a change to any of these transitions updates its canonical home **and** this row in the

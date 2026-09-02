@@ -925,3 +925,34 @@ WITH
         )
         AND inviter_user_id = auth.uid ()
     );
+
+
+-- =============================================================================
+-- project_attachments — write-only until now
+--
+-- The fifth table in this schema with RLS enabled (00002001) and no policy. It
+-- fails differently from the four above, because nothing here was ever exposed:
+-- default-deny on a table only a `SECURITY DEFINER` function writes means
+-- `projects.create_project` faithfully stored every brief, reference and mood
+-- board the client attached to a new engagement, and then NOBODY — not the
+-- owner, not a participant, not the person who uploaded them — could ever read
+-- one back. The attachment step of the create wizard was a control that
+-- rendered, accepted files, succeeded, and reached nothing (root CLAUDE.md §3
+-- gate 11), with no error anywhere to say so: `200 []` again.
+--
+-- Scoped to `has_project_access` rather than to the uploader, because an
+-- attachment is project context — it is what the brief refers to — and a
+-- freelancer who cannot open the reference the stage description cites has the
+-- stage and not the work. The join row carries no data of its own beyond the
+-- pair, and `files.items` keeps its own policy, so this admits the RELATIONSHIP
+-- and the file's own rules still decide whether the bytes can be fetched.
+--
+-- SELECT only. Every write goes through `projects.create_project`, which is
+-- DEFINER and bypasses RLS entirely, so the table stays fully writable by the
+-- path that is supposed to write it; a client INSERT policy would be a route to
+-- attach an arbitrary `files.items` id to somebody else's project, which is a
+-- disclosure dressed as a reference. Detaching is likewise a definer path when
+-- one is needed. Same discipline as `ticket_history` above.
+-- =============================================================================
+CREATE POLICY "View attachments of accessible projects" ON projects.project_attachments FOR
+SELECT TO authenticated USING (projects.has_project_access (project_id));

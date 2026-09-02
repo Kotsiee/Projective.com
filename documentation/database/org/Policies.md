@@ -193,6 +193,34 @@ to seed their own owner-membership at creation time (when no members exist yet),
 
 ---
 
+## 🏷 `org.skills` — public reference data
+
+```sql
+CREATE POLICY "Skills are public reference data"
+ON org.skills FOR SELECT TO authenticated, anon
+USING (true);
+```
+
+⚠️ **This table had RLS enabled since `00002001` and not one policy anywhere in the tree** — which
+is default-deny, and default-deny on a `SELECT` does not raise: it returns **`200 []`**. So every
+skills picker in the product (project staffing, stage requirements, a freelancer's own profile)
+returned an empty list and rendered it as "no skills found", and `projects.project_required_skills`
+referenced a vocabulary its own readers could not resolve. Nothing was logged and nothing raised;
+the only symptom was a control that renders and offers nothing (root `CLAUDE.md` §3 gate 11).
+
+**Read by `anon` as well as `authenticated`** because the list is genuinely public reference data:
+three columns (`id`, `slug`, `label`), no owner, no membership, no personal information, and it is
+rendered on the signed-out `/explore` filters. `anon` already holds `USAGE` on the schema and `ALL`
+on its tables (`00002500`), so the policy is what actually decides.
+
+**`SELECT` only, deliberately.** The vocabulary is a controlled list seeded in `00005050`. A client
+that could `INSERT` would let one person's typo become an option everybody else picks from, and the
+skill matching that staffing runs on stops meaning anything the moment the terms multiply. New
+skills arrive through a seed or an admin path, both of which run as `service_role` and are
+unaffected by RLS.
+
+---
+
 ## ⚠️ Security Notes
 
 - **Recursive Triggers**: The `is_active_team_member` helper must be used carefully to avoid

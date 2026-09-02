@@ -1,6 +1,10 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import "../styles/project-setup.css";
+// The stage step list is the ticket's own `TaskListEditor`, whose chrome lives in the ticket
+// composition sheet. Feature CSS reaches a page only through an island's import graph, so the sheet
+// is pulled in here or the reused component arrives unstyled.
+import "../styles/ticket-pipeline.css";
 import { Message } from "@projective/ui/feedback";
 import { sectionsFor, SetupSection } from "../components/setup/SetupSections.tsx";
 import type { ProjectSetup } from "../types/projects-types.ts";
@@ -35,6 +39,36 @@ export interface ProjectSetupFormProps {
 	setup: ProjectSetup;
 }
 
+const MONTHS = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+] as const;
+
+/**
+ * An ISO instant as a plain calendar date, in UTC.
+ *
+ * Deliberately not `toLocaleDateString`: this string is rendered during SSR and again on hydration,
+ * and the two runtimes resolve a locale independently — a server in one region and a browser in
+ * another would produce different text for the same instant, which Preact reconciles as a mismatch.
+ * Naming the month avoids the other trap, which is that `02/09` and `09/02` are the same date in two
+ * conventions and a reader has no way to tell which one they are looking at.
+ */
+function archivedOn(iso: string): string {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "an earlier date";
+	return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
 export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.Element {
 	useEffect(() => {
 		seedSetup(setup);
@@ -57,6 +91,28 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 					above tracks what is still outstanding.
 				</p>
 			</header>
+
+			{
+				/*
+				 * The archive is stated BEFORE the fields, not after a refused save.
+				 *
+				 * Every control below still edits the local draft — reading and comparing a configuration
+				 * is a legitimate thing to do with a project that is out of circulation — but nothing here
+				 * can be persisted, and finding that out only once Save has been pressed means the owner
+				 * has already spent the work. The store refuses the write with the same sentence, so the
+				 * banner and the refusal are one statement rather than two that could disagree.
+				 */
+			}
+			{live.archivedAt && (
+				<div class="psu__report">
+					<Message
+						severity="warning"
+						text={`Archived on ${
+							archivedOn(live.archivedAt)
+						}. This configuration can be read, but changes to it can no longer be saved.`}
+					/>
+				</div>
+			)}
 
 			{
 				/*

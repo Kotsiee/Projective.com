@@ -31,14 +31,14 @@ navigated to holding half of what they typed. It also runs `projects.update_enti
 an `AFTER INSERT` trigger that is `SECURITY INVOKER` and writes `org.users_public`; inside a
 `SECURITY DEFINER` function that bookkeeping runs in the definer's context, where it belongs.
 
-**What DEFINER obliges.** Bypassing RLS means every ownership claim in the payload is checked here or
-not at all:
+**What DEFINER obliges.** Bypassing RLS means every ownership claim in the payload is checked here
+or not at all:
 
-| Field | Source | Note |
-| :--- | :--- | :--- |
-| `owner_user_id` | `auth.uid()` | **Never** from the payload. |
-| `status` | hardcoded `draft` | Not from the payload — it gates the public-footprint trigger and the escrow lifecycle. |
-| `visibility` | hardcoded `unlisted` | Not from the payload — publishing is a later, deliberate write. |
+| Field                                                            | Source                      | Note                                                                                                                               |
+| :--------------------------------------------------------------- | :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `owner_user_id`                                                  | `auth.uid()`                | **Never** from the payload.                                                                                                        |
+| `status`                                                         | hardcoded `draft`           | Not from the payload — it gates the public-footprint trigger and the escrow lifecycle.                                             |
+| `visibility`                                                     | hardcoded `unlisted`        | Not from the payload — publishing is a later, deliberate write.                                                                    |
 | `client_business_id` / `owner_team_id` / `owner_organisation_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. |
 
 **The slug.** `payload.slug` (or the title) is normalised to the column's `^[a-z0-9-]{1,96}$` CHECK,
@@ -48,29 +48,102 @@ times — the retry is on the CONSTRAINT rather than a prior `SELECT`, because t
 project the same thing in the same instant both see the address free.
 
 **The participant row is written only for a business-scoped project**, as
-`('business', client_business_id, 'owner')`. `profile_type` is `('freelancer','business')` and has no
-member for an individual buyer, and `has_project_access` resolves a personal owner through
-`owner_user_id` in its first branch — so a personal project needs no participant row, and writing one
-as `freelancer` would be a false claim that also matches nothing (that branch joins
+`('business', client_business_id, 'owner')`. `profile_type` is `('freelancer','business')` and has
+no member for an individual buyer, and `has_project_access` resolves a personal owner through
+`owner_user_id` in its first branch — so a personal project needs no participant row, and writing
+one as `freelancer` would be a false claim that also matches nothing (that branch joins
 `org.freelancer_profiles`).
 
 **Each stage's General room is opened in the same transaction**, matching `create_stage`.
 `comms.get_stage_channels` provisions rooms lazily on first open and the channel tree is built from
 rooms that already exist, so a stage created without one is a stage nobody can navigate to.
 
-Roles hang off a stage, not a project, so a payload with roles and no stages opens a single
-`Delivery` stage to carry them — a Direct Deliverable composes exactly that way.
+**Every project leaves with at least one stage.** If the payload names none, one implicit `Delivery`
+stage is minted carrying the PROJECT's own `description`, `description_text` and IP mode, plus its
+`budget_amount_cents` as `unit_price_cents` — but only when `budget_type = 'fixed_price'`, because
+an `hourly_cap` is a ceiling on spend and `finance.fn_hold_ticket_escrow` reads that column as an
+amount to hold, so copying a cap there would escrow the ceiling as though it were the fee.
+
+This fires for ANY stageless project, not only one that arrived carrying roles. It used to sit
+inside the roles branch, where it existed to give `stage_staffing_roles` (which hangs off a stage,
+not a project) somewhere to live — so the far commoner case, a project with neither stages nor
+roles, landed with no stage at all: nothing for a ticket to sit in, nothing for escrow to price
+against, no room in the channel tree, and `projects.set_project_status` refusing to activate it
+because it counts stages. It carries the project's own metadata rather than a bare name because this
+stage IS the project's single unit of delivery; seeding it empty would ask the owner to retype what
+they have just typed. A Direct Deliverable — roles and no stages — still composes exactly as before.
+
+**The NDA pair cannot be stored disagreeing with itself.** `nda_mode` is authoritative when the
+caller sends one, and `nda_required` is written as `nda_mode <> 'none'`. When only the legacy
+boolean arrives, `true` resolves to `platform_standard` — "an NDA governs this and nobody said
+which" is exactly what that member names. `nda_document_id` is passed through untouched, because
+`ck_projects_nda_document` is the single authority on whether a document may accompany a mode, and a
+second opinion here could only disagree with it.
+
+**Currency is upper-cased, not re-validated.** `ck_projects_currency` owns the shape; case is the
+one difference between a code that is right and one that is right in lower case, and normalising it
+is ISO 4217's own convention rather than a decision this function takes on the caller's behalf.
+
+**`allow_deadline_bonuses` is passed through unclamped.** The flag arriving on a one-off is a caller
+contradiction, and `ck_projects_deadline_bonus_format` refusing it is more honest than this function
+quietly dropping what was sent.
+
+**`file_upload_required` defaults `true` HERE as well as on the column.** The RPC always supplies a
+value, so the column default alone never reaches the create path; the two have to carry the same
+answer or the change is inert.
+
+⚠️ **Every cast out of the payload goes through `NULLIF`, and every list through
+`projects.fn_payload_text_array`.** This function is `EXECUTE`-granted to `authenticated`, so its
+argument is caller-controlled: `->>` on a key whose value is an empty string hands an enum, numeric,
+boolean or timestamp cast a `''` it cannot parse (`22P02`), and a key holding a JSON `null` reaches
+`jsonb_array_elements_text` as a scalar (`22023`). Both are crashes a caller reaches directly rather
+than refusals, and neither is visible from reading the happy path.
 
 `EXECUTE` is granted to `authenticated` only.
+
+### `projects.fn_payload_text_array(p_value jsonb) → text[]`
+
+Reads a text array out of an untrusted jsonb payload, answering `{}` for everything that is not an
+array. `IMMUTABLE`, no security context of its own.
+
+The bare `ARRAY(SELECT jsonb_array_elements_text(x))` idiom it replaces is correct only for an
+ABSENT key. One function rather than a `jsonb_typeof` CASE repeated at six call sites, so "how do we
+read a list out of a payload" has one answer that cannot drift between the project and its stages.
 
 ---
 
 ## Stages
 
-### `projects.create_stage(p_project_id uuid, p_name text, p_description jsonb DEFAULT '{}', p_description_text text DEFAULT '', p_unit_price_cents bigint DEFAULT NULL) → uuid`
+### `projects.create_stage(p_project_id uuid, p_name text, p_description jsonb DEFAULT '{}', p_description_text text DEFAULT '', p_unit_price_cents bigint DEFAULT NULL, p_payload jsonb DEFAULT '{}') → uuid`
 
 Appends a stage to a project and **provisions its channel in the same transaction**. Returns the new
 stage id.
+
+**`p_payload` carries the stage's optional settings** — `milestone`, `default_tasks`, `skills`,
+`seat_limit`, `parallel`, `nda_override`, `allowed_file_categories`, `allowed_file_extensions`, the
+timing fields (`start_trigger_type`, `fixed_start_date`, `start_dependency_stage_id`,
+`start_dependency_lag_days`, `file_duration_mode`, `file_duration_days`, `file_due_date`),
+`hire_trigger_active`, `file_revisions_allowed` and the IP terms — **in the same shape
+`projects.create_project` reads a stage out of**, so the create path and the add-a-stage path cannot
+come to disagree about what a field is called.
+
+One jsonb bag rather than a dozen more named parameters: every argument added is another signature
+this function can never again be changed without, and the bag keeps the signature stable while the
+stage grows. Everything in it is optional — a caller sending `{}` gets exactly the stage the
+five-argument form used to build. Where an explicit argument and a bag key both carry a value, **the
+explicit argument wins**; it is the more specific statement, and collapsing the five would silently
+change what an existing call means.
+
+⚠️ Adding a defaulted parameter changes the signature, and Postgres will **not** `CREATE OR REPLACE`
+across one — so this is `DROP FUNCTION IF EXISTS … (uuid, text, jsonb, text, bigint)` + `CREATE`.
+Every existing five-argument call still resolves against the new function because `p_payload`
+defaults; verified by executing one. The default `PUBLIC EXECUTE` grant is re-established by the
+`CREATE` (this function has no explicit grant in `00002510`).
+
+**A dependency must be a stage of THIS project.** Without the check a caller could point the new
+stage at a stage id from somebody else's pipeline: the foreign key is satisfied (it names the table,
+not the project), the schedule then reads a start trigger it cannot resolve, and the reference
+itself discloses that the foreign stage exists. Refused with `check_violation`.
 
 The channel call is not a convenience. `comms.get_stage_channels` provisions a stage's rooms
 _lazily_, on first open, and the channel tree the app renders is built from the channels that

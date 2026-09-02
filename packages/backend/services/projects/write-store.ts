@@ -6,6 +6,7 @@ import {
 	type ChatMessage,
 	type CommitTicket,
 	type CreateSubmission,
+	DEFAULT_STAGE_SETUP,
 	formatTicketMoney,
 	type MessageAttachment,
 	type MessagePage,
@@ -318,6 +319,12 @@ export function submitStoredSubmission(
 	return updated;
 }
 
+/** How many submissions this viewer has created in a project — the number a fresh unit takes. */
+export function submissionCount(owner: string, projectId: string): number {
+	return peekBucket(owner)?.submissions.get(projectId)?.length ?? 0;
+}
+// #endregion
+
 // #region Created engagements
 /**
  * Record an engagement drafted through the stub path.
@@ -336,14 +343,31 @@ export function recordCreatedProject(
 	bucketFor(owner).created.set(setup.slug, { id, setup, createdAt });
 }
 
-/** An engagement this viewer drafted in stub mode, or `null`. */
-export function storedCreatedProject(slug: string, actor?: ReadActor): ProjectSetup | null {
-	return peekBucket(writeOwnerOf(actor))?.created.get(slug)?.setup ?? null;
+/**
+ * The drafted record a reference names — by slug OR by uuid.
+ *
+ * Both, because the live path resolves both: `resolveProjectRef` tries the slug first and falls back
+ * to the primary key, so a caller holding the `id` half of what the create returned can open the
+ * project. Keying the store by slug alone made that same caller read a 404 in the mode that ships by
+ * default, and the two branches would then disagree about what an identifier is.
+ *
+ * The slug map is consulted first and the id scan only runs when it misses, so the common case stays
+ * a single lookup; a uuid is never a legal slug (`^[a-z0-9-]{1,96}$` admits one, but nothing mints a
+ * project whose address is a uuid), so the two keyspaces cannot collide onto one record.
+ */
+function findCreated(bucket: OwnerBucket | undefined, ref: string): StoredProject | undefined {
+	if (!bucket) return undefined;
+	const bySlug = bucket.created.get(ref);
+	if (bySlug) return bySlug;
+	for (const record of bucket.created.values()) {
+		if (record.id === ref) return record;
+	}
+	return undefined;
 }
 
-/** Whether a slug names an engagement this viewer drafted in stub mode. */
-export function isStoredCreated(slug: string, actor?: ReadActor): boolean {
-	return peekBucket(writeOwnerOf(actor))?.created.has(slug) === true;
+/** Whether a reference names an engagement this viewer drafted in stub mode. */
+export function isStoredCreated(ref: string, actor?: ReadActor): boolean {
+	return findCreated(peekBucket(writeOwnerOf(actor)), ref) !== undefined;
 }
 
 /**
@@ -358,12 +382,6 @@ export function storedCreatedProjects(actor?: ReadActor): { id: string; setup: P
 	return [...bucket.created.values()]
 		.sort((a, b) => b.createdAt - a.createdAt)
 		.map(({ id, setup }) => ({ id, setup }));
-}
-// #endregion
-
-/** How many submissions this viewer has created in a project — the number a fresh unit takes. */
-export function submissionCount(owner: string, projectId: string): number {
-	return peekBucket(owner)?.submissions.get(projectId)?.length ?? 0;
 }
 // #endregion
 
@@ -391,12 +409,14 @@ export function overlaySetup(base: ProjectSetup, actor?: ReadActor): ProjectSetu
  * store first and fall through to the fixture corpus. Any later edits are folded on top, so a project
  * drafted and then configured reads back as configured rather than as it was named.
  */
-export function createdSetup(slug: string, actor?: ReadActor): ProjectSetup | null {
-	const owner = writeOwnerOf(actor);
-	const bucket = peekBucket(owner);
-	const record = bucket?.created.get(slug);
+export function createdSetup(ref: string, actor?: ReadActor): ProjectSetup | null {
+	const bucket = peekBucket(writeOwnerOf(actor));
+	const record = findCreated(bucket, ref);
 	if (!record) return null;
-	const stored = bucket?.setups.get(slug);
+	// Keyed on the record's OWN slug, never on the reference that found it: a later edit is stored
+	// against the canonical address, so looking the patch up by a uuid the caller happened to use
+	// would read back an unedited project through one identifier and an edited one through the other.
+	const stored = bucket?.setups.get(record.setup.slug);
 	if (!stored) return record.setup;
 	return reconcileSetup(record.setup, { ...stored.patch, archivedAt: stored.archivedAt });
 }
@@ -415,11 +435,10 @@ export function createdSetup(slug: string, actor?: ReadActor): ProjectSetup | nu
  * stage rooms ARE listed, because on the live path `create_project` opens them in the same
  * transaction, so their presence is the truth on both branches rather than a stub convenience.
  */
-export function createdDetail(slug: string, actor?: ReadActor): ProjectDetail | null {
-	const owner = writeOwnerOf(actor);
-	const record = peekBucket(owner)?.created.get(slug);
+export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | null {
+	const record = findCreated(peekBucket(writeOwnerOf(actor)), ref);
 	if (!record) return null;
-	const setup = createdSetup(slug, actor) ?? record.setup;
+	const setup = createdSetup(ref, actor) ?? record.setup;
 
 	return {
 		id: record.id,
@@ -466,11 +485,10 @@ export function createdDetail(slug: string, actor?: ReadActor): ProjectDetail | 
  * `scopeOf`, which reports the user's own id for a personal engagement — so the lane's scope filter
  * groups a drafted project exactly where it groups a live one.
  */
-export function createdSummary(slug: string, actor?: ReadActor): ProjectSummary | null {
-	const owner = writeOwnerOf(actor);
-	const record = peekBucket(owner)?.created.get(slug);
+export function createdSummary(ref: string, actor?: ReadActor): ProjectSummary | null {
+	const record = findCreated(peekBucket(writeOwnerOf(actor)), ref);
 	if (!record) return null;
-	const setup = createdSetup(slug, actor) ?? record.setup;
+	const setup = createdSetup(ref, actor) ?? record.setup;
 	if (setup.archivedAt) return null;
 
 	const scopeType = actor?.contextType ?? "personal";
@@ -857,6 +875,22 @@ function mintId(prefix: string): string {
 }
 
 /**
+ * Drop the keys a partial explicitly set to `undefined`.
+ *
+ * Object spread does NOT skip an `undefined` value — `{ ...base, ...{ x: undefined } }` overwrites
+ * `x` with `undefined` — so a layered merge that folds a partial over a base would blank every field
+ * the partial happens to declare and not fill. That is precisely how a PATCH sending one changed
+ * price comes to erase the scope prose beside it.
+ */
+function definedOnly<T extends object>(value: T): Partial<T> {
+	const out: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (entry !== undefined) out[key] = entry;
+	}
+	return out as Partial<T>;
+}
+
+/**
  * Turn the PATCH body into the store's patch shape, resolving each partial row against the base.
  *
  * The wire lets a stage arrive three ways and the difference is entirely in its id: absent or
@@ -882,17 +916,21 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 		const byId = new Map(base.stages.map((stage) => [stage.id, stage]));
 		patch.stages = input.stages.map((stage, index) => {
 			const existing = stage.id ? byId.get(stage.id) : undefined;
-			return {
+			// Three layers, and the order is the whole rule: the create payload's defaults underneath (so
+			// a stage the form has just added carries the same values a live create would write), the
+			// stored row over them (so an UPDATE preserves what the section did not send), and the
+			// patch's own fields on top. A patch spread that mentioned each field by hand would grow a
+			// hole every time the schema does, and the hole is invisible — the stage saves, and the
+			// field it dropped reads back as the default.
+			const merged: StageSetup = {
+				...DEFAULT_STAGE_SETUP,
+				...existing,
+				...definedOnly(stage),
 				id: existing?.id ?? mintId("stage"),
 				name: stage.name ?? existing?.name ?? `Stage ${index + 1}`,
 				order: index,
-				description: stage.description ?? existing?.description ?? "",
-				unitPriceCents: stage.unitPriceCents !== undefined
-					? stage.unitPriceCents
-					: existing?.unitPriceCents ?? null,
-				milestone: stage.milestone ?? existing?.milestone ?? "",
-				skills: stage.skills ?? existing?.skills ?? [],
 			};
+			return merged;
 		});
 	}
 
@@ -917,6 +955,24 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 /** Mint the server-side id a stub-committed ticket carries. */
 export function mintTicketId(): string {
 	return mintId("ticket");
+}
+
+/**
+ * Mint the id a stub-CREATED stage carries.
+ *
+ * From the same monotonic sequence {@link setupPatchFrom} draws on, which is the whole point: naming
+ * a created project's first stage `stage-1` by hand collided with the first id the sequence ever
+ * issued, so adding a stage to that project produced two rows sharing one key and
+ * {@link overlayStages} folded one onto the other. An id is never reclaimed for the life of the
+ * process, and one source is what makes that true across both writers.
+ */
+export function mintStageId(): string {
+	return mintId("stage");
+}
+
+/** Mint the id a stub-CREATED staffing role carries. See {@link mintStageId}. */
+export function mintRoleId(): string {
+	return mintId("role");
 }
 
 /** Pre-format a due date the way the board does, so a stub card and a fixture card read alike. */

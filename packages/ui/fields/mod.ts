@@ -27,6 +27,22 @@ export type {
 
 export { useControllable } from "./hooks/useControllable.ts";
 export type { Controllable } from "./hooks/useControllable.ts";
+/**
+ * The field-validation state policy (§A.7.5) — when a control is given a status at all, as opposed
+ * to what each status paints. `useFieldValidation` is the signal-first form; `resolveFieldVerdict`
+ * is the pure rule underneath it, exported so a non-hook caller (an SSR resolver, a test) reaches
+ * the same answer rather than re-deriving one.
+ */
+export { useFieldValidation } from "./hooks/useFieldValidation.ts";
+export type {
+	FieldFlagSource,
+	FieldFocusHandlers,
+	FieldProblemSource,
+	FieldValidation,
+	FieldValidationOptions,
+} from "./hooks/useFieldValidation.ts";
+export { resolveFieldVerdict } from "./core/field.ts";
+export type { FieldVerdict, FieldVerdictInput } from "./core/field.ts";
 export { useId } from "./hooks/useId.ts";
 export { useDismiss } from "./hooks/useDismiss.ts";
 export type { DismissOptions } from "./hooks/useDismiss.ts";

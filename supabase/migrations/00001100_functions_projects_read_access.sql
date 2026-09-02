@@ -4,6 +4,34 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------------------------
+-- projects.fn_payload_text_array(jsonb) -> text[]
+--
+-- Reads a text array out of an untrusted jsonb payload, and answers `{}` for everything that is not
+-- an array. The bare `ARRAY(SELECT jsonb_array_elements_text(x))` idiom this replaces is correct only
+-- for an absent key: a key present with a JSON `null`, a string or a number reaches
+-- `jsonb_array_elements_text` as a SCALAR and raises 22023 "cannot extract elements from a scalar".
+-- `projects.create_project` is EXECUTE-granted to `authenticated` and therefore directly reachable
+-- over PostgREST, so every shape a caller can send has to have an answer that is not an exception.
+--
+-- One function rather than a `jsonb_typeof` CASE repeated at six call sites, so "how do we read a
+-- list out of a payload" has one answer that cannot drift between the project and its stages.
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.fn_payload_text_array (p_value jsonb)
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN jsonb_typeof(p_value) = 'array'
+        THEN ARRAY(SELECT jsonb_array_elements_text(p_value))
+        ELSE '{}'::text[]
+    END;
+$$;
+
+COMMENT ON FUNCTION projects.fn_payload_text_array (jsonb) IS
+'Reads a text[] out of an untrusted jsonb payload, answering {} for any non-array (including a JSON null, which would otherwise raise 22023 from jsonb_array_elements_text).';
+
+-- ---------------------------------------------------------------------------------------------
 -- projects.create_project(payload jsonb) -> jsonb {id, slug}
 --
 -- The one atomic write behind POST /api/projects/create. Everything a new engagement needs -- the
@@ -28,6 +56,18 @@
 -- a second read to find out where the client should navigate. The return type change requires
 -- DROP + CREATE (Postgres will not replace a function's return type), which is safe here -- the old
 -- signature had no caller in the application.
+--
+-- EVERY PROJECT LEAVES HERE WITH AT LEAST ONE STAGE. The implicit stage in step 7 is unconditional,
+-- not a fallback for a payload that happened to carry roles: a stage is the unit a ticket sits in, an
+-- escrow prices against and a channel hangs off, and `projects.set_project_status` counts stages
+-- before it will activate anything. See the block comment there for what it inherits.
+--
+-- EVERY CAST OUT OF THE PAYLOAD GOES THROUGH NULLIF. This function is EXECUTE-granted to
+-- `authenticated`, so its argument is caller-controlled: `->>` on a key whose value is an empty
+-- string hands an enum, numeric, boolean or timestamp cast a `''` it cannot parse, and 22P02 out of a
+-- reachable function is a crash rather than a refusal. Lists go through
+-- `projects.fn_payload_text_array` for the same reason -- a key holding a JSON `null` reaches
+-- `jsonb_array_elements_text` as a scalar and raises 22023.
 -- ---------------------------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS projects.create_project (jsonb);
 
@@ -56,6 +96,17 @@ DECLARE
     v_first_stage_id uuid;
     v_sort integer := 0;
     v_attachment_id text;
+    -- Project-level values resolved ONCE, up front, because the implicit single stage below carries
+    -- them too. Re-deriving them at the second site is how the stage a project owns comes to describe
+    -- a different engagement from the project itself.
+    v_format project_format;
+    v_structure projects.structure_variation;
+    v_description jsonb;
+    v_description_text text;
+    v_ip_mode ip_option_mode;
+    v_budget_type budget_type;
+    v_budget_cents bigint;
+    v_nda_mode projects.nda_mode;
 BEGIN
     -- 1. Identity. Never taken from the payload: the whole point of a DEFINER function is that the
     -- caller cannot name themselves.
@@ -135,7 +186,40 @@ BEGIN
     END IF;
     v_slug := v_slug_base;
 
-    -- 4. Insert, retrying on a slug collision.
+    -- 4. The shape of the engagement, resolved before the insert so the implicit stage in step 7 can
+    -- inherit it. Every cast goes through NULLIF: `->>` on a key whose value is an empty string hands
+    -- an enum, numeric or timestamp cast a `''` it cannot parse, and 22P02 out of a function that is
+    -- EXECUTE-granted to `authenticated` is a crash a caller reaches directly, not a validation error.
+    v_format := COALESCE(NULLIF(payload->>'format', '')::project_format, 'pipeline'::project_format);
+    v_structure := COALESCE(
+        NULLIF(payload->>'structure_variation', '')::projects.structure_variation,
+        'standard'::projects.structure_variation
+    );
+    v_description := COALESCE(payload->'description', '{}'::jsonb);
+    v_description_text := COALESCE(payload->>'description_text', '');
+    v_ip_mode := COALESCE(
+        NULLIF(payload->>'ip_ownership_mode', '')::ip_option_mode,
+        'exclusive_transfer'::ip_option_mode
+    );
+    v_budget_type := COALESCE(NULLIF(payload->>'budget_type', '')::budget_type, 'fixed_price'::budget_type);
+    v_budget_cents := NULLIF(payload->>'budget_amount_cents', '')::bigint;
+
+    -- The NDA pair, resolved so it cannot be stored disagreeing with itself. `nda_mode` is
+    -- authoritative when the caller sends one and `nda_required` is then its shadow; when only the
+    -- legacy boolean arrives, a `true` means the platform's standard terms, because "an NDA governs
+    -- this and nobody said which" is exactly what `platform_standard` names. `nda_document_id` is
+    -- passed through untouched -- `ck_projects_nda_document` is the single authority on whether a
+    -- document may accompany the mode, and a second opinion here could only disagree with it.
+    v_nda_mode := COALESCE(
+        NULLIF(payload->>'nda_mode', '')::projects.nda_mode,
+        CASE
+            WHEN COALESCE(NULLIF(payload->>'nda_required', '')::boolean, false)
+            THEN 'platform_standard'::projects.nda_mode
+            ELSE 'none'::projects.nda_mode
+        END
+    );
+
+    -- 5. Insert, retrying on a slug collision.
     --
     -- The retry is on the CONSTRAINT, not on a prior SELECT: two callers naming a project the same
     -- thing in the same instant both see the slug free, and only the unique index resolves that.
@@ -152,25 +236,23 @@ BEGIN
                 budget_type, budget_amount_cents,
                 industry_category_id, visibility, currency,
                 timeline_preset, target_project_start_date,
-                ip_ownership_mode, nda_required, portfolio_display_rights,
+                ip_ownership_mode, nda_required, nda_mode, nda_document_id,
+                portfolio_display_rights, allow_deadline_bonuses,
                 location_restriction, language_requirement, screening_questions
             ) VALUES (
                 v_project_id, v_owner_id, v_business_id, v_team_id, v_org_id,
                 v_title, v_slug,
-                COALESCE(payload->'description', '{}'::jsonb),
-                COALESCE(payload->>'description_text', ''),
-                COALESCE((payload->>'format')::project_format, 'pipeline'::project_format),
-                COALESCE(
-                    (payload->>'structure_variation')::projects.structure_variation,
-                    'standard'::projects.structure_variation
-                ),
+                v_description,
+                v_description_text,
+                v_format,
+                v_structure,
                 COALESCE(NULLIF(payload->>'session_kind', ''), 'none'),
                 -- A new engagement is always a draft. Not from the payload: `status` gates the public
                 -- footprint trigger and the escrow lifecycle, and neither should be reachable by a
                 -- create call that has collected nothing yet.
                 'draft'::project_status,
-                COALESCE((payload->>'budget_type')::budget_type, 'fixed_price'::budget_type),
-                NULLIF(payload->>'budget_amount_cents', '')::bigint,
+                v_budget_type,
+                v_budget_cents,
                 NULLIF(payload->>'industry_category_id', '')::uuid,
                 -- Unlisted, and NOT from the payload -- for the same reason `status` is not. Visibility
                 -- is a publication decision, the create modal collects none, and this function is
@@ -179,14 +261,24 @@ BEGIN
                 -- of naming it; now publishing is a later, deliberate write that goes through the
                 -- setup path and its footprint cap.
                 'unlisted'::visibility,
-                COALESCE(NULLIF(payload->>'currency', ''), 'USD'),
-                COALESCE((payload->>'timeline_preset')::timeline_preset, 'sequential'::timeline_preset),
+                -- Upper-cased, not validated twice. `ck_projects_currency` is the authority on the
+                -- shape; case is the one difference between a code that is right and a code that is
+                -- right in lower case, and normalising it is ISO 4217's own convention rather than a
+                -- decision this function is taking on the caller's behalf.
+                upper(COALESCE(NULLIF(payload->>'currency', ''), 'USD')),
+                COALESCE(NULLIF(payload->>'timeline_preset', '')::timeline_preset, 'sequential'::timeline_preset),
                 NULLIF(payload->>'target_project_start_date', '')::timestamptz,
-                COALESCE((payload->>'ip_ownership_mode')::ip_option_mode, 'exclusive_transfer'::ip_option_mode),
-                COALESCE((payload->>'nda_required')::boolean, false),
-                COALESCE((payload->>'portfolio_display_rights')::portfolio_rights, 'allowed'::portfolio_rights),
-                COALESCE(ARRAY(SELECT jsonb_array_elements_text(payload->'location_restriction')), '{}'::text[]),
-                COALESCE(ARRAY(SELECT jsonb_array_elements_text(payload->'language_requirement')), '{}'::text[]),
+                v_ip_mode,
+                v_nda_mode <> 'none'::projects.nda_mode,
+                v_nda_mode,
+                NULLIF(payload->>'nda_document_id', '')::uuid,
+                COALESCE(NULLIF(payload->>'portfolio_display_rights', '')::portfolio_rights, 'allowed'::portfolio_rights),
+                -- Pipeline-only, and deliberately NOT clamped to the format here: the flag arriving
+                -- on a one-off is a caller contradiction, and `ck_projects_deadline_bonus_format`
+                -- refusing it is more honest than this function quietly dropping what was sent.
+                COALESCE(NULLIF(payload->>'allow_deadline_bonuses', '')::boolean, false),
+                projects.fn_payload_text_array(payload->'location_restriction'),
+                projects.fn_payload_text_array(payload->'language_requirement'),
                 COALESCE(payload->'screening_questions', '[]'::jsonb)
             );
             EXIT;
@@ -210,7 +302,7 @@ BEGIN
         END;
     END LOOP;
 
-    -- 5. Stages, in payload order. `sort_order` is assigned here rather than trusted from the payload:
+    -- 6. Stages, in payload order. `sort_order` is assigned here rather than trusted from the payload:
     -- it is the execution sequence, and a client that omitted it or repeated a value would produce a
     -- pipeline whose order depends on how the rows happen to come back.
     IF payload ? 'stages' AND jsonb_typeof(payload->'stages') = 'array' THEN
@@ -227,6 +319,8 @@ BEGIN
                 id, project_id, name, description, description_text, sort_order,
                 unit_price_cents, milestone,
                 file_upload_required, default_tasks, skills,
+                seat_limit, parallel, nda_override,
+                allowed_file_categories, allowed_file_extensions,
                 start_trigger_type, fixed_start_date, start_dependency_lag_days, hire_trigger_active,
                 file_revisions_allowed, file_duration_mode, file_duration_days, file_due_date,
                 session_duration_minutes, session_count, session_preferred_days, session_end_date,
@@ -240,22 +334,46 @@ BEGIN
                 v_sort,
                 NULLIF(v_stage->>'unit_price_cents', '')::bigint,
                 COALESCE(v_stage->>'milestone', ''),
-                COALESCE((v_stage->>'file_upload_required')::boolean, false),
-                COALESCE(v_stage->'default_tasks', '[]'::jsonb),
-                COALESCE(ARRAY(SELECT jsonb_array_elements_text(v_stage->'skills')), '{}'::text[]),
-                COALESCE((v_stage->>'start_trigger_type')::start_trigger_type, 'on_project_start'::start_trigger_type),
+                -- TRUE by default, matching the column. A stage exists to produce a deliverable, so
+                -- the owner who wants a checkpoint with no artefact is the one who has to say so.
+                COALESCE(NULLIF(v_stage->>'file_upload_required', '')::boolean, true),
+                CASE
+                    WHEN jsonb_typeof(v_stage->'default_tasks') = 'array'
+                    THEN v_stage->'default_tasks'
+                    ELSE '[]'::jsonb
+                END,
+                projects.fn_payload_text_array(v_stage->'skills'),
+                -- Absent means the column's own default (3). An explicit JSON null means UNLIMITED,
+                -- which is a decision, so the two are read apart rather than folded together: `?`
+                -- tests for the KEY, and only a present key may clear the cap.
+                CASE
+                    WHEN v_stage ? 'seat_limit'
+                    THEN NULLIF(v_stage->>'seat_limit', '')::integer
+                    ELSE 3
+                END,
+                COALESCE(NULLIF(v_stage->>'parallel', '')::boolean, false),
+                COALESCE(NULLIF(v_stage->>'nda_override', '')::boolean, false),
+                -- NULL rather than `{}` when the caller sends nothing: both mean "all categories",
+                -- and NULL says the owner never narrowed it where an empty array could be misread as
+                -- a list somebody emptied.
+                NULLIF(
+                    projects.fn_payload_text_array(v_stage->'allowed_file_categories'),
+                    '{}'::text[]
+                )::files.file_category[],
+                projects.fn_payload_text_array(v_stage->'allowed_file_extensions'),
+                COALESCE(NULLIF(v_stage->>'start_trigger_type', '')::start_trigger_type, 'on_project_start'::start_trigger_type),
                 NULLIF(v_stage->>'fixed_start_date', '')::timestamptz,
                 COALESCE(NULLIF(v_stage->>'start_dependency_lag_days', '')::integer, 0),
-                COALESCE((v_stage->>'hire_trigger_active')::boolean, true),
+                COALESCE(NULLIF(v_stage->>'hire_trigger_active', '')::boolean, true),
                 COALESCE(NULLIF(v_stage->>'file_revisions_allowed', '')::integer, 0),
-                v_stage->>'file_duration_mode',
+                NULLIF(v_stage->>'file_duration_mode', ''),
                 NULLIF(v_stage->>'file_duration_days', '')::integer,
                 NULLIF(v_stage->>'file_due_date', '')::timestamptz,
                 NULLIF(v_stage->>'session_duration_minutes', '')::integer,
                 COALESCE(NULLIF(v_stage->>'session_count', '')::integer, 1),
                 CASE
-                    WHEN v_stage ? 'session_preferred_days'
-                    THEN ARRAY(SELECT jsonb_array_elements_text(v_stage->'session_preferred_days'))
+                    WHEN jsonb_typeof(v_stage->'session_preferred_days') = 'array'
+                    THEN projects.fn_payload_text_array(v_stage->'session_preferred_days')
                     ELSE NULL
                 END,
                 NULLIF(v_stage->>'session_end_date', '')::timestamptz,
@@ -294,22 +412,54 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- 6. Staffing roles.
+    -- 7. The implicit stage.
+    --
+    -- Fires for ANY project that reaches this point with no stage, not only one that arrived carrying
+    -- roles. Roles hang off a stage, so the roles branch below used to mint one as a side effect --
+    -- but the far commoner case is a project with neither, which the wizard produces every time the
+    -- owner leaves `hasStages` off, and that landed with no stage at all: nothing for a ticket to sit
+    -- in, nothing for escrow to price against, no room in the channel tree, and
+    -- `projects.set_project_status` refusing to activate it because it counts stages. A project with
+    -- no unit of delivery is not a lighter project, it is an unusable one.
+    --
+    -- It carries the PROJECT's own metadata rather than a bare name, because this stage IS the
+    -- project's single unit of delivery: its brief is the project's brief and its price is the
+    -- project's price. Seeding it empty would ask the owner to retype what they have just typed, and
+    -- would leave the setup ladder measuring a blank stage against a described project.
+    --
+    -- The channel call is unconditional for the same reason it is unconditional in the loop above:
+    -- `comms.get_stage_channels` provisions rooms lazily and the tree is built from rooms that
+    -- already exist, so a stage without one is a stage nobody can navigate to.
+    IF v_first_stage_id IS NULL THEN
+        v_stage_id := gen_random_uuid();
+        INSERT INTO projects.project_stages (
+            id, project_id, name, description, description_text, sort_order,
+            unit_price_cents, ip_ownership_override, ip_mode
+        ) VALUES (
+            v_stage_id,
+            v_project_id,
+            'Delivery',
+            v_description,
+            v_description_text,
+            0,
+            -- Only a FIXED price transfers. `hourly_cap` is a ceiling on spend, not the cost of one
+            -- ticket, and `finance.fn_hold_ticket_escrow` reads this column as an amount to hold --
+            -- so copying a cap here would escrow the ceiling as though it were the fee.
+            CASE WHEN v_budget_type = 'fixed_price'::budget_type THEN v_budget_cents ELSE NULL END,
+            v_ip_mode,
+            v_ip_mode
+        );
+        PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, 'Delivery');
+        v_first_stage_id := v_stage_id;
+    END IF;
+
+    -- 8. Staffing roles.
     --
     -- `stage_staffing_roles` hangs off a STAGE, not a project, so a Direct Deliverable -- which the
-    -- client composes as roles and no stages -- needs somewhere for them to live. One is opened here
-    -- rather than refusing, because the alternative is a create that succeeds and silently discards
-    -- what the client typed. `reconcileRoles` does exactly this on the setup path, so the two agree.
+    -- client composes as roles and no stages -- needs somewhere for them to live. Step 7 has already
+    -- guaranteed there is one, so this branch no longer has to mint anything: it only fills the seats.
     IF payload ? 'roles' AND jsonb_typeof(payload->'roles') = 'array'
        AND jsonb_array_length(payload->'roles') > 0 THEN
-        IF v_first_stage_id IS NULL THEN
-            v_stage_id := gen_random_uuid();
-            INSERT INTO projects.project_stages (id, project_id, name, sort_order)
-            VALUES (v_stage_id, v_project_id, 'Delivery', 0);
-            PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, 'Delivery');
-            v_first_stage_id := v_stage_id;
-        END IF;
-
         FOR v_role IN SELECT * FROM jsonb_array_elements(payload->'roles')
         LOOP
             INSERT INTO projects.stage_staffing_roles (
@@ -317,17 +467,17 @@ BEGIN
             ) VALUES (
                 v_first_stage_id,
                 COALESCE(NULLIF(btrim(COALESCE(v_role->>'name', v_role->>'role_title', '')), ''), 'Untitled role'),
-                COALESCE((v_role->>'quantity')::integer, 1),
-                COALESCE((v_role->>'budget_type')::budget_type, 'fixed_price'::budget_type),
+                COALESCE(NULLIF(v_role->>'quantity', '')::integer, 1),
+                COALESCE(NULLIF(v_role->>'budget_type', '')::budget_type, 'fixed_price'::budget_type),
                 -- NULL, not zero: the create modal collects no budget, and zero would state that the
                 -- seat is free.
                 NULLIF(v_role->>'budget_amount_cents', '')::bigint,
-                COALESCE(ARRAY(SELECT jsonb_array_elements_text(v_role->'skills')), '{}'::text[])
+                projects.fn_payload_text_array(v_role->'skills')
             );
         END LOOP;
     END IF;
 
-    -- 7. The participant record.
+    -- 9. The participant record.
     --
     -- Written ONLY for a business-owned project, and that restraint is the point. `profile_type` is
     -- ('freelancer','business') -- it has no member for an individual buyer -- and
@@ -340,9 +490,9 @@ BEGIN
         VALUES (v_project_id, 'business', v_business_id, 'owner');
     END IF;
 
-    -- 8. Global attachments.
-    IF payload ? 'global_attachments' AND jsonb_typeof(payload->'global_attachments') = 'array' THEN
-        FOR v_attachment_id IN SELECT * FROM jsonb_array_elements_text(payload->'global_attachments')
+    -- 10. Global attachments.
+    IF jsonb_typeof(payload->'global_attachments') = 'array' THEN
+        FOREACH v_attachment_id IN ARRAY projects.fn_payload_text_array(payload->'global_attachments')
         LOOP
             INSERT INTO projects.project_attachments (project_id, attachment_id)
             VALUES (v_project_id, v_attachment_id::uuid);
@@ -354,7 +504,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.create_project (jsonb) IS
-'Creates one engagement and everything it arrives with -- stages, staffing roles, the participant record and a readable unique slug -- in a single transaction, owned by auth.uid() and always at status draft. Returns jsonb {id, slug}.';
+'Creates one engagement and everything it arrives with -- stages, staffing roles, the participant record and a readable unique slug -- in a single transaction, owned by auth.uid() and always at status draft/unlisted. A project that names no stage is given one implicit Delivery stage carrying the project''s own brief, price and IP terms, so every project leaves with a unit of delivery and a channel. Returns jsonb {id, slug}.';
 
 REVOKE ALL ON FUNCTION projects.create_project (jsonb) FROM PUBLIC;
 

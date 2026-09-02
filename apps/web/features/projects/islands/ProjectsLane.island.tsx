@@ -22,7 +22,6 @@ import { UtilityShortcuts } from "../components/UtilityShortcuts.tsx";
 import { IncomingRequests } from "../components/IncomingRequests.tsx";
 import { FilterPanel } from "../components/FilterPanel.tsx";
 import { CreateMenu } from "../components/CreateMenu.tsx";
-import { ProjectCreateModal } from "../components/ProjectCreateModal.tsx";
 import { PlusIcon, SearchIcon, SlidersIcon } from "../components/glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
@@ -36,8 +35,6 @@ import {
 } from "../core/projects-state.ts";
 import type { ProjectFeedParams } from "../core/projects-state.ts";
 import type {
-	CreatedProject,
-	ProjectCreateFormat,
 	ProjectFeedPayload,
 	ProjectInvolvement,
 	ProjectQuickFilter,
@@ -153,8 +150,6 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	const createOpen = useSignal<boolean>(false);
 	const filterOpen = useSignal<boolean>(false);
 	const collapsed = useSignal<boolean>(false);
-	const modalOpen = useSignal<boolean>(false);
-	const modalFormat = useSignal<ProjectCreateFormat>("pipeline");
 	/** DEV-ONLY. The active simulated persona (from the Dev Tools Context Switcher), or `null` for the
 	 * real session. Drives the Projects/Services tabs + ownership toggle visibility. Always `null` in
 	 * production (the seam is never written and `readDevSeam` returns `null`). */
@@ -320,32 +315,19 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	}
 
 	/**
-	 * Launch the Project Creation Modal (replacing the retired `/projects/create` page). The picked
-	 * menu kind seeds the modal's type toggle — `one_off` maps to the milestone flow, everything else
-	 * (project / service) starts on Pipeline; Direct Deliverable is reachable via the in-modal toggle.
+	 * Open the six-step creation wizard at `/projects/create`, on the work-flow the menu picked.
+	 *
+	 * A page rather than the two-panel modal this lane used to launch. The modal could hold a name, a
+	 * brief and a stage list and had nowhere to put the engagement's legal terms, its screening, its
+	 * schedule or its staffing — which is most of what makes a project something a freelancer can
+	 * judge. The lane's job here is to launch and to preset, nothing more; the wizard owns the draft,
+	 * the write and the navigation to the SERVER's slug afterwards.
 	 */
 	function openCreate(kind: string): void {
 		createOpen.value = false;
-		modalFormat.value = kind === "one_off" ? "one_off" : "pipeline";
-		modalOpen.value = true;
-	}
-
-	/**
-	 * A drafted engagement — close the modal and route to it.
-	 *
-	 * The address is the SERVER's slug, never one derived here: the database may have appended a
-	 * disambiguator or fallen back to a generated form, and navigating to a locally guessed slug is
-	 * what used to land the creator on "Project not found" over a project that had been created
-	 * perfectly well.
-	 *
-	 * A full document load rather than a client transition, deliberately: the whole shell re-resolves
-	 * — lane, header band, footer band and body are four independent reads — and the row is committed
-	 * before this callback runs, so there is nothing to wait for.
-	 */
-	function onCreated(created: CreatedProject): void {
-		modalOpen.value = false;
+		const type = kind === "one_off" || kind === "direct_deliverable" ? kind : "pipeline";
 		try {
-			globalThis.location.assign(`/projects/${created.slug}`);
+			globalThis.location.assign(`/projects/create?type=${type}`);
 		} catch { /* no-op */ }
 	}
 
@@ -494,15 +476,6 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 					</Popover>
 				</LaneFooterActions>
 			</LaneFooter>
-
-			<ProjectCreateModal
-				open={modalOpen.value}
-				initialFormat={modalFormat.value}
-				view={active.view}
-				scopeId={props.activeContextId}
-				onClose={() => (modalOpen.value = false)}
-				onCreated={onCreated}
-			/>
 		</div>
 	);
 }

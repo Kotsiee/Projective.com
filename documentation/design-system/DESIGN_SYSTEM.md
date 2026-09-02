@@ -417,11 +417,11 @@ state reaches all 27 rather than only the input family.
 | `default`  | `--fld-rest-bd`               | `--fld-rest-bg`     | `--fld-rest-fg`               | —                     | none                             | —                                 |
 | `hover`    | `--fld-hover-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | —                     | none                             | —                                 |
 | `focus`    | `--fld-focus-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | `--focus-ring-shadow` | none                             | —                                 |
-| `invalid`  | `--fld-invalid-bd`            | `--fld-invalid-bg`  | `--fld-rest-fg`               | composes with focus   | `--fld-invalid-mark` · AlertMark | `aria-invalid="true"`             |
-| `required` | `--fld-required-bd`           | `--fld-required-bg` | `--fld-rest-fg`               | composes with focus   | `--fld-invalid-mark` · AlertMark | `aria-invalid` **on submit only** |
-| `gate`     | `--fld-gate-bd`               | `--fld-gate-bg`     | `--fld-rest-fg`               | composes with focus   | `--fld-warning-mark` · GateMark  | **not** `aria-invalid`            |
-| `success`  | `--fld-valid-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | composes with focus   | `--fld-valid-mark` · CheckMark   | —                                 |
-| `warning`  | `--fld-warning-bd`            | `--fld-warning-bg`  | `--fld-rest-fg`               | composes with focus   | `--fld-warning-mark` · AlertMark | —                                 |
+| `invalid`  | `--fld-invalid-bd`            | `--fld-invalid-bg`  | `--fld-rest-fg`               | **cleared** by focus  | `--fld-invalid-mark` · AlertMark | `aria-invalid="true"`             |
+| `required` | `--fld-required-bd`           | `--fld-required-bg` | `--fld-rest-fg`               | **cleared** by focus  | `--fld-invalid-mark` · AlertMark | `aria-invalid` **on submit only** |
+| `gate`     | `--fld-gate-bd`               | `--fld-gate-bg`     | `--fld-rest-fg`               | **cleared** by focus  | `--fld-warning-mark` · GateMark  | **not** `aria-invalid`            |
+| `success`  | `--fld-valid-bd`              | `--fld-rest-bg`     | `--fld-rest-fg`               | **cleared** by focus  | `--fld-valid-mark` · CheckMark   | —                                 |
+| `warning`  | `--fld-warning-bd`            | `--fld-warning-bg`  | `--fld-rest-fg`               | **cleared** by focus  | `--fld-warning-mark` · AlertMark | —                                 |
 | `loading`  | `--fld-rest-bd`               | `--fld-rest-bg`     | `--fld-loading-fg`            | —                     | BusyMark (`--fld-loading-alpha`) | `aria-busy="true"`                |
 | `readonly` | `--fld-readonly-bd`           | `--fld-readonly-bg` | `--fld-rest-fg`               | `--focus-ring-shadow` | none                             | `readonly` (**still focusable**)  |
 | `disabled` | faded by `--fld-disabled-mix` | **unchanged**       | faded by `--fld-disabled-mix` | none                  | none                             | `disabled`                        |
@@ -463,6 +463,74 @@ Four consequences a reviewer can check without opening a browser:
 `BodyPortal` with a `useOverlayStack` index — a `position: fixed` panel that merely stays in the
 tree is re-based by the glass chrome (measured: **324px** off) and clipped by the Dialog's own
 `overflow: hidden` (§B.10.4).
+
+**A.7.5 A validation colour is a REST state (merge gate).** The matrix above says what each state
+_paints_. This says _when_ a control is given one, which is a separate question and the one every
+form used to answer privately.
+
+One rule, in three parts:
+
+- **Nothing paints before the reader has had a turn.** A field is given a validation status only
+  once it has been _touched_ — finished with, i.e. blurred at least once. `invalid` and `required`
+  also set `aria-invalid`, so an empty field painted at rest is announced as an error before anybody
+  has typed into it. This is already the house precedent: `checkout`'s `AddressFields` and
+  `EmailAssignment` never pass `status="required"` for exactly this reason, and the matrix's own
+  `aria-invalid` **on submit only** note for `required` anticipates it.
+- **A submit force-reveals.** The one moment an untouched field may legitimately paint, because a
+  refusal with no visible cause is worse than an early warning. A form owns a single
+  `Signal<boolean>` and hands it to every field.
+- **Focus clears the paint, and only the paint.** The instant a control takes focus, its border,
+  surface and accent stand down and the focus treatment owns the outline alone. A coloured outline
+  that survives focus competes with the focus indicator for the same contour, so "where I am" and
+  "what is wrong" arrive on one edge and the reader can separate neither; and a field that stays red
+  for the whole time it is being corrected has stopped reporting anything. The **mark** and the
+  **message** do not clear — withdrawing the explanation at the exact moment the reader acts on it is
+  the failure the two channels below exist to avoid.
+
+**This reverses the Ring column's earlier reading.** The matrix previously said a validation state
+"composes with focus"; it now says **cleared by focus**, and the change is deliberate rather than a
+transcription slip. Nothing else in the matrix moves — every state still paints the same four
+channels plus a mark, and `required` is still the red creation gate and `gate` still the amber
+publishing one.
+
+**Two status channels, not one.** `resolveFieldVerdict` (`packages/ui/fields/core/field.ts`)
+returns both, and the difference is load-bearing:
+
+| Channel      | Goes to                             | Cleared by focus | Because                                                                                              |
+| :----------- | :---------------------------------- | :--------------- | :--------------------------------------------------------------------------------------------------- |
+| `status`     | the **control**                     | **yes**          | it drives the outline _and_ `aria-invalid`, neither of which belongs on a field the reader is inside  |
+| `hintStatus` | the **message row** (`FormControl`) | no               | the sentence explaining the problem has to still be there while it is being fixed                    |
+
+**Where it is enforced.** Two halves, and both are needed because they cover different callers:
+
+- `useFieldValidation` (`fields/hooks/`) owns the touched/focused/reveal lifecycle and simply
+  withholds the status. It reaches **all 27** controls, including the ones that cannot compose
+  `.ui-field`, because a status that is never passed cannot be painted by any sheet.
+- `field.css` gates every colour channel on `:not(.ui-field--focused):not(:focus-within)` — both
+  halves, because focus arrives either natively or as a signal-stamped modifier. This is the safety
+  net for a caller that passes `status` directly (a server-side verdict, a form pre-dating the hook),
+  and it reaches the ten controls that compose `.ui-field`.
+
+**A status rule must never declare `box-shadow`.** The focus ring _is_ a `box-shadow`, so a status
+that declares one **replaces** the ring instead of composing with it. That is precisely how `auth.css`
+once shipped a focused invalid field carrying no focus indicator at all (Decision #62). Gating custom
+properties composes by construction; a second `box-shadow` never can. `fields/core/field_test.ts`
+asserts both sides of this section against the stylesheet, and each assertion was verified to fail
+against the ungated form.
+
+**Flagged, not resolved — the shipped focus treatment is not the canonical one.** Standing a status
+paint down on focus is only worth anything while a focus indicator is there to take the outline over,
+so this rule was written against what `.ui-field` actually declares today, read from the stylesheet
+rather than assumed from the matrix: a single-tone 2px `--primary` underline, not the
+`--focus-ring-shadow` composite that §A.7.3's "one focus treatment" bullet requires. That
+divergence predates this section and was left alone on purpose — replacing it repaints every field
+in the product, which is a visual ruling rather than a validation one — but it sits two rows below a
+matrix that says otherwise, and it is the exact single-accent-colour shape §A.7.3 records as unable
+to clear 3:1 against both a control fill and the page. It needs a human decision.
+
+> **Merge gate.** A control given a validation status at rest, or one whose status paint survives
+> focus, is not mergeable. Nor is a status rule that declares a `box-shadow`, or one that gates the
+> `--field-mark` — a state that loses its icon channel is riding on hue alone (§A.5).
 
 > **Merge gate.** A `fields` PR that declares a control-local height, radius, inline padding, label
 > type, disabled opacity or focus treatment instead of reading `--fld-*` is not mergeable. Nor is a

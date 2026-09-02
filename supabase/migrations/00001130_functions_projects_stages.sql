@@ -94,7 +94,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ---------------------------------------------------------------------------------------------
--- projects.create_stage(p_project_id, p_name, p_description, p_description_text, p_unit_price_cents)
+-- projects.create_stage(p_project_id, p_name, p_description, p_description_text, p_unit_price_cents,
+--                       p_payload)
 -- Appends a stage to a project and provisions its room in the same transaction.
 --
 -- The channel call is not a convenience. `comms.get_stage_channels` provisions a stage's rooms
@@ -105,13 +106,32 @@ $$ LANGUAGE plpgsql;
 -- SECURITY DEFINER because it writes through `comms.project_channels`, whose RLS the caller does not
 -- otherwise satisfy; the ownership check below is therefore the ONLY thing standing between a signed
 -- in caller and somebody else's pipeline, and it is deliberately the first thing the body does.
+--
+-- WHY `p_payload` AND NOT TEN MORE NAMED PARAMETERS. A stage now carries a dozen configurable
+-- fields — its task template, skills, seat cap, parallelism, NDA override, file policy and timing —
+-- and every one added as a named argument is another signature this function can never again be
+-- changed without. One jsonb bag keeps the signature stable while the stage grows, and it is the
+-- SAME shape `projects.create_project` already reads a stage out of, so the create path and the
+-- add-a-stage path cannot come to disagree about what a field is called. Everything in it is
+-- optional; a caller that sends `{}` gets exactly the stage the five-argument form used to build.
+--
+-- The explicit arguments are kept rather than folded into the bag because they are the ones every
+-- caller supplies, and because collapsing them would silently change what a five-argument call means.
+-- Where both carry a value the explicit argument wins — it is the more specific statement.
+--
+-- Adding a defaulted parameter changes the signature, and Postgres will not `CREATE OR REPLACE`
+-- across one, so this is DROP + CREATE. The old five-argument form is dropped by name; every
+-- existing five-argument call still resolves against the new function, because `p_payload` defaults.
 -- ---------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION projects.create_stage(
+DROP FUNCTION IF EXISTS projects.create_stage (uuid, text, jsonb, text, bigint);
+
+CREATE FUNCTION projects.create_stage(
   p_project_id       uuid,
   p_name             text,
   p_description      jsonb DEFAULT '{}'::jsonb,
   p_description_text text DEFAULT '',
-  p_unit_price_cents bigint DEFAULT NULL
+  p_unit_price_cents bigint DEFAULT NULL,
+  p_payload          jsonb DEFAULT '{}'::jsonb
 )
 RETURNS uuid
 LANGUAGE plpgsql
@@ -126,12 +146,19 @@ DECLARE
   -- argument to the channel meant an empty or blank name produced a stage called "Untitled stage" and
   -- a room called "" -- one thing under two names, in the two places a reader looks for it.
   v_name  text;
+  v_bag   jsonb := COALESCE(p_payload, '{}'::jsonb);
+  v_dependency uuid;
+  v_ip_override ip_option_mode;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'Sign in to add a stage.' USING ERRCODE = 'insufficient_privilege';
   END IF;
 
-  v_name := COALESCE(NULLIF(btrim(p_name), ''), 'Untitled stage');
+  IF jsonb_typeof(v_bag) <> 'object' THEN
+    RAISE EXCEPTION 'Stage settings must be an object.' USING ERRCODE = '22023';
+  END IF;
+
+  v_name := COALESCE(NULLIF(btrim(p_name), ''), NULLIF(btrim(COALESCE(v_bag->>'name', '')), ''), 'Untitled stage');
 
   IF NOT EXISTS (
     SELECT 1 FROM projects.projects p
@@ -140,20 +167,75 @@ BEGIN
     RAISE EXCEPTION 'Only the project owner may add a stage.' USING ERRCODE = 'insufficient_privilege';
   END IF;
 
+  -- A dependency has to be a stage of THIS project. Without the check a caller could point the new
+  -- stage at a stage id from somebody else's pipeline: the FK is satisfied (it names the table, not
+  -- the project), the schedule then reads a start trigger it cannot resolve, and the reference
+  -- discloses that the foreign stage exists.
+  v_dependency := NULLIF(v_bag->>'start_dependency_stage_id', '')::uuid;
+  IF v_dependency IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM projects.project_stages ps
+    WHERE ps.id = v_dependency AND ps.project_id = p_project_id
+  ) THEN
+    RAISE EXCEPTION 'That stage is not part of this project.' USING ERRCODE = 'check_violation';
+  END IF;
+
+  v_ip_override := NULLIF(v_bag->>'ip_ownership_override', '')::ip_option_mode;
+
   -- Append. COALESCE covers the first stage, where MAX over an empty set is NULL and a bare +1 would
   -- make the whole expression NULL against a NOT NULL column.
   SELECT COALESCE(MAX(ps.sort_order) + 1, 0) INTO v_order
   FROM projects.project_stages ps
   WHERE ps.project_id = p_project_id;
 
-  INSERT INTO projects.project_stages (project_id, name, description, description_text, sort_order, unit_price_cents)
+  -- Every cast out of the bag goes through NULLIF, and every list through
+  -- `projects.fn_payload_text_array`, for the reason spelled out on `projects.create_project`: this
+  -- function keeps the default PUBLIC EXECUTE grant, so its arguments are caller-controlled and an
+  -- empty string reaching an enum or numeric cast is a 22P02 crash rather than a refusal.
+  INSERT INTO projects.project_stages (
+    project_id, name, description, description_text, sort_order,
+    unit_price_cents, milestone,
+    file_upload_required, default_tasks, skills,
+    seat_limit, parallel, nda_override,
+    allowed_file_categories, allowed_file_extensions,
+    start_trigger_type, fixed_start_date, start_dependency_stage_id, start_dependency_lag_days,
+    hire_trigger_active, file_revisions_allowed,
+    file_duration_mode, file_duration_days, file_due_date,
+    ip_ownership_override, ip_mode
+  )
   VALUES (
     p_project_id,
     v_name,
-    COALESCE(p_description, '{}'::jsonb),
-    COALESCE(p_description_text, ''),
+    COALESCE(p_description, v_bag->'description', '{}'::jsonb),
+    COALESCE(NULLIF(p_description_text, ''), v_bag->>'description_text', ''),
     v_order,
-    p_unit_price_cents
+    COALESCE(p_unit_price_cents, NULLIF(v_bag->>'unit_price_cents', '')::bigint),
+    COALESCE(v_bag->>'milestone', ''),
+    COALESCE(NULLIF(v_bag->>'file_upload_required', '')::boolean, true),
+    CASE
+      WHEN jsonb_typeof(v_bag->'default_tasks') = 'array' THEN v_bag->'default_tasks'
+      ELSE '[]'::jsonb
+    END,
+    projects.fn_payload_text_array(v_bag->'skills'),
+    -- Absent means the column default; an explicit null means Unlimited, which is a decision.
+    CASE
+      WHEN v_bag ? 'seat_limit' THEN NULLIF(v_bag->>'seat_limit', '')::integer
+      ELSE 3
+    END,
+    COALESCE(NULLIF(v_bag->>'parallel', '')::boolean, false),
+    COALESCE(NULLIF(v_bag->>'nda_override', '')::boolean, false),
+    NULLIF(projects.fn_payload_text_array(v_bag->'allowed_file_categories'), '{}'::text[])::files.file_category[],
+    projects.fn_payload_text_array(v_bag->'allowed_file_extensions'),
+    COALESCE(NULLIF(v_bag->>'start_trigger_type', '')::start_trigger_type, 'on_project_start'::start_trigger_type),
+    NULLIF(v_bag->>'fixed_start_date', '')::timestamptz,
+    v_dependency,
+    COALESCE(NULLIF(v_bag->>'start_dependency_lag_days', '')::integer, 0),
+    COALESCE(NULLIF(v_bag->>'hire_trigger_active', '')::boolean, true),
+    COALESCE(NULLIF(v_bag->>'file_revisions_allowed', '')::integer, 0),
+    NULLIF(v_bag->>'file_duration_mode', ''),
+    NULLIF(v_bag->>'file_duration_days', '')::integer,
+    NULLIF(v_bag->>'file_due_date', '')::timestamptz,
+    v_ip_override,
+    COALESCE(NULLIF(v_bag->>'ip_mode', '')::ip_option_mode, v_ip_override, 'exclusive_transfer'::ip_option_mode)
   )
   RETURNING id INTO v_stage;
 
@@ -163,8 +245,8 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint) IS
-'Appends a stage to a project the caller owns and opens its General channel, so the new stage is immediately visible in the channel tree. Returns the new stage id.';
+COMMENT ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint, jsonb) IS
+'Appends a stage to a project the caller owns and opens its General channel, so the new stage is immediately visible in the channel tree. p_payload carries the stage''s optional settings (tasks, skills, seat cap, parallelism, NDA override, file policy, timing, IP terms) in the same shape projects.create_project reads a stage from. Returns the new stage id.';
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.delete_stage(p_project_id, p_stage_id)

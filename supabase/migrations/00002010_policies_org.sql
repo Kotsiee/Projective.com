@@ -274,3 +274,33 @@ CREATE POLICY "Admins remove membership" ON org.organisation_members FOR DELETE 
     org.is_organisation_member (organisation_id, 'admin')
     OR security.is_admin ()
 );
+
+
+-- =============================================================================
+-- SKILLS — the canonical vocabulary, and the hole its absence left
+--
+-- `org.skills` has had RLS enabled since 00002001 and NOT ONE POLICY anywhere in
+-- the tree, which is default-deny. It fails the way default-deny always fails on
+-- a SELECT: not with an error a caller can see, but with `200 []`. So every
+-- skills picker in the product — project staffing, stage requirements, a
+-- freelancer's own profile — returned an empty list and reported it as "no
+-- skills found", and `projects.project_required_skills` referenced a vocabulary
+-- its own readers could not resolve. Nothing logged, nothing raised, and the one
+-- symptom is a control that renders and offers nothing (root CLAUDE.md §3 gate
+-- 11).
+--
+-- Read by `anon` as well as `authenticated` because the list is public reference
+-- data: three columns (id, slug, label), no owner, no membership, no personal
+-- information, and it is rendered on the signed-out `/explore` filters. `anon`
+-- already holds USAGE on the schema and `ALL` on its tables (00002500), so the
+-- policy is what actually decides.
+--
+-- SELECT only, and deliberately nothing else. The vocabulary is a controlled
+-- list seeded in 00005050: a client that could INSERT would let one person's
+-- typo become an option everybody else picks from, and the matching that
+-- staffing runs on stops meaning anything the moment the terms multiply. New
+-- skills arrive through a seed or an admin path, both of which run as
+-- service_role and are unaffected by RLS.
+-- =============================================================================
+CREATE POLICY "Skills are public reference data" ON org.skills FOR
+SELECT TO authenticated, anon USING (true);

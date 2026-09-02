@@ -25,7 +25,7 @@ performance cliff and at worst a recursion error.
 
 ---
 
-## ⚠️ Four holes this domain's policies close
+## ⚠️ Five holes this domain's policies close
 
 `projects.ticket_history`, `projects.user_preferences`, `projects.project_required_skills` and
 `projects.project_invitations` were defined in `00000015` and **never named in `00002001`**, so RLS
@@ -43,6 +43,19 @@ protection, it is none, and each one cost something different:
   to want.
 - **`project_invitations`** — exposed `token`, which that table's own comment calls the capability.
   Whoever reads it can accept, so this was direct project-access **escalation**, not a disclosure.
+
+The fifth, **`projects.project_attachments`**, WAS named in `00002001` and still had no policy —
+which fails the opposite way and is why it went unnoticed for longer. Nothing leaked, because
+nothing could be read: default-deny on a table only a `SECURITY DEFINER` function writes meant
+`projects.create_project` faithfully stored every brief, reference and mood board a client attached
+to a new engagement, and then nobody — not the owner, not a participant, not the uploader — could
+ever read one back. The attachment step of the create wizard was a control that rendered, accepted
+files, reported success and reached nothing (root `CLAUDE.md` §3 gate 11), with no error anywhere to
+say so.
+
+That is the shape of every hole in this section and the reason none of them announced themselves: a
+default-deny `SELECT` returns **`200 []`**, never an error. It is indistinguishable from an empty
+account.
 
 Same class as the five `comms` tables closed in Decision #83. `TRUNCATE` is revoked from
 `authenticated` for the whole schema alongside them (`00002500`): `GRANT ALL` includes it and
@@ -226,6 +239,24 @@ to match its own recipient is indistinguishable from one that was never sent.
 | `projects.session_attendance`             | Self, or project owner.                                  | `INSERT` as self.                           |
 | `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Join/leave as self; either side may update. |
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
+| `projects.project_attachments`            | `has_project_access(project_id)`.                        | Definer RPCs only.                          |
+
+### `projects.project_attachments`
+
+`View attachments of accessible projects` —
+`SELECT TO authenticated USING
+(projects.has_project_access(project_id))`.
+
+Scoped to project access rather than to the uploader, because an attachment is project context — it
+is what the brief refers to — and a freelancer who cannot open the reference a stage description
+cites has the stage and not the work. The join row carries nothing beyond the pair, and
+`files.items` keeps its own policy, so this admits the **relationship** while the file's own rules
+still decide whether the bytes can be fetched.
+
+`SELECT` only. Every write goes through `projects.create_project`, which is `SECURITY DEFINER` and
+bypasses RLS, so the table stays fully writable by the path that is supposed to write it. A client
+`INSERT` policy could only ever be a route to attach an arbitrary `files.items` id to somebody
+else's project — a disclosure dressed as a reference. Same discipline as `ticket_history`.
 
 ---
 

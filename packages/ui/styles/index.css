@@ -583,6 +583,17 @@
 	* icon/shape channel that §A.5 requires so a status never rides on hue alone. Four values, no
 	* exceptions: that uniformity is what lets a control which cannot compose `.ui-field` (a
 	* Checkbox, a Slider, a Rating) keep its own shape and still speak the same states.
+	*
+	* One thing the four channels do NOT carry, deliberately: WHEN a control is given a status. That
+	* is a policy, it belongs to the field rather than to the token, and it is one rule — a validation
+	* colour is a REST state. It is earned by an off-click, and it stands down the instant the control
+	* takes focus so the focus treatment owns the outline alone; only the MARK crosses into focus,
+	* because it is the icon channel §A.5 requires and the only part of a state that is any use to
+	* somebody mid-correction. `fields/styles/field.css` gates the colour channels on
+	* `:not(.ui-field--focused):not(:focus-within)`, `resolveFieldVerdict` decides when a status is
+	* passed at all, and DESIGN_SYSTEM.md §A.7.5 is the rule. No token here encodes it: a state that
+	* only exists at rest is a selector, and minting a `--fld-*` for it would put half the answer
+	* somewhere a stylesheet could contradict.
 	*/
 
     /* Geometry ramp. One source for control shells, panels and every hand-rolled sibling. */

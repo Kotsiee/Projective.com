@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { BudgetType, type ProjectCreateFormat } from "./create.ts";
+import {
+	BudgetType,
+	CreateProjectStageSchema,
+	CurrencyCode,
+	IpOwnershipMode,
+	NdaMode,
+	PortfolioDisplayRights,
+	type ProjectCreateFormat,
+	ProjectVisibility,
+	StageDurationMode,
+} from "./create.ts";
+import { FileCategory } from "../files/categories.ts";
 import { ProjectFormat, ProjectStatus } from "./summary.ts";
 
 /**
@@ -53,13 +64,34 @@ export type ProjectStructure = z.infer<typeof ProjectStructure>;
  * import back the other way and make the pair mutually dependent. That edge survives only while one
  * side stays `import type`, and a module whose corpus builds at import time turns such a cycle into a
  * TDZ crash rather than a style problem.
+ *
+ * `hasStages` is the wizard's own toggle rather than a third format. An author who turns stages off
+ * on a one-off is describing a Direct Deliverable — a fixed engagement staffed by roles — and on a
+ * pipeline is describing a single continuous stage, which is what `single_stage` records. The
+ * parameter defaults to `true` so every call site written before the toggle existed still resolves to
+ * the shape it always did.
  */
 export function createFormatToColumns(
 	format: ProjectCreateFormat,
+	hasStages = true,
 ): { format: ProjectFormat; structure: ProjectStructure } {
 	if (format === "direct_deliverable") return { format: "one_off", structure: "single_task" };
-	if (format === "one_off") return { format: "one_off", structure: "one_off" };
-	return { format: "pipeline", structure: "standard" };
+	if (format === "one_off") {
+		return { format: "one_off", structure: hasStages ? "one_off" : "single_task" };
+	}
+	return { format: "pipeline", structure: hasStages ? "standard" : "single_stage" };
+}
+
+/**
+ * Whether a stored structure has stages — the read direction of {@link createFormatToColumns}.
+ *
+ * DERIVED, never a column. A `has_stages boolean` beside `structure_variation` would be a second
+ * answer able to disagree with the stage list itself, and `projects.set_project_status` already
+ * decides against the stage COUNT. `single_task` is the one structure staffed by roles instead, so it
+ * is the one that has none.
+ */
+export function hasStagesFor(structure: ProjectStructure): boolean {
+	return structure !== "single_task";
 }
 
 /**
@@ -82,6 +114,16 @@ export type ProjectSessionKind = z.infer<typeof ProjectSessionKind>;
  * `unitPriceCents` is nullable rather than defaulted to zero because "unpriced" and "free" are
  * different states: the pricing ladder step counts a priced stage, and a stage silently defaulted to
  * 0 would satisfy that step with a number nobody typed.
+ *
+ * Every field below `skills` is named IDENTICALLY to its counterpart on
+ * {@link CreateProjectStageSchema}. The create payload and this projection describe the same stage
+ * from opposite ends of one round trip, so a pair that differed by a character would drop the
+ * author's answer in between with nothing to report it — a type checker sees two schemas that both
+ * parse, and a source-reading review sees two plausible names.
+ *
+ * They carry no defaults, matching the fields above them: this is a SERVER-built projection and
+ * every field is a fact the read path already holds, so an absent value would mean the producer
+ * forgot rather than that the author left it blank.
  */
 export const StageSetupSchema = z.object({
 	id: z.string().min(1).max(80),
@@ -89,13 +131,49 @@ export const StageSetupSchema = z.object({
 	order: z.number().int().min(0),
 	/** Rich scope (semantic HTML). `""` = unscoped. */
 	description: z.string().max(8000),
-	/** Per-ticket price in minor units; `null` = unpriced. */
+	/** The stage price in minor units — per ticket on a pipeline, the whole fee on a one-off; `null` = unpriced. */
 	unitPriceCents: z.number().int().min(0).nullable(),
 	/** Free-text delivery note ("2 weeks"). */
 	milestone: z.string().max(240),
 	skills: z.array(z.string().min(1).max(60)).max(20),
+	/** The checklist a ticket raised against this stage is seeded from. Labels only. */
+	tasks: z.array(z.string().min(1).max(240)).max(50),
+	/** Whether a submission against this stage must carry a file. */
+	requiresFiles: z.boolean(),
+	/** Seats on this stage; `null` = unlimited. Headcount, not summed workload. */
+	seatLimit: z.number().int().min(1).nullable(),
+	/** Whether this stage runs alongside the one it depends on rather than after it. */
+	parallel: z.boolean(),
+	/** The stage this one waits on, as an index into the ordered stage list; `null` = none. */
+	dependsOnStageIndex: z.number().int().min(0).nullable(),
+	/** Days to wait after the dependency resolves before this stage opens. */
+	lagDays: z.number().int().min(0).max(365),
+	/** Whether this stage carries confidentiality terms stricter than the project's. */
+	ndaOverride: z.boolean(),
+	/** Categories a submission may carry; empty = every category. */
+	allowedFileCategories: z.array(FileCategory).max(28),
+	/** Extensions a submission may carry, without the dot; empty = every extension. */
+	allowedFileExtensions: z.array(z.string().min(1).max(16)).max(50),
+	/** How this stage's delivery date is expressed. A stored `NULL` reads as `no_due_date`. */
+	durationMode: StageDurationMode,
+	/** Days from the stage opening, when `durationMode` is `relative_duration`; else `null`. */
+	durationDays: z.number().int().min(0).max(3650).nullable(),
+	/** The absolute deadline (ISO instant), when `durationMode` is `fixed_deadline`; else `null`. */
+	dueDate: z.string().max(40).nullable(),
 });
 export type StageSetup = z.infer<typeof StageSetupSchema>;
+
+const { name: _seedName, ...stageDefaults } = CreateProjectStageSchema.parse({ name: "Stage" });
+
+/**
+ * A stage as it stands before its owner has configured anything but a name.
+ *
+ * DERIVED from {@link CreateProjectStageSchema}'s own defaults rather than restated, so the value a
+ * create writes and the value a projection reports for an unconfigured stage are literally the same
+ * object shape. It also makes the identical-naming rule structural: if either schema renames a field,
+ * this assignment stops compiling instead of silently producing a projection with a stale key.
+ */
+export const DEFAULT_STAGE_SETUP: Omit<StageSetup, "id" | "name" | "order"> = stageDefaults;
 
 /** A staffing role on a stage-less (Direct Deliverable) engagement. */
 export const ProjectRoleSetupSchema = z.object({
@@ -109,22 +187,10 @@ export type ProjectRoleSetup = z.infer<typeof ProjectRoleSetupSchema>;
 // #endregion
 
 // #region Engagement rules
-/** Who can see the engagement, and how they reach it. */
-export const ProjectVisibility = z.enum(["public", "invite_only", "unlisted"]);
-export type ProjectVisibility = z.infer<typeof ProjectVisibility>;
-
-/** What the client takes ownership of when the work is delivered. */
-export const IpOwnershipMode = z.enum([
-	"exclusive_transfer",
-	"licensed_use",
-	"shared_ownership",
-	"projective_partner",
-]);
-export type IpOwnershipMode = z.infer<typeof IpOwnershipMode>;
-
-/** Whether the provider may show the work publicly, and when. */
-export const PortfolioDisplayRights = z.enum(["allowed", "forbidden", "embargoed"]);
-export type PortfolioDisplayRights = z.infer<typeof PortfolioDisplayRights>;
+// `ProjectVisibility`, `IpOwnershipMode`, `PortfolioDisplayRights` and `NdaMode` are declared in
+// `./create.ts` and imported here. They are terms the wizard offers and the setup form edits, so
+// both modules need them, and the leaf is the only place they can live without an import cycle —
+// the same reason recorded on `createFormatToColumns` above.
 
 /** How the stages are meant to run against one another. */
 export const TimelinePreset = z.enum(["sequential", "simultaneous", "staggered", "custom"]);
@@ -140,7 +206,16 @@ export type TimelinePreset = z.infer<typeof TimelinePreset>;
 export const ProjectRulesSchema = z.object({
 	visibility: ProjectVisibility,
 	ipOwnershipMode: IpOwnershipMode,
+	/**
+	 * The legacy boolean, kept because existing consumers read it. It is DERIVED from `ndaMode` —
+	 * `ndaRequiredFor(ndaMode)` — and the fat service keeps the two in step on every write, so a
+	 * reader that only knows the boolean still gets the right answer.
+	 */
 	ndaRequired: z.boolean(),
+	/** What governs confidentiality. The authoritative half of the pair above. */
+	ndaMode: NdaMode,
+	/** The custom NDA document, when `ndaMode` is `custom`; `null` otherwise. */
+	ndaDocumentId: z.string().max(64).nullable(),
 	portfolioDisplayRights: PortfolioDisplayRights,
 	timelinePreset: TimelinePreset,
 	allowDeadlineBonuses: z.boolean(),
@@ -159,6 +234,8 @@ export const DEFAULT_PROJECT_RULES: ProjectRules = {
 	visibility: "invite_only",
 	ipOwnershipMode: "exclusive_transfer",
 	ndaRequired: false,
+	ndaMode: "none",
+	ndaDocumentId: null,
 	portfolioDisplayRights: "allowed",
 	timelinePreset: "sequential",
 	allowDeadlineBonuses: false,
@@ -175,7 +252,7 @@ export const DEFAULT_PROJECT_RULES: ProjectRules = {
 export const ProjectBudgetSchema = z.object({
 	budgetType: BudgetType,
 	amountCents: z.number().int().min(0).nullable(),
-	currency: z.string().min(1).max(8),
+	currency: CurrencyCode,
 });
 export type ProjectBudget = z.infer<typeof ProjectBudgetSchema>;
 
@@ -441,6 +518,83 @@ export function previewReady(steps: readonly ProjectSetupStep[]): boolean {
 /** The steps still standing between the owner and Preview — the locked control's tooltip reads these. */
 export function outstandingSteps(steps: readonly ProjectSetupStep[]): ProjectSetupStep[] {
 	return steps.filter((step) => step.required && !step.done);
+}
+
+/**
+ * The visibility an engagement is actually STORED under, given what the author asked for.
+ *
+ * A discoverable engagement is a promise to the freelancers who find it, so the request is honoured
+ * only once every required step is done; until then the project stays `unlisted` — reachable by its
+ * own owner and by anyone holding the link, and absent from Explore. That is why a freshly created
+ * project is never public no matter what the wizard's control said: it has satisfied nothing yet.
+ *
+ * It is computed HERE, beside the ladder, and called by BOTH the wizard's disclosure and the fat
+ * service that writes the row, so the sentence an author reads under the control and the value the
+ * database receives are the same decision rather than two implementations that agree today. It is
+ * never computed on the client alone — a client that decided its own visibility would be deciding
+ * its own reach.
+ *
+ * `unlisted` is returned rather than the author's choice being rejected: a refusal would block a
+ * draft, and the whole point of the ladder is that a project can be saved long before it is offered.
+ */
+export function effectiveVisibility(
+	requested: ProjectVisibility,
+	steps: readonly ProjectSetupStep[],
+): ProjectVisibility {
+	return previewReady(steps) ? requested : "unlisted";
+}
+
+/**
+ * The widest reach a CREATE may ever store, whatever its author asked for and however complete the
+ * payload is.
+ *
+ * `projects.create_project` hardcodes `unlisted` and ignores the payload's visibility entirely: the
+ * function is `EXECUTE`-granted to `authenticated`, so a caller reaching it directly over PostgREST
+ * was once able to publish a project in the act of naming it. Publication is a later, deliberate
+ * write that goes through the setup path, where {@link effectiveVisibility} measures the ladder
+ * against what is actually stored.
+ */
+export const CREATED_PROJECT_VISIBILITY: ProjectVisibility = "unlisted";
+
+/**
+ * How far each visibility reaches, widest first.
+ *
+ * An ordering rather than a set, because the ceiling is a statement about REACH — a create may never
+ * make a project more discoverable than {@link CREATED_PROJECT_VISIBILITY} — and a set could only
+ * express "is it this one".
+ */
+const VISIBILITY_REACH: Record<ProjectVisibility, number> = {
+	public: 2,
+	unlisted: 1,
+	invite_only: 0,
+};
+
+/**
+ * The visibility a CREATE actually stores, given what its author asked for.
+ *
+ * {@link effectiveVisibility} answers the question for a project that already exists, where the
+ * ladder is the only gate. A create has a second one, and the two are different rules: the ladder IS
+ * satisfiable in a single payload — a title, a format, a described and priced stage — so
+ * `effectiveVisibility` alone returns `public` for a well-filled wizard while both write paths store
+ * `unlisted`. Anything reading the first rule on a creation surface therefore states the opposite of
+ * what will happen, which is worse than saying nothing.
+ *
+ * So this is the rule the wizard's disclosure and both create branches call, and it is here rather
+ * than in the backend because the surface that has to EXPLAIN a create cannot import the module that
+ * performs one.
+ *
+ * The cap is one-directional, on reach alone. A request NARROWER than the ceiling — `invite_only` —
+ * is honoured, because refusing an author's stricter choice would be the cap working against the
+ * thing it protects.
+ */
+export function createdVisibility(
+	requested: ProjectVisibility,
+	steps: readonly ProjectSetupStep[],
+): ProjectVisibility {
+	const earned = effectiveVisibility(requested, steps);
+	return VISIBILITY_REACH[earned] > VISIBILITY_REACH[CREATED_PROJECT_VISIBILITY]
+		? CREATED_PROJECT_VISIBILITY
+		: earned;
 }
 
 /**

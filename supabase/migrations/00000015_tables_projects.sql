@@ -70,7 +70,22 @@ CREATE TABLE projects.projects (
   target_project_start_date timestamp with time zone,
 
   ip_ownership_mode ip_option_mode NOT NULL DEFAULT 'exclusive_transfer'::ip_option_mode,
+
+  -- WHETHER an NDA governs the engagement, and WHICH one. The boolean predates the enum and is kept
+  -- because several readers already ask it; it is not a second opinion, because `create_project`
+  -- derives it as `nda_mode <> 'none'` and the setup write keeps the pair in step. Two columns that
+  -- can disagree about whether work is confidential is the failure this pairing exists to avoid, so
+  -- the enum is authoritative and the boolean is its shadow.
   nda_required boolean NOT NULL DEFAULT false,
+  nda_mode projects.nda_mode NOT NULL DEFAULT 'none'::projects.nda_mode,
+
+  -- The signed instrument, for `custom` only. A reference rather than a copy: the file already lives
+  -- in `files.items` with its own visibility scope and audit trail, and an NDA that existed twice is
+  -- an NDA whose two copies can differ. ON DELETE SET NULL rather than RESTRICT because the mode is
+  -- the term that governs and it survives the document going away — losing the file must not make
+  -- the project unreadable, only its paperwork incomplete.
+  nda_document_id uuid,
+
   portfolio_display_rights portfolio_rights NOT NULL DEFAULT 'allowed'::portfolio_rights,
   location_restriction text[] DEFAULT '{}'::text[],
   language_requirement text[] DEFAULT '{}'::text[],
@@ -106,6 +121,24 @@ CREATE TABLE projects.projects (
   CONSTRAINT projects_owner_organisation_id_fkey FOREIGN KEY (owner_organisation_id) REFERENCES org.organisations(id),
   CONSTRAINT projects_slug_key UNIQUE (slug),
   CONSTRAINT projects_source_blueprint_id_fkey FOREIGN KEY (source_blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
+  CONSTRAINT projects_nda_document_id_fkey FOREIGN KEY (nda_document_id) REFERENCES files.items(id) ON DELETE SET NULL,
+  -- A document only means something under the mode that cites it. Without this a project could carry
+  -- `nda_mode = 'none'` and a signed instrument at once, and a reader gating a download would get a
+  -- different answer depending on which of the two it consulted.
+  CONSTRAINT ck_projects_nda_document CHECK (nda_mode = 'custom'::projects.nda_mode OR nda_document_id IS NULL),
+  -- The currency is interpolated into every money figure this project renders and is the unit the
+  -- escrow ledger settles in, so a lowercase or four-letter value is not a display bug -- it is an
+  -- amount nobody can price. ISO 4217 alpha-3, uppercase, matching the Zod SSOT's own regex.
+  CONSTRAINT ck_projects_currency CHECK (currency ~ '^[A-Z]{3}$'),
+  -- Trimmed length, not raw: a title of three spaces is not a title, and `btrim` is what every read
+  -- that renders it already applies. The upper bound matches `CreateProjectSchema.title.max(160)`
+  -- exactly, so the database and the parser refuse the same input rather than one of them truncating.
+  CONSTRAINT ck_projects_title_len CHECK (char_length(btrim(title)) BETWEEN 1 AND 160),
+  -- A deadline bonus is a per-ticket incentive and only a pipeline has per-ticket work to incentivise.
+  -- Expressed as an implication rather than a trigger so it holds for every writer, including the
+  -- DEFINER RPCs that bypass RLS: switching a pipeline that allows bonuses to another format has to
+  -- clear the flag in the same statement, which is exactly the reconciliation the setup write does.
+  CONSTRAINT ck_projects_deadline_bonus_format CHECK (NOT allow_deadline_bonuses OR format = 'pipeline'::project_format),
   -- An archived project carries its timestamp, and a live one does not. Without this the two halves
   -- can disagree, and the row then answers "is this archived?" differently depending on which column
   -- the reader happens to look at.
@@ -127,12 +160,49 @@ CREATE TABLE projects.project_stages (
   sort_order integer NOT NULL,
   status stage_status NOT NULL DEFAULT 'open'::stage_status,
 
-  file_upload_required boolean NOT NULL DEFAULT false,
+  -- Defaults TRUE: a stage exists to produce a deliverable, and the submissions explorer, the review
+  -- workspace and the escrow release all read a stage that owes nothing as a stage with nothing to
+  -- approve. An owner who genuinely wants a checkpoint with no artefact turns it off deliberately;
+  -- the old FALSE default made the common case the one the owner had to remember to ask for.
+  file_upload_required boolean NOT NULL DEFAULT true,
   default_tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
   skills text[] DEFAULT '{}'::text[],
 
-  -- Pipeline per-ticket unit price (minor units); source amount for ticket escrow holds.
-  unit_price_cents bigint,
+  -- How many people may work this stage at once. NULL is UNLIMITED, matching
+  -- `finance.plan_entitlements`' own nullable-as-unbounded convention, and deliberately not modelled
+  -- as `max_concurrent_intensity` (which is summed workload W_i, a different unit) or as
+  -- `stage_staffing_roles.quantity` (which establishes one named role, not the stage's headcount).
+  -- `> 0` rather than `>= 0`: a stage capped at zero seats is a stage nobody can be assigned to,
+  -- which is what `hire_trigger_active = false` already says without pretending to be a number.
+  seat_limit integer DEFAULT 3 CHECK (seat_limit IS NULL OR seat_limit > 0),
+
+  -- Runs alongside the stage above it rather than after it. A property of THIS stage's entry into the
+  -- run, not of the pair, so reordering cannot leave a dangling half; `start_dependency_stage_id`
+  -- still answers "after which one", and this answers "or at the same time as it".
+  parallel boolean NOT NULL DEFAULT false,
+
+  -- Confidentiality tightened for this stage beyond the project's own `nda_mode`. Storing it is
+  -- deliberately NOT enforcing it: the no-download, watermark and owner-only rules live in three
+  -- separate readers that consult no stage flag today, so this column records the owner's intent and
+  -- changes no behaviour until those readers are taught to ask.
+  nda_override boolean NOT NULL DEFAULT false,
+
+  -- What a submission to this stage may carry. NULL or empty means ALL -- an empty allow-list that
+  -- meant "nothing" would make an unconfigured stage unsubmittable, and every stage starts
+  -- unconfigured. Categories are the coarse taxonomy (`files.file_category`, the Zod `FileCategory`
+  -- literals verbatim); extensions are the fine one, for a stage that wants `.fig` but not every
+  -- Vector file. Both may be set: a file passes when it satisfies whichever lists are non-empty.
+  allowed_file_categories files.file_category[],
+  allowed_file_extensions text[] NOT NULL DEFAULT '{}'::text[],
+
+  -- Pipeline per-ticket unit price (minor units); source amount for ticket escrow holds. It is also
+  -- the ONE-OFF stage's fixed price -- a one-off stage is a one-ticket stage, so a second price
+  -- column would create two answers to "what does this stage cost" while
+  -- `finance.fn_hold_ticket_escrow` silently reads only this one.
+  --
+  -- The CHECK is not decorative: without it a negative price is storable and flows straight into an
+  -- escrow hold, where it inverts the direction the money moves.
+  unit_price_cents bigint CHECK (unit_price_cents IS NULL OR unit_price_cents >= 0),
   -- The delivery this stage owes, in the owner's own words: "Homepage + 3 inner pages, in Figma".
   -- Deliberately free text and NOT a schedule -- `due_date` and the duration modes below answer WHEN,
   -- and a sentence describing WHAT cannot be reconstructed from either.
@@ -145,7 +215,13 @@ CREATE TABLE projects.project_stages (
   hire_trigger_active boolean NOT NULL DEFAULT true,
 
   file_revisions_allowed integer DEFAULT 0,
-  file_duration_mode text,
+  -- Which of `file_due_date` / `file_duration_days` / neither actually governs the deadline. Free
+  -- text with a constrained vocabulary rather than an enum only because it predates the enum
+  -- convention here; the CHECK is what makes it a vocabulary rather than a suggestion, and it is
+  -- NULL-tolerant because "the owner has not chosen a timing model" is a real state that
+  -- `no_due_date` (a choice somebody made) does not describe.
+  file_duration_mode text
+    CHECK (file_duration_mode IS NULL OR file_duration_mode IN ('fixed_deadline', 'relative_duration', 'no_due_date')),
   file_duration_days integer,
   file_due_date timestamp with time zone,
 

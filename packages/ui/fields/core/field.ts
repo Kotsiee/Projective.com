@@ -104,3 +104,92 @@ export function severityVars(severity: Severity | undefined): Record<string, str
 export function ariaInvalid(status: FieldStatus | undefined): boolean | undefined {
 	return status === "invalid" || status === "required" ? true : undefined;
 }
+
+// #region The validation state policy (§A.7.5)
+/**
+ * What is being asked of one field right now. The inputs to {@link resolveFieldVerdict}.
+ *
+ * Deliberately plain data — no signals, no hooks, no DOM — so the policy that decides whether a
+ * field paints red can be exercised directly by a test rather than inferred from a rendered tree.
+ * {@link useFieldValidation} is a thin signals wrapper around this function and adds no rules of its
+ * own.
+ */
+export interface FieldVerdictInput {
+	/** What is wrong with the current value, or `null` when nothing is. */
+	problem: string | null;
+	/** Has the reader finished with this field at least once (i.e. blurred it)? */
+	touched: boolean;
+	/** Does the field hold focus at this moment? */
+	focused: boolean;
+	/** The form has demanded every verdict be shown — the submit-time reveal. Default `false`. */
+	reveal?: boolean;
+	/** The status painted for a revealed problem. Default `"invalid"`. */
+	problemStatus?: FieldStatus;
+	/**
+	 * The status painted for a revealed field with nothing wrong. Default `"default"` — a form of
+	 * green ticks is noise, so a caller opts into `"success"` where confirmation genuinely helps.
+	 */
+	resolvedStatus?: FieldStatus;
+}
+
+/** The two status channels and the message one field resolves to. */
+export interface FieldVerdict {
+	/**
+	 * The status the CONTROL is given. `"default"` until the verdict is revealed, and `"default"`
+	 * again for as long as the field holds focus — this is the channel that paints the outline and
+	 * sets `aria-invalid`, and neither belongs on a field the reader is still inside.
+	 */
+	status: FieldStatus;
+	/**
+	 * The status the MESSAGE ROW is given (`FormControl`'s `status`). Identical to {@link status}
+	 * except that it survives focus, so the sentence explaining the problem stays on screen while it
+	 * is being fixed. Withdrawing the explanation at the exact moment the reader acts on it is the
+	 * failure this second channel exists to avoid.
+	 */
+	hintStatus: FieldStatus;
+	/** The sentence to render beneath the control, or `null` when there is nothing to say yet. */
+	message: string | null;
+	/** Whether the verdict is being shown at all — touched, or force-revealed by a submit. */
+	revealed: boolean;
+}
+
+/** Nothing has been earned yet: no paint, no message, no `aria-invalid`. */
+const SILENT: FieldVerdict = {
+	status: "default",
+	hintStatus: "default",
+	message: null,
+	revealed: false,
+};
+
+/**
+ * Resolve one field's rendered validation state from its verdict and its lifecycle.
+ *
+ * Three rules, in order, and each of them is a rule about WHEN rather than about what a status
+ * paints — the §A.7.3 state matrix is untouched by this function:
+ *
+ * 1. **Nothing paints before the reader has had a turn.** An untouched field resolves to
+ *    `"default"` however wrong its value is. `status="required"` sets `aria-invalid`, so an empty
+ *    field painted at rest is announced as an error before anybody has typed into it.
+ * 2. **A submit force-reveals.** `reveal` is the one moment an untouched field may legitimately
+ *    paint: a refusal with no visible cause is worse than an early one. A form owns a single
+ *    `Signal<boolean>` and hands it to every field.
+ * 3. **Focus clears the paint, never the message.** While the control holds focus the status
+ *    channel goes quiet so the focus treatment owns the outline alone; `hintStatus` and
+ *    `message` do not, so the explanation is still there to work from.
+ */
+export function resolveFieldVerdict(input: FieldVerdictInput): FieldVerdict {
+	const revealed = input.touched || input.reveal === true;
+	if (!revealed) return SILENT;
+
+	const hintStatus = input.problem === null
+		? (input.resolvedStatus ?? "default")
+		: (input.problemStatus ?? "invalid");
+
+	return {
+		status: input.focused ? "default" : hintStatus,
+		hintStatus,
+		message: input.problem,
+		revealed: true,
+	};
+}
+// #endregion
