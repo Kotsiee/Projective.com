@@ -414,17 +414,23 @@ const UPDATE_KIND: Partial<Record<BoardCard["history"][number]["kind"], SystemAc
 
 // #region Public builder
 /**
- * Resolve the freelancer dashboard for a slug, or `null` when no such engagement (→ 404).
+ * Resolve the freelancer dashboard for a route segment — uuid or slug — or `null` when no such
+ * engagement (→ 404).
  *
  * The board is resolved ONCE, at project scope with no facets, and every derived block reads from
  * that one list — so the assignment count, the money position and the update rail are three views of
  * one corpus rather than three independent derivations that can drift apart.
  */
-export function findProjectOverview(slug: string): ProjectOverview | null {
-	const row = findProject(slug);
-	const detail = findProjectDetail(slug);
+export function findProjectOverview(projectKey: string): ProjectOverview | null {
+	const row = findProject(projectKey);
+	const detail = findProjectDetail(projectKey);
 	if (!row || !detail) return null;
 
+	// Every derivation below keys on the row's OWN slug rather than on the segment the caller arrived
+	// on. The sibling fixture corpora (board, messages) are slug-indexed, and the hrefs built from it
+	// stay routable because every resolver in this domain now accepts either identifier — so the one
+	// place the incoming uuid must NOT be substituted is the one place it would resolve nothing.
+	const slug = row.slug;
 	const board = findBoardPage({ projectId: slug, view: "stages" });
 	const cards = board?.cards ?? [];
 	const seat = viewerSeat(slug, board?.assignees ?? []);
@@ -432,6 +438,7 @@ export function findProjectOverview(slug: string): ProjectOverview | null {
 	const mine = cards.filter((card) => samePerson(card.assignee, seat));
 
 	return {
+		id: row.id,
 		slug,
 		hero: heroOf(row, detail),
 		updates: updatesOf(slug, detail, cards, seat),

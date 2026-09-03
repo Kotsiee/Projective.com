@@ -369,6 +369,17 @@ BEGIN
 END;
 $$;
 
+-- A denormalised count maintained by a trigger, so it must NOT run under the caller's RLS.
+--
+-- As INVOKER this fired AFTER INSERT on projects.projects as `authenticated` and did two things
+-- wrong at once. Its `UPDATE org.users_public` matched zero rows under that role's policies, so
+-- `total_project_count` silently never moved; and the update it DID attempt cascaded into
+-- `trg_sync_user_search` -> `search.sync_user_to_index()`, which writes `search.profiles_index`,
+-- a table `authenticated` holds only SELECT on. The result was `42501 permission denied for table
+-- profiles_index` raised from inside a statement the caller never wrote, aborting the whole
+-- INSERT — so creating a project failed with a generic 502 and no indication that a counter was
+-- the cause. Reachable the moment an app-level INSERT existed; `trg_update_project_counts` fires
+-- `AFTER INSERT OR UPDATE OF status`, which is why ordinary column PATCHes never surfaced it.
 CREATE OR REPLACE FUNCTION projects.update_entity_project_counts()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -409,7 +420,7 @@ BEGIN
 
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, org;
 
 CREATE FUNCTION projects.get_project_details(
   p_project_id uuid

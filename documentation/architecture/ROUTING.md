@@ -31,7 +31,8 @@ Parenthesized folders group routes **without** adding a URL segment:
 
 | Pattern                 | File                                                         | URL                                                                                                                                                                                                                                                                           |
 | :---------------------- | :----------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `[id]`                  | `projects/[projectId]/index.tsx`                             | `/projects/:projectId` — a ROLE DISPATCHER, not one page. The client/owner gets the **Details** setup surface (its progress ladder in the middle-nav header band, its actions in the footer band); everybody else gets the member **dashboard** (updates · rooms · assignments · earnings). `viewerIsClient` is re-derived server-side, so the dispatch is authoritative rather than cosmetic. The public showcase moved to `/view/:id?type=projects`, which is where a stranger evaluating the engagement belongs. |
+| `[id]`                  | `projects/[projectId]/index.tsx`                             | `/projects/:projectId` — **`:projectId` is the project's UUID** (see the canonical-identity rule below); the slug still resolves. A ROLE DISPATCHER, not one page. The client/owner gets the **Details** setup surface (its progress ladder in the middle-nav header band, its actions in the footer band); everybody else gets the member **dashboard** (updates · rooms · assignments · earnings). `viewerIsClient` is re-derived server-side, so the dispatch is authoritative rather than cosmetic. The public showcase moved to `/view/:id?type=projects`, which is where a stranger evaluating the engagement belongs. |
+| project create → list   | `projects/create.tsx`                                        | `/projects/create` **308→** `/projects` (retired). Project creation is a **Quick-Init modal on `/projects`**, not a page. The file stays as a redirect shim rather than being deleted: without it the segment falls through to `[projectId]` and renders "project not found", which is a dead end reachable from every old link and bookmark, not a redirect. |
 | project preview (owner) | `projects/[projectId]/preview.tsx`                           | `/projects/:projectId/preview` — the owner's Explore preview, currently a deliberate placeholder. Guarded TWICE server-side: a non-owner, and an owner whose required setup steps are outstanding, both get a 303 back to Details. The tab that leads here renders locked until then, and a control disabled in the interface but open at its URL is a gate that only holds for people who did not type the address. |
 | project edit → details  | `projects/[projectId]/edit.tsx`                              | `/projects/:projectId/edit` **308→** `/projects/:projectId` (retired). The editor IS the Details half of the engagement page now, so there is one working address; the file stays so a bookmark or an old notification link still lands. |
 | nested `[id]`           | `projects/[projectId]/[channelId]/index.tsx`                 | `/projects/:projectId/:channelId`                                                                                                                                                                                                                                             |
@@ -65,6 +66,23 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `@handle` entity identifier _is_ the route). Builder: `profileHref()`
   (`apps/web/features/projects/core/routing.ts`, mirrored in `explore/core/routing.ts`) — normalises
   a bare or `@`-prefixed handle to `/@handle`.
+- **A project is addressed by its UUID; the slug is an alternate read key.** `:projectId` in every
+  `/projects/**` route is `projects.projects.id`. The resolvers are deliberately **tolerant** — they
+  try `slug` and then `id` on the same opaque string — so a link minted before this rule, a
+  bookmark, and a notification all keep resolving; but everything that now MINTS a link emits the
+  uuid. The Quick-Init modal navigates to `/projects/<uuid>` on create.
+
+  The reason is that a slug is not an address. `projects.projects.slug` is title-derived, so it
+  moves the first time an owner edits the title, and a link built on it dies at that edit. A uuid
+  cannot collide, cannot be squatted, and does not change. The slug is retained because a readable
+  URL is worth having and every projection in the domain already carries one — it is a second way
+  IN, never the identity. `slug` therefore stays globally `UNIQUE`: it is still resolved from a bare
+  path with no scope segment to disambiguate two identical slugs.
+
+  ⚠️ Because the segment is resolved as slug-or-uuid, the route parameter is an **opaque string**,
+  not a `uuid`. A handler that parses it as a uuid before looking it up will 404 every readable link
+  on the platform.
+
 - **Conversations are addressed by their _entry surface_.** A thread keeps its stable `chatId` (so
   it stays **one continuous record** — `PRODUCT_SPEC.md` §Unified Messaging, Decision #21); only the
   **base path** changes with where it is opened (resolved 2026-07-16, Decisions #22 / #23):

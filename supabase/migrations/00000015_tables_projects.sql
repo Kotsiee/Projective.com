@@ -3,6 +3,10 @@
 -- Base: 0007_projects_tables.sql. Also: 0119 (project_status_history), 0307 (stage_open_seat_skills).
 -- Folded ALTERs:
 --   * projects.projects        += handover_unlocked_at                              (0311)
+--   * projects.projects        += nda_source, nda_document_id — WHICH NDA binds the parties, not
+--       merely that one does
+--   * projects.project_stages  += allowed_file_kinds, nda_required (override), capacity/seat_count
+--       — the Stage-2 configuration surface's per-stage terms
 --   * projects.project_stages  += assignment_mode, max_concurrent_intensity         (0310)
 --   * projects.stage_submissions += description/checked_item_ids/number/reviewed_by/
 --       reviewed_at/feedback/revision_of/updated_at + status CHECK                  (0120)
@@ -27,15 +31,22 @@ CREATE TABLE projects.projects (
 
   title text NOT NULL,
 
-  -- The public address. Every /projects route resolves an engagement by SLUG, never by uuid — the
-  -- route tree is /projects/[projectId] where projectId IS this value — so it is globally unique
-  -- rather than unique per owner: the URL carries no scope segment with which to disambiguate two
-  -- identical slugs.
+  -- The readable ALTERNATE address. `id` is canonical: /projects/[projectId] carries this row's
+  -- uuid, and every resolver in the domain accepts either form by trying the slug and then the uuid.
+  -- A title-derived slug moves on the first rename, so a link built on it dies the moment the owner
+  -- edits the title — which is not an address. The uuid cannot collide, cannot be squatted and does
+  -- not change, so it is what the Quick-Init modal navigates to and what a notification links.
+  --
+  -- Still globally UNIQUE rather than unique per owner, because it remains a read key resolved from
+  -- a bare path: the URL carries no scope segment with which to disambiguate two identical slugs.
   --
   -- NOT NULL with a generated fallback, rather than NOT NULL bare, because `projects.create_project`
   -- inserts without one; a bare NOT NULL would make that RPC fail at runtime, and a nullable slug
-  -- would let a project exist with no address at all. The application overwrites this with the
-  -- readable title-derived form — the fallback only guarantees the addressable-ness, not the prose.
+  -- would let a project exist with no readable address at all. The application writes the
+  -- title-derived form at create; the fallback is what guarantees a row always has a slug even when
+  -- it is minted by a path that does not supply one. Until the Quick-Init create path shipped,
+  -- NOTHING in the repository wrote this column, so every live project carried the opaque `p-xxxx…`
+  -- fallback permanently — hence the fallback shape is load-bearing and must stay routable.
   slug text NOT NULL DEFAULT ('p-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
   description jsonb NOT NULL DEFAULT '{}'::jsonb,
   description_text text NOT NULL DEFAULT ''::text,
@@ -49,7 +60,25 @@ CREATE TABLE projects.projects (
     CHECK (session_kind IN ('none', 'normal', 'group')),
   status project_status NOT NULL DEFAULT 'draft'::project_status,
   industry_category_id uuid,
+  -- Where the row sits RIGHT NOW. Server-derived from `status` and `publish_visibility` below; never
+  -- written straight from a client payload, because that is the difference between stating an intent
+  -- and publishing an unfinished engagement.
   visibility visibility NOT NULL DEFAULT 'public'::visibility,
+
+  -- Where the owner wants it to sit once it publishes -- an INTENT, and a different fact from the
+  -- column above.
+  --
+  -- Two columns rather than one, because one cannot hold both answers. A draft is minted `unlisted`
+  -- so nothing half-written reaches Explore, and it has to stay that way while it is a draft; but the
+  -- owner is only ever looking at the setup form WHILE it is a draft, so that is the only moment they
+  -- can answer "and when it goes live, who sees it?". Writing that answer to `visibility` publishes
+  -- the draft; refusing to store it leaves the form's dropdown reverting to a value nobody chose.
+  --
+  -- The promotion is one function, `liveVisibilityFor` in `@projective/types/projects` -- draft is
+  -- `unlisted` unconditionally, anything else takes the intent verbatim -- applied on the status
+  -- transition. `public` by default because somebody creating a project to hire against is asking to
+  -- be found, which is safe to default precisely because it is intent and not state.
+  publish_visibility visibility NOT NULL DEFAULT 'public'::visibility,
   currency text NOT NULL DEFAULT 'USD'::text,
 
   -- The project-level budget. `CreateProjectSchema` has carried this pair since it shipped and
@@ -71,6 +100,34 @@ CREATE TABLE projects.projects (
 
   ip_ownership_mode ip_option_mode NOT NULL DEFAULT 'exclusive_transfer'::ip_option_mode,
   nda_required boolean NOT NULL DEFAULT false,
+
+  -- WHICH non-disclosure agreement the engagement is offered under. `nda_required` has always said
+  -- THAT one applies and never WHICH, so every party to a project could be told an NDA was in force
+  -- with no way to read the document they were bound by.
+  --
+  -- `platform` is Projective's own standard mutual NDA: the answer that needs no upload and no legal
+  -- review, and therefore the default. `custom` names a document the client supplies.
+  --
+  -- An enum-shaped text column rather than "a nullable document id where NULL means platform",
+  -- because a client who INTENDED to attach their own and has not uploaded it yet is a real state
+  -- the setup form has to hold and warn about — and under the nullable-id shape that state is
+  -- indistinguishable from a deliberate choice of the platform standard. Text + CHECK rather than a
+  -- new enum type, matching `session_kind` above: the vocabulary is two members owned entirely by
+  -- this column, and a type in `00000004` would be a dependency for no reader.
+  nda_source text NOT NULL DEFAULT 'platform'
+    CHECK (nda_source IN ('platform', 'custom')),
+
+  -- The custom NDA itself, by reference. An asset on this platform is ONE `files.items` row with one
+  -- owner and one privacy scope; a project's NDA is a second surface onto that asset, never a copy,
+  -- so copying the bytes would give them two lifetimes and two access answers.
+  --
+  -- ON DELETE SET NULL, deliberately, and it is the only coherent option of the three. RESTRICT
+  -- would let a project block its owner from ever tidying their own library; CASCADE would delete a
+  -- PROJECT because somebody removed a file. SET NULL lands the row in `custom` with no document —
+  -- which is exactly the "meant to upload, has not yet" state above, the one the form already knows
+  -- how to warn about.
+  nda_document_id uuid,
+
   portfolio_display_rights portfolio_rights NOT NULL DEFAULT 'allowed'::portfolio_rights,
   location_restriction text[] DEFAULT '{}'::text[],
   language_requirement text[] DEFAULT '{}'::text[],
@@ -106,6 +163,21 @@ CREATE TABLE projects.projects (
   CONSTRAINT projects_owner_organisation_id_fkey FOREIGN KEY (owner_organisation_id) REFERENCES org.organisations(id),
   CONSTRAINT projects_slug_key UNIQUE (slug),
   CONSTRAINT projects_source_blueprint_id_fkey FOREIGN KEY (source_blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
+  CONSTRAINT projects_nda_document_id_fkey FOREIGN KEY (nda_document_id) REFERENCES files.items(id) ON DELETE SET NULL,
+  -- A `platform` NDA carries no document, because Projective's standard mutual NDA is not a file the
+  -- client uploaded — a row claiming both would leave a reader with two answers and no rule for
+  -- which one binds.
+  --
+  -- DELIBERATELY ONE-DIRECTIONAL, unlike `ck_projects_archived_at` beside it. `custom` with a NULL
+  -- document is legitimate and load-bearing: it is the client who has chosen to supply their own and
+  -- has not uploaded it yet, which is the state the setup form warns on. Making the pairing
+  -- bidirectional would make that state unrepresentable and force the form to silently record
+  -- `platform` instead — i.e. to bind the parties to an agreement nobody chose.
+  --
+  -- Nothing here ties either column to `nda_required`. When no NDA applies these two are simply
+  -- ignored, so an owner who turns the requirement off and back on again still has the document they
+  -- uploaded rather than a blanked field.
+  CONSTRAINT ck_projects_nda_document CHECK (nda_source = 'custom' OR nda_document_id IS NULL),
   -- An archived project carries its timestamp, and a live one does not. Without this the two halves
   -- can disagree, and the row then answers "is this archived?" differently depending on which column
   -- the reader happens to look at.
@@ -128,6 +200,22 @@ CREATE TABLE projects.project_stages (
   status stage_status NOT NULL DEFAULT 'open'::stage_status,
 
   file_upload_required boolean NOT NULL DEFAULT false,
+
+  -- Which file kinds a submission to this stage may carry. Sits beside `file_upload_required`
+  -- because the two answer adjacent halves of one question: that one says whether a deliverable must
+  -- be a file at all, this one says what kind of file counts.
+  --
+  -- EMPTY MEANS ANY. That is the permissive answer, not an unanswered one — a stage nobody has
+  -- configured must never silently refuse a deliverable, because the refusal lands on the
+  -- freelancer at submission time and reads as a broken product rather than as a term of the
+  -- engagement.
+  --
+  -- NOT NULL, unlike the nullable `skills` array immediately below it, and the difference is not
+  -- cosmetic: with a nullable column, NULL and `{}` would BOTH have to mean "any" while looking like
+  -- different states, and a reader would eventually treat one of them as "none permitted". Making
+  -- `{}` the only representation of the permissive answer removes that fork.
+  allowed_file_kinds text[] NOT NULL DEFAULT '{}'::text[],
+
   default_tasks jsonb NOT NULL DEFAULT '[]'::jsonb,
   skills text[] DEFAULT '{}'::text[],
 
@@ -156,6 +244,21 @@ CREATE TABLE projects.project_stages (
 
   ip_ownership_override ip_option_mode,
 
+  -- Per-stage NDA override. NULL INHERITS `projects.projects.nda_required`; true and false each
+  -- override it for this stage alone.
+  --
+  -- Nullable rather than a boolean copied down from the project at stage creation, because a copy
+  -- goes stale the instant the project-level term changes: after that, nothing on the row says
+  -- whether `false` means "this stage was deliberately exempted" or "this stage was created back
+  -- when the project required nothing". Three-valued, that question is answerable — NULL is
+  -- "follow the project", and a written value is a decision somebody took about this stage.
+  --
+  -- Named for its SSOT field (`StageSetup.ndaRequired`) rather than following the
+  -- `ip_ownership_override` convention beside it, so the column and the shape the mapper reads it
+  -- into carry one name. The project-level column of the same name lives on a different table; a
+  -- query joining both must alias, which is the price of the mapping being the identity function.
+  nda_required boolean,
+
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   completed_at timestamp with time zone,
   ip_mode ip_option_mode DEFAULT 'exclusive_transfer'::ip_option_mode,
@@ -163,9 +266,31 @@ CREATE TABLE projects.project_stages (
   assignment_mode projects.assignment_routing_mode NOT NULL DEFAULT 'open_pull',
   max_concurrent_intensity numeric(6,2),
 
+  -- How many providers this stage takes: as many as apply, or a fixed number.
+  --
+  -- TWO columns rather than one nullable count, because "unlimited" is an ANSWER and not an absence.
+  -- Under a single `seat_count integer NULL`, a client who deliberately opened a stage to everyone
+  -- and a client who has not decided yet are the same row, and the seat meter has to draw the same
+  -- thing for both. The pairing is held by `ck_project_stages_seat_count` below, the same
+  -- bidirectional idiom `ck_projects_archived_at` uses.
+  --
+  -- Distinct from the two other capacity-shaped things in this schema, and the distinction is worth
+  -- stating because all three are read by the board. `max_concurrent_intensity` above is the Project
+  -- Hard Cap on SUMMED W_i — a workload ceiling, not a headcount. `projects.stage_open_seats` rows
+  -- are the concrete, individually-described postings recruitment fills; this pair is the stage's
+  -- DECLARED shape, which exists before any seat has been posted and constrains how many may be.
+  capacity text NOT NULL DEFAULT 'unlimited'
+    CHECK (capacity IN ('unlimited', 'limited')),
+  seat_count integer CHECK (seat_count IS NULL OR seat_count BETWEEN 1 AND 99),
+
   CONSTRAINT project_stages_pkey PRIMARY KEY (id),
   CONSTRAINT project_stages_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),
-  CONSTRAINT project_stages_start_dependency_stage_id_fkey FOREIGN KEY (start_dependency_stage_id) REFERENCES projects.project_stages(id)
+  CONSTRAINT project_stages_start_dependency_stage_id_fkey FOREIGN KEY (start_dependency_stage_id) REFERENCES projects.project_stages(id),
+  -- A `limited` stage carries a count and an `unlimited` one does not. Bidirectional, so the two
+  -- halves cannot disagree — without it the row answers "how many seats?" differently depending on
+  -- which column the reader happens to look at, and an unlimited stage carrying a stale 3 would draw
+  -- a meter over a stage that has no ceiling.
+  CONSTRAINT ck_project_stages_seat_count CHECK ((capacity = 'limited') = (seat_count IS NOT NULL))
 );
 
 CREATE TABLE projects.tickets (

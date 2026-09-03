@@ -1,7 +1,10 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
+	blankStage,
+	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
+	liveVisibilityFor,
 	previewReady,
 	type ProjectSetupPatch,
 	type ProjectSetupStep,
@@ -31,15 +34,15 @@ const base: ProjectSetupStepsInput = {
 	rules: DEFAULT_PROJECT_RULES,
 };
 
-const stage = {
-	id: "stage-1",
-	name: "Concepts",
-	order: 0,
-	description: "",
-	unitPriceCents: null as number | null,
-	milestone: "",
-	skills: [] as string[],
-};
+/**
+ * A stage in its as-created state.
+ *
+ * Built from the SSOT's own {@link blankStage} rather than as a literal, so a field added to
+ * {@link StageSetupSchema} cannot leave this fixture behind. A hand-written literal here would fail
+ * to compile on every schema growth and tempt the next author to paste in a default the schema does
+ * not actually use — which is how a test comes to pin a shape the product never produces.
+ */
+const stage = blankStage("stage-1", "Concepts", 0);
 
 const role = {
 	id: "role-1",
@@ -312,4 +315,72 @@ Deno.test("reconcileSetup agrees with the standalone helpers on the same input",
 	assertEquals(setup.previewReady, true);
 });
 
+// #endregion
+
+/** `base` as a mutable patch — its arrays are `readonly` for `setupSteps`, which only reads them. */
+function patchOf(over: Partial<ProjectSetupPatch> = {}): ProjectSetupPatch {
+	return {
+		title: base.title,
+		format: base.format,
+		structure: base.structure,
+		description: base.description,
+		budget: base.budget,
+		rules: base.rules,
+		stages: [...base.stages],
+		roles: [...base.roles],
+		...over,
+	};
+}
+
+// #region Publish intent versus live visibility
+Deno.test("a draft is unlisted whatever its owner intends", () => {
+	// The safety property, and the reason there are two fields at all. `liveVisibilityFor` does not
+	// consult the intent on a draft, does not consult readiness, and cannot be talked out of it by a
+	// payload — so no sequence of saves can put a half-written engagement on Explore.
+	for (const intent of ["public", "unlisted", "invite_only"] as const) {
+		assertEquals(liveVisibilityFor("draft", intent), "unlisted");
+	}
+});
+
+Deno.test("publishing promotes the intent verbatim", () => {
+	assertEquals(liveVisibilityFor("active", "public"), "public");
+	assertEquals(liveVisibilityFor("active", "invite_only"), "invite_only");
+	// And a project pulled back to draft re-hides, rather than staying on Explore under a status that
+	// says it is no longer live.
+	assertEquals(liveVisibilityFor("draft", "public"), "unlisted");
+});
+
+Deno.test("reconcileSetup re-derives liveVisibility and never folds it from a patch", () => {
+	const draft = reconcileSetup(patchOf({
+		status: "draft",
+		rules: { ...DEFAULT_PROJECT_RULES, visibility: "public" },
+	}));
+	assertEquals(draft.rules.visibility, "public");
+	assertEquals(draft.liveVisibility, "unlisted");
+
+	// A client asserting the row is already public is overruled, exactly as `completeness` is: the
+	// field is a function of the status and the intent, so a payload cannot make it disagree with the
+	// status sitting beside it in the same object.
+	const forged = reconcileSetup(
+		patchOf({ status: "draft" }),
+		{ liveVisibility: "public" } as never,
+	);
+	assertEquals(forged.liveVisibility, "unlisted");
+
+	// The same intent, once the status moves, is in effect.
+	const live = reconcileSetup(patchOf({
+		status: "active",
+		rules: { ...DEFAULT_PROJECT_RULES, visibility: "public" },
+	}));
+	assertEquals(live.liveVisibility, "public");
+});
+
+Deno.test("a created project's intent is public and is not DEFAULT_PROJECT_RULES", () => {
+	// Two different defaults for two different situations. `invite_only` is the fallback where nobody
+	// chose anything; `public` expresses the evident intent of someone who just created a project in
+	// order to hire against it. Collapsing them would either hide every new project from the people
+	// meant to bid on it, or make the conservative fallback stop being conservative.
+	assertEquals(CREATED_PUBLISH_VISIBILITY, "public");
+	assertEquals(DEFAULT_PROJECT_RULES.visibility, "invite_only");
+});
 // #endregion

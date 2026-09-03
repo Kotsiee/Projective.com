@@ -20,6 +20,7 @@ import type {
 	MessageSender,
 } from "@projective/types/projects";
 import { describeFile, type FileKind } from "@projective/types/files";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-messages — the RLS-scoped Postgres read path for ONE project channel's conversation
@@ -151,17 +152,6 @@ const FILE_COLUMNS = [
 	"link_url",
 	"external_web_url",
 ].join(", ");
-
-/**
- * A v4 uuid, loosely.
- *
- * Both route params reach this module as opaque strings, and the fixture corpus addresses channels by
- * SLUG (`general`, `stage-2`, `dm-mara`) while every live channel is a uuid primary key. Passing a
- * slug to `.eq("id", …)` on a uuid column raises `22P02 invalid input syntax for type uuid` — an
- * error, not an empty result — so a non-uuid channel id is refused here as "no such channel" instead
- * of being allowed to surface as a database fault.
- */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // #endregion
 

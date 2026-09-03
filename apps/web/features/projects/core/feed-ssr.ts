@@ -1,4 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
+import { toDisplayCurrency } from "@projective/types/finance";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import { parseProjectParams } from "./projects-state.ts";
 import type { ProjectFeedParams, ProjectFeedPayload } from "../types/projects-types.ts";
@@ -27,6 +28,15 @@ export interface FeedBootstrap {
 	 * where every engagement is simply a project.
 	 */
 	canOfferServices: boolean;
+	/**
+	 * The currency the Quick-Init modal seeds a new project in.
+	 *
+	 * Always a supported display currency: {@link toDisplayCurrency} narrows anything unknown or
+	 * absent to the platform base rather than refusing, because a currency the client never typed is
+	 * not a field they can correct — and never to a hardcoded code, which would price a project in a
+	 * denomination nobody on the request ever chose.
+	 */
+	defaultCurrency: string;
 }
 
 const EMPTY_PAYLOAD: ProjectFeedPayload = {
@@ -38,11 +48,21 @@ const EMPTY_PAYLOAD: ProjectFeedPayload = {
 	services: [],
 };
 
-/** Resolve the projects feed for a request + the acting user context. */
+/**
+ * Resolve the projects feed for a request + the acting user context.
+ *
+ * `displayCurrency` is the request's resolved money context — `ctx.state.currency?.displayCurrency`,
+ * set site-wide by the global middleware. It is passed IN rather than read from `context` because
+ * `UserContext.displayCurrency` is only populated from a session JWT, so it is null for a guest and
+ * for any request whose claim predates the currency hook; the middleware's value is the one that is
+ * always resolved. When the caller omits it the context claim is the fallback, and the platform base
+ * the floor — never a hardcoded code.
+ */
 export async function resolveProjectsFeed(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
+	displayCurrency?: string | null,
 ): Promise<FeedBootstrap> {
 	const parsed = parseProjectParams(url.searchParams);
 	const activeContextId = context.contextId;
@@ -74,5 +94,12 @@ export async function resolveProjectsFeed(
 	const activeContextLabel = payload.scopes.find((s) => s.id === activeContextId)?.label ??
 		(context.handle ? `@${context.handle}` : "Personal");
 
-	return { params, payload, activeContextId, activeContextLabel, canOfferServices };
+	return {
+		params,
+		payload,
+		activeContextId,
+		activeContextLabel,
+		canOfferServices,
+		defaultCurrency: toDisplayCurrency(displayCurrency ?? context.displayCurrency),
+	};
 }

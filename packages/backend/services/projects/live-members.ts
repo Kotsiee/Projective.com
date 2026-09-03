@@ -26,6 +26,7 @@ import {
 	toInviteStatus,
 	toMemberRole,
 } from "./live-support.ts";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-members — the RLS-scoped Postgres read path behind `ProjectBackendService.members`.
@@ -96,17 +97,6 @@ import {
  */
 
 // #region Constants
-
-/**
- * A canonical uuid, used to decide whether an incoming route segment may be compared against a `uuid`
- * column at all.
- *
- * `projects.projects.slug` is CHECKed as `^[a-z0-9-]{1,96}$`, which a uuid also satisfies — so shape
- * alone cannot tell the two apart and a segment must be TESTED rather than assumed. This matters
- * because PostgREST casts the operand: `id.eq.my-project` is not a miss, it is
- * `22P02 invalid input syntax for type uuid`, i.e. a thrown page read on an ordinary 404.
- */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The `projects.projects` columns the roster envelope needs. */
 const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, created_at";

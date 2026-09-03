@@ -42,7 +42,15 @@ function ownerKeyOf(userId: string | null, workspaceId: string | null): string {
 	return `${userId ?? "anon"}::${workspaceId ?? "personal"}`;
 }
 
-/** A slug from a title — the same shape `ProjectBackendService.create` produces. */
+/**
+ * A slug from a title.
+ *
+ * NOT the same shape `ProjectBackendService.create` produces any more: that one appends a short
+ * disambiguating suffix, because `projects_slug_key` is a global UNIQUE and two buyers naming a
+ * project "Website refresh" is the likely case rather than the unlikely one. A service instantiation
+ * does not need the suffix — a draft is resolved by (owner, blueprint) and its slug is only ever
+ * read back within this store — so it is deliberately left readable here rather than made to match.
+ */
 function slugify(title: string): string {
 	return title
 		.toLowerCase()

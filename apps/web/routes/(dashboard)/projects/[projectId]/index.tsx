@@ -30,32 +30,42 @@ import type { ProjectOverview, ProjectSetup } from "@features/projects/types/pro
  * The public showcase this route used to render lives on at `/view/[id]?type=projects`, which is where
  * a stranger evaluating the engagement belongs; `/projects/*` is the working surface for people
  * already inside it.
+ *
+ * `projectId` is an OPAQUE address, not a parsed one. Quick-Init sends a newly minted draft here by
+ * its row uuid — a uuid cannot collide, cannot be squatted, and survives the first rename, which a
+ * title-derived slug does not — while every link minted before that carries a slug. Both are handed
+ * straight through to resolvers that accept either, so nothing here needs to know which it received.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const slug = ctx.params.projectId;
+		const projectId = ctx.params.projectId;
 		const actor = readActor(ctx);
 		// The cheapest question that decides the branch. `resolveProjectShowcase` already exists and is
 		// what the header and footer slots resolve for the same request, so its read is warm.
 		const { detail, viewerIsClient } = await resolveProjectShowcase(
-			slug,
+			projectId,
 			asAuthenticatedContext(ctx.state.userContext),
 			actor,
 		);
 		ctx.state.title = detail ? `${detail.title} · Projective` : "Project · Projective";
 
 		if (viewerIsClient) {
-			const { setup } = await resolveProjectSetup(slug, actor);
-			return page({ role: "owner" as const, setup, overview: null, slug });
+			const { setup } = await resolveProjectSetup(projectId, actor);
+			return page({ role: "owner" as const, setup, overview: null, projectId });
 		}
-		const { overview } = await resolveProjectOverview(slug, actor);
-		return page({ role: "member" as const, setup: null, overview, slug });
+		const { overview } = await resolveProjectOverview(projectId, actor);
+		return page({ role: "member" as const, setup: null, overview, projectId });
 	},
 });
 
 export default define.page<typeof handler>(function ProjectEngagementPage({ data }) {
-	const { role, slug } = data;
+	const { role, projectId } = data;
 	return role === "owner"
-		? <ProjectSetupScreen setup={data.setup as ProjectSetup | null} slug={slug} />
-		: <ProjectMemberDashboard overview={data.overview as ProjectOverview | null} slug={slug} />;
+		? <ProjectSetupScreen setup={data.setup as ProjectSetup | null} slug={projectId} />
+		: (
+			<ProjectMemberDashboard
+				overview={data.overview as ProjectOverview | null}
+				slug={projectId}
+			/>
+		);
 });

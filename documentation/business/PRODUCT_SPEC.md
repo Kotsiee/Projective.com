@@ -1122,6 +1122,58 @@ A freelancer may report a ticket if they believe its assigned Workload Intensity
 
 ---
 
+### Project Creation
+
+Creating a project is **two stages, deliberately** — "quick to onboard, slow to set up", the same
+principle §Individual onboarding applies to accounts. There is no create PAGE: `/projects/create` is
+retired to a `308` back to `/projects`.
+
+#### 1. Quick-Init
+
+A modal on `/projects` collects the **smallest payload that can mint a coherent draft**, and nothing
+more:
+
+| Field            | Notes                                                                                      |
+| :--------------- | :------------------------------------------------------------------------------------------ |
+| **Title**        | Required, at least 3 characters. Long enough to be a name, short enough not to be a brief. |
+| **Project type** | `pipeline` or `one_off`. Two options, not three — see below.                               |
+| **Currency**     | Seeded from the viewer's display preference, then **fixed to the project**.                |
+| **Baseline**     | ONE price: a pipeline's default ticket rate, or a one-off's escrow budget. Optional.       |
+
+On submit the backend mints the row as `status = 'draft'`, `visibility = 'unlisted'`, provisions
+**one root stage** so tickets, submissions and escrow have somewhere to hang, and the client lands
+on the configuration workspace at the project's UUID.
+
+**Why a modal and not a page.** A creation form that collects a stage architecture has to be closed
+before the client can look anything up, and a half-filled one loses everything on dismiss. A draft
+row loses nothing. So the modal's only job is to reach a URL, and the URL is where the work happens.
+
+**Why two project types.** `session` is excluded because a session is a **service a freelancer
+sells**, not a project a client posts — it is created provider-side from the catalogue composer, and
+a project only ever receives one by instantiation. Offering it here would let a buyer mint an
+engagement with no seller and no schedule. A **Direct Deliverable** can no longer be BORN here
+either: it was a third word a client had to choose between before writing a sentence, and it is a
+staffing distinction rather than a workflow one. It survives intact one level down as the project's
+structure, so an existing Direct Deliverable stays fully editable.
+
+**Currency is a stored origin, not a presentation choice** — it prices escrow. A viewer later
+switching how they prefer to READ money must never move what a project is priced in.
+
+#### 2. Configuration
+
+Everything else is collected on `/projects/[project id]`, as **one continuous scrolling flow with a
+sticky section navigator — not a stepper**: the brief, IP ownership, visibility, deadline bonuses,
+reference attachments, the NDA (the platform standard or the client's own document), language and
+location requirements, and the stage architecture — per stage its scope, tasks, required skills
+(max 10), duration, dependency, seat capacity, roles, submittable file kinds and NDA override.
+
+A stepper would impose an order on decisions that have none, and would hide from the client how
+much is left. The setup ladder measures progress instead, and its **required** subset (title, type,
+pricing, one staffing answer) is the narrower gate that opens Preview — so a project can read well
+short of 100% and still be previewable.
+
+---
+
 ### Stage Management
 
 Stages are the client's primary organizational unit within a project, and clients retain full CRUD
@@ -1720,9 +1772,8 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `details`                | **Step 2 — Delivery & billing.** Distraction-free chrome (DESIGN_SYSTEM Part D.6). Auto-skips to `payment` when the saved details are already complete; `?edit=1` forces the form open |
 |               |                           | `payment`                | **Step 3 — Method & commit.** Distraction-free chrome. Bounces back to `details` when the details are incomplete, so a deep link can never reach a Pay button the server would refuse |
 |               |                           | `confirmation`           | **Step 4 — Post-purchase hub.** Full chrome restored: per-item fulfilment (download · project deep link · calendar export), the invoice, the order record (`?order=`) |
-|               | `/projects`               | `index`                  | List all projects                                                                              |
-|               | `/projects/create`        |                          | Start a new project                                                                            |
-|               | `/projects/[project id]`  | `index` / `details`      | Project overview                                                                               |
+|               | `/projects`               | `index`                  | List all projects — and the home of the **Quick-Init** create modal. `/projects/create` **308→** here; there is no create page |
+|               | `/projects/[project id]`  | `index` / `details`      | **Stage 2 — the owner's configuration workspace.** `[project id]` is the project's UUID. One continuous scrolling flow, not a stepper |
 |               |                           | `board`                  | Task/Kanban board                                                                              |
 |               |                           | `finance`                | Project budget/costs                                                                           |
 |               |                           | `settings`               | Project configuration                                                                          |

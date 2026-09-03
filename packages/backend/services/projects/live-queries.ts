@@ -10,6 +10,7 @@ import type {
 	ScopeOption,
 } from "@projective/types/projects";
 import type { ContextType } from "@projective/types/auth";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-queries — the RLS-scoped Postgres read path for the `/projects` domain.
@@ -635,23 +636,29 @@ async function fetchStageCounts(
 }
 
 /**
- * One project by slug, or `null`.
+ * One project by its route segment — a uuid or a slug — or `null`.
  *
- * `maybeSingle` rather than `single`: a slug that matches nothing is an ordinary 404 on this route,
+ * The shape branch is not a convenience. Since the Quick-Init modal navigates to a
+ * `projects.projects.id`, most arrivals on this resolver now carry a uuid; and a lowercase uuid
+ * satisfies `ck_projects_slug_shape`, so a bare `.eq("slug", …)` is a legal query that matches
+ * nothing forever — a clean 404 with no error to log. This gates `item()`, `detail()` AND `board()`,
+ * and the dashboard layout resolves the Project Details lane for every `/projects/{x}`, so getting it
+ * wrong empties the lane on every live-path engagement rather than failing loudly on one.
+ *
+ * `maybeSingle` rather than `single`: a segment that matches nothing is an ordinary 404 on this route,
  * and `single` turns it into a thrown PostgREST error that the service would have to unwrap to tell
  * "no such project" apart from "the database is down".
  */
 export async function fetchProjectBySlug(
 	actor: ReadActor & { accessToken: string },
-	slug: string,
+	projectKey: string,
 ): Promise<ProjectSummary | null> {
 	const db = projectsClient(actor);
 
-	const { data, error } = await db
-		.from("projects")
-		.select(SUMMARY_COLUMNS)
-		.eq("slug", slug)
-		.maybeSingle();
+	const base = db.from("projects").select(SUMMARY_COLUMNS);
+	const { data, error } = await (
+		UUID_RE.test(projectKey) ? base.eq("id", projectKey) : base.eq("slug", projectKey)
+	).maybeSingle();
 
 	if (error) throw new Error(`projects.projects slug read failed: ${error.message}`);
 	if (!data) return null;

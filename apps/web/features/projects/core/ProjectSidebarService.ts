@@ -3,6 +3,7 @@ import { toSearchParams } from "./projects-state.ts";
 import type { ProjectFeedParams } from "./projects-state.ts";
 import type {
 	ArchiveProject,
+	CreatedProject,
 	CreateProject,
 	ProjectDetail,
 	ProjectFeedPayload,
@@ -42,9 +43,18 @@ export const ProjectSidebarService = {
 		);
 	},
 
-	/** Create a new engagement from the Create-Project modal payload. */
-	create(payload: CreateProject): Promise<ProjectsResult<{ slug: string }>> {
-		return postProjects<{ slug: string }>("/api/projects/create", payload);
+	/**
+	 * Mint a draft from the Quick-Init payload.
+	 *
+	 * Returns BOTH identifiers. `id` is the canonical address the caller navigates to — a uuid cannot
+	 * collide, cannot be squatted, and does not change when the owner renames the project, which a
+	 * title-derived slug does on the first rename, i.e. almost immediately on a surface whose whole
+	 * purpose is to finish configuring what was just created. `slug` rides along because every other
+	 * projection in this domain carries one and a caller that wants a readable link should not have to
+	 * re-read the row to get it.
+	 */
+	create(payload: CreateProject): Promise<ProjectsResult<CreatedProject>> {
+		return postProjects<CreatedProject>("/api/projects/create", payload);
 	},
 
 	/**

@@ -7,6 +7,7 @@ import {
 	type UpdateProject,
 } from "../types/projects-types.ts";
 import { ProjectSidebarService } from "./ProjectSidebarService.ts";
+import { resetFieldValidation } from "./setup-validation.ts";
 
 /**
  * Setup view-state — the cross-island bridge for the owner's Details surface on
@@ -47,8 +48,14 @@ export const setupError = signal<string | null>(null);
 /** The last success, in the words the surface shows. Cleared by the next edit. */
 export const setupNotice = signal<string | null>(null);
 
-/** Which slug the store currently holds, so a second island's seed cannot overwrite live edits. */
-let seededSlug: string | null = null;
+/**
+ * Which engagement the store currently holds, so a second island's seed cannot overwrite live edits.
+ *
+ * Keyed on the canonical uuid rather than the slug: a slug is derived from the title and moves on the
+ * first rename, so a save that renames the project would make the next seed look like a different
+ * engagement and discard everything typed since.
+ */
+let seededId: string | null = null;
 
 /**
  * The data fields, serialised in a fixed key order.
@@ -58,6 +65,12 @@ let seededSlug: string | null = null;
  * differently for the wrong reason. Order is fixed by construction rather than by object literal
  * order, because two objects carrying the same values in a different insertion order are the same
  * configuration and must produce the same fingerprint.
+ *
+ * **THIS LIST IS HAND-MAINTAINED AND MUST BE EXTENDED WHENEVER `ProjectSetupSchema` GAINS A FIELD.**
+ * TypeScript does not police it: a field left out still compiles, still edits correctly on screen and
+ * simply never makes the form dirty — so Save never appears and the owner's work is lost on the next
+ * navigation, with nothing anywhere reporting a problem. Its twin is {@link toPayload}, which fails
+ * the same way one step later, and the two are always changed together.
  */
 function fingerprint(setup: ProjectSetup): string {
 	return JSON.stringify([
@@ -66,11 +79,14 @@ function fingerprint(setup: ProjectSetup): string {
 		setup.structure,
 		setup.sessionKind,
 		setup.description,
+		setup.attachments.map((a) => [a.id, a.name, a.sizeBytes]),
 		[setup.budget.budgetType, setup.budget.amountCents, setup.budget.currency],
 		[
 			setup.rules.visibility,
 			setup.rules.ipOwnershipMode,
 			setup.rules.ndaRequired,
+			setup.rules.ndaSource,
+			setup.rules.ndaDocumentId,
 			setup.rules.portfolioDisplayRights,
 			setup.rules.timelinePreset,
 			setup.rules.allowDeadlineBonuses,
@@ -80,10 +96,19 @@ function fingerprint(setup: ProjectSetup): string {
 		setup.stages.map((s) => [
 			s.id,
 			s.name,
+			s.order,
 			s.description,
 			s.unitPriceCents,
 			s.milestone,
 			s.skills,
+			s.tasks.map((t) => [t.id, t.text]),
+			s.dependency,
+			s.durationDays,
+			s.capacity,
+			s.seatCount,
+			s.roles.map((r) => [r.id, r.name, r.quantity, r.budgetCents]),
+			s.allowedFileKinds,
+			s.ndaRequired,
 		]),
 		setup.roles.map((r) => [r.id, r.name, r.budgetCents, r.skills]),
 	]);
@@ -107,13 +132,13 @@ export function currentSetup(fallback: ProjectSetup): ProjectSetup {
 /**
  * Adopt a server-resolved configuration as both the draft and the clean baseline.
  *
- * Idempotent per slug: the header, the body and the footer all hold the same SSR copy and all mount
+ * Idempotent per engagement: the header, the body and the footer all hold the same SSR copy and mount
  * independently, so a second seed of the same engagement must not discard whichever island got there
  * first and the edits made since.
  */
 export function seedSetup(setup: ProjectSetup): void {
-	if (seededSlug === setup.slug) return;
-	seededSlug = setup.slug;
+	if (seededId === setup.id) return;
+	seededId = setup.id;
 	setupDraft.value = setup;
 	setupBaseline.value = setup;
 	setupError.value = null;
@@ -142,14 +167,21 @@ export function discardSetup(): void {
 	setupNotice.value = null;
 }
 
-/** Clear every signal (the body island calls this on unmount). */
+/**
+ * Clear every signal (the body island calls this on unmount).
+ *
+ * The touched set goes with it: its keys carry stage and role ids, so a second engagement opened in
+ * the same session would otherwise inherit the first one's and mark a brand new stage's name as an
+ * omission the moment it was added.
+ */
 export function resetSetupState(): void {
-	seededSlug = null;
+	seededId = null;
 	setupDraft.value = null;
 	setupBaseline.value = null;
 	setupSaving.value = false;
 	setupError.value = null;
 	setupNotice.value = null;
+	resetFieldValidation();
 }
 // #endregion
 
@@ -157,15 +189,24 @@ export function resetSetupState(): void {
 /**
  * The first reason this draft cannot be persisted, in the owner's words, or `null`.
  *
- * These are the three places the wire schema is STRICTER than the working copy: `title`, a stage
- * `name` and a role `name` are all `min(1)`, so an emptied one would come back as a 422 naming a
- * field path rather than a section. Refusing here — rather than blanking the value or omitting the
- * key — keeps the emptied field on screen where the owner can see what they cleared.
+ * These are the places the wire schema is STRICTER than the working copy — `title`, a stage `name`, a
+ * stage task's `text`, a stage role's `name` and a project role's `name` are all `min(1)` — so an
+ * emptied one would come back as a 422 naming a field path rather than a section. Refusing here,
+ * rather than blanking the value or omitting the key, keeps the emptied field on screen where the
+ * owner can see what they cleared.
+ *
+ * A blank task and a blank stage role are reachable by design: both are added EMPTY, so an owner who
+ * presses "Add step" and then Save without typing has produced exactly this state.
  */
 function firstBlocker(setup: ProjectSetup): string | null {
+	const item = STAGE_ITEM_LABEL[setup.format];
 	if (setup.title.trim().length === 0) return "Give the project a name before saving.";
-	if (setup.stages.some((s) => s.name.trim().length === 0)) {
-		return `Every ${STAGE_ITEM_LABEL[setup.format]} needs a name.`;
+	if (setup.stages.some((s) => s.name.trim().length === 0)) return `Every ${item} needs a name.`;
+	if (setup.stages.some((s) => s.tasks.some((t) => t.text.trim().length === 0))) {
+		return `Every step on a ${item}'s task list needs some text — or remove the empty one.`;
+	}
+	if (setup.stages.some((s) => s.roles.some((r) => r.name.trim().length === 0))) {
+		return `Every named role on a ${item} needs a name — or remove the empty one.`;
 	}
 	if (setup.roles.some((r) => r.name.trim().length === 0)) return "Every team role needs a name.";
 	return null;
@@ -179,6 +220,16 @@ function firstBlocker(setup: ProjectSetup): string | null {
  * service answers against the database, so a client-side diff of two arrays could only ever guess at
  * it. Positions are re-indexed from the rendered order, because the drag reordered the array and
  * `order` is what the server persists.
+ *
+ * **THIS LIST IS HAND-MAINTAINED AND MUST BE EXTENDED WHENEVER `UpdateProjectSchema` GAINS A FIELD.**
+ * A field left out compiles, edits correctly, marks the form dirty and then simply never reaches the
+ * wire — so Save reports success and the edit is gone on the next load, which is the worst available
+ * failure because the surface says the opposite of what happened. Its twin is {@link fingerprint};
+ * the two are always changed together.
+ *
+ * `stages` and `roles` are spread WHOLE rather than field-by-field on purpose: every nested field the
+ * form edits is already on the object, so a stage that grows a column is carried without this
+ * function having to learn about it. The project-level keys are the ones that need adding by hand.
  */
 function toPayload(setup: ProjectSetup): UpdateProject {
 	return {
@@ -187,6 +238,7 @@ function toPayload(setup: ProjectSetup): UpdateProject {
 		structure: setup.structure,
 		sessionKind: setup.sessionKind,
 		description: setup.description,
+		attachments: setup.attachments,
 		budget: setup.budget,
 		rules: setup.rules,
 		stages: setup.stages.map((stage, index) => ({ ...stage, order: index })),
@@ -194,11 +246,22 @@ function toPayload(setup: ProjectSetup): UpdateProject {
 	};
 }
 
-/** Send a payload, adopt the server's re-derived setup, and report in one place. */
-async function commit(slug: string, payload: UpdateProject, notice: string): Promise<boolean> {
+/**
+ * Send a payload, adopt the server's re-derived setup, and report in one place.
+ *
+ * `projectRef` is the CANONICAL uuid rather than the slug. The write resolver accepts either, and the
+ * uuid is the one that survives the write it is being used for: renaming the project regenerates its
+ * slug, so a second save in the same session keyed on the slug the page loaded with would address a
+ * row that no longer answers to it.
+ */
+async function commit(
+	projectRef: string,
+	payload: UpdateProject,
+	notice: string,
+): Promise<boolean> {
 	setupSaving.value = true;
 	setupError.value = null;
-	const res = await ProjectSidebarService.update(slug, payload);
+	const res = await ProjectSidebarService.update(projectRef, payload);
 	setupSaving.value = false;
 	if (!res.ok || !res.data) {
 		setupError.value = res.message ?? "That did not save — please try again.";
@@ -219,7 +282,7 @@ export async function saveSetup(): Promise<boolean> {
 		setupError.value = blocker;
 		return false;
 	}
-	return await commit(draft.slug, toPayload(draft), "Saved.");
+	return await commit(draft.id, toPayload(draft), "Saved.");
 }
 
 /**
@@ -241,7 +304,7 @@ export async function publishSetup(): Promise<boolean> {
 		setupError.value = blocker;
 		return false;
 	}
-	return await commit(draft.slug, { ...toPayload(draft), status: "active" }, "Published.");
+	return await commit(draft.id, { ...toPayload(draft), status: "active" }, "Published.");
 }
 
 /**
@@ -256,7 +319,7 @@ export async function archiveSetup(): Promise<boolean> {
 	if (!draft || setupSaving.value) return false;
 	setupSaving.value = true;
 	setupError.value = null;
-	const res = await ProjectSidebarService.archive(draft.slug);
+	const res = await ProjectSidebarService.archive(draft.id);
 	setupSaving.value = false;
 	if (!res.ok) {
 		setupError.value = res.message ?? "That did not archive — please try again.";

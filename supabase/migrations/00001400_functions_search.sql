@@ -23,7 +23,7 @@ BEGIN
         updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 
 CREATE OR REPLACE FUNCTION search.sync_freelancer_to_index() RETURNS TRIGGER AS $$
 BEGIN
@@ -44,7 +44,7 @@ BEGIN
         updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 
 -- ⚠️ THE SIX `sync_*_to_index` TRIGGERS ARE `INVOKER`, AND THAT MAKES THEM WRITE BLOCKERS.
 --
@@ -106,7 +106,7 @@ BEGIN
         is_active = EXCLUDED.is_active, updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 
 CREATE OR REPLACE FUNCTION search.sync_business_to_index() RETURNS TRIGGER AS $$
 BEGIN
@@ -126,7 +126,7 @@ BEGIN
         updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 
 CREATE OR REPLACE FUNCTION search.sync_service_to_index() RETURNS TRIGGER AS $$
 BEGIN
@@ -144,7 +144,7 @@ BEGIN
         updated_at = now();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, marketplace;
 
 -- -----------------------------------------------------------------------------
 -- Deterministic mock embedding: a stable pseudo-random vector(1536) derived from

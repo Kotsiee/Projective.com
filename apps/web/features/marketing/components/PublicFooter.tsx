@@ -89,7 +89,7 @@ const GROUPS: LinkGroup[] = [
 const SETUP_LINKS: { label: string; href: string }[] = [
 	{ label: "Create an account", href: "/join" },
 	{ label: "Complete your profile", href: "/settings" },
-	{ label: "Post your first project", href: "/projects/create" },
+	{ label: "Post your first project", href: "/projects" },
 	{ label: "Set up payouts", href: "/wallet/payouts" },
 	{ label: "See how it all works", href: "/help" },
 ];

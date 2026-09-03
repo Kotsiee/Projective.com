@@ -25,6 +25,7 @@ import {
 	toStageProjectStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-detail — the RLS-scoped Postgres read path for `ProjectBackendService.detail(slug)`, the deep
@@ -483,13 +484,17 @@ function buildTeamChannels(
  * A secondary read of a row {@link fetchProjectBySlug} has already resolved, so it degrades rather
  * than throws: an empty description and a null client make the sidebar less informative, while a
  * throw would take down a page whose identity is already in hand.
+ *
+ * The route segment is opaque, so it takes the same shape branch every sibling resolver takes. A bare
+ * `.eq("slug", …)` degrades in the worst possible way here: a uuid segment satisfies the slug CHECK,
+ * so the read matches nothing, returns `null` without an error, and the sidebar silently renders an
+ * engagement with no description and no client rather than reporting anything at all.
  */
-async function fetchDetailRow(db: SupabaseClient, slug: string): Promise<DetailRow | null> {
-	const { data, error } = await db
-		.from("projects")
-		.select("owner_user_id, description_text, client_business_id")
-		.eq("slug", slug)
-		.maybeSingle();
+async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<DetailRow | null> {
+	const base = db.from("projects").select("owner_user_id, description_text, client_business_id");
+	const { data, error } = await (
+		UUID_RE.test(projectKey) ? base.eq("id", projectKey) : base.eq("slug", projectKey)
+	).maybeSingle();
 	if (error || !data) return null;
 	return data as unknown as DetailRow;
 }

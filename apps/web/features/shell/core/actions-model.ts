@@ -32,7 +32,11 @@ export interface CreateOption {
 export function createMenuOptions(context: UserContext): CreateOption[] {
 	const { isFreelancer, contextType } = context;
 	const options: Array<CreateOption | null> = [
-		{ key: "project", label: "Create Project", href: "/projects/new", icon: "projects" },
+		// `/projects?create=1` rather than a create ROUTE: project creation is a Quick-Init modal on the
+		// feed, and the lane island opens it from this parameter. There is no `/projects/new` — the
+		// segment would fall into `[projectId]`, resolve nothing, and render "not found" from the global
+		// header of every authenticated route.
+		{ key: "project", label: "Create Project", href: "/projects?create=1", icon: "projects" },
 		contextType !== "organisation"
 			? { key: "team", label: "Create Team", href: "/teams/create", icon: "teams" }
 			: null,

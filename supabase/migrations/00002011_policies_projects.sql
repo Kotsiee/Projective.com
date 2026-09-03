@@ -925,3 +925,65 @@ WITH
         )
         AND inviter_user_id = auth.uid ()
     );
+
+
+-- =============================================================================
+-- REFERENCE ATTACHMENTS — projects.project_attachments
+--
+-- 00002001 has enabled RLS on this table since it was written, and it has never
+-- carried a single policy. That combination is DEFAULT DENY, and default deny on
+-- a SELECT is silent: as `authenticated` it returns `200 []`, never an error and
+-- never a hint. The reference brief, the brand sheet and the spec a client hangs
+-- off their project have therefore been unreadable by everybody including the
+-- owner, and the attachments list rendered as an EMPTY LIST rather than as a
+-- failure — the one shape nobody investigates, because it is indistinguishable
+-- from a project that has no attachments.
+--
+-- Only the LINK row is governed here. The bytes are a separate question answered
+-- by files.fn_can_read(id) on files.items (00001160), which has its own
+-- project-bucket arm; admitting a link never admits a file, and the two gates are
+-- deliberately not merged.
+-- =============================================================================
+
+-- Readable by anyone who can reach the project, not by the owner alone. A
+-- reference attachment IS the brief — it is the material a participant works
+-- against — so an owner-only read would recreate exactly the hole
+-- "Participants can view their projects" was added to close: the engagement
+-- somebody is delivering, invisible to them. projects.has_project_access is the
+-- predicate the rest of this schema already uses for "is this person involved",
+-- so the definition of involvement stays in one place; it is SECURITY DEFINER,
+-- so reading projects.projects inside it does not re-enter that table's policies.
+CREATE POLICY "View project attachments" ON projects.project_attachments FOR
+SELECT TO authenticated USING (projects.has_project_access (project_id));
+
+-- Writes are the OWNER's alone, and narrower than the read on purpose. These
+-- files are the terms the work is judged against; a participant who could attach
+-- to the project — rather than submit through projects.stage_submissions, where a
+-- deliverable is versioned, reviewed and tied to an escrow release — would be
+-- adding to the client's own brief with none of that ledger behind it.
+--
+-- Split into INSERT and DELETE rather than written as FOR ALL, because there is
+-- no UPDATE to grant: every column of this table is part of its primary key, so
+-- re-pointing a link is a DELETE and an INSERT, and a FOR ALL policy would
+-- advertise an UPDATE path that can never do anything.
+CREATE POLICY "Owner attaches project references" ON projects.project_attachments FOR
+INSERT
+    TO authenticated
+WITH
+    CHECK (
+        EXISTS (
+            SELECT 1 FROM projects.projects p
+            WHERE p.id = project_attachments.project_id AND p.owner_user_id = auth.uid ()
+        )
+    );
+
+-- Detaching removes only the LINK. The files.items row is untouched and stays in
+-- the owner's library, so this is not the hard deletion root CLAUDE.md §5 forbids
+-- — the same reasoning as "Detach files from own submissions" above.
+CREATE POLICY "Owner detaches project references" ON projects.project_attachments FOR
+DELETE TO authenticated USING (
+    EXISTS (
+        SELECT 1 FROM projects.projects p
+        WHERE p.id = project_attachments.project_id AND p.owner_user_id = auth.uid ()
+    )
+);
