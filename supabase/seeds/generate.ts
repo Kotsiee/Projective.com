@@ -499,12 +499,21 @@ function fileProjects(): string {
 		if (!r) return null;
 		const client = businesses[i % businesses.length];
 		const id = uuidFor("project", p.id);
-		const format = p.classification === "pipeline" ? "pipeline" : "one_off";
+		// Both derived from the classification, never hardcoded: every seeded project carries stages,
+		// so a pipeline is `standard` and a one-off is `one_off` (the `createFormatToColumns` mapping in
+		// `@projective/types/projects/setup`). And a deadline bonus is a per-ticket incentive, so
+		// `ck_projects_deadline_bonus_format` refuses it on any non-pipeline format — a flat `true` here
+		// aborted the whole seed batch on the first one-off row.
+		const pipeline = p.classification === "pipeline";
+		const format = pipeline ? "pipeline" : "one_off";
+		const structure = pipeline ? "standard" : "one_off";
 		return `  ('${id}', '${client.entityId}', '${r.userId}', ${q(p.title)}, '{}'::jsonb, ${
 			q(p.summary)
 		}, ` +
-			`${q(format)}, 'standard', 'active', 'public', 'USD', 'sequential', 'exclusive_transfer', ` +
-			`false, 'allowed', true, ${arr(["Remote"])}, ${
+			`${q(format)}, ${
+				q(structure)
+			}, 'active', 'public', 'USD', 'sequential', 'exclusive_transfer', ` +
+			`false, 'allowed', ${pipeline}, ${arr(["Remote"])}, ${
 				arr(["English"])
 			}, now() + interval '21 days')`;
 	}).filter(Boolean);
