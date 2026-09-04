@@ -1,41 +1,63 @@
 /*
- * SelectButton — a segmented single/multi choice. The group owns one shared outline + radius; the
- * options sit flush and are separated by single interior hairlines (§B.4, like input-group). Selected
- * segments fill with the accent. Token-only. Interactive → full outline allowed.
+ * SelectButton — a compact, pill-style segmented single/multi choice.
+ *
+ * The group is a rounded track on a tonal ground; the selected segment lifts out of it as an elevated
+ * layer. Token-only. Interactive, so a contained state fill is permitted (§B.11 reserves containment
+ * for controls, which this is).
+ *
+ * THE SELECTED STATE IS CARRIED BY INK, NOT BY THE SURFACE STEP. `--surface` on `--surface-1` measures
+ * ~1.08:1 in dark and ~1.11:1 in light — nowhere near SC 1.4.11's 3:1 floor for a state indicator — and
+ * it does NOT widen under `data-contrast="high"`, because the surface ramp is raw HCT tones deliberately
+ * excluded from the `fg()` widening. A design whose only state channel is that step is unreadable for
+ * exactly the viewers the overlay exists to serve. So `--primary` ink is the channel that encodes
+ * selection, and the raised surface plus `--elevation-low` are decoration on top of it. This is the
+ * relationship `.auth .ui-select-button` and `.pf-availtoggle` already shipped app-side; the package now
+ * carries it once instead of three times.
+ *
+ * `overflow` is deliberately VISIBLE. The previous outlined design clipped its segments to a shared
+ * border, but an elevated segment casts `--elevation-low` OUTSIDE its own box — clipping the track would
+ * erase the lift that the geometry exists to produce, and it is what forced the focus ring inset.
  */
 
 .ui-select-button {
-	--sb-height: 2.5rem;
-	--sb-px: var(--space-4);
-	--sb-font: 0.9375rem;
+	--sb-height: var(--fld-h-md);
+	--sb-px: var(--space-3);
+	--sb-font: var(--fld-fs-sm);
+	--sb-radius: var(--radius-full);
 
 	display: inline-flex;
 	align-items: stretch;
+	gap: var(--space-1);
 	block-size: var(--sb-height);
-	border: 1px solid var(--outline);
-	border-radius: var(--radius-base);
-	background: var(--surface);
-	overflow: hidden;
+	padding: var(--space-1);
+	border: none;
+	border-radius: var(--sb-radius);
+	background: var(--surface-1);
+	overflow: visible;
 }
+/*
+ * The size ramp drives height, inline padding and type ONLY. Radius stays `--radius-full` at every step:
+ * a pill is a pill, and stepping its radius with its height is what made the old design read as three
+ * different components.
+ */
 .ui-select-button--size-sm {
-	--sb-height: 2rem;
-	--sb-px: var(--space-3);
-	--sb-font: 0.8125rem;
-	border-radius: var(--radius-sm);
+	--sb-height: var(--fld-h-sm);
+	--sb-px: var(--space-2);
+	--sb-font: var(--text-xs);
 }
 .ui-select-button--size-lg {
-	--sb-height: 3rem;
-	--sb-px: var(--space-5);
-	--sb-font: 1.0625rem;
-	border-radius: var(--radius-lg);
+	--sb-height: var(--fld-h-lg);
+	--sb-px: var(--space-4);
+	--sb-font: var(--fld-fs-md);
 }
 .ui-select-button--fluid {
 	display: flex;
 	inline-size: 100%;
 }
 .ui-select-button--disabled {
-	opacity: 0.55;
-	pointer-events: none;
+	/* Ink and border, never the box — and no `pointer-events: none`, which would cancel the
+	 * `not-allowed` cursor sitting beside it. */
+	opacity: var(--fld-disabled-alpha, 0.55);
 }
 
 /* #region Segments */
@@ -46,13 +68,14 @@
 	gap: var(--space-2);
 	flex: 1 1 auto;
 	padding-inline: var(--sb-px);
+	border: none;
+	border-radius: var(--sb-radius);
 	font-family: var(--font-sans);
 	font-size: var(--sb-font);
-	font-weight: 600;
+	font-weight: var(--fw-medium);
 	line-height: 1;
-	color: var(--on-surface);
+	color: var(--text-secondary);
 	background: transparent;
-	border: none;
 	cursor: pointer;
 	user-select: none;
 	white-space: nowrap;
@@ -61,44 +84,55 @@
 		color var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
-/* Interior seams — a single hairline between adjacent segments. */
-.ui-select-button__option + .ui-select-button__option {
-	border-inline-start: 1px solid var(--border-subtle);
-}
+
 .ui-select-button__option:hover:not(:disabled):not([aria-pressed="true"]):not([aria-checked="true"]) {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
+
 .ui-select-button__option:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: var(--focus-ring-shadow);
 }
+
 .ui-select-button__option:disabled {
-	opacity: 0.5;
 	cursor: not-allowed;
 }
 
-/* Selected fill (both single `aria-checked` and multi `aria-pressed`). */
+/*
+ * Selected (both the single-mode `aria-checked` and the multi-mode `aria-pressed`).
+ *
+ * Ink first — that is the channel a contrast checker and a colour-blind viewer both read. `--primary`
+ * on `--surface` measures 5.13:1 in light and clears AA in dark, and it widens under the
+ * high-contrast overlay because `--primary` goes through `fg()`.
+ */
 .ui-select-button__option[aria-pressed="true"],
 .ui-select-button__option[aria-checked="true"] {
-	color: var(--on-primary);
-	background: var(--primary);
+	color: var(--primary);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+	font-weight: var(--fw-semibold);
 }
 /* #endregion */
 
 /* #region Status accents */
+/*
+ * The track has no border to tint any more, so a status paints a ring on the pill instead. A ring
+ * rather than a border so it costs no layout and cannot resize the control when a field turns invalid.
+ * The §A.5 mark channel is the caller's to render beside the group; colour alone never states a status.
+ */
 .ui-select-button--invalid {
-	border-color: var(--danger);
+	box-shadow: 0 0 0 1px var(--fld-invalid-bd);
 }
 .ui-select-button--invalid .ui-select-button__option[aria-pressed="true"],
 .ui-select-button--invalid .ui-select-button__option[aria-checked="true"] {
-	background: var(--danger);
-	color: var(--on-danger);
+	color: var(--danger);
 }
 .ui-select-button--success {
-	border-color: var(--success);
+	box-shadow: 0 0 0 1px var(--fld-valid-bd);
 }
 .ui-select-button--warning {
-	border-color: var(--warning);
+	box-shadow: 0 0 0 1px var(--fld-warning-bd);
 }
 /* #endregion */
 

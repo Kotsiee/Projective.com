@@ -647,6 +647,50 @@ export function structureForStages(on: boolean, format: ProjectFormat): ProjectS
 }
 
 /**
+ * The structure a format's Shape control writes when a given segment is pressed.
+ *
+ * This lives in the SSOT rather than inline in the form's handler because the handler got it wrong in a
+ * way nothing could catch: it called `structureForStages(true, "one_off")` with both arguments as
+ * LITERALS, so every segment of every format wrote `one_off`. On a pipeline, "Single stage" could not
+ * produce `single_stage` at all — the control was focusable, looked live, and set the wrong column —
+ * and `shapeOf` then failed to match `one_off` against the pipeline's own options and fell back to
+ * "Staged", so the segment snapped back and the corruption was invisible.
+ *
+ * Expressed as a total function of (format, chosen value) so the round trip
+ * `shapeFor(format, structureForShape(format, v)) === v` is a property a test can hold, which is
+ * exactly the invariant the literal-argument bug broke.
+ */
+export function structureForShape(format: ProjectFormat, value: string): ProjectStructure {
+	if (value === "single_task") return "single_task";
+	return structureForStages(value !== "single_stage", format);
+}
+
+/**
+ * The Shape segments a format offers, in order — empty when it offers no choice.
+ *
+ * A `session` has none: a sitting is not divisible into stages, so the control is ABSENT rather than
+ * rendered with a single option, which would state a decision its author never made.
+ */
+export function shapeOptionsFor(format: ProjectFormat): readonly ProjectStructure[] {
+	if (format === "pipeline") return ["standard", "single_stage"];
+	if (format === "one_off") return ["one_off", "single_task"];
+	return [];
+}
+
+/**
+ * Which segment reads as pressed, given what is stored.
+ *
+ * `format` and `structure` are two columns that can legitimately disagree for a moment — a pipeline
+ * whose owner has just switched it to a one-off still carries `standard` — so this resolves rather than
+ * trusts, and falls back to the format's first shape so the control never renders with nothing selected.
+ */
+export function shapeFor(format: ProjectFormat, structure: ProjectStructure): ProjectStructure {
+	const options = shapeOptionsFor(format);
+	if (options.length === 0) return structure;
+	return options.includes(structure) ? structure : options[0];
+}
+
+/**
  * Build the ladder from a configuration.
  *
  * The `required` set is Title · Format · Pricing · one staffing step. `format` is required AND

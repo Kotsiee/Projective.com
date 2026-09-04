@@ -8,13 +8,24 @@
  * `border-inline-end` would be on the wrong side the moment the nav is ordered after the form, and a
  * contour drawn on the wrong edge is worse than a gutter that reads cleanly from either.
  *
- * The active row IS contained — a tonal fill plus a leading rule — which §B.11 permits because this is
- * navigation: the fill is a control's state, not a label pretending to be one.
+ * THE ROW IS A TAB, NOT A FILLED LIST ITEM. It carries no background in any state: the active row is
+ * stated by INK (`--primary`, a distinct hue from both the `--text-secondary` rest and the
+ * `--on-surface` hover) and by the 2px `--primary` mark. Two independent channels, neither of them a
+ * tonal fill — which is what lets the row read correctly for a viewer who cannot separate two tints of
+ * the same neutral.
  *
- * NOTHING here transitions. The active row's fill, ink and leading rule all encode WHICH section the
- * reader is looking at, and a fact that arrives through a transition is wrong rather than merely
- * unanimated in a backgrounded tab, where the animation clock is frozen. There is correspondingly no
- * `prefers-reduced-motion` block: there is no motion to reduce.
+ * THE MARK'S AXIS FOLLOWS THE RAIL'S. Above 720px the rail is a vertical column, so the mark is a
+ * LEADING vertical rule revealed with `scaleY`; below it the rail is a horizontal strip and the mark
+ * becomes the underline the tab idiom actually means, revealed with `scaleX`. An underline drawn under
+ * a row of a VERTICAL list lands in the inter-row gutter, equidistant from the row above and the row
+ * below, and identifies neither — so the indicator is rotated to match the axis rather than copied
+ * across it.
+ *
+ * MOTION IS DECORATION ONLY, and that is load-bearing rather than a stylistic note. The mark is painted
+ * `--primary` at all times and only its TRANSFORM changes, so a frozen animation clock can leave the
+ * reveal mid-flight without ever leaving the active section unidentifiable — the ink still states it.
+ * Reduced motion needs no block here: `packages/ui/styles/index.css` zeroes `--dur-fast` and forces
+ * `transition-duration: 0ms !important` globally, so the mark jumps to its final state.
  */
 
 /* #region Rail */
@@ -93,43 +104,47 @@
 	min-block-size: 2rem;
 	padding-block: var(--space-2);
 	padding-inline: var(--space-2);
-	border-radius: var(--radius-base);
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	color: var(--text-secondary);
 	text-decoration: none;
+	background: transparent;
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .psu-nav__link:hover {
 	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .psu-nav__link:focus-visible {
 	outline: none;
+	border-radius: var(--radius-base);
 	box-shadow: var(--focus-ring-shadow);
 }
 
-/*
- * The active row states the same fact three redundant ways — ink, fill and the leading rule — so it
- * survives a viewer who cannot separate the two tints, and none of the three is the only channel.
- */
+/* The ink channel — independent of the mark, and the one that survives a frozen clock. */
 .psu-nav__link[data-active="true"] {
-	color: var(--on-surface);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--primary);
 }
 
+/*
+ * The mark is painted at full strength always; only its transform reveals it. Vertical here, because
+ * the rail is a column — see the header note on why an underline is wrong on this axis.
+ */
 .psu-nav__mark {
 	flex: none;
 	align-self: stretch;
 	inline-size: 2px;
 	min-block-size: 1rem;
 	border-radius: var(--radius-full);
-	background: transparent;
+	background: var(--primary);
+	transform: scaleY(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
 .psu-nav__link[data-active="true"] .psu-nav__mark {
-	background: var(--primary);
+	transform: scaleY(1);
 }
 
 .psu-nav__icon {
@@ -151,14 +166,15 @@
 }
 /* #endregion */
 
-/* #region Narrow — the rail becomes a scrolling chip strip */
+/* #region Narrow — the rail becomes a scrolling tab strip */
 /*
  * 720px matches `project-setup.css`, where the form's paired fields collapse to one column: below it
  * a 15rem rail beside the form leaves neither enough width to be read.
  *
  * The nav is NOT hidden. Every section still has to be reachable, and unlike a lane that IS the
  * content list (the `/messages` failure), there is no header band under this component's control to
- * transfer the duty to — so it stays, laid out along the axis it now has.
+ * transfer the duty to — so it stays, laid out along the axis it now has. This is the branch where the
+ * tab idiom is literal: the rail is horizontal, so the mark becomes an underline beneath its row.
  */
 @media (max-width: 720px) {
 	.psu-nav {
@@ -168,7 +184,7 @@
 		overflow-x: auto;
 		overflow-y: visible;
 		/*
-		 * A 10px bar under a single row of chips costs more than it gives — the sanctioned horizontal
+		 * A 10px bar under a single row of tabs costs more than it gives — the sanctioned horizontal
 		 * rail exemption. Both engines, because hiding it in one and not the other is a difference
 		 * nobody sees until the layout shifts in exactly one browser.
 		 */
@@ -200,7 +216,11 @@
 		white-space: nowrap;
 	}
 
-	/* The leading rule becomes an underline, so the active row keeps all three channels here too. */
+	/*
+	 * The underline the tab pattern actually names, on the axis where "below the text" means something.
+	 * `inset-block-end: 0` rather than `-1px`: the strip sits on spacing alone with no baseline hairline
+	 * to straddle, so a negative offset would hang the mark one pixel into open space.
+	 */
 	.psu-nav__mark {
 		position: absolute;
 		inset-inline: var(--space-2);
@@ -209,6 +229,11 @@
 		inline-size: auto;
 		block-size: 2px;
 		min-block-size: 0;
+		transform: scaleX(0);
+	}
+
+	.psu-nav__link[data-active="true"] .psu-nav__mark {
+		transform: scaleX(1);
 	}
 }
 /* #endregion */

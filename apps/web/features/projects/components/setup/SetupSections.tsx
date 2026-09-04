@@ -1,5 +1,6 @@
-import type { ComponentChildren, JSX } from "preact";
+import { cloneElement, type ComponentChildren, isValidElement, type JSX } from "preact";
 import { useSignal } from "@preact/signals";
+import { HintPopover } from "@projective/ui/feedback";
 import {
 	Checkbox,
 	Chips,
@@ -28,9 +29,12 @@ import {
 	DEADLINE_BONUS_RATE,
 	hasStages,
 	MAX_PROJECT_ATTACHMENTS,
+	MAX_STAGE_SKILLS,
 	normaliseSeats,
 	ROLE_SECTION_LABEL,
+	shapeFor,
 	STAGE_ITEM_LABEL,
+	structureForShape,
 	structureForStages,
 } from "../../types/projects-types.ts";
 import type {
@@ -42,7 +46,6 @@ import type {
 	ProjectRoleSetup,
 	ProjectSetup,
 	ProjectSetupStepKey,
-	ProjectStructure,
 	ProjectVisibility,
 	StageCapacity,
 	StageDependency,
@@ -219,26 +222,13 @@ const SHAPE_HINT: Partial<Record<ProjectSetup["format"], string>> = {
 	one_off: "A direct deliverable is staffed by roles rather than run through milestones.",
 };
 
-/** The structure a format falls back to when the stored one is not one of its own two shapes. */
-const DEFAULT_STRUCTURE: Record<ProjectSetup["format"], ProjectStructure> = {
-	pipeline: "standard",
-	one_off: "one_off",
-	session: "single_stage",
-};
-
-/**
- * The shape a format is actually in, given what is stored.
- *
- * `structure` and `format` are two columns that can legitimately disagree for a moment — a pipeline
- * whose owner switches it to a one-off is carrying `standard`, which is not one of a one-off's
- * shapes — so the control resolves rather than trusts. Falling back keeps the segmented control from
- * rendering with nothing selected, which reads as "no answer" for a field that always has one.
+/*
+ * The resolver that used to live here (`shapeOf` + a `DEFAULT_STRUCTURE` fallback table) has moved to
+ * the SSOT as `shapeFor`/`shapeOptionsFor`, beside the `structureForShape` that writes the value back.
+ * They are a matched pair whose round trip is unit-tested, and holding the read here while the write
+ * lived there is precisely how the two came to disagree in the first place. `SHAPE_OPTIONS` above keeps
+ * only the LABELS, which are presentation.
  */
-function shapeOf(format: ProjectSetup["format"], structure: ProjectStructure): ProjectStructure {
-	const options = SHAPE_OPTIONS[format];
-	const known = options?.some((option) => option.value === structure) ?? false;
-	return known ? structure : DEFAULT_STRUCTURE[format];
-}
 
 /** The uplift the deadline-bonus offer is stated as, from the one constant that carries the rate. */
 const DEADLINE_BONUS_PERCENT = Math.round(DEADLINE_BONUS_RATE * 100);
@@ -248,10 +238,22 @@ const SESSION_KIND_OPTIONS: Option[] = [
 	{ value: "group", label: "Group" },
 ];
 
-const BUDGET_TYPE_OPTIONS: Option[] = [
-	{ value: "fixed_price", label: "Fixed price" },
-	{ value: "hourly_cap", label: "Hourly cap" },
-];
+/*
+ * Hourly pricing is retired at the OFFER, not at the schema.
+ *
+ * `hourly_cap` is a member of the SHARED `public.budget_type` enum, read by `projects.projects` AND by
+ * `projects.stage_staffing_roles`, and `create_project` carries a guard that refuses to copy an
+ * `hourly_cap` amount into `unit_price_cents` — a ceiling on spend is not the cost of one ticket. Root
+ * CLAUDE.md §1 permits folding a value INTO a `CREATE TYPE`; it does not permit dropping one, and this
+ * one is load-bearing in SQL. So the member stays, no stored row is rewritten, and the platform simply
+ * stops offering it — the same narrowing Decision #86 applied to `session` in `project_format`.
+ *
+ * With one option left the control itself is gone: a one-option picker states a decision its author
+ * never made. A project already stored as `hourly_cap` keeps that value (the payload round-trips
+ * `budget` whole) and says so, rather than being silently rewritten by a form it can no longer express.
+ */
+const LEGACY_HOURLY_NOTE =
+	"This project was set up on the retired hourly-cap model. Pricing is now per ticket or per milestone; the stored ceiling is left as it is.";
 
 const DEPENDENCY_OPTIONS: Option[] = [
 	{ value: "sequential", label: "After the previous one" },
@@ -450,9 +452,40 @@ export function Validated(props: {
  * have no failing verdict to gate — a dropdown with a default is never wrong — and a guard around
  * one of those would only add a wrapper element.
  */
+/**
+ * Merge a description id into whatever the control already points at.
+ *
+ * `aria-describedby` takes a LIST, so a field that has both a hint and a live verdict must reference
+ * both — overwriting would silently drop whichever the caller set first. Only a single element child
+ * can be cloned; anything else (a fragment, a string, several controls) is left alone and simply keeps
+ * the visible-hint fallback, because guessing which of several children is "the control" is how a
+ * description ends up attached to a wrapper nobody focuses.
+ */
+function describedBy(children: ComponentChildren, id: string): ComponentChildren {
+	if (!isValidElement(children)) return children;
+	const existing = (children.props as { "aria-describedby"?: string })["aria-describedby"];
+	const merged = existing ? `${existing} ${id}` : id;
+	return cloneElement(children, { "aria-describedby": merged });
+}
+
 export function Field(props: {
 	label: string;
 	htmlFor?: string;
+	/**
+	 * The static explanation of this field.
+	 *
+	 * Rendered as an on-demand disclosure behind a "?" beside the label rather than as a permanent line
+	 * of prose under the control — a form of this length spends more vertical space on explanations
+	 * nobody is reading a second time than on the fields themselves.
+	 *
+	 * The text is ALWAYS in the DOM, visually hidden, and the control points at it. The popover panel is
+	 * body-portalled and unmounted while closed, so an IDREF to the panel would resolve to nothing for
+	 * most of the field's life and the description would vanish from the accessibility tree; pointing at
+	 * a stable hidden node instead makes the icon a purely VISUAL disclosure of something already
+	 * announced. A screen-reader user never has to find and open it.
+	 *
+	 * This is only for STATIC help. A live verdict stays inline and visible — see {@link Validated}.
+	 */
 	hint?: string;
 	/** Track focus/blur under this key so `fieldStatus` can hold a verdict back until the owner leaves. */
 	fieldKey?: string;
@@ -466,22 +499,34 @@ export function Field(props: {
 	validation?: FieldValidation;
 	children: ComponentChildren;
 }): JSX.Element {
+	// Derived from the control's own id where there is one, so it is stable across renders; otherwise
+	// from the label, which is unique within a section on this surface.
+	const hintId = props.hint
+		? `${props.htmlFor ?? `psu-${props.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}-hint`
+		: undefined;
+	const described = hintId ? describedBy(props.children, hintId) : props.children;
+
 	const body = (
 		<>
-			{props.htmlFor
-				? <label class="psu-field__label" for={props.htmlFor}>{props.label}</label>
-				: <span class="psu-field__label">{props.label}</span>}
+			<div class="psu-field__labelrow">
+				{props.htmlFor
+					? <label class="psu-field__label" for={props.htmlFor}>{props.label}</label>
+					: <span class="psu-field__label">{props.label}</span>}
+				{props.hint && (
+					<HintPopover label={`About ${props.label.toLowerCase()}`}>{props.hint}</HintPopover>
+				)}
+			</div>
 			{props.validation
 				? (
 					<Validated
 						validation={props.validation}
 						messageId={props.htmlFor ? `${props.htmlFor}-problem` : undefined}
 					>
-						{props.children}
+						{described}
 					</Validated>
 				)
-				: props.children}
-			{props.hint && <p class="psu-field__hint">{props.hint}</p>}
+				: described}
+			{props.hint && <span id={hintId} class="psu-visually-hidden">{props.hint}</span>}
 		</>
 	);
 
@@ -505,6 +550,33 @@ function outstanding(setup: ProjectSetup, key: ProjectSetupStepKey): boolean {
 /** A note beneath a group of controls — prose, never a chip, never boxed. */
 function Note({ children }: { children: ComponentChildren }): JSX.Element {
 	return <p class="psu-note">{children}</p>;
+}
+
+/**
+ * A collapsed group of settings that are set once and rarely revisited.
+ *
+ * Native `<details>`, deliberately. The sections of this form are SERVER components rendered by one
+ * island, so a disclosure built on a signal would need its own hydration root for a control whose whole
+ * job is to show and hide static markup — and it would collapse to nothing with JavaScript off, taking
+ * the fields inside it out of reach. `<details>` is open-able, keyboard-operable and announced as a
+ * disclosure with no script at all, and the browser already gives `<summary>` the right role and
+ * `aria-expanded` handling. It is the same choice `StageProgressLedger` made for the same reason.
+ *
+ * Content inside is NOT boxed (§B.4): the summary row and the indent carry the grouping, and a border
+ * around a disclosure that already sits inside a section would be the second device on one boundary.
+ */
+function Disclosure(
+	props: { label: string; children: ComponentChildren; open?: boolean },
+): JSX.Element {
+	return (
+		<details class="psu-disclosure" open={props.open}>
+			<summary class="psu-disclosure__summary">
+				<Icon class="psu-disclosure__chev" name="chevron-down" size="sm" />
+				<span class="psu-disclosure__label">{props.label}</span>
+			</summary>
+			<div class="psu-disclosure__body">{props.children}</div>
+		</details>
+	);
 }
 // #endregion
 
@@ -569,21 +641,12 @@ export function BasicsSection(
 	// Only two formats offer a shape choice, so the control is absent rather than disabled where there
 	// is nothing to choose between — a one-option picker states a decision the author never made.
 	const shapeOptions = SHAPE_OPTIONS[setup.format];
+	// Order is Type -> Shape -> Title, and it is a sequence rather than an arrangement: the first two
+	// decide WHICH sections the rest of the form renders, so answering them first means the page stops
+	// changing shape underneath the owner once they start writing. The name is the thing they are most
+	// likely to revise later, which is why it no longer leads.
 	return (
 		<Section sectionKey="basics" title="Basics" hint={hint}>
-			<Field label="Project name" htmlFor="psu-title" fieldKey="title">
-				<InputText
-					id="psu-title"
-					aria-describedby="psu-title-problem"
-					value={setup.title}
-					onValueChange={(next: string) => patchSetup({ title: next })}
-					placeholder="Name the engagement"
-					block
-					maxLength={160}
-					status={fieldStatus("title", setup.title.trim() ? "default" : "required")}
-				/>
-			</Field>
-
 			<Field label="Project type" hint={FORMAT_HINT[setup.format]}>
 				<SelectButton
 					options={formatOptions(setup.format)}
@@ -598,17 +661,36 @@ export function BasicsSection(
 				<Field label="Shape" hint={SHAPE_HINT[setup.format]}>
 					<SelectButton
 						options={shapeOptions}
-						value={shapeOf(setup.format, setup.structure)}
+						value={shapeFor(setup.format, setup.structure)}
 						onValueChange={(v: string | string[]) =>
-							patchSetup({
-								structure: v === "single_task"
-									? "single_task"
-									: structureForStages(true, "one_off"),
-							})}
+							/*
+							 * Both the read and the write go through the SSOT, which is where the round trip
+							 * between them is unit-tested. This handler previously inlined
+							 * `structureForStages(true, "one_off")` — both arguments LITERALS — so every segment
+							 * of every format wrote `one_off`: on a pipeline, "Single stage" could not produce
+							 * `single_stage`, and the read then failed to match `one_off` against the pipeline's
+							 * options and fell back to "Staged", so the segment snapped back and the stored
+							 * structure silently became a one-off's. Focusable, live-looking, wrong column
+							 * (§3 gate 11).
+							 */
+							patchSetup({ structure: structureForShape(setup.format, v as string) })}
 						aria-label="Shape"
 					/>
 				</Field>
 			)}
+
+			<Field label="Project name" htmlFor="psu-title" fieldKey="title">
+				<InputText
+					id="psu-title"
+					aria-describedby="psu-title-problem"
+					value={setup.title}
+					onValueChange={(next: string) => patchSetup({ title: next })}
+					placeholder="Name the engagement"
+					block
+					maxLength={160}
+					status={fieldStatus("title", setup.title.trim() ? "default" : "required")}
+				/>
+			</Field>
 
 			{setup.format === "session" && (
 				<Field label="Session kind" hint="A group session seats a cohort in the same booking.">
@@ -689,53 +771,40 @@ export function BudgetSection(
 
 	return (
 		<Section sectionKey="budget" title={budgetSectionLabel(setup)} hint={hint}>
-			<div class="psu-row">
-				<Field label="Budget type">
-					<Select
-						options={BUDGET_TYPE_OPTIONS}
-						value={setup.budget.budgetType}
-						onValueChange={(v: string) =>
-							patchSetup({ budget: { budgetType: v as ProjectSetup["budget"]["budgetType"] } })}
-						aria-label="Budget type"
-					/>
-				</Field>
-
-				<Field
-					label={session ? "Rate per session" : "Amount"}
-					htmlFor="psu-budget-amount"
-					fieldKey="budget.amount"
-				>
-					<InputNumber
-						id="psu-budget-amount"
-						value={toMajor(setup.budget.amountCents, currency)}
-						onValueChange={(v: number | null) =>
-							patchSetup({ budget: { amountCents: toMinorUnits(v, currency) } })}
-						mode="currency"
-						currency={currency}
-						maxFractionDigits={exponent}
-						minFractionDigits={exponent}
-						min={0}
-						placeholder="Not set"
-						status={fieldStatus(
-							"budget.amount",
-							setup.budget.amountCents === null ? "gate" : "default",
-						)}
-					/>
-				</Field>
-			</div>
-
+			{
+				/*
+				 * No `.psu-row` around a lone field: that class is a two-column grid, so a single child
+				 * leaves an empty half-width column beside it.
+				 *
+				 * Currency has moved to Advanced Options, where the brief puts it — it is set once, is
+				 * usually inherited from the owner's own display preference, and does not belong in the
+				 * reading path of a form somebody fills in every time.
+				 */
+			}
 			<Field
-				label="Currency"
-				hint="Every figure on this page is priced in it. Changing it relabels those figures; it does not convert them."
+				label={session ? "Rate per session" : "Amount"}
+				htmlFor="psu-budget-amount"
+				fieldKey="budget.amount"
 			>
-				<Select
-					options={CURRENCY_OPTIONS}
-					value={currency}
-					onValueChange={(next: string) => patchSetup({ budget: { currency: next } })}
-					filter
-					aria-label="Currency"
+				<InputNumber
+					id="psu-budget-amount"
+					value={toMajor(setup.budget.amountCents, currency)}
+					onValueChange={(v: number | null) =>
+						patchSetup({ budget: { amountCents: toMinorUnits(v, currency) } })}
+					mode="currency"
+					currency={currency}
+					maxFractionDigits={exponent}
+					minFractionDigits={exponent}
+					min={0}
+					placeholder="Not set"
+					status={fieldStatus(
+						"budget.amount",
+						setup.budget.amountCents === null ? "gate" : "default",
+					)}
 				/>
 			</Field>
+
+			{setup.budget.budgetType === "hourly_cap" && <Note>{LEGACY_HOURLY_NOTE}</Note>}
 
 			{session && (
 				<Note>
@@ -978,7 +1047,11 @@ function StageRow(props: {
 		reveal: setupReveal,
 		problemStatus: "gate",
 	});
-	const priceLabel = session ? "Session price" : props.itemLabel === "milestone" ? "Fee" : "Ticket price";
+	const priceLabel = session
+		? "Session price"
+		: props.itemLabel === "milestone"
+		? "Fee"
+		: "Ticket price";
 
 	return (
 		<li
@@ -1055,21 +1128,46 @@ function StageRow(props: {
 						/>
 					</Field>
 
-					<div class="psu-row">
+					{
+						/*
+						 * `milestone` sits with Scope rather than with the timing fields, because it is the
+						 * OUTCOME half of "what does this stage deliver" — a sentence, not a schedule. The
+						 * columns that answer WHEN are below it.
+						 */
+					}
+					<Field
+						label={session ? "Duration" : "Delivery"}
+						htmlFor={fieldId("milestone")}
+					>
+						<InputText
+							id={fieldId("milestone")}
+							value={stage.milestone}
+							onValueChange={(milestone: string) => props.onPatch({ milestone })}
+							block
+							maxLength={240}
+							placeholder={session ? "e.g. 60 minutes" : "e.g. 2 weeks"}
+						/>
+					</Field>
+
+					<TaskList stage={stage} itemLabel={props.itemLabel} onPatch={props.onPatch} />
+
+					{!session && (
 						<Field
-							label={session ? "Duration" : "Delivery"}
-							htmlFor={fieldId("milestone")}
+							label="Required skills"
+							hint="Up to ten. A stage asking for twenty is asking for nobody."
 						>
-							<InputText
-								id={fieldId("milestone")}
-								value={stage.milestone}
-								onValueChange={(milestone: string) => props.onPatch({ milestone })}
-								block
-								maxLength={240}
-								placeholder={session ? "e.g. 60 minutes" : "e.g. 2 weeks"}
+							<Chips
+								value={stage.skills}
+								onValueChange={(skills: string[]) => props.onPatch({ skills })}
+								placeholder="Add a skill…"
+								max={MAX_STAGE_SKILLS}
+								addOnBlur
+								aria-label={`Required skills for ${stage.name || props.itemLabel}`}
 							/>
 						</Field>
+					)}
 
+					<div class="psu-row">
 						<Field label={priceLabel} htmlFor={fieldId("price")} validation={price}>
 							<InputNumber
 								id={fieldId("price")}
@@ -1085,9 +1183,7 @@ function StageRow(props: {
 								status={price.status.value}
 							/>
 						</Field>
-					</div>
 
-					<div class="psu-row">
 						<Field
 							label="Working days"
 							htmlFor={fieldId("duration")}
@@ -1108,7 +1204,9 @@ function StageRow(props: {
 								placeholder="Open-ended"
 							/>
 						</Field>
+					</div>
 
+					<div class="psu-row">
 						<Field label="Starts">
 							<Select
 								options={DEPENDENCY_OPTIONS}
@@ -1117,9 +1215,7 @@ function StageRow(props: {
 								aria-label={`When ${stage.name || props.itemLabel} starts`}
 							/>
 						</Field>
-					</div>
 
-					<div class="psu-row">
 						<Field label="Capacity">
 							<SelectButton
 								options={CAPACITY_OPTIONS}
@@ -1129,71 +1225,56 @@ function StageRow(props: {
 								aria-label="Capacity"
 							/>
 						</Field>
-
-						{stage.capacity === "limited" && (
-							<Field label="Seats" htmlFor={fieldId("seats")}>
-								<InputNumber
-									id={fieldId("seats")}
-									value={stage.seatCount}
-									onValueChange={(v: number | null) =>
-										props.onPatch(
-											normaliseSeats(
-												"limited",
-												v === null ? null : Math.max(1, Math.min(99, Math.round(v))),
-											),
-										)}
-									min={1}
-									max={99}
-									showButtons
-								/>
-							</Field>
-						)}
 					</div>
 
-					{!session && (
-						<Field
-							label="Required skills"
-							hint="Up to ten. A stage asking for twenty is asking for nobody."
-						>
-							<Chips
-								value={stage.skills}
-								onValueChange={(skills: string[]) => props.onPatch({ skills })}
-								placeholder="Add a skill…"
-								max={10}
-								addOnBlur
-								aria-label={`Required skills for ${stage.name || props.itemLabel}`}
+					{stage.capacity === "limited" && (
+						<Field label="Seats" htmlFor={fieldId("seats")}>
+							<InputNumber
+								id={fieldId("seats")}
+								value={stage.seatCount}
+								onValueChange={(v: number | null) =>
+									props.onPatch(
+										normaliseSeats(
+											"limited",
+											v === null ? null : Math.max(1, Math.min(99, Math.round(v))),
+										),
+									)}
+								min={1}
+								max={99}
+								showButtons
 							/>
 						</Field>
 					)}
 
-					<TaskList stage={stage} itemLabel={props.itemLabel} onPatch={props.onPatch} />
-
 					<StageRoleList stage={stage} currency={currency} onPatch={props.onPatch} />
 
-					<div class="psu-row">
-						<Field
-							label="Accepted deliverables"
-							hint="Leave empty to accept any file."
-						>
-							<MultiSelect
-								options={FILE_KIND_OPTIONS}
-								value={stage.allowedFileKinds}
-								onValueChange={(allowedFileKinds: string[]) => props.onPatch({ allowedFileKinds })}
-								placeholder="Any file"
-								showClear
-								aria-label={`Accepted deliverables for ${stage.name || props.itemLabel}`}
-							/>
-						</Field>
+					<Disclosure label="Advanced settings">
+						<div class="psu-row">
+							<Field
+								label="Accepted deliverables"
+								hint="Leave empty to accept any file."
+							>
+								<MultiSelect
+									options={FILE_KIND_OPTIONS}
+									value={stage.allowedFileKinds}
+									onValueChange={(allowedFileKinds: string[]) =>
+										props.onPatch({ allowedFileKinds })}
+									placeholder="Any file"
+									showClear
+									aria-label={`Accepted deliverables for ${stage.name || props.itemLabel}`}
+								/>
+							</Field>
 
-						<Field label="NDA">
-							<Select
-								options={ndaOverrideOptions(props.projectRequiresNda)}
-								value={ndaOverrideValue(stage.ndaRequired)}
-								onValueChange={(v: string) => props.onPatch({ ndaRequired: ndaOverrideFrom(v) })}
-								aria-label={`NDA for ${stage.name || props.itemLabel}`}
-							/>
-						</Field>
-					</div>
+							<Field label="NDA">
+								<Select
+									options={ndaOverrideOptions(props.projectRequiresNda)}
+									value={ndaOverrideValue(stage.ndaRequired)}
+									onValueChange={(v: string) => props.onPatch({ ndaRequired: ndaOverrideFrom(v) })}
+									aria-label={`NDA for ${stage.name || props.itemLabel}`}
+								/>
+							</Field>
+						</div>
+					</Disclosure>
 				</div>
 			)}
 		</li>
@@ -1728,27 +1809,6 @@ export function RulesSection(
 			)}
 
 			<div class="psu-row">
-				<Field label="Ownership of the work">
-					<Select
-						options={optionsOf(IP_LABEL)}
-						value={rules.ipOwnershipMode}
-						onValueChange={(v: string) =>
-							patchSetup({ rules: { ipOwnershipMode: v as IpOwnershipMode } })}
-						aria-label="Ownership of the work"
-					/>
-				</Field>
-				<Field label="Portfolio rights">
-					<Select
-						options={optionsOf(PORTFOLIO_LABEL)}
-						value={rules.portfolioDisplayRights}
-						onValueChange={(v: string) =>
-							patchSetup({ rules: { portfolioDisplayRights: v as PortfolioDisplayRights } })}
-						aria-label="Portfolio rights"
-					/>
-				</Field>
-			</div>
-
-			<div class="psu-row">
 				<Field label="Locations" hint="Leave empty to accept freelancers anywhere.">
 					<MultiSelect
 						options={LOCATION_OPTIONS}
@@ -1778,26 +1838,74 @@ export function RulesSection(
 
 			{
 				/*
-				 * A deadline bonus is paid per TICKET, and only a pipeline has tickets. On every other
-				 * format the control is ABSENT rather than disabled: absence is for a capability that does
-				 * not exist here, and a greyed switch would advertise one that does.
+				 * Everything below is set once and rarely revisited — the money's unit, who ends up owning
+				 * the work, whether it can be shown, and the bonus rule. They are all real terms a
+				 * freelancer agrees to, so none of them is dropped; they are simply not in the reading path
+				 * of a form somebody fills in from the top every time.
+				 *
+				 * Visibility, timeline, locations and languages deliberately stay ABOVE this fold: they are
+				 * publication and matching terms that decide who ever sees the engagement, which is a
+				 * decision the owner is making right now rather than a default they inherited.
 				 */
 			}
-			{setup.format === "pipeline" && (
-				<div class="psu-toggles">
-					<ToggleSwitch
-						value={rules.allowDeadlineBonuses}
-						onValueChange={(allowDeadlineBonuses: boolean) =>
-							patchSetup({ rules: { allowDeadlineBonuses } })}
-						label="Allow deadline bonuses on tickets"
+			<Disclosure label="Advanced options">
+				<Field
+					label="Currency"
+					hint="Every figure on this page is priced in it. Changing it relabels those figures; it does not convert them."
+				>
+					<Select
+						options={CURRENCY_OPTIONS}
+						value={setup.budget.currency}
+						onValueChange={(next: string) => patchSetup({ budget: { currency: next } })}
+						filter
+						aria-label="Currency"
 					/>
-					<Note>
-						A freelancer who delivers a ticket ahead of its due date earns an extra{" "}
-						{DEADLINE_BONUS_PERCENT}% of its price. Pipelines only — a one-off has one deadline, which
-						is the delivery itself.
-					</Note>
+				</Field>
+
+				<div class="psu-row">
+					<Field label="Ownership of the work">
+						<Select
+							options={optionsOf(IP_LABEL)}
+							value={rules.ipOwnershipMode}
+							onValueChange={(v: string) =>
+								patchSetup({ rules: { ipOwnershipMode: v as IpOwnershipMode } })}
+							aria-label="Ownership of the work"
+						/>
+					</Field>
+					<Field label="Portfolio rights">
+						<Select
+							options={optionsOf(PORTFOLIO_LABEL)}
+							value={rules.portfolioDisplayRights}
+							onValueChange={(v: string) =>
+								patchSetup({ rules: { portfolioDisplayRights: v as PortfolioDisplayRights } })}
+							aria-label="Portfolio rights"
+						/>
+					</Field>
 				</div>
-			)}
+
+				{
+					/*
+					 * A deadline bonus is paid per TICKET, and only a pipeline has tickets. On every other
+					 * format the control is ABSENT rather than disabled: absence is for a capability that does
+					 * not exist here, and a greyed switch would advertise one that does.
+					 */
+				}
+				{setup.format === "pipeline" && (
+					<div class="psu-toggles">
+						<ToggleSwitch
+							value={rules.allowDeadlineBonuses}
+							onValueChange={(allowDeadlineBonuses: boolean) =>
+								patchSetup({ rules: { allowDeadlineBonuses } })}
+							label="Allow deadline bonuses on tickets"
+						/>
+						<Note>
+							A freelancer who delivers a ticket ahead of its due date earns an extra{" "}
+							{DEADLINE_BONUS_PERCENT}% of its price. Pipelines only — a one-off has one deadline,
+							which is the delivery itself.
+						</Note>
+					</div>
+				)}
+			</Disclosure>
 		</Section>
 	);
 }

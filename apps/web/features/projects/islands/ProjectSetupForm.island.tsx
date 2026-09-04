@@ -98,14 +98,20 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 		 * once per call site.
 		 */
 		<div class="psu" onKeyDownCapture={advanceOnEnter}>
-			<header class="psu__head">
-				<p class="psu__eyebrow">Project setup</p>
-				<h1 class="psu__title">{live.title || "Untitled project"}</h1>
-				<p class="psu__lede">
-					Everything here shapes how freelancers see and apply to this engagement. Work through it
-					in any order — the progress bar above tracks what is still outstanding.
-				</p>
-			</header>
+			{
+				/*
+				 * The visible "Project setup" eyebrow and the explanatory lede are gone — identity belongs
+				 * to the middle-nav header band (Part D), and a lede that describes the form to somebody
+				 * already looking at it is scaffolding.
+				 *
+				 * The `<h1>` STAYS, visually hidden. It is the only level-1 heading on the surface and it
+				 * carries the project's own title rather than boilerplate, so deleting it would leave the
+				 * six `<h2>` section headings hanging off no root and break the document outline for anyone
+				 * navigating by heading. The header band renders identity as a `<span>`, so it cannot take
+				 * the duty over.
+				 */
+			}
+			<h1 class="psu-visually-hidden">{live.title || "Untitled project"}</h1>
 
 			{
 				/*

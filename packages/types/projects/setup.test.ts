@@ -4,6 +4,7 @@ import {
 	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
+	hasStages,
 	liveVisibilityFor,
 	previewReady,
 	type ProjectSetupPatch,
@@ -12,6 +13,9 @@ import {
 	reconcileSetup,
 	setupCompleteness,
 	setupSteps,
+	shapeFor,
+	shapeOptionsFor,
+	structureForShape,
 } from "./setup.ts";
 
 /**
@@ -391,5 +395,54 @@ Deno.test("a created project's intent is public and is not DEFAULT_PROJECT_RULES
 	// meant to bid on it, or make the conservative fallback stop being conservative.
 	assertEquals(CREATED_PUBLISH_VISIBILITY, "public");
 	assertEquals(DEFAULT_PROJECT_RULES.visibility, "invite_only");
+});
+// #endregion
+
+// #region Shape control
+/**
+ * The Shape segments and the structure they write, pinned.
+ *
+ * These exist because the form's Shape handler shipped with both arguments hardcoded —
+ * `structureForStages(true, "one_off")` — so every segment of every format wrote `one_off`. The
+ * round-trip property below is the one that broke: pressing "Single stage" on a PIPELINE produced
+ * `one_off`, which is not one of a pipeline's shapes, so the control resolved back to "Staged" and the
+ * press silently set the wrong column. Each of these fails against that code.
+ */
+Deno.test("every shape segment round-trips through the structure it writes", () => {
+	for (const format of ["pipeline", "one_off"] as const) {
+		for (const option of shapeOptionsFor(format)) {
+			const written = structureForShape(format, option);
+			assertEquals(
+				shapeFor(format, written),
+				option,
+				`${format}/${option} wrote ${written}, which reads back as a different segment`,
+			);
+		}
+	}
+});
+
+Deno.test("a pipeline can actually become single-stage", () => {
+	// The literal-argument bug returned "one_off" here, so a pipeline could never be stage-less through
+	// the only control that offers it.
+	assertEquals(structureForShape("pipeline", "single_stage"), "single_stage");
+	assertFalse(hasStages(structureForShape("pipeline", "single_stage")));
+});
+
+Deno.test("shape writes stay inside the format's own vocabulary", () => {
+	for (const format of ["pipeline", "one_off"] as const) {
+		for (const option of shapeOptionsFor(format)) {
+			assert(
+				shapeOptionsFor(format).includes(structureForShape(format, option)),
+				`${format} wrote a structure that is not one of its own shapes`,
+			);
+		}
+	}
+});
+
+Deno.test("a session offers no shape choice", () => {
+	// Absent, not a one-option picker: a sitting is not divisible into stages.
+	assertEquals(shapeOptionsFor("session").length, 0);
+	// And resolving a stored structure against an empty option set must not invent one.
+	assertEquals(shapeFor("session", "single_stage"), "single_stage");
 });
 // #endregion

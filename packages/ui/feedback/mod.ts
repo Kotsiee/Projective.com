@@ -34,6 +34,8 @@ export { Tooltip } from "./islands/Tooltip.tsx";
 export type { TooltipProps } from "./islands/Tooltip.tsx";
 export { OverlayPanel, Popover } from "./islands/Popover.tsx";
 export type { PopoverProps, PopoverTriggerApi } from "./islands/Popover.tsx";
+export { HintPopover } from "./islands/HintPopover.tsx";
+export type { HintPopoverProps } from "./islands/HintPopover.tsx";
 // #endregion
 
 // #region Progress & placeholders

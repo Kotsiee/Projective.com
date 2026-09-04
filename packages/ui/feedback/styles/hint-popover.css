@@ -1,0 +1,70 @@
+/*
+ * HintPopover — the inline "?" disclosure beside a field label.
+ *
+ * The trigger is a bare glyph: no fill, no border, no box. It sits INSIDE a label row, and a bordered
+ * button there would be a second contained element beside a control that is already contained (§B.4 —
+ * one device per boundary). `.ui-hit` supplies the 24px target underneath the 14px artwork, so the
+ * touch target is honest without the glyph growing to meet it.
+ */
+
+.ui-hint__trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	/* Keeps the glyph on the label's optical baseline rather than its box baseline. */
+	vertical-align: middle;
+	margin-inline-start: var(--space-1);
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-hint__trigger:hover,
+.ui-hint__trigger[aria-expanded="true"] {
+	color: var(--on-surface);
+}
+
+.ui-hint__trigger:focus-visible {
+	outline: none;
+	border-radius: var(--radius-full);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The panel is prose, so it takes a reading measure rather than the anchor's width. `--measure` is the
+ * document's reading column (68ch, 55ch under the dyslexic overlay) and far wider than a hint wants, so
+ * this caps at a short multiple of the body size instead — long enough for two sentences and a link.
+ */
+.ui-hint__panel {
+	max-inline-size: 22rem;
+}
+
+.ui-hint__body {
+	font-size: var(--text-sm);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.ui-hint__body :first-child {
+	margin-block-start: 0;
+}
+
+.ui-hint__body :last-child {
+	margin-block-end: 0;
+}
+
+/* A link inside the panel is the reason this is a dialog and not a tooltip — it must look like one. */
+.ui-hint__body a {
+	color: var(--primary);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.ui-hint__body a:focus-visible {
+	outline: none;
+	border-radius: var(--radius-sm);
+	box-shadow: var(--focus-ring-shadow);
+}
