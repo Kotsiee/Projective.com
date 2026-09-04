@@ -10,60 +10,62 @@ project definition and stage-based modularity to staffing, execution, and revisi
 The top-level container for all collaborative work. It defines global settings, legal requirements,
 and high-level metadata.
 
-| Column                | Type              | Notes                                                                 |
-| :-------------------- | :---------------- | :-------------------------------------------------------------------- |
-| `id`                  | uuid              | PK.                                                                   |
-| `client_business_id`  | uuid              | FK → `org.business_profiles.id`.                                      |
-| `owner_user_id`       | uuid              | FK → `auth.users.id` (The creator).                                   |
-| `status`              | project_status    | `draft`, `active`, `on_hold`, `completed`, `cancelled`, `archived`.   |
-| `visibility`          | visibility        | `public`, `invite_only`, `unlisted`.                                  |
-| `ip_ownership_mode`   | ip_option_mode    | Global default for the project.                                       |
-| `timeline_preset`     | timeline_preset   | `sequential`, `simultaneous`, `staggered`, `custom`.                  |
-| `source_blueprint_id` | uuid              | FK → `marketplace.service_blueprints.id`; `NULL` when hand-built.     |
-| `last_activity_at`    | timestamptz       | Last meaningful activity — what the draft sweep measures idleness by. |
-| `archived_at`         | timestamptz       | Set iff `status = 'archived'` (`ck_projects_archived_at`).            |
-| `session_kind`        | text              | `none` \| `normal` \| `group`. `none` on any non-session format.      |
-| `budget_type`         | budget_type       | `fixed_price` or `hourly_cap`. Defaults `fixed_price`.                |
-| `budget_amount_cents` | bigint            | Minor units. `NULL` = not set, which is not the same as zero.         |
-| `nda_required`        | boolean           | Derived shadow of `nda_mode`. See below.                              |
-| `nda_mode`            | projects.nda_mode | `none` \| `platform_standard` \| `custom`. Authoritative.             |
-| `nda_document_id`     | uuid              | FK → `files.items.id`, `ON DELETE SET NULL`. `custom` only.           |
+| Column                | Type            | Notes                                                                  |
+| :-------------------- | :-------------- | :--------------------------------------------------------------------- |
+| `id`                  | uuid            | PK. **The canonical address** — `/projects/:projectId` carries this.   |
+| `slug`                | text UNIQUE     | Readable alternate read key. Written by the app at create.             |
+| `client_business_id`  | uuid            | FK → `org.business_profiles.id`.                                       |
+| `owner_user_id`       | uuid            | FK → `auth.users.id` (The creator).                                    |
+| `status`              | project_status  | `draft`, `active`, `on_hold`, `completed`, `cancelled`, `archived`.    |
+| `visibility`          | visibility      | Where the row sits NOW. **Server-derived**, never a client value.      |
+| `publish_visibility`  | visibility      | Where the owner wants it once published — an INTENT. Default `public`. |
+| `ip_ownership_mode`   | ip_option_mode  | Global default for the project.                                        |
+| `timeline_preset`     | timeline_preset | `sequential`, `simultaneous`, `staggered`, `custom`.                   |
+| `source_blueprint_id` | uuid            | FK → `marketplace.service_blueprints.id`; `NULL` when hand-built.      |
+| `last_activity_at`    | timestamptz     | Last meaningful activity — what the draft sweep measures idleness by.  |
+| `archived_at`         | timestamptz     | Set iff `status = 'archived'` (`ck_projects_archived_at`).             |
+| `session_kind`        | text            | `none` \| `normal` \| `group`. `none` on any non-session format.       |
+| `budget_type`         | budget_type     | `fixed_price` or `hourly_cap`. Defaults `fixed_price`.                 |
+| `budget_amount_cents` | bigint          | Minor units. `NULL` = not set, which is not the same as zero.          |
+| `nda_required`        | boolean         | Whether an NDA binds the parties. Says **that**, never **which**.      |
+| `nda_source`          | text            | `platform` \| `custom`. Defaults `platform`.                           |
+| `nda_document_id`     | uuid            | FK → `files.items.id`, `ON DELETE SET NULL`. `NULL` under `platform`.  |
 
-**The NDA pair, and why there are two columns rather than one.** `projects.nda_mode` says WHICH
-instrument governs confidentiality; `nda_required` says only THAT one does. The boolean predates the
-enum and several readers already ask it, so it is kept — but it is a shadow, not a second opinion:
-`projects.create_project` writes it as `nda_mode <> 'none'` and never from the payload, and the
-setup write keeps the pair in step. Two columns that can disagree about whether work is confidential
-is the failure this pairing exists to avoid.
+**`id` is the address; `slug` is a read key.** `/projects/:projectId` carries the **uuid**. A
+title-derived slug moves on the first rename, so a link built on one dies the moment the owner edits
+the title — which is not an address. The uuid cannot collide, cannot be squatted, and does not
+change, so it is what the Quick-Init modal navigates to on create and what a notification links.
+`slug` is retained as a readable alternate: the resolvers accept either form, trying the slug first
+and then the uuid, so every existing link keeps working. It stays globally `UNIQUE` because it is
+still resolved from a bare path with no scope segment to disambiguate two identical slugs.
 
-`nda_mode` is a three-member enum on purpose. "Re-use an NDA I already uploaded" and "upload a new
-one" are both `custom` plus an `nda_document_id`; a fourth member would encode how the file arrived
-rather than what governs the engagement, and every reader that has to decide whether to gate a
-download cares only about the terms. `ck_projects_nda_document` refuses a document under any other
-mode, so a project cannot carry `nda_mode = 'none'` and a signed instrument at once. The document is
-a REFERENCE — it already lives in `files.items` with its own visibility scope and audit trail, and
-an NDA that existed twice is an NDA whose two copies can differ.
+The column is `NOT NULL` with a generated `p-xxxxxxxxxxxx` fallback rather than `NOT NULL` bare,
+because `projects.create_project` inserts without one. Until the Quick-Init create path shipped
+**nothing in the repository wrote this column at all**, so on the live path every project would have
+carried that opaque fallback permanently — which is why the fallback's shape is load-bearing and
+must satisfy `ck_projects_slug_shape`. The create path now writes the title-derived form.
 
-**Four CHECKs that make an unusable project unrepresentable.**
+**Which NDA binds the parties.** `nda_required` has always said only **that** an NDA applies, never
+**which** — so everyone on a project could be told they were bound by an agreement with no way to
+read it. `nda_source` closes that: `platform` is Projective's own standard mutual NDA (no upload, no
+legal review, and therefore the default), `custom` names a document the client supplies by reference
+into `files.items` — never a copy, because an asset on this platform is one row with one owner and
+one privacy scope, and copying the bytes would give them two lifetimes and two access answers.
 
-| Constraint                          | Refuses                                                                     |
-| :---------------------------------- | :-------------------------------------------------------------------------- |
-| `ck_projects_currency`              | Anything but ISO 4217 alpha-3 uppercase. The unit escrow settles in.        |
-| `ck_projects_title_len`             | A trimmed title outside 1–160. Matches `CreateProjectSchema.title` exactly. |
-| `ck_projects_deadline_bonus_format` | `allow_deadline_bonuses` on a non-`pipeline` format.                        |
-| `ck_projects_nda_document`          | An `nda_document_id` under a mode other than `custom`.                      |
+It is an enum-shaped column rather than "a nullable document id where `NULL` means platform" because
+a client who **intended** to attach their own and has not uploaded it yet is a real state the setup
+form holds and warns about — and under the nullable-id shape that state is indistinguishable from a
+deliberate choice of the platform standard.
 
-`ck_projects_currency` is not cosmetic: the currency is the unit every money figure on the project
-renders in and the one the escrow ledger settles in, so a lowercase or four-letter value is an
-amount nobody can price. `create_project` upper-cases what it is given — case is the only difference
-between a code that is right and one that is right in lower case — but the shape itself is the
-constraint's call, not the function's. **Every writer must send an uppercase 3-letter code**; the
-Zod SSOT's `ProjectBudgetSchema.currency` carries the matching regex.
-
-`ck_projects_deadline_bonus_format` is expressed as an implication rather than a trigger so it holds
-for every writer including the `SECURITY DEFINER` RPCs that bypass RLS. A format switch away from
-`pipeline` has to clear the flag in the same statement. The bonus RATE is not stored here and never
-has been — the money path is `finance.escrows.deadline_bonus_*`.
+`ck_projects_nda_document` is therefore **one-directional** — a `custom` source, or no document —
+unlike the bidirectional `ck_projects_archived_at`: a `platform` NDA may never carry a document, but
+`custom` with no document yet is legitimate. Making it bidirectional would make the "meant to
+upload, hasn't yet" state unrepresentable and force the form to silently record `platform` instead —
+i.e. to bind the parties to an agreement nobody chose. Neither column is tied to `nda_required`;
+when no NDA applies they are simply ignored, so an owner who turns the requirement off and back on
+still has the document they uploaded. `ON DELETE SET NULL` on the document lands the row in exactly
+that warnable state, where `RESTRICT` would stop an owner tidying their own library and `CASCADE`
+would delete a **project** because somebody removed a file.
 
 **The session kind.** `format` says an engagement is delivered as sessions; `session_kind` says
 whether those sessions are 1-1 or a cohort. Two axes rather than two more `project_format` members,
@@ -84,6 +86,21 @@ two surfaces come to disagree about what `hourly_cap` means. `NULL` is _not set_
 decision somebody took; a reader that cannot tell them apart renders "£0.00" over a project nobody
 has priced.
 
+**Visibility is two columns, and they answer two different questions.** `visibility` is where the
+row sits right now; `publish_visibility` is where its owner wants it to sit once it goes live. One
+column cannot hold both. A draft is minted `unlisted` so nothing half-written reaches Explore and it
+must stay that way while it is a draft — but the setup form is only ever open WHILE the project is a
+draft, so that is the only moment its owner can answer "and when it publishes, who sees it?".
+Writing that answer to `visibility` publishes the draft; refusing to store it at all leaves the
+form's dropdown reverting to a value nobody chose.
+
+The promotion is one function — `liveVisibilityFor` in `@projective/types/projects`: a `draft` is
+`unlisted` unconditionally, anything else takes the intent verbatim, including on the way back to
+draft, which re-hides. It is applied server-side AFTER `projects.set_project_status` succeeds, so a
+refused transition cannot leave a public row on a still-draft project, and it runs on every save, so
+an already-published project's visibility change takes effect immediately. `visibility` is never
+written from a client payload; `publish_visibility` is the only half the form can set.
+
 **Service instantiation.** "Add to Projects" on a Pipeline listing copies the seller's blueprint
 into the buyer's workspace as `status = 'draft'`, `visibility = 'unlisted'`, with
 `source_blueprint_id` set and every `stage_assignments` row parked at `pending_funding`. No money
@@ -103,62 +120,56 @@ touches the latter, so a draft that was merely renamed would keep escaping a swe
 
 Atomic units of work. Each stage has its own type, status, and specific delivery logic.
 
-| Column                    | Type                   | Notes                                                              |
-| :------------------------ | :--------------------- | :----------------------------------------------------------------- |
-| `id`                      | uuid                   | PK.                                                                |
-| `project_id`              | uuid                   | FK → `projects.projects.id`.                                       |
-| `stage_type`              | stage_type_enum        | `file_based`, `session_based`, etc..                               |
-| `status`                  | stage_status           | Current progress state.                                            |
-| `sort_order`              | integer                | Execution order.                                                   |
-| `start_trigger_type`      | start_trigger_type     | Defines when work can begin.                                       |
-| `ip_mode`                 | ip_option_mode         | Override for stage-specific IP terms.                              |
-| `milestone`               | text                   | Free-text delivery note. `''` when unset.                          |
-| `unit_price_cents`        | bigint                 | Per-ticket price **and** a one-off stage's fixed price.            |
-| `file_upload_required`    | boolean                | **Defaults `true`.**                                               |
-| `seat_limit`              | integer                | `DEFAULT 3`; `NULL` = Unlimited.                                   |
-| `parallel`                | boolean                | Runs alongside the stage above it rather than after it.            |
-| `nda_override`            | boolean                | Recorded intent. **Enforces nothing yet** — see below.             |
-| `allowed_file_categories` | files.file_category\[] | `NULL` or empty = all.                                             |
-| `allowed_file_extensions` | text\[]                | `'{}'` = all.                                                      |
-| `file_duration_mode`      | text                   | `fixed_deadline` \| `relative_duration` \| `no_due_date`, CHECKed. |
+| Column               | Type               | Notes                                     |
+| :------------------- | :----------------- | :---------------------------------------- |
+| `id`                 | uuid               | PK.                                       |
+| `project_id`         | uuid               | FK → `projects.projects.id`.              |
+| `stage_type`         | stage_type_enum    | `file_based`, `session_based`, etc..      |
+| `status`             | stage_status       | Current progress state.                   |
+| `sort_order`         | integer            | Execution order.                          |
+| `start_trigger_type` | start_trigger_type | Defines when work can begin.              |
+| `ip_mode`            | ip_option_mode     | Override for stage-specific IP terms.     |
+| `milestone`          | text               | Free-text delivery note. `''` when unset. |
+| `allowed_file_kinds` | text[]             | Submittable kinds. **Empty = any.**       |
+| `nda_required`       | boolean            | Per-stage override; `NULL` inherits.      |
+| `capacity`           | text               | `unlimited` (default) \| `limited`.       |
+| `seat_count`         | integer            | 1–99. Set iff `capacity = 'limited'`.     |
 
-**`unit_price_cents` is the ONE price a stage has,** and a one-off stage's "fixed price" is the same
-column rather than a second one. A one-off stage is a one-ticket stage, so a second column would
-create two answers to "what does this stage cost" while `finance.fn_hold_ticket_escrow` reads only
-this one — silently, which is what makes that class of divergence a money hole rather than a display
-bug. Its `CHECK (… >= 0)` is not decorative either: a negative price was storable and flowed
-straight into an escrow hold, where it inverts the direction the money moves.
+These four are what the Stage-2 configuration surface collects per stage and the table previously
+could not hold.
 
-**`file_upload_required` defaults `true`.** A stage exists to produce a deliverable, and the
-submissions explorer, the review workspace and the escrow release all read a stage that owes nothing
-as a stage with nothing to approve. The old `false` default made the common case the one the owner
-had to remember to ask for. ⚠️ The column default alone is inert on the create path —
-`projects.create_project` always supplies a value — so the RPC's own `COALESCE` fallback carries the
-same `true`. Changing one without the other changes nothing.
+**`allowed_file_kinds`: empty means ANY.** It sits beside `file_upload_required` because the two
+answer adjacent halves of one question — that one says whether a deliverable must be a file at all,
+this says what kind of file counts. Empty is the **permissive** answer, not an unanswered one: a
+stage nobody configured must never silently refuse a deliverable, because the refusal lands on the
+freelancer at submission time and reads as a broken product rather than a term of the engagement. It
+is `NOT NULL DEFAULT '{}'` unlike the nullable `skills` array beside it, and that difference is not
+cosmetic — with a nullable column `NULL` and `{}` would both have to mean "any" while looking like
+different states, and a reader would eventually treat one of them as "none permitted".
 
-**`seat_limit` is headcount, and `NULL` means Unlimited**, matching `finance.plan_entitlements`' own
-nullable-as-unbounded convention. Deliberately **not** modelled as `max_concurrent_intensity`
-(summed workload `W_i`, a different unit) and **not** as `stage_staffing_roles.quantity` (which
-establishes one named role, not the stage's headcount). `> 0` rather than `>= 0`: a stage capped at
-zero seats is a stage nobody can be assigned to, which `hire_trigger_active = false` already says
-without pretending to be a number.
+**`nda_required` is three-valued, and inherits on `NULL`.** `NULL` follows
+`projects.projects.nda_required`; `true`/`false` override it for this stage alone. Nullable rather
+than a boolean copied down at stage creation, because a copy goes stale the instant the
+project-level term changes: after that nothing on the row says whether `false` means "deliberately
+exempted" or "created back when the project required nothing". Three-valued, that question is
+answerable. It is named for its SSOT field (`StageSetup.ndaRequired`) rather than following the
+`ip_ownership_override` convention beside it, so the column and the shape the mapper reads it into
+carry one name — a query joining both tables must alias, which is the price of the mapping being the
+identity function.
 
-**`nda_override` stores intent and changes no behaviour.** Said plainly because the column looks
-like a switch: the no-download, watermark and owner-only rules reach three separate readers that
-consult no stage flag today. Writing it records what the owner asked for; nothing gates on it until
-those readers are taught to ask.
+**`capacity`/`seat_count` are a pair, because "unlimited" is an ANSWER.** Under a single
+`seat_count integer NULL`, a client who deliberately opened a stage to everyone and one who has not
+decided yet are the same row, and the seat meter has to draw the same thing for both.
+`ck_project_stages_seat_count` is bidirectional — a `limited` stage carries a count and an
+`unlimited` one does not — the same idiom as `ck_projects_archived_at`, so the two halves cannot
+disagree. Without it an unlimited stage carrying a stale `3` would draw a meter over a stage that
+has no ceiling.
 
-**The file policy is two lists, and empty means ALL.** An empty allow-list meaning "nothing" would
-make an unconfigured stage unsubmittable, and every stage starts unconfigured. Categories are the
-coarse taxonomy (`files.file_category`, the Zod `FileCategory` literals verbatim); extensions are
-the fine one, for a stage that wants `.fig` but not every Vector file. Both may be set, and a file
-passes when it satisfies whichever lists are non-empty.
-
-**`hasStages` is not a column and must not become one.** It is derived —
-`structure_variation <> 'single_task'`. A real boolean creates two columns that can disagree about
-whether a project has stages, while `projects.set_project_status` gates activation on the stage
-COUNT. `projects.create_project` guarantees the count is never zero: a project that names no stage
-is given one implicit `Delivery` stage carrying the project's own brief, price and IP terms.
+⚠️ Three capacity-shaped things now live near each other and mean different things.
+`max_concurrent_intensity` is the Project Hard Cap on **summed $W_i$** — a workload ceiling, not a
+headcount. `projects.stage_open_seats` rows are the concrete, individually-described **postings**
+recruitment fills. This pair is the stage's **declared shape**, which exists before any seat has
+been posted and constrains how many may be.
 
 ---
 
@@ -244,6 +255,24 @@ A unified ledger of events occurring within a project (e.g., status changes, fil
 
 Per-user metadata for UI customization (e.g., starring or archiving projects). Own-rows-only under
 RLS — see [Policies.md](Policies.md).
+
+### `projects.project_attachments`
+
+The link table between a project and its reference files — the brief, the brand sheet, the spec.
+Both columns are the composite primary key (`project_id`, `attachment_id` → `files.items.id`), so
+there is nothing on the row to update: re-pointing a reference is a `DELETE` and an `INSERT`.
+
+Carried **by reference**, never by copy: an asset on this platform is one `files.items` row with one
+owner and one privacy scope, and a project attachment is a second surface onto an asset that may
+also be a submission deliverable or a profile banner.
+
+⚠️ This table had RLS enabled in `00002001` and **zero policies** for its whole life, which is
+default deny — and default deny on a `SELECT` is silent, returning `200 []` rather than an error.
+The attachments list therefore rendered as an empty list rather than a failure, the one shape nobody
+investigates because it is indistinguishable from a project with no attachments. Policies now exist:
+read via `projects.has_project_access` (the brief is what a participant works against), write
+owner-only. See [Policies.md](Policies.md). Note that admitting a **link** never admits a **file** —
+the bytes are governed separately by `files.fn_can_read`.
 
 ### `projects.ticket_history`
 

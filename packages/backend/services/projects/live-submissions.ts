@@ -43,6 +43,7 @@ import type {
 	SubmissionUnit,
 	SubmissionUnitKind,
 } from "@projective/types/projects";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-submissions — the RLS-scoped Postgres read path for the Submissions explorer
@@ -204,8 +205,6 @@ const SCAN_STATUSES: ReadonlySet<string> = new Set(LinkScanStatus.options);
 
 /** The `project_format` enum, which agrees with the Zod `ProjectFormat` member-for-member. */
 const FORMATS: ReadonlySet<string> = new Set(["one_off", "pipeline", "session"]);
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // #endregion
 
@@ -666,31 +665,39 @@ function notesFrom(
 // #region Queries
 
 /**
- * The engagement, by slug.
+ * The engagement, by id or by slug.
  *
- * `projects.projects.slug` is the address — its own migration says every `/projects` route resolves
- * by slug and never by uuid — so the slug is tried first. The id is tried only when the value is
- * uuid-SHAPED, because the param is named `projectId` and a caller handing over a real id would
- * otherwise get a silent 404. The shape test is not decoration: `.eq("id", "some-slug")` raises
- * `22P02 invalid input syntax for type uuid`, which is a thrown page rather than a miss.
+ * The uuid branch is tried FIRST because `/projects/[projectId]` now carries the record id; it used
+ * to carry a slug, so slug-first answered on the first query and now spends a failed round trip on
+ * every read before reaching the branch that was always going to answer. The code did not change
+ * when the route did, which is why this was invisible to a diff.
+ *
+ * The shape test is load-bearing in both directions: `.eq("id", "some-slug")` raises `22P02 invalid
+ * input syntax for type uuid` — a thrown page rather than a miss — and a lowercase uuid satisfies
+ * `ck_projects_slug_shape`, so `.eq("slug", "<uuid>")` is a legal query that matches nothing,
+ * forever, with no error to say why.
  */
 async function resolveProject(
 	db: SupabaseClient,
 	projectId: string,
 ): Promise<ProjectRow | null> {
+	if (isUuid(projectId)) {
+		const byId = await db.from("projects").select(PROJECT_COLUMNS).eq("id", projectId)
+			.maybeSingle();
+		if (byId.error) {
+			throw new Error(`projects.projects id read failed: ${byId.error.message}`);
+		}
+		// No slug fallback here: a uuid cannot also be a slug in practice, and trying would be the
+		// failed round trip this ordering exists to avoid.
+		return (byId.data as unknown as ProjectRow) ?? null;
+	}
+
 	const bySlug = await db.from("projects").select(PROJECT_COLUMNS).eq("slug", projectId)
 		.maybeSingle();
 	if (bySlug.error) {
 		throw new Error(`projects.projects slug read failed: ${bySlug.error.message}`);
 	}
-	if (bySlug.data) return bySlug.data as unknown as ProjectRow;
-	if (!isUuid(projectId)) return null;
-
-	const byId = await db.from("projects").select(PROJECT_COLUMNS).eq("id", projectId).maybeSingle();
-	if (byId.error) {
-		throw new Error(`projects.projects id read failed: ${byId.error.message}`);
-	}
-	return (byId.data as unknown as ProjectRow) ?? null;
+	return (bySlug.data as unknown as ProjectRow) ?? null;
 }
 
 /**

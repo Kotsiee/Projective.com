@@ -84,3 +84,41 @@ export async function ensureSession(req: Request): Promise<SessionState> {
 		clearCookies: sessionClearCookies(),
 	};
 }
+
+/**
+ * Force a token renewal for a request that already has a live access cookie.
+ *
+ * {@link ensureSession} renews only when the access cookie is GONE, which is right for the question
+ * it answers ("is there a session?"). This answers a different one: the token is valid but a CLAIM on
+ * it is stale, and the only way to re-read a claim is to have GoTrue mint a new token — the
+ * access-token hook re-runs on the refresh grant, so a claim that changed in the database since the
+ * last issuance is picked up here and nowhere else.
+ *
+ * The caller that needs it is the onboarding gate. Completing `/join` writes `org.users_public` and
+ * changes nothing about the token already in the browser, so without this the guard would read
+ * `onboarded: false` off a token minted seconds earlier, bounce the user back to `/join`, and get
+ * `User has already completed onboarding` — a loop with no exit. One renewal turns that into a single
+ * extra round trip on the first request after onboarding.
+ *
+ * Returns `null` when there is nothing to renew from or the renewal failed, and deliberately does NOT
+ * clear cookies in that case: the session presented is still perfectly valid, and signing someone out
+ * because a claim could not be re-read would be a far worse answer than carrying on with the stale one.
+ *
+ * **Rotation makes minting the result mandatory.** A successful refresh spends the presented refresh
+ * token, so a caller that drops `setCookies` leaves the browser holding one GoTrue will refuse.
+ */
+export async function renewSession(req: Request): Promise<SessionState | null> {
+	const refresh = readCookies(req)[SB_REFRESH_COOKIE];
+	if (!refresh) return null;
+
+	const result = await AuthBackendService.refreshSession(refresh);
+	if (!result.ok || !result.session) return null;
+
+	return {
+		authenticated: true,
+		refreshed: true,
+		accessToken: result.session.accessToken,
+		setCookies: sessionSetCookies(result.session),
+		clearCookies: [],
+	};
+}

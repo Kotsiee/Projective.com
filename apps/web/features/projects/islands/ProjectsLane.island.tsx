@@ -22,6 +22,7 @@ import { UtilityShortcuts } from "../components/UtilityShortcuts.tsx";
 import { IncomingRequests } from "../components/IncomingRequests.tsx";
 import { FilterPanel } from "../components/FilterPanel.tsx";
 import { CreateMenu } from "../components/CreateMenu.tsx";
+import { QuickInitModal } from "../components/QuickInitModal.tsx";
 import { PlusIcon, SearchIcon, SlidersIcon } from "../components/glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
@@ -35,6 +36,7 @@ import {
 } from "../core/projects-state.ts";
 import type { ProjectFeedParams } from "../core/projects-state.ts";
 import type {
+	ProjectCreateFormat,
 	ProjectFeedPayload,
 	ProjectInvolvement,
 	ProjectQuickFilter,
@@ -137,6 +139,12 @@ export interface ProjectsLaneProps {
 	 * the feed stays pinned to the `projects` view.
 	 */
 	canOfferServices: boolean;
+	/**
+	 * The currency a newly created project is SEEDED in — the viewer's resolved money context,
+	 * threaded from SSR rather than read in the browser so the Quick-Init modal opens already showing
+	 * the currency the server would store, never one it corrects a moment later.
+	 */
+	defaultCurrency: string;
 	/** Pathname at SSR — seeds the focused-card highlight. */
 	path: string;
 }
@@ -148,6 +156,11 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	const loading = useSignal<boolean>(false);
 	const currentPath = useSignal<string>(props.path);
 	const createOpen = useSignal<boolean>(false);
+	// The Quick-Init modal's own state. Two signals rather than one nullable format, because the format
+	// has to SURVIVE the close: the modal animates out, and clearing the work-flow at the moment the
+	// dialog starts leaving would repaint its fields under the reader's cursor on the way.
+	const modalOpen = useSignal<boolean>(false);
+	const modalFormat = useSignal<ProjectCreateFormat>("pipeline");
 	const filterOpen = useSignal<boolean>(false);
 	const collapsed = useSignal<boolean>(false);
 	/** DEV-ONLY. The active simulated persona (from the Dev Tools Context Switcher), or `null` for the
@@ -238,6 +251,22 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
+	// The global header's Create menu deep-links here rather than to a page of its own, because the
+	// Quick-Init modal is the only create surface and it lives inside this island. The marker is
+	// stripped from the URL as soon as it is read: it is an instruction, not a piece of feed state, and
+	// leaving it behind would re-open the modal on every reload and on every Back into this entry.
+	useEffect(() => {
+		try {
+			const url = new URL(globalThis.location.href);
+			if (url.searchParams.get("create") !== "1") return;
+			url.searchParams.delete("create");
+			globalThis.history?.replaceState(null, "", `${url.pathname}${url.search}`);
+			modalFormat.value = "pipeline";
+			modalOpen.value = true;
+		} catch { /* SSR / no location — non-fatal */ }
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	// Seed the collapse toggle's state from the splitter's persisted density so the icon matches on load.
 	useEffect(() => {
 		try {
@@ -315,19 +344,28 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	}
 
 	/**
-	 * Open the six-step creation wizard at `/projects/create`, on the work-flow the menu picked.
-	 *
-	 * A page rather than the two-panel modal this lane used to launch. The modal could hold a name, a
-	 * brief and a stage list and had nowhere to put the engagement's legal terms, its screening, its
-	 * schedule or its staffing — which is most of what makes a project something a freelancer can
-	 * judge. The lane's job here is to launch and to preset, nothing more; the wizard owns the draft,
-	 * the write and the navigation to the SERVER's slug afterwards.
+	 * Launch the Quick-Init modal (replacing the retired `/projects/create` page) with the picked
+	 * work-flow preselected. The kind arrives already narrowed to {@link ProjectCreateFormat}, so
+	 * there is no fold from a wider vocabulary and nothing to guess.
 	 */
-	function openCreate(kind: string): void {
+	// The footer's label is "Create project" on BOTH tabs. This menu only mints projects — a service
+	// listing is authored provider-side in the catalogue composer — and a button reading "Create
+	// service" while opening a project form names something the surface behind it cannot make.
+	function openCreate(kind: ProjectCreateFormat): void {
 		createOpen.value = false;
-		const type = kind === "one_off" || kind === "direct_deliverable" ? kind : "pipeline";
+		modalFormat.value = kind;
+		modalOpen.value = true;
+	}
+
+	/**
+	 * A minted draft — close the modal and route to its Stage-2 workspace by canonical **uuid**. Not
+	 * the slug: the owner's first act on that surface is usually to rename the project, and a slug is
+	 * derived from the title, so a slug link is stale as soon as it is used.
+	 */
+	function onCreated(id: string): void {
+		modalOpen.value = false;
 		try {
-			globalThis.location.assign(`/projects/create?type=${type}`);
+			globalThis.location.assign(`/projects/${id}`);
 		} catch { /* no-op */ }
 	}
 
@@ -466,16 +504,23 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 								onClick={api.toggle}
 							>
 								<span class="proj-lane__create-icon" aria-hidden="true">{PlusIcon}</span>
-								<span class="proj-lane__create-label">
-									{isServices ? "Create service" : "Create project"}
-								</span>
+								<span class="proj-lane__create-label">Create project</span>
 							</button>
 						)}
 					>
-						<CreateMenu view={active.view} onPick={openCreate} />
+						<CreateMenu onPick={openCreate} />
 					</Popover>
 				</LaneFooterActions>
 			</LaneFooter>
+
+			<QuickInitModal
+				open={modalOpen.value}
+				initialFormat={modalFormat.value}
+				defaultCurrency={props.defaultCurrency}
+				scopeId={props.activeContextId}
+				onClose={() => (modalOpen.value = false)}
+				onCreated={onCreated}
+			/>
 		</div>
 	);
 }

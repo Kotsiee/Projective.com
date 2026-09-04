@@ -1,7 +1,5 @@
 import { computed, type ReadonlySignal, signal } from "@preact/signals";
 import {
-	ndaDocumentFor,
-	ndaRequiredFor,
 	type ProjectRules,
 	type ProjectSetup,
 	type ProjectSetupPatch,
@@ -9,7 +7,8 @@ import {
 	STAGE_ITEM_LABEL,
 	type UpdateProject,
 } from "../types/projects-types.ts";
-import { normalisedExtensions, ProjectSidebarService } from "./ProjectSidebarService.ts";
+import { ProjectSidebarService } from "./ProjectSidebarService.ts";
+import { resetFieldValidation } from "./setup-validation.ts";
 
 /**
  * Setup view-state — the cross-island bridge for the owner's Details surface on
@@ -61,40 +60,70 @@ export const setupNotice = signal<string | null>(null);
  */
 export const setupReveal = signal<boolean>(false);
 
-/** Which slug the store currently holds, so a second island's seed cannot overwrite live edits. */
-let seededSlug: string | null = null;
-
 /**
- * A deterministic serialisation of a value, with object keys in sorted order.
+ * Which engagement the store currently holds, so a second island's seed cannot overwrite live edits.
  *
- * Key order is normalised rather than trusted because two objects carrying the same values in a
- * different insertion order are the same configuration: `reconcileSetup` rebuilds a stage by
- * spreading a patch over a base, so an edited row and a freshly-read one legitimately differ in
- * insertion order alone and must still fingerprint identically.
+ * Keyed on the canonical uuid rather than the slug: a slug is derived from the title and moves on the
+ * first rename, so a save that renames the project would make the next seed look like a different
+ * engagement and discard everything typed since.
  */
-function stableStringify(value: unknown): string {
-	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-	const entries = Object.entries(value as Record<string, unknown>)
-		.filter(([, entry]) => entry !== undefined)
-		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
-}
+let seededId: string | null = null;
 
 /**
  * The data fields, serialised in a fixed key order.
  *
- * Built by REMOVING the three derived fields rather than by listing the data ones. A hand-written
- * list is a list that goes stale: a stage field added to the schema and edited by the form but absent
- * from the list would leave the draft measuring clean, so Save would never appear and the owner's
- * edit would be discarded by the next navigation with nothing to report it. `steps`, `completeness`
- * and `previewReady` are excluded because they are a pure function of what remains — including them
- * would make a change that happens to move the ladder compare differently from one that does not,
- * for a reason unrelated to what the owner typed.
+ * `JSON.stringify` over the draft itself would fold in `steps`/`completeness`/`previewReady`, which
+ * are derived — so a change that leaves the ladder alone and a change that moves it would compare
+ * differently for the wrong reason. Order is fixed by construction rather than by object literal
+ * order, because two objects carrying the same values in a different insertion order are the same
+ * configuration and must produce the same fingerprint.
+ *
+ * **THIS LIST IS HAND-MAINTAINED AND MUST BE EXTENDED WHENEVER `ProjectSetupSchema` GAINS A FIELD.**
+ * TypeScript does not police it: a field left out still compiles, still edits correctly on screen and
+ * simply never makes the form dirty — so Save never appears and the owner's work is lost on the next
+ * navigation, with nothing anywhere reporting a problem. Its twin is {@link toPayload}, which fails
+ * the same way one step later, and the two are always changed together.
  */
 function fingerprint(setup: ProjectSetup): string {
-	const { steps: _steps, completeness: _completeness, previewReady: _ready, ...data } = setup;
-	return stableStringify(data);
+	return JSON.stringify([
+		setup.title,
+		setup.format,
+		setup.structure,
+		setup.sessionKind,
+		setup.description,
+		setup.attachments.map((a) => [a.id, a.name, a.sizeBytes]),
+		[setup.budget.budgetType, setup.budget.amountCents, setup.budget.currency],
+		[
+			setup.rules.visibility,
+			setup.rules.ipOwnershipMode,
+			setup.rules.ndaRequired,
+			setup.rules.ndaSource,
+			setup.rules.ndaDocumentId,
+			setup.rules.portfolioDisplayRights,
+			setup.rules.timelinePreset,
+			setup.rules.allowDeadlineBonuses,
+			setup.rules.locationRestriction,
+			setup.rules.languageRequirement,
+		],
+		setup.stages.map((s) => [
+			s.id,
+			s.name,
+			s.order,
+			s.description,
+			s.unitPriceCents,
+			s.milestone,
+			s.skills,
+			s.tasks.map((t) => [t.id, t.text]),
+			s.dependency,
+			s.durationDays,
+			s.capacity,
+			s.seatCount,
+			s.roles.map((r) => [r.id, r.name, r.quantity, r.budgetCents]),
+			s.allowedFileKinds,
+			s.ndaRequired,
+		]),
+		setup.roles.map((r) => [r.id, r.name, r.budgetCents, r.skills]),
+	]);
 }
 
 /** Whether the draft carries edits the server has not acknowledged. */
@@ -115,13 +144,13 @@ export function currentSetup(fallback: ProjectSetup): ProjectSetup {
 /**
  * Adopt a server-resolved configuration as both the draft and the clean baseline.
  *
- * Idempotent per slug: the header, the body and the footer all hold the same SSR copy and all mount
+ * Idempotent per engagement: the header, the body and the footer all hold the same SSR copy and mount
  * independently, so a second seed of the same engagement must not discard whichever island got there
  * first and the edits made since.
  */
 export function seedSetup(setup: ProjectSetup): void {
-	if (seededSlug === setup.slug) return;
-	seededSlug = setup.slug;
+	if (seededId === setup.id) return;
+	seededId = setup.id;
 	setupDraft.value = setup;
 	setupBaseline.value = setup;
 	setupError.value = null;
@@ -152,15 +181,21 @@ export function discardSetup(): void {
 	setupReveal.value = false;
 }
 
-/** Clear every signal (the body island calls this on unmount). */
+/**
+ * Clear every signal (the body island calls this on unmount).
+ *
+ * The touched set goes with it: its keys carry stage and role ids, so a second engagement opened in
+ * the same session would otherwise inherit the first one's and mark a brand new stage's name as an
+ * omission the moment it was added.
+ */
 export function resetSetupState(): void {
-	seededSlug = null;
+	seededId = null;
 	setupDraft.value = null;
 	setupBaseline.value = null;
 	setupSaving.value = false;
 	setupError.value = null;
 	setupNotice.value = null;
-	setupReveal.value = false;
+	resetFieldValidation();
 }
 // #endregion
 
@@ -168,23 +203,24 @@ export function resetSetupState(): void {
 /**
  * The first reason this draft cannot be persisted, in the owner's words, or `null`.
  *
- * Three of the four are places the wire schema is STRICTER than the working copy: `title`, a stage
- * `name` and a role `name` are all `min(1)`, so an emptied one would come back as a 422 naming a
- * field path rather than a section. Refusing here — rather than blanking the value or omitting the
- * key — keeps the emptied field on screen where the owner can see what they cleared.
+ * These are the places the wire schema is STRICTER than the working copy — `title`, a stage `name`, a
+ * stage task's `text`, a stage role's `name` and a project role's `name` are all `min(1)` — so an
+ * emptied one would come back as a 422 naming a field path rather than a section. Refusing here,
+ * rather than blanking the value or omitting the key, keeps the emptied field on screen where the
+ * owner can see what they cleared.
  *
- * The fourth is the archive. An archived engagement is out of circulation, and the write path
- * refuses an edit to one with a status code; saying so here means the owner reads a sentence about
- * their own project instead of a conflict they cannot act on. It is checked FIRST because it is a
- * fact about whether this row may be written at all, which outranks anything about a single field.
+ * A blank task and a blank stage role are reachable by design: both are added EMPTY, so an owner who
+ * presses "Add step" and then Save without typing has produced exactly this state.
  */
 function firstBlocker(setup: ProjectSetup): string | null {
-	if (setup.archivedAt !== null) {
-		return "This project is archived, so its configuration can no longer be changed.";
-	}
+	const item = STAGE_ITEM_LABEL[setup.format];
 	if (setup.title.trim().length === 0) return "Give the project a name before saving.";
-	if (setup.stages.some((s) => s.name.trim().length === 0)) {
-		return `Every ${STAGE_ITEM_LABEL[setup.format]} needs a name.`;
+	if (setup.stages.some((s) => s.name.trim().length === 0)) return `Every ${item} needs a name.`;
+	if (setup.stages.some((s) => s.tasks.some((t) => t.text.trim().length === 0))) {
+		return `Every step on a ${item}'s task list needs some text — or remove the empty one.`;
+	}
+	if (setup.stages.some((s) => s.roles.some((r) => r.name.trim().length === 0))) {
+		return `Every named role on a ${item} needs a name — or remove the empty one.`;
 	}
 	if (setup.roles.some((r) => r.name.trim().length === 0)) return "Every team role needs a name.";
 	return null;
@@ -193,19 +229,18 @@ function firstBlocker(setup: ProjectSetup): string | null {
 /**
  * The engagement terms, with the two pairs the database refuses to store inconsistently resolved.
  *
- * `nda_required` is derived from `nda_mode` and `nda_document_id` is permitted only on a custom NDA
- * (`ck_projects_nda_document`), while `allow_deadline_bonuses` is permitted only on a pipeline
- * (`ck_projects_deadline_bonus_format`). The form already normalises each of them at the moment the
- * control changes; doing it again on the way out is what makes it impossible for this client to post
- * a body Postgres will answer with a `23514` the owner cannot act on — a stored row that predates
- * either constraint reaches the draft the same way an edit does.
+ * `nda_document_id` is permitted only alongside `nda_source = 'custom'` (`ck_projects_nda_document`),
+ * while `allow_deadline_bonuses` is permitted only on a pipeline (`ck_projects_deadline_bonus_format`).
+ * The form already normalises each of them at the moment the control changes; doing it again on the
+ * way out is what makes it impossible for this client to post a body Postgres will answer with a
+ * `23514` the owner cannot act on — a stored row that predates either constraint reaches the draft the
+ * same way an edit does.
  */
 function normalisedRules(setup: ProjectSetup): ProjectRules {
 	const rules = setup.rules;
 	return {
 		...rules,
-		ndaRequired: ndaRequiredFor(rules.ndaMode),
-		ndaDocumentId: ndaDocumentFor(rules.ndaMode, rules.ndaDocumentId),
+		ndaDocumentId: rules.ndaSource === "custom" ? rules.ndaDocumentId : null,
 		allowDeadlineBonuses: setup.format === "pipeline" && rules.allowDeadlineBonuses,
 	};
 }
@@ -219,10 +254,15 @@ function normalisedRules(setup: ProjectSetup): ProjectRules {
  * it. Positions are re-indexed from the rendered order, because the drag reordered the array and
  * `order` is what the server persists.
  *
- * A stage step that has been emptied is dropped rather than sent: `StageSetupSchema.tasks` requires
- * `min(1)` per label, so an in-progress blank row would come back as a 422 against a field path. It
- * stays in the draft while the owner is typing, and the server's own copy — which the response makes
- * the new baseline — is what removes it from the form.
+ * **THIS LIST IS HAND-MAINTAINED AND MUST BE EXTENDED WHENEVER `UpdateProjectSchema` GAINS A FIELD.**
+ * A field left out compiles, edits correctly, marks the form dirty and then simply never reaches the
+ * wire — so Save reports success and the edit is gone on the next load, which is the worst available
+ * failure because the surface says the opposite of what happened. Its twin is {@link fingerprint};
+ * the two are always changed together.
+ *
+ * `stages` and `roles` are spread WHOLE rather than field-by-field on purpose: every nested field the
+ * form edits is already on the object, so a stage that grows a column is carried without this
+ * function having to learn about it. The project-level keys are the ones that need adding by hand.
  */
 function toPayload(setup: ProjectSetup): UpdateProject {
 	return {
@@ -231,23 +271,40 @@ function toPayload(setup: ProjectSetup): UpdateProject {
 		structure: setup.structure,
 		sessionKind: setup.sessionKind,
 		description: setup.description,
+		attachments: setup.attachments,
 		budget: setup.budget,
 		rules: normalisedRules(setup),
 		stages: setup.stages.map((stage, index) => ({
 			...stage,
 			order: index,
-			tasks: stage.tasks.map((task) => task.trim()).filter((task) => task.length > 0),
-			allowedFileExtensions: normalisedExtensions(stage.allowedFileExtensions),
+			// A checklist row is an `{ id, text }` pair, not a bare string: the id is what lets a reorder
+			// or a rename address the row it moved rather than the position it used to sit at. Only the
+			// text is trimmed, and a row trimmed to nothing is dropped rather than sent — `min(1)` would
+			// refuse the whole save with a field path instead of a sentence.
+			tasks: stage.tasks
+				.map((task) => ({ ...task, text: task.text.trim() }))
+				.filter((task) => task.text.length > 0),
 		})),
 		roles: setup.roles,
 	};
 }
 
-/** Send a payload, adopt the server's re-derived setup, and report in one place. */
-async function commit(slug: string, payload: UpdateProject, notice: string): Promise<boolean> {
+/**
+ * Send a payload, adopt the server's re-derived setup, and report in one place.
+ *
+ * `projectRef` is the CANONICAL uuid rather than the slug. The write resolver accepts either, and the
+ * uuid is the one that survives the write it is being used for: renaming the project regenerates its
+ * slug, so a second save in the same session keyed on the slug the page loaded with would address a
+ * row that no longer answers to it.
+ */
+async function commit(
+	projectRef: string,
+	payload: UpdateProject,
+	notice: string,
+): Promise<boolean> {
 	setupSaving.value = true;
 	setupError.value = null;
-	const res = await ProjectSidebarService.update(slug, payload);
+	const res = await ProjectSidebarService.update(projectRef, payload);
 	setupSaving.value = false;
 	if (!res.ok || !res.data) {
 		setupError.value = res.message ?? "That did not save — please try again.";
@@ -270,7 +327,7 @@ export async function saveSetup(): Promise<boolean> {
 		setupReveal.value = true;
 		return false;
 	}
-	return await commit(draft.slug, toPayload(draft), "Saved.");
+	return await commit(draft.id, toPayload(draft), "Saved.");
 }
 
 /**
@@ -297,7 +354,7 @@ export async function publishSetup(): Promise<boolean> {
 		setupReveal.value = true;
 		return false;
 	}
-	return await commit(draft.slug, { ...toPayload(draft), status: "active" }, "Published.");
+	return await commit(draft.id, { ...toPayload(draft), status: "active" }, "Published.");
 }
 
 /**
@@ -316,7 +373,7 @@ export async function archiveSetup(): Promise<boolean> {
 	}
 	setupSaving.value = true;
 	setupError.value = null;
-	const res = await ProjectSidebarService.archive(draft.slug);
+	const res = await ProjectSidebarService.archive(draft.id);
 	setupSaving.value = false;
 	if (!res.ok) {
 		setupError.value = res.message ?? "That did not archive — please try again.";

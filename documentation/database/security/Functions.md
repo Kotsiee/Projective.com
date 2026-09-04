@@ -42,16 +42,34 @@ the token's claims:
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
    `active_organisation_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
-   `{ type, id, role, handle, isClient, isFreelancer, displayCurrency, locale }` the web app decodes
-   for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`). `type` is the
-   four-context matrix (`personal` | `team` | `business` | `organisation`); `role` collapses
-   ownership/admin membership to `admin`, else `member`; `isClient`/`isFreelancer` are resolved
-   authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active context.
+   `{ type, id, role, handle, isClient, isFreelancer, onboarded, displayCurrency, locale }` the web
+   app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
+   `type` is the four-context matrix (`personal` | `team` | `business` | `organisation`); `role`
+   collapses ownership/admin membership to `admin`, else `member`; `isClient`/`isFreelancer` are
+   resolved authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active
+   context.
    `displayCurrency` + `locale` are read from `org.user_preferences` (`preferred_display_currency` /
    `locale`, defaulting to `GBP` / `en-GB` when no preferences row exists yet) so the very first SSR
    byte formats every money figure in the viewer's own currency — they ride this claim rather than a
    second one because a figure that paints in one currency and corrects itself after hydration is a
    worse failure than a stale symbol.
+
+> **`onboarded` — the profile-existence claim.** `true` when `org.users_public` holds a row for the
+> user, `false` when the hook looked and found none. It exists because a federated sign-up is
+> authenticated the moment GoTrue returns and stays **profile-less** until `/join` calls
+> `public.complete_onboarding` — `public.handle_new_user` cannot provision it, since OAuth supplies
+> neither `username` nor `dob` and both columns are `NOT NULL`. Until the profile exists, every table
+> that attributes a row to `org.users_public(user_id)` (`projects.projects`, `projects.tickets`, the
+> `catalogue` tables) has a foreign key that cannot be satisfied, so a write fails on a constraint
+> name rather than a sentence. Stamping the fact here is what lets `routes/(dashboard)/_middleware.ts`
+> route those accounts back to finish **without a query on every authenticated request**.
+>
+> Because the hook returns the event unchanged on any error, a failure OMITS the claim rather than
+> asserting an account is un-onboarded, and `resolveUserContext` treats an absent claim as
+> `onboarded: true`. Only a confirmed `false` gates anything — a legacy or un-stamped token must never
+> walk a fully set-up user back through onboarding. The hook re-runs on the **refresh** grant, so a
+> profile created after a token was minted is picked up by one renewal (which is exactly what the
+> guard does before acting on a `false`).
 
 > **Presentation, never settlement.** `displayCurrency` selects a **formatting** target only. Every
 > stored amount keeps its origin `(amount_minor, currency)`, and every settlement reproduces the

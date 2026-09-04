@@ -26,8 +26,13 @@ import { readCookies, SB_ACCESS_COOKIE } from "@web/utils/auth-cookies.ts";
 /**
  * Decode (unverified) the access-token JWT into its claims payload, or `null` when there is no token,
  * it is not a well-formed JWT, or the payload is not a claims object. Never throws.
+ *
+ * Exported for the one consumer that needs a claim the chrome {@link UserContext} deliberately does
+ * not carry: the dashboard guard reconstructs the Google pre-fill for an un-onboarded account out of
+ * `user_metadata`, and folding provider identity into the chrome context to avoid that would put four
+ * fields nothing else reads onto a shape every layout and island receives.
  */
-function decodeAccessClaims(token: string | undefined): AccessTokenClaims | null {
+export function decodeAccessClaims(token: string | undefined): AccessTokenClaims | null {
 	if (!token) return null;
 	try {
 		// djwt `decode` splits + base64url-decodes the token into [header, payload, signature] WITHOUT

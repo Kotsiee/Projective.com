@@ -20,17 +20,17 @@ import type { CreateProject, ProjectFeedParams, ProjectSetup } from "@projective
  * route test — and then the client navigates to that slug and reads "Project not found". So these
  * tests write through the real fat service and then perform the READ, exactly as the surface does.
  *
- * The same shape covers the second failure class this wizard invites, and the one no type checker
- * can see: a field collected by the form, carried through six layers, and dropped at the last. Every
- * new term is therefore asserted by round trip — written on the create, read back off the setup
- * projection — rather than by inspecting the payload builder.
- *
  * They exercise the STUB branch, which is the default (`PROJECTS_BACKEND_LIVE` ships off) and the one
  * a developer runs against. The live branch is covered by execution against a real Postgres, which a
  * unit test cannot stand in for — an RPC's behaviour is not knowable from the TypeScript that calls
  * it. What IS shared between the two branches, and therefore worth pinning here, is the format
- * mapping, the slug derivation and every refusal in `validateCreate`, because all of them are pure
- * and all of them are consulted by the live path too.
+ * mapping, the slug derivation and the visibility ceiling, because all three are pure and all three
+ * are consulted by the live path too.
+ *
+ * Quick-Init collects four facts — title, type, currency and one baseline price — so the round-trip
+ * assertions are about what the SERVICE derives from them, not about a payload echoing itself back.
+ * Everything else a project eventually needs is configured afterwards through `updateProject`, and
+ * belongs to that path's tests rather than to this one.
  */
 
 // #region Fixtures
@@ -55,18 +55,17 @@ const BOB = actorOf("u-bob");
 /**
  * A create payload, defaulted by the SSOT rather than by this file.
  *
- * `CreateProjectSchema.parse` fills every field the wizard did not override, so the tests exercise
- * the values a real request carries and a new field with a default cannot silently leave the payload
- * builder stale. The parameter is the schema's INPUT type for the same reason: a stage overridden as
- * `{ name: "Discovery" }` is what the wire actually admits, and requiring a complete stage here would
- * make the tests state seventeen values none of them is about.
+ * `CreateProjectSchema.parse` fills every field the modal did not override, so the tests exercise the
+ * values a real request carries and a new field with a default cannot silently leave this builder
+ * stale.
  */
 function payloadOf(
 	overrides: Partial<z.input<typeof CreateProjectSchema>> = {},
 ): CreateProject {
 	return CreateProjectSchema.parse({
 		title: "Northwind Rebrand",
-		scope: "<p>A full brand refresh.</p>",
+		format: "pipeline",
+		currency: "USD",
 		...overrides,
 	});
 }
@@ -114,27 +113,18 @@ function feedParams(): ProjectFeedParams {
 // #region The write is visible to the read
 Deno.test("a created project is readable by the slug the create returned", async () => {
 	resetWriteStore();
-	const created = await ProjectBackendService.create(payloadOf(), ALICE);
-
-	assert(created.ok, created.message);
-	assertEquals(created.status, 201);
-	assert(created.data);
-
-	// The whole defect in one assertion: the slug the caller navigates to must resolve.
-	const read = await ProjectBackendService.setup(created.data.slug, ALICE);
-	assert(read.ok, `setup(${created.data.slug}) did not resolve: ${read.message}`);
-	assertEquals(read.data?.setup.title, "Northwind Rebrand");
-	assertEquals(read.data?.setup.status, "draft");
+	const { setup, slug } = await createAndRead();
+	assertEquals(setup.slug, slug);
+	assertEquals(setup.title, "Northwind Rebrand");
+	assertEquals(setup.status, "draft");
 });
 
 Deno.test("a create returns BOTH identifiers, and neither is empty", async () => {
 	resetWriteStore();
 	const created = await ProjectBackendService.create(payloadOf(), ALICE);
 	assert(created.data);
-	// `id` is the durable reference a later write may use; `slug` is the address a route carries.
-	// Returning one without the other forces the caller to read the row back for the half it lacks.
-	assert(created.data.id.length > 0, "id must not be empty");
-	assert(created.data.slug.length > 0, "slug must not be empty");
+	assert(created.data.id.length > 0, "a create must return the row's canonical id");
+	assert(created.data.slug.length > 0, "a create must return a readable address");
 	assertNotEquals(created.data.id, created.data.slug);
 });
 
@@ -142,25 +132,12 @@ Deno.test("a created project resolves by its uuid as well as by its slug", async
 	resetWriteStore();
 	const created = await ProjectBackendService.create(payloadOf(), ALICE);
 	assert(created.data);
-
-	// The live path resolves both — `resolveProjectRef` tries the slug and falls back to the primary
-	// key — so a store keyed by slug alone answered 404 for the id half of what the create had just
-	// returned, in the mode that ships by default. The two branches must agree on what an identifier is.
+	// The modal navigates to the UUID, because a title-derived slug moves on the first rename and the
+	// owner's first act on the Stage-2 surface is usually to rename the project. A store that answered
+	// only the slug would 404 the page the create had just sent the browser to.
 	const byId = await ProjectBackendService.setup(created.data.id, ALICE);
 	assert(byId.ok, `setup(${created.data.id}) did not resolve: ${byId.message}`);
 	assertEquals(byId.data?.setup.slug, created.data.slug);
-
-	const detail = await ProjectBackendService.detail(created.data.id, ALICE);
-	assert(detail.ok, "the sidebar projection must resolve by id too");
-	assertEquals(detail.data?.detail.slug, created.data.slug);
-
-	// The deep-link prefetch reads the same store, so it must answer for both halves as well.
-	const item = await ProjectBackendService.item(created.data.slug, ALICE);
-	assert(item.ok, `item(${created.data.slug}) did not resolve: ${item.message}`);
-	assertEquals(item.data?.item.id, created.data.id);
-	const itemById = await ProjectBackendService.item(created.data.id, ALICE);
-	assert(itemById.ok, "the feed row must resolve by id too");
-	assertEquals(itemById.data?.item.slug, created.data.slug);
 });
 
 Deno.test("an anonymous caller cannot create a project", async () => {
@@ -171,35 +148,22 @@ Deno.test("an anonymous caller cannot create a project", async () => {
 });
 // #endregion
 
-// #region Slugs
+// #region Addresses
 Deno.test("two projects with the same title get different addresses", async () => {
 	resetWriteStore();
 	const first = await ProjectBackendService.create(payloadOf(), ALICE);
 	const second = await ProjectBackendService.create(payloadOf(), ALICE);
-
-	// `projects.projects.slug` is globally UNIQUE. Without a disambiguator the second create either
-	// collides at the database or silently replaces the first in the store — which reads, from the
-	// feed, as the create having renamed something rather than added anything.
 	assertNotEquals(first.data?.slug, second.data?.slug);
-
-	// And BOTH must still resolve; a disambiguated address is not a second-class one.
-	const readFirst = await ProjectBackendService.setup(first.data!.slug, ALICE);
-	const readSecond = await ProjectBackendService.setup(second.data!.slug, ALICE);
-	assert(readFirst.ok);
-	assert(readSecond.ok);
 });
 
 Deno.test("a title with nothing sluggable still yields a usable address", async () => {
 	resetWriteStore();
-	const created = await ProjectBackendService.create(payloadOf({ title: "!!! ???" }), ALICE);
+	// `ck_projects_slug_shape` is `^[a-z0-9-]{1,96}$`, so an empty slug is a REFUSED insert rather than
+	// merely an ugly one — and a title of pure punctuation or of a non-Latin script is an ordinary
+	// title, not an adversarial one.
+	const created = await ProjectBackendService.create(payloadOf({ title: "!!!!" }), ALICE);
 	assert(created.data);
-	// `projectSlugFrom` returns "" here on purpose, so the caller falls back to a generated address
-	// rather than inventing prose the author did not write. What must NOT happen is an empty segment.
-	assertEquals(projectSlugFrom("!!! ???"), "");
-	assert(created.data.slug.length > 0);
-	// The database's CHECK is `^[a-z0-9-]{1,96}$`, and the route interpolates the slug into a path
-	// verbatim — an address the constraint would refuse is a project that exists and cannot be opened.
-	assert(/^[a-z0-9-]{1,96}$/.test(created.data.slug), `unroutable slug: ${created.data.slug}`);
+	assert(/^[a-z0-9-]{1,96}$/.test(created.data.slug), `illegal slug: ${created.data.slug}`);
 });
 
 Deno.test("projectSlugFrom never emits a leading, trailing or uppercase character", () => {
@@ -215,21 +179,26 @@ Deno.test("projectSlugFrom never emits a leading, trailing or uppercase characte
 // #endregion
 
 // #region The format vocabularies
-Deno.test("direct_deliverable resolves to the two columns the database actually has", () => {
-	// `project_format` is ('one_off','pipeline','session') — it has NO `direct_deliverable` member,
-	// so sending it straight through raises 22P02 at the insert. The reconciliation is a stored pair.
-	assertEquals(createFormatToColumns("direct_deliverable"), {
-		format: "one_off",
-		structure: "single_task",
-	});
+Deno.test("each offered format maps onto the two columns the database has", async () => {
+	// `ProjectCreateFormat` was narrowed to the two members `project_format` also carries, so the
+	// format half of this mapping is the identity function and there is no bridge left to go stale.
 	assertEquals(createFormatToColumns("one_off"), { format: "one_off", structure: "one_off" });
 	assertEquals(createFormatToColumns("pipeline"), { format: "pipeline", structure: "standard" });
+
+	resetWriteStore();
+	const oneOff = await createAndRead({ format: "one_off" });
+	assertEquals(oneOff.setup.format, "one_off");
+	assertEquals(oneOff.setup.structure, "one_off");
+
+	const pipeline = await createAndRead({ format: "pipeline", title: "Verdant Refresh" });
+	assertEquals(pipeline.setup.format, "pipeline");
+	assertEquals(pipeline.setup.structure, "standard");
 });
 
 Deno.test("the stages toggle is what the second column records", () => {
-	// The wizard offers two types and a toggle, not three types. `hasStages` is never a column — it
-	// folds into `structure_variation`, and `hasStagesFor` reads it back out, so the pair cannot
-	// disagree with the stage list the way a real boolean beside it could.
+	// `hasStages` is never a column — it folds into `structure_variation`, and `hasStagesFor` reads it
+	// back out, so the pair cannot disagree with the stage list the way a real boolean beside it could.
+	// It is a Stage-2 control rather than a create one, which is why only the mapping is pinned here.
 	assertEquals(createFormatToColumns("one_off", false), {
 		format: "one_off",
 		structure: "single_task",
@@ -243,346 +212,102 @@ Deno.test("the stages toggle is what the second column records", () => {
 	assertEquals(hasStagesFor("standard"), true);
 	assertEquals(hasStagesFor("one_off"), true);
 });
-
-Deno.test("turning stages off is honoured all the way to the stored structure", async () => {
-	resetWriteStore();
-	// Inert is the failure to watch for: resolving the pair without the toggle made every create land
-	// on the with-stages structure regardless of what the wizard was showing.
-	const off = await createAndRead({ format: "one_off", hasStages: false, stages: [] });
-	assertEquals(off.setup.structure, "single_task");
-
-	const on = await createAndRead({ format: "one_off", hasStages: true, title: "Verdant Refresh" });
-	assertEquals(on.setup.structure, "one_off");
-});
-
-Deno.test("a Direct Deliverable is staffed by roles and asks for no stages", async () => {
-	resetWriteStore();
-	const { setup } = await createAndRead({
-		format: "direct_deliverable",
-		stages: [],
-		roles: [{ name: "Illustrator", skills: ["vector"] }],
-	});
-
-	assertEquals(setup.structure, "single_task");
-	assertEquals(setup.roles.length, 1);
-	assertEquals(setup.roles[0].skills, ["vector"]);
-	// A role budget is a decision the owner has not taken. Zero would say the seat is free and would
-	// satisfy the pricing step with a number nobody typed.
-	assertEquals(setup.roles[0].budgetCents, null);
-	// The ladder's required step swaps from `stages` to `roles` on this structure — the whole reason
-	// the structure axis exists — so a roles-only project must be able to satisfy it.
-	const roleStep = setup.steps.find((step) => step.key === "roles");
-	assert(roleStep, "a single_task project must have a roles step");
-	assertEquals(roleStep.done, true);
-});
 // #endregion
 
-// #region The implicit stage
-Deno.test("a project that names no stage is still given one", async () => {
+// #region The root stage
+Deno.test("every created project is given exactly one stage", async () => {
 	resetWriteStore();
-	const { setup } = await createAndRead({ stages: [] });
+	const { setup } = await createAndRead({ format: "one_off" });
 
-	// `projects.create_project` mints this unconditionally, and the stub has to as well or flipping
-	// the gate changes what a create MEANS. A project with no stage has nothing for a ticket to sit
-	// in, nothing for escrow to price against, no room in the channel tree, and
-	// `projects.set_project_status` refuses to activate it because it counts stages.
+	// The live path provisions this inside the same create, and the stub has to as well or flipping the
+	// gate changes what a create MEANS. A project with no stage has nothing for a ticket to sit in,
+	// nothing for escrow to price against, and `projects.set_project_status` refuses to activate it
+	// because it counts stages.
 	assertEquals(setup.stages.length, 1);
-	assertEquals(setup.stages[0].name, "Delivery");
 	assertEquals(setup.stages[0].order, 0);
-	// It carries the project's own brief: this stage IS the single unit of delivery, and seeding it
-	// blank would ask the author to retype what they have just typed.
-	assertEquals(setup.stages[0].description, "<p>A full brand refresh.</p>");
+	// Named for what it IS on a one-off, because "Stage 1" on an engagement that will only ever have
+	// one stage describes a sequence that does not exist.
+	assertEquals(setup.stages[0].name, "Delivery");
+
+	const pipeline = await createAndRead({ format: "pipeline", title: "Helia Wallet" });
+	assertEquals(pipeline.setup.stages[0].name, "Stage 1");
 });
 
-Deno.test("the implicit stage inherits a FIXED price and never a spending cap", async () => {
+Deno.test("the baseline price lands where its format means it", async () => {
 	resetWriteStore();
-	const fixed = await createAndRead({
-		stages: [],
-		budget: { budgetType: "fixed_price", amountCents: 250_000, currency: "GBP" },
-	});
-	assertEquals(fixed.setup.stages[0].unitPriceCents, 250_000);
+	// A one-off's baseline is the whole escrow figure, so it is the PROJECT budget as well as the
+	// single stage's price.
+	const oneOff = await createAndRead({ format: "one_off", baselineAmountCents: 250_000 });
+	assertEquals(oneOff.setup.budget.amountCents, 250_000);
+	assertEquals(oneOff.setup.stages[0].unitPriceCents, 250_000);
 
-	// `hourly_cap` is a ceiling on spend, not the cost of one ticket, and
-	// `finance.fn_hold_ticket_escrow` reads this column as an amount to hold — so copying a cap here
-	// would escrow the ceiling as though it were the fee.
-	const capped = await createAndRead({
-		title: "Capped Engagement",
-		stages: [],
-		budget: { budgetType: "hourly_cap", amountCents: 250_000, currency: "GBP" },
+	// A pipeline's is a per-TICKET rate. Writing a rate into the project budget would tick the pricing
+	// ladder step off against a number that means something else.
+	const pipeline = await createAndRead({
+		format: "pipeline",
+		baselineAmountCents: 120_000,
+		title: "Atlas Pipeline",
 	});
-	assertEquals(capped.setup.stages[0].unitPriceCents, null);
+	assertEquals(pipeline.setup.budget.amountCents, null);
+	assertEquals(pipeline.setup.stages[0].unitPriceCents, 120_000);
 });
 
-Deno.test("a project that names stages is given exactly those", async () => {
+Deno.test("an unpriced create stays unpriced rather than free", async () => {
 	resetWriteStore();
-	const { setup } = await createAndRead({
-		stages: [{ name: "Discovery" }, { name: "Design" }],
-	});
-	assertEquals(setup.stages.map((stage) => stage.name), ["Discovery", "Design"]);
-	assertEquals(setup.stages.map((stage) => stage.order), [0, 1]);
-	// Ids are minted from the store's own monotonic sequence rather than numbered by position, so a
-	// stage added later can never be issued a key one of these already holds.
-	assertNotEquals(setup.stages[0].id, setup.stages[1].id);
+	// `null` and `0` are different facts: zero is a decision somebody took, and the pricing rung counts
+	// a number the owner supplied. A defaulted zero would satisfy it silently.
+	const { setup } = await createAndRead({ format: "one_off" });
+	assertEquals(setup.budget.amountCents, null);
+	assertEquals(setup.stages[0].unitPriceCents, null);
+	assertEquals(setup.steps.find((step) => step.key === "pricing")?.done, false);
 });
 // #endregion
 
 // #region Visibility is earned, never asked for
-Deno.test("a create never publishes, however complete it arrives", async () => {
+Deno.test("a create records the intent and publishes nothing", async () => {
 	resetWriteStore();
-	// Fully satisfying the ladder in ONE payload: title, format (always done), a priced stage, and a
-	// stage list. So this is not a test of an impossible precondition — the cap is doing real work.
-	const { setup } = await createAndRead({
-		visibility: "public",
-		stages: [{ name: "Delivery", unitPriceCents: 120_000 }],
-	});
+	const { setup } = await createAndRead({ format: "one_off", baselineAmountCents: 120_000 });
 
+	// The two-column model. `rules.visibility` is what the owner will want ONCE it publishes, and
+	// somebody creating a project in order to hire against it is asking to be found — so the intent is
+	// `public`, and it is safe to default precisely because it is not yet in effect.
+	assertEquals(setup.rules.visibility, "public");
+	// Where the row actually sits. A draft is `unlisted` unconditionally: the promotion consults the
+	// STATUS, not the intent and not the ladder, which is what stops a half-written engagement from
+	// reaching Explore however complete it arrives.
+	assertEquals(setup.liveVisibility, "unlisted");
+});
+
+Deno.test("a complete draft is still a draft", async () => {
+	resetWriteStore();
+	const { setup } = await createAndRead({ format: "one_off", baselineAmountCents: 120_000 });
+	// Publishing is an act the owner performs, not a threshold they cross — so readiness must not
+	// promote anything on its own.
 	assertEquals(setup.previewReady, true, "the ladder must actually be satisfied here");
-	// `projects.create_project` hardcodes `unlisted` and ignores the payload, because the function is
-	// EXECUTE-granted to `authenticated` and a caller reaching it directly was once able to publish a
-	// project in the act of naming it. Publishing is a later, deliberate write through the setup path.
-	assertEquals(setup.rules.visibility, "unlisted");
-});
-
-Deno.test("a request NARROWER than the create ceiling is honoured", async () => {
-	resetWriteStore();
-	// The cap is about REACH: it stops a create making a project more discoverable than `unlisted`,
-	// so refusing an author's stricter choice would be the cap working against what it protects.
-	const { setup } = await createAndRead({
-		visibility: "invite_only",
-		stages: [{ name: "Delivery", unitPriceCents: 120_000 }],
-	});
-	assertEquals(setup.rules.visibility, "invite_only");
-});
-
-Deno.test("an incomplete project is unlisted whatever it asked for", async () => {
-	resetWriteStore();
-	const { setup } = await createAndRead({ visibility: "public", stages: [], budget: null });
-	assertEquals(setup.previewReady, false);
-	assertEquals(setup.rules.visibility, "unlisted");
+	assertEquals(setup.status, "draft");
+	assertEquals(setup.liveVisibility, "unlisted");
 });
 // #endregion
 
-// #region Every term survives the round trip
-Deno.test("every engagement term the wizard collects is readable back", async () => {
-	resetWriteStore();
-	const { setup } = await createAndRead({
-		currency: "GBP",
-		ipOwnershipMode: "licensed_use",
-		portfolioDisplayRights: "embargoed",
-		languages: ["English", "Portuguese"],
-		locations: ["Portugal"],
-		allowDeadlineBonuses: true,
-		format: "pipeline",
-	});
+// #region What the payload itself refuses
+Deno.test("the create schema refuses what the database would refuse later", () => {
+	// Enforced by the SSOT rather than by the route, so the modal, the thin route and any other caller
+	// reach the same verdict — and the author is told what is wrong while the field is still in front of
+	// them, instead of receiving a `23514` they cannot act on.
+	const refused = (input: Record<string, unknown>) => CreateProjectSchema.safeParse(input).success;
 
-	assertEquals(setup.budget.currency, "GBP");
-	assertEquals(setup.rules.ipOwnershipMode, "licensed_use");
-	assertEquals(setup.rules.portfolioDisplayRights, "embargoed");
-	assertEquals(setup.rules.languageRequirement, ["English", "Portuguese"]);
-	assertEquals(setup.rules.locationRestriction, ["Portugal"]);
-	assertEquals(setup.rules.allowDeadlineBonuses, true);
-	// The RPC upper-cases what it is sent, so the stub has to as well or the same project reads back
-	// in a different case either side of the gate.
-	const lowered = payloadOf();
-	lowered.currency = "gbp";
-	const created = await ProjectBackendService.create(lowered, ALICE);
-	const read = await ProjectBackendService.setup(created.data!.slug, ALICE);
-	assertEquals(read.data?.setup.budget.currency, "GBP");
-});
-
-Deno.test("the NDA pair is stored as ONE answer, never two that can disagree", async () => {
-	resetWriteStore();
-	const none = await createAndRead({ ndaMode: "none", title: "No NDA" });
-	assertEquals(none.setup.rules.ndaMode, "none");
-	assertEquals(none.setup.rules.ndaRequired, false);
-
-	const standard = await createAndRead({ ndaMode: "platform_standard", title: "Standard NDA" });
-	assertEquals(standard.setup.rules.ndaMode, "platform_standard");
-	// The legacy boolean is DERIVED, so a reader that only knows it still gets the right answer.
-	assertEquals(standard.setup.rules.ndaRequired, true);
-	assertEquals(standard.setup.rules.ndaDocumentId, null);
-
-	const doc = "11111111-2222-4333-8444-555555555555";
-	const custom = await createAndRead({
-		ndaMode: "custom",
-		ndaDocumentId: doc,
-		title: "Custom NDA",
-	});
-	assertEquals(custom.setup.rules.ndaDocumentId, doc);
-
-	// `ck_projects_nda_document` refuses a document under any other mode, so switching the mode has to
-	// drop the reference rather than leave an instrument pointed at by an engagement that never cites it.
-	const orphan = await createAndRead({
-		ndaMode: "platform_standard",
-		ndaDocumentId: doc,
-		title: "Orphaned Document",
-	});
-	assertEquals(orphan.setup.rules.ndaDocumentId, null);
-});
-
-Deno.test("every per-stage field the wizard collects is readable back", async () => {
-	resetWriteStore();
-	const { setup } = await createAndRead({
-		stages: [
-			{ name: "Discovery" },
-			{
-				name: "Design",
-				description: "<p>Two concepts.</p>",
-				unitPriceCents: 90_000,
-				milestone: "2 weeks",
-				tasks: ["Moodboard", "Concepts"],
-				skills: ["UI design"],
-				requiresFiles: false,
-				seatLimit: null,
-				parallel: true,
-				dependsOnStageIndex: 0,
-				lagDays: 3,
-				ndaOverride: true,
-				allowedFileCategories: ["Image", "Vector"],
-				allowedFileExtensions: ["png", "svg"],
-				durationMode: "relative_duration",
-				durationDays: 14,
-			},
-		],
-	});
-
-	const design = setup.stages[1];
-	assertEquals(design.description, "<p>Two concepts.</p>");
-	assertEquals(design.unitPriceCents, 90_000);
-	assertEquals(design.milestone, "2 weeks");
-	assertEquals(design.tasks, ["Moodboard", "Concepts"]);
-	assertEquals(design.skills, ["UI design"]);
-	assertEquals(design.requiresFiles, false);
-	// `null` is UNLIMITED, not "unset". Folding the two together would silently cap a stage the owner
-	// deliberately left open.
-	assertEquals(design.seatLimit, null);
-	assertEquals(design.parallel, true);
-	assertEquals(design.dependsOnStageIndex, 0);
-	assertEquals(design.lagDays, 3);
-	assertEquals(design.ndaOverride, true);
-	assertEquals(design.allowedFileCategories, ["Image", "Vector"]);
-	assertEquals(design.allowedFileExtensions, ["png", "svg"]);
-	assertEquals(design.durationMode, "relative_duration");
-	assertEquals(design.durationDays, 14);
-
-	// And a stage the author configured NOTHING on takes the create payload's own defaults, which are
-	// the column defaults — a file IS required unless the owner says otherwise, and the seat cap stands
-	// at three.
-	const discovery = setup.stages[0];
-	assertEquals(discovery.requiresFiles, true);
-	assertEquals(discovery.seatLimit, 3);
-	assertEquals(discovery.durationMode, "no_due_date");
-	assertEquals(discovery.allowedFileCategories, []);
-});
-// #endregion
-
-// #region Field-keyed refusals
-/**
- * Every refusal the wizard has to be able to point at.
- *
- * Table-driven because the property under test is the same in each row and it is the KEY, not the
- * sentence: a 422 whose error key is not a control the step rail knows about is a message with
- * nowhere to render, which is how a form comes to refuse a save and highlight nothing.
- */
-const REFUSALS: ReadonlyArray<{
-	name: string;
-	field: string;
-	build: () => CreateProject;
-}> = [
-	{
-		name: "a blank title",
-		field: "title",
-		build: () => payloadOf({ title: "   " }),
-	},
-	{
-		name: "a currency that is not a 3-letter code",
-		field: "currency",
-		build: () => {
-			const input = payloadOf();
-			input.currency = "Dollars";
-			return input;
-		},
-	},
-	{
-		name: "a deadline bonus on a one-off",
-		field: "allowDeadlineBonuses",
-		build: () => payloadOf({ format: "one_off", allowDeadlineBonuses: true }),
-	},
-	{
-		name: "stages turned off with a list behind them",
-		field: "hasStages",
-		build: () => payloadOf({ hasStages: false, stages: [{ name: "A" }, { name: "B" }] }),
-	},
-	{
-		name: "an NDA document that is not an id",
-		field: "ndaMode",
-		build: () => payloadOf({ ndaMode: "custom", ndaDocumentId: "not-a-uuid" }),
-	},
-	{
-		name: "an attachment that is not an id",
-		field: "attachmentIds",
-		build: () => payloadOf({ attachmentIds: ["not-a-uuid"] }),
-	},
-	{
-		name: "a stage with no name",
-		field: "stageName",
-		build: () => payloadOf({ stages: [{ name: " " }] }),
-	},
-	{
-		name: "a negative stage price",
-		field: "stageUnitPrice",
-		build: () => {
-			const input = payloadOf({ stages: [{ name: "Design" }] });
-			input.stages[0].unitPriceCents = -1;
-			return input;
-		},
-	},
-	{
-		name: "a seat cap below one",
-		field: "stageSeatLimit",
-		build: () => {
-			const input = payloadOf({ stages: [{ name: "Design" }] });
-			input.stages[0].seatLimit = 0;
-			return input;
-		},
-	},
-	{
-		name: "a stage that waits on itself",
-		field: "stageDependsOn",
-		build: () => payloadOf({ stages: [{ name: "Design", dependsOnStageIndex: 0 }] }),
-	},
-	{
-		name: "a dependency on a stage the project does not have",
-		field: "stageDependsOn",
-		build: () => payloadOf({ stages: [{ name: "Design", dependsOnStageIndex: 4 }] }),
-	},
-];
-
-for (const refusal of REFUSALS) {
-	Deno.test(`${refusal.name} is refused against \`${refusal.field}\``, async () => {
-		resetWriteStore();
-		const created = await ProjectBackendService.create(refusal.build(), ALICE);
-		assertEquals(created.ok, false, `${refusal.name} was accepted`);
-		assertEquals(created.status, 422);
-		assert(created.errors, "a refusal must name the control it is about");
-		assert(
-			refusal.field in created.errors,
-			`expected an error on \`${refusal.field}\`, got ${JSON.stringify(created.errors)}`,
-		);
-	});
-}
-
-Deno.test("a refused create writes nothing", async () => {
-	resetWriteStore();
-	const refused = await ProjectBackendService.create(
-		payloadOf({ title: "Ghost Project", format: "one_off", allowDeadlineBonuses: true }),
-		ALICE,
+	assertEquals(refused({ title: "  ", format: "pipeline", currency: "USD" }), false);
+	assertEquals(refused({ title: "Ok", format: "pipeline", currency: "USD" }), false);
+	assertEquals(refused({ title: "Fine", format: "pipeline", currency: "Dollars" }), false);
+	assertEquals(
+		refused({ title: "Fine", format: "session", currency: "USD" }),
+		false,
+		"a session is a service composed provider-side, never a project a client posts",
 	);
-	assertEquals(refused.ok, false);
-	// The refusal runs before either branch, so there is nothing to roll back — and the feed must not
-	// be showing a project the caller was told it could not create.
-	const feed = await ProjectBackendService.list(feedParams(), ALICE);
-	assertEquals(feed.data?.items.some((item) => item.title === "Ghost Project"), false);
+
+	// The currency is STORED, and `projects.projects` carries `CHECK (currency ~ '^[A-Z]{3}$')`, so a
+	// lower-cased code is normalised on the way in rather than refused or kept as typed.
+	assertEquals(payloadOf({ currency: "gbp" }).currency, "GBP");
 });
 // #endregion
 
@@ -605,32 +330,29 @@ Deno.test("the creator's own draft dispatches to the OWNER surface, not the memb
 
 Deno.test("a drafted project lists no channel it cannot open", async () => {
 	resetWriteStore();
-	const created = await ProjectBackendService.create(
-		payloadOf({ stages: [{ name: "Discovery" }, { name: "Design" }] }),
-		ALICE,
-	);
+	const created = await ProjectBackendService.create(payloadOf(), ALICE);
 	const detail = await ProjectBackendService.detail(created.data!.slug, ALICE);
 	const channels = detail.data!.detail.channels;
 
 	// The stub provisions no rooms, so it must advertise none. Listing a stage channel here made the
-	// sidebar render a clickable row whose every read — messages, board, files, members — answered
-	// 404: a control that reaches nothing (root CLAUDE.md §3 gate 11). The LIVE path opens each room
-	// inside `create_project` and its tree is real; differing visibly from it is the honest failure.
+	// sidebar render a clickable row whose every read — messages, board, files, members — answered 404:
+	// a control that reaches nothing (root CLAUDE.md §3 gate 11). The LIVE path opens each room inside
+	// `create_stage` and its tree is real; differing visibly from it is the honest failure.
 	assertEquals(channels.general, []);
 	assertEquals(channels.stages, []);
 	assertEquals(channels.teams, []);
 	assertEquals(channels.dms, []);
 
-	// The stages themselves are still recorded — they are configuration, not conversation.
+	// The stage itself is still recorded — it is configuration, not conversation.
 	const setup = await ProjectBackendService.setup(created.data!.slug, ALICE);
-	assertEquals(setup.data?.setup.stages.map((s) => s.name), ["Discovery", "Design"]);
+	assertEquals(setup.data?.setup.stages.length, 1);
 });
 
 Deno.test("a drafted project can never shadow a fixture engagement", async () => {
 	resetWriteStore();
 	// `createdSetup` is consulted BEFORE the fixture corpus, so a draft landing on a fixture's slug
-	// does not collide — it REPLACES a fully populated engagement with a blank draft at the same
-	// address. Titling a new project after an existing one did exactly that.
+	// would not collide — it would REPLACE a fully populated engagement with a blank draft at the same
+	// address. The minted address carries a random suffix for exactly this reason.
 	const victim = findProjectSetup("monarch-design-system");
 	assert(victim, "the fixture this guards must exist");
 
@@ -661,9 +383,9 @@ Deno.test("a freshly created project can be saved from the setup form", async ()
 	const created = await ProjectBackendService.create(payloadOf(), ALICE);
 	assert(created.data);
 
-	// The stub save resolved its base from the FIXTURE corpus only, so the setup form's very first
-	// save on a freshly created project answered "No project found" — on the surface the create had
-	// just navigated the owner to.
+	// The stub save resolved its base from the FIXTURE corpus only, so the setup form's very first save
+	// on a freshly created project answered "No project found" — on the surface the create had just
+	// navigated the owner to.
 	const saved = await ProjectBackendService.updateProject(
 		created.data.slug,
 		{ title: "Northwind Rebrand II", description: "<p>Sharpened.</p>" },
@@ -686,8 +408,8 @@ Deno.test("a freshly created project can be archived", async () => {
 	const archived = await ProjectBackendService.archiveProject(created.data.slug, {}, ALICE);
 	assert(archived.ok, `archive did not land: ${archived.message}`);
 
-	// A soft archive nobody can see having happened is the failure to guard against: the row must
-	// leave the feed the moment it is archived.
+	// A soft archive nobody can see having happened is the failure to guard against: the row must leave
+	// the feed the moment it is archived.
 	const feed = await ProjectBackendService.list(feedParams(), ALICE);
 	assertEquals(feed.data?.items.some((item) => item.slug === created.data!.slug), false);
 });

@@ -8,6 +8,7 @@ import type {
 } from "@projective/types/projects";
 import { matchesInvolvement } from "@projective/types/projects";
 import { allProjects, allScopes, allServices } from "./fixtures.ts";
+import { matchesProjectKey } from "./project-identity.ts";
 
 /**
  * projects query — the pure, deterministic selectors behind the `/projects` feed. No RNG, no clock,
@@ -253,8 +254,15 @@ export function serviceOptions(): ServiceOption[] {
 	return [...allServices()];
 }
 
-/** Look up a single engagement by slug (deep-link prefetch / row focus). */
-export function findProject(slug: string): ProjectSummary | undefined {
-	return allProjects().find((p) => p.slug === slug);
+/**
+ * Look up a single engagement by its route segment — uuid or slug (deep-link prefetch / row focus).
+ *
+ * One of the two roots of the whole fixture-backed read set: every other builder in this package
+ * composes this or {@link findProjectDetail}, so accepting both identifiers here is what makes the
+ * sibling routes uuid-addressable. No fixture DATA changes — the corpus has carried a real uuid
+ * beside every slug since it was written.
+ */
+export function findProject(projectKey: string): ProjectSummary | undefined {
+	return allProjects().find((p) => matchesProjectKey(p, projectKey));
 }
 // #endregion

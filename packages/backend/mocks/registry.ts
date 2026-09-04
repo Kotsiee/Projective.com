@@ -126,11 +126,13 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "projects",
 		label: "Projects, tickets & workspace",
 		gate: "PROJECTS_BACKEND_LIVE",
-		// LIVE. All eight reads reach Postgres under the caller's JWT
-		// (`services/projects/live-{queries,detail,board,members,files,submissions,messages}.ts`).
-		// Several fields come back NEUTRAL rather than invented, because no column backs them — a
-		// project channel has no per-viewer read watermark, `categoryWeight` has no column at all, and
-		// there is no presence signal anywhere. Each is documented where it is produced.
+		// LIVE, on both sides. All eight reads reach Postgres under the caller's JWT
+		// (`services/projects/live-{queries,detail,board,members,files,submissions,messages}.ts`), and
+		// CREATE now inserts `projects.projects` plus its one root stage through the RLS-scoped client
+		// (`live-writes.ts insertProject`) rather than shaping a slug and persisting nothing.
+		// Several READ fields still come back NEUTRAL rather than invented, because no column backs
+		// them — a project channel has no per-viewer read watermark, `categoryWeight` has no column at
+		// all, and there is no presence signal anywhere. Each is documented where it is produced.
 		liveImplemented: true,
 		modules: [
 			"services/projects/fixtures.ts",

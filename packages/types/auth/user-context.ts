@@ -57,6 +57,25 @@ export const UserContextSchema = z.object({
 	isFreelancer: z.boolean(),
 	/** The acting handle (`@handle`), when resolved — drives switcher + profile links. */
 	handle: z.string().max(40).nullable(),
+	/**
+	 * Whether this identity has a Projective profile (`org.users_public`) at all.
+	 *
+	 * **Only an explicit `false` means anything.** The access-token hook stamps it, so a token issued
+	 * before the claim existed — or one whose hook errored and returned the event unchanged — carries
+	 * no value, and an absent value resolves to `true`. Inferring un-onboarded from a missing claim
+	 * would walk a fully set-up user back through onboarding they already finished, which is the one
+	 * failure this flag must never cause; the same reasoning as `exchangeOAuthCode`'s default.
+	 *
+	 * An OAuth sign-up is authenticated the moment Google returns and has no profile until `/join`
+	 * calls `complete_onboarding`. In between, every table that attributes a row to
+	 * `org.users_public(user_id)` — projects, tickets, catalogue listings — has a foreign key that
+	 * cannot be satisfied, so this is the difference between routing them back to finish and letting
+	 * them fill in a form whose save can only ever fail.
+	 *
+	 * Chrome only, like everything else here: it decides which screen is painted. The foreign key is
+	 * what actually holds.
+	 */
+	onboarded: z.boolean(),
 	/** The authenticated user's id (`sub`), or `null` for guests. */
 	userId: z.string().max(64).nullable(),
 	/**
@@ -87,6 +106,13 @@ export type UserContext = z.infer<typeof UserContextSchema>;
 export interface AccessTokenClaims {
 	/** The user id. */
 	sub?: string;
+	/**
+	 * The identity's email, which GoTrue stamps as a top-level claim on every token regardless of
+	 * provider. Read only as a fallback for `user_metadata.email`, and only when re-building a `/join`
+	 * pre-fill — the email field there is read-only for an already-authenticated account, so an absent
+	 * value would render a control the user can neither fill nor bypass.
+	 */
+	email?: string;
 	/** App-controlled claims — the authoritative source of the active context, when present. */
 	app_metadata?: Record<string, unknown>;
 	/** Onboarding/profile metadata (e.g. `objective: "freelancer" | "client"`). */
@@ -110,6 +136,12 @@ export interface ActiveContextClaim {
 	handle?: string;
 	isClient?: boolean;
 	isFreelancer?: boolean;
+	/**
+	 * `true` when `org.users_public` holds a row for this user, `false` when the hook looked and found
+	 * none. **Absent means unknown**, and unknown resolves to onboarded — see
+	 * {@link UserContextSchema.shape.onboarded}.
+	 */
+	onboarded?: boolean;
 	/** `org.user_preferences.preferred_display_currency` — the viewer's money FORMATTING target. */
 	displayCurrency?: string;
 	/** `org.user_preferences.locale` — the BCP-47 locale `Intl` formats with. */
@@ -125,6 +157,9 @@ export const GUEST_CONTEXT: UserContext = Object.freeze({
 	role: "guest",
 	isClient: false,
 	isFreelancer: false,
+	// A guest has no identity to be onboarded, and nothing gates on this outside the authenticated
+	// app -- `true` keeps the flag meaning "no unfinished onboarding is known", never "unknown".
+	onboarded: true,
 	handle: null,
 	userId: null,
 	displayCurrency: PLATFORM_BASE_CURRENCY,
@@ -143,6 +178,9 @@ export const PERSONAL_MEMBER_CONTEXT: UserContext = Object.freeze({
 	role: "member",
 	isClient: true,
 	isFreelancer: false,
+	// The opaque-cookie fallback learned nothing about a profile, so it must not assert one is
+	// missing -- unknown resolves to onboarded, exactly as an absent claim does.
+	onboarded: true,
 	handle: null,
 	userId: null,
 	displayCurrency: PLATFORM_BASE_CURRENCY,
@@ -231,6 +269,12 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 
 	const handle = str(active.handle) ?? str(user.username) ?? null;
 
+	// Onboarding. Written as an inequality against `false` rather than a truthiness test on purpose:
+	// the three states are "the hook said yes", "the hook said no" and "nobody said", and only the
+	// middle one may gate anything. `!active.onboarded` would collapse the third into the second and
+	// send every holder of a pre-claim token back through onboarding they have already completed.
+	const onboarded = active.onboarded !== false;
+
 	// Presentation preferences. `toDisplayCurrency` is total: an absent, malformed or unsupported
 	// claim collapses to the platform base rather than to a code the FX table cannot price — the one
 	// failure that would render an unconverted amount under the wrong symbol.
@@ -243,6 +287,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		role,
 		isClient,
 		isFreelancer,
+		onboarded,
 		handle,
 		userId,
 		displayCurrency,

@@ -147,7 +147,13 @@ export type ProjectOverviewFinance = z.infer<typeof ProjectOverviewFinanceSchema
 // #region Page envelope
 /** The whole freelancer dashboard read for one engagement. */
 export const ProjectOverviewSchema = z.object({
-	/** Route slug — the surface's own address, and the root every `href` below was built from. */
+	/**
+	 * The canonical identity — `projects.projects.id`, and the segment every `href` below is built
+	 * from. Carried beside the slug for the same reason the owner's projection carries it: the uuid
+	 * is the address, and the slug is a readable alias that moves when the title does.
+	 */
+	id: z.string().min(1).max(80),
+	/** Readable alternate address, retained as a read key. */
 	slug: z.string().min(1).max(120),
 	hero: ProjectOverviewHeroSchema,
 	/** Newest first. */

@@ -10,6 +10,7 @@ import type {
 	TeamChannel,
 } from "@projective/types/projects";
 import { allProjects } from "./fixtures.ts";
+import { matchesProjectKey } from "./project-identity.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
@@ -300,9 +301,16 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 	};
 }
 
-/** Resolve the deep detail projection for a slug, or `undefined` when no such engagement. */
-export function findProjectDetail(slug: string): ProjectDetail | undefined {
-	const row = allProjects().find((p) => p.slug === slug);
+/**
+ * Resolve the deep detail projection for a route segment — uuid or slug — or `undefined` when no such
+ * engagement.
+ *
+ * The second of the two fixture roots (with {@link findProject}). The Project Details lane is resolved
+ * for EVERY `/projects/{x}`, so a segment shape this could not match would empty the lane on every
+ * engagement reached from a create rather than fail visibly on one.
+ */
+export function findProjectDetail(projectKey: string): ProjectDetail | undefined {
+	const row = allProjects().find((p) => matchesProjectKey(p, projectKey));
 	return row ? buildDetail(row) : undefined;
 }
 // #endregion

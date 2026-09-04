@@ -4,21 +4,26 @@
 -- Security, RLS & Permissions). Source file noted before each statement group.
 -- =============================================================================
 
-
 -- --- from 0119_project_lifecycle.sql ---
 
 CREATE POLICY "View project status history" ON projects.project_status_history FOR
 SELECT TO public USING (
-    actor_user_id = auth.uid()
-    OR projects.has_project_access (project_id)
-    OR EXISTS (
-        SELECT 1 FROM projects.projects p
-        WHERE p.id = project_status_history.project_id
-            AND (p.owner_user_id = auth.uid()
-                OR (p.client_business_id IS NOT NULL AND org.is_active_business_member (p.client_business_id)))
-    )
-);
-
+        actor_user_id = auth.uid ()
+        OR projects.has_project_access (project_id)
+        OR EXISTS (
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_status_history.project_id
+                AND (
+                    p.owner_user_id = auth.uid ()
+                    OR (
+                        p.client_business_id IS NOT NULL
+                        AND org.is_active_business_member (p.client_business_id)
+                    )
+                )
+        )
+    );
 
 -- --- from 0204_projects.sql ---
 
@@ -192,7 +197,9 @@ SELECT TO public USING (auth.uid () = owner_user_id);
 -- SECURITY DEFINER, so reading projects.projects inside it does not re-enter this
 -- policy.
 CREATE POLICY "Participants can view their projects" ON projects.projects FOR
-SELECT TO authenticated USING (projects.has_project_access (id));
+SELECT TO authenticated USING (
+        projects.has_project_access (id)
+    );
 
 CREATE POLICY "Manage own revisions" ON projects.stage_revision_requests FOR ALL TO public USING (requested_by = auth.uid ());
 
@@ -259,7 +266,9 @@ SELECT TO public USING (
 
 -- Assigned freelancers / business members / team members can read stages of projects they work on.
 CREATE POLICY "Participants can view stages" ON projects.project_stages FOR
-SELECT TO public USING (projects.has_project_access (project_stages.project_id));
+SELECT TO public USING (
+        projects.has_project_access (project_stages.project_id)
+    );
 
 -- ⚠️ The stage-access arm is load-bearing. `submitted_by = auth.uid()` on its own proves only that
 -- the row is not being attributed to somebody else; it says nothing about WHERE the row lands. Any
@@ -313,17 +322,24 @@ SELECT TO public USING (
 CREATE POLICY "Manage tickets" ON projects.tickets FOR ALL TO public USING (
     current_assignee_id = auth.uid ()
     OR EXISTS (
-        SELECT 1 FROM projects.projects p
-        WHERE p.id = project_id AND p.owner_user_id = auth.uid ()
+        SELECT 1
+        FROM projects.projects p
+        WHERE
+            p.id = project_id
+            AND p.owner_user_id = auth.uid ()
     )
 )
-WITH CHECK (
-    current_assignee_id = auth.uid ()
-    OR EXISTS (
-        SELECT 1 FROM projects.projects p
-        WHERE p.id = project_id AND p.owner_user_id = auth.uid ()
-    )
-);
+WITH
+    CHECK (
+        current_assignee_id = auth.uid ()
+        OR EXISTS (
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_id
+                AND p.owner_user_id = auth.uid ()
+        )
+    );
 
 -- A freelancer sends their OWN submission for review, and only while it is still a draft.
 --
@@ -337,12 +353,14 @@ WITH CHECK (
 -- permit an UPDATE whose post-image is still a draft, i.e. silent edits to a row after the fact.
 CREATE POLICY "Submit own draft submissions" ON projects.stage_submissions FOR
 UPDATE TO authenticated USING (
-  submitted_by = auth.uid()
-  AND status = 'draft'
-) WITH CHECK (
-  submitted_by = auth.uid()
-  AND status = 'pending_review'
-);
+    submitted_by = auth.uid ()
+    AND status = 'draft'
+)
+WITH
+    CHECK (
+        submitted_by = auth.uid ()
+        AND status = 'pending_review'
+    );
 
 -- Only the ticket's current assignee (the working freelancer) may flag a workload mismatch.
 CREATE POLICY "File workload report" ON projects.ticket_workload_reports FOR
@@ -352,8 +370,11 @@ WITH
     CHECK (
         reporter_user_id = auth.uid ()
         AND EXISTS (
-            SELECT 1 FROM projects.tickets t
-            WHERE t.id = ticket_id AND t.current_assignee_id = auth.uid ()
+            SELECT 1
+            FROM projects.tickets t
+            WHERE
+                t.id = ticket_id
+                AND t.current_assignee_id = auth.uid ()
         )
     );
 
@@ -364,8 +385,12 @@ SELECT TO public USING (
             SELECT 1
             FROM projects.tickets t
                 JOIN projects.projects p ON p.id = t.project_id
-            WHERE t.id = ticket_id
-                AND (p.owner_user_id = auth.uid () OR projects.has_project_access (p.id))
+            WHERE
+                t.id = ticket_id
+                AND (
+                    p.owner_user_id = auth.uid ()
+                    OR projects.has_project_access (p.id)
+                )
         )
     );
 
@@ -506,7 +531,6 @@ UPDATE TO public USING (
 
 CREATE POLICY "Leave waitlist" ON projects.waitlists FOR DELETE TO public USING (user_id = auth.uid ());
 
-
 -- --- from 0208_files.sql ---
 
 -- =============================================================================================
@@ -559,7 +583,6 @@ WITH
 
 CREATE POLICY "Users can delete own files" ON files.items FOR DELETE TO authenticated USING (owner_user_id = auth.uid ());
 
-
 -- --- files.folders — the hierarchy (RLS newly ENABLED in 00002001; see the note there) ---
 
 -- Read: the creator, or an active member of the owning entity. Mirrors fn_can_read's ownership
@@ -588,7 +611,6 @@ WITH
     CHECK (owner_user_id = auth.uid ());
 
 CREATE POLICY "Users can delete own folders" ON files.folders FOR DELETE TO authenticated USING (owner_user_id = auth.uid ());
-
 
 -- --- files.share_links — READ-ONLY, revocable grants ---
 
@@ -621,7 +643,8 @@ WITH
             OR EXISTS (
                 SELECT 1
                 FROM files.items i
-                WHERE i.id = share_links.item_id
+                WHERE
+                    i.id = share_links.item_id
                     AND i.owner_user_id = auth.uid ()
                     AND i.deleted_at IS NULL
             )
@@ -631,7 +654,8 @@ WITH
             OR EXISTS (
                 SELECT 1
                 FROM files.folders f
-                WHERE f.id = share_links.folder_id
+                WHERE
+                    f.id = share_links.folder_id
                     AND f.owner_user_id = auth.uid ()
                     AND f.deleted_at IS NULL
             )
@@ -661,7 +685,6 @@ WITH
 -- The predicate is unchanged. Only the reachability model is: you must present the slug, rather
 -- than being handed the list.
 
-
 -- --- files.download_events — the audit trail ---
 
 -- Read-own only, and NO client INSERT policy anywhere in this file. That absence is the point:
@@ -670,15 +693,15 @@ WITH
 -- is harmless precisely because RLS is on and no INSERT policy exists.
 CREATE POLICY "Actors and owners can read download events" ON files.download_events FOR
 SELECT TO authenticated USING (
-    actor_user_id = auth.uid ()
-    OR EXISTS (
-        SELECT 1
-        FROM files.items i
-        WHERE i.id = download_events.item_id
-            AND i.owner_user_id = auth.uid ()
-    )
-);
-
+        actor_user_id = auth.uid ()
+        OR EXISTS (
+            SELECT 1
+            FROM files.items i
+            WHERE
+                i.id = download_events.item_id
+                AND i.owner_user_id = auth.uid ()
+        )
+    );
 
 -- --- files.storage_usage — the metered rollup ---
 
@@ -694,43 +717,55 @@ SELECT TO authenticated USING (
     OR (owner_type = 'organisation'::files.owner_kind AND org.is_organisation_member (owner_id))
 );
 
-
 -- --- from 0303_projects_lifecycle_rls.sql ---
 
 CREATE POLICY "View submissions" ON projects.stage_submissions FOR
 SELECT TO public USING (
-    submitted_by = auth.uid ()
-    OR projects.has_project_access (
-        (SELECT ps.project_id FROM projects.project_stages ps WHERE ps.id = stage_submissions.project_stage_id)
-    )
-    OR EXISTS (
-        SELECT 1
-        FROM projects.project_stages s
-        JOIN projects.projects p ON p.id = s.project_id
-        WHERE s.id = stage_submissions.project_stage_id
-            AND (
-                p.owner_user_id = auth.uid ()
-                OR (p.client_business_id IS NOT NULL AND org.is_active_business_member (p.client_business_id))
+        submitted_by = auth.uid ()
+        OR projects.has_project_access (
+            (
+                SELECT ps.project_id
+                FROM projects.project_stages ps
+                WHERE
+                    ps.id = stage_submissions.project_stage_id
             )
-    )
-);
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM projects.project_stages s
+                JOIN projects.projects p ON p.id = s.project_id
+            WHERE
+                s.id = stage_submissions.project_stage_id
+                AND (
+                    p.owner_user_id = auth.uid ()
+                    OR (
+                        p.client_business_id IS NOT NULL
+                        AND org.is_active_business_member (p.client_business_id)
+                    )
+                )
+        )
+    );
 
 CREATE POLICY "View submission files" ON projects.submission_files FOR
 SELECT TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.stage_submissions ss
-        JOIN projects.project_stages s ON s.id = ss.project_stage_id
-        JOIN projects.projects p ON p.id = s.project_id
-        WHERE ss.id = submission_files.submission_id
-            AND (
-                ss.submitted_by = auth.uid ()
-                OR projects.has_project_access (p.id)
-                OR p.owner_user_id = auth.uid ()
-                OR (p.client_business_id IS NOT NULL AND org.is_active_business_member (p.client_business_id))
-            )
-    )
-);
+        EXISTS (
+            SELECT 1
+            FROM projects.stage_submissions ss
+                JOIN projects.project_stages s ON s.id = ss.project_stage_id
+                JOIN projects.projects p ON p.id = s.project_id
+            WHERE
+                ss.id = submission_files.submission_id
+                AND (
+                    ss.submitted_by = auth.uid ()
+                    OR projects.has_project_access (p.id)
+                    OR p.owner_user_id = auth.uid ()
+                    OR (
+                        p.client_business_id IS NOT NULL
+                        AND org.is_active_business_member (p.client_business_id)
+                    )
+                )
+        )
+    );
 
 -- This table had SELECT and nothing else, so a submission could be read with its files and never
 -- created with them: the link row is what turns a deliverable into a deliverable, and without an
@@ -748,7 +783,8 @@ WITH
         EXISTS (
             SELECT 1
             FROM projects.stage_submissions ss
-            WHERE ss.id = submission_files.submission_id
+            WHERE
+                ss.id = submission_files.submission_id
                 AND ss.submitted_by = auth.uid ()
         )
     );
@@ -756,16 +792,15 @@ WITH
 -- Detaching a mistaken attachment is the same authority as making one. It removes only the LINK —
 -- the files.items row is untouched and remains in the submitter's library — so this is not the hard
 -- deletion root CLAUDE.md §7 forbids.
-CREATE POLICY "Detach files from own submissions" ON projects.submission_files FOR
-DELETE TO authenticated USING (
+CREATE POLICY "Detach files from own submissions" ON projects.submission_files FOR DELETE TO authenticated USING (
     EXISTS (
         SELECT 1
         FROM projects.stage_submissions ss
-        WHERE ss.id = submission_files.submission_id
+        WHERE
+            ss.id = submission_files.submission_id
             AND ss.submitted_by = auth.uid ()
     )
 );
-
 
 -- --- from 0307_stage_staffing.sql ---
 
@@ -782,19 +817,25 @@ CREATE POLICY "View seat skills" ON projects.stage_open_seat_skills FOR SELECT T
     )
 );
 
-CREATE POLICY "View own or owned applications" ON projects.project_applications FOR SELECT TO public USING (
-    applicant_user_id = auth.uid()
-    OR projects.can_review_project (project_id)
-);
+CREATE POLICY "View own or owned applications" ON projects.project_applications FOR
+SELECT TO public USING (
+        applicant_user_id = auth.uid ()
+        OR projects.can_review_project (project_id)
+    );
 
-CREATE POLICY "View application targets" ON projects.project_application_targets FOR SELECT TO public USING (
-    EXISTS (
-        SELECT 1 FROM projects.project_applications pa
-        WHERE pa.id = project_application_targets.application_id
-            AND (pa.applicant_user_id = auth.uid() OR projects.can_review_project (pa.project_id))
-    )
-);
-
+CREATE POLICY "View application targets" ON projects.project_application_targets FOR
+SELECT TO public USING (
+        EXISTS (
+            SELECT 1
+            FROM projects.project_applications pa
+            WHERE
+                pa.id = project_application_targets.application_id
+                AND (
+                    pa.applicant_user_id = auth.uid ()
+                    OR projects.can_review_project (pa.project_id)
+                )
+        )
+    );
 
 -- =============================================================================
 -- AUDIT LOG, PREFERENCES, REQUIRED SKILLS, INVITATIONS
@@ -822,13 +863,14 @@ CREATE POLICY "View application targets" ON projects.project_application_targets
 -- a reader only their own moves would misrepresent the history it is drawn as.
 CREATE POLICY "View ticket history" ON projects.ticket_history FOR
 SELECT TO authenticated USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.tickets t
-        WHERE t.id = ticket_history.ticket_id
-            AND projects.has_project_access (t.project_id)
-    )
-);
+        EXISTS (
+            SELECT 1
+            FROM projects.tickets t
+            WHERE
+                t.id = ticket_history.ticket_id
+                AND projects.has_project_access (t.project_id)
+        )
+    );
 
 -- --- user_preferences: one person's own view state ---
 --
@@ -850,19 +892,27 @@ WITH
 -- list is what proposals are matched and filtered on, so an outside edit changes
 -- who the project appears to want.
 CREATE POLICY "View required skills" ON projects.project_required_skills FOR
-SELECT TO authenticated USING (projects.has_project_access (project_id));
+SELECT TO authenticated USING (
+        projects.has_project_access (project_id)
+    );
 
 CREATE POLICY "Owner manages required skills" ON projects.project_required_skills FOR ALL TO authenticated USING (
     EXISTS (
-        SELECT 1 FROM projects.projects p
-        WHERE p.id = project_required_skills.project_id AND p.owner_user_id = auth.uid ()
+        SELECT 1
+        FROM projects.projects p
+        WHERE
+            p.id = project_required_skills.project_id
+            AND p.owner_user_id = auth.uid ()
     )
 )
 WITH
     CHECK (
         EXISTS (
-            SELECT 1 FROM projects.projects p
-            WHERE p.id = project_required_skills.project_id AND p.owner_user_id = auth.uid ()
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_required_skills.project_id
+                AND p.owner_user_id = auth.uid ()
         )
     );
 
@@ -889,70 +939,120 @@ WITH
 -- all acts of granting or withdrawing access to their project.
 CREATE POLICY "View invitations as owner or invitee" ON projects.project_invitations FOR
 SELECT TO authenticated USING (
-    EXISTS (
-        SELECT 1 FROM projects.projects p
-        WHERE p.id = project_invitations.project_id AND p.owner_user_id = auth.uid ()
-    )
-    OR EXISTS (
-        SELECT 1 FROM org.user_emails ue
-        WHERE ue.user_id = auth.uid ()
-            AND lower(ue.email) = lower(project_invitations.target_email)
-            -- 🚨 `verified_at` is not optional here, and the reason is the direction of the threat.
-            -- `org.user_emails` carries a client INSERT policy (`WITH CHECK (user_id = auth.uid())`)
-            -- and `org` is exposed to PostgREST, so any signed-in caller can add an ARBITRARY address
-            -- to their OWN row. Without this arm, ASSERTING the invited address is enough to become
-            -- an "invitee" and read `token` — which this table's own comment calls the capability:
-            -- whoever holds it can accept and be granted the role it names. That is project-access
-            -- escalation, not a disclosure.
-            --
-            -- The own-rows-only policy on `org.user_emails` does not help: it stops you reading
-            -- someone else's address, and this attack writes your own.
-            AND ue.verified_at IS NOT NULL
-    )
-);
+        EXISTS (
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_invitations.project_id
+                AND p.owner_user_id = auth.uid ()
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM org.user_emails ue
+            WHERE
+                ue.user_id = auth.uid ()
+                AND lower(ue.email) = lower(
+                    project_invitations.target_email
+                )
+                -- 🚨 `verified_at` is not optional here, and the reason is the direction of the threat.
+                -- `org.user_emails` carries a client INSERT policy (`WITH CHECK (user_id = auth.uid())`)
+                -- and `org` is exposed to PostgREST, so any signed-in caller can add an ARBITRARY address
+                -- to their OWN row. Without this arm, ASSERTING the invited address is enough to become
+                -- an "invitee" and read `token` — which this table's own comment calls the capability:
+                -- whoever holds it can accept and be granted the role it names. That is project-access
+                -- escalation, not a disclosure.
+                --
+                -- The own-rows-only policy on `org.user_emails` does not help: it stops you reading
+                -- someone else's address, and this attack writes your own.
+                AND ue.verified_at IS NOT NULL
+        )
+    );
 
 CREATE POLICY "Owner manages invitations" ON projects.project_invitations FOR ALL TO authenticated USING (
     EXISTS (
-        SELECT 1 FROM projects.projects p
-        WHERE p.id = project_invitations.project_id AND p.owner_user_id = auth.uid ()
+        SELECT 1
+        FROM projects.projects p
+        WHERE
+            p.id = project_invitations.project_id
+            AND p.owner_user_id = auth.uid ()
     )
 )
 WITH
     CHECK (
         EXISTS (
-            SELECT 1 FROM projects.projects p
-            WHERE p.id = project_invitations.project_id AND p.owner_user_id = auth.uid ()
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_invitations.project_id
+                AND p.owner_user_id = auth.uid ()
         )
         AND inviter_user_id = auth.uid ()
     );
 
+-- =============================================================================
+-- REFERENCE ATTACHMENTS — projects.project_attachments
+--
+-- 00002001 has enabled RLS on this table since it was written, and it has never
+-- carried a single policy. That combination is DEFAULT DENY, and default deny on
+-- a SELECT is silent: as `authenticated` it returns `200 []`, never an error and
+-- never a hint. The reference brief, the brand sheet and the spec a client hangs
+-- off their project have therefore been unreadable by everybody including the
+-- owner, and the attachments list rendered as an EMPTY LIST rather than as a
+-- failure — the one shape nobody investigates, because it is indistinguishable
+-- from a project that has no attachments.
+--
+-- Only the LINK row is governed here. The bytes are a separate question answered
+-- by files.fn_can_read(id) on files.items (00001160), which has its own
+-- project-bucket arm; admitting a link never admits a file, and the two gates are
+-- deliberately not merged.
+-- =============================================================================
 
--- =============================================================================
--- project_attachments — write-only until now
+-- Readable by anyone who can reach the project, not by the owner alone. A
+-- reference attachment IS the brief — it is the material a participant works
+-- against — so an owner-only read would recreate exactly the hole
+-- "Participants can view their projects" was added to close: the engagement
+-- somebody is delivering, invisible to them. projects.has_project_access is the
+-- predicate the rest of this schema already uses for "is this person involved",
+-- so the definition of involvement stays in one place; it is SECURITY DEFINER,
+-- so reading projects.projects inside it does not re-enter that table's policies.
+CREATE POLICY "View project attachments" ON projects.project_attachments FOR
+SELECT TO authenticated USING (
+        projects.has_project_access (project_id)
+    );
+
+-- Writes are the OWNER's alone, and narrower than the read on purpose. These
+-- files are the terms the work is judged against; a participant who could attach
+-- to the project — rather than submit through projects.stage_submissions, where a
+-- deliverable is versioned, reviewed and tied to an escrow release — would be
+-- adding to the client's own brief with none of that ledger behind it.
 --
--- The fifth table in this schema with RLS enabled (00002001) and no policy. It
--- fails differently from the four above, because nothing here was ever exposed:
--- default-deny on a table only a `SECURITY DEFINER` function writes means
--- `projects.create_project` faithfully stored every brief, reference and mood
--- board the client attached to a new engagement, and then NOBODY — not the
--- owner, not a participant, not the person who uploaded them — could ever read
--- one back. The attachment step of the create wizard was a control that
--- rendered, accepted files, succeeded, and reached nothing (root CLAUDE.md §3
--- gate 11), with no error anywhere to say so: `200 []` again.
---
--- Scoped to `has_project_access` rather than to the uploader, because an
--- attachment is project context — it is what the brief refers to — and a
--- freelancer who cannot open the reference the stage description cites has the
--- stage and not the work. The join row carries no data of its own beyond the
--- pair, and `files.items` keeps its own policy, so this admits the RELATIONSHIP
--- and the file's own rules still decide whether the bytes can be fetched.
---
--- SELECT only. Every write goes through `projects.create_project`, which is
--- DEFINER and bypasses RLS entirely, so the table stays fully writable by the
--- path that is supposed to write it; a client INSERT policy would be a route to
--- attach an arbitrary `files.items` id to somebody else's project, which is a
--- disclosure dressed as a reference. Detaching is likewise a definer path when
--- one is needed. Same discipline as `ticket_history` above.
--- =============================================================================
-CREATE POLICY "View attachments of accessible projects" ON projects.project_attachments FOR
-SELECT TO authenticated USING (projects.has_project_access (project_id));
+-- Split into INSERT and DELETE rather than written as FOR ALL, because there is
+-- no UPDATE to grant: every column of this table is part of its primary key, so
+-- re-pointing a link is a DELETE and an INSERT, and a FOR ALL policy would
+-- advertise an UPDATE path that can never do anything.
+CREATE POLICY "Owner attaches project references" ON projects.project_attachments FOR
+INSERT
+    TO authenticated
+WITH
+    CHECK (
+        EXISTS (
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_attachments.project_id
+                AND p.owner_user_id = auth.uid ()
+        )
+    );
+
+-- Detaching removes only the LINK. The files.items row is untouched and stays in
+-- the owner's library, so this is not the hard deletion root CLAUDE.md §5 forbids
+-- — the same reasoning as "Detach files from own submissions" above.
+CREATE POLICY "Owner detaches project references" ON projects.project_attachments FOR DELETE TO authenticated USING (
+    EXISTS (
+        SELECT 1
+        FROM projects.projects p
+        WHERE
+            p.id = project_attachments.project_id
+            AND p.owner_user_id = auth.uid ()
+    )
+);

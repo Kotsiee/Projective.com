@@ -28,6 +28,7 @@ import {
 	projectsDb,
 	senderOf,
 } from "./live-support.ts";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-files — the RLS-scoped Postgres read path for `ProjectBackendService.files(params)`.
@@ -132,9 +133,6 @@ const DEFAULT_LIMIT = 60;
 
 /** The `FileListParamsSchema.limit` ceiling, restated so a caller that skipped Zod cannot exceed it. */
 const MAX_LIMIT = 200;
-
-/** Canonical uuid shape — see {@link resolveProject} for why a slug must never reach a uuid column. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `comms.project_channels` columns. There is no `kind` column — see {@link toChannelKind}. */
 const CHANNEL_COLUMNS = "id, name, stage_id, visibility, created_at";
@@ -809,14 +807,20 @@ function sortItems(items: FileItem[], sort: FileSortKey, dir: FileSortDir): File
 /**
  * The project's real uuid, from the `projectId` route param.
  *
- * That param is a **slug**, not an id — `findProjectDetail(params.projectId)` matches on `p.slug`,
- * and the `/projects/{slug}` route has carried a slug since Decision #21. Everything downstream keys
- * on `comms.project_channels.project_id`, which is a uuid, so the two have to be reconciled here.
+ * That param is CANONICALLY a uuid and may still be a slug. Everything downstream keys on
+ * `comms.project_channels.project_id`, which is a uuid, so the two have to be reconciled here.
  *
- * A uuid is accepted as a fallback for a caller that already holds one, and the {@link UUID_RE} guard
- * on that branch is load-bearing rather than tidy: sending a slug to a uuid column is not a query
- * that returns nothing, it is `22P02 invalid input syntax for type uuid`, which surfaces as a thrown
- * page read for the ordinary case of a mistyped URL.
+ * The uuid branch is tried FIRST, and the order is not cosmetic. `/projects/[projectId]` used to
+ * carry a slug, so slug-first hit on the first query; it now carries the record id, so slug-first
+ * would spend a failed round trip on every read of this surface before falling through to the
+ * branch that was always going to answer. The code did not change when the route did, which is
+ * exactly why this was invisible to a diff.
+ *
+ * The {@link UUID_RE} guard is load-bearing rather than tidy, in both directions: sending a slug to
+ * a uuid column is not a query that returns nothing, it is `22P02 invalid input syntax for type
+ * uuid`, which surfaces as a thrown page for the ordinary case of a mistyped URL — and a lowercase
+ * uuid satisfies `ck_projects_slug_shape`, so the slug branch would match nothing, forever, with no
+ * error to say why.
  *
  * `maybeSingle` rather than `single`: a slug matching nothing is an ordinary 404 on this route, and
  * `single` turns it into a thrown PostgREST error the caller would have to unwrap to tell "no such
@@ -826,6 +830,19 @@ async function resolveProject(
 	db: SupabaseClient,
 	projectId: string,
 ): Promise<{ id: string; slug: string } | null> {
+	if (UUID_RE.test(projectId)) {
+		const byId = await db
+			.from("projects")
+			.select("id, slug")
+			.eq("id", projectId)
+			.maybeSingle();
+
+		if (byId.error) throw new Error(`projects.projects id read failed: ${byId.error.message}`);
+		// No slug fallback on this branch: a uuid cannot also be a slug in practice, and trying would
+		// be the failed round trip this ordering exists to avoid.
+		return byId.data ? byId.data as unknown as { id: string; slug: string } : null;
+	}
+
 	const bySlug = await db
 		.from("projects")
 		.select("id, slug")
@@ -835,18 +852,7 @@ async function resolveProject(
 	if (bySlug.error) {
 		throw new Error(`projects.projects slug read failed: ${bySlug.error.message}`);
 	}
-	if (bySlug.data) return bySlug.data as unknown as { id: string; slug: string };
-
-	if (!UUID_RE.test(projectId)) return null;
-
-	const byId = await db
-		.from("projects")
-		.select("id, slug")
-		.eq("id", projectId)
-		.maybeSingle();
-
-	if (byId.error) throw new Error(`projects.projects id read failed: ${byId.error.message}`);
-	return byId.data ? byId.data as unknown as { id: string; slug: string } : null;
+	return bySlug.data ? bySlug.data as unknown as { id: string; slug: string } : null;
 }
 
 // #endregion

@@ -1,3 +1,5 @@
+import type { AccessTokenClaims } from "@projective/types/auth";
+
 /**
  * OAuth pre-fill parsing.
  *
@@ -60,5 +62,48 @@ export function parseOAuthPrefill(params: URLSearchParams): OAuthPrefill | null 
 		lastName: clampName(params.get("lastName")),
 		email: clampName(params.get("email")),
 		avatar: safeAvatarUrl(params.get("avatar")),
+	};
+}
+
+/**
+ * Build a pre-fill from an access token's decoded claims, or `null` when the identity did not come
+ * from a supported provider.
+ *
+ * The same identity {@link AuthBackendService.exchangeOAuthCode} reads at the callback, taken from
+ * the token instead of the exchange response — because the callback is not the only moment an
+ * account can need it. A Google sign-up that abandons `/join` stays authenticated and profile-less,
+ * and the app has to be able to send them back with the same pre-fill it sent them the first time,
+ * from a middleware that holds a JWT and nothing else.
+ *
+ * `provider` comes from `app_metadata`, which GoTrue writes and a user cannot: the pre-fill decides
+ * whether `/join` asks for a password, and reading that from user-controlled metadata would let a
+ * password account present itself as federated. Every value is then put through the same clamps as
+ * the URL path above, because a token this app decodes without verifying its signature is exactly
+ * as untrusted as a query string.
+ */
+export function oauthPrefillFromClaims(
+	claims: AccessTokenClaims | null | undefined,
+): OAuthPrefill | null {
+	const app = (claims?.app_metadata ?? {}) as Record<string, unknown>;
+	const provider = typeof app.provider === "string" ? app.provider : "";
+	if (provider !== "google") return null;
+
+	const meta = (claims?.user_metadata ?? {}) as Record<string, unknown>;
+	const text = (value: unknown) => (typeof value === "string" ? value : null);
+	// Google returns `given_name`/`family_name` only sometimes; `full_name`/`name` is the field that
+	// is always there, so the split is the fallback rather than the primary.
+	const fullName = text(meta.full_name) ?? text(meta.name);
+	const parts = fullName ? fullName.trim().split(/\s+/) : [];
+
+	return {
+		provider: "google",
+		firstName: clampName(text(meta.given_name) ?? parts[0] ?? null),
+		lastName: clampName(
+			text(meta.family_name) ?? (parts.length > 1 ? parts.slice(1).join(" ") : null),
+		),
+		// The top-level claim is the fallback because /join renders this field READ-ONLY for an
+		// already-authenticated account: an absent email there is a control nobody can complete.
+		email: clampName(text(meta.email) ?? text(claims?.email)),
+		avatar: safeAvatarUrl(text(meta.avatar_url) ?? text(meta.picture)),
 	};
 }

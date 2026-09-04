@@ -914,6 +914,32 @@ export function currencyExponent(code: string): number {
 }
 
 /**
+ * Convert a MAJOR-unit figure a person typed into the MINOR units every schema and column stores.
+ *
+ * Exponent-aware on purpose: a hardcoded `x 100` turns a JP¥5,000 figure into 500,000 minor units, a
+ * hundredfold error no type-checker can see because both sides are `number` and both are plausible.
+ *
+ * Clamped at zero and null-preserving, because both are facts the callers depend on: a negative price
+ * is not a price, and `null` means UNPRICED where `0` means free — a distinction the setup ladder
+ * counts and a `??` would quietly collapse.
+ *
+ * Lives here beside {@link currencyExponent} rather than in a feature, because two surfaces of the
+ * project-creation flow had already grown their own copies and they had already diverged on the
+ * clamp. Presentation-boundary conversion ONLY — this is not money math and computes no balance,
+ * fee or split.
+ */
+export function toMinorUnits(major: number | null, code: string): number | null {
+	if (major === null || !Number.isFinite(major)) return null;
+	return Math.max(0, Math.round(major * 10 ** currencyExponent(code)));
+}
+
+/** The inverse of {@link toMinorUnits}, for seeding an input from a stored amount. */
+export function toMajorUnits(minor: number | null, code: string): number | null {
+	if (minor === null || !Number.isFinite(minor)) return null;
+	return minor / 10 ** currencyExponent(code);
+}
+
+/**
  * Format a minor-unit amount in a currency for the viewer's locale via `Intl.NumberFormat`. Deterministic
  * given `(minor, currency, locale)`, so SSR and the client render identically (mirrors the catalogue
  * `money()` determinism guarantee). Presentation ONLY — never used to compute a balance/split/fee.

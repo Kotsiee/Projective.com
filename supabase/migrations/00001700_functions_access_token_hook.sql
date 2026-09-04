@@ -33,6 +33,20 @@ DECLARE
   v_username text;
   v_is_freelancer boolean := false;
   v_is_operator boolean := false;
+  -- Whether a Projective profile exists at all.
+  --
+  -- An OAuth sign-up reaches GoTrue with no username and no dob, so `public.handle_new_user`
+  -- deliberately leaves it profile-less until /join calls `public.complete_onboarding` (00001010).
+  -- Until then the identity is authenticated and owns nothing: every table that attributes a row to
+  -- `org.users_public(user_id)` -- projects, tickets, catalogue listings -- carries a foreign key
+  -- that cannot be satisfied, so the write dies deep in Postgres with a constraint name rather than
+  -- a sentence anybody can act on.
+  --
+  -- Stamping the fact into the token is what lets the app route those accounts back to finish
+  -- onboarding WITHOUT a database round trip in a middleware that is deliberately network-free. Like
+  -- every other claim here it is chrome only: it decides which screen is painted, never what the
+  -- caller may do, and the foreign key stays the thing that actually holds.
+  v_onboarded boolean := false;
 
   -- Presentation preferences (org.user_preferences). Chrome-only: they decide which currency and
   -- locale the viewer's figures are FORMATTED in, never what any ledger row stores or settles at.
@@ -56,6 +70,13 @@ BEGIN
     INTO v_username, v_is_freelancer, v_is_operator
   FROM org.users_public up
   WHERE up.user_id = v_user_id;
+
+  -- Read IMMEDIATELY, before the next SELECT overwrites it: `FOUND` reports whether the statement
+  -- just executed returned a row, and every query below resets it. This is the only honest test --
+  -- `v_username IS NOT NULL` would report a profile-less account for anyone whose username column is
+  -- somehow blank, and the column is NOT NULL, so the two differ only in the case where the answer
+  -- matters.
+  v_onboarded := FOUND;
 
   -- Raw active-context state.
   SELECT sc.active_profile_type::text, sc.active_profile_id, sc.active_team_id, sc.active_organisation_id
@@ -148,6 +169,14 @@ BEGIN
   -- a figure could paint in one currency and correct itself to another after hydration. They grant
   -- nothing — a tampered claim only changes the symbol the tamperer's own browser draws, while every
   -- stored amount keeps its origin currency and every settlement uses the snapshot on its own row.
+  --
+  -- `onboarded` rides it for the same reason and one more: the consumer reads it in a middleware,
+  -- and the whole point of putting it here is that resolving it any other way costs a query on every
+  -- authenticated request. It is stamped false ONLY when this function positively looked and found
+  -- no profile row; the EXCEPTION handler below returns the event unchanged, so a failure omits the
+  -- claim entirely rather than asserting an account is un-onboarded. The consumer treats an absent
+  -- claim as onboarded, which is what keeps a legacy token — or a hook that errored — from walking a
+  -- fully set-up user back through onboarding they already finished.
   v_app_meta := jsonb_set(
     v_app_meta,
     '{active_context}',
@@ -158,6 +187,7 @@ BEGIN
       'handle', v_handle,
       'isClient', v_ctx_is_client,
       'isFreelancer', v_ctx_is_freelancer,
+      'onboarded', v_onboarded,
       'displayCurrency', v_display_currency,
       'locale', v_locale
     ),

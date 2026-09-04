@@ -108,12 +108,52 @@
 }
 /* #endregion */
 
+/* #region Two-column shell */
+/*
+ * The Stage-2 workspace: the sticky section rail beside one continuous, vertically scrolling form.
+ *
+ * Both children are DIRECT grid items. The rail sizes itself and opts out of the stretch in its own
+ * sheet so it can be sticky, so this only has to give it a track — `max-content` rather than a fixed
+ * width, because the rail's own `max-inline-size` is the number that decides how wide it gets and
+ * restating it here would be two answers to one question.
+ *
+ * `minmax(0, 1fr)` on the form track, never a bare `1fr`: a `1fr` track's automatic minimum is
+ * `auto`, so one un-shrinkable control — a wide `SelectButton`, a long chip — would set a floor the
+ * whole column then refuses to go below, and the rail beside it absorbs every pixel of the
+ * difference. That failure has shipped on this shell's siblings twice.
+ */
+.psu-shell {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: var(--space-7);
+	padding: var(--space-6) var(--space-5) var(--space-8);
+}
+
+/* The shell owns the page padding; the form is a track inside it and re-adding it would double it. */
+.psu-shell > .psu {
+	padding: 0;
+}
+
+@media (max-width: 720px) {
+	/*
+	 * One column. The rail is NOT hidden — every section still has to be reachable and there is no
+	 * other route between them on this surface for the duty to transfer to — it simply lays itself out
+	 * along the axis it now has, which its own sheet handles.
+	 */
+	.psu-shell {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-5);
+	}
+}
+/* #endregion */
+
 /* #region Form body */
 .psu {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-7);
+	gap: var(--space-4);
 	padding: var(--space-6) var(--space-5) var(--space-8);
+	min-inline-size: 0;
 }
 .psu__head {
 	display: flex;
@@ -150,20 +190,30 @@
 
 /* #region Sections */
 /*
- * A section is separated by SPACE and one hairline, and by nothing else. The asymmetric rhythm is the
- * point (§B.4.1): a large gap above the heading and a small one below attaches the heading to what it
- * introduces, where a symmetric gap would attach it equally to both neighbours.
+ * A section is separated by SPACE and by nothing else — §B.4 tier 1, the first-choice device.
+ *
+ * The hairline that used to sit here as well has been removed: spending both on one boundary is two
+ * devices where the rule allows one, and the pair reads as heavier than either. What carries the
+ * separation instead is the ASYMMETRY (§B.4.1) — a large gap above the heading and a small one below
+ * it attaches the heading to what it introduces, where a symmetric gap would attach it equally to
+ * both neighbours and leave the reader to guess which side it belongs to.
+ *
+ * `scroll-margin-block-start` clears the pinned chrome — the top bar and the middle-nav header band
+ * that carries the progress bar — so a plain `#psu-budget` in the address bar lands correctly with no
+ * JavaScript at all. The rail's own offset-aware jump is the refinement; this is the floor beneath it,
+ * and the two share one expression so they cannot drift apart.
  */
 .psu-section {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
-	padding-block-start: var(--space-6);
-	border-block-start: var(--hairline);
+	padding-block-start: var(--space-7);
+	scroll-margin-block-start: calc(
+		var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4)
+	);
 }
 .psu-section:first-of-type {
-	padding-block-start: 0;
-	border-block-start: none;
+	padding-block-start: var(--space-4);
 }
 .psu-section__head {
 	display: flex;
@@ -496,6 +546,24 @@
 .psu-add:hover {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
+/* A secondary add — a step, a named role — sits inside a field and steps down accordingly. */
+.psu-add--sm {
+	align-self: flex-start;
+	padding: var(--space-1) var(--space-3);
+	font-size: var(--text-xs);
+}
+/*
+ * Ink and border recede TOGETHER rather than the whole box being washed out, so the label stays
+ * legible enough to read the state from. `pointer-events` is deliberately not cancelled: it would
+ * cancel the `not-allowed` cursor sitting beside it, and the control already refuses on its own.
+ */
+.psu-add:disabled,
+.psu-add[data-disabled] {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	border-color: color-mix(in srgb, var(--outline) var(--fld-disabled-mix), transparent);
+	background: transparent;
+	cursor: not-allowed;
+}
 
 @media (hover: none) {
 	.psu-stage__grip,
@@ -514,6 +582,101 @@
 	.psu-adv__mark {
 		transition: none;
 	}
+}
+/* #endregion */
+
+/* #region Repeating rows */
+/*
+ * A list of editable rows — a stage's task checklist, its named roles, the project's reference files.
+ *
+ * The rows carry NO contour of their own: each one is a control beside its own remove button inside a
+ * field that is already labelled, so a box around every row would be the card-in-card §B.4 forbids
+ * and would draw a boundary the eye does not need. Separation is the row gap.
+ */
+.psu-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.psu-rows__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.psu-rows__row > :first-child {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+/* A row of several controls wraps rather than crushing the name field to nothing on a narrow column. */
+.psu-rows__row--wrap {
+	flex-wrap: wrap;
+}
+.psu-rows__grow {
+	flex: 1 1 12rem;
+	min-inline-size: 0;
+}
+
+/*
+ * One attached file. The size is inline middot-adjacent metadata in the secondary ink, NOT a chip
+ * (§B.11): it is not actionable, and containing it would promise an interaction the row does not have.
+ * The remove button is the only control here and is the only thing that reads as one.
+ */
+.psu-file {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	padding-block: var(--space-1);
+}
+.psu-file__glyph {
+	flex: none;
+	color: var(--text-secondary);
+}
+.psu-file__name {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+.psu-file__meta {
+	flex: none;
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* A row of add affordances, wrapping before either of them is crushed. */
+.psu-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/*
+ * The file input behind the Upload label. Visually hidden rather than `display: none`, because a
+ * removed input is not focusable and the label would then be unreachable by keyboard.
+ */
+.psu-visually-hidden {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+.psu-add:focus-within {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 /* #endregion */
 

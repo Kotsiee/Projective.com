@@ -1,8 +1,10 @@
 import {
+	blankStage,
 	type BoardStageRef,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
-	DEFAULT_STAGE_SETUP,
+	normaliseSeats,
+	type ProjectAttachment,
 	type ProjectDetail,
 	type ProjectFormat,
 	type ProjectRoleSetup,
@@ -151,31 +153,79 @@ function budgetFromLabel(label: string | null): number | null {
 // #endregion
 
 // #region Stages and roles
+/** The checklist vocabulary a derived stage's default tasks are drawn from. */
+const TASK_SETS = [
+	["Agree the scope in writing", "Share references", "Book the kickoff"],
+	["Draft the first pass", "Review internally", "Send for feedback"],
+	["Build the components", "Write the handover notes"],
+	["Run the test round", "Log and triage the findings", "Ship the fixes"],
+] as const;
+
+/** The file kinds a derived stage accepts. An EMPTY entry is the permissive "any", not an omission. */
+const FILE_KIND_SETS = [
+	[],
+	["image", "document"],
+	["design"],
+	["video", "image"],
+] as const;
+
+/** The role vocabulary a derived stage's staffing rows are drawn from. */
+const STAGE_ROLE_NAMES = [
+	"Lead designer",
+	"Frontend engineer",
+	"Copywriter",
+	"Motion designer",
+] as const;
+
 /**
  * Project a board stage onto its setup row.
  *
  * `unitPriceCents` and `description` are carried across unchanged — they are the same columns the
- * board reads — while `milestone` and `skills` are derived, because the board projection has no
- * counterpart for either. Both are seeded on the stage ID, so a stage keeps its delivery note across
- * every render rather than acquiring a new one each time the page is drawn.
+ * board reads — while everything the board projection has no counterpart for is DERIVED from the stage
+ * id, so a stage keeps its delivery note, its checklist and its seat count across every render rather
+ * than acquiring new ones each time the page is drawn (the hydration contract this package keeps).
  *
- * Everything the board has no counterpart for at all — the checklist, the seat cap, the file policy,
- * the schedule — comes from {@link DEFAULT_STAGE_SETUP}, which is the create payload's OWN defaults.
- * That is deliberately not a set of plausible values seeded from the slug: a fixture that invented a
- * seat cap or a deadline would describe configuration its owner never chose, and would tick the
- * corresponding wizard hint off against a decision nobody took. Spread FIRST so a derived field can
- * never be silently overwritten by a default of the same name.
+ * Built over {@link blankStage} rather than as a fresh literal: the SSOT owns what an unconfigured
+ * stage looks like, so a field added there arrives here already carrying its intended default instead
+ * of failing this file's compile and being answered with whatever the author guessed.
  */
 function toStageSetup(stage: BoardStageRef): StageSetup {
+	const seats = normaliseSeats(
+		hash(`${stage.id}:capacity`) % 3 === 0 ? "unlimited" : "limited",
+		1 + (hash(`${stage.id}:seats`) % 6),
+	);
 	return {
-		...DEFAULT_STAGE_SETUP,
-		id: stage.id,
-		name: stage.name,
-		order: stage.order,
+		...blankStage(stage.id, stage.name, stage.order),
 		description: stage.description,
 		unitPriceCents: stage.unitPriceCents,
 		milestone: pick(MILESTONES, `${stage.id}:milestone`),
 		skills: [...pick(SKILLS, `${stage.id}:skills`)],
+		tasks: pick(TASK_SETS, `${stage.id}:tasks`).map((text, index) => ({
+			id: `task-${stage.id}-${index + 1}`,
+			text,
+		})),
+		// The FIRST stage of a run cannot wait for a predecessor it does not have, so it is the one
+		// stage whose dependency is a fact rather than a seeded choice.
+		dependency: stage.order === 0
+			? "parallel"
+			: (hash(`${stage.id}:dependency`) % 4 === 0 ? "parallel" : "sequential"),
+		durationDays: 3 + (hash(`${stage.id}:duration`) % 18),
+		capacity: seats.capacity,
+		seatCount: seats.seatCount,
+		roles: seats.capacity === "limited"
+			? [{
+				id: `stagerole-${stage.id}-1`,
+				name: pick(STAGE_ROLE_NAMES, `${stage.id}:role`),
+				quantity: seats.seatCount ?? 1,
+				// Priced from the stage's own per-ticket rate rather than from a second seeded number,
+				// so the role budget and the stage price cannot describe two different engagements.
+				budgetCents: stage.unitPriceCents,
+			}]
+			: [],
+		allowedFileKinds: [...pick(FILE_KIND_SETS, `${stage.id}:kinds`)],
+		// `null` INHERITS the project's term, which is the honest answer for most stages; a derived
+		// override exists on a minority so the three-valued control is reachable in the stub.
+		ndaRequired: hash(`${stage.id}:nda`) % 5 === 0 ? true : null,
 	};
 }
 
@@ -204,6 +254,39 @@ function stagesFor(
 ): StageSetup[] {
 	if (structure === "single_task" || row.totalStages === 0) return [];
 	return stages.map(toStageSetup);
+}
+
+/** The reference-file vocabulary a derived attachment list is drawn from. */
+const ATTACHMENT_NAMES = [
+	"creative-brief.pdf",
+	"brand-guidelines.pdf",
+	"reference-board.png",
+	"scope-of-work.docx",
+	"tone-of-voice.md",
+] as const;
+
+/**
+ * The reference files a project carries.
+ *
+ * Derived from the slug rather than the format, because a brief is something the CLIENT attached and
+ * not something the engagement's shape implies. A draft gets none: an attachment list is one of the
+ * things the setup surface exists to collect, so a freshly drafted project arriving with files
+ * already on it would describe work its owner never did.
+ *
+ * Sizes are derived too, so the size column is exercised — but a single entry is left `null` on
+ * purpose, because "the store has not reported one" is a real state the row has to render.
+ */
+function attachmentsFor(row: ProjectSummary): ProjectAttachment[] {
+	if (row.status === "draft") return [];
+	const count = 1 + (hash(`${row.slug}:attachments`) % 3);
+	return Array.from({ length: count }, (_unused, index) => {
+		const seed = hash(`${row.slug}:attachment:${index}`);
+		return {
+			id: `attachment-${row.slug}-${index + 1}`,
+			name: ATTACHMENT_NAMES[(seed + index) % ATTACHMENT_NAMES.length],
+			sizeBytes: seed % 7 === 0 ? null : 24_000 + (seed % 4_000_000),
+		};
+	});
 }
 
 /** The vocabulary a derived Direct Deliverable role name is drawn from. */
@@ -251,15 +334,19 @@ function rolesFor(structure: ProjectStructure, slug: string): ProjectRoleSetup[]
  * describe, and refusing it would make the Details surface unreachable for a project that has only
  * just been drafted.
  */
-export function findProjectSetup(slug: string): ProjectSetup | null {
-	const row: ProjectSummary | undefined = findProject(slug);
-	const detail = findProjectDetail(slug);
+export function findProjectSetup(projectKey: string): ProjectSetup | null {
+	const row: ProjectSummary | undefined = findProject(projectKey);
+	const detail = findProjectDetail(projectKey);
 	if (!row || !detail) return null;
 
-	const board = findBoardPage({ projectId: slug, view: "stages" });
+	// Addressed by the row's OWN slug rather than by the segment the caller arrived on: the board
+	// fixtures are slug-keyed, and passing a uuid through would resolve a different (or no) pipeline
+	// than the one this project's own stage list is built from.
+	const board = findBoardPage({ projectId: row.slug, view: "stages" });
 	const structure = structureOf(row.slug, row.format);
 
 	return reconcileSetup({
+		id: row.id,
 		slug: row.slug,
 		title: row.title,
 		format: row.format,
@@ -267,6 +354,7 @@ export function findProjectSetup(slug: string): ProjectSetup | null {
 		sessionKind: sessionKindOf(row.format, detail),
 		status: row.status,
 		description: detail.description,
+		attachments: attachmentsFor(row),
 		budget: {
 			...DEFAULT_PROJECT_BUDGET,
 			amountCents: budgetFromLabel(row.budgetLabel),

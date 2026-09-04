@@ -1,4 +1,5 @@
 import {
+	blankStage,
 	type BoardCard,
 	type BoardPage,
 	type BoardStageRef,
@@ -6,12 +7,12 @@ import {
 	type ChatMessage,
 	type CommitTicket,
 	type CreateSubmission,
-	DEFAULT_STAGE_SETUP,
 	formatTicketMoney,
 	type MessageAttachment,
 	type MessagePage,
 	type MessageSender,
 	type MoveTicket,
+	normaliseSeats,
 	type ProjectDetail,
 	type ProjectFeedPayload,
 	type ProjectOverview,
@@ -111,16 +112,46 @@ export interface StoredSubmission {
 
 /** Everything one viewer has written, partitioned by the read that has to fold it back. */
 interface OwnerBucket {
-	/** Configuration edits, keyed by project slug. */
+	/**
+	 * Configuration edits, keyed by the project's CANONICAL uuid.
+	 *
+	 * It used to be keyed by slug, and the two were the same string only because every `/projects`
+	 * route carried a slug. Now that the Quick-Init modal navigates to a uuid, a store keyed by
+	 * whatever segment the caller happened to arrive on would answer a save made through one address
+	 * and lose it through the other — the owner's edit vanishing from the page that made it.
+	 *
+	 * Writers therefore resolve the row first and key on its `id`; readers go through
+	 * {@link storedSetupFor}, which tries every identifier the project answers to.
+	 */
 	setups: Map<string, StoredSetup>;
+	/**
+	 * Projects CREATED through the stub path, keyed by their minted uuid.
+	 *
+	 * Held apart from `setups` because the two are different kinds of fact: a `StoredSetup` is a patch
+	 * that folds OVER a fixture, and a created project has no fixture to fold over. Without this map
+	 * the Quick-Init modal would mint an id, navigate to it, and land on a 404 — the create would
+	 * report success and produce nothing anybody can open.
+	 *
+	 * Keyed by uuid rather than by slug for the same reason `setups` is: the modal navigates to the
+	 * canonical id, a title-derived slug moves on the first rename, and a store keyed by the mutable
+	 * half would lose a project through the very address its owner just edited.
+	 */
+	created: Map<string, StoredProject>;
+	/**
+	 * Every non-canonical identifier a project answers to, pointing at its uuid.
+	 *
+	 * One entry per slug a writer has seen. It exists because a reader does not always hold enough to
+	 * resolve the canonical id for itself — {@link overlayBoardPage} gets a bare routed segment and
+	 * this module must not reach into the fixture corpus to turn it into an id — so the writer, which
+	 * DOES hold both, records the mapping when it stores the edit.
+	 */
+	aliases: Map<string, string>;
 	/** Whole replacement cards, keyed by project id then ticket id. */
 	cards: Map<string, Map<string, BoardCard>>;
 	/** Sent messages, keyed by {@link channelKey}, oldest first. */
 	messages: Map<string, ChatMessage[]>;
 	/** Created submission units, keyed by project id, newest first. */
 	submissions: Map<string, StoredSubmission[]>;
-	/** Engagements this viewer created in stub mode, keyed by slug, newest first. */
-	created: Map<string, StoredProject>;
 }
 
 /**
@@ -145,10 +176,11 @@ function bucketFor(owner: string): OwnerBucket {
 	if (existing) return existing;
 	const fresh: OwnerBucket = {
 		setups: new Map(),
+		created: new Map(),
+		aliases: new Map(),
 		cards: new Map(),
 		messages: new Map(),
 		submissions: new Map(),
-		created: new Map(),
 	};
 	buckets.set(owner, fresh);
 	return fresh;
@@ -198,11 +230,12 @@ export function resetWriteStore(): void {
  */
 export function mergeSetupPatch(
 	owner: string,
-	slug: string,
+	project: ProjectIdentity,
 	patch: ProjectSetupPatch,
 ): ProjectSetupPatch {
 	const bucket = bucketFor(owner);
-	const current = bucket.setups.get(slug) ?? { patch: {}, archivedAt: null };
+	const projectId = canonicalise(bucket, project);
+	const current = bucket.setups.get(projectId) ?? { patch: {}, archivedAt: null };
 	const merged: ProjectSetupPatch = {
 		...current.patch,
 		...patch,
@@ -213,7 +246,7 @@ export function mergeSetupPatch(
 			? { ...current.patch.rules, ...patch.rules }
 			: undefined,
 	};
-	bucket.setups.set(slug, { ...current, patch: merged });
+	bucket.setups.set(projectId, { ...current, patch: merged });
 	return merged;
 }
 
@@ -223,17 +256,116 @@ export function mergeSetupPatch(
  * Idempotent on purpose: archiving an already-archived project returns the ORIGINAL instant rather
  * than restamping it, so a double-press cannot rewrite when the decision was taken.
  */
-export function recordProjectArchive(owner: string, slug: string, at: string): string {
+export function recordProjectArchive(
+	owner: string,
+	project: ProjectIdentity,
+	at: string,
+): string {
 	const bucket = bucketFor(owner);
-	const current = bucket.setups.get(slug) ?? { patch: {}, archivedAt: null };
+	const projectId = canonicalise(bucket, project);
+	const current = bucket.setups.get(projectId) ?? { patch: {}, archivedAt: null };
 	const archivedAt = current.archivedAt ?? at;
-	bucket.setups.set(slug, { ...current, archivedAt });
+	bucket.setups.set(projectId, { ...current, archivedAt });
 	return archivedAt;
 }
 
+/**
+ * The pair a writer holds: an engagement's canonical id and the readable address beside it.
+ *
+ * Taken as a pair rather than as one key because the store has to be indexed by something stable
+ * (the uuid) while readers arrive holding whichever identifier their link carried. A writer that
+ * passed only the segment it was routed with would key the same project two different ways depending
+ * on which link the owner happened to follow.
+ */
+export interface ProjectIdentity {
+	id: string;
+	slug: string;
+}
+
+/**
+ * The canonical key an edit is stored under, recording the readable alias on the way.
+ *
+ * Falls back to the slug when a caller has no id, so a projection that predates the id field stores
+ * SOMETHING rather than under the empty string — where every such project would share one entry and
+ * one owner's edits would appear on another's project.
+ */
+function canonicalise(bucket: OwnerBucket, project: ProjectIdentity): string {
+	const id = project.id || project.slug;
+	if (project.slug && project.slug !== id) bucket.aliases.set(project.slug, id);
+	return id;
+}
+
+/**
+ * The edits stored against a project, found under ANY of the identifiers it answers to.
+ *
+ * The reason this takes a list: writes are keyed by the canonical uuid, and a reader holds whichever
+ * identifier the link it followed carried. Before every `/projects` route became uuid-addressable the
+ * two were always the same string, so a single-key lookup was correct by accident; now a reader
+ * arriving on a slug would find nothing stored under it and the owner's last save would silently
+ * vanish from the very page that made it.
+ *
+ * The alias table is the second half of that, and it is what serves a reader holding ONLY a routed
+ * segment — a board page carries no slug beside its `projectId` and this module must not reach into
+ * the fixture corpus to resolve one.
+ *
+ * `undefined` entries are tolerated so a caller can pass an optional field without guarding it.
+ */
+function storedSetupFor(
+	owner: string,
+	keys: readonly (string | undefined)[],
+): StoredSetup | undefined {
+	const bucket = peekBucket(owner);
+	if (!bucket) return undefined;
+	for (const key of keys) {
+		if (!key) continue;
+		const found = bucket.setups.get(key) ??
+			bucket.setups.get(bucket.aliases.get(key) ?? "");
+		if (found) return found;
+	}
+	return undefined;
+}
+
 /** When this viewer archived the project through the stub path, or `null`. */
-export function storedArchivedAt(owner: string, slug: string): string | null {
-	return peekBucket(owner)?.setups.get(slug)?.archivedAt ?? null;
+export function storedArchivedAt(owner: string, ...keys: (string | undefined)[]): string | null {
+	return storedSetupFor(owner, keys)?.archivedAt ?? null;
+}
+// #endregion
+
+// #region Created projects
+/**
+ * Record a project minted through the stub create path.
+ *
+ * Stored WHOLE rather than as a patch, for the same reason a committed ticket card is: there is no
+ * fixture underneath it for a diff to be re-applied against, so the projection the service just
+ * returned is the only thing that can make the next read agree with the response.
+ */
+export function recordCreatedProject(owner: string, setup: ProjectSetup): void {
+	bucketFor(owner).created.set(setup.id, { id: setup.id, setup, createdAt: Date.now() });
+}
+
+/**
+ * A project this viewer created through the stub path, addressed by uuid OR slug.
+ *
+ * Both, because the caller arrives on whichever identifier the link they followed carried, and the
+ * map is keyed by the canonical one. The slug scan runs only when the uuid lookup misses, so the
+ * common case is still a single map hit.
+ *
+ * Scoped to the CREATING viewer, like every other read on this store. That is not an authorisation
+ * decision — RLS is the real gate on the live path — but it does mean a stub draft is invisible to
+ * anybody else, which is the correct shape for a project that exists only in one process's memory.
+ */
+export function storedCreatedProject(owner: string, projectKey: string): ProjectSetup | undefined {
+	return findCreated(peekBucket(owner), projectKey)?.setup;
+}
+
+/** Whether a slug is already taken by a project this viewer created — the stub uniqueness check. */
+export function stubSlugTaken(owner: string, slug: string): boolean {
+	const bucket = peekBucket(owner);
+	if (!bucket) return false;
+	for (const record of bucket.created.values()) {
+		if (record.setup.slug === slug) return true;
+	}
+	return false;
 }
 // #endregion
 
@@ -327,40 +459,22 @@ export function submissionCount(owner: string, projectId: string): number {
 
 // #region Created engagements
 /**
- * Record an engagement drafted through the stub path.
+ * The drafted record a reference names — by uuid OR by slug.
  *
- * Stub mode is the default (`PROJECTS_BACKEND_LIVE` ships off), and without this the create modal
- * returned a slug, navigated there, and rendered "Project not found" — the exact failure the live
- * path exists to fix, reproduced one layer up. So the stub persists too, per-process and
- * per-viewer, and the reads below fold it in.
- */
-export function recordCreatedProject(
-	owner: string,
-	id: string,
-	setup: ProjectSetup,
-	createdAt: number,
-): void {
-	bucketFor(owner).created.set(setup.slug, { id, setup, createdAt });
-}
-
-/**
- * The drafted record a reference names — by slug OR by uuid.
+ * Both, because the live path resolves both: `resolveProjectRef` tries the slug and falls back to the
+ * primary key, so a caller holding either half of what the create returned can open the project. A
+ * store that answered only one of them would 404 in the mode that ships by default, and the two
+ * branches would then disagree about what an identifier is.
  *
- * Both, because the live path resolves both: `resolveProjectRef` tries the slug first and falls back
- * to the primary key, so a caller holding the `id` half of what the create returned can open the
- * project. Keying the store by slug alone made that same caller read a 404 in the mode that ships by
- * default, and the two branches would then disagree about what an identifier is.
- *
- * The slug map is consulted first and the id scan only runs when it misses, so the common case stays
- * a single lookup; a uuid is never a legal slug (`^[a-z0-9-]{1,96}$` admits one, but nothing mints a
- * project whose address is a uuid), so the two keyspaces cannot collide onto one record.
+ * The uuid map is consulted first and the slug scan only runs when it misses, so the common case —
+ * the address the modal actually navigates to — stays a single lookup.
  */
 function findCreated(bucket: OwnerBucket | undefined, ref: string): StoredProject | undefined {
 	if (!bucket) return undefined;
-	const bySlug = bucket.created.get(ref);
-	if (bySlug) return bySlug;
+	const byId = bucket.created.get(ref);
+	if (byId) return byId;
 	for (const record of bucket.created.values()) {
-		if (record.id === ref) return record;
+		if (record.setup.slug === ref) return record;
 	}
 	return undefined;
 }
@@ -393,8 +507,7 @@ export function storedCreatedProjects(actor?: ReadActor): { id: string; setup: P
  * owner reads after a save is computed by exactly the code that computed it before one.
  */
 export function overlaySetup(base: ProjectSetup, actor?: ReadActor): ProjectSetup {
-	const bucket = peekBucket(writeOwnerOf(actor));
-	const stored = bucket?.setups.get(base.slug);
+	const stored = storedSetupFor(writeOwnerOf(actor), [base.id, base.slug]);
 	if (!stored) return base;
 	// The archive travels with the patch. It was recorded and then read by nothing, so archiving a
 	// project in stub mode returned "Project archived.", navigated the owner to the feed, and left it
@@ -410,13 +523,14 @@ export function overlaySetup(base: ProjectSetup, actor?: ReadActor): ProjectSetu
  * drafted and then configured reads back as configured rather than as it was named.
  */
 export function createdSetup(ref: string, actor?: ReadActor): ProjectSetup | null {
-	const bucket = peekBucket(writeOwnerOf(actor));
-	const record = findCreated(bucket, ref);
+	const owner = writeOwnerOf(actor);
+	const record = findCreated(peekBucket(owner), ref);
 	if (!record) return null;
-	// Keyed on the record's OWN slug, never on the reference that found it: a later edit is stored
-	// against the canonical address, so looking the patch up by a uuid the caller happened to use
-	// would read back an unedited project through one identifier and an edited one through the other.
-	const stored = bucket?.setups.get(record.setup.slug);
+	// Through {@link storedSetupFor} with BOTH of the record's own identifiers, never the reference
+	// that found it and never one of the two alone. Edits are keyed by the canonical uuid, so a lookup
+	// by slug reads back an UNEDITED project — which is how an archived draft went on appearing in the
+	// feed after the archive had been recorded perfectly well one map away.
+	const stored = storedSetupFor(owner, [record.setup.id, record.setup.slug]);
 	if (!stored) return record.setup;
 	return reconcileSetup(record.setup, { ...stored.patch, archivedAt: stored.archivedAt });
 }
@@ -555,9 +669,12 @@ const TYPE_LABELS: Record<ProjectSetup["format"], string> = {
  * A single named question rather than a `storedArchivedAt(...) !== null` at each call site, because
  * "is it archived" is asked by the feed, the item read and the overview, and three copies of the same
  * comparison is three chances for one of them to keep listing a row the others have dropped.
+ *
+ * Variadic for the reason {@link storedSetupFor} states: an archive recorded through one identifier
+ * has to be visible through the other, or a soft-deleted project stays openable on half its own links.
  */
-export function isStoredArchived(slug: string, actor?: ReadActor): boolean {
-	return storedArchivedAt(writeOwnerOf(actor), slug) !== null;
+export function isStoredArchived(actor: ReadActor | undefined, ...keys: string[]): boolean {
+	return storedArchivedAt(writeOwnerOf(actor), ...keys) !== null;
 }
 
 /**
@@ -571,7 +688,7 @@ export function overlaySummary(
 	summary: ProjectSummary,
 	actor?: ReadActor,
 ): ProjectSummary | null {
-	const stored = peekBucket(writeOwnerOf(actor))?.setups.get(summary.slug);
+	const stored = storedSetupFor(writeOwnerOf(actor), [summary.id, summary.slug]);
 	if (!stored) return summary;
 	if (stored.archivedAt) return null;
 	const { patch } = stored;
@@ -624,10 +741,10 @@ export function overlayFeed(page: ProjectFeedPayload, actor?: ReadActor): Projec
 /** Fold a stored edit's identity fields over a derived {@link ProjectOverview}. */
 export function overlayOverview(
 	overview: ProjectOverview,
-	slug: string,
+	projectKey: string,
 	actor?: ReadActor,
 ): ProjectOverview {
-	const stored = peekBucket(writeOwnerOf(actor))?.setups.get(slug);
+	const stored = storedSetupFor(writeOwnerOf(actor), [overview.id, overview.slug, projectKey]);
 	if (!stored) return overview;
 	const { patch } = stored;
 	return {
@@ -651,7 +768,7 @@ export function overlayOverview(
  * a room.
  */
 export function overlayDetail(detail: ProjectDetail, actor?: ReadActor): ProjectDetail {
-	const stored = peekBucket(writeOwnerOf(actor))?.setups.get(detail.slug);
+	const stored = storedSetupFor(writeOwnerOf(actor), [detail.id, detail.slug]);
 	if (!stored) return detail;
 	const { patch } = stored;
 	return {
@@ -675,7 +792,9 @@ export function overlayBoardPage(page: BoardPage, actor?: ReadActor): BoardPage 
 	const bucket = peekBucket(writeOwnerOf(actor));
 	if (!bucket) return page;
 	const stored = bucket.cards.get(page.projectId);
-	const setup = bucket.setups.get(page.projectId)?.patch;
+	// Through the resolver, because a board page carries only the routed segment: the alias table is
+	// what lets a board opened by slug still see stages added through a save made by uuid.
+	const setup = storedSetupFor(writeOwnerOf(actor), [page.projectId])?.patch;
 	if (!stored?.size && !setup?.stages?.length) return page;
 
 	// A stage board is addressed by its channel id, and the fixture corpus mints a stage and its room
@@ -875,22 +994,6 @@ function mintId(prefix: string): string {
 }
 
 /**
- * Drop the keys a partial explicitly set to `undefined`.
- *
- * Object spread does NOT skip an `undefined` value — `{ ...base, ...{ x: undefined } }` overwrites
- * `x` with `undefined` — so a layered merge that folds a partial over a base would blank every field
- * the partial happens to declare and not fill. That is precisely how a PATCH sending one changed
- * price comes to erase the scope prose beside it.
- */
-function definedOnly<T extends object>(value: T): Partial<T> {
-	const out: Record<string, unknown> = {};
-	for (const [key, entry] of Object.entries(value)) {
-		if (entry !== undefined) out[key] = entry;
-	}
-	return out as Partial<T>;
-}
-
-/**
  * Turn the PATCH body into the store's patch shape, resolving each partial row against the base.
  *
  * The wire lets a stage arrive three ways and the difference is entirely in its id: absent or
@@ -912,25 +1015,43 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 	if (input.budget !== undefined) patch.budget = input.budget;
 	if (input.rules !== undefined) patch.rules = input.rules;
 
+	if (input.attachments !== undefined) patch.attachments = input.attachments;
+
 	if (input.stages) {
 		const byId = new Map(base.stages.map((stage) => [stage.id, stage]));
 		patch.stages = input.stages.map((stage, index) => {
 			const existing = stage.id ? byId.get(stage.id) : undefined;
-			// Three layers, and the order is the whole rule: the create payload's defaults underneath (so
-			// a stage the form has just added carries the same values a live create would write), the
-			// stored row over them (so an UPDATE preserves what the section did not send), and the
-			// patch's own fields on top. A patch spread that mentioned each field by hand would grow a
-			// hole every time the schema does, and the hole is invisible — the stage saves, and the
-			// field it dropped reads back as the default.
-			const merged: StageSetup = {
-				...DEFAULT_STAGE_SETUP,
-				...existing,
-				...definedOnly(stage),
-				id: existing?.id ?? mintId("stage"),
-				name: stage.name ?? existing?.name ?? `Stage ${index + 1}`,
+			// The base for a stage the client is CREATING is the SSOT's own blank, so a field added to
+			// `StageSetup` arrives here already carrying its intended default rather than being answered
+			// with whatever this file happened to guess.
+			const base = existing ?? blankStage(mintId("stage"), `Stage ${index + 1}`, index);
+			// The seat pair is normalised together because "unlimited with a count" is a state the schema
+			// forbids and this fold could otherwise construct — a payload that moves only one half must
+			// not leave the other describing a different stage.
+			const seats = normaliseSeats(
+				stage.capacity ?? base.capacity,
+				stage.seatCount !== undefined ? stage.seatCount : base.seatCount,
+			);
+			return {
+				...base,
+				id: base.id,
+				name: stage.name ?? base.name,
 				order: index,
+				description: stage.description ?? base.description,
+				unitPriceCents: stage.unitPriceCents !== undefined
+					? stage.unitPriceCents
+					: base.unitPriceCents,
+				milestone: stage.milestone ?? base.milestone,
+				skills: stage.skills ?? base.skills,
+				tasks: stage.tasks ?? base.tasks,
+				dependency: stage.dependency ?? base.dependency,
+				durationDays: stage.durationDays !== undefined ? stage.durationDays : base.durationDays,
+				capacity: seats.capacity,
+				seatCount: seats.seatCount,
+				roles: stage.roles ?? base.roles,
+				allowedFileKinds: stage.allowedFileKinds ?? base.allowedFileKinds,
+				ndaRequired: stage.ndaRequired !== undefined ? stage.ndaRequired : base.ndaRequired,
 			};
-			return merged;
 		});
 	}
 

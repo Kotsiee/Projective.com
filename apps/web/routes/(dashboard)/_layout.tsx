@@ -79,17 +79,26 @@ function sectionLane(): ComponentChildren {
 }
 
 /**
- * The routed project slug when the path is a SPECIFIC engagement (`/projects/{slug}` or deeper), or
- * `null` for the feed root. Drives the lane's feed-vs-sidebar switch — a single open engagement
- * replaces the feed with the contextual Project Details sidebar. (`/projects/create` is retired — the
- * standalone page was replaced by the in-lane Project Creation Modal; `create` is still mapped to the
- * feed defensively so a stale link keeps the feed lane rather than a project sidebar.)
+ * The routed project id when the path is a SPECIFIC engagement (`/projects/{projectId}` or deeper),
+ * or `null` for the feed root. Drives the lane's feed-vs-sidebar switch — a single open engagement
+ * replaces the feed with the contextual Project Details sidebar.
+ *
+ * The segment is treated as an OPAQUE identifier and never parsed: Quick-Init navigates to the row's
+ * uuid, while every link minted before that (and every readable share link) carries a slug, so both
+ * reach this resolver and the downstream reads accept either. Validating the shape here would break
+ * exactly half of the addresses in circulation for no gain — the read is what decides whether it
+ * names anything.
+ *
+ * `create` is still mapped to the feed defensively. The static `/projects/create` shim (a 308 to
+ * `/projects`) means that path should never reach here at all, but if the shim is ever removed this
+ * is what keeps the feed lane rendering beside the miss instead of a project sidebar for a project
+ * called "create".
  */
-function projectSlugOf(pathname: string): string | null {
-	const segs = pathname.split("/").filter(Boolean); // ["projects", slug, ...]
+function projectIdOf(pathname: string): string | null {
+	const segs = pathname.split("/").filter(Boolean); // ["projects", projectId, ...]
 	if (segs[0] !== "projects" || segs.length < 2) return null;
-	const slug = segs[1];
-	return slug === "create" ? null : slug;
+	const projectId = segs[1];
+	return projectId === "create" ? null : projectId;
 }
 
 /**
@@ -137,8 +146,9 @@ async function middleNavHeaderFor(
 
 /**
  * Resolve the middle-nav lane for a request: the contextual Project Details sidebar on a specific
- * `/projects/{slug}`, the projects feed on the `/projects` root (+ `/projects/create`), else the
- * default section switcher.
+ * `/projects/{projectId}`, the projects feed on the `/projects` root, else the default section
+ * switcher. The feed lane also hosts the Quick-Init create modal, which is why the header's Create
+ * menu and the public footer both point at `/projects` rather than at a create route.
  */
 async function laneFor(
 	url: URL,
@@ -177,14 +187,19 @@ async function laneFor(
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();
 
-	const slug = projectSlugOf(url.pathname);
-	if (slug) {
-		const { detail } = await resolveProjectDetail(slug, context, actor);
+	const projectId = projectIdOf(url.pathname);
+	if (projectId) {
+		const { detail } = await resolveProjectDetail(projectId, context, actor);
 		// The SSR archetype baseline (from the engagement format); the island re-derives it live from
 		// the dev Context Switcher so a simulated session swaps the sidebar body without a reload.
 		const sessionKind = detail ? resolveSessionKind(detail.format, null) : "none";
 		return (
-			<ProjectSidebar detail={detail} slug={slug} path={url.pathname} sessionKind={sessionKind} />
+			<ProjectSidebar
+				detail={detail}
+				slug={projectId}
+				path={url.pathname}
+				sessionKind={sessionKind}
+			/>
 		);
 	}
 
@@ -196,6 +211,7 @@ async function laneFor(
 			activeContextId={feed.activeContextId}
 			activeContextLabel={feed.activeContextLabel}
 			canOfferServices={feed.canOfferServices}
+			defaultCurrency={feed.defaultCurrency}
 			path={url.pathname}
 		/>
 	);

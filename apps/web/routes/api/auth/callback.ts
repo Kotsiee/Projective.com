@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readRedirect, withRedirect } from "@features/auth/core/redirect.ts";
+import { joinCompletionTarget } from "@features/auth/core/auth-routing.ts";
 import { oauthStoreCookies, readCookies, sessionSetCookies } from "@web/utils/auth-cookies.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
@@ -44,13 +45,13 @@ export const handler = define.handlers({
 		const cookies = [...clearVerifier, ...sessionSetCookies(result.session)];
 
 		if (result.isNewUser) {
-			const params = new URLSearchParams({ oauth: "google", redirectTo });
-			const id = result.identity;
-			if (id?.firstName) params.set("firstName", id.firstName);
-			if (id?.lastName) params.set("lastName", id.lastName);
-			if (id?.email) params.set("email", id.email);
-			if (id?.avatar) params.set("avatar", id.avatar);
-			return redirect(`/join?${params.toString()}`, cookies);
+			// Through the shared builder, because this is not the only place that address gets built:
+			// the dashboard guard sends the same identity back here if they abandon the form, and two
+			// hand-rolled copies of one URL is how the `oauth` marker goes missing from one of them.
+			return redirect(
+				joinCompletionTarget({ provider: "google", ...result.identity }, redirectTo),
+				cookies,
+			);
 		}
 
 		return redirect(redirectTo, cookies);

@@ -613,6 +613,18 @@
 				"--strictPort"
 			],
 			"port": 10173
+		},
+		{
+			"name": "web-projfix",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10273",
+				"--strictPort"
+			],
+			"port": 10273
 		}
 	]
 }

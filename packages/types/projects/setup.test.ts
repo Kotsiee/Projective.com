@@ -1,11 +1,10 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
-	createFormatToColumns,
+	blankStage,
+	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
-	DEFAULT_STAGE_SETUP,
-	effectiveVisibility,
-	hasStagesFor,
+	liveVisibilityFor,
 	previewReady,
 	type ProjectSetupPatch,
 	type ProjectSetupStep,
@@ -35,13 +34,15 @@ const base: ProjectSetupStepsInput = {
 	rules: DEFAULT_PROJECT_RULES,
 };
 
-const stage = {
-	...DEFAULT_STAGE_SETUP,
-	id: "stage-1",
-	name: "Concepts",
-	order: 0,
-	unitPriceCents: null as number | null,
-};
+/**
+ * A stage in its as-created state.
+ *
+ * Built from the SSOT's own {@link blankStage} rather than as a literal, so a field added to
+ * {@link StageSetupSchema} cannot leave this fixture behind. A hand-written literal here would fail
+ * to compile on every schema growth and tempt the next author to paste in a default the schema does
+ * not actually use — which is how a test comes to pin a shape the product never produces.
+ */
+const stage = blankStage("stage-1", "Concepts", 0);
 
 const role = {
 	id: "role-1",
@@ -275,7 +276,8 @@ Deno.test("reconcileSetup fills a defaulted, coherent setup from nothing", () =>
 	assertEquals(setup.viewerIsClient, false);
 	// A draft nobody has configured must not default to discoverable.
 	assertEquals(setup.rules.visibility, "invite_only");
-	assertEquals(setup.rules.ndaMode, "none");
+	assertEquals(setup.rules.ndaSource, "platform");
+	assertEquals(setup.rules.ndaRequired, false);
 	assertEquals(setup.rules.ndaDocumentId, null);
 	assertEquals(setup.budget.amountCents, null);
 });
@@ -285,13 +287,14 @@ Deno.test("a patch carrying one rule does not blank the others", () => {
 		{
 			slug: "rebrand",
 			title: "Rebrand",
-			rules: { ...DEFAULT_PROJECT_RULES, ndaRequired: true, ndaMode: "platform_standard" },
+			rules: { ...DEFAULT_PROJECT_RULES, ndaRequired: true, ndaSource: "platform" },
 		},
 		{ rules: { visibility: "public" } },
 	);
 	assertEquals(setup.rules.visibility, "public");
 	assertEquals(setup.rules.ndaRequired, true);
-	assertEquals(setup.rules.ndaMode, "platform_standard");
+	assertEquals(setup.rules.ndaSource, "platform");
+	assertEquals(setup.rules.ndaRequired, true);
 	assertEquals(setup.rules.timelinePreset, "sequential");
 });
 
@@ -323,158 +326,70 @@ Deno.test("reconcileSetup agrees with the standalone helpers on the same input",
 
 // #endregion
 
-// #region Format → columns
+/** `base` as a mutable patch — its arrays are `readonly` for `setupSteps`, which only reads them. */
+function patchOf(over: Partial<ProjectSetupPatch> = {}): ProjectSetupPatch {
+	return {
+		title: base.title,
+		format: base.format,
+		structure: base.structure,
+		description: base.description,
+		budget: base.budget,
+		rules: base.rules,
+		stages: [...base.stages],
+		roles: [...base.roles],
+		...over,
+	};
+}
 
-Deno.test("createFormatToColumns covers every offered shape, and the stage-less variant of each", () => {
-	// A Direct Deliverable is stage-less by definition, so the toggle cannot move it.
-	assertEquals(createFormatToColumns("direct_deliverable"), {
-		format: "one_off",
-		structure: "single_task",
-	});
-	assertEquals(createFormatToColumns("direct_deliverable", false), {
-		format: "one_off",
-		structure: "single_task",
-	});
-
-	// Turning stages off on a one-off IS a Direct Deliverable — the same engagement, reached from the
-	// two-option offer instead of a third format nobody has to learn.
-	assertEquals(createFormatToColumns("one_off", false), {
-		format: "one_off",
-		structure: "single_task",
-	});
-	assertEquals(createFormatToColumns("one_off", true), { format: "one_off", structure: "one_off" });
-
-	// A pipeline with stages off is one continuous stage, not a role-staffed engagement.
-	assertEquals(createFormatToColumns("pipeline", false), {
-		format: "pipeline",
-		structure: "single_stage",
-	});
-	assertEquals(createFormatToColumns("pipeline", true), {
-		format: "pipeline",
-		structure: "standard",
-	});
-});
-
-Deno.test("the hasStages parameter defaults to true, so a one-arg caller is unchanged", () => {
-	assertEquals(createFormatToColumns("one_off"), createFormatToColumns("one_off", true));
-	assertEquals(createFormatToColumns("pipeline"), createFormatToColumns("pipeline", true));
-});
-
-Deno.test("hasStagesFor is the read direction, and only single_task has none", () => {
-	assertEquals(hasStagesFor("standard"), true);
-	assertEquals(hasStagesFor("one_off"), true);
-	assertEquals(hasStagesFor("single_stage"), true);
-	assertEquals(hasStagesFor("single_task"), false);
-});
-
-Deno.test("hasStagesFor reads the stored structure, and does NOT recover the toggle", () => {
-	// The two are not inverses and must not be mistaken for a round trip. Turning stages off on a
-	// ONE-OFF removes them: the engagement becomes role-staffed, and the read direction says so. On a
-	// PIPELINE it collapses them to one continuous stage, which is still a stage — so the read
-	// direction answers `true` for something the author switched off, correctly. `hasStages` is a
-	// wizard control, and `structure_variation` is what the row actually is.
-	const stageless = createFormatToColumns("one_off", false);
-	assertEquals(stageless.structure, "single_task");
-	assertEquals(hasStagesFor(stageless.structure), false);
-
-	const collapsed = createFormatToColumns("pipeline", false);
-	assertEquals(collapsed.structure, "single_stage");
-	assertEquals(hasStagesFor(collapsed.structure), true);
-
-	for (const format of ["pipeline", "one_off", "direct_deliverable"] as const) {
-		for (const hasStages of [true, false]) {
-			const { structure } = createFormatToColumns(format, hasStages);
-			assertEquals(
-				hasStagesFor(structure),
-				structure !== "single_task",
-				`${format} / hasStages=${hasStages}`,
-			);
-		}
+// #region Publish intent versus live visibility
+Deno.test("a draft is unlisted whatever its owner intends", () => {
+	// The safety property, and the reason there are two fields at all. `liveVisibilityFor` does not
+	// consult the intent on a draft, does not consult readiness, and cannot be talked out of it by a
+	// payload — so no sequence of saves can put a half-written engagement on Explore.
+	for (const intent of ["public", "unlisted", "invite_only"] as const) {
+		assertEquals(liveVisibilityFor("draft", intent), "unlisted");
 	}
 });
 
-// #endregion
-
-// #region Effective visibility
-
-Deno.test("a project that has not met its required steps is stored unlisted, whatever it asked for", () => {
-	// This is the whole reason create writes `unlisted`: a freshly created project has satisfied
-	// nothing, so a `public` request must not put a half-written engagement on Explore.
-	const steps = setupSteps(base);
-	assertFalse(previewReady(steps));
-	assertEquals(effectiveVisibility("public", steps), "unlisted");
-	assertEquals(effectiveVisibility("invite_only", steps), "unlisted");
+Deno.test("publishing promotes the intent verbatim", () => {
+	assertEquals(liveVisibilityFor("active", "public"), "public");
+	assertEquals(liveVisibilityFor("active", "invite_only"), "invite_only");
+	// And a project pulled back to draft re-hides, rather than staying on Explore under a status that
+	// says it is no longer live.
+	assertEquals(liveVisibilityFor("draft", "public"), "unlisted");
 });
 
-Deno.test("a project that has met its required steps gets the visibility it asked for", () => {
-	const steps = setupSteps({
-		...base,
-		title: "Rebrand",
-		stages: [{ ...stage, unitPriceCents: 120_00 }],
-	});
-	assert(previewReady(steps));
-	assertEquals(effectiveVisibility("public", steps), "public");
-	assertEquals(effectiveVisibility("invite_only", steps), "invite_only");
-	assertEquals(effectiveVisibility("unlisted", steps), "unlisted");
+Deno.test("reconcileSetup re-derives liveVisibility and never folds it from a patch", () => {
+	const draft = reconcileSetup(patchOf({
+		status: "draft",
+		rules: { ...DEFAULT_PROJECT_RULES, visibility: "public" },
+	}));
+	assertEquals(draft.rules.visibility, "public");
+	assertEquals(draft.liveVisibility, "unlisted");
+
+	// A client asserting the row is already public is overruled, exactly as `completeness` is: the
+	// field is a function of the status and the intent, so a payload cannot make it disagree with the
+	// status sitting beside it in the same object.
+	const forged = reconcileSetup(
+		patchOf({ status: "draft" }),
+		{ liveVisibility: "public" } as never,
+	);
+	assertEquals(forged.liveVisibility, "unlisted");
+
+	// The same intent, once the status moves, is in effect.
+	const live = reconcileSetup(patchOf({
+		status: "active",
+		rules: { ...DEFAULT_PROJECT_RULES, visibility: "public" },
+	}));
+	assertEquals(live.liveVisibility, "public");
 });
 
-Deno.test("effective visibility is exactly the Preview gate, never a second rule", () => {
-	// Two gates that agree today are two gates that can disagree tomorrow.
-	const cases: ProjectSetupStepsInput[] = [
-		base,
-		{ ...base, title: "Rebrand" },
-		{ ...base, title: "Rebrand", stages: [stage] },
-		{ ...base, title: "Rebrand", stages: [{ ...stage, unitPriceCents: 1 }] },
-		{ ...base, format: "one_off", structure: "single_task", title: "Poster" },
-	];
-	for (const input of cases) {
-		const steps = setupSteps(input);
-		assertEquals(effectiveVisibility("public", steps) === "public", previewReady(steps));
-	}
+Deno.test("a created project's intent is public and is not DEFAULT_PROJECT_RULES", () => {
+	// Two different defaults for two different situations. `invite_only` is the fallback where nobody
+	// chose anything; `public` expresses the evident intent of someone who just created a project in
+	// order to hire against it. Collapsing them would either hide every new project from the people
+	// meant to bid on it, or make the conservative fallback stop being conservative.
+	assertEquals(CREATED_PUBLISH_VISIBILITY, "public");
+	assertEquals(DEFAULT_PROJECT_RULES.visibility, "invite_only");
 });
-
-// #endregion
-
-// #region The stage projection's neutral row
-
-Deno.test("DEFAULT_STAGE_SETUP carries the create payload's own defaults", () => {
-	// Derived from CreateProjectStageSchema, so the value a create writes and the value a projection
-	// reports for an unconfigured stage cannot drift apart.
-	assertEquals(DEFAULT_STAGE_SETUP.requiresFiles, true);
-	assertEquals(DEFAULT_STAGE_SETUP.seatLimit, 3);
-	assertEquals(DEFAULT_STAGE_SETUP.parallel, false);
-	assertEquals(DEFAULT_STAGE_SETUP.ndaOverride, false);
-	assertEquals(DEFAULT_STAGE_SETUP.dependsOnStageIndex, null);
-	assertEquals(DEFAULT_STAGE_SETUP.lagDays, 0);
-	assertEquals(DEFAULT_STAGE_SETUP.durationMode, "no_due_date");
-	assertEquals(DEFAULT_STAGE_SETUP.durationDays, null);
-	assertEquals(DEFAULT_STAGE_SETUP.dueDate, null);
-	assertEquals(DEFAULT_STAGE_SETUP.allowedFileCategories, []);
-	assertEquals(DEFAULT_STAGE_SETUP.allowedFileExtensions, []);
-	assertEquals(DEFAULT_STAGE_SETUP.tasks, []);
-});
-
-Deno.test("a stage's new configuration never moves the ladder", () => {
-	// The ladder measures whether a stage EXISTS and whether it is priced. Seats, files and NDA terms
-	// are stage configuration, and counting them would block Preview on fields with sane defaults.
-	const bare = setupSteps({ ...base, title: "Rebrand", stages: [{ ...stage, unitPriceCents: 1 }] });
-	const configured = setupSteps({
-		...base,
-		title: "Rebrand",
-		stages: [{
-			...stage,
-			unitPriceCents: 1,
-			requiresFiles: false,
-			seatLimit: null,
-			parallel: true,
-			ndaOverride: true,
-			lagDays: 14,
-			durationMode: "relative_duration",
-			durationDays: 10,
-		}],
-	});
-	assertEquals(setupCompleteness(bare), setupCompleteness(configured));
-	assertEquals(previewReady(bare), previewReady(configured));
-});
-
 // #endregion

@@ -22,6 +22,7 @@ import {
 	projectsDb,
 	toTicketStatus,
 } from "./live-support.ts";
+import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-overview — the RLS-scoped read behind the freelancer's `/projects/[projectId]` dashboard.
@@ -55,9 +56,6 @@ import {
  */
 
 // #region Constants
-/** A slug is not a uuid, so a project id may arrive as either; this tells them apart. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** How many rooms the quick-entry list carries before it stops being a shortcut. */
 const CHANNEL_LIMIT = 8;
 
@@ -452,6 +450,9 @@ export async function fetchProjectOverview(
 	if (assignments.length > 0) meta.push(`${assignments.length} assigned to you`);
 
 	return {
+		// The canonical identity, carried beside the readable alias for the same reason the owner's
+		// projection carries it: the uuid is the address, and the slug moves when the title does.
+		id: project.id,
 		slug: project.slug,
 		hero: {
 			title: clampOr(project.title, TITLE_MAX, "Untitled project"),

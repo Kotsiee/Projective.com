@@ -1,0 +1,214 @@
+/*
+ * Setup section nav (`.psu-nav`) — the sticky side rail on `/projects/[projectId]`, listing the
+ * sections of the owner's configuration flow and marking the one currently in view.
+ *
+ * Pure CSS + strict BEM, token-only. Separation from the form is SPACING ONLY (§B.4 tier 1): the rail
+ * draws no border and sits in no card. A hairline would be the one further device it is allowed, and
+ * it is deliberately not spent — the rail is placed by a layout this sheet does not own, so a
+ * `border-inline-end` would be on the wrong side the moment the nav is ordered after the form, and a
+ * contour drawn on the wrong edge is worse than a gutter that reads cleanly from either.
+ *
+ * The active row IS contained — a tonal fill plus a leading rule — which §B.11 permits because this is
+ * navigation: the fill is a control's state, not a label pretending to be one.
+ *
+ * NOTHING here transitions. The active row's fill, ink and leading rule all encode WHICH section the
+ * reader is looking at, and a fact that arrives through a transition is wrong rather than merely
+ * unanimated in a backgrounded tab, where the animation clock is frozen. There is correspondingly no
+ * `prefers-reduced-motion` block: there is no motion to reduce.
+ */
+
+/* #region Rail */
+.psu-nav {
+	/*
+	 * Mirrors `chromeOffset()` — the top bar, the middle-nav header band that carries the setup
+	 * progress bar, and the same 16px of breathing room the scroll jump reserves. One expression, so
+	 * the row the rail pins under and the point the jump lands on cannot drift apart.
+	 */
+	--psu-nav-top: calc(
+		var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4)
+	);
+
+	position: sticky;
+	inset-block-start: var(--psu-nav-top);
+	/* A stretched grid/flex item would fill its track and stop being sticky at all. */
+	align-self: start;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 100%;
+	max-inline-size: 15rem;
+	/*
+	 * A long list scrolls INSIDE the rail rather than lengthening the page, which is what keeps the
+	 * form's own scroll honest under the window-scroll model.
+	 */
+	max-block-size: calc(100dvh - var(--psu-nav-top) - var(--space-4));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	/*
+	 * Room for a row's focus ring. The rows span the rail's full width, and a `box-shadow` ring on the
+	 * first or last of them is clipped by the very `overflow` that makes the list scroll — a focus
+	 * indicator that exists and cannot be seen.
+	 */
+	padding: var(--space-1);
+}
+
+/*
+ * A `<p>`, not a heading: the form owns this document's outline and an `<h2>` minted here would
+ * inject a level into it from a component that cannot see the levels around it. The nav's accessible
+ * name is carried by `aria-label` on the element itself.
+ *
+ * Section-header register (§A.4) — small, uppercase, tracked — matching `.psu-section__title` so the
+ * rail and the headings it addresses read as one type system.
+ */
+.psu-nav__title {
+	margin: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--text-secondary);
+}
+
+.psu-nav__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.psu-nav__item {
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Rows */
+.psu-nav__link {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	/* WCAG 2.2 AA 2.5.8 — the row is the target, and it clears 24px at every type step. */
+	min-block-size: 2rem;
+	padding-block: var(--space-2);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-base);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	text-decoration: none;
+}
+
+.psu-nav__link:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.psu-nav__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * The active row states the same fact three redundant ways — ink, fill and the leading rule — so it
+ * survives a viewer who cannot separate the two tints, and none of the three is the only channel.
+ */
+.psu-nav__link[data-active="true"] {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.psu-nav__mark {
+	flex: none;
+	align-self: stretch;
+	inline-size: 2px;
+	min-block-size: 1rem;
+	border-radius: var(--radius-full);
+	background: transparent;
+}
+
+.psu-nav__link[data-active="true"] .psu-nav__mark {
+	background: var(--primary);
+}
+
+.psu-nav__icon {
+	flex: none;
+	color: inherit;
+}
+
+.psu-nav__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+@media (hover: none) {
+	.psu-nav__link {
+		min-block-size: 2.75rem;
+	}
+}
+/* #endregion */
+
+/* #region Narrow — the rail becomes a scrolling chip strip */
+/*
+ * 720px matches `project-setup.css`, where the form's paired fields collapse to one column: below it
+ * a 15rem rail beside the form leaves neither enough width to be read.
+ *
+ * The nav is NOT hidden. Every section still has to be reachable, and unlike a lane that IS the
+ * content list (the `/messages` failure), there is no header band under this component's control to
+ * transfer the duty to — so it stays, laid out along the axis it now has.
+ */
+@media (max-width: 720px) {
+	.psu-nav {
+		position: static;
+		max-inline-size: none;
+		max-block-size: none;
+		overflow-x: auto;
+		overflow-y: visible;
+		/*
+		 * A 10px bar under a single row of chips costs more than it gives — the sanctioned horizontal
+		 * rail exemption. Both engines, because hiding it in one and not the other is a difference
+		 * nobody sees until the layout shifts in exactly one browser.
+		 */
+		scrollbar-width: none;
+	}
+	.psu-nav::-webkit-scrollbar {
+		display: none;
+	}
+
+	.psu-nav__title {
+		display: none;
+	}
+
+	.psu-nav__list {
+		flex-direction: row;
+		gap: var(--space-2);
+	}
+
+	.psu-nav__item {
+		flex: none;
+	}
+
+	.psu-nav__link {
+		position: relative;
+		padding-block-end: var(--space-3);
+	}
+
+	.psu-nav__label {
+		white-space: nowrap;
+	}
+
+	/* The leading rule becomes an underline, so the active row keeps all three channels here too. */
+	.psu-nav__mark {
+		position: absolute;
+		inset-inline: var(--space-2);
+		inset-block-end: 0;
+		align-self: auto;
+		inline-size: auto;
+		block-size: 2px;
+		min-block-size: 0;
+	}
+}
+/* #endregion */

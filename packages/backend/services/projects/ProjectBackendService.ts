@@ -25,8 +25,6 @@ import {
 	insertProjectMessage,
 	insertSubmission,
 	moveTicketRow,
-	normalisedCurrency,
-	validateCreate,
 	type WriteOutcome,
 	type WriteRefusal,
 } from "./live-writes.ts";
@@ -39,13 +37,9 @@ import {
 	buildStubMessage,
 	buildStubSubmissionUnit,
 	createdDetail,
-	createdSetup,
 	createdSummary,
 	isStoredArchived,
-	isStoredCreated,
 	mergeSetupPatch,
-	mintRoleId,
-	mintStageId,
 	mintTicketId,
 	movedStubCard,
 	overlayBoardPage,
@@ -61,7 +55,9 @@ import {
 	recordProjectArchive,
 	sentMessageCount,
 	setupPatchFrom,
+	storedCreatedProject,
 	storedTicketCard,
+	stubSlugTaken,
 	submissionCount,
 	submitStoredSubmission,
 	writeOwnerOf,
@@ -93,16 +89,11 @@ import type {
 	PipelineDraft,
 } from "@projective/types/services";
 import {
-	createdVisibility,
-	createFormatToColumns,
+	blankStage,
+	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
-	DEFAULT_STAGE_SETUP,
-	ndaDocumentFor,
-	ndaRequiredFor,
-	projectSlugFrom,
 	reconcileSetup,
-	setupSteps,
 } from "@projective/types/projects";
 import type {
 	ArchiveProject,
@@ -122,18 +113,13 @@ import type {
 	MessagePageParams,
 	MessageSender,
 	MoveTicket,
-	ProjectBudget,
 	ProjectDetail,
 	ProjectFeedParams,
 	ProjectFeedPayload,
 	ProjectOverview,
-	ProjectRoleSetup,
-	ProjectRules,
 	ProjectSetup,
 	ProjectSummary,
-	ProjectVisibility,
 	SendProjectMessage,
-	StageSetup,
 	SubmissionListPage,
 	SubmissionListParams,
 	SubmissionUnit,
@@ -265,33 +251,6 @@ function invalidateProjects(actor: ReadActor): void {
  * simulated persona never reaches the server and a capability bounce would fire on it
  * (Decision #53(b)).
  */
-/**
- * A slug no engagement this viewer has already drafted is using.
- *
- * The stub needs the collision discipline the database gets from its unique index: without it, two
- * projects named the same thing map to one key, and creating the second silently replaces the first —
- * which reads, from the feed, as the create having renamed something rather than added anything.
- *
- * The suffix is a counter rather than random, because the stub store is per-process and a stable
- * second address is easier to reason about than a fresh one on every attempt.
- */
-function uniqueStubSlug(base: string, actor: ReadActor): string {
-	// Taken by ANY project the reads can resolve, not just one this viewer drafted. The fixture corpus
-	// is the other half: `createdSetup` is consulted BEFORE `findProjectSetup`, so a draft that landed
-	// on a fixture's slug would not collide — it would SHADOW it, replacing a fully populated
-	// engagement with a blank draft at the same address. Titling a new project "Monarch Design System"
-	// did exactly that.
-	const taken = (slug: string) => isStoredCreated(slug, actor) || findProjectSetup(slug) !== null;
-
-	const seed = base || `p-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-	if (!taken(seed)) return seed;
-	for (let n = 2; n < 100; n++) {
-		const candidate = `${seed}-${n}`;
-		if (!taken(candidate)) return candidate;
-	}
-	return `${seed}-${crypto.randomUUID().slice(0, 6)}`;
-}
-
 function requireIdentity<T>(actor: ReadActor, action: string): ServiceResult<T> | null {
 	if (actor.userId.length > 0) return null;
 	return fail<T>(401, { message: `Sign in to ${action}.` });
@@ -361,6 +320,107 @@ async function liveWrite<T>(
  * The fallback is deliberately plain. A message with an unnamed author is legible; one attributed to
  * a fabricated participant is a claim about who said it.
  */
+// #region Create plumbing
+/**
+ * How long a slug's readable half may be before the disambiguator is appended.
+ *
+ * `ck_projects_slug_shape` allows 96 characters. Eighty leaves room for the suffix and its separator
+ * with slack to spare, so the truncation can never be the thing that makes a slug illegal.
+ */
+const SLUG_BODY_MAX = 80;
+
+/**
+ * Mint a legal, addressable slug from a title.
+ *
+ * Three separate things this has to get right, and the previous implementation got none of them:
+ *
+ * **It must always produce something.** `ck_projects_slug_shape` is `^[a-z0-9-]{1,96}$`, so an empty
+ * string is not merely ugly — it is a refused insert. A title of pure punctuation (`"!!!"`), of
+ * emoji, or of any non-Latin script slugifies to nothing at all under an ASCII filter, and those are
+ * ordinary titles rather than adversarial ones. They fall back to a stable word.
+ *
+ * **It must not be a coin-flip against `projects_slug_key`.** The slug is globally UNIQUE, and two
+ * clients naming a project "Website refresh" is not an unlikely event — it is the likely one. A short
+ * random suffix turns a certain collision into a negligible one, and it is appended ALWAYS rather than
+ * only on a detected clash: detecting one costs a round trip whose answer is stale before the insert
+ * runs.
+ *
+ * **The suffix must survive the shape CHECK**, so it is drawn from the same alphabet as the body.
+ *
+ * `taken` is the stub path's own uniqueness check. On the live path uniqueness belongs to the
+ * database, which is why this takes a predicate rather than reaching for a store: the caller supplies
+ * whatever "already used" means where it is standing.
+ */
+function mintProjectSlug(title: string, taken: (slug: string) => boolean): string {
+	const body = title
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, SLUG_BODY_MAX)
+		// A title of exactly `SLUG_BODY_MAX` characters can be cut mid-word and leave a trailing hyphen,
+		// which the CHECK permits but reads as a typo in the address bar.
+		.replace(/-+$/g, "") || "project";
+
+	for (let attempt = 0; attempt < 8; attempt++) {
+		const candidate = `${body}-${crypto.randomUUID().replace(/-/g, "").slice(0, 6)}`;
+		if (!taken(candidate)) return candidate;
+	}
+	// Eight collisions on a six-character suffix is not a case worth a ninth guess; the whole uuid is
+	// the answer that cannot collide, and it still satisfies the shape CHECK.
+	return `${body}-${crypto.randomUUID()}`.slice(0, 96);
+}
+
+/**
+ * The projection a stub-created draft is stored and read back as.
+ *
+ * Built through `reconcileSetup`, so the ladder, the percentage and the Preview gate a freshly minted
+ * project reports are computed by the SAME function that computes them for a fixture and for a live
+ * row — a create that seeded its own completeness would be a second implementation of the one rule
+ * this domain has been careful to keep single.
+ *
+ * The one root stage mirrors what {@link insertProject} provisions on the live path, so the two
+ * branches do not disagree about what a new project contains. It is deliberately UNPRICED for a
+ * pipeline — the baseline is a per-ticket rate, which the stage carries — and unpriced for a one-off,
+ * whose figure is the PROJECT budget below it.
+ */
+function buildCreatedSetup(input: CreateProject, slug: string): ProjectSetup {
+	const id = crypto.randomUUID();
+	const stageName = input.format === "one_off" ? "Delivery" : "Stage 1";
+	return reconcileSetup({
+		id,
+		slug,
+		title: input.title.trim(),
+		format: input.format,
+		structure: input.format === "one_off" ? "one_off" : "standard",
+		sessionKind: "none",
+		status: "draft",
+		archivedAt: null,
+		description: "",
+		attachments: [],
+		budget: {
+			...DEFAULT_PROJECT_BUDGET,
+			currency: input.currency,
+			// Only a one-off's baseline is a project TOTAL. A pipeline's is a rate, and writing a rate
+			// into the budget would tick the pricing ladder step off against a number that means
+			// something else — the same distinction `insertProject` draws against the column.
+			amountCents: input.format === "one_off" ? input.baselineAmountCents : null,
+		},
+		// `rules.visibility` is the publish INTENT, stored on its own column — a different fact from
+		// `liveVisibility`, which `reconcileSetup` derives below and which stays `unlisted` for as long
+		// as this is a draft. The two-column model is documented on `ProjectRulesSchema.visibility`; the
+		// point here is only that stating `public` on a project one statement old publishes nothing.
+		rules: { ...DEFAULT_PROJECT_RULES, visibility: CREATED_PUBLISH_VISIBILITY },
+		stages: [{
+			...blankStage(`${id}-stage-1`, stageName, 0),
+			unitPriceCents: input.baselineAmountCents,
+		}],
+		roles: [],
+		// The creator is the client. Nothing else could be true of a project one statement old.
+		viewerIsClient: true,
+	});
+}
+// #endregion
+
 function viewerSenderFor(projectId: string, channelId: string | null): MessageSender {
 	const channels = channelId
 		? [channelId]
@@ -371,164 +431,6 @@ function viewerSenderFor(projectId: string, channelId: string | null): MessageSe
 		if (own?.sender) return own.sender;
 	}
 	return { id: "viewer", name: "You", avatar: null, handle: null };
-}
-// #endregion
-
-// #region The drafted projection
-/**
- * The name `projects.create_project` gives the stage it mints for a project that named none.
- *
- * Stated once so the two branches agree on it. A stub that called it "Stage 1" would put a different
- * word in the setup form, the board's first column and the channel tree from the one a live create
- * produces, for a stage that is the same stage.
- */
-const IMPLICIT_STAGE_NAME = "Delivery";
-
-/**
- * The stage list a create actually writes — including the one nobody asked for.
- *
- * `projects.create_project` mints an implicit stage for ANY project that reaches the end of its
- * stage loop with none, and it does so unconditionally rather than as a side effect of the roles
- * branch. That is not a tidiness: a project with no stage has nothing for a ticket to sit in, nothing
- * for escrow to price against, no room in the channel tree, and `projects.set_project_status` refuses
- * to activate it because it counts stages. So the stub mints one too — otherwise flipping the gate
- * changes what a create MEANS, which is the divergence this whole layer exists to prevent.
- *
- * It carries the project's own brief and price because it IS the project's single unit of delivery;
- * seeding it blank would ask the author to retype what they have just typed and leave the ladder
- * measuring an empty stage against a described project. Only a FIXED price transfers — `hourly_cap`
- * is a ceiling on spend rather than the cost of one ticket, and `finance.fn_hold_ticket_escrow` reads
- * this column as an amount to hold, so copying a cap would escrow the ceiling as though it were the
- * fee.
- *
- * Every stage spreads {@link DEFAULT_STAGE_SETUP} first. That is what makes the mapping's
- * completeness structural: the create payload's own defaults ARE the column defaults, so a field
- * added to either schema lands here with the value a live create would write instead of being
- * silently omitted from the projection.
- */
-function draftedStages(input: CreateProject, budget: ProjectBudget): StageSetup[] {
-	if (input.stages.length > 0) {
-		return input.stages.map((stage, index) => ({
-			...DEFAULT_STAGE_SETUP,
-			...stage,
-			id: mintStageId(),
-			name: stage.name,
-			order: index,
-		}));
-	}
-	return [{
-		...DEFAULT_STAGE_SETUP,
-		id: mintStageId(),
-		name: IMPLICIT_STAGE_NAME,
-		order: 0,
-		description: input.scope,
-		unitPriceCents: budget.budgetType === "fixed_price" ? budget.amountCents : null,
-	}];
-}
-
-/**
- * The engagement terms a create is stored under.
- *
- * `ndaRequired` is DERIVED from the mode rather than carried beside it, and the document reference is
- * cleared by anything but `custom` — the same pair `projects.create_project` resolves, and the same
- * pair `ck_projects_nda_document` refuses to store disagreeing with itself. Two columns that can
- * answer "is this work confidential?" differently is not a schema detail; it is a term of the
- * engagement with two values.
- *
- * `timelinePreset` is the default rather than a payload field because the wizard collects none and
- * the RPC defaults it the same way. `visibility` is left to the caller, which resolves it against the
- * ladder these terms help produce.
- */
-function draftedRules(input: CreateProject, visibility: ProjectVisibility): ProjectRules {
-	return {
-		visibility,
-		ipOwnershipMode: input.ipOwnershipMode,
-		ndaRequired: ndaRequiredFor(input.ndaMode),
-		ndaMode: input.ndaMode,
-		ndaDocumentId: ndaDocumentFor(input.ndaMode, input.ndaDocumentId),
-		portfolioDisplayRights: input.portfolioDisplayRights,
-		timelinePreset: DEFAULT_PROJECT_RULES.timelinePreset,
-		allowDeadlineBonuses: input.allowDeadlineBonuses,
-		locationRestriction: input.locations,
-		languageRequirement: input.languages,
-	};
-}
-
-/**
- * The whole projection a stub-created engagement is stored as.
- *
- * {@link reconcileSetup} derives the ladder, the percentage and the gate, so a drafted project
- * measures its own completeness with exactly the function that measures a live one's — and a client
- * that posted a `completeness` would be overruled rather than believed (root CLAUDE.md §6).
- *
- * The ladder is built BEFORE the projection because the visibility depends on it: what an author may
- * ask for is judged against the stages, roles and budget this same create wrote, which do not exist
- * until they are assembled here. `setupSteps` is the same function `reconcileSetup` calls a moment
- * later, so the two cannot answer the question differently.
- */
-function draftedSetup(input: CreateProject, slug: string): ProjectSetup {
-	// `hasStages` is the author's own toggle and is NOT a column — it folds into the pair of columns
-	// that are (`hasStagesFor` reads it back out). Resolving the pair without it made the toggle inert.
-	const { format, structure } = createFormatToColumns(input.format, input.hasStages);
-	const budget: ProjectBudget = {
-		budgetType: input.budget?.budgetType ?? DEFAULT_PROJECT_BUDGET.budgetType,
-		amountCents: input.budget?.amountCents ?? null,
-		// The TOP-LEVEL currency, not the budget's. They duplicate one value, the schema names this one
-		// authoritative, and reading the budget's would drop the author's choice for every project that
-		// carries no budget — which is most of them at create time.
-		currency: normalisedCurrency(input.currency) ?? DEFAULT_PROJECT_BUDGET.currency,
-	};
-	const stages = draftedStages(input, budget);
-	const roles: ProjectRoleSetup[] = input.roles.map((role) => ({
-		id: mintRoleId(),
-		name: role.name,
-		skills: role.skills,
-		// NULL, not zero. The wizard collects no role budget, and zero would state that the seat is
-		// free — the same restraint `create_project` shows, and what keeps the pricing ladder step
-		// honestly outstanding on an engagement nobody has priced.
-		budgetCents: null,
-	}));
-	const description = input.scope;
-	// Built with the author's REQUEST first, because the ladder is what decides whether the request is
-	// honoured and the ladder needs the terms. There is no circularity: `setupSteps` reads no
-	// visibility at all — it measures title, format, pricing and staffing — so the value carried
-	// through this first pass is a placeholder that the resolved one replaces before anything reads it.
-	const requested = draftedRules(input, input.visibility);
-	const steps = setupSteps({
-		title: input.title,
-		format,
-		structure,
-		description,
-		budget,
-		stages,
-		roles,
-		rules: requested,
-		status: "draft",
-	});
-	const rules: ProjectRules = {
-		...requested,
-		visibility: createdVisibility(input.visibility, steps),
-	};
-
-	return reconcileSetup({
-		slug,
-		title: input.title,
-		format,
-		structure,
-		// The wizard never offers a session — those are provider-side services composed elsewhere — so
-		// the axis is `none` rather than a value carried from a payload that cannot express one.
-		sessionKind: "none",
-		status: "draft",
-		archivedAt: null,
-		description,
-		budget,
-		rules,
-		stages,
-		roles,
-		// The creator IS the client: they commissioned it. This is what routes `/projects/[projectId]`
-		// to the owner's setup surface rather than to somebody else's member dashboard.
-		viewerIsClient: true,
-	});
 }
 // #endregion
 
@@ -875,12 +777,11 @@ export class ProjectBackendService {
 			if (!live) return noSuchProject(slug);
 			return ok({ setup: live });
 		}
-		// An engagement this viewer DRAFTED has no fixture underneath it, so the store is asked first.
-		// Without this the stub create persists and the read cannot see it — which is the same "Project
-		// not found" over a project that was created perfectly well that the live path exists to fix,
-		// reproduced one layer up and in the mode that ships by default.
-		const created = createdSetup(slug, actor);
-		if (created) return ok({ setup: created });
+		// A project this viewer minted through the stub create has no fixture underneath it, so it is
+		// resolved before the corpus is consulted. Without this branch the Quick-Init modal navigates to
+		// a real id and lands on a 404 — a create that reported success and produced nothing openable.
+		const created = storedCreatedProject(writeOwnerOf(actor), slug);
+		if (created) return ok({ setup: overlaySetup(created, actor) });
 
 		const setup = findProjectSetup(slug);
 		if (!setup) return noSuchProject(slug);
@@ -913,7 +814,9 @@ export class ProjectBackendService {
 		}
 		const found = findProjectOverview(slug);
 		if (!found) return noSuchProject(slug);
-		if (isStoredArchived(slug, actor)) return noSuchProject(slug);
+		// Every identifier the project answers to, because an archive recorded through one address must
+		// hide it through the other — otherwise a soft-deleted project stays openable on half its links.
+		if (isStoredArchived(actor, found.id, found.slug, slug)) return noSuchProject(slug);
 		return ok({ overview: overlayOverview(found, slug, actor) });
 	}
 
@@ -955,19 +858,14 @@ export class ProjectBackendService {
 		);
 		if (live) return live;
 
-		// An engagement this viewer DRAFTED has no fixture underneath it, so the store answers first —
-		// the same order every other stub read takes. Without it the setup form's FIRST save on a
-		// freshly created project answered "No project found", on the very surface the create had just
-		// navigated the owner to.
-		const drafted = createdSetup(slug, actor);
-		const fixture = drafted ? null : findProjectSetup(slug);
-		if (!drafted && !fixture) return noSuchProject(slug);
-		// `createdSetup` has already folded this viewer's earlier patches in; a fixture has not.
-		const base = drafted ?? overlaySetup(fixture!, actor);
-		// Keyed on the CANONICAL slug rather than on the reference the caller used. A created project
-		// resolves by its uuid too, and storing the patch under that would leave one identifier reading
-		// back an edited project and the other an unedited one.
-		const merged = mergeSetupPatch(writeOwnerOf(actor), base.slug, setupPatchFrom(input, base));
+		const owner = writeOwnerOf(actor);
+		// A stub-created draft has no fixture underneath it, so it is resolved first — without this the
+		// Quick-Init draft the owner just landed on would refuse its own first save with a 404.
+		const base = storedCreatedProject(owner, slug) ?? findProjectSetup(slug);
+		if (!base) return noSuchProject(slug);
+		// Keyed by the project's own identity rather than by the routed segment: the same project reached
+		// through its slug and through its uuid must accumulate ONE set of edits, not two.
+		const merged = mergeSetupPatch(owner, base, setupPatchFrom(input, overlaySetup(base, actor)));
 		invalidateProjects(actor);
 		return ok({ setup: reconcileSetup(base, merged) }, { message: "Project saved." });
 	}
@@ -998,20 +896,12 @@ export class ProjectBackendService {
 		);
 		if (live) return live;
 
-		// The store first, for the same reason the save consults it first: a project drafted through
-		// the stub path has no fixture, and archiving it answered 404 over an engagement that plainly
-		// existed. The canonical slug is what the archive is recorded against and what is returned, so
-		// a caller who addressed the project by its uuid is told the address the feed filters on.
-		const drafted = createdSetup(slug, actor);
-		if (!drafted && !findProjectSetup(slug)) return noSuchProject(slug);
-		const canonical = drafted?.slug ?? slug;
-		const archivedAt = recordProjectArchive(
-			writeOwnerOf(actor),
-			canonical,
-			new Date().toISOString(),
-		);
+		const owner = writeOwnerOf(actor);
+		const target = storedCreatedProject(owner, slug) ?? findProjectSetup(slug);
+		if (!target) return noSuchProject(slug);
+		const archivedAt = recordProjectArchive(owner, target, new Date().toISOString());
 		invalidateProjects(actor);
-		return ok({ slug: canonical, archivedAt }, { message: "Project archived." });
+		return ok({ slug: target.slug, archivedAt }, { message: "Project archived." });
 	}
 
 	/**
@@ -1254,55 +1144,55 @@ export class ProjectBackendService {
 	}
 
 	/**
-	 * Create a new engagement, and return the two identifiers it can be addressed by.
+	 * Mint a draft engagement from the Quick-Init modal, and return BOTH its identifiers.
 	 *
-	 * `slug` is what the client navigates to — every `/projects/*` route resolves an engagement by
-	 * slug — and `id` is the primary key, the only thing a later write may safely reference. Both are
-	 * returned because a caller given one would have to read the row back for the other.
+	 * The client navigates to `id`. That is the whole reason this returns a pair: a title-derived slug
+	 * moves on the first rename, so a URL built on it dies the moment the owner edits the title — and
+	 * the very next thing the owner does on the Stage-2 surface is write a real title.
 	 *
-	 * The slug is NOT the title slugified and hoped for. It is whatever the database settled on, which
-	 * may carry a disambiguating suffix (two people can name a project the same thing) or be the
-	 * generated `p-<hex>` form (a title with no Latin characters slugifies to nothing). Returning the
-	 * client's guess instead was the original defect: it navigated to an address that did not exist.
-	 *
-	 * A created engagement is always a `draft`, and always `unlisted`. Neither is read from the
-	 * payload — see `projects.create_project`.
+	 * Both branches produce a project that can actually be OPENED, which is the one thing the previous
+	 * stub did not do: it shaped a slug, persisted nothing, and returned success, so the modal
+	 * navigated to a page that answered 404. On the stub path the draft is written into the per-process
+	 * write store; on the live path it is inserted through the RLS-scoped client.
 	 */
 	static async create(
 		input: CreateProject,
 		actor: ReadActor,
 	): Promise<ServiceResult<CreatedProject>> {
+		// A create genuinely needs an identity: `owner_user_id` is the column RLS checks against, and
+		// there is no coherent draft to mint without one. The reads answer a guest from the fixtures;
+		// this cannot.
 		const denied = requireIdentity<CreatedProject>(actor, "create a project");
 		if (denied) return denied;
 
-		// Refused BEFORE either branch runs, so the stub and the database refuse exactly the same
-		// payloads. A rule enforced on one side of a gate is a rule whose violations appear the day the
-		// gate flips, in a create that was working the day before — and every refusal here carries the
-		// wizard field that owns it, so the step rail can point at the control rather than showing a
-		// sentence with nowhere to go.
-		const invalid = validateCreate(input);
-		if (invalid) return refused<CreatedProject>(invalid);
-
-		const live = await liveWrite<CreatedProject>(
-			"create",
-			actor,
-			input.title,
-			"Project drafted.",
-			(a) => insertProject(a, input),
-			"workspace",
-		);
-		if (live) return { ...live, status: live.ok ? 201 : live.status };
-
-		// STUB. It persists, and that is not decoration: stub mode is the default, and a create that
-		// returns a slug the next request cannot resolve reproduces the exact 404 the live path exists
-		// to fix.
 		const owner = writeOwnerOf(actor);
-		const id = crypto.randomUUID();
-		const slug = uniqueStubSlug(projectSlugFrom(input.title), actor);
-		const setup = draftedSetup(input, slug);
-		recordCreatedProject(owner, id, setup, Date.now());
+		const slug = mintProjectSlug(input.title, (candidate) => stubSlugTaken(owner, candidate));
+
+		if (isProjectsBackendLive() && canReadLive(actor)) {
+			try {
+				const outcome = await insertProject(actor, input, slug);
+				if (outcome === null) return notFound<CreatedProject>("project", slug);
+				if ("refusal" in outcome) return refused<CreatedProject>(outcome.refusal);
+				invalidateProjects(actor);
+				return ok(outcome.data, { status: 201, message: "Project drafted." });
+			} catch (error) {
+				// A thrown live WRITE never falls back to the stub (see {@link liveWrite}): storing it in
+				// memory and answering `ok` would report a project Postgres never accepted, and the client
+				// would navigate to an id that exists nowhere.
+				liveFailed("create", error);
+				return fail<CreatedProject>(502, {
+					message: "That project could not be created — please try again.",
+				});
+			}
+		}
+
+		const setup = buildCreatedSetup(input, slug);
+		recordCreatedProject(owner, setup);
 		invalidateProjects(actor);
-		return ok({ id, slug }, { status: 201, message: "Project drafted." });
+		return ok({ id: setup.id, slug: setup.slug }, {
+			status: 201,
+			message: "Project drafted.",
+		});
 	}
 
 	/**
