@@ -25,7 +25,6 @@ import {
 	toStageProjectStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
-import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-detail — the RLS-scoped Postgres read path for `ProjectBackendService.detail(slug)`, the deep
@@ -387,6 +386,8 @@ function buildStageChannels(
 		const name = clampOr(stage.name, 120, `Stage ${index + 1}`);
 		out.push({
 			id: room.id,
+			// The two keys this function is the only place to hold at once — see `StageChannelSchema`.
+			stageId: stage.id,
 			name,
 			order: index,
 			status: toStageProjectStatus(stage.status),
@@ -491,10 +492,11 @@ function buildTeamChannels(
  * engagement with no description and no client rather than reporting anything at all.
  */
 async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<DetailRow | null> {
-	const base = db.from("projects").select("owner_user_id, description_text, client_business_id");
-	const { data, error } = await (
-		UUID_RE.test(projectKey) ? base.eq("id", projectKey) : base.eq("slug", projectKey)
-	).maybeSingle();
+	const { data, error } = await db
+		.from("projects")
+		.select("owner_user_id, description_text, client_business_id")
+		.eq("slug", projectKey)
+		.maybeSingle();
 	if (error || !data) return null;
 	return data as unknown as DetailRow;
 }

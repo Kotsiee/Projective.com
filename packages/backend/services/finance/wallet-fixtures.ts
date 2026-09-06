@@ -496,13 +496,25 @@ interface RawLine {
 	at: number;
 }
 
-/** Known project slugs the ledger links to (coherence with `/projects` + `/view`). */
+/**
+ * Projects the ledger links to — REAL rows from the `/projects` corpus, slug and name together.
+ *
+ * Every entry has to be a project that actually exists, because these ids are interpolated straight
+ * into `/projects/{id}`. Three of the five used to be ids from the EXPLORE corpus
+ * (`helia-wallet-redesign`, `verdant-brand-refresh`) or from nowhere at all
+ * (`atlas-landing-sprint`) — so more than half the money on the wallet's busiest surface linked to a
+ * 404, and a reader clicking a line item to see the work it paid for got nothing. The comment above
+ * them claimed the opposite, which is why nobody looked.
+ *
+ * The prefix is what makes that class of mistake visible now: an id in this list that is not a
+ * `prj-` slug cannot be a project, and it no longer takes a click to find out.
+ */
 const PROJECTS: { id: string; name: string }[] = [
-	{ id: "helia-wallet-redesign", name: "Helia wallet redesign" },
-	{ id: "verdant-brand-refresh", name: "Verdant brand refresh" },
-	{ id: "gradient-motion-kit", name: "Gradient motion kit" },
-	{ id: "monarch-design-system", name: "Monarch design system" },
-	{ id: "atlas-landing-sprint", name: "Atlas landing sprint" },
+	{ id: "prj-ghnkqoopo4", name: "Aurora Rebrand" },
+	{ id: "prj-xmvjo9wga8", name: "Helio App Build" },
+	{ id: "prj-3389ufcjs2", name: "Gradient Motion Kit" },
+	{ id: "prj-8mzxqqn6w8", name: "Monarch Design System" },
+	{ id: "prj-xgandqb3cs", name: "Mercury Landing Page" },
 ];
 
 const CATEGORIES: { category: TxnCategory; reason: string; dir: "credit" | "debit" }[] = [
@@ -845,14 +857,14 @@ function incoming(seed: WalletSeed, display: string, locale: string): IncomingIt
 		items.push({
 			id: `${seed.id}-escrow`,
 			kind: "escrow_funded",
-			label: "Escrow funded · Helia wallet redesign",
+			label: "Escrow funded · Aurora Rebrand",
 			amount: toMoney(Math.round(st.lockedMinor * 0.6), seed.currency, display, locale),
 			state: "locked",
 			clearingLabel: "On active stage",
 			clearingAt: null,
 			// Escrowed capital has not entered a clearing window at all.
 			clearingFraction: 0,
-			href: "/projects/helia-wallet-redesign",
+			href: "/projects/prj-ghnkqoopo4",
 		});
 	}
 	// An incoming scheduled payout (personal only).
@@ -2132,7 +2144,14 @@ export function fundEscrow(
 		category: "escrow",
 		refKind: "stage",
 		refId: input.stageId,
-		href: `/projects/${input.stageId}`,
+		// No link, deliberately. This used to be `/projects/${input.stageId}` — a STAGE id in the slot a
+		// PROJECT address goes in, which resolved to nothing and, now that the two namespaces are
+		// prefixed, cannot even accidentally be right. A stage is reached at
+		// `/projects/{projectSlug}/{channelId}` and this mutation is handed neither, so the honest
+		// answer is no affordance rather than one that reaches nothing (root CLAUDE.md §3, gate 11).
+		// `refKind`/`refId` still record WHAT the line is about, so a caller that does know the project
+		// can build the link.
+		href: null,
 	});
 	return outcome(seed, input.display ?? null, input.sim, "Escrow funded on the stage.");
 }

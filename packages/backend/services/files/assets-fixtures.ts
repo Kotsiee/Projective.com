@@ -606,8 +606,8 @@ const DRIVE_MOUNTS: ReadonlyArray<
 
 /** The projects whose channel attachments are mounted into the hub as read-only sections. */
 const MOUNTED_PROJECTS: ReadonlyArray<{ slug: string; title: string }> = [
-	{ slug: "aurora-rebrand", title: "Aurora Rebrand" },
-	{ slug: "northwind-atlas-portal", title: "Northwind Atlas Portal" },
+	{ slug: "prj-ghnkqoopo4", title: "Aurora Rebrand" },
+	{ slug: "prj-64vn8qwog8", title: "Northwind Atlas Portal" },
 ];
 
 // #endregion

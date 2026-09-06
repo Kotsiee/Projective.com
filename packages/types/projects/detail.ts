@@ -68,6 +68,20 @@ export type StageActivity = z.infer<typeof StageActivity>;
 /** One stage of the engagement, with its stage-scoped channel. */
 export const StageChannelSchema = z.object({
 	id: z.string().min(1).max(80),
+	/**
+	 * The `projects.project_stages` row this channel belongs to — NOT the same string as `id`.
+	 *
+	 * `id` is the routed channel segment, and on the live path it is a `comms.project_channels` id
+	 * because that is what the tree navigates to. The stage's own id is a different key in a different
+	 * schema, and the setup projection (`StageSetup.id`) is keyed on THAT one. Without this field a
+	 * surface routed to `/projects/{project}/{channel}/…` has no way back to the stage's
+	 * configuration: the mapping exists only inside `buildStageChannels`, which holds both and
+	 * projected neither.
+	 *
+	 * The fixtures make the two strings equal, which is exactly why this could not be discovered by
+	 * using the stub — a lookup written against `id` works there and finds nothing in production.
+	 */
+	stageId: z.string().min(1).max(80),
 	name: z.string().min(1).max(120),
 	/** Display order (0-based). */
 	order: z.number().int().min(0),

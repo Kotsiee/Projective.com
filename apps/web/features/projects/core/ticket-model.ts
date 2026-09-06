@@ -12,6 +12,7 @@ import {
 	ticketTotalCents,
 	workloadIntensity,
 } from "../types/projects-types.ts";
+import { hasRichTextProse } from "@projective/types/richtext";
 
 /**
  * ticket-model — the pure, DOM-free model behind the ONE ticket modal.
@@ -205,8 +206,7 @@ export function normaliseStages(
 
 /** Whether a rich-text value carries actual content rather than an empty document's markup. */
 export function hasContent(html: string | null): boolean {
-	if (!html) return false;
-	return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim().length > 0;
+	return hasRichTextProse(html);
 }
 // #endregion
 

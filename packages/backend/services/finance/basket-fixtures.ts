@@ -429,7 +429,7 @@ const SET_SESSION_COUNT = 4;
  * The `/projects` board a ticket line's engagement corresponds to — a **fixtures-only bridge**.
  *
  * `/checkout` derives its corpus from `@server/services/explore` (ids like `sv-brand-identity-sprint`),
- * while `/projects` keeps an independent one keyed by slug (`aurora-rebrand`). The two never overlap,
+ * while `/projects` keeps an independent one keyed by slug (`prj-ghnkqoopo4`). The two never overlap,
  * so with nothing joining them a basket ticket could not resolve the board its own modal opens: the
  * fetch answered 404 for every line, which reads as a broken feature rather than as two demo datasets
  * that were never introduced.
@@ -1249,7 +1249,10 @@ export function isDerivedListId(id: string | null | undefined): boolean {
  */
 export function derivedBasketOf(owner: ResolvedOwner, listId: string): Basket {
 	const display = owner.display;
-	const [kind, parentId] = [listId.slice(0, listId.indexOf(":")), listId.slice(listId.indexOf(":") + 1)];
+	const [kind, parentId] = [
+		listId.slice(0, listId.indexOf(":")),
+		listId.slice(listId.indexOf(":") + 1),
+	];
 
 	const items = basketsFor(owner.key)
 		.flatMap((row) => liveLines(row).map((line) => toItem(line, display)))

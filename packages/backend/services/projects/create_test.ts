@@ -128,16 +128,23 @@ Deno.test("a create returns BOTH identifiers, and neither is empty", async () =>
 	assertNotEquals(created.data.id, created.data.slug);
 });
 
-Deno.test("a created project resolves by its uuid as well as by its slug", async () => {
+Deno.test("a created project resolves by its slug, and ONLY by its slug", async () => {
 	resetWriteStore();
 	const created = await ProjectBackendService.create(payloadOf(), ALICE);
 	assert(created.data);
-	// The modal navigates to the UUID, because a title-derived slug moves on the first rename and the
-	// owner's first act on the Stage-2 surface is usually to rename the project. A store that answered
-	// only the slug would 404 the page the create had just sent the browser to.
+
+	// The modal navigates to the SLUG. This test asserted the opposite — that the uuid resolved too —
+	// back when the slug was derived from the title and moved on the owner's first rename, which made
+	// the uuid the only stable address. The slug is opaque and immutable now, so the reasoning is spent
+	// and the second address is a liability: the store answering to an identifier the live query does
+	// not would make the default mode more permissive than the one that ships.
+	const bySlug = await ProjectBackendService.setup(created.data.slug, ALICE);
+	assert(bySlug.ok, `setup(${created.data.slug}) did not resolve: ${bySlug.message}`);
+	assertEquals(bySlug.data?.setup.slug, created.data.slug);
+
 	const byId = await ProjectBackendService.setup(created.data.id, ALICE);
-	assert(byId.ok, `setup(${created.data.id}) did not resolve: ${byId.message}`);
-	assertEquals(byId.data?.setup.slug, created.data.slug);
+	assertEquals(byId.ok, false, "the row's uuid must not address it");
+	assertEquals(byId.status, 404);
 });
 
 Deno.test("an anonymous caller cannot create a project", async () => {
@@ -353,7 +360,7 @@ Deno.test("a drafted project can never shadow a fixture engagement", async () =>
 	// `createdSetup` is consulted BEFORE the fixture corpus, so a draft landing on a fixture's slug
 	// would not collide — it would REPLACE a fully populated engagement with a blank draft at the same
 	// address. The minted address carries a random suffix for exactly this reason.
-	const victim = findProjectSetup("monarch-design-system");
+	const victim = findProjectSetup("prj-8mzxqqn6w8");
 	assert(victim, "the fixture this guards must exist");
 
 	const created = await ProjectBackendService.create(payloadOf({ title: victim.title }), ALICE);

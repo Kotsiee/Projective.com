@@ -90,7 +90,10 @@ export function CalendarMonthTrack(props: CalendarMonthTrackProps): JSX.Element 
 
 	const trackRef = useRef<HTMLDivElement>(null);
 	const lastViewRef = useRef<number>(monthIndex(viewDate));
-	const settleTimer = useRef<number | undefined>(undefined);
+	// `ReturnType<typeof setTimeout>`, not `number`: under Deno's type graph the timer id is an opaque
+	// `Timeout` object rather than the DOM's number, so the annotation has to follow the runtime that
+	// actually issues it instead of the one the browser lib describes.
+	const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	/** A drag is in flight; `moved` records whether it ever passed the threshold. */
 	const drag = useRef<{ id: number; startX: number; startLeft: number; moved: boolean } | null>(
 		null,

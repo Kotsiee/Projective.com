@@ -105,3 +105,21 @@
 .ui-splitter[data-mode="collapsed"] .ui-nav-item__label {
 	display: none;
 }
+
+/*
+ * Shut to its icon rail, the lane takes `--shell-lane-rail-w` — the same inherited token
+ * `middle-nav.css` offsets the nested frame by, so the lane's trailing edge and the Green canvas's
+ * rounded corner are one boundary by construction rather than by two matching literals.
+ *
+ * The token FALLS BACK to the live `--shell-lane-w` the hook writes inline, so a lane that declares no
+ * rail width is untouched: it keeps tracking the pointer 1:1 all the way down to the splitter's `min`,
+ * exactly as before. Only a lane that has asked for a wider rail is pinned to it — which is what it
+ * already did through its own `inline-size` override.
+ *
+ * A lane whose rail needs more room overrides the TOKEN on the frame, never `inline-size` here:
+ * overriding the size moves the lane and leaves the seam at the old offset, which is the 14px bleed
+ * this replaces.
+ */
+.ui-splitter[data-mode="collapsed"] {
+	inline-size: var(--shell-lane-rail-w, var(--shell-lane-w, 56px));
+}

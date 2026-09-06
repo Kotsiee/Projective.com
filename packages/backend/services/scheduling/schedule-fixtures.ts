@@ -154,9 +154,10 @@ export function findSchedulePage(
 		ownerHandle: item.owner.handle,
 		viewerCanBook: true,
 		availability: { timezone: tz, rules: hostRules(seed), blackouts: [] },
-		events: ordered.map((event) =>
+		events: ordered.map((event, eventIndex) =>
 			withCoordination(event, {
 				surfaceKey: `schedule:${item.id}`,
+				eventIndex,
 				host,
 				viewer,
 				viewerHostsSurface: false,

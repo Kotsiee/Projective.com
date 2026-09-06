@@ -20,6 +20,32 @@ export function hash(s: string): number {
 	return h;
 }
 
+/**
+ * Avalanche a {@link hash} so a SMALL modulus over near-consecutive keys does not walk in lockstep.
+ *
+ * `hash` multiplies by 31, so two keys differing only in a trailing digit — `sync-stage-1`,
+ * `sync-stage-2` — hash to values differing by exactly one. Reduced by a small modulus that is
+ * coprime with the step, the result then walks 0,1,2,0,1,2 down the corpus in perfect step with the
+ * ids. Anything that samples a STRIDE of those ids (a gate like `seed % 3 === 0`, or one surface's
+ * share of a shared generator) therefore lands on the same residue every single time, and a bucket
+ * that was meant to be one case in three becomes every case or none.
+ *
+ * That is not hypothetical: it has now cost this corpus its `pending` ballots twice, once through a
+ * seat index and once through an event id, and both times the symptom was a state the fixtures were
+ * documented as producing that no surface could actually reach. `hash` itself is deliberately NOT
+ * changed — every derived value in every fixture module is keyed off it, and reshuffling all of them
+ * to fix one modulus would be a far larger change than the defect.
+ *
+ * The finalizer is the standard `lowbias32` mix: two xor-shift/multiply rounds, which decorrelate
+ * adjacent inputs completely while staying pure and stable across runs.
+ */
+export function mix32(h: number): number {
+	let x = h >>> 0;
+	x = Math.imul(x ^ (x >>> 16), 0x7feb352d) >>> 0;
+	x = Math.imul(x ^ (x >>> 15), 0x846ca68b) >>> 0;
+	return (x ^ (x >>> 16)) >>> 0;
+}
+
 /** Pick `n` entries from `pool`, offset by the seed (stable, wraps). */
 export function pick<T>(pool: readonly T[], n: number, seed: number): T[] {
 	const out: T[] = [];

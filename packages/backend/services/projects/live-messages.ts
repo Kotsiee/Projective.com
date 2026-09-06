@@ -20,7 +20,7 @@ import type {
 	MessageSender,
 } from "@projective/types/projects";
 import { describeFile, type FileKind } from "@projective/types/files";
-import { UUID_RE } from "./project-identity.ts";
+import { UUID_RE } from "./live-support.ts";
 
 /**
  * live-messages — the RLS-scoped Postgres read path for ONE project channel's conversation
@@ -583,7 +583,6 @@ async function resolveProjectId(
 	actor: ReadActor & { accessToken: string },
 	projectId: string,
 ): Promise<string | null> {
-	if (UUID_RE.test(projectId)) return projectId;
 	const { data, error } = await projectsDb(actor)
 		.from("projects")
 		.select("id")

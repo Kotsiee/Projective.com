@@ -32,6 +32,7 @@ import {
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
+import { flattenRichText } from "@projective/types/richtext";
 import type { ReadActor } from "../read-actor.ts";
 
 /**
@@ -344,11 +345,10 @@ export function recordCreatedProject(owner: string, setup: ProjectSetup): void {
 }
 
 /**
- * A project this viewer created through the stub path, addressed by uuid OR slug.
+ * A project this viewer created through the stub path, addressed by its slug.
  *
- * Both, because the caller arrives on whichever identifier the link they followed carried, and the
- * map is keyed by the canonical one. The slug scan runs only when the uuid lookup misses, so the
- * common case is still a single map hit.
+ * By slug alone, matching the live query exactly — see {@link findCreated} for why answering to the
+ * uuid as well was a divergence rather than a convenience.
  *
  * Scoped to the CREATING viewer, like every other read on this store. That is not an authorisation
  * decision — RLS is the real gate on the live path — but it does mean a stub draft is invisible to
@@ -462,17 +462,21 @@ export function submissionCount(owner: string, projectId: string): number {
  * The drafted record a reference names — by uuid OR by slug.
  *
  * Both, because the live path resolves both: `resolveProjectRef` tries the slug and falls back to the
- * primary key, so a caller holding either half of what the create returned can open the project. A
- * store that answered only one of them would 404 in the mode that ships by default, and the two
- * branches would then disagree about what an identifier is.
+ * primary key, and the SLUG is the only address, so the lookup is a scan over the bucket rather than a
+ * map hit.
  *
- * The uuid map is consulted first and the slug scan only runs when it misses, so the common case —
- * the address the modal actually navigates to — stays a single lookup.
+ * It used to try the map first and fall back to a slug scan, so a caller holding either half of what
+ * the create returned could open the project. That is now a leak rather than a convenience: the live
+ * query matches `slug` alone, so a store that also answered to the uuid would make the DEFAULT mode
+ * strictly more permissive than the one that ships — a URL that works all through development and
+ * 404s the day the gate is turned on.
+ *
+ * A bucket holds one viewer's drafts from one process's lifetime, so the scan is over a handful of
+ * rows. Keying the map by slug instead would make it a single hit, but the map's key is the row id
+ * everywhere else in this file and two keying schemes in one store is a worse trade than a short scan.
  */
 function findCreated(bucket: OwnerBucket | undefined, ref: string): StoredProject | undefined {
 	if (!bucket) return undefined;
-	const byId = bucket.created.get(ref);
-	if (byId) return byId;
 	for (const record of bucket.created.values()) {
 		if (record.setup.slug === ref) return record;
 	}
@@ -564,10 +568,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		format: setup.format,
 		status: setup.status,
 		typeLabel: TYPE_LABELS[setup.format],
-		description: setup.description.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(
-			0,
-			2000,
-		),
+		description: flattenRichText(setup.description).slice(0, 2000),
 		viewerRole: "owner",
 		// The creator IS the client — they commissioned it. This is what routes the dispatcher to the
 		// setup surface rather than to somebody else's dashboard.
@@ -1045,7 +1046,12 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 				skills: stage.skills ?? base.skills,
 				tasks: stage.tasks ?? base.tasks,
 				dependency: stage.dependency ?? base.dependency,
-				durationDays: stage.durationDays !== undefined ? stage.durationDays : base.durationDays,
+				// `!== undefined` and not `??` on all three: `null` is a real answer on the first two
+				// ("the one above it", "no fixed date") and `0` is a real answer on the lag, so `??`
+				// would silently restore the base value for exactly the edits that clear them.
+				startsWithId: stage.startsWithId !== undefined ? stage.startsWithId : base.startsWithId,
+				delayDays: stage.delayDays !== undefined ? stage.delayDays : base.delayDays,
+				deliveryDate: stage.deliveryDate !== undefined ? stage.deliveryDate : base.deliveryDate,
 				capacity: seats.capacity,
 				seatCount: seats.seatCount,
 				roles: stage.roles ?? base.roles,
@@ -1063,6 +1069,7 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 				id: existing?.id ?? mintId("role"),
 				name: role.name ?? existing?.name ?? `Role ${index + 1}`,
 				skills: role.skills ?? existing?.skills ?? [],
+				description: role.description ?? existing?.description ?? "",
 				budgetCents: role.budgetCents !== undefined
 					? role.budgetCents
 					: existing?.budgetCents ?? null,

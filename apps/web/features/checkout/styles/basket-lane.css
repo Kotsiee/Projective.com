@@ -66,17 +66,19 @@
 }
 
 /*
- * Scoped with `:has` so only the BASKET lane takes this width — every other lane keeps its own, and
- * the bare `.ui-splitter` rule this overrides is the nav lane's global one.
+ * The BASKET lane's collapsed rail width. Without a declaration the presentations swap and the TRACK
+ * does not: `data-mode="collapsed"` hid the expanded stack, revealed the icon rail, and left the lane
+ * at the full `--shell-lane-w` — a column of five glyphs adrift in 280px, with 216px of content region
+ * collapsed away from and never handed back.
  *
- * Without it the presentations swap and the TRACK does not: `data-mode="collapsed"` hid the expanded
- * stack, revealed the icon rail, and left the lane at the full `--shell-lane-w` — a column of five
- * glyphs adrift in 280px, with 216px of content region collapsed away from and never handed back.
- * Every sibling surface (`wlt-rail`, `fh-rail`, `pf-lane`, `proj-detail`, `msg-sidebar`, `wsp-rail`)
- * carries this rule; this lane was the one that did not.
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
  */
-.ui-splitter[data-mode="collapsed"]:has(.bsk-lane__rail) {
-	inline-size: var(--shell-sidebar-w);
+.ui-middle-nav:has(.bsk-lane__rail) {
+	--shell-lane-rail-w: var(--shell-sidebar-w);
 }
 
 .bsk-lane__full {

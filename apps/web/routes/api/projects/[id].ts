@@ -4,6 +4,7 @@ import { corsHeaders, READ_ALLOWED_HEADERS } from "@web/utils/read-endpoint.ts";
 import { ArchiveProjectSchema, UpdateProjectSchema } from "@projective/types/projects";
 import { toProjectsResponse } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
+import { isOnboardingSim } from "@server/services/projects/setup-fixtures.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
@@ -75,6 +76,7 @@ function unauthenticated(): Response {
  */
 async function applyUpdate(
 	req: Request,
+	url: URL,
 	slug: string,
 	actor: ReadActor,
 	replace: boolean,
@@ -83,8 +85,16 @@ async function applyUpdate(
 	const parsed = UpdateProjectSchema.safeParse(raw);
 	if (!parsed.success) return invalid(fieldErrors(parsed.error.issues));
 
+	// The same DEV-ONLY simulation the setup READ takes, carried on the query string rather than in
+	// the body: it is not part of the configuration being saved, and putting it in `UpdateProject`
+	// would make a developer's switch a field of the resource. It has to travel at all because the
+	// lock guard is evaluated here — a write judged against the real counts while the form was drawn
+	// against simulated ones is a form whose disabled controls and refusals disagree.
+	const simRaw = url.searchParams.get("sim");
+	const sim = simRaw && isOnboardingSim(simRaw) ? simRaw : undefined;
+
 	return toProjectsResponse(
-		await ProjectBackendService.updateProject(slug, parsed.data, actor, replace),
+		await ProjectBackendService.updateProject(slug, parsed.data, actor, replace, sim),
 	);
 }
 
@@ -92,13 +102,13 @@ export const handler = define.handlers({
 	PUT(ctx) {
 		const actor = readActor(ctx);
 		if (!actor.userId) return unauthenticated();
-		return applyUpdate(ctx.req, ctx.params.id, actor, true);
+		return applyUpdate(ctx.req, ctx.url, ctx.params.id, actor, true);
 	},
 
 	PATCH(ctx) {
 		const actor = readActor(ctx);
 		if (!actor.userId) return unauthenticated();
-		return applyUpdate(ctx.req, ctx.params.id, actor, false);
+		return applyUpdate(ctx.req, ctx.url, ctx.params.id, actor, false);
 	},
 
 	async DELETE(ctx) {

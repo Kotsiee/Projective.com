@@ -26,7 +26,7 @@ import {
 	toInviteStatus,
 	toMemberRole,
 } from "./live-support.ts";
-import { UUID_RE } from "./project-identity.ts";
+import { UUID_RE } from "./live-support.ts";
 
 /**
  * live-members — the RLS-scoped Postgres read path behind `ProjectBackendService.members`.
@@ -744,16 +744,14 @@ export async function fetchMemberRoster(
 	const db = projectsDb(actor);
 	const nowMs = Date.now();
 
-	// The route segment is a SLUG (`/projects/[projectId]` addresses by slug), but a uuid is also a
-	// legal slug shape, so the operand is tested rather than assumed — see UUID_RE for the cast trap.
-	// `maybeSingle` rather than `single`: a segment matching nothing is a 404, and `single` turns that
-	// into a thrown PostgREST error the caller would have to unwrap to tell "no such project" apart
-	// from "the database is down".
-	const byId = UUID_RE.test(params.projectId);
+	// The route segment is a slug and nothing else, so there is one column to match on and no shape to
+	// test first. `maybeSingle` rather than `single`: a segment matching nothing is a 404, and `single`
+	// turns that into a thrown PostgREST error the caller would have to unwrap to tell "no such
+	// project" apart from "the database is down".
 	const found = await db
 		.from("projects")
 		.select(PROJECT_COLUMNS)
-		.eq(byId ? "id" : "slug", params.projectId)
+		.eq("slug", params.projectId)
 		.maybeSingle();
 
 	if (found.error) throw new Error(`projects.projects roster read failed: ${found.error.message}`);

@@ -32,6 +32,15 @@ CREATE TABLE marketplace.service_blueprints (
     owner_team_id uuid,
     freelancer_profile_id uuid NOT NULL,
     title text NOT NULL,
+
+    -- The service's public address, on the same contract as `projects.projects.slug`: opaque, derived
+    -- from nothing, minted once and refused by `security.fn_slug_guard` on any later update.
+    --
+    -- It matters more here than anywhere else that it is title-independent. A seller renames a listing
+    -- to reposition it — that is ordinary catalogue work, not a republication — and under a
+    -- title-derived address every card, share link and search result pointing at it would die on the
+    -- edit, silently, at exactly the moment the seller was trying to sell more of it.
+    slug text NOT NULL,
     description jsonb NOT NULL DEFAULT '{}'::jsonb,
     description_text text NOT NULL DEFAULT ''::text,
     -- HOW the work is delivered, which is a different axis from `pricing_model` (how it is BILLED).
@@ -83,6 +92,11 @@ CREATE TABLE marketplace.service_blueprints (
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
 
     CONSTRAINT service_blueprints_pkey PRIMARY KEY (id),
+    CONSTRAINT service_blueprints_slug_key UNIQUE (slug),
+    -- The exact shape `security.mint_slug('svc')` produces, and nothing else — the same contract, the
+    -- same alphabet and the same cross-check as `ck_projects_slug_shape`.
+    CONSTRAINT ck_service_blueprints_slug_shape
+        CHECK (slug ~ '^svc-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
     CONSTRAINT service_blueprints_freelancer_fkey FOREIGN KEY (freelancer_profile_id) REFERENCES org.freelancer_profiles(user_id),
     CONSTRAINT service_blueprints_owner_team_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id) ON DELETE CASCADE,
     CONSTRAINT service_blueprints_cover_fkey FOREIGN KEY (cover_file_id) REFERENCES files.items(id) ON DELETE SET NULL,

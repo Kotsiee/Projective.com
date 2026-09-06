@@ -44,15 +44,16 @@ import {
 	type DevMessagingRole,
 	type DevMicPermission,
 	type DevPaymentProviders,
-	type DevPipelineDraft,
 	type DevPersona,
+	type DevPipelineDraft,
+	type DevProjectOnboarding,
 	type DevProjectType,
 	type DevRosterState,
 	type DevSavedCards,
-	type DevSlotAvailability,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
+	type DevSlotAvailability,
 	type DevSpendLimit,
 	type DevStageAssignment,
 	type DevStorageProvider,
@@ -155,6 +156,17 @@ export interface DevOverrides {
 	submissionState: DevSubmissionState;
 	/** Whether the client has defined stage/ticket tasks — drives the Tasks panel toggle's visibility. */
 	hasTasks: boolean;
+	/**
+	 * Simulated onboarded-provider position for the project setup surface (`/projects/[projectId]`) —
+	 * the post-onboarding immutability locks (project onboarded → the Project-type control locks; stage
+	 * onboarded → that stage's ticket price locks).
+	 *
+	 * Its own axis because the counts are SERVER facts (`projects.stage_assignments`) that no form
+	 * control writes: the only other way to see a locked setup surface is to genuinely onboard a
+	 * freelancer onto a project. `first_stage` is the value worth having — it is the only one that
+	 * distinguishes a per-stage lock from a project-wide one.
+	 */
+	projectOnboarding: DevProjectOnboarding;
 	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
@@ -322,6 +334,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	stageAssignment: "assigned",
 	submissionState: "draft",
 	hasTasks: true,
+	projectOnboarding: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	messagingRole: "freelancer",
@@ -413,6 +426,17 @@ export const DEV_SUBMISSION_STATES: ReadonlyArray<DevOption<DevSubmissionState>>
 	{ value: "submitted", label: "Submitted" },
 	{ value: "approved", label: "Approved" },
 	{ value: "revision_requested", label: "Revision" },
+];
+
+/**
+ * Onboarded-provider options in display order (the project setup surface's immutability locks).
+ * `Auto` defers to the server's real count; `First stage` is the per-stage proof case.
+ */
+export const DEV_PROJECT_ONBOARDINGS: ReadonlyArray<DevOption<DevProjectOnboarding>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "Nobody" },
+	{ value: "first_stage", label: "First stage" },
+	{ value: "all_stages", label: "All stages" },
 ];
 
 /** Members-tab acting-role options in display order (task §4). */
@@ -759,6 +783,15 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devStageAssignment = next.stageAssignment;
 		root.dataset.devSubmissionState = next.submissionState;
 		root.dataset.devHasTasks = String(next.hasTasks);
+		// Written only while it is actually overriding something. `auto` means "defer to whatever the
+		// server resolved", which is exactly what an ABSENT attribute already means to `readDevSeam`
+		// (its `coerce` fallback is `auto`) — so stamping the word would give "no override" a second
+		// spelling that every reader would then have to know about. Same shape as `devEntity` below.
+		if (next.projectOnboarding !== "auto") {
+			root.dataset.devProjectOnboarding = next.projectOnboarding;
+		} else {
+			delete root.dataset.devProjectOnboarding;
+		}
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devMessagingRole = next.messagingRole;
@@ -816,6 +849,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devStageAssignment;
 		delete root.dataset.devSubmissionState;
 		delete root.dataset.devHasTasks;
+		delete root.dataset.devProjectOnboarding;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devMessagingRole;

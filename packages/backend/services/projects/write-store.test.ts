@@ -21,7 +21,7 @@ import type { CommitTicket } from "@projective/types/projects";
  */
 
 // #region Fixtures
-const SLUG = "monarch-design-system";
+const SLUG = "prj-8mzxqqn6w8";
 const CHANNEL = "general";
 
 /** An acting identity. Distinct ids give distinct overlay buckets — the isolation under test. */

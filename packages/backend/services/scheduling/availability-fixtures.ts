@@ -210,9 +210,10 @@ export function findAvailabilityPage(
 		ownerHandle: profile.handle,
 		viewerCanBook: isFreelancer,
 		availability: { timezone: tz, rules, blackouts: buildBlackouts(seed, tz) },
-		events: events.map((event) =>
+		events: events.map((event, eventIndex) =>
 			withCoordination(event, {
 				surfaceKey: `availability:${profile.handle}`,
+				eventIndex,
 				host,
 				viewer,
 				viewerHostsSurface: false,

@@ -8,6 +8,7 @@ import {
 	resetActiveSection,
 	setupSections,
 } from "../core/setup-sections.ts";
+import { currentSetup, setupDraft } from "../core/setup-state.ts";
 import "../styles/setup-nav.css";
 import type { SetupSectionKey } from "../core/setup-sections.ts";
 import type { ProjectSetup } from "../types/projects-types.ts";
@@ -23,7 +24,11 @@ import type { ProjectSetup } from "../types/projects-types.ts";
  * happens to scroll.
  *
  * Rows come from {@link setupSections}, the same registry the form renders from, so the rail cannot
- * offer a jump to a section this engagement does not have.
+ * offer a jump to a section this engagement does not have — but only because it reads the same LIVE
+ * DRAFT the form does. Reading the SSR prop instead is not a smaller version of the same thing: the
+ * section list is a function of the engagement's shape, the shape is editable by a toggle in Basics,
+ * and a rail resolved from the server's copy keeps offering the section that toggle just removed. The
+ * row stays focusable, stays keyboard reachable, and lands nowhere (root CLAUDE.md §3 gate 11).
  */
 export interface SetupSectionNavProps {
 	/** The engagement being configured — read only for its shape, never mutated here. */
@@ -109,7 +114,10 @@ function jumpToSection(key: SetupSectionKey): boolean {
  * The rail. Renders every section of `setup` as a real anchor and tracks the one in view.
  */
 export default function SetupSectionNav({ setup }: SetupSectionNavProps): JSX.Element {
-	const sections = setupSections(setup);
+	// The SAME resolution the form uses, so the two cannot disagree about which sections exist. The
+	// prop is the pre-hydration fallback, which is what keeps the rail correct in the first byte.
+	const live = setupDraft.value ?? currentSetup(setup);
+	const sections = setupSections(live);
 	const active = activeSection.value;
 	// A stable dependency: `setupSections` returns a fresh array every render, so the array itself
 	// would re-subscribe the probe on every keystroke in the form beside it.

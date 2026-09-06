@@ -163,6 +163,16 @@ export const LocalKeys = {
 	 */
 	PROJECT_CHANNEL_PREFS: "pj.local.projects.channelPrefs",
 	/**
+	 * Whether the owner's setup surface saves on its own when a field loses focus — `"1"` or `"0"`.
+	 *
+	 * A per-device working preference rather than an account setting: it says how somebody likes to
+	 * edit at the desk they are sitting at, and it changes nothing about the project. Defaults to OFF,
+	 * because a save is a write other people can see and the owner should opt into it rather than
+	 * discover it. Shared cross-island (the footer rig owns the toggle, the body owns the blur that
+	 * acts on it) and read only after hydration, so it can never diverge from the SSR paint.
+	 */
+	PROJECT_AUTOSAVE: "pj.local.projects.autoSave",
+	/**
 	 * The File Explorer's zoom-driven view density (a `0`–`1` float). Below the centre threshold the
 	 * workspace is the list/table view; above it, the grid — and within each half the value scales the
 	 * card/thumbnail size. Shared cross-island (the footer View Control Rig ↔ the explorer body).

@@ -43,7 +43,7 @@ import type {
 	SubmissionUnit,
 	SubmissionUnitKind,
 } from "@projective/types/projects";
-import { UUID_RE } from "./project-identity.ts";
+import { UUID_RE } from "./live-support.ts";
 
 /**
  * live-submissions — the RLS-scoped Postgres read path for the Submissions explorer

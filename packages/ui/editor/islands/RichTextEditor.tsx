@@ -4,6 +4,9 @@ import { Signal } from "@preact/signals";
 import "../styles/editor.css";
 import { cx } from "../../core/cx.ts";
 import type { Bindable, FieldStatus, ValueChange } from "../../fields/types/mod.ts";
+import { markdownToHtml, shouldParseMarkdown } from "../core/markdown.ts";
+import { cssLength } from "../core/resize.ts";
+import { useEditorResize } from "../hooks/useEditorResize.ts";
 
 /**
  * RichTextEditor — a lightweight, token-driven QuillJS wrapper.
@@ -22,6 +25,23 @@ import type { Bindable, FieldStatus, ValueChange } from "../../fields/types/mod.
  * Signal-first: pass a `Signal<string>` (controlled — read once at mount, written back on change) or a
  * raw HTML string (uncontrolled seed). Emits clean semantic HTML via {@link ValueChange}; an empty
  * document emits `""` so a required/publishing gate can test it plainly.
+ *
+ * ## Sizing: CSS grows the box, JavaScript only ever pins it
+ *
+ * Auto-expansion has NO JavaScript at all. The editing surface is its content's natural height,
+ * floored by `defaultHeight` and ceilinged by `maxAutoHeight`, with the overflow scrolling — three
+ * declarations, resolved by the engine on every reflow. A measure-and-set loop was the obvious
+ * alternative and is worse in three ways that matter here: it needs the container's height set to
+ * `auto` before every measurement or it can only ever grow, it runs on a frame this repo has measured
+ * a preview pane never delivering, and it paints the wrong size for the whole first frame of every
+ * page load. The only geometry JavaScript writes is a size the reader dragged, which is not derivable
+ * from content by definition.
+ *
+ * The two bound pairs are deliberately different. Growing on its own the box floors at
+ * `defaultHeight` — the resting size the surface was designed around — and ceilings at
+ * `maxAutoHeight`. Dragged by hand it floors at `minHeight` and ceilings at `maxHeight`, which are
+ * the reader's limits rather than the layout's, and are wider on purpose: someone who has taken the
+ * box in hand is allowed a size the automatic behaviour would never have chosen.
  */
 export interface RichTextEditorProps {
 	/** Bound HTML value — a raw string (seed) or a `Signal<string>` (controlled). Read once at mount. */
@@ -32,8 +52,30 @@ export interface RichTextEditorProps {
 	placeholder?: string;
 	/** Validation status → coloured ring (RED `required` / AMBER `gate` creation gates, §fields). */
 	status?: FieldStatus;
-	/** Minimum editor height, in rows (default 4). */
+	/**
+	 * Minimum editor height, in rows (default 4). The row-derived height is what `defaultHeight`
+	 * defaults to, so a call site that only sets `minRows` behaves exactly as it always has.
+	 */
 	minRows?: number;
+	/**
+	 * Resting height of the editing surface — a number is pixels, a string is any CSS length.
+	 * Defaults to the height `minRows` implies. The toolbar is chrome above this and is not counted.
+	 */
+	defaultHeight?: number | string;
+	/**
+	 * Ceiling for automatic growth. Past it the surface scrolls instead of growing. Unbounded by
+	 * default, so an existing call site keeps growing with its content exactly as before.
+	 */
+	maxAutoHeight?: number | string;
+	/** Hard floor for a MANUAL drag (default `2.5rem` — one line of text and its padding). */
+	minHeight?: number | string;
+	/** Hard ceiling for a MANUAL drag. Unbounded by default. */
+	maxHeight?: number | string;
+	/**
+	 * Render the width and corner handles too (default `false`). Width is always clamped to the
+	 * parent's content box, so a drag cannot push the page into horizontal overflow.
+	 */
+	enableHorizontalResize?: boolean;
 	/** Accessible label for the editing region. */
 	"aria-label"?: string;
 	/** Stable id for the editing region (label association). */
@@ -147,20 +189,76 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 		placeholder = "Write a description…",
 		status = "default",
 		minRows = 4,
+		defaultHeight,
+		maxAutoHeight,
+		minHeight,
+		maxHeight,
+		enableHorizontalResize = false,
 		id,
 		class: className,
 		"aria-label": ariaLabel,
 	} = props;
 
+	const containerRef = useRef<HTMLDivElement>(null);
 	const toolbarRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<HTMLDivElement>(null);
 	// deno-lint-ignore no-explicit-any -- Quill instance is loaded dynamically on the client.
 	const quillRef = useRef<any>(null);
 
+	const resize = useEditorResize({
+		containerRef,
+		surfaceRef: editorRef,
+		horizontal: enableHorizontalResize,
+	});
+
 	useEffect(() => {
 		let disposed = false;
 		// deno-lint-ignore no-explicit-any
 		let editor: any = null;
+		const container = containerRef.current;
+
+		/**
+		 * Markdown paste interception.
+		 *
+		 * Registered in the CAPTURE phase on the CONTAINER, which is a strict ancestor of the element
+		 * Quill binds its own `paste` listener to. That is what guarantees this runs first: two
+		 * listeners on the same node fire in registration order regardless of phase, and Quill
+		 * registers its own in its constructor — so a bubble-phase handler here, or a JSX `onPaste`,
+		 * would run after Quill had already inserted the text.
+		 *
+		 * Quill's handler opens with `if (e.defaultPrevented) return`, so `preventDefault()` is the
+		 * whole hand-off and `stopPropagation()` is deliberately NOT called — an app-level paste
+		 * listener elsewhere on the page keeps seeing the event.
+		 *
+		 * It is called before the dispatch rather than after, because it has to happen inside the
+		 * event's own dispatch to mean anything. The insertion is therefore wrapped: if it throws, the
+		 * reader still gets their clipboard as plain text. Losing a paste is not an acceptable price
+		 * for a convenience.
+		 */
+		const onPasteCapture = (event: ClipboardEvent) => {
+			const quill = quillRef.current;
+			if (!quill || event.defaultPrevented) return;
+			const data = event.clipboardData;
+			if (!data) return;
+
+			const text = data.getData("text/plain");
+			if (!shouldParseMarkdown(text, data.getData("text/html"))) return;
+			const html = markdownToHtml(text);
+			if (!html) return;
+
+			const range = quill.getSelection(true);
+			if (!range) return;
+
+			event.preventDefault();
+			try {
+				if (range.length > 0) quill.deleteText(range.index, range.length, "silent");
+				quill.clipboard.dangerouslyPasteHTML(range.index, html, "user");
+				quill.scrollSelectionIntoView();
+			} catch {
+				quill.insertText(range.index, text, "user");
+			}
+		};
+		container?.addEventListener("paste", onPasteCapture, true);
 
 		(async () => {
 			const mod = await import("quill");
@@ -189,6 +287,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 
 		return () => {
 			disposed = true;
+			container?.removeEventListener("paste", onPasteCapture, true);
 			if (editor) editor.off("text-change");
 			quillRef.current = null;
 		};
@@ -196,10 +295,32 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
+	/**
+	 * Dimension props reach CSS as custom properties, which is how this component parameterises its
+	 * stylesheet without any call site hardcoding a length (root `CLAUDE.md` §3).
+	 *
+	 * An OBJECT rather than this repo's usual style STRING, and the reason is the drag: `useEditorResize`
+	 * writes `--rte-h`/`--rte-w` straight onto this same element, and Preact assigns a string style by
+	 * replacing `cssText` wholesale — so the day one of these values became dynamic, a re-render
+	 * mid-drag would silently wipe the pinned size. With an object Preact touches only the keys it
+	 * owns, and the two writers cannot collide.
+	 */
+	const sizing: Record<string, string> = { "--rte-min-rows": String(minRows) };
+	if (defaultHeight !== undefined) sizing["--rte-h-default"] = cssLength(defaultHeight);
+	if (maxAutoHeight !== undefined) sizing["--rte-h-max-auto"] = cssLength(maxAutoHeight);
+	if (minHeight !== undefined) sizing["--rte-h-min"] = cssLength(minHeight);
+	if (maxHeight !== undefined) sizing["--rte-h-max"] = cssLength(maxHeight);
+
 	return (
 		<div
-			class={cx("ui-rte", status !== "default" && `ui-rte--${status}`, className)}
-			style={`--rte-min-rows:${minRows}`}
+			ref={containerRef}
+			class={cx(
+				"ui-rte",
+				status !== "default" && `ui-rte--${status}`,
+				enableHorizontalResize && "ui-rte--hresize",
+				className,
+			)}
+			style={sizing}
 		>
 			<div class="ui-rte__toolbar" ref={toolbarRef} role="toolbar" aria-label="Formatting">
 				<span class="ui-rte__group">
@@ -220,6 +341,43 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 				id={id}
 				aria-label={ariaLabel}
 			/>
+			{
+				/*
+				 * Resize handles. Focusable and arrow-key operable, not mouse-only: a native `resize` grip
+				 * excludes keyboard users from a capability the design is offering, and the ARIA
+				 * window-splitter pattern is exactly a focusable `separator`.
+				 */
+			}
+			<div
+				class="ui-rte__handle ui-rte__handle--block"
+				role="separator"
+				aria-orientation="horizontal"
+				aria-label="Resize editor height"
+				tabIndex={0}
+				onPointerDown={(e) => resize.start("block", e)}
+				onKeyDown={(e) => resize.onKeyDown("block", e)}
+			/>
+			{enableHorizontalResize && (
+				<>
+					<div
+						class="ui-rte__handle ui-rte__handle--inline"
+						role="separator"
+						aria-orientation="vertical"
+						aria-label="Resize editor width"
+						tabIndex={0}
+						onPointerDown={(e) => resize.start("inline", e)}
+						onKeyDown={(e) => resize.onKeyDown("inline", e)}
+					/>
+					<div
+						class="ui-rte__handle ui-rte__handle--corner"
+						role="separator"
+						aria-label="Resize editor width and height"
+						tabIndex={0}
+						onPointerDown={(e) => resize.start("both", e)}
+						onKeyDown={(e) => resize.onKeyDown("both", e)}
+					/>
+				</>
+			)}
 		</div>
 	);
 }

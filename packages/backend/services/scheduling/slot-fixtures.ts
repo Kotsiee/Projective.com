@@ -260,7 +260,14 @@ function resolveSlot(args: {
 	const id = `slot-${start}`;
 
 	if (start < now) {
-		return { id, startsAt: start, endsAt: end, available: false, reason: "past", seatsRemaining: null };
+		return {
+			id,
+			startsAt: start,
+			endsAt: end,
+			available: false,
+			reason: "past",
+			seatsRemaining: null,
+		};
 	}
 	if (start < noticeFloor) {
 		return {

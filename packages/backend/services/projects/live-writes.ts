@@ -2,27 +2,40 @@ import {
 	type ArchiveProject,
 	type ChatMessage,
 	type CommitTicket,
+	countsAsOnboarded,
 	CREATED_PUBLISH_VISIBILITY,
 	type CreatedProject,
 	type CreateProject,
 	type CreateSubmission,
+	cumulativeStageCents,
+	DEFAULT_STAGE_SETUP,
+	FIELD_LOCKED_POST_ONBOARDING,
 	liveVisibilityFor,
+	lockedStagePriceIds,
 	MAX_PROJECT_ATTACHMENTS,
 	MAX_STAGE_SKILLS,
 	MILESTONE_MAX,
 	type MoveTicket,
 	normaliseSeats,
+	pricedStages,
+	PROJECT_PRICE_LOCK_REASON,
 	type ProjectAttachment,
 	type ProjectCreateFormat,
 	type ProjectFormat,
+	projectPriceLocked,
 	type ProjectRoleSetup,
 	type ProjectRules,
 	type ProjectSetup,
 	type ProjectStatus,
 	type ProjectStructure,
 	reconcileSetup,
+	ROLE_INSTRUCTIONS_MAX,
 	type SendProjectMessage,
+	SHAPE_LOCK_REASON,
+	shapeLocked,
 	SKILL_LABEL_MAX,
+	STAGE_DELAY_MAX_DAYS,
+	STAGE_PRICE_LOCK_REASON,
 	type StageDependency,
 	type StageSetup,
 	type StageStaffingRole,
@@ -31,6 +44,7 @@ import {
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
+import { flattenRichText } from "@projective/types/richtext";
 import type { SupabaseClient } from "supabaseClient";
 import type { FieldErrors } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -45,7 +59,8 @@ import {
 	senderOf,
 	toSubmissionStatus,
 } from "./live-support.ts";
-import { UUID_RE } from "./project-identity.ts";
+import { insertWithSlugRetry } from "../../core/slug-retry.ts";
+import { UUID_RE } from "./live-support.ts";
 
 /**
  * live-writes — the RLS-scoped WRITE path for the projects domain.
@@ -163,7 +178,9 @@ interface SetupStageRow {
 	skills: string[] | null;
 	default_tasks?: unknown;
 	start_trigger_type?: string | null;
-	file_duration_days?: number | null;
+	start_dependency_stage_id?: string | null;
+	start_dependency_lag_days?: number | null;
+	file_due_date?: string | null;
 	capacity?: string | null;
 	seat_count?: number | null;
 	allowed_file_kinds?: string[] | null;
@@ -189,6 +206,8 @@ interface StaffingRoleRow {
 	budget_amount_cents: number | null;
 	/** The freeform tags this seat needs; `project_stages.skills` one level down, not a join table. */
 	skills: string[] | null;
+	/** What this seat is expected to do, beyond its title. NULL and `''` both read as "nothing extra". */
+	additional_instructions?: string | null;
 }
 
 /** The columns the setup read selects, named once so the row interface and the query cannot drift. */
@@ -232,7 +251,9 @@ const SETUP_STAGE_COLUMNS = [
 	"skills",
 	"default_tasks",
 	"start_trigger_type",
-	"file_duration_days",
+	"start_dependency_stage_id",
+	"start_dependency_lag_days",
+	"file_due_date",
 	"capacity",
 	"seat_count",
 	"allowed_file_kinds",
@@ -241,7 +262,7 @@ const SETUP_STAGE_COLUMNS = [
 
 /** The staffing-role columns, named once for the same reason the two lists above are. */
 const STAFFING_ROLE_COLUMNS =
-	"id, project_stage_id, role_title, quantity, budget_amount_cents, skills";
+	"id, project_stage_id, role_title, quantity, budget_amount_cents, skills, additional_instructions";
 
 /**
  * The `files.items` columns a project attachment is NAMED and SIZED from.
@@ -281,20 +302,6 @@ function richTextOf(json: unknown, text: string): string {
 		if (typeof html === "string" && html.length > 0) return clamp(html, RICH_TEXT_MAX);
 	}
 	return clamp(text, RICH_TEXT_MAX);
-}
-
-/**
- * The flattened twin of a rich body.
- *
- * Tags are stripped and entity whitespace normalised so the search column holds what a reader would
- * see. It is deliberately not a sanitiser — nothing here renders this string as markup.
- */
-function flattenRichText(html: string): string {
-	return html
-		.replace(/<[^>]*>/g, " ")
-		.replace(/&nbsp;|&#160;/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
 }
 // #endregion
 
@@ -369,7 +376,11 @@ function fromStageDependency(dependency: StageDependency): string {
  * read for the whole project and a per-stage query would be N round trips for a form that renders
  * them all at once.
  */
-function toStageSetup(row: SetupStageRow, roles: readonly StaffingRoleRow[]): StageSetup {
+function toStageSetup(
+	row: SetupStageRow,
+	roles: readonly StaffingRoleRow[],
+	onboardedCount: number,
+): StageSetup {
 	// The seat pair is normalised through the SSOT rather than read field-by-field, so a row that
 	// somehow carries `unlimited` WITH a count — which the bidirectional CHECK forbids but an
 	// unmigrated database has no CHECK to forbid — is reported the way the form would store it.
@@ -389,7 +400,15 @@ function toStageSetup(row: SetupStageRow, roles: readonly StaffingRoleRow[]): St
 			.slice(0, MAX_STAGE_SKILLS),
 		tasks: toStageTasks(row.default_tasks),
 		dependency: toStageDependency(row.start_trigger_type),
-		durationDays: row.file_duration_days ?? null,
+		startsWithId: row.start_dependency_stage_id ?? null,
+		// `?? 0` and never `?? null`: the column is a plain integer with a real default, so "no offset"
+		// is a value rather than an absence, and the form's stepper has to start somewhere honest.
+		delayDays: clampDelayDays(row.start_dependency_lag_days),
+		// The column is a `timestamptz` and the SSOT holds a calendar DATE, so only the date half is
+		// carried across. Slicing the ISO string keeps the instant's own UTC day, which is the day the
+		// database was told about — re-deriving it through a local `Date` here would shift it by the
+		// SERVER's offset, which has nothing to do with either party.
+		deliveryDate: typeof row.file_due_date === "string" ? row.file_due_date.slice(0, 10) : null,
 		capacity: seats.capacity,
 		seatCount: seats.seatCount,
 		roles: roles.map(toStageStaffingRole),
@@ -402,6 +421,10 @@ function toStageSetup(row: SetupStageRow, roles: readonly StaffingRoleRow[]): St
 		// not exist yet: "this stage says nothing" is true either way, where `false` would assert a
 		// deliberate exemption nobody granted.
 		ndaRequired: row.nda_required ?? null,
+		// Passed in rather than read here, because the count comes from a table this projection does
+		// not otherwise touch and one query answers it for every stage at once (see
+		// {@link fetchOnboardedCounts}).
+		onboardedCount,
 	};
 }
 
@@ -440,6 +463,7 @@ function toStageStaffingRole(row: StaffingRoleRow): StageStaffingRole {
 		// The column defaults to 1 and is NOT NULL, so the fallback only ever covers a read that did
 		// not select it. One seat is the honest floor: a role nobody can fill is not a role.
 		quantity: Math.min(Math.max(row.quantity ?? 1, 1), 99),
+		description: clamp(row.additional_instructions ?? "", ROLE_INSTRUCTIONS_MAX),
 		budgetCents: row.budget_amount_cents,
 	};
 }
@@ -450,6 +474,7 @@ function toRoleSetup(row: StaffingRoleRow): ProjectRoleSetup {
 		id: row.id,
 		name: clampOr(row.role_title, NAME_MAX, "Role"),
 		skills: (row.skills ?? []).map((skill) => clamp(skill, 60)).filter((s) => s.length > 0),
+		description: clamp(row.additional_instructions ?? "", ROLE_INSTRUCTIONS_MAX),
 		budgetCents: row.budget_amount_cents,
 	};
 }
@@ -500,6 +525,7 @@ function toSetup(
 	roles: readonly StaffingRoleRow[],
 	attachments: readonly ProjectAttachment[],
 	viewerId: string,
+	onboarded: OnboardedCounts,
 ): ProjectSetup {
 	const rolesByStage = groupRolesByStage(roles);
 	return reconcileSetup({
@@ -533,8 +559,14 @@ function toSetup(
 		rules: toRules(row),
 		stages: [...stages]
 			.sort((a, b) => a.sort_order - b.sort_order)
-			.map((stage) => toStageSetup(stage, rolesByStage.get(stage.id) ?? [])),
+			.map((stage) =>
+				toStageSetup(stage, rolesByStage.get(stage.id) ?? [], onboarded.byStage.get(stage.id) ?? 0)
+			),
 		roles: roles.map(toRoleSetup),
+		// The project TOTAL, not the sum of the line above. A Direct Deliverable is staffed by roles and
+		// its form renders no stage list, so a figure derived from the stages this projection happens to
+		// carry would read zero on a fully staffed engagement — see `ProjectSetupSchema.onboardedCount`.
+		onboardedCount: onboarded.total,
 		// The setup surface is the OWNER's. `create_stage` and `reorder_stages` both authorise on
 		// ownership, so anything wider here would draw controls the database will refuse.
 		viewerIsClient: row.owner_user_id === viewerId,
@@ -543,14 +575,44 @@ function toSetup(
 // #endregion
 
 // #region Setup read
-/** The project row the setup surface edits, by slug or uuid. */
+/**
+ * The project row the setup surface edits.
+ *
+ * TWO functions rather than one that takes either identifier, and the split is load-bearing. A caller
+ * either holds the ROUTE SEGMENT — which is a slug and only a slug — or it holds a row it has already
+ * read, in which case it holds the primary key. A single resolver that accepted both let those two
+ * situations look identical at the call site, and that is precisely how `applyProjectUpdate` came to
+ * hand a uuid to a slug lookup: it read the row, wrote its patch, then re-read the projection with
+ * `row.id`. While the resolver still fell back to the uuid that worked; the moment it stopped, every
+ * successful save committed its write and then reported "No project found" — the write landed, the
+ * owner was told it had not, and nothing in the type system had an opinion either way.
+ */
 async function fetchSetupProject(
 	actor: ReadActor & { accessToken: string },
-	projectId: string,
+	projectSlug: string,
 ): Promise<SetupProjectRow | null> {
-	const base = projectsDb(actor).from("projects").select(SETUP_PROJECT_COLUMNS);
-	const filtered = UUID_RE.test(projectId) ? base.eq("id", projectId) : base.eq("slug", projectId);
-	const { data, error } = await filtered.maybeSingle();
+	return await selectSetupProject(actor, "slug", projectSlug);
+}
+
+/** The same row, addressed by its primary key — for a re-read after a write. */
+async function fetchSetupProjectById(
+	actor: ReadActor & { accessToken: string },
+	projectRowId: string,
+): Promise<SetupProjectRow | null> {
+	return await selectSetupProject(actor, "id", projectRowId);
+}
+
+/** The one query behind both, so the column list and the error handling cannot drift apart. */
+async function selectSetupProject(
+	actor: ReadActor & { accessToken: string },
+	column: "id" | "slug",
+	value: string,
+): Promise<SetupProjectRow | null> {
+	const { data, error } = await projectsDb(actor)
+		.from("projects")
+		.select(SETUP_PROJECT_COLUMNS)
+		.eq(column, value)
+		.maybeSingle();
 	if (error) throw new Error(`projects.projects read failed: ${error.message}`);
 	if (!data) return null;
 	return data as unknown as SetupProjectRow;
@@ -631,6 +693,67 @@ async function fetchProjectAttachments(
 }
 
 /**
+ * How many providers have been onboarded, per stage and across the whole engagement.
+ *
+ * Two figures rather than one map plus a caller-side sum, because {@link toSetup} needs both and only
+ * one of them is derivable from the other in one direction: the total counts every assignment on the
+ * project, including on stages the projection may not render.
+ */
+interface OnboardedCounts {
+	byStage: Map<string, number>;
+	total: number;
+}
+
+/** The zero answer — no stages to ask about, or a read that could not resolve. */
+const NO_ONBOARDING: OnboardedCounts = { byStage: new Map(), total: 0 };
+
+/**
+ * Count the live `projects.stage_assignments` rows behind the post-onboarding price and shape locks.
+ *
+ * ONE query for the whole project rather than one per stage: the setup form renders every stage at
+ * once, so a per-stage read would be N round trips for a single page.
+ *
+ * `status` is filtered in TypeScript rather than in the query, and that is deliberate. The column is
+ * free text with no CHECK, so the rule is a DENY-list — `countsAsOnboarded` in the SSOT — and a
+ * PostgREST `not.in` would have to restate that list in a second place, in a different syntax, where
+ * it could quietly fall out of step with the one the client's locks and the guard below both read.
+ * The row volume is one project's assignments, so filtering after the fetch costs nothing worth
+ * having.
+ *
+ * A FAILED read degrades to {@link NO_ONBOARDING} rather than throwing, matching the stage, role and
+ * attachment reads beside it — a withheld join should cost a lock, not the page. That errs toward
+ * UNLOCKED on the client, which is safe only because the write path re-reads this same function
+ * before it accepts a change: the worst outcome is a control that looks editable and is then refused,
+ * never a price that changes out from under somebody.
+ */
+async function fetchOnboardedCounts(
+	actor: ReadActor & { accessToken: string },
+	stageIds: readonly string[],
+): Promise<OnboardedCounts> {
+	if (stageIds.length === 0) return NO_ONBOARDING;
+	const { data, error } = await projectsDb(actor)
+		.from("stage_assignments")
+		.select("project_stage_id, status")
+		.in("project_stage_id", stageIds);
+	if (error) return NO_ONBOARDING;
+
+	const byStage = new Map<string, number>();
+	let total = 0;
+	for (const raw of (data ?? []) as ReadonlyArray<Record<string, unknown>>) {
+		const stageId = raw.project_stage_id;
+		const status = raw.status;
+		if (typeof stageId !== "string") continue;
+		// A row with no status at all counts. The column is `NOT NULL`, so this can only be a shape the
+		// read did not expect — and an unrecognised assignment must lock, for the reason the SSOT's
+		// deny-list spells out.
+		if (typeof status === "string" && !countsAsOnboarded(status)) continue;
+		byStage.set(stageId, (byStage.get(stageId) ?? 0) + 1);
+		total += 1;
+	}
+	return { byStage, total };
+}
+
+/**
  * The owner's configuration projection for one engagement, or `null` when it does not exist or is
  * not visible.
  *
@@ -640,18 +763,36 @@ async function fetchProjectAttachments(
  */
 export async function fetchProjectSetup(
 	actor: ReadActor & { accessToken: string },
-	projectId: string,
+	projectSlug: string,
 ): Promise<ProjectSetup | null> {
-	const row = await fetchSetupProject(actor, projectId);
-	if (!row) return null;
+	const row = await fetchSetupProject(actor, projectSlug);
+	return row ? await composeSetup(actor, row) : null;
+}
+
+/** The same projection for a row already in hand — the post-write re-read. */
+async function fetchProjectSetupById(
+	actor: ReadActor & { accessToken: string },
+	projectRowId: string,
+): Promise<ProjectSetup | null> {
+	const row = await fetchSetupProjectById(actor, projectRowId);
+	return row ? await composeSetup(actor, row) : null;
+}
+
+/** Everything hanging off the project row, composed once for both entry points. */
+async function composeSetup(
+	actor: ReadActor & { accessToken: string },
+	row: SetupProjectRow,
+): Promise<ProjectSetup> {
 	const stages = await fetchSetupStages(actor, row.id);
-	// Sequential because the role read is keyed on the stage ids the previous read returned; the
-	// attachment read is independent, so it runs alongside it rather than after it.
-	const [roles, attachments] = await Promise.all([
-		fetchStaffingRoles(actor, stages.map((s) => s.id)),
+	// Sequential because the role and assignment reads are keyed on the stage ids the previous read
+	// returned; the attachment read is independent, so it runs alongside them rather than after.
+	const stageIds = stages.map((s) => s.id);
+	const [roles, attachments, onboarded] = await Promise.all([
+		fetchStaffingRoles(actor, stageIds),
 		fetchProjectAttachments(actor, row.id),
+		fetchOnboardedCounts(actor, stageIds),
 	]);
-	return toSetup(row, stages, roles, attachments, actor.userId);
+	return toSetup(row, stages, roles, attachments, actor.userId, onboarded);
 }
 // #endregion
 
@@ -835,6 +976,22 @@ export function normalisedCurrency(value: string): string | null {
 }
 
 /**
+ * A start lag held inside the SSOT's signed bound, in the one place both directions can reach it.
+ *
+ * `start_dependency_lag_days` is a plain `integer` with no CHECK, so a legacy or hand-written row may
+ * carry anything at all — including a fractional value through a float cast. Clamping on the way IN
+ * and on the way OUT means the form never renders a number it would refuse to save, which is the
+ * shape of bug where a field looks editable and every attempt to save it fails.
+ *
+ * A non-finite or absent value reads as `0`: the column is NOT NULL with a real default, so "no
+ * offset" is a value rather than an absence.
+ */
+function clampDelayDays(value: number | null | undefined): number {
+	if (value === null || value === undefined || !Number.isFinite(value)) return 0;
+	return Math.max(-STAGE_DELAY_MAX_DAYS, Math.min(STAGE_DELAY_MAX_DAYS, Math.round(value)));
+}
+
+/**
  * Build the `projects.projects` column patch from the validated payload.
  *
  * `visibility` is deliberately NOT here. It is the one rule whose stored value is a FUNCTION of the
@@ -941,7 +1098,19 @@ export function stageTermsPatch(
 	if (stage.dependency !== undefined) {
 		patch.start_trigger_type = fromStageDependency(stage.dependency);
 	}
-	if (stage.durationDays !== undefined) patch.file_duration_days = stage.durationDays;
+	if (stage.startsWithId !== undefined) patch.start_dependency_stage_id = stage.startsWithId;
+	if (stage.delayDays !== undefined) {
+		patch.start_dependency_lag_days = clampDelayDays(stage.delayDays);
+	}
+	// A calendar date becomes the instant the column holds by naming it explicitly as UTC midnight.
+	// `new Date("2026-09-05")` already means that, but only for the date-ONLY form — appending the `Z`
+	// makes the intent unmissable to the next reader and keeps the value stable if the form ever sends
+	// a fuller string. Blank clears it, which is what "no fixed date" means.
+	if (stage.deliveryDate !== undefined) {
+		patch.file_due_date = stage.deliveryDate
+			? `${stage.deliveryDate.slice(0, 10)}T00:00:00Z`
+			: null;
+	}
 	if (stage.allowedFileKinds !== undefined) patch.allowed_file_kinds = stage.allowedFileKinds;
 	if (stage.ndaRequired !== undefined) patch.nda_required = stage.ndaRequired;
 	// Clamped per entry and emptied of blanks, matching what `toStage` reads back — a `Chips` control
@@ -1006,7 +1175,13 @@ async function reconcileStages(
 		const html = clamp(stage.description ?? "", RICH_TEXT_MAX);
 		const name = clampOr(stage.name, NAME_MAX, `Stage ${index + 1}`);
 		if (isExistingId(stage.id, DRAFT_STAGE_PREFIX)) {
-			const patch: Record<string, unknown> = { name };
+			// Conditional, like every other field on this patch. Writing `name` unconditionally meant a
+			// PATCH that did not mention it RENAMED the stage to `Stage <n>` — the `clampOr` fallback —
+			// and the ordinal came from the payload's index rather than the stage's own order, so a
+			// one-stage edit renamed whichever stage it touched to "Stage 1". The create arm below still
+			// needs the fallback: a new stage must be named something.
+			const patch: Record<string, unknown> = {};
+			if (stage.name !== undefined) patch.name = name;
 			if (stage.description !== undefined) {
 				patch.description = { html };
 				patch.description_text = flattenRichText(html);
@@ -1015,13 +1190,19 @@ async function reconcileStages(
 			if (stage.milestone !== undefined) patch.milestone = clamp(stage.milestone, 240);
 			if (stage.skills !== undefined) patch.skills = stage.skills;
 			Object.assign(patch, stageTermsPatch(stage));
-			const { data: touched, error } = await db
-				.from("project_stages")
-				.update(patch)
-				.eq("id", stage.id)
-				.select("id");
-			if (error) return refusalFrom(error.message, "stages");
-			if (!touched || touched.length === 0) return notWritten("stages");
+			// An EMPTY patch is now reachable — a payload naming a stage only to fix its position carries
+			// no column at all — and it must not be sent. PostgREST turns an empty body into an update
+			// that touches nothing and returns no rows, which {@link notWritten} would then read as a
+			// policy refusal and fail the whole save. The stage is still kept and still ordered below.
+			if (Object.keys(patch).length > 0) {
+				const { data: touched, error } = await db
+					.from("project_stages")
+					.update(patch)
+					.eq("id", stage.id)
+					.select("id");
+				if (error) return refusalFrom(error.message, "stages");
+				if (!touched || touched.length === 0) return notWritten("stages");
+			}
 			// After the stage's own columns, so a save that the stage write was going to refuse cannot
 			// leave its roles rewritten behind it.
 			if (stage.roles !== undefined) {
@@ -1162,11 +1343,10 @@ async function reconcileRoles(
 		const patch = {
 			role_title: clampOr(role.name, NAME_MAX, "Role"),
 			skills: role.skills?.map((skill) => clamp(skill, 60)).filter((s) => s.length > 0) ?? [],
-			// `null`, not `0`. The column is nullable and NULL means "not priced yet", where zero is a
-			// decision somebody took — a seat offered for free. `validateUpdate` refuses a budget-less
-			// role on THIS path before any write happens, so the fallback is unreachable here; it is
-			// written honestly anyway, because the create path stores NULL and the two must agree about
-			// what an unpriced seat looks like in the column.
+			additional_instructions: clamp(role.description ?? "", ROLE_INSTRUCTIONS_MAX),
+			// `null`, not `0`, and no longer refused upstream: the figure is a BONUS on top of the
+			// engagement's own price rather than the role's budget, so most roles legitimately carry
+			// none. Zero stays distinguishable from absent — it is a bonus somebody set to nothing.
 			budget_amount_cents: role.budgetCents ?? null,
 		};
 		if (isExistingId(role.id, DRAFT_ROLE_PREFIX)) {
@@ -1256,29 +1436,6 @@ export function planStageRoles(
 }
 
 /**
- * The refusal an unpriced role earns, for the STAGE-scoped table.
- *
- * `stage_staffing_roles.budget_amount_cents` is `bigint NOT NULL CHECK (>= 0)` while
- * {@link StageStaffingRoleSchema} declares `budgetCents` nullable and documents `null` as UNPRICED.
- * A deliberately unpriced role is therefore not expressible in the column at all, and the two ways to
- * make it fit are both dishonest: writing `0` collapses "nobody has priced this yet" onto "this role
- * is free", which is the exact distinction the nullable field exists to hold and which the setup
- * ladder counts — a defaulted zero would satisfy the pricing step with a number nobody typed. Dropping
- * the role instead would answer "Saved" over a seat that is not there.
- *
- * So it is refused, in the same words and with the same status {@link reconcileRoles} already uses for
- * the identical column on a Direct Deliverable's roles. Relaxing the column is the real fix and it is
- * a schema decision this layer may not take.
- */
-function unpricedStageRole(): WriteRefusal {
-	return {
-		status: 422,
-		message: "Give every stage role a budget.",
-		errors: { stages: "role_budget_required" },
-	};
-}
-
-/**
  * Write one stage's staffing roles.
  *
  * Takes the client rather than an actor because its caller has already built one, and takes `existing`
@@ -1293,6 +1450,30 @@ function unpricedStageRole(): WriteRefusal {
  * references `stage_staffing_roles` — no foreign key, no function, no trigger — so removing one
  * strands no assignment and moves no money.
  */
+/**
+ * One named role's columns, for both the update and the insert arm.
+ *
+ * `budget_amount_cents` is written through verbatim, INCLUDING `null`, and that is the change of rule
+ * this pass carries: the figure is a BONUS on top of the stage's ticket price rather than the role's
+ * budget, so an absent one is an ordinary answer — most roles earn no bonus — and the two guards that
+ * used to refuse an unpriced role here are gone. The required figure is `project_stages.unit_price_cents`,
+ * which is what `finance.fn_hold_ticket_escrow` actually reads, and `pricingSatisfied` is what holds
+ * it before a project may publish.
+ *
+ * `null` is never coerced to `0`: zero is a bonus somebody deliberately set to nothing, and the
+ * column is nullable precisely so the two stay distinguishable.
+ */
+function stageRolePatch(role: StageStaffingRole): Record<string, unknown> {
+	return {
+		role_title: clampOr(role.name, NAME_MAX, "Role"),
+		quantity: Math.min(Math.max(role.quantity, 1), 99),
+		// `NOT NULL DEFAULT ''` on the column, so an emptied field is `''` and never null — the same
+		// rule `milestone` follows, and writing null would abort the statement.
+		additional_instructions: clamp(role.description ?? "", ROLE_INSTRUCTIONS_MAX),
+		budget_amount_cents: role.budgetCents ?? null,
+	};
+}
+
 async function reconcileStageRoles(
 	db: SupabaseClient,
 	stageId: string,
@@ -1302,18 +1483,9 @@ async function reconcileStageRoles(
 	const plan = planStageRoles(existing.map((row) => row.id), roles);
 
 	for (const role of plan.update) {
-		// Re-checked here as well as in {@link validateUpdate}, rather than trusting the pre-check and
-		// falling back to `?? 0`. The pre-check exists to stop a half-commit, not to be the rule; a
-		// caller that reaches this function by another route must still be refused rather than quietly
-		// storing an unpriced role as a free one.
-		if (role.budgetCents === null || role.budgetCents === undefined) return unpricedStageRole();
 		const { data: touched, error } = await db
 			.from("stage_staffing_roles")
-			.update({
-				role_title: clampOr(role.name, NAME_MAX, "Role"),
-				quantity: Math.min(Math.max(role.quantity, 1), 99),
-				budget_amount_cents: role.budgetCents,
-			})
+			.update(stageRolePatch(role))
 			.eq("id", role.id)
 			.select("id");
 		if (error) return refusalFrom(error.message, "stages");
@@ -1323,15 +1495,9 @@ async function reconcileStageRoles(
 	}
 
 	for (const role of plan.create) {
-		if (role.budgetCents === null || role.budgetCents === undefined) return unpricedStageRole();
 		const { data, error } = await db
 			.from("stage_staffing_roles")
-			.insert({
-				project_stage_id: stageId,
-				role_title: clampOr(role.name, NAME_MAX, "Role"),
-				quantity: Math.min(Math.max(role.quantity, 1), 99),
-				budget_amount_cents: role.budgetCents,
-			})
+			.insert({ ...stageRolePatch(role), project_stage_id: stageId })
 			.select("id")
 			.maybeSingle();
 		if (error) return refusalFrom(error.message, "stages");
@@ -1471,22 +1637,21 @@ async function reconcileAttachments(
  * them. The complete answer is one RPC doing the whole reconciliation in a single transaction.
  */
 function validateUpdate(input: UpdateProject): WriteRefusal | null {
-	if (input.roles?.some((role) => role.budgetCents === null || role.budgetCents === undefined)) {
-		return {
-			status: 422,
-			message: "Give every team role a budget.",
-			errors: { roles: "budget_required" },
-		};
-	}
-	// The same column, on the stage-scoped table. Hoisted here rather than left to the reconciler for
-	// the reason above: the stage loop runs after the project columns have already committed, so a
-	// role the write was always going to refuse would otherwise leave the owner's title edit stored
-	// under a 422 that told them nothing had been saved.
+	// Role pricing is NOT checked here, and its absence is the rule rather than an omission: a named
+	// role's figure is a bonus on top of the stage's ticket price, so an unpriced role is the ordinary
+	// case. The two guards that used to stand here refused it, which made a bonus feel mandatory and
+	// contradicted the ladder beside them — `setupSteps` never counted a role's budget toward pricing.
+	//
+	// What IS required is the primary figure escrow reads, and that is a PUBLISH gate rather than a
+	// save gate: a draft must stay savable long before it is costed, or the form cannot be filled in
+	// over two sittings. `pricingSatisfied` holds it on the status transition instead.
 	for (const stage of input.stages ?? []) {
-		if (
-			stage.roles?.some((role) => role.budgetCents === null || role.budgetCents === undefined)
-		) {
-			return unpricedStageRole();
+		if (stage.startsWithId && stage.id && stage.startsWithId === stage.id) {
+			return {
+				status: 422,
+				message: "A stage cannot wait for itself.",
+				errors: { stages: "self_dependency" },
+			};
 		}
 	}
 	// `project_attachments.attachment_id` is `uuid`, and PostgREST CASTS the operand rather than
@@ -1500,6 +1665,152 @@ function validateUpdate(input: UpdateProject): WriteRefusal | null {
 			errors: { attachments: "unknown_file" },
 		};
 	}
+	return null;
+}
+
+/**
+ * Whether a payload could possibly touch a field the post-onboarding locks govern.
+ *
+ * A cheap pure pre-test, so a save that changes only the title or the terms does not pay for the two
+ * extra reads {@link fetchLockState} costs. It is deliberately generous — every field the locks could
+ * refuse, tested only for PRESENCE — because the price of a false positive is two queries and the
+ * price of a false negative is the guard silently not running.
+ */
+export function touchesLockableFields(input: UpdateProject): boolean {
+	if (input.format !== undefined || input.structure !== undefined) return true;
+	if (input.budget?.amountCents !== undefined) return true;
+	return (input.stages ?? []).some((stage) => stage.unitPriceCents !== undefined);
+}
+
+/** What the stored engagement looks like to the post-onboarding locks. */
+export interface LockState {
+	format: ProjectFormat;
+	structure: ProjectStructure;
+	onboardedCount: number;
+	budgetAmountCents: number | null;
+	/** Every stored stage's current price, so an unchanged figure is never mistaken for an edit. */
+	priceById: Map<string, number | null>;
+	/** The stages whose price is frozen — {@link lockedStagePriceIds} over the STORED shape. */
+	lockedStageIds: ReadonlySet<string>;
+}
+
+/**
+ * Read the engagement as the locks see it, from the database rather than from the payload.
+ *
+ * Every input is stored state on purpose. The locks decide what the caller may CHANGE, so resolving
+ * them from the same request that is trying to make the change would let a payload that reshapes the
+ * project also reshape the rule about whether it may — a caller could send `structure: "single_task"`
+ * and have the price lock evaluated against an engagement that does not exist yet.
+ *
+ * The stored structure is always the right basis, in both directions: while the project is unstaffed
+ * nothing is locked at all, and once it is staffed {@link shapeLocked} is what stops the structure
+ * moving.
+ */
+async function fetchLockState(
+	actor: ReadActor & { accessToken: string },
+	row: SetupProjectRow,
+): Promise<LockState> {
+	const stages = await fetchSetupStages(actor, row.id);
+	const onboarded = await fetchOnboardedCounts(actor, stages.map((stage) => stage.id));
+	const ordered = [...stages].sort((a, b) => a.sort_order - b.sort_order);
+	const structure = row.structure_variation as ProjectStructure;
+	return {
+		format: row.format as ProjectFormat,
+		structure,
+		onboardedCount: onboarded.total,
+		budgetAmountCents: row.budget_amount_cents,
+		priceById: new Map(ordered.map((stage) => [stage.id, stage.unit_price_cents])),
+		// Sorted first: the flat branch locks the ROOT stage, and "root" means `sort_order` 0, not
+		// whichever row PostgREST happened to return first.
+		lockedStageIds: lockedStagePriceIds(
+			{ structure, onboardedCount: onboarded.total },
+			ordered.map((stage) => ({
+				id: stage.id,
+				onboardedCount: onboarded.byStage.get(stage.id) ?? 0,
+			})),
+		),
+	};
+}
+
+/**
+ * The same {@link LockState}, built from an already-resolved projection instead of from a database
+ * read — the stub write path's route in.
+ *
+ * It exists so the gate-off path enforces the identical rule rather than a second one that looks
+ * like it. `PROJECTS_BACKEND_LIVE` ships OFF, so the stub IS the default behaviour: a lock the form
+ * draws and the stub write then accepts would be a control that lies in exactly the configuration
+ * most people run.
+ *
+ * The projection's stages are ALREADY in `sort_order` (both `toSetup` and the fixtures sort before
+ * projecting), so the flat branch's "root stage" resolves to the same row here as it does there.
+ */
+export function lockStateOf(setup: ProjectSetup): LockState {
+	return {
+		format: setup.format,
+		structure: setup.structure,
+		onboardedCount: setup.onboardedCount,
+		budgetAmountCents: setup.budget.amountCents,
+		priceById: new Map(setup.stages.map((stage) => [stage.id, stage.unitPriceCents])),
+		lockedStageIds: lockedStagePriceIds(setup, setup.stages),
+	};
+}
+
+/** The 422 a frozen field earns. One shape, so every locked field refuses the same way. */
+function lockRefusal(field: string, message: string): WriteRefusal {
+	return { status: 422, message, errors: { [field]: FIELD_LOCKED_POST_ONBOARDING } };
+}
+
+/**
+ * Refuse a payload that would change a term somebody has already been hired against.
+ *
+ * The server half of the post-onboarding immutability rules, and the half that actually holds: the
+ * form disables the same controls, but a disabled input is a courtesy to the person using the form
+ * and not a guarantee about the endpoint behind it.
+ *
+ * **A field sent UNCHANGED is never refused**, and that is load-bearing rather than a nicety. This
+ * surface's `toPayload` sends the WHOLE form on every save, so `format`, `structure` and every stage
+ * price are present on a request that only renamed the project. Refusing on presence would make a
+ * staffed project unsavable in any respect the moment its first freelancer joined.
+ *
+ * Every rule is read from the SSOT rather than restated here, so the control the form disables, the
+ * sentence the dialog promises and the write this refuses are one decision. A second copy of
+ * "`onboardedCount > 0`" living in this file is how the form comes to disable a control the server
+ * would have allowed, or — worse — allow one the server refuses.
+ */
+export function onboardingLockRefusal(
+	input: UpdateProject,
+	stored: LockState,
+): WriteRefusal | null {
+	if (shapeLocked(stored)) {
+		if (input.format !== undefined && input.format !== stored.format) {
+			return lockRefusal("format", SHAPE_LOCK_REASON);
+		}
+		// The has-stages toggle writes `structure`, not `format`, so a guard on the format alone is one
+		// a caller could walk around — turning a staffed pipeline flat strands every provider hired
+		// onto stages 2..n. `shapeLocked`'s docblock is where that reasoning lives.
+		if (input.structure !== undefined && input.structure !== stored.structure) {
+			return lockRefusal("structure", SHAPE_LOCK_REASON);
+		}
+	}
+
+	if (
+		projectPriceLocked(stored) && input.budget?.amountCents !== undefined &&
+		input.budget.amountCents !== stored.budgetAmountCents
+	) {
+		return lockRefusal("budget", PROJECT_PRICE_LOCK_REASON);
+	}
+
+	for (const stage of input.stages ?? []) {
+		if (stage.unitPriceCents === undefined) continue;
+		// A stage with no id is a CREATE, and a stage the stored set does not know is not this
+		// project's to lock — `reconcileStages` is what refuses that one, with a better sentence.
+		// Nobody can have been onboarded onto either, so neither can be carrying a frozen price.
+		if (!stage.id || !stored.priceById.has(stage.id)) continue;
+		if (!stored.lockedStageIds.has(stage.id)) continue;
+		if (stage.unitPriceCents === stored.priceById.get(stage.id)) continue;
+		return lockRefusal("stages", STAGE_PRICE_LOCK_REASON);
+	}
+
 	return null;
 }
 
@@ -1528,10 +1839,10 @@ const ROOT_STAGE_NAME: Record<ProjectCreateFormat, string> = {
  * The RPC exists and is unusable for this flow, in four independent ways. It reads the row id out of
  * its own payload with no fallback, so `gen_random_uuid()` never fires and the insert has no id. It
  * defaults `visibility` to PUBLIC, which would put a project nobody has configured onto Explore — the
- * exact default `DEFAULT_PROJECT_RULES` refuses to take. It supplies neither `slug`, `status` nor the
- * budget pair, so the row lands on the opaque `p-xxxx…` fallback address with no price. And its
- * nested stage insert carries neither `unit_price_cents` nor `milestone`, so the one figure the modal
- * collected would be discarded on the way in.
+ * exact default `DEFAULT_PROJECT_RULES` refuses to take. It supplies neither `status` nor the budget
+ * pair, so the row lands with no price. And its nested stage insert carries neither
+ * `unit_price_cents` nor `milestone`, so the one figure the modal collected would be discarded on the
+ * way in.
  *
  * A direct insert through the RLS-scoped client is what the sibling writes in this module already do,
  * and RLS permits it: `"Users can create projects"` is `WITH CHECK (auth.uid() = owner_user_id)`.
@@ -1546,44 +1857,53 @@ const ROOT_STAGE_NAME: Record<ProjectCreateFormat, string> = {
  * a stage-less draft is a legitimate, editable state the Stage-2 surface already renders — its stage
  * list is simply empty, and the setup ladder already exists to say so. The stage is a convenience,
  * not a correctness requirement, and it can be added by the one control that adds stages.
+ *
+ * ## The address is minted HERE, and retried here
+ *
+ * The slug used to be a parameter, threaded down from the service so the stub and live branches could
+ * share one title-derived value. It is minted inside the insert now, because the retry has to be: a
+ * collision is only knowable from `projects_slug_key` refusing the write, and by the time this
+ * function has folded that error into a `WriteRefusal` the caller can no longer tell an unavailable
+ * address from a genuine 422. `insertWithSlugRetry` re-mints and re-attempts while — and only while —
+ * that specific index is the thing objecting; every other error is returned as itself.
  */
 export async function insertProject(
 	actor: ReadActor & { accessToken: string },
 	input: CreateProject,
-	slug: string,
 ): Promise<WriteOutcome<CreatedProject>> {
 	const db = projectsDb(actor);
 	const title = clamp(input.title.trim(), TITLE_MAX);
 
-	const { data, error } = await db
-		.from("projects")
-		.insert({
-			owner_user_id: actor.userId,
-			title,
-			slug,
-			// The identity map. `ProjectCreateFormat` was narrowed to the two members `project_format`
-			// also carries, so there is no bridge here to go stale.
-			format: input.format,
-			currency: input.currency,
-			// A draft that nobody can discover, deliberately: the cost of getting this default wrong is
-			// a half-written engagement on Explore, and the Rules section is where an owner opens it up.
-			//
-			// The pair is the two-column model in miniature. `visibility` is derived — and derived by
-			// the same function the update path promotes with, so the state a project is minted in and
-			// the state it is later reconciled to cannot come from two different rules. The INTENT is
-			// `public`, which is what somebody creating a project to hire against is asking for, and it
-			// is safe to default precisely because it is not yet in effect.
-			status: "draft",
-			visibility: liveVisibilityFor("draft", CREATED_PUBLISH_VISIBILITY),
-			publish_visibility: CREATED_PUBLISH_VISIBILITY,
-			budget_type: "fixed_price",
-			// The project-level budget is the ONE-OFF's whole escrow figure. A pipeline's baseline is a
-			// per-ticket RATE, which belongs on the stage below and would read as a project total here —
-			// so it is deliberately left null rather than copied into a column that means something else.
-			budget_amount_cents: input.format === "one_off" ? input.baselineAmountCents : null,
-		})
-		.select("id, slug")
-		.maybeSingle();
+	const { data, error } = await insertWithSlugRetry("project", "projects_slug_key", (slug) =>
+		db
+			.from("projects")
+			.insert({
+				owner_user_id: actor.userId,
+				title,
+				slug,
+				// The identity map. `ProjectCreateFormat` was narrowed to the two members `project_format`
+				// also carries, so there is no bridge here to go stale.
+				format: input.format,
+				currency: input.currency,
+				// A draft that nobody can discover, deliberately: the cost of getting this default wrong is
+				// a half-written engagement on Explore, and the Rules section is where an owner opens it up.
+				//
+				// The pair is the two-column model in miniature. `visibility` is derived — and derived by
+				// the same function the update path promotes with, so the state a project is minted in and
+				// the state it is later reconciled to cannot come from two different rules. The INTENT is
+				// `public`, which is what somebody creating a project to hire against is asking for, and it
+				// is safe to default precisely because it is not yet in effect.
+				status: "draft",
+				visibility: liveVisibilityFor("draft", CREATED_PUBLISH_VISIBILITY),
+				publish_visibility: CREATED_PUBLISH_VISIBILITY,
+				budget_type: "fixed_price",
+				// The project-level budget is the ONE-OFF's whole escrow figure. A pipeline's baseline is a
+				// per-ticket RATE, which belongs on the stage below and would read as a project total here —
+				// so it is deliberately left null rather than copied into a column that means something else.
+				budget_amount_cents: input.format === "one_off" ? input.baselineAmountCents : null,
+			})
+			.select("id, slug")
+			.maybeSingle());
 
 	if (error) return { refusal: refusalFrom(error.message, "title") };
 	// Under RLS an insert the policy refuses returns no row rather than raising, so the absence IS the
@@ -1655,6 +1975,21 @@ export async function applyProjectUpdate(
 		};
 	}
 
+	// Before any write, so a payload that was always going to be refused cannot leave the sections
+	// ahead of it committed — the reasoning `validateUpdate` is placed for, applied to the rules that
+	// need the STORED row to decide.
+	//
+	// AFTER the archive check, because the more specific answer should win: an archived project
+	// refuses every field, and telling its owner that one price is frozen would send them looking for
+	// a freelancer instead of at the banner already on their screen.
+	//
+	// Skipped entirely when the payload could not touch a frozen field, so an ordinary title save
+	// still costs the one read it always did.
+	if (touchesLockableFields(input)) {
+		const locked = onboardingLockRefusal(input, await fetchLockState(actor, row));
+		if (locked) return { refusal: locked };
+	}
+
 	const patch = projectColumnPatch(input);
 	if (Object.keys(patch).length > 0) {
 		// `.select()` is what turns an RLS refusal into a refusal. Without it an UPDATE whose `USING`
@@ -1723,9 +2058,83 @@ export async function applyProjectUpdate(
 		if (refusal) return { refusal };
 	}
 
-	const setup = await fetchProjectSetup(actor, row.id);
+	// AFTER the stages, and re-read rather than computed from the payload. The project's own budget is
+	// the sum of its stage prices, so it can only be right once the stage writes have landed — and a
+	// total taken from the request body would be a figure the client chose for a column the feed, the
+	// listing and the ladder all read. Root CLAUDE.md §6: derived facts are re-derived server-side.
+	const rolled = await rollUpBudget(actor, row.id);
+	if (rolled) return { refusal: rolled };
+
+	// By the ROW ID, not by the slug this function was called with. Both resolve the same row today —
+	// a slug is immutable, so it cannot have moved under the write — but the primary key is what this
+	// function actually holds, and saying so is what stops the two lookups being confused again.
+	const setup = await fetchProjectSetupById(actor, row.id);
 	if (!setup) return null;
 	return { data: setup };
+}
+
+/**
+ * Persist the project-level budget as the sum of its MILESTONE fees.
+ *
+ * `projects.projects.budget_amount_cents` is nullable, so nothing here is rescuing a failing CHECK —
+ * the reason is agreement. The column is what the feed card, the public listing and the setup ladder
+ * read, and on a milestone run the owner never types into it: they price the milestones. Left alone,
+ * it keeps whatever the create modal put there and drifts further from the rows on every edit.
+ *
+ * Scoped to a one-off, and that scope is the load-bearing part. A one-off stage is a one-ticket stage,
+ * so its price is the whole fee and the milestones add up to the engagement. A PIPELINE stage's price
+ * is a per-TICKET rate over a stage that may run fifty tickets, so summing those rates yields a figure
+ * that is the cost of nothing — and this column is public. The same reasoning excludes a session,
+ * whose stage price is the rate for one sitting.
+ *
+ * A run with NOTHING priced is left untouched rather than written to `null`: clearing it would blank a
+ * figure the create modal legitimately collected before any milestone existed.
+ *
+ * The write is skipped when the stored figure already matches, so an ordinary save does not stamp
+ * `last_activity_at` on a project whose budget did not move.
+ */
+async function rollUpBudget(
+	actor: ReadActor & { accessToken: string },
+	projectRowId: string,
+): Promise<WriteRefusal | null> {
+	const row = await fetchSetupProject(actor, projectRowId);
+	if (!row) return null;
+	if (row.format !== "one_off" || row.structure_variation === "single_task") return null;
+
+	// `pricedStages` and not every row: a FLAT engagement keeps whatever stages a previous staged run
+	// left behind — deleting them would take their tickets and submissions with them — while its form
+	// collects a price for the root one alone. Summing the remainder would put a figure on the public
+	// listing that is partly made of prices the owner can no longer see.
+	const stages = await fetchSetupStages(actor, projectRowId);
+	const structure = (row.structure_variation ?? "standard") as ProjectStructure;
+	const total = cumulativeStageCents(pricedStages(structure, stages.map(toStageSetupShell)));
+	if (total === null || total === row.budget_amount_cents) return null;
+
+	const db = projectsDb(actor);
+	const { error } = await db
+		.from("projects")
+		.update({ budget_amount_cents: total })
+		.eq("id", projectRowId);
+	return error ? refusalFrom(error.message, "budget") : null;
+}
+
+/**
+ * The one field {@link cumulativeStageCents} reads, as the shape it expects.
+ *
+ * The SSOT helper takes a `StageSetup` because that is what every other caller holds; passing the
+ * price alone would be a second summing rule, and this pass exists partly because two rules for one
+ * figure is how they come to disagree. The rest of the shape is filled from
+ * {@link DEFAULT_STAGE_SETUP} rather than restated, so a field added to the schema lands here without
+ * an edit.
+ */
+function toStageSetupShell(row: SetupStageRow): StageSetup {
+	return {
+		...DEFAULT_STAGE_SETUP,
+		id: row.id,
+		name: row.name,
+		order: row.sort_order,
+		unitPriceCents: row.unit_price_cents,
+	};
 }
 
 /**
@@ -1764,7 +2173,7 @@ export async function archiveProjectRow(
 
 	// Read the stamp BACK rather than minting one here: the database wrote it, and a second clock
 	// would report an instant a millisecond away from the one the row actually carries.
-	const stamped = await fetchSetupProject(actor, row.id);
+	const stamped = await fetchSetupProjectById(actor, row.id);
 	return {
 		data: { slug: row.slug, archivedAt: stamped?.archived_at ?? new Date().toISOString() },
 	};
@@ -1772,14 +2181,16 @@ export async function archiveProjectRow(
 // #endregion
 
 // #region Tickets
-/** Resolve a project id that may be a slug, together with the facts a ticket write must check. */
+/** Resolve a project slug to its row id, together with the facts a ticket write must check. */
 async function fetchTicketProject(
 	actor: ReadActor & { accessToken: string },
 	projectId: string,
 ): Promise<{ id: string; allowDeadlines: boolean } | null> {
-	const base = projectsDb(actor).from("projects").select("id, allow_deadline_bonuses");
-	const filtered = UUID_RE.test(projectId) ? base.eq("id", projectId) : base.eq("slug", projectId);
-	const { data, error } = await filtered.maybeSingle();
+	const { data, error } = await projectsDb(actor)
+		.from("projects")
+		.select("id, allow_deadline_bonuses")
+		.eq("slug", projectId)
+		.maybeSingle();
 	if (error) throw new Error(`projects.projects read failed: ${error.message}`);
 	if (!data) return null;
 	const row = data as unknown as { id: string; allow_deadline_bonuses: boolean };

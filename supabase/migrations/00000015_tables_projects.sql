@@ -30,23 +30,26 @@ owner_team_id uuid,
 owner_organisation_id uuid,
 title text NOT NULL,
 
--- The readable ALTERNATE address. `id` is canonical: /projects/[projectId] carries this row's
--- uuid, and every resolver in the domain accepts either form by trying the slug and then the uuid.
--- A title-derived slug moves on the first rename, so a link built on it dies the moment the owner
--- edits the title — which is not an address. The uuid cannot collide, cannot be squatted and does
--- not change, so it is what the Quick-Init modal navigates to and what a notification links.
+-- The CANONICAL public address. `/projects/[projectSlug]` carries this and nothing else: the row's
+-- uuid does not route, and neither does any older title-derived form.
 --
--- Still globally UNIQUE rather than unique per owner, because it remains a read key resolved from
--- a bare path: the URL carries no scope segment with which to disambiguate two identical slugs.
+-- Opaque and derived from NOTHING, which is the whole point. A title-derived slug moves on the first
+-- rename, so every link built on it — a notification, a bookmark, another member's message — dies the
+-- moment the owner edits the title, silently and with a clean 404. Deriving an address from mutable
+-- content is the defect; shortening it is not the fix. The uuid had the opposite problem: it never
+-- moves, but 36 characters of undifferentiated hex say nothing about what they address, so a segment
+-- pasted into the wrong route resolves against the wrong table with no shape to refuse it.
 --
--- NOT NULL with a generated fallback, rather than NOT NULL bare, because `projects.create_project`
--- inserts without one; a bare NOT NULL would make that RPC fail at runtime, and a nullable slug
--- would let a project exist with no readable address at all. The application writes the
--- title-derived form at create; the fallback is what guarantees a row always has a slug even when
--- it is minted by a path that does not supply one. Until the Quick-Init create path shipped,
--- NOTHING in the repository wrote this column, so every live project carried the opaque `p-xxxx…`
--- fallback permanently — hence the fallback shape is load-bearing and must stay routable.
-slug text NOT NULL DEFAULT ('p-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)),
+-- Globally UNIQUE rather than unique per owner, because it is resolved from a bare path: the URL
+-- carries no scope segment with which to disambiguate two identical slugs.
+--
+-- NOT NULL with NO DEFAULT. `security.fn_slug_guard` fills it BEFORE the NOT NULL is checked, so an
+-- insert that supplies none still gets a canonical address, and the same trigger refuses any UPDATE
+-- that tries to move one — which is what makes this permanent rather than merely conventional. A
+-- DEFAULT could not do either job: a DEFAULT expression may not contain a subquery, so generating ten
+-- uniform symbols inline would mean a ten-line expression copied into all four slugged tables, and
+-- column defaults are laid down in category 0, before any function exists to call.
+slug text NOT NULL,
   description jsonb NOT NULL DEFAULT '{}'::jsonb,
   description_text text NOT NULL DEFAULT ''::text,
   format project_format NOT NULL DEFAULT 'pipeline'::project_format,
@@ -188,12 +191,19 @@ archived_at timestamptz,
   -- can disagree, and the row then answers "is this archived?" differently depending on which column
   -- the reader happens to look at.
   CONSTRAINT ck_projects_archived_at CHECK ((status = 'archived') = (archived_at IS NOT NULL)),
-  -- The slug is interpolated into a URL path segment verbatim, so a slash, a space, a dot or an
-  -- uppercase letter is not a cosmetic problem but an unroutable project. Constraining the shape
-  -- here makes that unrepresentable instead of a 404 found in production. Deliberately permissive
-  -- about repeated and trailing hyphens: the app slugifies, truncates at 80 characters and then
-  -- appends a disambiguator, which legitimately produces both.
-  CONSTRAINT ck_projects_slug_shape CHECK (slug ~ '^[a-z0-9-]{1,96}$')
+  -- The exact shape `security.mint_slug('prj')` produces, and nothing else.
+  --
+  -- Tight rather than permissive, deliberately. The previous form allowed any lowercase URL-safe
+  -- string, which meant a title-derived slug was still STORABLE — so "immutable and title-independent"
+  -- rested on every write path remembering to be, and one that forgot would be found by a reader
+  -- months later wondering why an old link 404s. Here the database refuses it, so the guarantee holds
+  -- for paths nobody has written yet.
+  --
+  -- The alphabet is the 36 lowercase alphanumerics minus `0`, `1`, `i` and `l` — one member of each
+  -- confusable group, so `o` stays legible precisely because `0` is gone, and nothing is left to be
+  -- misread aloud or mistyped from a screenshot. It is character-identical to SLUG_ALPHABET in
+  -- `@projective/types/slugs`, and `slug.contract.test.ts` fails if the two ever drift.
+  CONSTRAINT ck_projects_slug_shape CHECK (slug ~ '^prj-[23456789abcdefghjkmnopqrstuvwxyz]{10}$')
 );
 
 
@@ -201,6 +211,15 @@ CREATE TABLE projects.project_stages (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL,
   name text NOT NULL,
+
+-- The stage's own public address, on the same contract as `projects.projects.slug`: opaque, derived
+-- from nothing, minted once and refused by `security.fn_slug_guard` on any later update.
+--
+-- Globally unique rather than unique per project, even though a stage is only ever reached beneath
+-- one. The prefix already tells a reader what kind of thing this is; making it globally resolvable
+-- means a stage segment appearing anywhere — a deep link, a submission path, a log line — identifies
+-- exactly one row without needing its parent alongside it to disambiguate.
+slug text NOT NULL,
   description jsonb NOT NULL DEFAULT '{}'::jsonb,
   description_text text NOT NULL DEFAULT ''::text,
   sort_order integer NOT NULL,
@@ -333,6 +352,11 @@ capacity text NOT NULL DEFAULT 'unlimited'
   seat_count integer CHECK (seat_count IS NULL OR seat_count BETWEEN 1 AND 99),
 
   CONSTRAINT project_stages_pkey PRIMARY KEY (id),
+  CONSTRAINT project_stages_slug_key UNIQUE (slug),
+  -- The exact shape `security.mint_slug('stg')` produces, and nothing else — the same contract, the
+  -- same alphabet and the same cross-check as `ck_projects_slug_shape`. See the slug column above.
+  CONSTRAINT ck_project_stages_slug_shape
+    CHECK (slug ~ '^stg-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
   CONSTRAINT project_stages_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),
   CONSTRAINT project_stages_start_dependency_stage_id_fkey FOREIGN KEY (start_dependency_stage_id) REFERENCES projects.project_stages(id),
   -- A `limited` stage carries a count and an `unlimited` one does not. Bidirectional, so the two
@@ -582,6 +606,16 @@ CREATE TABLE projects.stage_staffing_roles (
   -- nowhere to land and was silently dropped by the write -- the same defect class as the stage
   -- milestone.
   skills text[] NOT NULL DEFAULT '{}'::text[],
+  -- What this seat is expected to do, beyond its title: "attends the Tuesday standup", "owns the
+  -- component library". Plain text, because it is one line of guidance on a row in a list and not a
+  -- document -- a brief that needs headings belongs in `project_stages.description`, where a
+  -- freelancer reading the engagement will actually find it.
+  --
+  -- `NOT NULL DEFAULT ''` rather than nullable, following `milestone` above and for the same reason:
+  -- with a nullable column, NULL and '' would both mean "nothing extra" while looking like different
+  -- states, and the write would have to decide which one an emptied field produces. One
+  -- representation removes the fork.
+  additional_instructions text NOT NULL DEFAULT ''::text,
   allow_proposals boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
 
@@ -657,6 +691,13 @@ CREATE TABLE projects.session_events (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	cohort_id uuid NOT NULL,
 	title text NOT NULL,
+
+	-- A sitting's own public address, on the same contract as `projects.projects.slug`: opaque, minted
+	-- once, refused by `security.fn_slug_guard` on any later update. A session is the one entity here
+	-- whose natural-looking identifier would be its time — and a time is exactly what a reschedule
+	-- changes, so an address derived from it would break on the event this table exists to record.
+	slug text NOT NULL,
+
 	start_time timestamp with time zone NOT NULL,
 	end_time timestamp with time zone NOT NULL,
 
@@ -668,6 +709,11 @@ CREATE TABLE projects.session_events (
 	updated_at timestamp with time zone NOT NULL DEFAULT now(),
 
 	CONSTRAINT session_events_pkey PRIMARY KEY (id),
+	CONSTRAINT session_events_slug_key UNIQUE (slug),
+	-- The exact shape `security.mint_slug('ssn')` produces, and nothing else — the same contract, the
+	-- same alphabet and the same cross-check as `ck_projects_slug_shape`.
+	CONSTRAINT ck_session_events_slug_shape
+		CHECK (slug ~ '^ssn-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
 	CONSTRAINT session_events_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id)
 );
 

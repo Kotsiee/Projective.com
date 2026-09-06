@@ -54,7 +54,6 @@ export default function ProjectSetupHeader(
 	return (
 		<header class="proj-pvhead">
 			<div class="proj-pvhead__id">
-				<span class="proj-pvhead__eyebrow">Managing</span>
 				<span class="proj-pvhead__title">{live.title || "Untitled project"}</span>
 			</div>
 

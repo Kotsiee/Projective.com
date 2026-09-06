@@ -22,7 +22,6 @@ import {
 	projectsDb,
 	toTicketStatus,
 } from "./live-support.ts";
-import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-overview — the RLS-scoped read behind the freelancer's `/projects/[projectId]` dashboard.
@@ -253,11 +252,10 @@ async function fetchProject(
 	const base = projectsDb(actor)
 		.from("projects")
 		.select("id, slug, title, status, currency, owner_user_id");
-	// A route segment is a slug, but a deep link or an internal caller may hand over the uuid. Matching
-	// a slug against a uuid column raises `22P02 invalid input syntax` rather than returning nothing,
-	// so the two are told apart before the predicate is chosen, not after it fails.
-	const filtered = UUID_RE.test(projectId) ? base.eq("id", projectId) : base.eq("slug", projectId);
-	const { data, error } = await filtered.maybeSingle();
+	// By slug and only by slug: a project has one public address, so there is no column to choose
+	// between and no shape to test. See `project-identity.ts` for why the branch this replaces was a
+	// standing hazard rather than a convenience.
+	const { data, error } = await base.eq("slug", projectId).maybeSingle();
 
 	if (error) throw new Error(`projects.projects read failed: ${error.message}`);
 	if (!data) return null;

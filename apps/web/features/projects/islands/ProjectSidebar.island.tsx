@@ -264,7 +264,6 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						collapsed={false}
 						sessionKind={activeKind}
 						onToggleCollapse={() => setLaneCollapsed(true)}
-						onCreateStage={openCreateStage}
 					/>
 				</div>
 			</div>

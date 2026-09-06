@@ -28,9 +28,17 @@
 .ui-splitter[data-mode="collapsed"] .msg-rail {
 	display: flex;
 }
-/* Widen the collapsed inbox lane to a substantial icon rail (scoped so the feed lane keeps its own). */
-.ui-splitter[data-mode="collapsed"]:has(.msg-sidebar) {
-	inline-size: calc(var(--shell-sidebar-w) + 6px);
+/*
+ * Widen the collapsed inbox lane to a substantial icon rail.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
+ */
+.ui-middle-nav:has(.msg-sidebar) {
+	--shell-lane-rail-w: calc(var(--shell-sidebar-w) + 6px);
 }
 /* #endregion */
 

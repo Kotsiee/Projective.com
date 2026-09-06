@@ -1,0 +1,149 @@
+/*
+ * stage-details-rig — the stage Details tab's action rig in the middle-nav footer band
+ * (`/projects/[projectId]/[channelId]/details`). Pure CSS + strict BEM, token-only, logical
+ * properties only (root CLAUDE.md §3).
+ *
+ * Its own block rather than a second set of rules on `.psu-rig`: that block belongs to the
+ * whole-project rig, which carries a mode switch, a kebab and a destructive row this one deliberately
+ * does not have. Sharing the class would make every future change to either rig a change to both,
+ * and the two answer different questions — "what can I do to this project" against "have I saved this
+ * stage".
+ *
+ * `container-type: inline-size` so the rig adapts to the width it ACTUALLY has, not the viewport's.
+ * The content region is the viewport minus the global rail and the lane — on a laned surface those
+ * differ by ~344px, so a viewport media query here would be reading the wrong box. It also stops the
+ * band bidding for the nav lane's width, which a `nowrap` row of labelled buttons otherwise does:
+ * `.ui-middle-nav`'s content track is `minmax(0, 1fr)` and the lane is the `auto` one, so a rig with
+ * a large min-content width is paid for out of the lane.
+ *
+ * Nothing is ever REMOVED at a tier: the labels collapse to glyphs, which each control already
+ * carries as its `aria-label` and its tooltip, so the name is relocated rather than lost (§B.6.3).
+ * A rig that deletes its own controls at a breakpoint is how `/wallet` lost three actions on four
+ * pages.
+ */
+.proj-sdrig {
+	container-type: inline-size;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	block-size: 100%;
+	padding-inline: var(--space-6);
+}
+
+/*
+ * The status line takes the slack, so the actions sit against the trailing edge without a spacer.
+ * `justify-content` on the row would do the same until the day the status is made conditional, at
+ * which point the actions would silently jump to the leading edge.
+ */
+.proj-sdrig__status {
+	margin: 0;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.proj-sdrig__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+}
+
+.proj-sdrig__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	min-block-size: 2rem;
+	padding-inline: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: transparent;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	cursor: pointer;
+	transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.proj-sdrig__action:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.proj-sdrig__action:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* At most one leading emphasis on the row (§B.8.2) — the rig emits exactly one `primary` action. */
+.proj-sdrig__action[data-tone="primary"] {
+	background: var(--primary);
+	border-color: var(--primary);
+	color: var(--surface);
+}
+
+.proj-sdrig__action[data-tone="primary"]:hover {
+	background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
+}
+
+/*
+ * A locked action keeps its cursor affordance and its tooltip, so the reason stays reachable. Ink and
+ * border recede together rather than the whole box being washed out, which is what keeps the label
+ * legible enough to read the state from.
+ */
+.proj-sdrig__action[data-locked="true"] {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	border-color: color-mix(in srgb, var(--outline) var(--fld-disabled-mix), transparent);
+	background: transparent;
+	cursor: not-allowed;
+}
+
+.proj-sdrig__glyph {
+	display: inline-flex;
+	flex: none;
+}
+
+@container (max-width: 520px) {
+	/*
+	 * Glyph-only: the NAME moves to the tooltip and the `aria-label` each control already carries, so
+	 * it is relocated rather than lost (§B.6.3).
+	 */
+	.proj-sdrig__label {
+		position: absolute;
+		inline-size: 1px;
+		block-size: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
+	.proj-sdrig__action {
+		padding-inline: var(--space-2);
+	}
+}
+
+@container (max-width: 320px) {
+	/* The status line is the only thing that goes; both actions stay. */
+	.proj-sdrig__status {
+		display: none;
+	}
+}
+
+@media (hover: none) {
+	.proj-sdrig__action {
+		min-block-size: 2.5rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.proj-sdrig__action {
+		transition: none;
+	}
+}

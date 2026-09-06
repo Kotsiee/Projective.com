@@ -14,9 +14,34 @@
     --rte-accent: var(--primary);
     --rte-min-rows: 4;
 
+    /*
+     * THE SIZING CONTRACT, in five custom properties and no JavaScript.
+     *
+     * Auto-expansion is `--rte-h-default` (the resting floor) and `--rte-h-max-auto` (the ceiling
+     * past which the surface scrolls instead of growing). A MANUAL drag swaps that pair for
+     * `--rte-h-min`/`--rte-h-max` — the reader's limits rather than the layout's, and wider on
+     * purpose: someone who has taken the box in hand may have a size the automatic behaviour would
+     * never have chosen. `none` is the initial value of `max-block-size`, so an un-set ceiling is
+     * genuinely unbounded and a call site that sets nothing behaves exactly as it always has.
+     *
+     * `--rte-h-default` reads `--rte-min-rows` from THIS element, so a call site that passes only
+     * `minRows` still moves the floor: the inline style lands here, and a custom property that
+     * references another resolves against the element it is declared on.
+     */
+    --rte-h-default: calc(var(--rte-min-rows) * 1.6em + 2 * var(--space-3));
+    --rte-h-max-auto: none;
+    --rte-h-min: 2.5rem;
+    --rte-h-max: none;
+    --rte-w-min: 12rem;
+    /* Hit width of a resize handle, and the gutter the inline one needs to clear the scrollbar. */
+    --rte-handle: 10px;
+
+    position: relative;
     display: flex;
     flex-direction: column;
     inline-size: 100%;
+    /* A manual width drag is clamped to the parent's content box; this is the second guard. */
+    max-inline-size: 100%;
     background: var(--surface);
     border: 1px solid var(--fld-rest-bd);
     border-radius: var(--radius-lg);
@@ -145,17 +170,42 @@
 
 /* #region Editing surface (Quill upgrades `.ui-rte__editor` → `.ql-container`) */
 .ui-rte__editor,
+.ui-rte .ql-container,
+.ui-rte .ql-editor {
+    /* The native grip is unstylable, unthemeable and keyboard-inert; `.ui-rte__handle` replaces it. */
+    resize: none;
+}
+
+.ui-rte__editor,
 .ui-rte .ql-container {
     position: relative;
     flex: 1 1 auto;
-    min-block-size: calc(var(--rte-min-rows) * 1.6em + 2 * var(--space-3));
+    min-block-size: var(--rte-h-default);
+    max-block-size: var(--rte-h-max-auto);
     font-family: var(--font-sans);
     font-size: 0.9375rem;
 }
 
+/* The inline handle would otherwise sit on top of the scrollbar it needs to be reachable beside. */
+.ui-rte--hresize .ui-rte__editor {
+    padding-inline-end: var(--rte-handle);
+}
+
 .ui-rte .ql-editor {
     box-sizing: border-box;
+    /*
+     * `100%` against a parent whose own height is indefinite resolves to `auto` — so this is the
+     * content's natural height, and the growth is a fact the engine recomputes on every reflow
+     * rather than something measured on a frame that may never be composited.
+     *
+     * The bounds are repeated here because `.ql-editor` is the SCROLLER: `max-block-size` has to sit
+     * on the element that overflows, or the content spills past the ceiling instead of scrolling
+     * inside it. The scrollbar is the global one — `.ui-rte` is already in the surface-scoped track
+     * list in `styles/index.css`, so it resolves the editor's own `--surface` tone with no rule here.
+     */
     block-size: 100%;
+    min-block-size: var(--rte-h-default);
+    max-block-size: var(--rte-h-max-auto);
     padding: var(--space-3);
     color: var(--on-surface);
     line-height: 1.6;
@@ -169,6 +219,25 @@
 
 .ui-rte .ql-editor>* {
     cursor: text;
+}
+
+/*
+ * THE MANUAL LOCK. Auto-expansion is retired by SWITCHING the bounds, never by unsetting them: the
+ * drag then clamps against the reader's limits, and `useEditorResize` can read both pairs straight
+ * out of `getComputedStyle` in whatever unit the consumer wrote them — `rem`, `%`, `calc()` — rather
+ * than re-implementing the cascade to parse a length itself.
+ */
+.ui-rte[data-resized-y="true"] .ui-rte__editor,
+.ui-rte[data-resized-y="true"] .ql-container,
+.ui-rte[data-resized-y="true"] .ql-editor {
+    block-size: var(--rte-h, auto);
+    min-block-size: var(--rte-h-min);
+    max-block-size: var(--rte-h-max);
+}
+
+.ui-rte[data-resized-x="true"] {
+    inline-size: var(--rte-w, 100%);
+    min-inline-size: var(--rte-w-min);
 }
 
 /* Placeholder — Quill adds `.ql-blank` and copies `placeholder` to `data-placeholder`. */
@@ -281,11 +350,160 @@
 
 /* #endregion */
 
+/* #region Resize handles */
+/*
+ * Custom grips, because the native one cannot be styled, cannot be themed, cannot be keyboard
+ * operated and only ever appears at one corner. `resize: none` on the container and the editing
+ * surface suppresses it; these three replace it.
+ *
+ * Invisible at rest — a permanent grip on every editor on a page is chrome nobody asked for — and
+ * revealed on container hover, on focus (a keyboard user cannot hover, and these ARE arrow-key
+ * operable), and for the duration of a drag, which is the one time the pointer is nowhere near them.
+ */
+.ui-rte__handle {
+    position: absolute;
+    z-index: 1;
+    opacity: 0;
+    /* Claims the gesture from the browser's own pan/zoom, which would otherwise eat the drag. */
+    touch-action: none;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-rte:hover .ui-rte__handle,
+.ui-rte__handle:focus-visible,
+.ui-rte[data-resizing="true"] .ui-rte__handle {
+    opacity: 1;
+}
+
+/*
+ * The mark is a short centred pill, not a filled bar: the bar is the HIT AREA, and painting all of
+ * it would put a second horizontal rule against the container's own border (§B.4 — one device per
+ * boundary). Centred with `margin: auto` between two zero insets rather than a translate, so it
+ * stays centred under `dir="rtl"` where `inset-inline-start` resolves to the opposite edge.
+ */
+.ui-rte__handle::after {
+    content: "";
+    position: absolute;
+    border-radius: var(--radius-full);
+    background: var(--outline);
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * The engaged mark steps toward the INK, not toward `--primary`.
+ *
+ * Measured: `--primary` on this surface is 7.82:1 in dark and 2.97:1 in LIGHT — under the 3:1 floor
+ * a graphical UI object owes (WCAG 1.4.11), and lower than the 4.21:1 the rest state already had, so
+ * hovering the grip would have made it harder to see. `--on-surface` is the one token that cannot
+ * fail here by construction: it is near-black on a light ground and near-white on a dark one, so it
+ * moves AWAY from the surface in both directions. Same device as the status chips (§B.11) and the
+ * inverted conversion CTA (§D.7.7), and it keeps this component off the known `--primary` pairing.
+ */
+.ui-rte__handle:hover::after,
+.ui-rte__handle:focus-visible::after {
+    background: var(--on-surface);
+}
+
+.ui-rte__handle:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-rte__handle--block {
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 8px;
+    cursor: ns-resize;
+}
+
+.ui-rte__handle--block::after {
+    inset-inline: 0;
+    inset-block-end: 3px;
+    margin-inline: auto;
+    inline-size: 2.5rem;
+    block-size: 2px;
+}
+
+.ui-rte__handle--inline {
+    inset-block: 0;
+    inset-inline-end: 0;
+    inline-size: var(--rte-handle);
+    cursor: ew-resize;
+}
+
+.ui-rte__handle--inline::after {
+    inset-block: 0;
+    inset-inline-end: 4px;
+    margin-block: auto;
+    inline-size: 2px;
+    block-size: 2.5rem;
+}
+
+/* Above the other two: the corner is where they overlap, and it drives both axes. */
+.ui-rte__handle--corner {
+    z-index: 2;
+    inset-block-end: 0;
+    inset-inline-end: 0;
+    inline-size: 1rem;
+    block-size: 1rem;
+    cursor: nwse-resize;
+}
+
+/*
+ * In a right-to-left document the corner sits at the LEFT edge, so the diagonal it runs along is the
+ * other one. A physical cursor keyword has no logical form; this is the only honest way to mirror it.
+ */
+[dir="rtl"] .ui-rte__handle--corner {
+    cursor: nesw-resize;
+}
+
+.ui-rte__handle--corner::after {
+    inset-block-end: 3px;
+    inset-inline-end: 3px;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 2px;
+}
+
+/*
+ * Page-wide for the duration of a drag, set on the document root by `useEditorResize`.
+ *
+ * Scoped to the editor it would not be enough: the pointer spends most of a resize outside the box,
+ * and a selection begun out there tears across the document behind the gesture. `user-select`
+ * inherits, so one declaration on the root reaches everything — no `!important`, and nothing in this
+ * repo re-declares it to `text`. The cursor is pinned per axis so it does not flicker back to an
+ * I-beam the instant the pointer leaves the handle.
+ */
+.ui-rte-resizing {
+    user-select: none;
+}
+
+.ui-rte-resizing--block {
+    cursor: ns-resize;
+}
+
+.ui-rte-resizing--inline {
+    cursor: ew-resize;
+}
+
+.ui-rte-resizing--both {
+    cursor: nwse-resize;
+}
+
+.ui-rte-resizing--both[dir="rtl"] {
+    cursor: nesw-resize;
+}
+
+/* #endregion */
+
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
 
     .ui-rte,
-    .ui-rte__btn {
+    .ui-rte__btn,
+    .ui-rte__handle,
+    .ui-rte__handle::after {
         transition: none;
     }
 }

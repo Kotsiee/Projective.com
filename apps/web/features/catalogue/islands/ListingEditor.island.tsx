@@ -14,12 +14,9 @@ import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { ServiceCard } from "@features/explore/components/cards/ServiceCard.tsx";
 import { ProductCard } from "@features/explore/components/cards/ProductCard.tsx";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
+import { flattenRichText } from "@projective/types/richtext";
 import { CatalogueService } from "../core/CatalogueService.ts";
-import {
-	buildPreviewItem,
-	MODEL_OPTIONS,
-	publicListingHref,
-} from "../core/catalogue-model.ts";
+import { buildPreviewItem, MODEL_OPTIONS, publicListingHref } from "../core/catalogue-model.ts";
 import { EyeIcon, ImageIcon } from "../components/catalogue-glyphs.tsx";
 import {
 	editorMissing,
@@ -73,8 +70,6 @@ const numOrNull = (s: string): number | null => {
 	const n = num(s);
 	return n > 0 ? n : null;
 };
-const stripHtml = (html: string): string =>
-	html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 // #endregion
 
 export default function ListingEditor({ initial }: ListingEditorProps): JSX.Element {
@@ -176,7 +171,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 			serviceType: st,
 			status: status.value,
 			description: description.value,
-			descriptionText: stripHtml(description.value),
+			descriptionText: flattenRichText(description.value),
 			media: media.value,
 			cover: media.value[0] ?? null,
 			tags: tags.value,
@@ -233,7 +228,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 			category: category.value,
 			serviceType: isService ? serviceType.value : undefined,
 			description: description.value,
-			descriptionText: stripHtml(description.value),
+			descriptionText: flattenRichText(description.value),
 			media: media.value,
 			tags: tags.value,
 			collections: collections.value,
@@ -371,8 +366,13 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 							value={description}
 							onValueChange={touch}
 							placeholder="Describe what buyers get, your process, and what's included…"
-							status={stripHtml(description.value) ? "default" : "gate"}
+							status={flattenRichText(description.value) ? "default" : "gate"}
 							minRows={5}
+							// The form flows in the window scroll beside a STICKY live preview, measured at 544px.
+							// Past that height the description decouples the two — the seller ends up writing
+							// against a preview that has scrolled off — so the editor scrolls instead of growing.
+							// 22rem keeps this section the largest on the form (~430px) and still inside that band.
+							maxAutoHeight="22rem"
 							aria-label="Listing description"
 						/>
 					</section>

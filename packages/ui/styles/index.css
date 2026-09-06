@@ -443,6 +443,24 @@
     /* collapsed-rail square hit-target (icon block) */
     --shell-lane-w: 280px;
     /* middle-nav (Blue) lane default width */
+    --shell-lane-rail-w: 56px;
+    /*
+	* The middle-nav lane's width once the splitter shuts to its icon rail — the SINGLE statement of
+	* that number, because two independent statements of it is precisely how the lane edge and the
+	* frame seam came apart. `splitter.css` sizes the collapsed lane from it and `middle-nav.css`
+	* offsets the nested frame by it, so the drag handle and the Green canvas's rounded corner can
+	* not disagree about where the lane ends.
+	*
+	* A lane whose rail wants more room (48px icon squares need more than 56px) re-declares it on the
+	* frame — `.ui-middle-nav:has(<its rail>) { --shell-lane-rail-w: … }` — where BOTH consumers
+	* inherit the new value. Declaring `inline-size` on the splitter instead moves the lane and
+	* leaves the seam behind, which is the bug this token exists to make unexpressible. Mirrors the
+	* guest shell's `--guest-aside-cur-w`, which has always been one variable for both duties.
+	*
+	* This default is only the last resort: both consumers fall back to the live `--shell-lane-w`
+	* first, so a lane that declares nothing still tracks a drag through the collapsed band and this
+	* value applies only before the width has been hoisted.
+	*/
     --shell-bottomnav-h: 56px;
     /* mobile thumb-nav bar height (Part D.3) */
 

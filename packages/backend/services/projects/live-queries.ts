@@ -10,7 +10,6 @@ import type {
 	ScopeOption,
 } from "@projective/types/projects";
 import type { ContextType } from "@projective/types/auth";
-import { UUID_RE } from "./project-identity.ts";
 
 /**
  * live-queries — the RLS-scoped Postgres read path for the `/projects` domain.
@@ -655,10 +654,11 @@ export async function fetchProjectBySlug(
 ): Promise<ProjectSummary | null> {
 	const db = projectsClient(actor);
 
-	const base = db.from("projects").select(SUMMARY_COLUMNS);
-	const { data, error } = await (
-		UUID_RE.test(projectKey) ? base.eq("id", projectKey) : base.eq("slug", projectKey)
-	).maybeSingle();
+	const { data, error } = await db
+		.from("projects")
+		.select(SUMMARY_COLUMNS)
+		.eq("slug", projectKey)
+		.maybeSingle();
 
 	if (error) throw new Error(`projects.projects slug read failed: ${error.message}`);
 	if (!data) return null;

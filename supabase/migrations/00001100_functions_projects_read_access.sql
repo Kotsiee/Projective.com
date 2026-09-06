@@ -86,7 +86,6 @@ DECLARE
     v_scope_count integer;
     v_title text;
     v_slug text;
-    v_slug_base text;
     v_attempt integer := 0;
     v_constraint text;
     v_stage jsonb;
@@ -173,18 +172,19 @@ BEGIN
         END IF;
     END IF;
 
-    -- 3. The address. The application sends a title-derived slug; this normalises it to the column's
-    -- CHECK shape and falls back to the generated form when a title has nothing usable in it (all
-    -- punctuation, or a non-Latin script) rather than inventing prose the author did not write.
-    v_slug_base := COALESCE(NULLIF(payload->>'slug', ''), lower(v_title));
-    v_slug_base := regexp_replace(lower(v_slug_base), '[^a-z0-9]+', '-', 'g');
-    v_slug_base := btrim(v_slug_base, '-');
-    v_slug_base := left(v_slug_base, 80);
-    v_slug_base := btrim(v_slug_base, '-');
-    IF v_slug_base = '' THEN
-        v_slug_base := 'p-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12);
+    -- 3. The address. Minted, never derived — from the title or from anything else. The whole point of
+    -- an opaque slug is that no input exists which could change it, so a project stays reachable at the
+    -- same URL through every rename it will ever have.
+    --
+    -- A caller-supplied slug is honoured ONLY when it already has the canonical shape, which makes this
+    -- idempotent against a client's own retry: the same request replayed lands on the same address
+    -- instead of minting a second one. Anything else is discarded rather than normalised, because
+    -- `ck_projects_slug_shape` would refuse it anyway and a normalisation that silently produced a
+    -- DIFFERENT address from the one the caller asked for is worse than ignoring the request.
+    v_slug := NULLIF(payload->>'slug', '');
+    IF v_slug IS NULL OR v_slug !~ '^prj-[23456789abcdefghjkmnopqrstuvwxyz]{10}$' THEN
+        v_slug := security.mint_slug('prj');
     END IF;
-    v_slug := v_slug_base;
 
     -- 4. The shape of the engagement, resolved before the insert so the implicit stage in step 7 can
     -- inherit it. Every cast goes through NULLIF: `->>` on a key whose value is an empty string hands
@@ -297,8 +297,9 @@ BEGIN
             IF v_attempt > 5 THEN
                 RAISE EXCEPTION 'Could not find a free address for this project.' USING ERRCODE = '23505';
             END IF;
-            -- Re-truncate the base so base + suffix always fits the column's 96-character CHECK.
-            v_slug := left(v_slug_base, 80) || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
+            -- A fresh draw, not a suffix on the last one. Each mint is 50 independent bits, so the
+            -- retry is a new sample rather than a search around a taken address.
+            v_slug := security.mint_slug('prj');
         END;
     END LOOP;
 

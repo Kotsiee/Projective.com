@@ -8,6 +8,7 @@ import {
 	ProjectVisibility,
 } from "./create.ts";
 import { ProjectFormat, ProjectStatus } from "./summary.ts";
+import { hasRichTextProse } from "../richtext/plain-text.ts";
 
 /**
  * projects.setup — the Zod SSOT for the project **configuration** projection: what the owner's
@@ -156,6 +157,26 @@ export const SKILL_LABEL_MAX = 60;
 /** How long a stage's milestone label may be. `project_stages.milestone` is `NOT NULL DEFAULT `. */
 export const MILESTONE_MAX = 240;
 
+/**
+ * How long a staffing role's additional instructions may run.
+ *
+ * Deliberately far short of the 8000 a scope field takes: this is a line of guidance on a row in a
+ * list, and a brief that needs more than a paragraph belongs in the stage's own scope, where a
+ * freelancer reading the engagement will actually find it.
+ */
+export const ROLE_INSTRUCTIONS_MAX = 2000;
+
+/**
+ * The furthest a stage may start before or after the one it depends on, in days.
+ *
+ * Symmetric and signed, because `project_stages.start_dependency_lag_days` is a plain `integer` with
+ * no CHECK: a NEGATIVE lag is a stage that starts before its predecessor finishes, which is the
+ * overlap a real schedule has and not an error. The bound is a sanity rail rather than a product
+ * rule — a stage offset by more than a year from its predecessor is a data-entry slip, and the form
+ * should refuse it where the owner can see it rather than store it for the board to draw.
+ */
+export const STAGE_DELAY_MAX_DAYS = 365;
+
 export const DEFAULT_STAGE_SEATS = 3;
 
 /** One checklist item on a stage's default task list (`project_stages.default_tasks`). */
@@ -181,7 +202,28 @@ export const StageStaffingRoleSchema = z.object({
 	name: z.string().min(1).max(120),
 	/** How many providers this role takes. */
 	quantity: z.number().int().min(1).max(99),
-	/** Role budget in minor units; `null` = unpriced. */
+	/**
+	 * What this seat is expected to do, beyond its name — `stage_staffing_roles.additional_instructions`.
+	 *
+	 * Plain text rather than rich, because it is a line of guidance attached to a row in a list and
+	 * not a document: a role brief that needs headings and images is a stage scope, and the stage
+	 * already has one. `""` is the ordinary state and means the name carries the whole answer.
+	 */
+	description: z.string().max(ROLE_INSTRUCTIONS_MAX),
+	/**
+	 * A BONUS this seat earns **on top of** the stage's ticket price — never a total, never an
+	 * override. `null` = no bonus.
+	 *
+	 * The semantics are the load-bearing part and they changed: this figure used to read as the
+	 * role's whole budget, which made it a second answer to "what does this cost" beside
+	 * `StageSetup.unitPriceCents` — and `finance.fn_hold_ticket_escrow` reads only the stage's.
+	 * A role priced as a total was therefore a number the escrow hold ignored. As an ADDITION it
+	 * composes with the one figure the money path actually reads, so the two can no longer disagree.
+	 *
+	 * Optional in the strict sense: {@link setupSteps} does not count it and no write path refuses a
+	 * role for want of one. The required figure is the stage's, and it is required precisely because
+	 * escrow reads it.
+	 */
 	budgetCents: z.number().int().min(0).nullable(),
 });
 export type StageStaffingRole = z.infer<typeof StageStaffingRoleSchema>;
@@ -215,8 +257,37 @@ export const StageSetupSchema = z.object({
 	tasks: z.array(StageTaskSchema).max(50),
 	/** Whether this stage waits for its predecessor or runs alongside the project. */
 	dependency: StageDependency,
-	/** Working days this stage is expected to take; `null` = open-ended. */
-	durationDays: z.number().int().min(1).max(3650).nullable(),
+	/**
+	 * Which stage this one waits for — `project_stages.start_dependency_stage_id`; `null` = the one
+	 * above it in the list.
+	 *
+	 * Meaningful only while `dependency === "sequential"`. It is an EXPLICIT reference rather than an
+	 * implied "the previous row" because the list is drag-reorderable: under the implicit rule,
+	 * dragging a stage silently rewrites what every stage below it waits for, and nothing on screen
+	 * says so. Holding the id makes a reorder a reorder.
+	 *
+	 * Never self-referential and never part of a cycle — {@link stagePredecessorOptions} is what the
+	 * dropdown offers and {@link wouldCycle} is the rule behind it, so a chain that could never start
+	 * is unreachable from the control rather than refused after the fact.
+	 */
+	startsWithId: z.string().max(80).nullable(),
+	/**
+	 * Days this stage starts after (positive) or before (negative) its predecessor —
+	 * `project_stages.start_dependency_lag_days`.
+	 *
+	 * Signed on purpose: a negative lag is the overlap a real schedule has, where the next stage picks
+	 * up before the previous one is signed off. Zero — the default — is "starts as soon as the one
+	 * before it finishes", which is what a stage nobody has thought about should mean.
+	 */
+	delayDays: z.number().int().min(-STAGE_DELAY_MAX_DAYS).max(STAGE_DELAY_MAX_DAYS),
+	/**
+	 * When this milestone is due — `project_stages.file_due_date`; `null` = no fixed date.
+	 *
+	 * An ISO date string, and a ONE-OFF field: a pipeline stage's timing comes from its predecessor
+	 * and its lag, so a pipeline offering a calendar date would be a second, contradictory answer to
+	 * when the stage starts. A milestone is the opposite — the date IS the deliverable's terms.
+	 */
+	deliveryDate: z.string().max(40).nullable(),
 	/** Open to as many providers as apply, or a fixed count. */
 	capacity: StageCapacity,
 	/** How many seats when `capacity === "limited"`; `null` when unlimited. */
@@ -236,6 +307,23 @@ export const StageSetupSchema = z.object({
 	 * stage actually meant.
 	 */
 	ndaRequired: z.boolean().nullable(),
+	/**
+	 * How many providers have taken a seat on this stage — SERVER-derived, never editable, and the
+	 * reason this stage's own price may be locked. See {@link ONBOARDED_ASSIGNMENT_EXCLUDED}.
+	 *
+	 * Carried per stage rather than only as a project total because the lock is per stage: a run
+	 * whose second milestone has been staffed must still let its owner price the fourth. A stage the
+	 * owner has just added, and any stage the base projection does not know, reads `0` — correctly,
+	 * since nobody can have joined a stage that does not exist yet.
+	 *
+	 * `.default(0)` so a projection written before this field existed parses rather than throwing;
+	 * zero is also the honest answer for a read that could not resolve the assignments, which errs
+	 * toward the editable side ONLY on the client. The server guard re-reads the database, so a
+	 * degraded projection unlocks a control the write path still refuses — annoying, but the reverse
+	 * (a client that believes a stage is unlocked and a server that agrees) is the one that silently
+	 * reprices somebody's agreed work.
+	 */
+	onboardedCount: z.number().int().min(0).default(0),
 });
 export type StageSetup = z.infer<typeof StageSetupSchema>;
 
@@ -244,7 +332,12 @@ export const ProjectRoleSetupSchema = z.object({
 	id: z.string().min(1).max(80),
 	name: z.string().min(1).max(120),
 	skills: z.array(z.string().min(1).max(60)).max(20),
-	/** Role budget in minor units; `null` = unpriced. */
+	/** What this seat is expected to do, beyond its name. See {@link StageStaffingRoleSchema.description}. */
+	description: z.string().max(ROLE_INSTRUCTIONS_MAX),
+	/**
+	 * A BONUS this seat earns on top of the engagement's own price; `null` = no bonus. Optional, for
+	 * the same reason and with the same semantics as {@link StageStaffingRoleSchema.budgetCents}.
+	 */
 	budgetCents: z.number().int().min(0).nullable(),
 });
 export type ProjectRoleSetup = z.infer<typeof ProjectRoleSetupSchema>;
@@ -266,6 +359,68 @@ export function normaliseSeats(
 	return { capacity: "limited", seatCount: count ?? DEFAULT_STAGE_SEATS };
 }
 
+/**
+ * Whether pointing `stageId` at `predecessorId` would close a loop.
+ *
+ * Walks the `startsWithId` chain FORWARD from the proposed predecessor and reports whether it comes
+ * back round to the stage doing the pointing. Self-reference is the degenerate case and is caught by
+ * the same walk.
+ *
+ * The visited set is not an optimisation — it is what makes the function total. A graph that ALREADY
+ * contains a cycle (a legacy row, a concurrent edit, a hand-written database change) would otherwise
+ * walk it forever, and a validator that hangs on bad data is worse than one that rejects it.
+ */
+export function wouldCycle(
+	stages: readonly StageSetup[],
+	stageId: string,
+	predecessorId: string | null,
+): boolean {
+	if (predecessorId === null) return false;
+	if (predecessorId === stageId) return true;
+
+	const byId = new Map(stages.map((s) => [s.id, s]));
+	const seen = new Set<string>([stageId]);
+	let cursor: string | null = predecessorId;
+
+	while (cursor !== null) {
+		if (cursor === stageId) return true;
+		if (seen.has(cursor)) return false;
+		seen.add(cursor);
+		cursor = byId.get(cursor)?.startsWithId ?? null;
+	}
+	return false;
+}
+
+/**
+ * The stages one stage may legally wait for.
+ *
+ * Itself and every stage whose own chain leads back to it are excluded, so a cycle is not something
+ * the dropdown can express. Offering the full list and refusing the bad choice afterwards would be
+ * the same rule stated twice, and the second statement is the one that reaches the owner as an error
+ * about a selection the control invited them to make.
+ */
+export function stagePredecessorOptions(
+	stages: readonly StageSetup[],
+	stageId: string,
+): StageSetup[] {
+	return stages.filter((s) => s.id !== stageId && !wouldCycle(stages, stageId, s.id));
+}
+
+/**
+ * Every stage price added up, or `null` when NOTHING is priced.
+ *
+ * `null` rather than `0` for an unpriced run, because the project-level budget this feeds is the
+ * column where zero means "offered for free" and null means "not priced yet" — collapsing the two
+ * would tick the pricing rung off for a project nobody has costed. A partially priced run DOES
+ * return a number: it is the honest sum of what has been decided so far, and
+ * {@link setupSteps} is what refuses to publish while any stage is still missing its own.
+ */
+export function cumulativeStageCents(stages: readonly StageSetup[]): number | null {
+	const priced = stages.filter((s) => s.unitPriceCents !== null);
+	if (priced.length === 0) return null;
+	return priced.reduce((total, s) => total + (s.unitPriceCents ?? 0), 0);
+}
+
 /** The configuration a freshly added stage carries. */
 export function blankStage(id: string, name: string, order: number): StageSetup {
 	return {
@@ -278,12 +433,18 @@ export function blankStage(id: string, name: string, order: number): StageSetup 
 		skills: [],
 		tasks: [],
 		dependency: "sequential",
-		durationDays: null,
+		startsWithId: null,
+		delayDays: 0,
+		deliveryDate: null,
 		capacity: "unlimited",
 		seatCount: null,
 		roles: [],
 		allowedFileKinds: [],
 		ndaRequired: null,
+		// Nobody can have joined a stage that did not exist a moment ago. Stated rather than left to
+		// the schema default, because {@link DEFAULT_STAGE_SETUP} is derived from this literal and a
+		// missing key there would spread `undefined` over a real count.
+		onboardedCount: 0,
 	};
 }
 
@@ -554,6 +715,21 @@ export const ProjectSetupSchema = z.object({
 	liveVisibility: ProjectVisibility.default("unlisted"),
 	stages: z.array(StageSetupSchema).max(50),
 	roles: z.array(ProjectRoleSetupSchema).max(20),
+	/**
+	 * How many providers have been onboarded anywhere on this engagement — SERVER-derived, never
+	 * editable, and the reason the Project type may be locked.
+	 *
+	 * Its OWN field rather than the sum of {@link StageSetup.onboardedCount}, because the two count
+	 * different populations. A Direct Deliverable is staffed by roles and its form renders no stage
+	 * list at all, so a total derived from the stages the PROJECTION happens to carry would read zero
+	 * on a fully staffed engagement. This one counts every assignment on the project, including on
+	 * stages no section renders.
+	 *
+	 * Ignored by {@link reconcileSetup} when it appears on a patch, for the same reason
+	 * `completeness` is: it is a fact about the database, and a client that asserts `0` here would be
+	 * asserting that nobody it has hired exists.
+	 */
+	onboardedCount: z.number().int().min(0).default(0),
 	/** Re-derived server-side; never trusted from the client (root CLAUDE.md §6). */
 	viewerIsClient: z.boolean(),
 	/** The ladder, in display order. */
@@ -609,12 +785,35 @@ export type ProjectSetupStepsInput = {
  * what a reader would see rather than what the editor happened to serialise.
  */
 function hasProse(value: string): boolean {
-	return value.replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/g, " ").trim().length > 0;
+	return hasRichTextProse(value);
 }
 
 /** Whether the engagement is staffed by roles rather than by stages. */
 function staffedByRoles(structure: ProjectStructure): boolean {
 	return structure === "single_task";
+}
+
+/**
+ * Whether this engagement's price lives on the PROJECT row rather than on a stage.
+ *
+ * True for exactly one structure, and the reason is that `single_task` is the only one with no stage
+ * to put a price on. Every other shape has at least one: a staged run prices each stage, and a FLAT
+ * engagement (`single_stage`) prices its ROOT stage through the Details section — which is where it
+ * has to live, because `finance.fn_hold_ticket_escrow` reads
+ * `COALESCE(t.unit_price_cents, ps.unit_price_cents)` and can see no figure stored anywhere else. A
+ * flat project priced only at `projects.budget_amount_cents` would escrow its first ticket against a
+ * NULL.
+ *
+ * It shares its body with {@link staffedByRoles}, and that is not duplication waiting to drift: the
+ * engagement with no stage to price is the same engagement with no stage to staff, which is why one
+ * structure answers both. They are kept as two names because they are two questions — a reader
+ * changing the staffing rule must be made to notice they are also changing the pricing rule.
+ *
+ * The Budget section renders on this predicate and {@link pricingSatisfied} measures the same one, so
+ * a project can never be held back from publishing by a figure the form does not render.
+ */
+export function pricedAtProjectLevel(structure: ProjectStructure): boolean {
+	return staffedByRoles(structure);
 }
 
 /**
@@ -647,48 +846,262 @@ export function structureForStages(on: boolean, format: ProjectFormat): ProjectS
 }
 
 /**
- * The structure a format's Shape control writes when a given segment is pressed.
+ * Whether every PRIMARY price this engagement owes has been set.
  *
- * This lives in the SSOT rather than inline in the form's handler because the handler got it wrong in a
- * way nothing could catch: it called `structureForStages(true, "one_off")` with both arguments as
- * LITERALS, so every segment of every format wrote `one_off`. On a pipeline, "Single stage" could not
- * produce `single_stage` at all — the control was focusable, looked live, and set the wrong column —
- * and `shapeOf` then failed to match `one_off` against the pipeline's own options and fell back to
- * "Staged", so the segment snapped back and the corruption was invisible.
+ * "Primary" means the figure escrow actually reads: `project_stages.unit_price_cents` for a staged
+ * or flat engagement, and the project's own budget for a role-staffed one that has no stage of its
+ * own to carry it. A staffing role's `budgetCents` is deliberately NOT counted — it is a bonus on
+ * top of the primary figure, so a project whose only number is a role bonus has priced nothing and
+ * must not read as priced.
  *
- * Expressed as a total function of (format, chosen value) so the round trip
- * `shapeFor(format, structureForShape(format, v)) === v` is a property a test can hold, which is
- * exactly the invariant the literal-argument bug broke.
+ * EVERY stage, not merely one: a run where the second milestone is unpriced is a run whose total is
+ * wrong, and the escrow hold on that stage's first ticket would be taken against a NULL. The rule is
+ * stated once here and read by the ladder, the Preview gate and the publish transition, so the three
+ * cannot come to different conclusions about the same project.
+ *
+ * It measures EXACTLY the fields the form renders, which is a structural rule rather than a
+ * coincidence: this rung can gate publishing, so a figure it demands and the surface does not collect
+ * is a project its owner cannot publish and cannot see why. {@link pricedStages} is the one answer to
+ * "which prices does this shape ask for", and both this and the form read it.
+ *
+ * That has been wrong twice, in the same shape, and both are worth remembering. A stage-bearing
+ * project with no stages used to fall through to `budget.amountCents`, which became a requirement with
+ * no field behind it the moment the Budget section turned conditional. And a FLAT project kept every
+ * stage row it had before the toggle was turned off — correctly, since deleting them would destroy
+ * their tickets and submissions — while the Details section shows only the root one, so a leftover
+ * unpriced stage held publishing back from behind a section that does not render it.
+ *
+ * A stage-bearing engagement with NO stages reads as unpriced rather than falling back to the project
+ * amount. That is the honest answer, and the `stages` rung beside it is what tells the owner to add
+ * one, after which this rung measures it.
+ *
+ * The project amount is consulted only where there is genuinely no stage to carry a price, and
+ * {@link rolledUpBudget} is why it could not simply be consulted first: it writes the running total of
+ * the priced stages into `budget.amountCents`, so on a half-priced run that amount is a non-null
+ * number, and a rule reading it would tick the rung off for a run whose second milestone still costs
+ * nothing.
  */
-export function structureForShape(format: ProjectFormat, value: string): ProjectStructure {
-	if (value === "single_task") return "single_task";
-	return structureForStages(value !== "single_stage", format);
+export function pricingSatisfied(
+	input: Pick<ProjectSetupStepsInput, "format" | "structure" | "budget" | "stages">,
+): boolean {
+	if (pricedAtProjectLevel(input.structure)) return input.budget.amountCents !== null;
+	const asked = pricedStages(input.structure, input.stages);
+	return asked.length > 0 && asked.every((s) => s.unitPriceCents !== null);
 }
 
 /**
- * The Shape segments a format offers, in order — empty when it offers no choice.
+ * The stages this shape actually collects a price for — the set the form renders and the ladder
+ * measures, resolved once so the two cannot disagree.
  *
- * A `session` has none: a sitting is not divisible into stages, so the control is ABSENT rather than
- * rendered with a single option, which would state a decision its author never made.
+ * A staged run asks for all of them. A FLAT engagement asks for its ROOT stage alone, because that
+ * one is the whole unit of execution: turning the toggle off does not delete the rows a staged run
+ * left behind (their tickets, submissions and escrow hang off them), so a flat project may carry
+ * several while its Details section shows one. Measuring the hidden remainder would hold publishing
+ * back from behind a section that does not render them.
+ *
+ * A role-staffed engagement asks for none — its figure is the project's own — and callers reach that
+ * branch through {@link pricedAtProjectLevel} before ever getting here.
  */
-export function shapeOptionsFor(format: ProjectFormat): readonly ProjectStructure[] {
-	if (format === "pipeline") return ["standard", "single_stage"];
-	if (format === "one_off") return ["one_off", "single_task"];
-	return [];
+export function pricedStages(
+	structure: ProjectStructure,
+	stages: readonly StageSetup[],
+): readonly StageSetup[] {
+	if (pricedAtProjectLevel(structure)) return [];
+	return hasStages(structure) ? stages : stages.slice(0, 1);
+}
+
+// #region Post-onboarding immutability
+/**
+ * post-onboarding immutability — which terms stop being the client's to change once a provider has
+ * taken a seat, and why the answer is one function rather than a rule restated per surface.
+ *
+ * The harm is retroactive repricing. A freelancer accepts a stage at a stated ticket price and on a
+ * stated engagement shape; if the client can edit either afterwards, the terms somebody agreed to
+ * are not the terms they are working under, and nothing on the surface says so. So both freeze the
+ * moment the first provider is onboarded — the SHAPE across the whole project, the PRICE per stage.
+ *
+ * The rules below are read by three places that must not disagree: the form (which disables the
+ * control), the publish dialog (which promises what will lock), and the write path (which refuses
+ * the mutation). A control that renders and reaches nothing is a defect of the same class as a
+ * broken link (root CLAUDE.md §3 gate 11), and a promise the server does not keep is worse than no
+ * promise at all.
+ */
+
+/**
+ * `projects.stage_assignments.status` values that mean **nobody was ever onboarded** by that row.
+ *
+ * A deny-list over free text, and the direction is deliberate: the column has no CHECK and no
+ * default, so an unrecognised value must count as ONBOARDED. Over-locking withholds an edit the
+ * owner can ask about; under-locking silently reprices work somebody has already agreed to, which
+ * nothing on the surface would reveal.
+ *
+ * That is the reverse of the reasoning in `live-submissions.ts`, whose deny-list errs the other way,
+ * and it is not an inconsistency — the consequence of guessing wrong is reversed too.
+ *
+ * This is a FIFTH set over the same column, and the four that exist ask a different question. They
+ * ask whether somebody currently has access, appears in a roster, or holds the seat right now
+ * (`live-members` `HELD_ASSIGNMENT_STATUS`, `live-detail` `DEAD_ASSIGNMENT`, `live-submissions`
+ * `INACTIVE_ASSIGNMENT`, the partial index `uq_stage_assignment_active_assignee`). This asks whether
+ * anybody EVER took the seat — because an agreement survives the person leaving, and escrow may
+ * already have moved against it. So `released`, `cancelled` and `completed` all keep the lock on.
+ *
+ * The two exclusions are the states where no agreement was ever reached:
+ *
+ *  - **`declined`** — an invitation nobody accepted. There is no term to protect.
+ *  - **`pending_funding`** — Decision #80 parks a blueprint-instantiated row here, and documents it
+ *    as the state where \"nobody is committed to anything and no escrow exists\". Counting it would
+ *    price-lock a draft from birth, before its owner had chosen a figure at all.
+ *
+ * It agrees with the shipped sibling immutability rule, `projects.fn_stage_reorder_lock`, on every
+ * other value: that trigger locks a stage's ORDER on the presence of any assignment row whatsoever,
+ * and two locks on one stage that disagreed about when it was \"started or claimed\" would be
+ * indefensible.
+ *
+ * **Residual, deliberately accepted:** `cancelled` keeps the lock on, so an assignment a client
+ * created and immediately cancelled by mistake leaves that stage permanently priced. That is the
+ * safe side of a rule whose other side is invisible, and unpicking it needs a distinction the column
+ * does not currently carry.
+ */
+export const ONBOARDED_ASSIGNMENT_EXCLUDED: readonly string[] = ["declined", "pending_funding"];
+
+/** Whether one `projects.stage_assignments.status` counts as somebody having been onboarded. */
+export function countsAsOnboarded(status: string): boolean {
+	return !ONBOARDED_ASSIGNMENT_EXCLUDED.includes(status);
+}
+
+/** The narrow projection every rule below reads, so the server guard can call them from a DB row. */
+export interface OnboardingLockInput {
+	structure: ProjectStructure;
+	/** {@link ProjectSetupSchema}'s `onboardedCount` — the whole project's total. */
+	onboardedCount: number;
+}
+
+/** Whether any provider has been onboarded anywhere on this engagement. */
+export function projectOnboarded(input: Pick<OnboardingLockInput, "onboardedCount">): boolean {
+	return input.onboardedCount > 0;
 }
 
 /**
- * Which segment reads as pressed, given what is stored.
+ * Whether the engagement's SHAPE — its Project type, and the has-stages toggle beside it — is frozen.
  *
- * `format` and `structure` are two columns that can legitimately disagree for a moment — a pipeline
- * whose owner has just switched it to a one-off still carries `standard` — so this resolves rather than
- * trusts, and falls back to the format's first shape so the control never renders with nothing selected.
+ * Both controls, not only the one labelled \"Project type\", because they write the two halves of one
+ * answer: {@link createFormatToColumns} resolves a type into `format` + `structure`, and turning
+ * stages off on a staffed pipeline would strand every provider hired onto stages 2..n. Freezing one
+ * and leaving the other open would be a lock somebody could walk around.
+ *
+ * `sessionKind` is deliberately NOT frozen. It is a scheduling detail inside a format rather than the
+ * type itself, and the control that sets it is reachable only while `format === \"session\"` — which
+ * this rule already holds still.
  */
-export function shapeFor(format: ProjectFormat, structure: ProjectStructure): ProjectStructure {
-	const options = shapeOptionsFor(format);
-	if (options.length === 0) return structure;
-	return options.includes(structure) ? structure : options[0];
+export function shapeLocked(input: Pick<OnboardingLockInput, "onboardedCount">): boolean {
+	return projectOnboarded(input);
 }
+
+/**
+ * The stages whose own price is frozen.
+ *
+ * Per stage, so a run whose second milestone has been staffed can still be priced at its fourth —
+ * which is the whole reason this returns a set rather than a boolean.
+ *
+ * The FLAT branch adds the root stage on the PROJECT's count, and that is not the same test. A flat
+ * engagement's root stage IS the engagement (`pricedStages` collects only that one, and
+ * `finance.fn_hold_ticket_escrow` reads its `unit_price_cents`), so anybody hired anywhere against
+ * this project was hired against that figure. Such a project also keeps whatever stage rows a
+ * previously staged run left behind — those are never deleted, because their tickets, submissions
+ * and escrow hang off them — so their own counts are honoured too, even though no section renders
+ * them. A write path that ignored them would let a hidden stage be repriced out from under a
+ * provider working it.
+ *
+ * A role-staffed engagement collects no stage price at all; its figure is the project's, and
+ * {@link projectPriceLocked} is the rule for that one.
+ */
+export function lockedStagePriceIds(
+	input: OnboardingLockInput,
+	stages: readonly Pick<StageSetup, "id" | "onboardedCount">[],
+): ReadonlySet<string> {
+	if (pricedAtProjectLevel(input.structure)) return new Set<string>();
+	const locked = new Set(stages.filter((s) => s.onboardedCount > 0).map((s) => s.id));
+	const root = stages[0];
+	if (!hasStages(input.structure) && root && projectOnboarded(input)) locked.add(root.id);
+	return locked;
+}
+
+/**
+ * Whether the PROJECT-level budget figure is frozen.
+ *
+ * Scoped to the one structure whose price lives there. On every other shape the Budget section does
+ * not render at all (`setupSections`), and on a milestone run the amount is DERIVED from the stage
+ * fees rather than typed — so a lock there would freeze a number nobody enters and would fight
+ * `rolledUpBudget`, which rewrites it on every save.
+ */
+export function projectPriceLocked(input: OnboardingLockInput): boolean {
+	return pricedAtProjectLevel(input.structure) && projectOnboarded(input);
+}
+
+/**
+ * Why the shape control refuses — one sentence, shown as the disabled control's tooltip AND returned
+ * as the write path's refusal.
+ *
+ * One constant rather than two strings that happen to say the same thing, because the tooltip is a
+ * PROMISE about what the server will do and the refusal is the server doing it. Two copies drift,
+ * and the drift is only ever discovered by somebody who hit the refusal after reading the tooltip.
+ */
+export const SHAPE_LOCK_REASON =
+	"Project type cannot be modified after freelancers have been onboarded.";
+
+/** Why a staffed stage's price refuses. See {@link SHAPE_LOCK_REASON} on why this is shared. */
+export const STAGE_PRICE_LOCK_REASON =
+	"Ticket price is locked — a freelancer has been onboarded onto this stage.";
+
+/**
+ * Why an engagement-level price refuses — the ROLE-STAFFED case, and the FLAT one.
+ *
+ * Two shapes reach this sentence by different routes, which is worth stating because the constant's
+ * name only names one of them. A role-staffed engagement is locked by {@link projectPriceLocked};
+ * a FLAT engagement's root stage is locked by {@link lockedStagePriceIds}'s project-count branch, and
+ * is still the right place for this wording rather than the stage one — that surface has its stage
+ * list switched off, so telling its owner a "stage" is locked names something they cannot see.
+ * {@link priceLockReasonFor} is what picks between the two, so no call site has to remember this.
+ */
+export const PROJECT_PRICE_LOCK_REASON =
+	"Ticket price is locked — a freelancer has been onboarded onto this project.";
+
+/**
+ * The sentence a frozen PRICE control should show, given the shape it sits on.
+ *
+ * It exists because "which price is this" is a question about the engagement's structure, and every
+ * surface that renders a price control was answering it independently — which is how a flat project,
+ * whose whole form has no stage list, came to explain its locked price by naming a stage.
+ *
+ * A staged run genuinely has stages and locks them one at a time, so it says so. Everything else
+ * prices the engagement as a whole.
+ */
+export function priceLockReasonFor(structure: ProjectStructure): string {
+	return hasStages(structure) ? STAGE_PRICE_LOCK_REASON : PROJECT_PRICE_LOCK_REASON;
+}
+
+/**
+ * The field-error code a locked-field mutation earns, alongside its `422`.
+ *
+ * Lowercase snake_case to match the vocabulary the rest of this write path already answers with
+ * (`not_allowed`, `self_dependency`, `unknown_file`, `stage_not_in_project`), which is what any
+ * client reading `errors[field]` is written against.
+ */
+export const FIELD_LOCKED_POST_ONBOARDING = "field_locked_post_onboarding";
+
+/**
+ * What publishing commits the client to, stated BEFORE they publish.
+ *
+ * Declared here, beside the rules they describe, so the dialog cannot promise a lock the write path
+ * does not apply. Each line corresponds to a function above: {@link shapeLocked},
+ * {@link lockedStagePriceIds}, and that function's flat branch.
+ */
+export const PUBLISH_LOCK_NOTICES: readonly string[] = [
+	"Once the first freelancer is onboarded, the Project type will be permanently locked.",
+	"Ticket prices become locked on a per-stage basis as freelancers join each stage.",
+	"For flat pipeline projects, the project ticket price locks immediately when the first freelancer joins.",
+];
+// #endregion
 
 /**
  * Build the ladder from a configuration.
@@ -706,9 +1119,7 @@ export function setupSteps(input: ProjectSetupStepsInput): ProjectSetupStep[] {
 	const byRoles = staffedByRoles(input.structure);
 	const stageLabel = STAGE_SECTION_LABEL[input.format];
 	const stageItem = STAGE_ITEM_LABEL[input.format];
-	const stagesPriced = input.stages.some((s) => s.unitPriceCents !== null);
-	const rolesPriced = input.roles.some((r) => r.budgetCents !== null);
-	const priced = input.budget.amountCents !== null || stagesPriced || rolesPriced;
+	const priced = pricingSatisfied(input);
 
 	const steps: ProjectSetupStep[] = [
 		{
@@ -737,9 +1148,7 @@ export function setupSteps(input: ProjectSetupStepsInput): ProjectSetupStep[] {
 			label: "Pricing",
 			done: priced,
 			required: true,
-			hint: byRoles
-				? "Set a project budget, or give at least one role a budget."
-				: `Set a project budget, or price at least one ${stageItem}.`,
+			hint: byRoles ? "Set the engagement's budget." : `Give every ${stageItem} a price.`,
 		},
 		byRoles
 			? {
@@ -843,6 +1252,52 @@ export function liveVisibilityFor(
 export const CREATED_PUBLISH_VISIBILITY: ProjectVisibility = "public";
 
 /**
+ * Whether this engagement's project budget is the SUM of its stage prices.
+ *
+ * True for a one-off and false for a pipeline, and the difference is what `unit_price_cents` MEANS on
+ * each. A one-off stage is a one-ticket stage — the column comment in `00000015_tables_projects.sql`
+ * says so — and its price is the whole fee for that milestone, so the milestones add up to the
+ * engagement. A PIPELINE stage's price is a per-TICKET rate, and a stage may run fifty tickets: adding
+ * those rates together produces a number that is not the cost of anything, and writing it into the
+ * column the feed card and the public listing read would advertise a figure nobody is being charged.
+ *
+ * A session is excluded for the same reason from the other end — its stage price is the rate for one
+ * sitting, and the count of sittings lives on the session rows.
+ */
+function budgetIsStageSum(format: ProjectFormat, structure: ProjectStructure): boolean {
+	return format === "one_off" && !staffedByRoles(structure);
+}
+
+/**
+ * The project-level budget a milestone-bearing engagement carries: the sum of its milestone fees.
+ *
+ * Where it applies, the amount is DERIVED and not typed. The owner prices the milestones, and
+ * `projects.projects.budget_amount_cents` — which the feed, the listing and the ladder all read — is
+ * their total, kept in step on every fold so it cannot go stale against the rows that produce it. A
+ * second, hand-typed project figure beside priced milestones would be two answers to "what does this
+ * engagement cost", with nothing to say which the reader should believe.
+ *
+ * It never CLEARS an amount it cannot replace: a run with nothing priced yet keeps whatever the owner
+ * or the create modal put there, so switching a costed project into milestones does not blank its
+ * budget before the first fee is entered.
+ *
+ * The currency and the type are never touched — those are the owner's, and only the figure is derived.
+ */
+function rolledUpBudget(
+	format: ProjectFormat,
+	structure: ProjectStructure,
+	budget: ProjectBudget,
+	stages: readonly StageSetup[],
+): ProjectBudget {
+	if (!budgetIsStageSum(format, structure)) return budget;
+	// The stages the form COLLECTS, not every row on the project. A flat engagement keeps whatever
+	// rows a previous staged run left behind, and summing those would report a total made partly of
+	// figures the owner can no longer see — and, on a one-off, publish it to the listing.
+	const total = cumulativeStageCents(pricedStages(structure, stages));
+	return total === null ? budget : { ...budget, amountCents: total };
+}
+
+/**
  * Fold a patch over a base and re-derive the ladder, the percentage and the gate in one place.
  *
  * The derived trio is ALWAYS recomputed from the data fields; a client that posts
@@ -856,12 +1311,35 @@ export function reconcileSetup(
 	base: ProjectSetupPatch,
 	patch: ProjectSetupPatch = {},
 ): ProjectSetup {
+	// Onboarding counts are RE-GRAFTED from the base by stage id, never taken from the patch.
+	//
+	// They are facts about `projects.stage_assignments`, and the whole point of them is to decide what
+	// the caller may no longer edit — so folding a caller-supplied figure would let a payload unlock
+	// the very field it is trying to change, in the one function every surface derives its lock from.
+	// A stage the base does not know is one that did not exist a moment ago, and reads `0` correctly.
+	//
+	// The same treatment `completeness` and `liveVisibility` already get, and for the same reason.
+	const baseCounts = new Map(
+		(base.stages ?? []).map((stage) => [stage.id, stage.onboardedCount] as const),
+	);
+	const stages = (patch.stages ?? base.stages ?? []).map((stage) => ({
+		...stage,
+		onboardedCount: baseCounts.get(stage.id) ?? 0,
+	}));
+	const format = patch.format ?? base.format ?? "pipeline";
+	const structure = patch.structure ?? base.structure ?? "standard";
+	const budget: ProjectBudget = {
+		...DEFAULT_PROJECT_BUDGET,
+		...(base.budget ?? {}),
+		...(patch.budget ?? {}),
+	};
+
 	const merged: ProjectSetupInput = {
 		id: patch.id ?? base.id ?? "",
 		slug: patch.slug ?? base.slug ?? "",
 		title: patch.title ?? base.title ?? "",
-		format: patch.format ?? base.format ?? "pipeline",
-		structure: patch.structure ?? base.structure ?? "standard",
+		format,
+		structure,
 		sessionKind: patch.sessionKind ?? base.sessionKind ?? "none",
 		status: patch.status ?? base.status ?? "draft",
 		// `?? null` rather than `??` down a chain: an archive is a fact about the row, and a patch that
@@ -869,11 +1347,7 @@ export function reconcileSetup(
 		archivedAt: patch.archivedAt ?? base.archivedAt ?? null,
 		description: patch.description ?? base.description ?? "",
 		attachments: patch.attachments ?? base.attachments ?? [],
-		budget: {
-			...DEFAULT_PROJECT_BUDGET,
-			...(base.budget ?? {}),
-			...(patch.budget ?? {}),
-		},
+		budget: rolledUpBudget(format, structure, budget, stages),
 		rules: {
 			...DEFAULT_PROJECT_RULES,
 			...(base.rules ?? {}),
@@ -887,8 +1361,12 @@ export function reconcileSetup(
 			patch.rules?.visibility ?? base.rules?.visibility ??
 				DEFAULT_PROJECT_RULES.visibility,
 		),
-		stages: patch.stages ?? base.stages ?? [],
+		stages,
 		roles: patch.roles ?? base.roles ?? [],
+		// From the BASE alone — see the re-graft above. A patch that asserted `0` here would be
+		// asserting that nobody the client has hired exists, which is exactly the claim the locks
+		// below it exist to refuse.
+		onboardedCount: base.onboardedCount ?? 0,
 		viewerIsClient: patch.viewerIsClient ?? base.viewerIsClient ?? false,
 	};
 

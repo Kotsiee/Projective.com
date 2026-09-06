@@ -15,6 +15,7 @@ import {
 	reconcileSetup,
 	type StageSetup,
 } from "@projective/types/projects";
+import { serverEnv } from "../../core/env.ts";
 import { findProject } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
@@ -91,7 +92,7 @@ const STRUCTURE_FOR_FORMAT: Record<ProjectFormat, ProjectStructure> = {
  * heuristic that guessed wrong would show an owner a section their engagement does not have and hold
  * their publish gate against it.
  */
-const DIRECT_DELIVERABLE_SLUGS: ReadonlySet<string> = new Set(["monarch-launch-teardown"]);
+const DIRECT_DELIVERABLE_SLUGS: ReadonlySet<string> = new Set(["prj-cujw52gg3p"]);
 
 /** The structure for a row: its format's shape, unless the corpus declares it a Direct Deliverable. */
 function structureOf(slug: string, format: ProjectFormat): ProjectStructure {
@@ -189,7 +190,7 @@ const STAGE_ROLE_NAMES = [
  * stage looks like, so a field added there arrives here already carrying its intended default instead
  * of failing this file's compile and being answered with whatever the author guessed.
  */
-function toStageSetup(stage: BoardStageRef): StageSetup {
+function toStageSetup(stage: BoardStageRef, onboarded: boolean): StageSetup {
 	const seats = normaliseSeats(
 		hash(`${stage.id}:capacity`) % 3 === 0 ? "unlimited" : "limited",
 		1 + (hash(`${stage.id}:seats`) % 6),
@@ -209,7 +210,14 @@ function toStageSetup(stage: BoardStageRef): StageSetup {
 		dependency: stage.order === 0
 			? "parallel"
 			: (hash(`${stage.id}:dependency`) % 4 === 0 ? "parallel" : "sequential"),
-		durationDays: 3 + (hash(`${stage.id}:duration`) % 18),
+		// Left at the blank stage's `null` — "the one above it" — rather than seeded with a specific
+		// predecessor. A derived chain would be a schedule nobody designed, and the honest stub answer
+		// for a stage the fixtures never sequenced is the default the form itself starts from.
+		startsWithId: null,
+		delayDays: 0,
+		// Only a MILESTONE carries a delivery date; a pipeline stage's timing is its predecessor plus
+		// its lag, so seeding one there would show a control the pipeline never renders.
+		deliveryDate: null,
 		capacity: seats.capacity,
 		seatCount: seats.seatCount,
 		roles: seats.capacity === "limited"
@@ -217,15 +225,29 @@ function toStageSetup(stage: BoardStageRef): StageSetup {
 				id: `stagerole-${stage.id}-1`,
 				name: pick(STAGE_ROLE_NAMES, `${stage.id}:role`),
 				quantity: seats.seatCount ?? 1,
-				// Priced from the stage's own per-ticket rate rather than from a second seeded number,
-				// so the role budget and the stage price cannot describe two different engagements.
-				budgetCents: stage.unitPriceCents,
+				description: "",
+				// `null` — no bonus. The figure is an amount ON TOP of the stage's ticket price, so
+				// seeding it from that price would state that every named seat doubles the cost of its
+				// own stage, which is a claim the fixtures have no basis for.
+				budgetCents: null,
 			}]
 			: [],
 		allowedFileKinds: [...pick(FILE_KIND_SETS, `${stage.id}:kinds`)],
 		// `null` INHERITS the project's term, which is the honest answer for most stages; a derived
 		// override exists on a minority so the three-valued control is reachable in the stub.
 		ndaRequired: hash(`${stage.id}:nda`) % 5 === 0 ? true : null,
+		// The board's OWN roster, not a hash. `BoardStageRef.members` is the list of freelancers the
+		// board fixtures already say are assigned to this stage, and it was being dropped here only
+		// because `StageSetup` had no field to receive it. Deriving the figure instead would let the
+		// setup form's price lock disagree with the avatar stack the board draws for the same stage —
+		// two answers to "who is working on this", in a stub whose whole purpose is to be coherent.
+		//
+		// Zeroed on an UNPUBLISHED project. The board fixtures seed a roster onto every stage that is
+		// not itself a draft, which on a project nobody can see yet describes freelancers who could
+		// not have applied to it — and would price-lock a brand new draft on its first render. Nothing
+		// about the count is invented here; a project that has never been published simply has not
+		// onboarded anybody.
+		onboardedCount: onboarded ? stage.members.length : 0,
 	};
 }
 
@@ -253,7 +275,18 @@ function stagesFor(
 	stages: readonly BoardStageRef[],
 ): StageSetup[] {
 	if (structure === "single_task" || row.totalStages === 0) return [];
-	return stages.map(toStageSetup);
+	return stages.map((stage) => toStageSetup(stage, hasOnboarded(row)));
+}
+
+/**
+ * Whether this fixture engagement could have onboarded anybody yet.
+ *
+ * A draft is unlisted by construction (`liveVisibilityFor`), so nobody has seen it to apply to it.
+ * One predicate, read by the stage counts and by the project total, so the two cannot report a
+ * project that has staffed stages and no staff.
+ */
+function hasOnboarded(row: ProjectSummary): boolean {
+	return row.status !== "draft";
 }
 
 /** The reference-file vocabulary a derived attachment list is drawn from. */
@@ -317,10 +350,90 @@ function rolesFor(structure: ProjectStructure, slug: string): ProjectRoleSetup[]
 		id: `role-${slug}-${index + 1}`,
 		name: ROLE_NAMES[(hash(slug) + index) % ROLE_NAMES.length],
 		skills: [...skills],
-		// Unpriced on purpose: a role budget is a decision the owner has not taken, and the pricing
-		// ladder step must be able to read as outstanding on an engagement nobody has priced.
+		description: "",
+		// No bonus. The figure is an amount ON TOP of the engagement's own price and most seats carry
+		// none, so an unpriced role leaves nothing outstanding — the ladder measures the primary
+		// figure, which is the project's budget here.
 		budgetCents: null,
 	}));
+}
+// #endregion
+
+// #region Onboarding simulation (development only)
+/**
+ * The onboarding states the Dev Context Switcher can put a project into.
+ *
+ * The union is declared HERE rather than imported from `apps/web/utils/dev-seam.ts` because the
+ * boundary runs the other way: `@projective/backend` is a workspace member the app depends on, and
+ * an import back into `apps/web` would invert it (root CLAUDE.md §2). The thin route validates the
+ * incoming string against these members, so the two cannot drift without failing a type check.
+ *
+ * `auto` is the absence of a simulation and is spelled out rather than left to `undefined` so the
+ * switcher's default and the wire's default are one value.
+ */
+export type OnboardingSim = "auto" | "none" | "first_stage" | "all_stages";
+
+/** Whether a string is one of them — the route's guard, so a caller cannot smuggle anything else. */
+export function isOnboardingSim(raw: string): raw is OnboardingSim {
+	return raw === "auto" || raw === "none" || raw === "first_stage" || raw === "all_stages";
+}
+
+/**
+ * The simulation a request may actually have, once the environment has had its say.
+ *
+ * A `sim` arrives on a caller-controlled query string, and this one moves a GATE — so outside
+ * development it is discarded rather than honoured. That is the same shape Decision #72 had to
+ * retrofit after an ungated dev overlay turned out to be a privilege-forgery primitive in production;
+ * gating it at the one place it enters is cheaper than auditing every place it is read.
+ *
+ * The server decides, never the client: `DENO_ENV` is read here rather than trusted from a header,
+ * because a switch that a caller could assert into existence is not a gate.
+ */
+export function effectiveOnboardingSim(sim: OnboardingSim | undefined): OnboardingSim {
+	if (!sim || sim === "auto") return "auto";
+	return serverEnv().appEnv === "development" ? sim : "auto";
+}
+
+/** The count a simulated stage carries. One provider is enough to lock; more says nothing extra. */
+const SIMULATED_PROVIDERS = 1;
+
+/**
+ * Re-state a setup projection's onboarding counts as the developer asked for them.
+ *
+ * PURE, and applied to the PROJECTION rather than to the corpus — so it changes what one request
+ * sees and nothing that outlives it. The counts are then re-grafted by `reconcileSetup` exactly as
+ * real ones are, which is why the simulated projection behaves identically to a genuinely staffed
+ * one all the way down to the locks.
+ *
+ * **Fixtures only.** The live branch never calls this: a switch on a developer's own machine must not
+ * be able to tell the write path that a real freelancer does or does not exist. With the backend gate
+ * off, the "server" is this same process, so applying it to BOTH the read and the write guard keeps
+ * the two in agreement — which is the whole point, since a client that draws an unlocked control the
+ * server then refuses is a control that reaches nothing (root CLAUDE.md §3 gate 11).
+ *
+ * `first_stage` staffs exactly the first stage and empties every other, which is the state that
+ * proves the price lock is per stage rather than per project — the one thing a single real fixture
+ * cannot reliably demonstrate, because which of its stages are staffed depends on its own progress.
+ */
+export function applyOnboardingSim(setup: ProjectSetup, sim: OnboardingSim): ProjectSetup {
+	if (sim === "auto") return setup;
+
+	const stages = setup.stages.map((stage, index) => ({
+		...stage,
+		onboardedCount: sim === "all_stages" || (sim === "first_stage" && index === 0)
+			? SIMULATED_PROVIDERS
+			: 0,
+	}));
+	// The sum of the stages, FLOORED at one. The floor is not a rounding — it is the role-staffed
+	// engagement, which renders no stage list at all, so a total derived purely from stages would
+	// leave the one shape whose price lives on the project row permanently unlocked whatever the
+	// switcher is set to.
+	const staffed = stages.reduce((n, stage) => n + stage.onboardedCount, 0);
+	const total = sim === "none" ? 0 : Math.max(staffed, SIMULATED_PROVIDERS);
+
+	// Through `reconcileSetup` rather than a spread, so the ladder, the percentage and the gate are
+	// re-derived from the simulated shape instead of being carried over from the real one.
+	return reconcileSetup({ ...setup, stages, onboardedCount: total });
 }
 // #endregion
 
@@ -368,6 +481,13 @@ export function findProjectSetup(projectKey: string): ProjectSetup | null {
 		},
 		stages: stagesFor(structure, row, board?.stages ?? []),
 		roles: rolesFor(structure, row.slug),
+		// Counted across the BOARD's stages rather than the projection's, so a role-staffed engagement
+		// — whose `stagesFor` returns `[]` — still reports the providers it has. That is precisely the
+		// case `ProjectSetupSchema.onboardedCount` exists to carry, and summing the projection would
+		// report zero for it and leave its project-level price editable while somebody works against it.
+		onboardedCount: hasOnboarded(row)
+			? (board?.stages ?? []).reduce((n, stage) => n + stage.members.length, 0)
+			: 0,
 		viewerIsClient: detail.viewerIsClient,
 	});
 }

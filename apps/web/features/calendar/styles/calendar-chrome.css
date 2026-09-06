@@ -72,13 +72,18 @@
 }
 
 /*
- * `.ui-splitter` carries a BARE global rule `inline-size: var(--shell-lane-w)`, so a rail that only
- * flips `display` swaps the presentation but NOT the track — leaving a column of glyphs adrift in
- * 280px with the content region's space collapsed away and never handed back. Scoped with `:has` so
- * only THIS lane takes the narrow width.
+ * A rail that only flips `display` swaps the presentation but NOT the track — leaving a column of
+ * glyphs adrift in the full lane width with the content region's space collapsed away and never
+ * handed back. The rail width is declared here.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
  */
-.ui-splitter[data-mode="collapsed"]:has(.cal-rail) {
-	inline-size: var(--shell-sidebar-w);
+.ui-middle-nav:has(.cal-rail) {
+	--shell-lane-rail-w: var(--shell-sidebar-w);
 }
 
 /* #endregion */

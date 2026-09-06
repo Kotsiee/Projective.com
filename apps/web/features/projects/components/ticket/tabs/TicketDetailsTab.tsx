@@ -66,6 +66,11 @@ export function TicketDetailsTab(props: TicketDetailsTabProps): JSX.Element {
 							key={card.id}
 							value={card.description ?? ""}
 							minRows={5}
+							// `.tkv__body` is a BOUNDED scroller — measured at 640px on a 900px viewport — so this
+							// field is spending a fixed budget rather than lengthening a page. Half of it is the
+							// honest limit: past that, the stage run and the task list below are pushed out of the
+							// modal with nothing on screen to say they exist.
+							maxAutoHeight="20rem"
 							aria-label="Ticket description"
 							placeholder="What does done look like? Acceptance criteria, references, constraints."
 							onValueChange={(description: string) =>

@@ -7,6 +7,12 @@ import { styleVars } from "../../core/style.ts";
 import { useControllable } from "../hooks/useControllable.ts";
 import { useId } from "../hooks/useId.ts";
 import { ariaInvalid, fieldModifiers } from "../core/field.ts";
+import {
+	caretAfterSanitize,
+	clampNumber,
+	parseNumericInput,
+	sanitizeNumericInput,
+} from "../core/number-field.ts";
 import type { BaseFieldProps, Bindable, FieldVariant, ValueChange } from "../types/mod.ts";
 
 /** Numeric formatting mode (PrimeNG parity). */
@@ -129,18 +135,15 @@ export function InputNumber(props: InputNumberProps): JSX.Element {
 		[locale, mode, currency, minFractionDigits, maxFractionDigits],
 	);
 
-	const clamp = (n: number): number => {
-		let out = n;
-		if (min !== undefined && out < min) out = min;
-		if (max !== undefined && out > max) out = max;
-		return out;
-	};
+	// Both delegate to `core/number-field.ts`, which is the single implementation shared with
+	// {@link NumberInput}. Behaviour here is unchanged by that move — including the comma-decimal
+	// limitation, which is asserted in `number-field.test.ts` precisely so it cannot shift underneath
+	// this control's existing call sites without a failing test.
+	const clamp = (n: number): number => clampNumber(n, min, max);
 
 	const parse = (raw: string): number | null => {
-		const cleaned = raw.replace(/[^0-9.\-]/g, "");
-		if (cleaned === "" || cleaned === "-" || cleaned === ".") return null;
-		const n = Number(cleaned);
-		return Number.isFinite(n) ? clamp(n) : null;
+		const parsed = parseNumericInput(raw);
+		return parsed === null ? null : clamp(parsed);
 	};
 
 	const current = ctrl.signal.value;
@@ -155,8 +158,33 @@ export function InputNumber(props: InputNumberProps): JSX.Element {
 		setFocused(true);
 	};
 
+	/**
+	 * What this field accepts as it is typed, read off its own bounds: digits, grouping commas, ONE
+	 * decimal point, and a leading sign only where `min` permits one.
+	 *
+	 * The same rule and the same implementation as {@link NumberInput} — the two controls must not
+	 * disagree about which keystrokes a number field takes. It only narrows what reaches the draft;
+	 * every character it rejects was already being stripped by `parseNumericInput` on blur, so no
+	 * committed value changes. The one behaviour that DOES change is for the better: `1.2.3` used to
+	 * parse to `null` and empty the field, and now the second point is simply never accepted.
+	 */
+	const filterOptions = {
+		allowNegative: min === undefined || min < 0,
+		allowDecimal: maxFractionDigits === undefined || maxFractionDigits > 0,
+	};
+
 	const onInput = (e: JSX.TargetedEvent<HTMLInputElement>) => {
-		setDraft(e.currentTarget.value);
+		const el = e.currentTarget;
+		const raw = el.value;
+		const clean = sanitizeNumericInput(raw, filterOptions);
+		setDraft(clean);
+		if (clean === raw) return;
+		// Rejecting a character need not CHANGE the draft (`a` typed onto `12` filters back to `12`),
+		// so the re-render that would correct the DOM may never happen. Correct it here, and keep the
+		// caret where the reader was working rather than dropping it at the end.
+		const caret = caretAfterSanitize(raw, el.selectionStart ?? raw.length, filterOptions);
+		el.value = clean;
+		el.setSelectionRange(caret, caret);
 	};
 
 	const commit = () => {

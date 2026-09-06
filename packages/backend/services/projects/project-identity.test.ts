@@ -1,22 +1,27 @@
 /**
- * Coverage of the two-identifier addressing model, and of the create that now has to produce
- * something openable.
+ * Coverage of the single-address model, and of the create that has to produce something openable.
  *
- * The whole class of defect here is silent. A uuid satisfies `ck_projects_slug_shape`, so a resolver
- * that matches it against the slug returns a clean, unlogged 404; a store keyed by one identifier and
- * read by the other returns a project with none of its owner's edits; and a create that shapes a slug
- * and persists nothing returns `201` and a URL that answers 404. None of the three throws, and none is
- * visible to a type-checker or to a source-reading review — which is exactly why they are asserted
- * here rather than reasoned about.
+ * The whole class of defect here is silent. A create that hands back an identifier the routes do not
+ * accept returns `201` and a URL that answers 404; a store keyed by one identifier and read by another
+ * returns a project with none of its owner's edits; and a slug that moves when the title moves breaks
+ * every link built on it with no error anywhere. None of the three throws, and none is visible to a
+ * type-checker or to a source-reading review — which is exactly why they are asserted here rather than
+ * reasoned about.
+ *
+ * This file used to assert the OPPOSITE of several of the tests below, because a project used to be
+ * addressable by its uuid as well as by a readable slug. That model is gone; the tests that pinned it
+ * are inverted rather than deleted, so the reversal is visible to whoever reads them next.
  */
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
+import { isSlug, mintSlug, slugPattern } from "@projective/types/slugs";
 import type { ReadActor } from "../read-actor.ts";
 import { allProjects } from "./fixtures.ts";
 import { findProject } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findProjectSetup } from "./setup-fixtures.ts";
 import { findProjectOverview } from "./overview-fixtures.ts";
-import { isProjectKeyUuid, matchesProjectKey, UUID_RE } from "./project-identity.ts";
+import { isProjectSlug, matchesProjectKey } from "./project-identity.ts";
+import { UUID_RE } from "./live-support.ts";
 import { ProjectBackendService } from "./ProjectBackendService.ts";
 import { resetWriteStore } from "./write-store.ts";
 
@@ -45,67 +50,89 @@ function expectData<T>(result: { ok: boolean; data?: T; message?: string }, what
 	return result.data;
 }
 
-/** The first fixture row, which carries both a uuid and a readable slug. */
+/** The first fixture row. */
 function sample() {
 	const row = allProjects()[0];
 	assert(row, "the fixture corpus is empty, so nothing below can be addressed");
 	return row;
 }
 
+const BASE_CREATE = {
+	format: "pipeline" as const,
+	currency: "GBP",
+	baselineAmountCents: null,
+	scopeType: "personal" as const,
+	scopeId: "",
+};
+
 // #region Shape
-Deno.test("a lowercase uuid satisfies the slug CHECK — which is why the branch cannot be skipped", () => {
+Deno.test("a uuid can no longer be mistaken for a project address", () => {
+	// THE INVERSION. A lowercase uuid satisfies the OLD `^[a-z0-9-]{1,96}$` slug CHECK, which is what
+	// made `.eq("slug", <uuid>)` a legal query that silently matched nothing forever, and what forced
+	// every resolver to branch on the shape of its own route segment. The prefixed form is what removes
+	// the overlap — so if this ever fails, every one of those branches needs to come back.
 	const uuid = crypto.randomUUID();
-	assert(
-		/^[a-z0-9-]{1,96}$/.test(uuid),
-		'If a uuid did not satisfy ck_projects_slug_shape, an `.eq("slug", <uuid>)` would be an ' +
-			"obvious mistake. It does, so the query is legal and silently matches nothing forever.",
-	);
-	assert(isProjectKeyUuid(uuid));
+	assert(/^[a-z0-9-]{1,96}$/.test(uuid), "a uuid still satisfies the OLD permissive shape");
+	assert(!isProjectSlug(uuid), "a uuid must not satisfy the project slug pattern");
 });
 
-Deno.test("the shape test tells a readable slug apart from a key", () => {
-	assert(!isProjectKeyUuid("aurora-rebrand"));
-	assert(!isProjectKeyUuid(""));
-	// Version-agnostic on purpose: the question is "will Postgres accept this", not "which RFC variant".
-	assert(UUID_RE.test("11111111-1111-1111-8111-111111111101"));
-	assert(UUID_RE.test("11111111-1111-4111-8111-111111111101".toUpperCase()));
+Deno.test("the shape test admits a real slug and refuses everything adjacent to one", () => {
+	assert(isProjectSlug(mintSlug("project")));
+	assert(!isProjectSlug("aurora-rebrand"), "a title-derived slug is no longer an address");
+	assert(!isProjectSlug(""));
+	assert(!isProjectSlug("prj-"), "the prefix alone is not an address");
+	// Namespaced, so a stage address handed to a project route is refused rather than queried. Both are
+	// well-formed slugs; only one of them names a project.
+	assert(!isProjectSlug(mintSlug("stage")));
+	assert(!isProjectSlug(mintSlug("service")));
+	assert(!isProjectSlug(mintSlug("session")));
 });
 
-Deno.test("matchesProjectKey answers to both identifiers and to nothing else", () => {
-	const row = { id: crypto.randomUUID(), slug: "aurora-rebrand" };
-	assert(matchesProjectKey(row, row.id));
+Deno.test("matchesProjectKey answers to the slug and to nothing else", () => {
+	const row = { id: crypto.randomUUID(), slug: mintSlug("project") };
 	assert(matchesProjectKey(row, row.slug));
-	assert(!matchesProjectKey(row, "aurora-rebrand-2"));
+	// The inversion again, on the fixture side: the stub must not be more permissive than the live
+	// query, or a URL works in development and 404s in production.
+	assert(!matchesProjectKey(row, row.id), "the uuid must not resolve a project");
 	assert(!matchesProjectKey(row, ""));
 });
 // #endregion
 
 // #region Fixture roots
-Deno.test("every fixture read resolves the SAME project from its uuid and from its slug", () => {
-	for (const row of allProjects()) {
-		assertEquals(findProject(row.id)?.slug, row.slug, `findProject missed ${row.id}`);
-		assertEquals(findProjectDetail(row.id)?.slug, row.slug, `findProjectDetail missed ${row.id}`);
-
-		// Setup and overview compose the two roots above, so they are what proves the widening actually
-		// reaches the surfaces rather than only the lookups.
-		const bySlug = findProjectSetup(row.slug);
-		const byId = findProjectSetup(row.id);
-		assertEquals(byId, bySlug, `findProjectSetup disagrees between ${row.id} and ${row.slug}`);
-
-		assertEquals(
-			findProjectOverview(row.id),
-			findProjectOverview(row.slug),
-			`findProjectOverview disagrees between ${row.id} and ${row.slug}`,
+Deno.test("every fixture project carries a canonical address", () => {
+	const rows = allProjects();
+	assert(rows.length > 0);
+	const seen = new Set<string>();
+	for (const row of rows) {
+		assert(
+			isProjectSlug(row.slug),
+			`fixture "${row.slug}" is a shape ck_projects_slug_shape refuses, so the live path could ` +
+				"never produce it and a developer on fixtures never sees a real address",
 		);
+		assert(!seen.has(row.slug), `duplicate fixture slug ${row.slug}`);
+		seen.add(row.slug);
 	}
 });
 
-Deno.test("a setup resolved by uuid still reports its own readable slug, not the uuid", () => {
-	const row = sample();
-	const setup = findProjectSetup(row.id);
-	assert(setup);
-	assertEquals(setup.id, row.id);
-	assertEquals(setup.slug, row.slug);
+Deno.test("every fixture read resolves by slug, and none of them resolves by uuid", () => {
+	for (const row of allProjects()) {
+		assertEquals(findProject(row.slug)?.slug, row.slug, `findProject missed ${row.slug}`);
+		assertEquals(
+			findProjectDetail(row.slug)?.slug,
+			row.slug,
+			`findProjectDetail missed ${row.slug}`,
+		);
+		assert(findProjectSetup(row.slug), `findProjectSetup missed ${row.slug}`);
+		assert(findProjectOverview(row.slug), `findProjectOverview missed ${row.slug}`);
+
+		// The hard cut, asserted at every root rather than at the one that happens to be checked first.
+		// Falsiness rather than a specific `null`/`undefined`: the four roots differ on which absent
+		// value they return, and pinning that here would test their internals rather than the rule.
+		assert(!findProject(row.id), `findProject still answers to the uuid ${row.id}`);
+		assert(!findProjectDetail(row.id), `findProjectDetail still answers to ${row.id}`);
+		assert(!findProjectSetup(row.id), `findProjectSetup still answers to ${row.id}`);
+		assert(!findProjectOverview(row.id), `findProjectOverview still answers to ${row.id}`);
+	}
 });
 // #endregion
 
@@ -113,37 +140,35 @@ Deno.test("a setup resolved by uuid still reports its own readable slug, not the
 Deno.test("create refuses without an identity — owner_user_id is what RLS checks", async () => {
 	resetWriteStore();
 	const result = await ProjectBackendService.create({
+		...BASE_CREATE,
 		title: "Website refresh",
-		format: "pipeline",
-		currency: "GBP",
 		baselineAmountCents: 12_000,
-		scopeType: "personal",
-		scopeId: "",
 	}, actor(""));
 	assertEquals(result.ok, false);
 	assertEquals(result.status, 401);
 });
 
-Deno.test("a created project can immediately be OPENED by the id the client navigates to", async () => {
+Deno.test("a created project can immediately be OPENED by the address the client navigates to", async () => {
 	resetWriteStore();
 	const who = actor();
-	const created = await ProjectBackendService.create({
-		title: "Website refresh",
-		format: "pipeline",
-		currency: "GBP",
-		baselineAmountCents: 12_000,
-		scopeType: "personal",
-		scopeId: "",
-	}, who);
+	const made = expectData(
+		await ProjectBackendService.create({
+			...BASE_CREATE,
+			title: "Website refresh",
+			baselineAmountCents: 12_000,
+		}, who),
+		"create refused",
+	);
 
-	const made = expectData(created, "create refused");
-	assert(UUID_RE.test(made.id), "the client navigates to this, so it must be a real uuid");
+	// The client navigates to the SLUG. It used to navigate to the uuid, which after the hard cut is a
+	// 404 on a URL a successful create just handed out — the single most expensive way to get this
+	// wrong, because the write succeeded and only the address is broken.
+	assert(isProjectSlug(made.slug), `"${made.slug}" is not a routable address`);
+	assert(UUID_RE.test(made.id), "the row id is still a uuid; it is simply no longer an address");
 
-	// The whole point of the write-store branch: without it this is a 404 on a URL the create just
-	// handed out, and the modal reports success while producing nothing anybody can open.
 	const opened = expectData(
-		await ProjectBackendService.setup(made.id, who),
-		"the created project could not be read back by its own id",
+		await ProjectBackendService.setup(made.slug, who),
+		"the created project could not be read back by the address the client was given",
 	).setup;
 	assertEquals(opened.title, "Website refresh");
 	assertEquals(opened.status, "draft");
@@ -162,25 +187,25 @@ Deno.test("a created project can immediately be OPENED by the id the client navi
 	assertEquals(opened.stages[0].unitPriceCents, 12_000);
 	assertEquals(opened.budget.amountCents, null);
 
-	// And by its readable address too, since both are handed back.
-	const bySlug = expectData(await ProjectBackendService.setup(made.slug, who), "slug read failed");
-	assertEquals(bySlug.setup.id, made.id);
+	// And the uuid opens nothing, so the two addresses cannot drift back apart.
+	assertEquals((await ProjectBackendService.setup(made.id, who)).status, 404);
 });
 
 Deno.test("a one-off's baseline is the PROJECT budget, not a per-ticket rate", async () => {
 	resetWriteStore();
 	const who = actor();
-	const created = await ProjectBackendService.create({
-		title: "Logo refresh",
-		format: "one_off",
-		currency: "USD",
-		baselineAmountCents: 250_000,
-		scopeType: "personal",
-		scopeId: "",
-	}, who);
-	const made = expectData(created, "create refused");
+	const made = expectData(
+		await ProjectBackendService.create({
+			...BASE_CREATE,
+			title: "Logo refresh",
+			format: "one_off",
+			currency: "USD",
+			baselineAmountCents: 250_000,
+		}, who),
+		"create refused",
+	);
 	const opened = expectData(
-		await ProjectBackendService.setup(made.id, who),
+		await ProjectBackendService.setup(made.slug, who),
 		"the one-off could not be read back",
 	).setup;
 	assertEquals(opened.budget.amountCents, 250_000);
@@ -190,14 +215,7 @@ Deno.test("a one-off's baseline is the PROJECT budget, not a per-ticket rate", a
 Deno.test("two projects of the same name get two addresses — projects_slug_key is global", async () => {
 	resetWriteStore();
 	const who = actor();
-	const input = {
-		title: "Website refresh",
-		format: "pipeline" as const,
-		currency: "GBP",
-		baselineAmountCents: null,
-		scopeType: "personal" as const,
-		scopeId: "",
-	};
+	const input = { ...BASE_CREATE, title: "Website refresh" };
 	const first = expectData(await ProjectBackendService.create(input, who), "first create refused");
 	const second = expectData(
 		await ProjectBackendService.create(input, who),
@@ -206,88 +224,102 @@ Deno.test("two projects of the same name get two addresses — projects_slug_key
 	assertNotEquals(first.slug, second.slug);
 	assertNotEquals(first.id, second.id);
 	for (const slug of [first.slug, second.slug]) {
-		assert(
-			/^[a-z0-9-]{1,96}$/.test(slug),
-			`"${slug}" violates ck_projects_slug_shape, so the live insert would be refused`,
-		);
+		assert(isProjectSlug(slug), `"${slug}" violates ck_projects_slug_shape`);
 	}
 });
 
-Deno.test("a title with no Latin letters still produces a legal, routable slug", async () => {
+Deno.test("the address bears no trace of the title it was created under", async () => {
 	resetWriteStore();
 	const who = actor();
-	for (const title of ["!!!", "設計プロジェクト", "— — —"]) {
-		const created = await ProjectBackendService.create({
-			title,
-			format: "pipeline",
-			currency: "GBP",
-			baselineAmountCents: null,
-			scopeType: "personal",
-			scopeId: "",
-		}, who);
-		const made = expectData(created, `create refused the title ${JSON.stringify(title)}`);
+	// Titles that a slugifier handles badly, plus one it handles perfectly. All four must produce the
+	// same SHAPE, because none of them is an input to it — which is the property that makes an empty
+	// slugification, a non-Latin script and a 200-character title all non-events rather than edge cases.
+	for (const title of ["!!!", "設計プロジェクト", "— — —", "Website Refresh"]) {
+		const made = expectData(
+			await ProjectBackendService.create({ ...BASE_CREATE, title }, who),
+			`create refused the title ${JSON.stringify(title)}`,
+		);
 		assert(
-			/^[a-z0-9-]{1,96}$/.test(made.slug),
+			isProjectSlug(made.slug),
 			`${JSON.stringify(title)} produced "${made.slug}", which the shape CHECK refuses`,
 		);
+		const body = made.slug.slice("prj-".length).toLowerCase();
+		for (const word of title.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3)) {
+			assert(!body.includes(word), `"${made.slug}" carries "${word}" out of its own title`);
+		}
 	}
 });
 
-Deno.test("a created draft accepts its own first save, and the edit survives both addresses", async () => {
+Deno.test("RENAMING a project does not move its address", async () => {
 	resetWriteStore();
 	const who = actor();
-	const created = await ProjectBackendService.create({
-		title: "Website refresh",
-		format: "pipeline",
-		currency: "GBP",
-		baselineAmountCents: null,
-		scopeType: "personal",
-		scopeId: "",
-	}, who);
-	const made = expectData(created, "create refused");
+	const made = expectData(
+		await ProjectBackendService.create({ ...BASE_CREATE, title: "Website refresh" }, who),
+		"create refused",
+	);
 
 	const saved = expectData(
-		await ProjectBackendService.updateProject(made.id, { title: "Website refresh 2026" }, who),
+		await ProjectBackendService.updateProject(made.slug, { title: "Something else entirely" }, who),
 		"a freshly created draft refused its own first save",
 	);
-	assertEquals(saved.setup.title, "Website refresh 2026");
+	assertEquals(saved.setup.title, "Something else entirely");
+	// The point of the whole migration: the URL the owner is standing on still works after the rename
+	// that a title-derived slug would have invalidated.
+	assertEquals(saved.setup.slug, made.slug);
 
-	// Read back through the OTHER identifier. Keyed naively, the edit would be stored under the uuid
-	// and looked up under the slug, and the owner's save would vanish from the page that made it.
-	const bySlug = expectData(await ProjectBackendService.setup(made.slug, who), "slug read failed");
-	assertEquals(bySlug.setup.title, "Website refresh 2026");
+	const reopened = expectData(
+		await ProjectBackendService.setup(made.slug, who),
+		"the address stopped resolving after a rename",
+	);
+	assertEquals(reopened.setup.title, "Something else entirely");
 });
 
-Deno.test("an edit saved through the uuid is visible when the project is reached by slug", async () => {
+Deno.test("an edit saved against a fixture project is visible when it is read back", async () => {
 	resetWriteStore();
 	const who = actor();
 	const row = sample();
 
 	expectData(
-		await ProjectBackendService.updateProject(row.id, { title: "Renamed" }, who),
-		"the fixture project refused a save addressed by its uuid",
+		await ProjectBackendService.updateProject(row.slug, { title: "Renamed" }, who),
+		"the fixture project refused a save addressed by its slug",
 	);
 
-	const bySlug = expectData(await ProjectBackendService.setup(row.slug, who), "slug read failed");
-	assertEquals(bySlug.setup.title, "Renamed");
+	const reread = expectData(await ProjectBackendService.setup(row.slug, who), "slug read failed");
+	assertEquals(reread.setup.title, "Renamed");
+	assertEquals(reread.setup.slug, row.slug);
 });
 
 Deno.test("a stub-created project belongs to its creator and to nobody else", async () => {
 	resetWriteStore();
 	const mine = actor("u-owner");
 	const theirs = actor("u-stranger");
-	const created = await ProjectBackendService.create({
-		title: "Private draft",
-		format: "pipeline",
-		currency: "GBP",
-		baselineAmountCents: null,
-		scopeType: "personal",
-		scopeId: "",
-	}, mine);
-	const made = expectData(created, "create refused");
+	const made = expectData(
+		await ProjectBackendService.create({ ...BASE_CREATE, title: "Private draft" }, mine),
+		"create refused",
+	);
 
-	const seen = await ProjectBackendService.setup(made.id, theirs);
+	const seen = await ProjectBackendService.setup(made.slug, theirs);
 	assertEquals(seen.ok, false, "another viewer could open a draft held in this viewer's own store");
 	assertEquals(seen.status, 404);
+});
+// #endregion
+
+// #region Namespaces
+Deno.test("the four entity namespaces cannot be confused with one another", () => {
+	// One slug of each kind, checked against every pattern. A prefix that overlapped — or a pattern
+	// that forgot to anchor — would let a stage address resolve a project, which is a cross-table
+	// lookup that returns nothing and reads as a missing row rather than as a wrong URL.
+	const entities = ["project", "stage", "service", "session"] as const;
+	for (const owner of entities) {
+		const value = mintSlug(owner);
+		for (const other of entities) {
+			assertEquals(
+				slugPattern(other).test(value),
+				owner === other,
+				`${value} (${owner}) matched the ${other} pattern`,
+			);
+		}
+		assert(isSlug(value), "a minted slug must be recognised without naming its entity");
+	}
 });
 // #endregion

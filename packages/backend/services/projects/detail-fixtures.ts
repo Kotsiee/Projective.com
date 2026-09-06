@@ -150,6 +150,10 @@ function stageChannels(row: ProjectSummary): StageChannel[] {
 		const name = STAGE_NAMES[i] ?? `Stage ${i + 1}`;
 		out.push({
 			id: `stage-${i}`,
+			// Equal to `id` here, and deliberately still written out. The stub's channel and its stage
+			// are one row, so the two keys coincide — but a consumer that read `id` because the fixture
+			// let it would break the moment it met a real `comms` channel id.
+			stageId: `stage-${i}`,
 			name,
 			order: i,
 			status,

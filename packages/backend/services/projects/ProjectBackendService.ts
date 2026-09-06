@@ -1,3 +1,5 @@
+import { mintSlug } from "@projective/types/slugs";
+import { SLUG_MAX_ATTEMPTS } from "../../core/slug-retry.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isProjectsBackendLive } from "../../core/supabase.ts";
 import {
@@ -28,7 +30,13 @@ import {
 	type WriteOutcome,
 	type WriteRefusal,
 } from "./live-writes.ts";
-import { findProjectSetup } from "./setup-fixtures.ts";
+import { lockStateOf, onboardingLockRefusal, touchesLockableFields } from "./live-writes.ts";
+import {
+	applyOnboardingSim,
+	effectiveOnboardingSim,
+	findProjectSetup,
+	type OnboardingSim,
+} from "./setup-fixtures.ts";
 import { findProjectOverview } from "./overview-fixtures.ts";
 import {
 	appendChannelMessage,
@@ -322,52 +330,30 @@ async function liveWrite<T>(
  */
 // #region Create plumbing
 /**
- * How long a slug's readable half may be before the disambiguator is appended.
+ * Mint an unused project slug for the STUB path.
  *
- * `ck_projects_slug_shape` allows 96 characters. Eighty leaves room for the suffix and its separator
- * with slack to spare, so the truncation can never be the thing that makes a slug illegal.
+ * The title is not a parameter, and that is the change rather than an omission. This used to slugify
+ * the title and append a random disambiguator, which had to solve three problems that only exist
+ * because a title was involved at all — an empty result from a title of pure punctuation or a
+ * non-Latin script, a near-certain collision between two people naming a project "Website refresh",
+ * and a suffix that had to stay inside the shape CHECK. An opaque slug has none of them, and it fixes
+ * the one the old shape could not: a title-derived address dies on the first rename.
+ *
+ * `taken` is the stub path's own uniqueness check, and it exists only here. On the live path
+ * uniqueness belongs to the unique index, and `insertWithSlugRetry` re-mints against the write that
+ * was actually refused — a pre-check there would be a round trip whose answer is stale before the
+ * insert runs.
+ *
+ * A handful of attempts is generous for 50 bits against an in-memory store measured in dozens of
+ * rows; if every one collides, something other than luck is wrong and the last candidate is returned
+ * so the caller sees the real failure rather than an infinite loop.
  */
-const SLUG_BODY_MAX = 80;
-
-/**
- * Mint a legal, addressable slug from a title.
- *
- * Three separate things this has to get right, and the previous implementation got none of them:
- *
- * **It must always produce something.** `ck_projects_slug_shape` is `^[a-z0-9-]{1,96}$`, so an empty
- * string is not merely ugly — it is a refused insert. A title of pure punctuation (`"!!!"`), of
- * emoji, or of any non-Latin script slugifies to nothing at all under an ASCII filter, and those are
- * ordinary titles rather than adversarial ones. They fall back to a stable word.
- *
- * **It must not be a coin-flip against `projects_slug_key`.** The slug is globally UNIQUE, and two
- * clients naming a project "Website refresh" is not an unlikely event — it is the likely one. A short
- * random suffix turns a certain collision into a negligible one, and it is appended ALWAYS rather than
- * only on a detected clash: detecting one costs a round trip whose answer is stale before the insert
- * runs.
- *
- * **The suffix must survive the shape CHECK**, so it is drawn from the same alphabet as the body.
- *
- * `taken` is the stub path's own uniqueness check. On the live path uniqueness belongs to the
- * database, which is why this takes a predicate rather than reaching for a store: the caller supplies
- * whatever "already used" means where it is standing.
- */
-function mintProjectSlug(title: string, taken: (slug: string) => boolean): string {
-	const body = title
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, SLUG_BODY_MAX)
-		// A title of exactly `SLUG_BODY_MAX` characters can be cut mid-word and leave a trailing hyphen,
-		// which the CHECK permits but reads as a typo in the address bar.
-		.replace(/-+$/g, "") || "project";
-
-	for (let attempt = 0; attempt < 8; attempt++) {
-		const candidate = `${body}-${crypto.randomUUID().replace(/-/g, "").slice(0, 6)}`;
-		if (!taken(candidate)) return candidate;
+function mintProjectSlug(taken: (slug: string) => boolean): string {
+	let candidate = mintSlug("project");
+	for (let attempt = 1; attempt < SLUG_MAX_ATTEMPTS && taken(candidate); attempt++) {
+		candidate = mintSlug("project");
 	}
-	// Eight collisions on a six-character suffix is not a case worth a ninth guess; the whole uuid is
-	// the answer that cannot collide, and it still satisfies the shape CHECK.
-	return `${body}-${crypto.randomUUID()}`.slice(0, 96);
+	return candidate;
 }
 
 /**
@@ -765,6 +751,15 @@ export class ProjectBackendService {
 	static async setup(
 		slug: string,
 		actor: ReadActor,
+		/**
+		 * A DEV-ONLY onboarding simulation from the Context Switcher, or absent.
+		 *
+		 * Deliberately not applied to the live branch below. It decides what a client may still edit,
+		 * and a switch on somebody's own machine must not be able to tell a real database that a real
+		 * freelancer does or does not exist. `effectiveOnboardingSim` discards it outside development
+		 * as a second line, so a stray query param on a deployed instance changes nothing.
+		 */
+		sim?: OnboardingSim,
 	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
 		const live = await liveRead(
 			"setup",
@@ -780,12 +775,15 @@ export class ProjectBackendService {
 		// A project this viewer minted through the stub create has no fixture underneath it, so it is
 		// resolved before the corpus is consulted. Without this branch the Quick-Init modal navigates to
 		// a real id and lands on a 404 — a create that reported success and produced nothing openable.
+		const simulate = effectiveOnboardingSim(sim);
 		const created = storedCreatedProject(writeOwnerOf(actor), slug);
-		if (created) return ok({ setup: overlaySetup(created, actor) });
+		if (created) {
+			return ok({ setup: applyOnboardingSim(overlaySetup(created, actor), simulate) });
+		}
 
 		const setup = findProjectSetup(slug);
 		if (!setup) return noSuchProject(slug);
-		return ok({ setup: overlaySetup(setup, actor) });
+		return ok({ setup: applyOnboardingSim(overlaySetup(setup, actor), simulate) });
 	}
 
 	/**
@@ -841,6 +839,12 @@ export class ProjectBackendService {
 		 * escrow. Only a caller who said "here is the whole resource" gets that.
 		 */
 		replace = false,
+		/**
+		 * The same DEV-ONLY simulation the read takes, and it has to be here or the two halves
+		 * disagree: the form would draw a lock the write then allowed, or refuse a field the form left
+		 * open. Ignored on the live branch and outside development, exactly as on the read.
+		 */
+		sim?: OnboardingSim,
 	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
 		const denied = requireIdentity<{ setup: ProjectSetup }>(actor, "edit this project");
 		if (denied) return denied;
@@ -863,11 +867,34 @@ export class ProjectBackendService {
 		// Quick-Init draft the owner just landed on would refuse its own first save with a 404.
 		const base = storedCreatedProject(owner, slug) ?? findProjectSetup(slug);
 		if (!base) return noSuchProject(slug);
+		// The CURRENT stored configuration — the fixture plus every edit this process has accumulated —
+		// not the bare fixture. It is what `setupPatchFrom` diffs against, and it is what the locks must
+		// be judged against too: a rule evaluated on a stale base would freeze a price the owner had
+		// already legitimately changed a moment earlier.
+		// Simulated the same way the read simulated it, so the locks the form is drawing and the locks
+		// this guard applies are computed from one projection rather than two.
+		const simulate = effectiveOnboardingSim(sim);
+		const current = applyOnboardingSim(overlaySetup(base, actor), simulate);
+		// The same guard the live path runs, on the same rule, from the same module. A second
+		// implementation here would let the two paths disagree about what is frozen — and since this is
+		// the path that runs with the backend gate off, the disagreement would be the default.
+		if (touchesLockableFields(input)) {
+			const locked = onboardingLockRefusal(input, lockStateOf(current));
+			if (locked) {
+				return fail(locked.status, { message: locked.message, errors: locked.errors });
+			}
+		}
 		// Keyed by the project's own identity rather than by the routed segment: the same project reached
 		// through its slug and through its uuid must accumulate ONE set of edits, not two.
-		const merged = mergeSetupPatch(owner, base, setupPatchFrom(input, overlaySetup(base, actor)));
+		const merged = mergeSetupPatch(owner, base, setupPatchFrom(input, current));
 		invalidateProjects(actor);
-		return ok({ setup: reconcileSetup(base, merged) }, { message: "Project saved." });
+		// The response is simulated too, and it has to be: the form adopts what comes back as its new
+		// clean baseline, so an unsimulated response would silently drop the simulation on the first
+		// save and flip every lock back mid-session — with nothing to say why.
+		return ok(
+			{ setup: applyOnboardingSim(reconcileSetup(base, merged), simulate) },
+			{ message: "Project saved." },
+		);
 	}
 
 	/**
@@ -1166,12 +1193,13 @@ export class ProjectBackendService {
 		if (denied) return denied;
 
 		const owner = writeOwnerOf(actor);
-		const slug = mintProjectSlug(input.title, (candidate) => stubSlugTaken(owner, candidate));
 
 		if (isProjectsBackendLive() && canReadLive(actor)) {
 			try {
-				const outcome = await insertProject(actor, input, slug);
-				if (outcome === null) return notFound<CreatedProject>("project", slug);
+				// No slug is threaded in: the live insert mints its own so it can RETRY on the unique index,
+				// which is the only authority on whether an address is free at the instant of the write.
+				const outcome = await insertProject(actor, input);
+				if (outcome === null) return notFound<CreatedProject>("project", input.title);
 				if ("refusal" in outcome) return refused<CreatedProject>(outcome.refusal);
 				invalidateProjects(actor);
 				return ok(outcome.data, { status: 201, message: "Project drafted." });
@@ -1186,7 +1214,7 @@ export class ProjectBackendService {
 			}
 		}
 
-		const setup = buildCreatedSetup(input, slug);
+		const setup = buildCreatedSetup(input, mintProjectSlug((c) => stubSlugTaken(owner, c)));
 		recordCreatedProject(owner, setup);
 		invalidateProjects(actor);
 		return ok({ id: setup.id, slug: setup.slug }, {

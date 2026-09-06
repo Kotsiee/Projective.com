@@ -43,9 +43,17 @@
 	display: flex;
 }
 
-/* Scoped with `:has` so ONLY this lane takes the rail width — the feed lanes keep their own. */
-.ui-splitter[data-mode="collapsed"]:has(.wsp-rail) {
-	inline-size: var(--shell-sidebar-w);
+/*
+ * This lane's collapsed rail width.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
+ */
+.ui-middle-nav:has(.wsp-rail) {
+	--shell-lane-rail-w: var(--shell-sidebar-w);
 }
 /* #endregion */
 

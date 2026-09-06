@@ -1,0 +1,215 @@
+/*
+ * NumberInput — the direct-manipulation numeric control: a leading adornment that doubles as a drag
+ * handle, a centred value, and a pair of ghost steppers.
+ *
+ * Token-only (DESIGN_SYSTEM.md §A). A full outline is allowed on the field because an input IS
+ * interactive (§B.4); nothing inside it earns a second one, so the steppers and the handle are
+ * borderless and separate themselves from the value by spacing and tint alone.
+ */
+
+.ui-number-input__input {
+	text-align: start;
+	/* A figure that changes under a drag must not reflow while it does. */
+	font-variant-numeric: tabular-nums;
+	min-inline-size: 0;
+}
+
+/* #region Leading adornment / scrub handle */
+.ui-number-input__lead {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	color: var(--text-secondary);
+	font-size: 0.95em;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	margin-inline-end: calc(-1 * var(--space-1));
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * Only the SCRUB variant takes pointer events. A plain adornment that swallowed a click would stop
+ * the reader focusing the field by aiming at its left edge, which is where a currency symbol sits.
+ */
+.ui-number-input__lead:not(.ui-number-input__lead--scrub) {
+	pointer-events: none;
+}
+
+.ui-number-input__lead--scrub {
+	cursor: ew-resize;
+	/* The gesture owns the pointer: no text selection, no native drag, and on touch no page scroll
+	   stealing the drag out from under it. */
+	user-select: none;
+	-webkit-user-select: none;
+	touch-action: none;
+	/* Sub-24px glyphs get a transparent 24px target (§ WCAG 2.2 AA 2.5.8) without changing layout. */
+	position: relative;
+}
+
+.ui-number-input__lead--scrub::before {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	inline-size: max(100%, var(--fld-hit));
+	block-size: max(100%, var(--fld-hit));
+	transform: translate(-50%, -50%);
+	background: transparent;
+}
+
+.ui-number-input__lead--scrub[data-axis="y"] {
+	cursor: ns-resize;
+}
+
+/*
+ * Hover is a colour shift and nothing else — no fill, no ring. The handle sits INSIDE a control that
+ * already draws its own hover, and a second surface appearing within it reads as a nested box (§B.4).
+ */
+.ui-number-input__lead--scrub:hover {
+	color: var(--on-surface);
+}
+
+/* While a drag is live the whole field stops being selectable text and keeps the resize cursor, so
+   the pointer does not flicker between cursors as it crosses the input on its way past. */
+.ui-number-input[data-scrubbing="true"] {
+	user-select: none;
+	-webkit-user-select: none;
+	cursor: ew-resize;
+}
+
+.ui-number-input[data-scrubbing="true"] .ui-number-input__lead--scrub[data-axis="y"],
+.ui-number-input[data-scrubbing="true"]:has(.ui-number-input__lead--scrub[data-axis="y"]) {
+	cursor: ns-resize;
+}
+
+.ui-number-input[data-scrubbing="true"] .ui-number-input__lead--scrub {
+	color: var(--primary);
+}
+/* #endregion */
+
+/* #region Trailing unit */
+.ui-number-input__suffix {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	color: var(--text-secondary);
+	font-size: 0.95em;
+	pointer-events: none;
+	margin-inline-start: calc(-1 * var(--space-1));
+}
+/* #endregion */
+
+/* #region Steppers */
+.ui-number-input__steppers {
+	display: inline-flex;
+	flex: 0 0 auto;
+	margin-inline-start: var(--space-2);
+	margin-inline-end: calc(-1 * var(--field-px) + var(--space-1));
+}
+
+/*
+ * The default: the pair side by side, reading `−` then `+` left to right the way a number line does.
+ * Each is a square that meets the 24px target on its own, so unlike the stacked column they need no
+ * transparent expansion to be comfortably hittable.
+ */
+.ui-number-input__steppers--adjacent {
+	flex-direction: row;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ui-number-input__steppers--adjacent .ui-number-input__step {
+	flex: 0 0 auto;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+}
+
+/* The column, `+` above `−`, where up means more. */
+.ui-number-input__steppers--stacked {
+	flex-direction: column;
+	align-self: stretch;
+}
+
+.ui-number-input__step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	padding: 0;
+	inline-size: 1.75rem;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	font: inherit;
+	line-height: 1;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+/* A transparent 24px target under a stepper that is half a field tall (§ WCAG 2.2 AA 2.5.8). The
+   two overlap by design — the pointer resolves to whichever half it is actually over. */
+.ui-number-input__step::before {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 50%;
+	inline-size: max(100%, var(--fld-hit));
+	block-size: max(100%, var(--fld-hit));
+	transform: translate(-50%, -50%);
+	background: transparent;
+}
+
+.ui-number-input__steppers--stacked .ui-number-input__step {
+	flex: 1 1 0;
+	block-size: 0;
+	min-block-size: 0;
+}
+
+.ui-number-input__step:hover:not(:disabled) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+/* Held reads stronger than hover, so a ramp that is running looks like it is running. */
+.ui-number-input__step[data-holding="true"]:not(:disabled) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-strong), transparent);
+}
+
+.ui-number-input__step:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* One disabled alpha, the same one every other control in the taxonomy uses. */
+.ui-number-input__step:disabled {
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+
+/* Split layout: (−) leads, (+) trails, flanking the value. */
+.ui-number-input--split .ui-number-input__step {
+	block-size: 100%;
+}
+
+.ui-number-input--split > .ui-number-input__step--dec {
+	margin-inline-start: calc(-1 * var(--field-px) + var(--space-1));
+	margin-inline-end: var(--space-2);
+}
+
+.ui-number-input--split > .ui-number-input__step--inc {
+	margin-inline-start: var(--space-2);
+	margin-inline-end: calc(-1 * var(--field-px) + var(--space-1));
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-number-input__lead,
+	.ui-number-input__step {
+		transition: none;
+	}
+}

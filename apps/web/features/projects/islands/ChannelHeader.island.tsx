@@ -19,6 +19,7 @@ import {
 	LinkIcon,
 	MembersIcon,
 	PinIcon,
+	SettingsIcon,
 	SubmissionsIcon,
 } from "../components/detail-glyphs.tsx";
 import { ChatIcon, FilesIcon, PanelIcon } from "../components/channel-glyphs.tsx";
@@ -57,6 +58,10 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 	submissions: SubmissionsIcon,
 	calendar: CalendarIcon,
 	tasks: TicketIcon,
+	// Not optional. Below the label tier `.chan-tab__label` is hidden and the glyph is the whole
+	// control, and `cloneElement` throws on an absent entry — so a tab key with no icon here does not
+	// degrade, it takes the header island down on every channel route the tab is visible on.
+	details: SettingsIcon,
 };
 // #endregion
 
@@ -95,6 +100,15 @@ export interface ChannelHeaderProps {
 	visibleTabs: string[];
 	/** The real session's client/reviewer flag — the baseline the dev override layers onto. */
 	viewerIsClient: boolean;
+	/**
+	 * Whether the REAL session may configure this engagement — its owner, or a platform admin.
+	 *
+	 * Resolved server-side and never re-derived here, because neither fact is in the seam's gift: the
+	 * Dev Context Switcher can simulate which SIDE of the market somebody is on, but it cannot make a
+	 * viewer the owner of a project they do not own. The seam still narrows it below — flipping to a
+	 * freelancer persona correctly hides the tab — it simply cannot widen it.
+	 */
+	canConfigure: boolean;
 	/** The SSR-resolved service archetype baseline — re-resolved live from the seam after hydration. */
 	sessionKind: SessionKind;
 	/** The resolved summary for the details drawer. */
@@ -133,7 +147,16 @@ function writePref(channelId: string, patch: ChannelPref): void {
 // #endregion
 
 export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
-	const { base, meta, activeTab, starred = false, visibleTabs, viewerIsClient, detailInfo } = props;
+	const {
+		base,
+		meta,
+		activeTab,
+		starred = false,
+		visibleTabs,
+		viewerIsClient,
+		canConfigure,
+		detailInfo,
+	} = props;
 
 	// Seed from the SSR-resolved set (no hydration mismatch), then track the dev Context Switcher so the
 	// tab set live-updates when the developer flips persona / stage assignment / service type (task §2).
@@ -155,11 +178,16 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				channelKind: meta.kind,
 				sessionKind: liveSessionKind(props.sessionKind, seam),
 				...viewer,
+				// The server's answer AND the seam's, because the two constrain different things and the
+				// narrower one has to win. `canConfigure` is ownership, which the seam cannot grant;
+				// `isReviewer` is which side of the market the viewer is simulating, and a simulated
+				// freelancer must lose a tab that edits the terms they would be working under.
+				canConfigure: canConfigure && viewer.isReviewer,
 			});
 		};
 		recompute();
 		return watchDevSeam(recompute);
-	}, [meta.kind, viewerIsClient, props.sessionKind]);
+	}, [meta.kind, viewerIsClient, canConfigure, props.sessionKind]);
 
 	// Layer the persisted star/mute/pin preference on after hydration (never during SSR).
 	useEffect(() => {

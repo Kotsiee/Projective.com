@@ -237,9 +237,10 @@ export function findCalendarPage(
 		timezone: tz,
 		viewerIsClient: detail.viewerIsClient,
 		canCreate: true,
-		events: buildEvents(detail, tz, channelId).map((event) =>
+		events: buildEvents(detail, tz, channelId).map((event, eventIndex) =>
 			withCoordination(event, {
 				surfaceKey,
+				eventIndex,
 				host: detail.owner,
 				cast,
 				viewer,

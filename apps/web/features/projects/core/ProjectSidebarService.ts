@@ -23,6 +23,26 @@ import type { ProjectsResult } from "../types/results.ts";
  * filtering/sorting/grouping (mirrors `ExploreService`).
  */
 
+/**
+ * The DEV-ONLY onboarding simulation as a query fragment, or nothing.
+ *
+ * It rides the URL rather than the JSON body because it is not part of the resource: `sim` says what
+ * a developer wants to LOOK at, and folding it into `UpdateProject` would make a switcher setting a
+ * field of the project. The server validates it against its own union and discards it outside
+ * development, so nothing here needs to know the members.
+ *
+ * `auto` is omitted rather than sent. The absence of a simulation and a simulation that simulates
+ * nothing are the same request, and sending one of them would put a developer-only parameter on every
+ * ordinary save.
+ */
+function withSim(url: string, sim?: string): string {
+	if (!sim || sim === "auto") return url;
+	// The separator is derived rather than hardcoded: one of the two call sites already carries a
+	// query string and the other does not, and a `&` on a bare path produces a parameter named
+	// `&sim` that the server silently never sees.
+	return `${url}${url.includes("?") ? "&" : "?"}sim=${encodeURIComponent(sim)}`;
+}
+
 export const ProjectSidebarService = {
 	/** Fetch the context-scoped feed (rows + groups + scope/service matrices) for a param set. */
 	list(params: ProjectFeedParams): Promise<ProjectsResult<ProjectFeedPayload>> {
@@ -65,9 +85,9 @@ export const ProjectSidebarService = {
 	 * sidebar's showcase projection and carries no price, role or rule, so a progress bar built on it
 	 * could only ever count a title.
 	 */
-	setup(slug: string): Promise<ProjectsResult<{ setup: ProjectSetup }>> {
+	setup(slug: string, sim?: string): Promise<ProjectsResult<{ setup: ProjectSetup }>> {
 		return getProjects<{ setup: ProjectSetup }>(
-			`/api/projects/setup?slug=${encodeURIComponent(slug)}`,
+			withSim(`/api/projects/setup?slug=${encodeURIComponent(slug)}`, sim),
 		);
 	},
 
@@ -78,9 +98,13 @@ export const ProjectSidebarService = {
 	 * `previewReady` and the step ladder are server-computed, so the form adopts what came back as its
 	 * new clean baseline rather than re-deriving them beside a number it did not produce.
 	 */
-	update(slug: string, patch: UpdateProject): Promise<ProjectsResult<{ setup: ProjectSetup }>> {
+	update(
+		slug: string,
+		patch: UpdateProject,
+		sim?: string,
+	): Promise<ProjectsResult<{ setup: ProjectSetup }>> {
 		return patchProjects<{ setup: ProjectSetup }>(
-			`/api/projects/${encodeURIComponent(slug)}`,
+			withSim(`/api/projects/${encodeURIComponent(slug)}`, sim),
 			patch,
 		);
 	},

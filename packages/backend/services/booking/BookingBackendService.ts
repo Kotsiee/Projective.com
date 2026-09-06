@@ -1,3 +1,4 @@
+import { SLUG_ALPHABET, SLUG_BODY_LENGTH, SLUG_PREFIXES } from "@projective/types/slugs";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isExploreBackendLive } from "../../core/supabase.ts";
 import type {
@@ -201,7 +202,13 @@ function contactOfferFor(
 	// than nudging it, so `none` is genuinely reachable — it is the shape most likely to be wrong and
 	// least likely to be looked at.
 	const forced = sim?.callOffer;
-	const derived = seed % 4 === 0 ? "none" : seed % 3 === 0 ? "paid" : seed % 2 === 0 ? "both" : "courtesy";
+	const derived = seed % 4 === 0
+		? "none"
+		: seed % 3 === 0
+		? "paid"
+		: seed % 2 === 0
+		? "both"
+		: "courtesy";
 	const offered = forced ?? derived;
 	const courtesyEnabled = offered === "courtesy" || offered === "both";
 	const paidEnabled = offered === "paid" || offered === "both";
@@ -439,7 +446,11 @@ export class BookingBackendService {
 		const gridInput = gridInputFor(view, format, sim);
 		const query: SlotQuery = {
 			subjectId: input.subjectId,
-			purpose: format === "cohort" ? "cohort" : format === "set_session" ? "set_session" : "session",
+			purpose: format === "cohort"
+				? "cohort"
+				: format === "set_session"
+				? "set_session"
+				: "session",
 			timezone: input.timezone,
 			days: 60,
 		};
@@ -899,11 +910,41 @@ function signInHrefFor(item: ExploreItem, handle: string | null): string {
  * Deliberately transient: seeding the real store would leave a row that outlives the override and is
  * then indistinguishable from a genuine draft, which is how a simulation stops being one.
  */
+/**
+ * A canonical, DETERMINISTIC project address for a simulated draft.
+ *
+ * Deterministic on purpose, and it is the one place in this codebase where a slug is derived from
+ * something rather than minted: a simulation must replay identically, so the same listing under the
+ * same override has to produce the same address every time `mintSlug`'s CSPRNG cannot. It never
+ * reaches the database — {@link simulatedDraft} is transient by design — so the properties that make
+ * a derived address wrong for a real row (guessable, and reproducible by anybody holding the input)
+ * cost nothing here.
+ *
+ * The shape is the real one, drawn from the SSOT's own alphabet, so it routes and reads exactly like
+ * any other project address.
+ */
+function simulatedSlug(itemId: string): string {
+	let h = 0;
+	for (let i = 0; i < itemId.length; i++) h = (h * 31 + itemId.charCodeAt(i)) >>> 0;
+	let body = "";
+	for (let i = 0; i < SLUG_BODY_LENGTH; i++) {
+		h = (h * 1_103_515_245 + 12_345) >>> 0;
+		body += SLUG_ALPHABET[(h >>> 16) % SLUG_ALPHABET.length];
+	}
+	return `${SLUG_PREFIXES.project}-${body}`;
+}
+
 function simulatedDraft(item: ExploreItem, view: EntityView, stale: boolean) {
 	const created = stale ? NOW - 45 * 86_400_000 : NOW - 2 * 86_400_000;
+	// A canonical address, derived deterministically from the listing so the same override always
+	// simulates the same draft. It used to be `sim-${item.id}`, which is not a project address at all:
+	// the link it produced was guaranteed to 404, and now that the namespace is prefixed it cannot even
+	// accidentally be right. A simulation that hands a developer a broken link teaches them the flow is
+	// broken.
+	const slug = simulatedSlug(item.id);
 	return {
-		projectId: `sim-${item.id}`,
-		slug: `sim-${item.id}`,
+		projectId: slug,
+		slug,
 		title: item.title,
 		status: "draft" as const,
 		sourceServiceId: item.id,
@@ -912,7 +953,7 @@ function simulatedDraft(item: ExploreItem, view: EntityView, stale: boolean) {
 		createdAt: created,
 		lastActivityAt: created,
 		archivesAt: created + 30 * 86_400_000,
-		boardHref: `/projects/sim-${item.id}/board`,
+		boardHref: `/projects/${slug}/board`,
 	};
 }
 // #endregion

@@ -31,14 +31,14 @@ import { HOUR, NOW } from "./derive.ts";
 
 // #region Corpus
 const PROJECT_SLUGS = [
-	"aurora-rebrand",
-	"helio-app",
-	"gradient-motion-kit",
-	"brand-clinic-sofia",
-	"mercury-landing",
-	"northwind-atlas-portal",
-	"northwind-ops-retainer",
-	"northwind-summit-deck",
+	"prj-ghnkqoopo4",
+	"prj-xmvjo9wga8",
+	"prj-3389ufcjs2",
+	"prj-zsgn999b5g",
+	"prj-xgandqb3cs",
+	"prj-64vn8qwog8",
+	"prj-eangynf67d",
+	"prj-t22dcmq5fr",
 ];
 const HANDLES = ["ivy", "aria", "marcus", "ravi", "sofia"];
 const ENTITY_IDS = [
@@ -561,13 +561,13 @@ Deno.test("ScheduleBackendService — the vote gate refuses one slot and admits 
 	// End to end through the fat service: the two-slot minimum is applied where the write happens,
 	// not merely where the predicate is defined.
 	const events = pageEvents(
-		ScheduleBackendService.projectCalendar({ projectId: "brand-clinic-sofia" }, MEMBER),
+		ScheduleBackendService.projectCalendar({ projectId: "prj-zsgn999b5g" }, MEMBER),
 	);
 	const event = events.find((e) =>
 		e.roster && e.viewerIsHost && canReschedule(NOW, e.start) && !e.reschedule
 	)!;
 	assert(event, "no host-viewable, movable, un-negotiated event to test against");
-	const target = { scope: "project" as const, projectId: "brand-clinic-sofia", eventId: event.id };
+	const target = { scope: "project" as const, projectId: "prj-zsgn999b5g", eventId: event.id };
 
 	const empty = ScheduleBackendService.reschedule({ ...target, action: "open" }, MEMBER);
 	assertStrictEquals(empty.ok, false);
@@ -604,7 +604,7 @@ Deno.test("ScheduleBackendService — a slot inside its own lockout is refused, 
 	// host could open a vote whose deadline (12h before the earliest slot) was already in the past,
 	// and the ballot could elect a time that was itself already unmovable.
 	const events = pageEvents(
-		ScheduleBackendService.projectCalendar({ projectId: "northwind-summit-deck" }, MEMBER),
+		ScheduleBackendService.projectCalendar({ projectId: "prj-t22dcmq5fr" }, MEMBER),
 	);
 	const event = events.find((e) =>
 		e.roster && e.viewerIsHost && canReschedule(NOW, e.start) && !e.reschedule
@@ -612,7 +612,7 @@ Deno.test("ScheduleBackendService — a slot inside its own lockout is refused, 
 	assert(event, "no host-viewable, movable, un-negotiated event to test against");
 	const target = {
 		scope: "project" as const,
-		projectId: "northwind-summit-deck",
+		projectId: "prj-t22dcmq5fr",
 		eventId: event.id,
 	};
 
@@ -656,13 +656,13 @@ Deno.test("ScheduleBackendService — withdrawing is recoverable: proposing agai
 	// leaving, while still admitting `propose` — so a host who withdrew once accumulated slots forever
 	// with no way to put any of them to anybody.
 	const events = pageEvents(
-		ScheduleBackendService.projectCalendar({ projectId: "mercury-landing" }, MEMBER),
+		ScheduleBackendService.projectCalendar({ projectId: "prj-xgandqb3cs" }, MEMBER),
 	);
 	const event = events.find((e) =>
 		e.roster && e.viewerIsHost && canReschedule(NOW, e.start) && !e.reschedule
 	)!;
 	assert(event, "no host-viewable, movable, un-negotiated event to test against");
-	const target = { scope: "project" as const, projectId: "mercury-landing", eventId: event.id };
+	const target = { scope: "project" as const, projectId: "prj-xgandqb3cs", eventId: event.id };
 	const slot = (hours: number) => ({
 		action: "propose" as const,
 		start: NOW + hours * HOUR,
@@ -847,7 +847,7 @@ Deno.test("ScheduleBackendService — clearing an RSVP is truthful, not recorded
 Deno.test("ScheduleBackendService — an unknown event is a 404, not an empty success", () => {
 	const res = ScheduleBackendService.respond({
 		scope: "project",
-		projectId: "brand-clinic-sofia",
+		projectId: "prj-zsgn999b5g",
 		eventId: "no-such-event",
 		response: "accepted",
 	}, MEMBER);

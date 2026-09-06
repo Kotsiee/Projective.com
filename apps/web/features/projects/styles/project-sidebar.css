@@ -57,12 +57,16 @@
 /*
  * Widen the collapsed lane so the icon rail is substantial: its body resolves to the global rail width
  * (`--shell-sidebar-w`, 64px) + the 6px drag handle, giving 48px square buttons an 8px gutter — exactly
- * matching the global sidebar's collapsed rail. Scoped via `:has(.proj-detail)` so ONLY the Project
- * Details lane widens (the feed keeps its own narrow rail). Higher specificity than the base
- * `.ui-splitter { inline-size: var(--shell-lane-w) }`, so it wins without `!important`.
+ * matching the global sidebar's collapsed rail.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
  */
-.ui-splitter[data-mode="collapsed"]:has(.proj-detail) {
-	inline-size: calc(var(--shell-sidebar-w) + 6px);
+.ui-middle-nav:has(.proj-detail) {
+	--shell-lane-rail-w: calc(var(--shell-sidebar-w) + 6px);
 }
 
 /* #endregion */
@@ -1132,7 +1136,7 @@
 	border-block-start: var(--hairline);
 }
 
-/* Three clusters: collapse toggle (left) · view links + More (pushed right) · Add stage (far right). */
+/* Two clusters: the collapse toggle (left) · the view links + the More kebab (pushed right). */
 .proj-viewnav {
 	display: flex;
 	align-items: center;
@@ -1146,7 +1150,7 @@
 	gap: 2px;
 	min-inline-size: 0;
 	flex-wrap: nowrap;
-	/* Push the view links + Add-stage cluster to the right, leaving the toggle alone on the left. */
+	/* Push the view-link cluster to the right, leaving the collapse toggle alone on the left. */
 	margin-inline-start: auto;
 }
 
@@ -1184,39 +1188,10 @@
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
-/* "More" overflow trigger — reads active when a folded-away view (Attachments/Finances) is open. */
+/* "More" overflow trigger — reads active when any view now inside the menu is the open one. */
 .proj-viewnav__more[data-open="true"] {
 	color: var(--on-surface);
 	background: var(--surface-2);
-}
-
-/* Add-stage — a clear, filled primary action, set apart from the ghost view icons. */
-.proj-viewnav__add {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex: none;
-	inline-size: 2rem;
-	block-size: 2rem;
-	margin-inline-start: var(--space-1);
-	font-size: 1.05rem;
-	color: var(--on-primary);
-	background: var(--primary);
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		box-shadow var(--dur-fast) var(--ease-standard);
-}
-
-.proj-viewnav__add:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
-}
-
-.proj-viewnav__add:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
 }
 
 .proj-viewnav__btn:focus-visible,
@@ -1434,7 +1409,6 @@
 	.proj-railbtn,
 	.proj-railbtn--add,
 	.proj-viewnav__btn,
-	.proj-viewnav__add,
 	.proj-viewnav__collapse,
 	.proj-viewnav__collapse .shell-toggle__bar,
 	.proj-railbtn--toggle .shell-toggle__bar {

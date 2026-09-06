@@ -47,29 +47,29 @@ the token's claims:
    `type` is the four-context matrix (`personal` | `team` | `business` | `organisation`); `role`
    collapses ownership/admin membership to `admin`, else `member`; `isClient`/`isFreelancer` are
    resolved authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active
-   context.
-   `displayCurrency` + `locale` are read from `org.user_preferences` (`preferred_display_currency` /
-   `locale`, defaulting to `GBP` / `en-GB` when no preferences row exists yet) so the very first SSR
-   byte formats every money figure in the viewer's own currency — they ride this claim rather than a
-   second one because a figure that paints in one currency and corrects itself after hydration is a
-   worse failure than a stale symbol.
+   context. `displayCurrency` + `locale` are read from `org.user_preferences`
+   (`preferred_display_currency` / `locale`, defaulting to `GBP` / `en-GB` when no preferences row
+   exists yet) so the very first SSR byte formats every money figure in the viewer's own currency —
+   they ride this claim rather than a second one because a figure that paints in one currency and
+   corrects itself after hydration is a worse failure than a stale symbol.
 
 > **`onboarded` — the profile-existence claim.** `true` when `org.users_public` holds a row for the
 > user, `false` when the hook looked and found none. It exists because a federated sign-up is
 > authenticated the moment GoTrue returns and stays **profile-less** until `/join` calls
 > `public.complete_onboarding` — `public.handle_new_user` cannot provision it, since OAuth supplies
-> neither `username` nor `dob` and both columns are `NOT NULL`. Until the profile exists, every table
-> that attributes a row to `org.users_public(user_id)` (`projects.projects`, `projects.tickets`, the
-> `catalogue` tables) has a foreign key that cannot be satisfied, so a write fails on a constraint
-> name rather than a sentence. Stamping the fact here is what lets `routes/(dashboard)/_middleware.ts`
-> route those accounts back to finish **without a query on every authenticated request**.
+> neither `username` nor `dob` and both columns are `NOT NULL`. Until the profile exists, every
+> table that attributes a row to `org.users_public(user_id)` (`projects.projects`,
+> `projects.tickets`, the `catalogue` tables) has a foreign key that cannot be satisfied, so a write
+> fails on a constraint name rather than a sentence. Stamping the fact here is what lets
+> `routes/(dashboard)/_middleware.ts` route those accounts back to finish **without a query on every
+> authenticated request**.
 >
 > Because the hook returns the event unchanged on any error, a failure OMITS the claim rather than
 > asserting an account is un-onboarded, and `resolveUserContext` treats an absent claim as
-> `onboarded: true`. Only a confirmed `false` gates anything — a legacy or un-stamped token must never
-> walk a fully set-up user back through onboarding. The hook re-runs on the **refresh** grant, so a
-> profile created after a token was minted is picked up by one renewal (which is exactly what the
-> guard does before acting on a `false`).
+> `onboarded: true`. Only a confirmed `false` gates anything — a legacy or un-stamped token must
+> never walk a fully set-up user back through onboarding. The hook re-runs on the **refresh** grant,
+> so a profile created after a token was minted is picked up by one renewal (which is exactly what
+> the guard does before acting on a `false`).
 
 > **Presentation, never settlement.** `displayCurrency` selects a **formatting** target only. Every
 > stored amount keeps its origin `(amount_minor, currency)`, and every settlement reproduces the
@@ -88,3 +88,47 @@ unchanged so a chrome-only claim can never break login. `EXECUTE` is granted onl
 > `app_metadata.active_context` as a read-only visual guide (it decodes the JWT **unverified**), so
 > a tampered client only changes what that browser draws — RLS and the `(dashboard)` guard remain
 > the real gates.
+
+---
+
+## Route slugs — `security.mint_slug` and `security.fn_slug_guard`
+
+Every public route on this platform addresses a row by an opaque, prefixed, immutable slug:
+`prj-pkksys2xhd` (project), `stg-…`, `svc-…`, `ssn-…`. These two functions are the database half of
+that contract; the format itself is stated once in `packages/types/slugs/slug.ts`.
+
+They live in `security` rather than beside any one table because three schemas mint slugs
+(`projects.projects`, `projects.project_stages`, `projects.session_events`,
+`marketplace.service_blueprints`), and a copy per schema is a copy per schema to keep in step.
+
+| Function                       | Returns | Notes                                                        |
+| :----------------------------- | :------ | :----------------------------------------------------------- |
+| `security.mint_slug(p_prefix)` | text    | `VOLATILE`, `search_path = ''`. Prefix + 10 uniform symbols. |
+| `security.fn_slug_guard()`     | trigger | `BEFORE INSERT OR UPDATE`; prefix arrives as `TG_ARGV[0]`.   |
+
+**`VOLATILE` is load-bearing.** `gen_random_bytes` is not stable, and a mislabelled `IMMUTABLE` or
+`STABLE` would let the planner evaluate the call once and hand the same slug to every row of a
+multi-row insert — which the unique index would then refuse, on a statement that looks correct.
+
+**`% 32` is uniform** because 256 is a whole multiple of 32, which is why the alphabet excludes
+exactly four characters (`0`, `1`, `i`, `l`) and lands on 32 rather than 31. One member of each
+confusable group is dropped, not the whole group: `o` is unambiguous precisely because `0` is gone.
+A 31-symbol alphabet would need rejection sampling, and the modulo written without it is silently
+biased toward the first symbols — a biased address still routes, so nothing would ever report it.
+
+**The trigger does two jobs, and the first is what lets the columns be `NOT NULL` with no
+`DEFAULT`.** On INSERT it fills a slug nobody supplied, and a `BEFORE ROW` trigger runs before
+constraints are checked, so the column never needs to be nullable or defaulted (verified by
+execution, not assumed). On UPDATE it **raises** on any change to an existing slug rather than
+silently pinning the old value: an ordinary write never mentions the column, so the only way to
+reach the exception is to genuinely try to move an address — and absorbing that would let the caller
+believe the write landed.
+
+**Neither is callable over PostgREST.** `security` is an exposed schema and `CREATE FUNCTION` grants
+`EXECUTE` to `PUBLIC` by default, so both are explicitly `REVOKE`d. A trigger executes as the table
+owner and needs no grant, so nothing legitimate breaks.
+
+The triggers themselves are declared together in `00001890_triggers_slugs.sql` — one per slugged
+table, adjacent on purpose. A table added without one fails loudly against `NOT NULL`; a trigger
+given the **wrong prefix** would mint valid-looking addresses in another table's namespace, which is
+the failure keeping the four declarations side by side is meant to make visible.

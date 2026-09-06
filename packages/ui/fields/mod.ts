@@ -73,6 +73,33 @@ export {
 	type InputNumberProps,
 	type NumberMode,
 } from "./islands/InputNumber.tsx";
+/**
+ * The direct-manipulation numeric control — scrub, hold-to-ramp, wheel — beside the quieter
+ * {@link InputNumber}. The two share `core/number-field.ts`, which is the only place either of them
+ * decides what a number becomes, so a figure cannot come out differently depending on which control
+ * a surface happened to reach for.
+ */
+export {
+	NumberInput,
+	type NumberInputMode,
+	type NumberInputProps,
+	type StepperLayout,
+} from "./islands/NumberInput.tsx";
+export {
+	clampNumber,
+	parseNumericInput,
+	roundDecimals,
+	scrubAcceleration,
+	type ScrubAccelerationOptions,
+	scrubDelta,
+	type ScrubDeltaInput,
+	snapToStep,
+	stepDecimals,
+} from "./core/number-field.ts";
+export { useHoldRepeat } from "./hooks/useHoldRepeat.ts";
+export type { HoldRepeat, HoldRepeatOptions } from "./hooks/useHoldRepeat.ts";
+export { useScrub } from "./hooks/useScrub.ts";
+export type { Scrub, ScrubAxis, ScrubOptions } from "./hooks/useScrub.ts";
 export { InputMask, type InputMaskProps, type MaskDefinitions } from "./islands/InputMask.tsx";
 export { Password, type PasswordProps } from "./islands/Password.tsx";
 export {

@@ -1199,6 +1199,38 @@ Ordering) is preserved independently of where the stage sits in the overall proj
   tickets (per the Multi-Stage Initialization rule above), it is automatically removed from those
   tickets' stage requirements rather than leaving a broken reference.
 
+#### 4. Post-Onboarding Immutability
+
+Two terms stop being the client's to change once a provider has been onboarded, because they are the
+terms that provider accepted. A freelancer agrees to a stage at a stated **ticket price** and on a
+stated **engagement shape**; if either can be edited afterwards, the work is being done under terms
+nobody agreed to and nothing on the surface says so.
+
+- **Project type is frozen project-wide** the moment the first freelancer is onboarded anywhere on
+  the engagement. This covers both halves of the shape decision — the delivery format, and whether
+  the work is broken into stages at all — because turning a staffed pipeline flat would strand every
+  provider hired onto its later stages.
+- **Ticket price is frozen per stage**, as each stage is staffed. A run whose second milestone has
+  been filled can still be priced at its fourth; staffing one stage never freezes the commercials of
+  the rest.
+- **A flat engagement freezes its single price on the first onboarding anywhere on the project.** Its
+  root stage IS the engagement, so anybody hired against the project was hired against that figure.
+  The same holds for a Direct Deliverable, whose price lives on the project rather than on a stage.
+
+Everything else about a staffed stage remains editable, and deliberately so: scope, checklist, skills
+and delivery notes are clarifications a provider benefits from, not terms they are owed protection
+from. What is frozen is the money and the shape.
+
+**An onboarding is any seat that was genuinely taken.** It survives the person leaving — a released,
+cancelled or completed assignment keeps the lock, because the agreement existed and escrow may
+already have moved against it. Only two states never onboarded anybody: an invitation that was
+**declined**, and a blueprint-instantiated seat still **awaiting funding**, where nobody is committed
+to anything and no escrow exists.
+
+The client is told this **before** it happens: publishing a project opens a confirmation naming
+exactly what will lock and when, so the constraint is something they accepted rather than something
+they discover.
+
 ---
 
 ### Digital Marketplace & IP Governance

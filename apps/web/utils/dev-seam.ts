@@ -69,6 +69,20 @@ export type DevMessagingRole = "freelancer" | "client" | "business";
 export type DevStageAssignment = "assigned" | "unassigned";
 /** The lifecycle state of the simulated freelancer's active submission (drives the action state machine). */
 export type DevSubmissionState = "draft" | "submitted" | "approved" | "revision_requested";
+/**
+ * The post-onboarding immutability position the Context Switcher can simulate for the project setup
+ * surface (`/projects/[projectId]`).
+ *
+ * Once a freelancer is onboarded onto a project its Project-type control locks; once one is onboarded
+ * onto a STAGE, that stage's ticket price locks. Both counts are SERVER-derived facts read from
+ * `projects.stage_assignments`, so a developer cannot reach either locked state by using the form —
+ * they would have to genuinely onboard somebody — which is the gap this axis exists to close.
+ *
+ * `first_stage` is the value that earns the axis its keep: it is the only one that PROVES the price
+ * lock is per stage rather than per project, because a per-stage lock and a project-wide one are
+ * indistinguishable on a project whose every stage is onboarded.
+ */
+export type DevProjectOnboarding = "auto" | "none" | "first_stage" | "all_stages";
 
 /**
  * The vault capability role the Context Switcher can simulate for `/wallet` (task §Dev-axes) — the coarse
@@ -351,6 +365,8 @@ export interface DevSeamState {
 	submissionState: DevSubmissionState;
 	/** Whether the client has defined stage/ticket tasks (drives the Tasks panel toggle visibility). */
 	hasTasks: boolean;
+	/** The simulated onboarded-provider position driving the setup surface's post-onboarding locks. */
+	projectOnboarding: DevProjectOnboarding;
 	/** The simulated Members-tab acting role/assignment (task §4). */
 	memberRole: DevMemberRole;
 	/** Whether the Members tab should surface a pending-invitation queue (task §4). */
@@ -511,6 +527,12 @@ const SUBMISSION_STATES: readonly DevSubmissionState[] = [
 	"approved",
 	"revision_requested",
 ];
+const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
+	"auto",
+	"none",
+	"first_stage",
+	"all_stages",
+];
 const WALLET_VAULT_ROLES: readonly DevWalletVaultRole[] = ["owner", "admin", "pm", "member"];
 const WALLET_KYCS: readonly DevWalletKyc[] = ["verified", "unverified", "payout_setup"];
 const WALLET_SMOOTHERS: readonly DevWalletSmoother[] = ["ineligible", "eligible", "enrolled"];
@@ -643,6 +665,10 @@ export function readDevSeam(): DevSeamState | null {
 		stageAssignment: coerce(ds.devStageAssignment, STAGE_ASSIGNMENTS, "assigned"),
 		submissionState: coerce(ds.devSubmissionState, SUBMISSION_STATES, "draft"),
 		hasTasks: ds.devHasTasks !== "false",
+		// The `auto` fallback is load-bearing, not incidental: it makes an ABSENT attribute decode
+		// identically to an explicit `auto`, which is what lets the write side omit the attribute
+		// entirely while the axis is inert (see `reflect()` in `devtools/core/dev-context.ts`).
+		projectOnboarding: coerce(ds.devProjectOnboarding, PROJECT_ONBOARDINGS, "auto"),
 		memberRole: coerce(ds.devMemberRole, MEMBER_ROLES, "owner_admin"),
 		pendingInvites: ds.devPendingInvites !== "false",
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),

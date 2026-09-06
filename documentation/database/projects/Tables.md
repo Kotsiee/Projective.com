@@ -12,8 +12,8 @@ and high-level metadata.
 
 | Column                | Type            | Notes                                                                  |
 | :-------------------- | :-------------- | :--------------------------------------------------------------------- |
-| `id`                  | uuid            | PK. **The canonical address** — `/projects/:projectId` carries this.   |
-| `slug`                | text UNIQUE     | Readable alternate read key. Written by the app at create.             |
+| `id`                  | uuid            | PK. Internal only — it does **not** route.                             |
+| `slug`                | text UNIQUE     | **The public address.** `prj-` + 10 symbols. Minted once, immutable.   |
 | `client_business_id`  | uuid            | FK → `org.business_profiles.id`.                                       |
 | `owner_user_id`       | uuid            | FK → `auth.users.id` (The creator).                                    |
 | `status`              | project_status  | `draft`, `active`, `on_hold`, `completed`, `cancelled`, `archived`.    |
@@ -31,19 +31,38 @@ and high-level metadata.
 | `nda_source`          | text            | `platform` \| `custom`. Defaults `platform`.                           |
 | `nda_document_id`     | uuid            | FK → `files.items.id`, `ON DELETE SET NULL`. `NULL` under `platform`.  |
 
-**`id` is the address; `slug` is a read key.** `/projects/:projectId` carries the **uuid**. A
-title-derived slug moves on the first rename, so a link built on one dies the moment the owner edits
-the title — which is not an address. The uuid cannot collide, cannot be squatted, and does not
-change, so it is what the Quick-Init modal navigates to on create and what a notification links.
-`slug` is retained as a readable alternate: the resolvers accept either form, trying the slug first
-and then the uuid, so every existing link keeps working. It stays globally `UNIQUE` because it is
-still resolved from a bare path with no scope segment to disambiguate two identical slugs.
+**`slug` is the address; `id` does not route.** `/projects/:projectSlug` carries a `prj-` slug and
+nothing else — not the uuid, and not the title-derived slug this column used to hold. Both of those
+were tried and both were wrong in their own way. A title-derived slug moves on the first rename, so
+every link built on it — a notification, a bookmark, another member's message — dies the moment the
+owner edits the title, silently and with a clean 404. The uuid never moves, but 36 characters of
+undifferentiated hex say nothing about what they address, so a segment pasted into the wrong route
+resolves against the wrong table with no shape to refuse it.
 
-The column is `NOT NULL` with a generated `p-xxxxxxxxxxxx` fallback rather than `NOT NULL` bare,
-because `projects.create_project` inserts without one. Until the Quick-Init create path shipped
-**nothing in the repository wrote this column at all**, so on the live path every project would have
-carried that opaque fallback permanently — which is why the fallback's shape is load-bearing and
-must satisfy `ck_projects_slug_shape`. The create path now writes the title-derived form.
+An opaque prefixed slug has neither problem: it is derived from nothing, so no edit can change it,
+and the prefix makes it self-describing. It stays globally `UNIQUE` because it is resolved from a
+bare path with no scope segment to disambiguate two identical slugs.
+
+The shape is `^prj-[23456789abcdefghjkmnopqrstuvwxyz]{10}$` (`ck_projects_slug_shape`), which is
+**tight on purpose**. The previous CHECK allowed any lowercase URL-safe string, so a title-derived
+slug was still storable and "immutable and title-independent" rested on every write path remembering
+to be. Here the database refuses it, so the guarantee holds for paths nobody has written yet — and a
+lowercase uuid, which satisfied the old permissive form, can no longer be confused for an address.
+
+`NOT NULL` with **no** `DEFAULT`. `security.fn_slug_guard` (a `BEFORE INSERT OR UPDATE` trigger,
+`00001890_triggers_slugs.sql`) fills the column before the `NOT NULL` is checked, so an insert that
+supplies no slug still gets a canonical one; the same trigger **refuses any UPDATE that would move
+an existing slug**, which is what makes the address permanent rather than merely conventional. A
+`DEFAULT` could do neither job: a `DEFAULT` expression may not contain a subquery, so generating ten
+uniform symbols inline would mean the same ten-line expression copied into all four slugged tables,
+and column defaults are laid down in category 0, before any function exists to call.
+
+The alphabet is the 36 lowercase alphanumerics minus `0`, `1`, `i` and `l` — one member of each
+confusable group, so `o` stays legible precisely because `0` is gone. Exactly 32 symbols, which is
+load-bearing: 256 is a whole multiple of 32, so `byte % 32` is uniform where a 31-symbol alphabet
+would need rejection sampling and the naive modulo would be silently biased. It is
+character-identical to `SLUG_ALPHABET` in `@projective/types/slugs`, and `slug.contract.test.ts`
+reads these migrations and fails if the two ever drift.
 
 **Which NDA binds the parties.** `nda_required` has always said only **that** an NDA applies, never
 **which** — so everyone on a project could be told they were bound by an agreement with no way to
@@ -120,20 +139,21 @@ touches the latter, so a draft that was merely renamed would keep escaping a swe
 
 Atomic units of work. Each stage has its own type, status, and specific delivery logic.
 
-| Column               | Type               | Notes                                     |
-| :------------------- | :----------------- | :---------------------------------------- |
-| `id`                 | uuid               | PK.                                       |
-| `project_id`         | uuid               | FK → `projects.projects.id`.              |
-| `stage_type`         | stage_type_enum    | `file_based`, `session_based`, etc..      |
-| `status`             | stage_status       | Current progress state.                   |
-| `sort_order`         | integer            | Execution order.                          |
-| `start_trigger_type` | start_trigger_type | Defines when work can begin.              |
-| `ip_mode`            | ip_option_mode     | Override for stage-specific IP terms.     |
-| `milestone`          | text               | Free-text delivery note. `''` when unset. |
-| `allowed_file_kinds` | text[]             | Submittable kinds. **Empty = any.**       |
-| `nda_required`       | boolean            | Per-stage override; `NULL` inherits.      |
-| `capacity`           | text               | `unlimited` (default) \| `limited`.       |
-| `seat_count`         | integer            | 1–99. Set iff `capacity = 'limited'`.     |
+| Column               | Type               | Notes                                                                |
+| :------------------- | :----------------- | :------------------------------------------------------------------- |
+| `id`                 | uuid               | PK. Internal only — it does **not** route.                           |
+| `slug`               | text UNIQUE        | **The public address.** `stg-` + 10 symbols; minted once, immutable. |
+| `project_id`         | uuid               | FK → `projects.projects.id`.                                         |
+| `stage_type`         | stage_type_enum    | `file_based`, `session_based`, etc..                                 |
+| `status`             | stage_status       | Current progress state.                                              |
+| `sort_order`         | integer            | Execution order.                                                     |
+| `start_trigger_type` | start_trigger_type | Defines when work can begin.                                         |
+| `ip_mode`            | ip_option_mode     | Override for stage-specific IP terms.                                |
+| `milestone`          | text               | Free-text delivery note. `''` when unset.                            |
+| `allowed_file_kinds` | text[]             | Submittable kinds. **Empty = any.**                                  |
+| `nda_required`       | boolean            | Per-stage override; `NULL` inherits.                                 |
+| `capacity`           | text               | `unlimited` (default) \| `limited`.                                  |
+| `seat_count`         | integer            | 1–99. Set iff `capacity = 'limited'`.                                |
 
 These four are what the Stage-2 configuration surface collects per stage and the table previously
 could not hold.
@@ -174,6 +194,13 @@ been posted and constrains how many may be.
 ---
 
 ## 👥 Staffing & Participation
+
+**The stage's address.** Same contract as `projects.projects.slug` — opaque, derived from nothing,
+minted by `security.fn_slug_guard` and refused by it on any later update. Globally unique rather
+than unique per project, even though a stage is only ever reached beneath one: the prefix already
+says what kind of thing it is, and global uniqueness means a stage segment appearing anywhere (a
+deep link, a submission path, a log line) identifies exactly one row without needing its parent
+alongside it.
 
 ### `projects.stage_assignments`
 
@@ -300,6 +327,20 @@ Project-scoped invitations, deliberately **not** `org.org_invitations` (which is
 ⚠️ Because `token` is the capability and RLS is row-level, **any policy that admits a row admits its
 token**. The SELECT policy is therefore limited to the project owner and to the invited identity —
 see [Policies.md](Policies.md) before widening it.
+
+### `projects.session_events`
+
+One scheduled sitting of a cohort. Only the address is documented here; the rest of the table is
+covered by the session/scheduling docs.
+
+| Column | Type        | Notes                                                                |
+| :----- | :---------- | :------------------------------------------------------------------- |
+| `slug` | text UNIQUE | **The public address.** `ssn-` + 10 symbols. Minted once, immutable. |
+
+Same contract as `projects.projects.slug` — filled and pinned by `security.fn_slug_guard`, shaped by
+`ck_session_events_slug_shape`. A session is the one entity here whose natural-looking identifier
+would be its **time**, and a time is exactly what a reschedule changes: an address derived from it
+would break on the event this table exists to record.
 
 ### `projects.maintenance_contracts`
 

@@ -1,21 +1,33 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
 	blankStage,
+	countsAsOnboarded,
 	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
 	hasStages,
 	liveVisibilityFor,
+	lockedStagePriceIds,
+	ONBOARDED_ASSIGNMENT_EXCLUDED,
 	previewReady,
+	pricedAtProjectLevel,
+	pricedStages,
+	priceLockReasonFor,
+	pricingSatisfied,
+	PROJECT_PRICE_LOCK_REASON,
+	projectOnboarded,
+	projectPriceLocked,
 	type ProjectSetupPatch,
 	type ProjectSetupStep,
 	type ProjectSetupStepsInput,
 	reconcileSetup,
 	setupCompleteness,
 	setupSteps,
-	shapeFor,
-	shapeOptionsFor,
-	structureForShape,
+	shapeLocked,
+	STAGE_PRICE_LOCK_REASON,
+	stagePredecessorOptions,
+	structureForStages,
+	wouldCycle,
 } from "./setup.ts";
 
 /**
@@ -52,8 +64,15 @@ const role = {
 	id: "role-1",
 	name: "Illustrator",
 	skills: [] as string[],
+	description: "",
 	budgetCents: null as number | null,
 };
+
+/** A priced stage, for the rules that count primary figures rather than the presence of a stage. */
+const priced = (id: string, order: number, cents: number | null) => ({
+	...blankStage(id, `Stage ${order + 1}`, order),
+	unitPriceCents: cents,
+});
 
 const keys = (steps: readonly ProjectSetupStep[]) => steps.map((s) => s.key);
 const requiredKeys = (steps: readonly ProjectSetupStep[]) =>
@@ -130,26 +149,176 @@ Deno.test("an emptied rich-text editor does not tick the description off", () =>
 	);
 });
 
-Deno.test("pricing counts a project budget OR a priced stage OR a priced role", () => {
+Deno.test("pricing counts a priced stage; the project amount answers only for a role-staffed shape", () => {
 	assertEquals(step(setupSteps(base), "pricing")?.done, false);
+	assertEquals(
+		step(setupSteps({ ...base, stages: [priced("s1", 0, 120_00)] }), "pricing")?.done,
+		true,
+	);
+	// A project amount on a STAGE-BEARING shape is not the primary figure and never satisfies the rung
+	// — the Budget section is not even rendered there, so counting it would tick a rung off against a
+	// field the owner cannot see.
 	assertEquals(
 		step(
 			setupSteps({ ...base, budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 500_00 } }),
 			"pricing",
-		)
-			?.done,
-		true,
+		)?.done,
+		false,
 	);
 	assertEquals(
-		step(setupSteps({ ...base, stages: [{ ...stage, unitPriceCents: 120_00 }] }), "pricing")?.done,
+		step(
+			setupSteps({
+				...base,
+				format: "one_off",
+				structure: "single_task",
+				budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 500_00 },
+			}),
+			"pricing",
+		)?.done,
 		true,
 	);
+});
+
+Deno.test("the Budget section's visibility and the pricing rung read ONE predicate", () => {
+	// The invariant that keeps a project from being held back by a figure the form does not render:
+	// `pricedAtProjectLevel` decides whether the section exists, and `pricingSatisfied` branches on the
+	// same call. Wherever the section is absent, the rung must be measuring stages instead.
+	const shapes = [
+		{ format: "pipeline", structure: "standard" },
+		{ format: "pipeline", structure: "single_stage" },
+		{ format: "one_off", structure: "one_off" },
+		{ format: "one_off", structure: "single_stage" },
+		{ format: "one_off", structure: "single_task" },
+		{ format: "session", structure: "standard" },
+	] as const;
+
+	for (const shape of shapes) {
+		const withBudgetOnly = {
+			...base,
+			...shape,
+			budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 500_00 },
+			stages: [],
+			roles: [],
+		};
+		assertEquals(
+			pricingSatisfied(withBudgetOnly),
+			pricedAtProjectLevel(shape.structure),
+			`${shape.format}/${shape.structure}: a project amount satisfied pricing without a Budget section`,
+		);
+
+		// And every stage-priced shape is satisfied by its stages, with no project amount at all.
+		if (!pricedAtProjectLevel(shape.structure)) {
+			assert(
+				pricingSatisfied({ ...base, ...shape, stages: [priced("s1", 0, 120_00)] }),
+				`${shape.format}/${shape.structure}: a priced stage did not satisfy pricing`,
+			);
+		}
+	}
+});
+
+Deno.test("a stage-bearing shape with no stages yet reads as unpriced, not as project-priced", () => {
+	// It used to fall through to `budget.amountCents`. Once the Budget section became conditional that
+	// was a requirement with no field behind it anywhere on the page — the `stages` rung is what tells
+	// the owner to add one, and this rung measures it afterwards.
+	const empty = { ...base, budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 900_00 }, stages: [] };
+	assertEquals(pricingSatisfied(empty), false);
+	assertEquals(step(setupSteps(empty), "stages")?.done, false);
+});
+
+Deno.test("a FLAT project is priced by its ROOT stage, not by the rows the toggle left behind", () => {
+	// Turning stages off does not delete them — their tickets, submissions and escrow hang off those
+	// rows — so a flat project can carry several while its Details section renders one. Measuring the
+	// hidden remainder held publishing back from behind a section that does not show it, which is the
+	// same defect as a rung asking for a Budget field the form no longer renders.
+	const flat = {
+		...base,
+		structure: "single_stage" as const,
+		stages: [priced("root", 0, 250_00), priced("left", 1, null), priced("over", 2, null)],
+	};
+	assertEquals(pricedStages(flat.structure, flat.stages).map((s) => s.id), ["root"]);
+	assert(pricingSatisfied(flat));
+	assertEquals(step(setupSteps(flat), "pricing")?.done, true);
+
+	// An unpriced ROOT is still unpriced: the one stage the form does show has to carry a figure.
+	const noRoot = { ...flat, stages: [priced("root", 0, null), priced("left", 1, 999_00)] };
+	assertFalse(pricingSatisfied(noRoot));
+});
+
+Deno.test("a STAGED run is still measured in full — every stage is on the page", () => {
+	const staged = {
+		...base,
+		structure: "standard" as const,
+		stages: [priced("a", 0, 120_00), priced("b", 1, null)],
+	};
+	assertEquals(pricedStages(staged.structure, staged.stages).length, 2);
+	assertFalse(pricingSatisfied(staged));
+});
+
+Deno.test("a flat one-off's rolled-up budget ignores the stages it no longer shows", () => {
+	// Otherwise the listing would advertise a total made partly of prices nobody can see or change.
+	const setup = reconcileSetup(patchOf({
+		format: "one_off",
+		structure: "single_stage",
+		stages: [priced("root", 0, 250_00), priced("left", 1, 800_00)],
+	}));
+	assertEquals(setup.budget.amountCents, 250_00);
+});
+
+Deno.test("only a Direct Deliverable is priced at the project level", () => {
+	assert(pricedAtProjectLevel("single_task"));
+	// A FLAT engagement prices its ROOT stage through the Details section, because
+	// `finance.fn_hold_ticket_escrow` reads `unit_price_cents` and can see no figure stored elsewhere.
+	assertFalse(pricedAtProjectLevel("single_stage"));
+	assertFalse(pricedAtProjectLevel("standard"));
+	assertFalse(pricedAtProjectLevel("one_off"));
+});
+
+Deno.test("EVERY stage must be priced, not merely one of them", () => {
+	// The rule this replaced was `.some(...)`, which ticked pricing off for a run whose second
+	// milestone still cost nothing — and the escrow hold on that stage's first ticket would then be
+	// taken against a NULL.
+	const partly = [priced("s1", 0, 120_00), priced("s2", 1, null)];
+	assertEquals(step(setupSteps({ ...base, stages: partly }), "pricing")?.done, false);
+
+	const fully = [priced("s1", 0, 120_00), priced("s2", 1, 80_00)];
+	assertEquals(step(setupSteps({ ...base, stages: fully }), "pricing")?.done, true);
+});
+
+Deno.test("a rolled-up project budget cannot stand in for an unpriced stage", () => {
+	// `reconcileSetup` writes the running total of the PRICED stages into `budget.amountCents`, so a
+	// half-priced run carries a non-null project amount. A rule that consulted it first would read
+	// that partial sum as a finished answer.
+	const half = reconcileSetup(patchOf({
+		format: "one_off",
+		structure: "one_off",
+		stages: [priced("s1", 0, 120_00), priced("s2", 1, null)],
+	}));
+	assertEquals(half.budget.amountCents, 120_00);
+	assertEquals(step(half.steps, "pricing")?.done, false);
+});
+
+Deno.test("a named role's bonus is NOT a primary figure", () => {
+	// It is an amount on top of the ticket price, so a project whose only number is a role bonus has
+	// priced nothing — and must not read as priced.
 	assertEquals(
 		step(
 			setupSteps({
 				...base,
 				structure: "single_task",
 				roles: [{ ...role, budgetCents: 400_00 }],
+			}),
+			"pricing",
+		)?.done,
+		false,
+	);
+	// The role-staffed engagement's primary figure is the project's own budget.
+	assertEquals(
+		step(
+			setupSteps({
+				...base,
+				structure: "single_task",
+				budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 400_00 },
+				roles: [role],
 			}),
 			"pricing",
 		)?.done,
@@ -203,7 +372,10 @@ Deno.test("a fully configured project reads 100%", () => {
 		title: "Rebrand",
 		description: "<p>Scope</p>",
 		budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 1_000_00 },
-		stages: [stage],
+		// PRICED, and that is not incidental. A project-level amount no longer stands in for a stage
+		// that costs nothing: the pricing rung asks every stage for its own figure, because that is the
+		// one `finance.fn_hold_ticket_escrow` reads when a ticket on it is claimed.
+		stages: [priced("stage-1", 0, 1_000_00)],
 		status: "active",
 	});
 	assertEquals(setupCompleteness(steps), 100);
@@ -408,41 +580,281 @@ Deno.test("a created project's intent is public and is not DEFAULT_PROJECT_RULES
  * `one_off`, which is not one of a pipeline's shapes, so the control resolved back to "Staged" and the
  * press silently set the wrong column. Each of these fails against that code.
  */
-Deno.test("every shape segment round-trips through the structure it writes", () => {
+Deno.test("the toggle writes a stage-bearing structure on and a stage-less one off", () => {
+	// The Shape control this replaced encoded one bit in four segments and two vocabularies. The
+	// toggle asks the bit directly, and `hasStages` is the read direction — the same function the
+	// section list and the ladder consult, so the three cannot disagree about what is on the page.
 	for (const format of ["pipeline", "one_off"] as const) {
-		for (const option of shapeOptionsFor(format)) {
-			const written = structureForShape(format, option);
-			assertEquals(
-				shapeFor(format, written),
-				option,
-				`${format}/${option} wrote ${written}, which reads back as a different segment`,
-			);
-		}
+		assert(hasStages(structureForStages(true, format)), `${format} lost its stages when turned on`);
+		assertFalse(
+			hasStages(structureForStages(false, format)),
+			`${format} kept its stages when turned off`,
+		);
 	}
 });
 
-Deno.test("a pipeline can actually become single-stage", () => {
-	// The literal-argument bug returned "one_off" here, so a pipeline could never be stage-less through
-	// the only control that offers it.
-	assertEquals(structureForShape("pipeline", "single_stage"), "single_stage");
-	assertFalse(hasStages(structureForShape("pipeline", "single_stage")));
+Deno.test("a pipeline can actually become stage-less", () => {
+	assertEquals(structureForStages(false, "pipeline"), "single_stage");
+	assertEquals(structureForStages(true, "pipeline"), "standard");
 });
 
-Deno.test("shape writes stay inside the format's own vocabulary", () => {
+Deno.test("the toggle never produces a Direct Deliverable", () => {
+	// `single_task` is a STAFFING decision, not a stage-count one, and it is no longer reachable from
+	// the form: a project already stored that way keeps its role editor, and turning the toggle on is
+	// its one-way escape. A toggle that could write it would silently discard a role-staffed project's
+	// roles on the way past.
 	for (const format of ["pipeline", "one_off"] as const) {
-		for (const option of shapeOptionsFor(format)) {
+		for (const on of [true, false]) {
 			assert(
-				shapeOptionsFor(format).includes(structureForShape(format, option)),
-				`${format} wrote a structure that is not one of its own shapes`,
+				structureForStages(on, format) !== "single_task",
+				`${format}/${on} wrote single_task`,
 			);
 		}
 	}
 });
+// #endregion
 
-Deno.test("a session offers no shape choice", () => {
-	// Absent, not a one-option picker: a sitting is not divisible into stages.
-	assertEquals(shapeOptionsFor("session").length, 0);
-	// And resolving a stored structure against an empty option set must not invent one.
-	assertEquals(shapeFor("session", "single_stage"), "single_stage");
+// #region Stage sequencing
+
+Deno.test("a stage may never wait for itself", () => {
+	const stages = [priced("a", 0, 100), priced("b", 1, 100)];
+	assert(wouldCycle(stages, "a", "a"));
+	assertFalse(wouldCycle(stages, "b", "a"));
+});
+
+Deno.test("a cycle is detected however long the chain", () => {
+	// a <- b <- c. Pointing `a` at `c` closes the loop, and nothing on the row itself says so.
+	const stages = [
+		{ ...priced("a", 0, 100), startsWithId: null },
+		{ ...priced("b", 1, 100), startsWithId: "a" },
+		{ ...priced("c", 2, 100), startsWithId: "b" },
+	];
+	assert(wouldCycle(stages, "a", "c"));
+	assert(wouldCycle(stages, "a", "b"));
+	assertFalse(wouldCycle(stages, "c", "a"));
+});
+
+Deno.test("a graph that ALREADY contains a cycle terminates", () => {
+	// Not an optimisation — it is what makes the function total. A legacy row, a concurrent edit or a
+	// hand-written database change can produce this, and a validator that hangs on bad data is worse
+	// than one that rejects it.
+	const stages = [
+		{ ...priced("a", 0, 100), startsWithId: "b" },
+		{ ...priced("b", 1, 100), startsWithId: "a" },
+	];
+	assertFalse(wouldCycle(stages, "c", "a"));
+});
+
+Deno.test("the predecessor dropdown offers no choice that would close a loop", () => {
+	const stages = [
+		{ ...priced("a", 0, 100), startsWithId: null },
+		{ ...priced("b", 1, 100), startsWithId: "a" },
+		{ ...priced("c", 2, 100), startsWithId: "b" },
+	];
+	// `a` may wait for nothing here: `b` and `c` both lead back to it.
+	assertEquals(stagePredecessorOptions(stages, "a").map((x) => x.id), []);
+	// `c` may wait for either of the two above it.
+	assertEquals(stagePredecessorOptions(stages, "c").map((x) => x.id), ["a", "b"]);
+	// And never for itself.
+	for (const id of ["a", "b", "c"]) {
+		assertFalse(
+			stagePredecessorOptions(stages, id).some((x) => x.id === id),
+			`${id} was offered itself`,
+		);
+	}
+});
+// #endregion
+
+// #region The budget roll-up
+
+Deno.test("a one-off's project budget is the sum of its milestone fees", () => {
+	const setup = reconcileSetup(patchOf({
+		format: "one_off",
+		structure: "one_off",
+		stages: [priced("s1", 0, 120_00), priced("s2", 1, 80_00), priced("s3", 2, 50_00)],
+	}));
+	assertEquals(setup.budget.amountCents, 250_00);
+});
+
+Deno.test("a PIPELINE's budget is never the sum of its stage prices", () => {
+	// A pipeline stage's price is a per-TICKET rate over a stage that may run fifty tickets, so the
+	// sum is the cost of nothing — and `budget_amount_cents` is what the feed card and the public
+	// listing read. Rolling it up here would advertise a figure nobody is being charged.
+	const setup = reconcileSetup(patchOf({
+		format: "pipeline",
+		structure: "standard",
+		stages: [priced("s1", 0, 120_00), priced("s2", 1, 80_00)],
+	}));
+	assertEquals(setup.budget.amountCents, null);
+});
+
+Deno.test("a session's budget is not rolled up either — its price is one sitting's rate", () => {
+	const setup = reconcileSetup(patchOf({
+		format: "session",
+		stages: [priced("s1", 0, 60_00)],
+	}));
+	assertEquals(setup.budget.amountCents, null);
+});
+
+Deno.test("an unpriced run keeps whatever budget it had rather than being blanked", () => {
+	// Clearing it would discard a figure the create modal legitimately collected before any stage
+	// existed, on the way to storing nothing in its place.
+	const setup = reconcileSetup(patchOf({
+		format: "one_off",
+		structure: "one_off",
+		budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 900_00 },
+		stages: [priced("s1", 0, null)],
+	}));
+	assertEquals(setup.budget.amountCents, 900_00);
+});
+
+Deno.test("a role-staffed engagement keeps its typed amount — it has no stages to sum", () => {
+	const setup = reconcileSetup(patchOf({
+		structure: "single_task",
+		budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 400_00 },
+		roles: [role],
+		stages: [],
+	}));
+	assertEquals(setup.budget.amountCents, 400_00);
+});
+
+Deno.test("the roll-up leaves the currency and the type alone", () => {
+	const setup = reconcileSetup(patchOf({
+		format: "one_off",
+		structure: "one_off",
+		budget: { budgetType: "fixed_price", amountCents: null, currency: "EUR" },
+		stages: [priced("s1", 0, 120_00)],
+	}));
+	assertEquals(setup.budget.currency, "EUR");
+	assertEquals(setup.budget.budgetType, "fixed_price");
+	assertEquals(setup.budget.amountCents, 120_00);
+});
+// #endregion
+
+// #region Post-onboarding immutability
+/**
+ * The immutability rules, pinned.
+ *
+ * Each of these decides whether a client may rewrite a term somebody has already agreed to work
+ * under. The failure is silent in the direction that matters: a rule that under-locks reprices a
+ * freelancer's stage with nothing on any screen to say so, which is why the cases below check the
+ * SHAPE of the answer rather than sampling one convenient project.
+ */
+
+/** A stage carrying providers, for the rules that count them. */
+const staffed = (id: string, order: number, count: number) => ({
+	...blankStage(id, `Stage ${order + 1}`, order),
+	onboardedCount: count,
+});
+
+Deno.test("nobody onboarded leaves every term editable", () => {
+	const stages = [staffed("s1", 0, 0), staffed("s2", 1, 0)];
+	const input = { structure: "standard" as const, onboardedCount: 0 };
+	assertFalse(projectOnboarded(input));
+	assertFalse(shapeLocked(input));
+	assertFalse(projectPriceLocked(input));
+	assertEquals(lockedStagePriceIds(input, stages).size, 0);
+});
+
+Deno.test("the price lock is PER STAGE, not per project", () => {
+	// The whole reason it returns a set. A run whose second milestone has been staffed must still be
+	// priceable at its fourth, or staffing one stage freezes the engagement's remaining commercials.
+	const stages = [staffed("s1", 0, 2), staffed("s2", 1, 0), staffed("s3", 2, 1)];
+	const locked = lockedStagePriceIds({ structure: "standard", onboardedCount: 3 }, stages);
+	assertEquals([...locked].sort(), ["s1", "s3"]);
+});
+
+Deno.test("the SHAPE locks on the project total, even when one stage is empty", () => {
+	// Distinct from the rule above and deliberately coarser: turning a staffed pipeline flat, or
+	// switching its format, strands every provider hired onto any stage — so it is the project's
+	// count that decides, never an individual stage's.
+	assert(shapeLocked({ onboardedCount: 1 }));
+});
+
+Deno.test("a FLAT engagement locks its root stage on the PROJECT's count", () => {
+	// A flat project's root stage IS the engagement — `pricedStages` collects only that one and
+	// `fn_hold_ticket_escrow` reads its price — so anybody hired anywhere was hired against it, even
+	// though the stage row itself carries no assignment of its own.
+	const stages = [staffed("root", 0, 0), staffed("leftover", 1, 0)];
+	const locked = lockedStagePriceIds({ structure: "single_stage", onboardedCount: 1 }, stages);
+	assertEquals([...locked], ["root"]);
+});
+
+Deno.test("a FLAT engagement still locks a hidden stage that has its own providers", () => {
+	// Turning stages off does not delete the rows a staged run left behind — their tickets and escrow
+	// hang off them — so a stage the Details section never renders can still be staffed, and the write
+	// path must refuse a price change on it rather than let it be repriced out of sight.
+	const stages = [staffed("root", 0, 0), staffed("hidden", 1, 2)];
+	const locked = lockedStagePriceIds({ structure: "single_stage", onboardedCount: 2 }, stages);
+	assertEquals([...locked].sort(), ["hidden", "root"]);
+});
+
+Deno.test("a role-staffed engagement locks its project amount and no stage", () => {
+	// Its figure lives on the project row, because `single_task` is the one structure with no stage to
+	// carry a price. Locking a stage there would freeze a control the form does not render.
+	const input = { structure: "single_task" as const, onboardedCount: 1 };
+	assert(projectPriceLocked(input));
+	assertEquals(lockedStagePriceIds(input, [staffed("s1", 0, 3)]).size, 0);
+});
+
+Deno.test("a staged engagement never locks the project amount", () => {
+	// The Budget section does not render for it, and on a milestone run the amount is DERIVED from the
+	// stage fees — so a lock there would freeze a number nobody types and fight the roll-up.
+	assertFalse(projectPriceLocked({ structure: "standard", onboardedCount: 5 }));
+	assertFalse(projectPriceLocked({ structure: "one_off", onboardedCount: 5 }));
+	assertFalse(projectPriceLocked({ structure: "single_stage", onboardedCount: 5 }));
+});
+
+Deno.test("the lock reason names what the reader can actually see", () => {
+	// A flat project has its stage list switched off, so explaining its frozen price by naming a stage
+	// points at something absent from the page.
+	assertEquals(priceLockReasonFor("standard"), STAGE_PRICE_LOCK_REASON);
+	assertEquals(priceLockReasonFor("one_off"), STAGE_PRICE_LOCK_REASON);
+	assertEquals(priceLockReasonFor("single_stage"), PROJECT_PRICE_LOCK_REASON);
+	assertEquals(priceLockReasonFor("single_task"), PROJECT_PRICE_LOCK_REASON);
+});
+
+Deno.test("an assignment status nobody recognised counts as onboarded", () => {
+	// The deny-list's whole direction. `stage_assignments.status` is free text with no CHECK, so a
+	// value added tomorrow must LOCK: over-locking withholds an edit somebody can ask about, and
+	// under-locking reprices agreed work with nothing on screen to reveal it.
+	assert(countsAsOnboarded("some_state_invented_next_year"));
+	assert(countsAsOnboarded("assigned"));
+	assert(countsAsOnboarded("accepted"));
+	// An agreement survives the person leaving, and escrow may already have moved against it.
+	assert(countsAsOnboarded("released"));
+	assert(countsAsOnboarded("cancelled"));
+	assert(countsAsOnboarded("completed"));
+});
+
+Deno.test("the two states where no agreement was ever reached do not lock", () => {
+	assertFalse(countsAsOnboarded("declined"));
+	// Decision #80 parks a blueprint-instantiated row here and documents it as the state where nobody
+	// is committed to anything — counting it would price-lock a draft from birth.
+	assertFalse(countsAsOnboarded("pending_funding"));
+	assertEquals([...ONBOARDED_ASSIGNMENT_EXCLUDED].sort(), ["declined", "pending_funding"]);
+});
+
+Deno.test("reconcileSetup re-grafts stage counts from the base and ignores the patch", () => {
+	// The un-forgeability property. A payload that asserted `onboardedCount: 0` would be unlocking the
+	// very field it is trying to change, in the one function every surface derives its locks from.
+	const setup = reconcileSetup(
+		patchOf({ stages: [staffed("s1", 0, 4)], onboardedCount: 4 }),
+		{ stages: [{ ...staffed("s1", 0, 0), unitPriceCents: 1 }], onboardedCount: 0 },
+	);
+	assertEquals(setup.stages[0].onboardedCount, 4);
+	assertEquals(setup.onboardedCount, 4);
+	// The edit itself still lands — the guard freezes a figure, it does not freeze the fold.
+	assertEquals(setup.stages[0].unitPriceCents, 1);
+});
+
+Deno.test("a stage the base does not know has onboarded nobody", () => {
+	// A stage added a moment ago cannot be carrying providers, and reading `undefined` as anything but
+	// zero would lock a brand new row on its first render.
+	const setup = reconcileSetup(
+		patchOf({ stages: [staffed("s1", 0, 2)] }),
+		{ stages: [staffed("s1", 0, 2), staffed("stage-draft-9", 1, 7)] },
+	);
+	assertEquals(setup.stages[1].onboardedCount, 0);
 });
 // #endregion

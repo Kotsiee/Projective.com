@@ -217,7 +217,19 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Custom quote request**   | `sent → answered` / `withdrawn`. Top-of-funnel: it creates no project, stage, ticket or escrow, and never enters the §3.1 delivery machine | `packages/types/services/contact.ts` · `PRODUCT_SPEC.md` §The Hiring Process |
 | **Asset**                  | `pending_upload → scanning → uploaded → archived → deleted`; `error` / `quarantined` (terminal-until-resolved off `scanning`) | `files.file_status` + `files.items.is_archived` / `deleted_at` · `database/files/Tables.md` |
 | **Share link**             | `active → expired` (time) / `revoked` (**terminal**); also `exhausted` (download limit) | `files.share_links` (`expires_at` / `revoked_at` / `download_limit`) · `database/files/Functions.md` |
+| **Stage assignment**       | `pending_funding` (parked, nobody committed) → `assigned` → `accepted` → `completed`; `released` / `cancelled` / `declined` end it. **Free text, not an enum** — `projects.stage_assignments.status` carries no CHECK and no default, so every consumer reads it through a named guard rather than matching a literal, and an unrecognised value must fall to the SAFE side of whatever it gates | `projects.stage_assignments.status` · `packages/types/projects/setup.ts` (`countsAsOnboarded`) · `PRODUCT_SPEC.md` §Stage Management #4 |
 
+> **Post-onboarding immutability is a CONSTRAINT over the stage-assignment row above, not a
+> lifecycle of its own** — which is why it has no row. Once a seat has genuinely been taken, the
+> engagement's **project type** freezes project-wide and each stage's **ticket price** freezes with
+> that stage; a flat engagement freezes its single price on the first onboarding anywhere. Nothing
+> else about a staffed stage locks. The rule is stated in `PRODUCT_SPEC.md` §Stage Management #4 and
+> implemented once in `packages/types/projects/setup.ts`, which the form, the publish dialog and the
+> write guard all read — a second copy is how a disabled control and a server refusal come to
+> disagree about the same field. Note the deliberate asymmetry with the row above: `released`,
+> `cancelled` and `completed` all END an assignment and all KEEP the lock, because the agreement
+> existed and escrow may already have moved against it.
+>
 > **The discovery call is the sharpest illustration of why this section exists.** A booked call is
 > not a unit of delivery: it creates no Project, Stage or Ticket, never appears on a board, and does
 > **not** count toward Workload Intensity (§4). For a CALL a **reschedule is not a state** — it

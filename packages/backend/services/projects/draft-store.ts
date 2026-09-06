@@ -1,3 +1,4 @@
+import { mintSlug } from "@projective/types/slugs";
 import type { InstantiateServiceInput, PipelineDraft } from "@projective/types/services";
 import { draftArchivesAt, draftIsStale } from "@projective/types/services";
 import { NOW } from "../scheduling/derive.ts";
@@ -43,20 +44,17 @@ function ownerKeyOf(userId: string | null, workspaceId: string | null): string {
 }
 
 /**
- * A slug from a title.
+ * A draft's address.
  *
- * NOT the same shape `ProjectBackendService.create` produces any more: that one appends a short
- * disambiguating suffix, because `projects_slug_key` is a global UNIQUE and two buyers naming a
- * project "Website refresh" is the likely case rather than the unlikely one. A service instantiation
- * does not need the suffix — a draft is resolved by (owner, blueprint) and its slug is only ever
- * read back within this store — so it is deliberately left readable here rather than made to match.
+ * The same `prj-` shape and the same minter as every other project, and that uniformity is the point.
+ * This used to derive a readable slug from the blueprint's title, on the reasoning that a draft is
+ * resolved by (owner, blueprint) and its slug is only ever read back within this store. The second
+ * half of that was already untrue — the slug becomes the URL the buyer is navigated to — and once
+ * `ck_projects_slug_shape` refuses anything but the canonical form, a store minting a different one
+ * would hand out an address the live path could never have produced and the routes no longer accept.
  */
-function slugify(title: string): string {
-	return title
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 80) || "untitled-project";
+function mintDraftSlug(): string {
+	return mintSlug("project");
 }
 // #endregion
 
@@ -146,7 +144,7 @@ export function instantiateDraft(
 
 	const now = seed.now ?? NOW;
 	const title = input.title?.trim() || seed.title;
-	const slug = `${slugify(title)}-${(drafts.size + 1).toString(36)}`;
+	const slug = mintDraftSlug();
 	const row: DraftRow = {
 		ownerKey: owner,
 		idempotencyKey: input.idempotencyKey,

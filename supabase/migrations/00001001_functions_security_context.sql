@@ -166,3 +166,92 @@ AS $$
     'active_organisation_id', auth.jwt()->>'active_organisation_id'
   );
 $$;
+
+-- #region 4. Route slugs — the minter and the immutability guard
+--
+-- Every public route on this platform addresses a row by an opaque, prefixed, immutable slug
+-- (`prj-pkksys2xhd`, `stg-w4n8zqe6mt`). The format, and the reasoning behind each of its choices, is
+-- stated once in `packages/types/slugs/slug.ts`; this is its Postgres twin. `slug.contract.test.ts`
+-- reads THIS FILE and asserts the alphabet and the body length below are character-identical to the
+-- TypeScript constants, because two implementations of one format is precisely the drift that stays
+-- invisible until a row is minted through the wrong path and cannot be addressed.
+--
+-- They live in `security` rather than beside any one table because three schemas mint slugs
+-- (`projects`, `marketplace`) and a copy per schema is a copy per schema to keep in step. EXECUTE is
+-- revoked below: a trigger runs as the table owner and needs no grant, and `security` IS exposed to
+-- PostgREST, so an un-revoked function here is an RPC anybody can call.
+
+-- Mint one slug: `p_prefix`, a hyphen, and 10 symbols drawn uniformly from the 32-symbol alphabet.
+--
+-- `% 32` is uniform because 256 is a whole multiple of 32 — which is why the alphabet excludes exactly
+-- four characters (`0`, `1`, `i`, `l`) and lands on 32 rather than 31. One member of each confusable
+-- group is dropped, not the whole group: `o` is unambiguous precisely because `0` is gone. Dropping it
+-- too would leave 31 symbols, which needs rejection sampling — and the modulo written without it is
+-- silently biased toward the first symbols. A biased address still routes, so nothing would ever have
+-- reported it.
+--
+-- VOLATILE, and it matters: `gen_random_bytes` is not stable, and a mislabelled IMMUTABLE/STABLE here
+-- would let the planner evaluate this once and hand the same slug to every row of a multi-row insert.
+CREATE OR REPLACE FUNCTION security.mint_slug(p_prefix text)
+RETURNS text
+LANGUAGE sql
+VOLATILE
+SET search_path = ''
+AS $$
+    SELECT p_prefix || '-' || string_agg(
+        substr(
+            '23456789abcdefghjkmnopqrstuvwxyz',
+            (pg_catalog.get_byte(extensions.gen_random_bytes(1), 0) % 32) + 1,
+            1
+        ),
+        ''
+    )
+    FROM pg_catalog.generate_series(1, 10);
+$$;
+
+COMMENT ON FUNCTION security.mint_slug(text) IS
+'Mints one opaque route slug: the given prefix, a hyphen, and 10 symbols drawn uniformly from the 32-character confusable-free alphabet (50 bits). The Postgres twin of mintSlug() in @projective/types/slugs; the two alphabets are cross-checked by slug.contract.test.ts.';
+
+-- Fill a slug that no insert supplied, and refuse one an update tries to move. `TG_ARGV[0]` is the
+-- prefix, so one function serves every slugged table rather than four near-copies.
+--
+-- The INSERT half is why the columns can be NOT NULL with no DEFAULT: a BEFORE ROW trigger runs before
+-- constraints are checked, so filling NULL here satisfies NOT NULL (verified by execution, not
+-- assumed). A DEFAULT could not do this job — a DEFAULT expression may not contain a subquery, so
+-- generating 10 symbols inline would mean four copies of a ten-line expression with four chances to
+-- diverge, and column defaults are laid down in category 0, before any function exists to call.
+--
+-- The UPDATE half is the immutability guarantee, and it RAISES rather than silently pinning the old
+-- value. An ordinary `UPDATE ... SET title = ...` never mentions the slug, so `NEW.slug` already
+-- equals `OLD.slug` and nothing fires; the only way to reach the exception is to genuinely try to move
+-- an address, which is a bug worth hearing about rather than absorbing. Silently reverting it would
+-- let the caller believe the write landed.
+CREATE OR REPLACE FUNCTION security.fn_slug_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.slug IS NULL THEN
+            NEW.slug := security.mint_slug(TG_ARGV[0]);
+        END IF;
+    ELSIF NEW.slug IS DISTINCT FROM OLD.slug THEN
+        RAISE EXCEPTION
+            'A % slug is permanent and cannot be changed (% -> %).', TG_ARGV[0], OLD.slug, NEW.slug
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION security.fn_slug_guard() IS
+'BEFORE INSERT OR UPDATE trigger for any table with a slug column. On insert, mints one when none was supplied (running before NOT NULL is checked); on update, refuses any change to an existing slug, which is what makes a slug a permanent address rather than a convention.';
+
+-- Neither is callable over PostgREST. `security` is an exposed schema and CREATE FUNCTION grants
+-- EXECUTE to PUBLIC by default, so without this a signed-out caller could mint slugs at will —
+-- harmless in itself, but surface with no purpose, since triggers execute as the table owner.
+REVOKE ALL ON FUNCTION security.mint_slug(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION security.fn_slug_guard() FROM PUBLIC;
+
+-- #endregion

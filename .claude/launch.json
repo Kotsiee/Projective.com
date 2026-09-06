@@ -625,6 +625,102 @@
 				"--strictPort"
 			],
 			"port": 10273
+		},
+		{
+			"name": "web-setupflat",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10373",
+				"--strictPort"
+			],
+			"port": 10373
+		},
+		{
+			"name": "web-numinput",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10473",
+				"--strictPort"
+			],
+			"port": 10473
+		},
+		{
+			"name": "web-rte",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10573",
+				"--strictPort"
+			],
+			"port": 10573
+		},
+		{
+			"name": "web-rte-mock",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"10673",
+				"--strictPort"
+			],
+			"port": 10673
+		},
+		{
+			"name": "web-toast",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"10873",
+				"--strictPort"
+			],
+			"port": 10873
+		},
+		{
+			"name": "web-lanefix",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10773",
+				"--strictPort"
+			],
+			"port": 10773
+		},
+		{
+			"name": "web-locks",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"11073",
+				"--strictPort"
+			],
+			"port": 11073
+		},
+		{
+			"name": "web-slugs",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"10973",
+				"--strictPort"
+			],
+			"port": 10973
 		}
 	]
 }

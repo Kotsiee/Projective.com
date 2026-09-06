@@ -5,7 +5,7 @@ import "../styles/project-setup.css";
 // composition sheet. Feature CSS reaches a page only through an island's import graph, so the sheet
 // is pulled in here or the reused component arrives unstyled.
 import "../styles/ticket-pipeline.css";
-import { Message } from "@projective/ui/feedback";
+import { Toast } from "@projective/ui/feedback";
 import { SetupSection } from "../components/setup/SetupSections.tsx";
 import { setupSections } from "../core/setup-sections.ts";
 import type { ProjectSetup } from "../types/projects-types.ts";
@@ -14,10 +14,10 @@ import {
 	resetSetupState,
 	seedSetup,
 	setupDraft,
-	setupError,
-	setupNotice,
+	watchOnboardingSim,
 } from "../core/setup-state.ts";
 import { advanceOnEnter } from "../core/setup-validation.ts";
+import { useSetupAutoSave } from "../hooks/useSetupAutoSave.ts";
 
 /**
  * ProjectSetupForm — the BODY of the owner's Stage-2 workspace on `/projects/[projectId]`.
@@ -46,36 +46,6 @@ export interface ProjectSetupFormProps {
 	setup: ProjectSetup;
 }
 
-const MONTHS = [
-	"January",
-	"February",
-	"March",
-	"April",
-	"May",
-	"June",
-	"July",
-	"August",
-	"September",
-	"October",
-	"November",
-	"December",
-] as const;
-
-/**
- * An ISO instant as a plain calendar date, in UTC.
- *
- * Deliberately not `toLocaleDateString`: this string is rendered during SSR and again on hydration,
- * and the two runtimes resolve a locale independently — a server in one region and a browser in
- * another would produce different text for the same instant, which Preact reconciles as a mismatch.
- * Naming the month avoids the other trap, which is that `02/09` and `09/02` are the same date in two
- * conventions and a reader has no way to tell which one they are looking at.
- */
-function archivedOn(iso: string): string {
-	const date = new Date(iso);
-	if (Number.isNaN(date.getTime())) return "an earlier date";
-	return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-}
-
 export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.Element {
 	// Keyed on the canonical uuid, never the slug: renaming the project regenerates the slug, and a
 	// re-seed on a slug change would discard the very edit that caused it.
@@ -84,11 +54,30 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 		return resetSetupState;
 	}, [setup.id]);
 
+	/**
+	 * Track the Dev Context Switcher's onboarding axis and refetch when it moves.
+	 *
+	 * A refetch rather than a local overlay, because the onboarding counts decide what the write path
+	 * will still accept — so a simulation applied only here would draw controls the save then refuses.
+	 * The parameter goes to the server, which discards it outside development.
+	 *
+	 * Its own effect with empty deps: the subscription is to the DOCUMENT's attributes, not to this
+	 * project, so re-establishing it whenever the setup prop changed would tear down and rebuild a
+	 * listener for no reason.
+	 */
+	useEffect(watchOnboardingSim, []);
+
+	/**
+	 * Auto-save on blur, shared with the single-stage form so both surfaces settle identically.
+	 *
+	 * `autoSaveOnBlur` re-reads the preference and the dirty flag when the timer fires, so a blur is
+	 * never a decision taken in advance — turning the toggle off mid-delay correctly cancels it.
+	 */
+	useSetupAutoSave();
+
 	// Read the signal directly so the sections re-render on every keystroke; before hydration this
 	// resolves to the SSR prop.
 	const live = setupDraft.value ?? currentSetup(setup);
-	const error = setupError.value;
-	const notice = setupNotice.value;
 
 	return (
 		/*
@@ -115,40 +104,21 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 
 			{
 				/*
-				 * The archive is stated BEFORE the fields, not after a refused save.
+				 * The toast stack for every save · publish · archive outcome, raised from
+				 * `core/setup-state.ts` so all three hydration roots report through one channel.
 				 *
-				 * Every control below still edits the local draft — reading and comparing a configuration
-				 * is a legitimate thing to do with a project that is out of circulation — but nothing here
-				 * can be persisted, and finding that out only once Save has been pressed means the owner
-				 * has already spent the work. The store refuses the write with the same sentence, so the
-				 * banner and the refusal are one statement rather than two that could disagree.
+				 * It is mounted HERE, in the body, because the body is the one region present on every
+				 * owner render — the footer rig is the usual raiser but it is absent on an archived
+				 * project, and a report with no host is a report nobody sees. That matters more now
+				 * that the archive is announced ONLY on refusal: this stack is the whole channel.
+				 * `Toast` is `position: fixed`, so it anchors to the viewport, not to this container.
+				 *
+				 * Bottom-right, away from the middle-nav header band: the top-right corner is where the
+				 * progress ladder sits, and an outcome landing on top of the gauge it just moved covers
+				 * the very thing the owner looks at to confirm it.
 				 */
 			}
-			{live.archivedAt && (
-				<div class="psu__report">
-					<Message
-						severity="warning"
-						text={`Archived on ${
-							archivedOn(live.archivedAt)
-						}. This configuration can be read, but changes to it can no longer be saved.`}
-					/>
-				</div>
-			)}
-
-			{
-				/*
-				 * The wrapper carries no live-region role of its own: `Message` already announces itself
-				 * (assertive for `danger`, polite otherwise), and nesting a second region inside it makes
-				 * one save outcome announce twice.
-				 */
-			}
-			{(error || notice) && (
-				<div class="psu__report">
-					{error
-						? <Message severity="danger" text={error} />
-						: <Message severity="success" text={notice ?? ""} />}
-				</div>
-			)}
+			<Toast position="bottom-right" />
 
 			{setupSections(live).map((section) => (
 				<SetupSection key={section.key} setup={live} section={section.key} />

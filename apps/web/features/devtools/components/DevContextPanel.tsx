@@ -8,12 +8,12 @@ import {
 	DEV_BASKET_OWNERS,
 	DEV_BILLING_CONTEXTS,
 	DEV_BUYER_DETAILS,
+	DEV_CALL_OFFERS,
+	DEV_COHORT_CAPACITIES,
 	DEV_CONFERENCING,
 	DEV_CONNECTION_STATES,
 	DEV_DEDUP_STATES,
 	DEV_DISPLAY_CURRENCIES,
-	DEV_CALL_OFFERS,
-	DEV_COHORT_CAPACITIES,
 	DEV_EVENT_RESCHEDULES,
 	DEV_EVENT_RSVPS,
 	DEV_EVENT_SEATS,
@@ -26,14 +26,15 @@ import {
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
 	DEV_PAYMENT_PROVIDERS,
+	DEV_PIPELINE_DRAFTS,
+	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
 	DEV_ROSTER_STATES,
-	DEV_PIPELINE_DRAFTS,
 	DEV_SAVED_CARDS,
-	DEV_SLOT_AVAILABILITIES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
+	DEV_SLOT_AVAILABILITIES,
 	DEV_SPEND_LIMITS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_STORAGE_PROVIDERS,
@@ -314,6 +315,23 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 							None
 						</button>
 					</div>
+				</Field>
+
+				{
+					/* The project setup surface's post-onboarding immutability. Both counts are SERVER
+				    facts (`projects.stage_assignments`), so this is the only runtime route to a locked
+				    setup surface — no control on the form can get you there. `First stage` is the value
+				    worth reaching for: a per-stage price lock and a project-wide one look identical on a
+				    project whose every stage is onboarded. */
+				}
+				<Field label="Onboarded providers" hint="setup locks">
+					<Segment
+						name="Onboarded providers"
+						options={DEV_PROJECT_ONBOARDINGS}
+						value={o.projectOnboarding}
+						disabled={!o.enabled}
+						onChange={(projectOnboarding) => patchDevContext({ projectOnboarding })}
+					/>
 				</Field>
 
 				<div class="dev-ctx__grouphead">Members tab</div>

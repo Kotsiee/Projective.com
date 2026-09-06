@@ -29,6 +29,9 @@ export const CHANNEL_TABS: ChannelTab[] = [
 	{ key: "submissions", label: "Submissions", seg: "submissions" },
 	{ key: "calendar", label: "Calendar", seg: "calendar" },
 	{ key: "tasks", label: "Tasks", seg: "tasks" },
+	// LAST, and that is a placement rather than an ordering accident: it is the only tab that edits
+	// the engagement rather than working inside it, and it is the only one most viewers never see.
+	{ key: "details", label: "Details", seg: "details" },
 ];
 
 /**
@@ -67,6 +70,16 @@ export interface ChannelTabAccess {
 	isFreelancer: boolean;
 	/** For a freelancer, whether they are assigned to THIS stage (an unassigned one loses the tabs). */
 	stageAssigned: boolean;
+	/**
+	 * Whether the viewer may CONFIGURE the engagement — the project's owner, or a platform admin.
+	 *
+	 * Narrower than {@link ChannelTabAccess.isReviewer} on purpose, and the difference is the point.
+	 * `isReviewer` answers "may this person review the work", which a client, a manager and an admin
+	 * all can; this answers "may this person change the terms the work is being done under", which is
+	 * the owner's alone. A stage's ticket price and its scope are what a freelancer accepted, so the
+	 * seat that can rewrite them is not the same seat that can approve a submission.
+	 */
+	canConfigure: boolean;
 }
 
 /**
@@ -77,6 +90,16 @@ export interface ChannelTabAccess {
  * - `Tasks` / `Submissions` — hidden completely for any session; on a standard project they appear only
  *   on a **stage** channel AND only for a reviewer (client/admin/manager) or a freelancer assigned to
  *   that stage — a freelancer not part of the stage loses them.
+ * - `Details` — a **stage** channel only, and only for a viewer who may configure the engagement
+ *   ({@link ChannelTabAccess.canConfigure}). Unlike Tasks and Submissions it is NOT hidden for a
+ *   session: a session's stages are its sittings, and their scope, price and capacity are configured
+ *   the same way a pipeline stage's are. What that tab edits is the engagement's terms, which exist
+ *   on every archetype; what Tasks and Submissions edit is deliverable flow, which a session has none
+ *   of.
+ *
+ * Absence, not refusal, for the viewer who may not configure: a tab rendered and disabled advertises
+ * a capability and then withholds it, and the route behind it refuses independently anyway
+ * (DESIGN_SYSTEM's rule that a capability which does not apply is expressed by not being there).
  */
 export function visibleChannelTabKeys(access: ChannelTabAccess): string[] {
 	const session = isSession(access.sessionKind);
@@ -86,9 +109,24 @@ export function visibleChannelTabKeys(access: ChannelTabAccess): string[] {
 
 	return CHANNEL_TABS.filter((t) => {
 		if (t.key === "calendar") return session;
+		if (t.key === "details") return access.channelKind === "stage" && access.canConfigure;
 		if (stageGated.has(t.key)) return showStageTabs;
 		return true;
 	}).map((t) => t.key);
+}
+
+/**
+ * Whether a viewer may open the stage Details tab — the ONE rule the tab, the route guard and the
+ * write path all read.
+ *
+ * Stated as its own function rather than inlined into the filter above so the ROUTE can ask the same
+ * question. A tab hidden by one predicate and a route guarded by another is how a link disappears
+ * while its URL stays open, which is a gate that only holds for people who do not type addresses.
+ */
+export function canConfigureStage(
+	access: Pick<ChannelTabAccess, "channelKind" | "canConfigure">,
+): boolean {
+	return access.channelKind === "stage" && access.canConfigure;
 }
 // #endregion
 

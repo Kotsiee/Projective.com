@@ -12,6 +12,7 @@ import { channelHeaderFor } from "@web/features/projects/core/channel-header-slo
 import { projectHeaderFor } from "@web/features/projects/core/project-header-slot.tsx";
 import { projectFooterFor } from "@web/features/projects/core/project-footer-slot.tsx";
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
+import { stageDetailsFooterFor } from "@web/features/projects/core/stage-details-footer-slot.tsx";
 // Aliased at the import site: the `/files` hub exports a `filesFooterFor` of its own, and this one is
 // the CHANNEL-scoped File Explorer rig (`/projects/…/files`), which the alias names more accurately.
 import { filesFooterFor as channelFilesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
@@ -103,17 +104,25 @@ function projectIdOf(pathname: string): string | null {
 
 /**
  * Resolve the middle-nav footer band for a request: the channel/conversation Chat composer on a Chat
- * tab, the File Explorer's View Control Rig on a `/files` route, the Submissions rig on
- * `/submissions`, the Board rig on `/board`, the engagement preview's Apply rig on a bare
- * `/projects/[id]`, else nothing. Composed so exactly one owns the single footer slot per URL. Every
- * navigation is a full page render, so this simply resolves fresh each time.
+ * tab, the stage configuration's Save ⁄ Discard rig on a channel `/details` tab, the File Explorer's
+ * View Control Rig on a `/files` route, the Submissions rig on `/submissions`, the Board rig on
+ * `/board`, the engagement preview's Apply rig on a bare `/projects/[id]`, else nothing. Composed so
+ * exactly one owns the single footer slot per URL. Every navigation is a full page render, so this
+ * simply resolves fresh each time.
+ *
+ * Order within the chain is READING order, not precedence, wherever two resolvers cannot both claim
+ * a URL. `stageDetailsFooterFor` sits with `channelFooterFor` because they are the two channel-scoped
+ * resolvers: the composer is gated to the Chat tab and the stage rig to a `details` segment no other
+ * resolver tests for, so neither can reach the other's route.
  */
 async function middleNavFooterFor(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
 ): Promise<ComponentChildren> {
-	return await channelFooterFor(url, context, actor) ?? channelFilesFooterFor(url, context) ??
+	return await channelFooterFor(url, context, actor) ??
+		(await stageDetailsFooterFor(url, context, actor)) ??
+		channelFilesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
 		(await projectFooterFor(url, context, actor)) ??
 		(await inboxFooterFor(url, context, actor)) ??

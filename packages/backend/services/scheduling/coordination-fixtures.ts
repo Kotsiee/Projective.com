@@ -25,7 +25,7 @@ import {
 import type { AssetItem } from "@projective/types/files";
 import type { MoneyView } from "@projective/types/finance";
 import { DEFAULT_LOCALE, formatMoney, PLATFORM_BASE_CURRENCY } from "@projective/types/finance";
-import { DAY, hash, HOUR, NOW } from "./derive.ts";
+import { DAY, hash, HOUR, mix32, NOW } from "./derive.ts";
 import { serverEnv } from "../../core/env.ts";
 import { mockAvatar } from "../../mocks/assets.ts";
 
@@ -57,8 +57,7 @@ import { mockAvatar } from "../../mocks/assets.ts";
  */
 
 // #region Cast
-const FACE = (id: string) =>
-	mockAvatar(id);
+const FACE = (id: string) => mockAvatar(id);
 
 /**
  * The fallback cast for a surface that has no real domain parties of its own to draw on.
@@ -126,6 +125,20 @@ export interface CoordinationContext {
 	viewerHostsSurface: boolean;
 	/** IANA zone for the human date labels on history lines. */
 	timezone: string;
+	/**
+	 * This event's position in the list the surface is rendering.
+	 *
+	 * Threaded rather than hashed, and only for the two things that must be SPREAD rather than merely
+	 * varied: which group events carry a live negotiation, and which ballot archetype each one gets.
+	 *
+	 * A hash cannot do that job, and the reason is arithmetic rather than a tuning problem. Three
+	 * archetypes drawn by hash over the handful of group votes one surface has will miss a bucket
+	 * roughly two times in five — and a missed bucket is a documented state no surface can reach,
+	 * which is exactly the failure the archetypes exist to prevent. Position cycles, so the coverage is
+	 * a property of the construction rather than of the seed. Defaults to `0` for a caller that has no
+	 * list (the simulation overlay forces its own state and never consults this).
+	 */
+	eventIndex?: number;
 	/** Occurrences still to come in a recurring series, this one included. `1` for a one-off. */
 	remainingOccurrences?: number;
 	/**
@@ -507,7 +520,12 @@ function buildReschedule(
 	if (!canReschedule(NOW, event.start)) return undefined;
 
 	const group = rescheduleModeFor(roster.length) === "vote";
-	if (!force && group && seed % 3 !== 0) return undefined;
+	// Every third GROUP event by position, not by hash. The share is unchanged — a negotiation is still
+	// on a minority of events — but which third is chosen now cycles with the list instead of clustering
+	// wherever the hash happens to land, which is what lets the archetype below be guaranteed rather
+	// than likely. See `CoordinationContext.eventIndex`.
+	const ordinal = ctx.eventIndex ?? 0;
+	if (!force && group && ordinal % 3 !== 0) return undefined;
 	if (!force && !group && seed % 2 !== 0) return undefined;
 
 	const proposals: RescheduleProposal[] = [];
@@ -553,9 +571,10 @@ function buildReschedule(
 		 *
 		 * Three archetypes, because majority resolution has three drawable states and a corpus that
 		 * only ever produces one of them leaves the others undrawable and untestable:
-		 *   `rallied`  — a high turnout all backing the same slot → carries, and settles on the read.
-		 *   `pending`  — a third abstain, votes spread → stays open, which is the state most surfaces
-		 *                spend their time rendering.
+		 *   `rallied`  — everyone but one seat backs the same slot → CARRIES while still open, which is
+		 *                the only state the host's `confirm` has anything to close.
+		 *   `pending`  — a third abstain, votes spread → stays open with nothing decided, which is the
+		 *                state most surfaces spend their time rendering.
 		 *   `deadlock` — everybody votes, nobody agrees → the question is finished and no slot reached
 		 *                a majority, so it lapses and the original time stands.
 		 *
@@ -564,21 +583,40 @@ function buildReschedule(
 		 * three votes against a quorum of three, so unanimity among those who bothered would carry
 		 * only by luck.
 		 *
-		 * Hashed on its own key rather than read off `seed`, which already decides the ballot SIZE two
-		 * lines up: correlating the two tied the archetype to the number of options, and the whole
-		 * project-calendar subset then landed on the same side of it with no carried vote in it.
+		 * `rallied` holds ONE seat back deliberately, and that is the difference between a state a host
+		 * can act on and one they cannot. `settleVote` closes a vote the moment every eligible seat has
+		 * answered, so a unanimous ballot is already `resolved` by the time any surface reads it — the
+		 * corpus would then contain no carried-but-open vote at all, and the confirm path would be
+		 * undrawable while looking perfectly well covered. The abstention is skipped below three
+		 * eligible voters, where losing a vote would cost the majority instead of the settlement.
+		 *
+		 * Chosen by POSITION, not by hash, and that is what makes all three reachable. The surviving
+		 * group events are every third by ordinal, so dividing that ordinal by three and cycling gives
+		 * each surviving event a different archetype from its neighbour — every surface with three group
+		 * negotiations draws all three states, and the corpus as a whole cannot lose one.
+		 *
+		 * It was a hash, on its own key so as not to correlate with the ballot SIZE two lines up. That
+		 * fixed a correlation and left the real problem: three buckets drawn independently over the five
+		 * group votes a project calendar actually has miss one about two times in five, and the missed
+		 * one is a state the fixtures are documented as producing that no surface can reach. It has now
+		 * happened twice — once to `pending`, once to `rallied` — each time discovered by a test that
+		 * could no longer find the state it needed rather than by anything going wrong on screen.
 		 */
-		const archetype = hash(`${ctx.surfaceKey}:${event.id}:ballot`) % 3;
+		const archetype = Math.floor(ordinal / 3) % 3;
 		const ballot = proposals.filter((p) => p.proposedByRole === "host");
-		roster.forEach((a) => {
-			if (a.role === "host") return;
-			// Keyed on WHO is voting, not on their seat index. `hash` multiplies by 31, and 31 ≡ 1
-			// (mod 3), so two keys differing only in a trailing digit hash to values differing by one —
-			// `h % 3` then cycled 0,1,2 down every roster in the corpus and produced the identical
+		const voters = roster.filter((a) => a.role !== "host");
+		// The one seat `rallied` holds back. Named rather than hashed, so the state is guaranteed
+		// rather than likely: with an abstention rate the corpus would sometimes produce a unanimous
+		// ballot, and that surface silently loses the only vote its host could have confirmed.
+		const heldBack = archetype === 0 && voters.length >= 3 ? voters[voters.length - 1].id : null;
+		voters.forEach((a) => {
+			// Keyed on WHO is voting, not on their seat index, and mixed. `hash` multiplies by 31, and
+			// 31 ≡ 1 (mod 3), so two keys differing only in a trailing digit hash to values differing by
+			// one — `h % 3` then cycled 0,1,2 down every roster in the corpus and produced the identical
 			// abstention pattern and the identical tally on every single group vote. A person's own
 			// identity is both better mixed and the honest thing to key a person's decision on.
-			const h = hash(`${ctx.surfaceKey}:${event.id}:vote:${a.handle ?? a.name}`);
-			const abstains = archetype === 0 ? h % 7 === 0 : archetype === 1 ? h % 3 === 0 : false;
+			const h = mix32(hash(`${ctx.surfaceKey}:${event.id}:vote:${a.handle ?? a.name}`));
+			const abstains = archetype === 0 ? a.id === heldBack : archetype === 1 ? h % 3 === 0 : false;
 			if (abstains) return;
 			const target = archetype === 0 ? ballot[0] : ballot[h % ballot.length];
 			target.votes.push({

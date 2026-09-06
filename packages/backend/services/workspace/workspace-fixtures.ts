@@ -533,7 +533,7 @@ const SEEDS: WorkspaceSeed[] = [
 		],
 		projects: [
 			{
-				id: "aurora-rebrand",
+				id: "prj-ghnkqoopo4",
 				title: "Aurora rebrand",
 				counterpartyKey: "priya",
 				state: "active",
@@ -543,7 +543,7 @@ const SEEDS: WorkspaceSeed[] = [
 				dueSpanDays: 4,
 			},
 			{
-				id: "helio-app",
+				id: "prj-xmvjo9wga8",
 				title: "Helio app design system",
 				counterpartyKey: "theo",
 				state: "active",
@@ -553,7 +553,7 @@ const SEEDS: WorkspaceSeed[] = [
 				dueSpanDays: 0,
 			},
 			{
-				id: "gradient-motion-kit",
+				id: "prj-3389ufcjs2",
 				title: "Gradient motion kit",
 				counterpartyKey: "ada",
 				state: "completed",
@@ -1118,7 +1118,7 @@ const SEEDS: WorkspaceSeed[] = [
 		],
 		projects: [
 			{
-				id: "aurora-rebrand",
+				id: "prj-ghnkqoopo4",
 				title: "Aurora rebrand",
 				counterpartyKey: "daniel",
 				state: "active",
@@ -1128,7 +1128,7 @@ const SEEDS: WorkspaceSeed[] = [
 				dueSpanDays: 4,
 			},
 			{
-				id: "monarch-design-system",
+				id: "prj-8mzxqqn6w8",
 				title: "Monarch design system",
 				counterpartyKey: "mara",
 				state: "active",

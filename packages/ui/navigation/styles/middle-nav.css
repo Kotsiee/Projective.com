@@ -29,27 +29,9 @@
  */
 .ui-middle-nav {
     display: grid;
-    /*
-	* `minmax(0, 1fr)` on the content track, NOT a bare `1fr`. A `1fr` track's automatic minimum is
-	* `auto`, so the content column cannot shrink below its own min-content — and the lane, being the
-	* `auto` track, absorbs every pixel of that shortfall. Measured on `/wallet`: one nowrap footer
-	* rig raised the content column's min-content to 739px, which squeezed the lane from 280px to
-	* 2px at an 820px viewport (all six nav links clipped by the lane's `overflow: hidden`) and
-	* overflowed this frame's `clip` by 50px at 768px. The floor is now the lane's, where it belongs:
-	* a content region may never bid for space the navigation is standing in.
-	*/
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-rows: auto 1fr auto;
     min-block-size: 0;
-
-    /*
-	* Augment the nested-frame seam accumulator (app-shell.css / shell-frame.css) for the Green canvas
-	* this frame wraps: it sits further inline-start-inward by the Blue lane's width, and further down
-	* when a header band is present. `--shell-lane-w` is the lane's live width — published up to this
-	* frame (the only common ancestor of the lane and the canvas) so the fixed seam tracks drag/collapse
-	* (see the width-hoist note); it degrades to the `:root` 280px default if not hoisted. `:has()`
-	* handles the discrete lane states the width var alone can't when un-hoisted (collapsed / absent).
-	*/
     --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
 }
 
@@ -65,11 +47,25 @@
     --shell-frame-inset-block: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
 }
 
-/* Splitter shut to its icon rail (Part D.2 `collapsed` band): the canvas hugs the narrow rail. Keyed
-   via `:has()` on the lane's `data-mode` (same technique as project-sidebar.css), this stays exact even
-   when the live `--shell-lane-w` is not hoisted. 56px is the splitter's `min` rail width. */
+/*
+ * Splitter shut to its icon rail (Part D.2 `collapsed` band): the canvas hugs the narrow rail. Keyed
+ * via `:has()` on the lane's `data-mode` (same technique as project-sidebar.css), this stays exact
+ * even when the live `--shell-lane-w` is not hoisted.
+ *
+ * The rail width comes from `--shell-lane-rail-w`, the SAME inherited token `splitter.css` sizes the
+ * collapsed lane from — not a literal. It used to be a literal `56px` (the splitter's `min`), while
+ * eight surfaces had each widened their own collapsed lane past it with a `:has()` `inline-size`
+ * override. Measured on `/projects/{id}/board`: the lane ended at x=134 and this seam pinned the
+ * Green canvas's fill + rounded corner at x=120, so 14px of canvas painted underneath the rail.
+ * A lane that wants a wider rail now re-declares the token on THIS element, which both consumers
+ * read, so the two can no longer drift apart. Undeclared, it falls back to the live `--shell-lane-w`
+ * the splitter hoists onto `.ui-app-shell` — the same number `splitter.css` falls back to — so a lane
+ * with no rail width of its own keeps tracking a drag through the collapsed band, seam and all.
+ */
 .ui-middle-nav:has(.ui-splitter[data-mode="collapsed"]) {
-    --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + 56px);
+    --shell-frame-inset-inline: calc(
+        var(--shell-sidebar-cur-w) + var(--shell-lane-rail-w, var(--shell-lane-w, 56px))
+    );
 }
 
 /*
@@ -163,7 +159,7 @@
     position: sticky;
     inset-block-end: 0;
     z-index: var(--z-sticky);
-    min-block-size: 0;
+    min-block-size: var(--shell-midnav-footer-h);
 }
 
 .ui-middle-nav__footer::before {
@@ -194,6 +190,22 @@
 
     .ui-middle-nav__lane {
         display: none;
+    }
+
+    /*
+	* No lane is rendered here, so this frame contributes no lane width to the seam accumulator. The
+	* desktop rules above add one unconditionally, and on a phone that offset has nowhere to point:
+	* measured at 375px on `/projects/{id}/{channel}`, the canvas's fixed surface fill started 120px
+	* inboard of a content column that runs the full 375, leaving a bare vertical band down the side of
+	* the page. Zeroing the lane term keeps the fill flush with the column it belongs to.
+	*
+	* `--shell-sidebar-cur-w` is deliberately NOT zeroed here: the rail's own contribution belongs to
+	* `.ui-app-shell`, it is wrong on mobile for every route rather than only the laned ones, and it is
+	* not this frame's number to correct.
+	*/
+    .ui-middle-nav,
+    .ui-middle-nav:has(.ui-splitter[data-mode="collapsed"]) {
+        --shell-frame-inset-inline: var(--shell-sidebar-cur-w);
     }
 
     /* One column: the header band + content + footer band stack in it (the lane is dropped on mobile). */

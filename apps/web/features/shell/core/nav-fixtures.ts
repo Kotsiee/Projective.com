@@ -99,10 +99,10 @@ const FACE = (id: string) => mockAvatar(id);
 
 const RECENT_WORKSPACES: readonly RecentWorkspace[] = [
 	{
-		id: "aurora-rebrand",
+		id: "prj-ghnkqoopo4",
 		label: "Aurora Rebrand",
 		kind: "project",
-		href: "/projects/aurora-rebrand",
+		href: "/projects/prj-ghnkqoopo4",
 		owner: "Mara Ellison",
 		ownerAvatar: FACE("photo-1494790108377-be9c29b29330"),
 		hasUpdate: true,
@@ -125,10 +125,10 @@ const RECENT_WORKSPACES: readonly RecentWorkspace[] = [
 		hasUpdate: true,
 	},
 	{
-		id: "helio-app",
+		id: "prj-xmvjo9wga8",
 		label: "Helio App",
 		kind: "project",
-		href: "/projects/helio-app",
+		href: "/projects/prj-xmvjo9wga8",
 		owner: "Theo Marsh",
 		ownerAvatar: FACE("photo-1507003211169-0a1dd7228f2d"),
 	},

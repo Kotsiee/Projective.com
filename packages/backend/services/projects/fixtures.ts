@@ -10,6 +10,37 @@ import { mockAvatar } from "../../mocks/assets.ts";
  * data to exercise. When the live path lands, the RLS-scoped `projects.*` + `org.*` reads replace
  * these arrays behind the same gate, with zero shape churn (the rows are already the SSOT
  * {@link ProjectSummary}). No RNG — deterministic so SSR/resume are stable.
+ *
+ * ## Why the slugs are opaque literals rather than readable names
+ *
+ * Every `slug` here is a canonical `prj-` address, minted once and written in as a literal — not
+ * derived at read time, because a fixture whose address changes between two runs breaks the SSR/refetch
+ * agreement this corpus exists to provide, and not readable, because `ck_projects_slug_shape` now
+ * refuses anything else. A corpus carrying a shape the database cannot store would mean a developer
+ * running on fixtures never sees the addresses production actually produces, and it would put two
+ * shapes on one screen the moment `create` minted a real one beside them.
+ *
+ * The readable names these replaced are kept here so the corpus stays greppable from older notes,
+ * commits and cross-fixture references:
+ *
+ * | was                           | is               |
+ * | :---------------------------- | :--------------- |
+ * | `aurora-rebrand`              | `prj-ghnkqoopo4` |
+ * | `helio-app`                   | `prj-xmvjo9wga8` |
+ * | `gradient-motion-kit`         | `prj-3389ufcjs2` |
+ * | `brand-clinic-sofia`          | `prj-zsgn999b5g` |
+ * | `mercury-landing`             | `prj-xgandqb3cs` |
+ * | `northwind-atlas-portal`      | `prj-64vn8qwog8` |
+ * | `northwind-ops-retainer`      | `prj-eangynf67d` |
+ * | `northwind-summit-deck`       | `prj-t22dcmq5fr` |
+ * | `monarch-design-system`       | `prj-8mzxqqn6w8` |
+ * | `monarch-growth-site`         | `prj-mc9r4c9ha2` |
+ * | `monarch-support-maintenance` | `prj-3dv9upprsd` |
+ * | `monarch-onboarding-revamp`   | `prj-tm2bjk9mdq` |
+ * | `monarch-research-sessions`   | `prj-zrjpnhzjde` |
+ * | `monarch-launch-teardown`     | `prj-cujw52gg3p` |
+ * | `helios-brand-refresh`        | `prj-mvztqq7ftf` |
+ * | `helios-annual-report`        | `prj-kfxmx4m482` |
  */
 
 // #region Scopes (the workspaces the acting account belongs to)
@@ -58,7 +89,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	// —— Personal / freelancer space —————————————————————————————————————————————
 	{
 		id: "11111111-1111-4111-8111-111111111101",
-		slug: "aurora-rebrand",
+		slug: "prj-ghnkqoopo4",
 		title: "Aurora Rebrand",
 		kind: "service",
 		format: "pipeline",
@@ -80,7 +111,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "11111111-1111-4111-8111-111111111102",
-		slug: "helio-app",
+		slug: "prj-xmvjo9wga8",
 		title: "Helio App Build",
 		kind: "service",
 		format: "pipeline",
@@ -102,7 +133,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "11111111-1111-4111-8111-111111111103",
-		slug: "gradient-motion-kit",
+		slug: "prj-3389ufcjs2",
 		title: "Gradient Motion Kit",
 		kind: "service",
 		format: "one_off",
@@ -123,7 +154,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "11111111-1111-4111-8111-111111111104",
-		slug: "brand-clinic-sofia",
+		slug: "prj-zsgn999b5g",
 		title: "Brand Clinic — Sofia",
 		kind: "service",
 		format: "session",
@@ -146,7 +177,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "11111111-1111-4111-8111-111111111105",
-		slug: "mercury-landing",
+		slug: "prj-xgandqb3cs",
 		title: "Mercury Landing Page",
 		kind: "service",
 		format: "one_off",
@@ -170,7 +201,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	// —— Northwind Studio (Team, freelancer-side) ————————————————————————————————
 	{
 		id: "22222222-2222-4222-8222-222222222201",
-		slug: "northwind-atlas-portal",
+		slug: "prj-64vn8qwog8",
 		title: "Atlas Investor Portal",
 		kind: "project",
 		format: "pipeline",
@@ -192,7 +223,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "22222222-2222-4222-8222-222222222202",
-		slug: "northwind-ops-retainer",
+		slug: "prj-eangynf67d",
 		title: "Ops Design Retainer",
 		kind: "project",
 		format: "pipeline",
@@ -214,7 +245,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "22222222-2222-4222-8222-222222222203",
-		slug: "northwind-summit-deck",
+		slug: "prj-t22dcmq5fr",
 		title: "Summit Keynote Deck",
 		kind: "project",
 		format: "one_off",
@@ -237,7 +268,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	// —— Monarch Labs (Business, client-side) ————————————————————————————————————
 	{
 		id: "33333333-3333-4333-8333-333333333301",
-		slug: "monarch-design-system",
+		slug: "prj-8mzxqqn6w8",
 		title: "Monarch Design System",
 		kind: "project",
 		format: "pipeline",
@@ -259,7 +290,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "33333333-3333-4333-8333-333333333302",
-		slug: "monarch-growth-site",
+		slug: "prj-mc9r4c9ha2",
 		title: "Growth Marketing Site",
 		kind: "project",
 		format: "one_off",
@@ -280,7 +311,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "33333333-3333-4333-8333-333333333303",
-		slug: "monarch-support-maintenance",
+		slug: "prj-3dv9upprsd",
 		title: "Product Support & Maintenance",
 		kind: "project",
 		format: "pipeline",
@@ -309,7 +340,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	// shipped that before.
 	{
 		id: "33333333-3333-4333-8333-333333333304",
-		slug: "monarch-onboarding-revamp",
+		slug: "prj-tm2bjk9mdq",
 		title: "Onboarding Revamp",
 		kind: "project",
 		format: "pipeline",
@@ -333,7 +364,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "33333333-3333-4333-8333-333333333305",
-		slug: "monarch-research-sessions",
+		slug: "prj-zrjpnhzjde",
 		title: "Discovery Research Sessions",
 		kind: "project",
 		// The session branch: the form swaps ticket pricing for a per-session rate and duration, and
@@ -356,7 +387,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "33333333-3333-4333-8333-333333333306",
-		slug: "monarch-launch-teardown",
+		slug: "prj-cujw52gg3p",
 		title: "Launch Teardown",
 		kind: "project",
 		// The Direct Deliverable: a one-off that takes NO stages and is staffed by named roles instead.
@@ -383,7 +414,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	// —— Helios Corp (Organisation, buyer-only) ——————————————————————————————————
 	{
 		id: "44444444-4444-4444-8444-444444444401",
-		slug: "helios-brand-refresh",
+		slug: "prj-mvztqq7ftf",
 		title: "Helios Brand Refresh",
 		kind: "project",
 		format: "pipeline",
@@ -405,7 +436,7 @@ const PROJECTS: readonly ProjectSummary[] = [
 	},
 	{
 		id: "44444444-4444-4444-8444-444444444402",
-		slug: "helios-annual-report",
+		slug: "prj-kfxmx4m482",
 		title: "Annual Report Production",
 		kind: "project",
 		format: "one_off",

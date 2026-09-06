@@ -120,12 +120,19 @@ export async function channelHeaderFor(
 	// the client; a real freelancer opening a stage channel is assigned to it. The island re-derives this
 	// live from the dev Context Switcher after hydration, so the first byte matches the real capabilities.
 	const isReviewer = detail.viewerIsClient;
+	// Who may CHANGE the engagement's terms, as opposed to review the work done under them. The owner
+	// test is the server's own (`projects.projects.owner_user_id === viewer`, which is what
+	// `viewerIsClient` projects on this read); the admin arm comes from the chrome context, which is
+	// decoded from the access token and is the same claim the shell gates on. Neither grants ACCESS on
+	// its own — the route below re-asks, and RLS is the real gate.
+	const canConfigure = detail.viewerIsClient || context.role === "admin";
 	const visibleTabs = visibleChannelTabKeys({
 		channelKind: meta.kind,
 		sessionKind,
 		isReviewer,
 		isFreelancer: !isReviewer,
 		stageAssigned: true,
+		canConfigure,
 	});
 
 	return (
@@ -136,6 +143,7 @@ export async function channelHeaderFor(
 			starred={detail.starred}
 			visibleTabs={visibleTabs}
 			viewerIsClient={detail.viewerIsClient}
+			canConfigure={canConfigure}
 			sessionKind={sessionKind}
 			detailInfo={buildDetailInfo(detail, meta)}
 		/>

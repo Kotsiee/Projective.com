@@ -155,6 +155,11 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 										key={ref.stageId}
 										value={ref.brief}
 										minRows={4}
+										// The same 640px pane as the ticket description, but this editor shares a
+										// 482px inspector body with the intensity override and the stage task list —
+										// so its ceiling is lower, at half that body. Leaving the two editors in one
+										// modal on different rules is the inconsistency this closes.
+										maxAutoHeight="15rem"
 										aria-label={`Brief for ${ref.name}`}
 										placeholder={`Deliverables and acceptance criteria for ${ref.name}.`}
 										onValueChange={(brief: string) => props.onPatch({ brief })}

@@ -3,6 +3,7 @@ import { readActor } from "@web/utils/api-session.ts";
 import { defineReadRoute } from "@web/utils/read-endpoint.ts";
 import { toProjectsBody } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
+import { isOnboardingSim } from "@server/services/projects/setup-fixtures.ts";
 import type { ProjectSetup } from "@projective/types/projects";
 
 /**
@@ -28,7 +29,13 @@ export const handler = define.handlers(
 			if (!slug) {
 				return Response.json({ ok: false, message: "Missing project slug." }, { status: 400 });
 			}
-			return ProjectBackendService.setup(slug, readActor(ctx));
+			// The DEV-ONLY onboarding simulation. Validated against the union rather than cast, so an
+			// unknown value is dropped instead of reaching the service — and the service discards it
+			// again outside development, because a query param is a caller-controlled string and this
+			// one moves a lock.
+			const raw = ctx.url.searchParams.get("sim");
+			const sim = raw && isOnboardingSim(raw) ? raw : undefined;
+			return ProjectBackendService.setup(slug, readActor(ctx), sim);
 		},
 		toBody: toProjectsBody,
 	}),

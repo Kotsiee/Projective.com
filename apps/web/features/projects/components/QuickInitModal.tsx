@@ -114,11 +114,15 @@ export interface QuickInitModalProps {
 	scopeId: string;
 	onClose: () => void;
 	/**
-	 * Called with the created project's canonical **uuid** once the write succeeds — never the slug.
-	 * A uuid cannot collide, cannot be squatted, and does not change when the owner renames the
-	 * project, which a title-derived slug does on the first rename.
+	 * Called with the created project's **slug** once the write succeeds — never the uuid.
+	 *
+	 * This was the uuid, on the reasoning that a slug is title-derived and therefore stale as soon as
+	 * the owner renames the project. That reasoning was right about the old slug and is now moot: a
+	 * slug is minted opaquely and the database refuses to let it move, so it cannot go stale. The uuid,
+	 * meanwhile, no longer routes at all — handing one to this callback navigates the buyer straight
+	 * from a successful create to a 404.
 	 */
-	onCreated: (id: string) => void;
+	onCreated: (slug: string) => void;
 }
 
 /** Which control a server-side field error belongs to. */
@@ -303,7 +307,7 @@ export function QuickInitModal(props: QuickInitModalProps): JSX.Element | null {
 		const res = await ProjectSidebarService.create(buildPayload());
 		submitting.value = false;
 		if (res.ok && res.data) {
-			onCreated(res.data.id);
+			onCreated(res.data.slug);
 			return;
 		}
 		const next: Partial<Record<FieldKey, string>> = {};

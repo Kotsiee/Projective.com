@@ -35,89 +35,90 @@
  * canvas · guest aside-offset body · full-bleed mobile column).
  */
 .pf-scope {
-	container-type: inline-size;
-	container-name: pf;
-	display: flex;
-	flex-direction: column;
-	flex: 1 1 auto;
-	min-inline-size: 0;
+    container-type: inline-size;
+    container-name: pf;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
 
 .pf {
-	/*
+    /*
 	 * One spacing vocabulary for the whole surface, with deliberate contrast: regions are twice as far
 	 * apart as blocks, blocks twice as far as rows. The previous 24/32/24/24 sequence made the Overview
 	 * preamble and the work region read as equal-weight siblings.
 	 */
-	--pf-region-gap: var(--space-7); /* identity | overview | work */
-	--pf-block-gap: var(--space-5); /* blocks inside a region */
+    --pf-region-gap: var(--space-7);
+    /* identity | overview | work */
+    --pf-block-gap: var(--space-5);
+    /* blocks inside a region */
 
-	display: flex;
-	flex-direction: column;
-	/*
+    display: flex;
+    flex-direction: column;
+    /*
 	 * Proximity does the grouping: identity and the Overview are ONE group ("who this is") and sit a
 	 * block-gap apart; the work is the other, and the region gap is the boundary between them. The
 	 * previous 24 / 32 / 24 / 24 sequence made every seam the same size, so the preamble and the
 	 * primary content read as equal-weight siblings.
 	 */
-	gap: var(--pf-block-gap);
-	inline-size: 100%;
-	min-inline-size: 0;
-	padding-inline: var(--space-6);
-	padding-block: var(--space-4) var(--space-8);
-	color: var(--on-surface);
+    gap: var(--pf-block-gap);
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding-inline: var(--space-6);
+    padding-block: var(--space-4) var(--space-8);
+    color: var(--on-surface);
 }
 
 /* Tab region below the permanent Overview: the tab bar + the routed tab body. `scroll-margin` lands
    the Reviews click-through (`#profile-sections`) below the sticky top bar + header band, not under them. */
 .pf-sections {
-	display: flex;
-	flex-direction: column;
-	min-inline-size: 0;
-	/* The group boundary: `.pf`'s own gap already supplies the block interval, so add the difference. */
-	margin-block-start: calc(var(--pf-region-gap) - var(--pf-block-gap));
-	scroll-margin-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) +
-		var(--space-3));
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    /* The group boundary: `.pf`'s own gap already supplies the block interval, so add the difference. */
+    margin-block-start: calc(var(--pf-region-gap) - var(--pf-block-gap));
+    scroll-margin-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-3));
 }
 
 .pf-tabpanel {
-	margin-block-start: var(--pf-block-gap);
-	min-inline-size: 0;
+    margin-block-start: var(--pf-block-gap);
+    min-inline-size: 0;
 }
 
 /* Tighter cadence once the CONTAINER (not the window) is narrow — the regions still read apart. */
 @container pf (max-width: 44rem) {
-	.pf {
-		--pf-region-gap: var(--space-6);
-		padding-inline: var(--space-4);
-	}
+    .pf {
+        --pf-region-gap: var(--space-6);
+        padding-inline: var(--space-4);
+    }
 }
 
 @media (max-width: 767px) {
-	.pf {
-		padding-inline: var(--space-3);
-	}
+    .pf {
+        padding-inline: var(--space-3);
+    }
 }
 
 .pf-hairline {
-	block-size: 0;
-	margin: 0;
-	border: none;
-	border-block-start: var(--hairline);
+    block-size: 0;
+    margin: 0;
+    border: none;
+    border-block-start: var(--hairline);
 }
 
 /* #endregion */
 
 /* #region Header — banner (7:2) + overlapping avatar (§C.4) */
 .pf-header {
-	display: flex;
-	flex-direction: column;
-	/*
+    display: flex;
+    flex-direction: column;
+    /*
 	 * A positioning context for the owner's "change cover image" control, which sits over the banner.
 	 * `position: relative` does NOT re-base a fixed descendant (only transform/filter/backdrop-filter
 	 * and containment do), so the Asset Picker's portalled dialog is unaffected.
 	 */
-	position: relative;
+    position: relative;
 }
 
 /*
@@ -129,20 +130,20 @@
  * ratio, Decision #4 — it was never a mandate for the profile cover.)
  */
 .pf-header__banner {
-	aspect-ratio: 7 / 2;
-	inline-size: 100%;
-	max-block-size: 15rem;
-	background-size: cover;
-	background-position: center;
-	background-color: var(--surface-2);
-	border-radius: var(--radius-container-lg, var(--radius-xl));
+    aspect-ratio: 7 / 2;
+    inline-size: 100%;
+    max-block-size: 15rem;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--surface-2);
+    border-radius: var(--radius-container-lg, var(--radius-xl));
 }
 
 .pf-header__bar {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--space-4);
-	padding-inline: var(--space-3);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding-inline: var(--space-3);
 }
 
 /* The avatar overlaps the banner's bottom edge with a thick page-background border. */
@@ -153,17 +154,17 @@
  * rule below, so the responsive override still has one place to change the overlap.
  */
 .pf-header__avatarwrap {
-	position: relative;
-	flex: none;
-	margin-block-start: -56px;
+    position: relative;
+    flex: none;
+    margin-block-start: -56px;
 }
 
 .pf-header__avatar {
-	flex: none;
-	margin-block-start: 0;
-	border: 4px solid var(--surface);
-	background: var(--surface);
-	box-shadow: var(--elevation-low);
+    flex: none;
+    margin-block-start: 0;
+    border: 4px solid var(--surface);
+    background: var(--surface);
+    box-shadow: var(--elevation-low);
 }
 
 /*
@@ -171,131 +172,136 @@
  * WCAG 2.2 AA 2.5.8 floor — regardless of the glyph inside it.
  */
 .pf-header__imgbtn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	border: 1px solid var(--outline-variant);
-	border-radius: var(--radius-pill);
-	background: var(--surface);
-	color: var(--text-secondary);
-	cursor: pointer;
-	box-shadow: var(--elevation-low);
-	transition: background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    box-shadow: var(--elevation-low);
+    transition: background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
+
 .pf-header__imgbtn:hover {
-	background: var(--surface-2);
-	color: var(--on-surface);
+    background: var(--surface-2);
+    color: var(--on-surface);
 }
+
 .pf-header__imgbtn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
 }
+
 .pf-header__imgbtn--banner {
-	position: absolute;
-	inset-block-start: var(--space-3);
-	inset-inline-end: var(--space-3);
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-end: var(--space-3);
 }
+
 .pf-header__imgbtn--avatar {
-	position: absolute;
-	inset-block-end: 0;
-	inset-inline-end: 0;
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-end: 0;
 }
+
 @media (prefers-reduced-motion: reduce) {
-	.pf-header__imgbtn {
-		transition: none;
-	}
+    .pf-header__imgbtn {
+        transition: none;
+    }
 }
 
 .pf-header__id {
-	flex: 1 1 auto;
-	min-inline-size: 0;
-	padding-block-start: var(--space-3);
-	display: flex;
-	flex-direction: column;
-	gap: 0.15rem;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-block-start: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
 }
 
 .pf-header__name {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin: 0;
-	font-size: 1.5rem;
-	font-weight: 700;
-	line-height: 1.15;
-	letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
 }
 
 /* Verification tier badge beside the name (relocated from the Overview, Part 1.3). Reuses `.pf-tier`. */
 .pf-header__tier {
-	flex: none;
-	align-self: center;
+    flex: none;
+    align-self: center;
 }
 
 .pf-header__idline {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: var(--space-2);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
 }
 
 .pf-header__handle {
-	font-size: 0.9rem;
-	color: var(--text-secondary);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
 }
 
 /* Entity-type badge (Part 1) — a tonal chip (non-interactive, §B.4) with a per-kind accent tint. */
 .pf-entity {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
-	padding: 0.15rem 0.55rem;
-	font-size: 0.72rem;
-	font-weight: 600;
-	line-height: 1.4;
-	letter-spacing: 0.01em;
-	color: var(--entity-accent, var(--on-surface));
-	background: color-mix(in srgb, var(--entity-accent, var(--primary)) 12%, transparent);
-	border-radius: var(--radius-full);
-	cursor: default;
-	white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+    color: var(--entity-accent, var(--on-surface));
+    background: color-mix(in srgb, var(--entity-accent, var(--primary)) 12%, transparent);
+    border-radius: var(--radius-full);
+    cursor: default;
+    white-space: nowrap;
 }
 
 .pf-entity__icon {
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
-	flex: none;
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
+    flex: none;
 }
 
 /* Per-kind accents — token-only. Sellers lean primary; buyer entities take distinct tonal hues so the
    four named types (Freelancer · Team · Business · Organisation) + Client read apart at a glance. */
 .pf-entity[data-kind="freelancer"] {
-	--entity-accent: var(--primary);
+    --entity-accent: var(--primary);
 }
 
 .pf-entity[data-kind="client"] {
-	--entity-accent: var(--secondary, var(--primary));
+    --entity-accent: var(--secondary, var(--primary));
 }
 
 .pf-entity[data-kind="team"] {
-	--entity-accent: var(--tertiary, var(--primary));
+    --entity-accent: var(--tertiary, var(--primary));
 }
 
 .pf-entity[data-kind="business"] {
-	--entity-accent: var(--success, var(--primary));
+    --entity-accent: var(--success, var(--primary));
 }
 
 .pf-entity[data-kind="organisation"] {
-	--entity-accent: var(--warning, var(--primary));
+    --entity-accent: var(--warning, var(--primary));
 }
 
 .pf-header__headline {
-	margin: 0.35rem 0 0;
-	font-size: 0.95rem;
-	color: var(--on-surface-variant, var(--text-secondary));
+    margin: 0.35rem 0 0;
+    font-size: 0.95rem;
+    color: var(--on-surface-variant, var(--text-secondary));
 }
 
 /*
@@ -313,31 +319,31 @@
  * full-width row under the identity.
  */
 .pf-header__actions {
-	display: none;
-	flex: none;
-	padding-block-start: var(--space-3);
+    display: none;
+    flex: none;
+    padding-block-start: var(--space-3);
 }
 
 @media (max-width: 767px) {
-	.pf-header__bar {
-		flex-wrap: wrap;
-	}
+    .pf-header__bar {
+        flex-wrap: wrap;
+    }
 
-	.pf-header__actions {
-		display: block;
-		flex: 1 0 100%;
-		padding-block-start: var(--space-4);
-	}
+    .pf-header__actions {
+        display: block;
+        flex: 1 0 100%;
+        padding-block-start: var(--space-4);
+    }
 
-	.pf-actions {
-		justify-content: stretch;
-	}
+    .pf-actions {
+        justify-content: stretch;
+    }
 
-	.pf-actions > .pf-btn {
-		flex: 1 1 0;
-		justify-content: center;
-		min-block-size: 40px;
-	}
+    .pf-actions>.pf-btn {
+        flex: 1 1 0;
+        justify-content: center;
+        min-block-size: 40px;
+    }
 }
 
 /*
@@ -346,79 +352,80 @@
  * inverts. Scale the disc and its negative offset together against the CONTAINER.
  */
 @container pf (max-width: 34rem) {
-	/* The overlap lives on the wrapper (see `.pf-header__avatarwrap`); the disc keeps its own size. */
-	.pf-header .pf-header__avatarwrap {
-		margin-block-start: -36px;
-	}
 
-	.pf-header .pf-header__avatar {
-		inline-size: 72px;
-		block-size: 72px;
-		border-width: 3px;
-	}
+    /* The overlap lives on the wrapper (see `.pf-header__avatarwrap`); the disc keeps its own size. */
+    .pf-header .pf-header__avatarwrap {
+        margin-block-start: -36px;
+    }
 
-	.pf-header__name {
-		font-size: 1.25rem;
-	}
+    .pf-header .pf-header__avatar {
+        inline-size: 72px;
+        block-size: 72px;
+        border-width: 3px;
+    }
+
+    .pf-header__name {
+        font-size: 1.25rem;
+    }
 }
 
 /* #endregion */
 
 /* #region Action buttons (Follow · Hire/Message · Edit) */
 .pf-actions {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-	justify-content: flex-end;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .pf-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 0.5rem 0.95rem;
-	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 600;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	text-decoration: none;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.5rem 0.95rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-btn:hover {
-	background: var(--surface-3, var(--surface-2));
+    background: var(--surface-3, var(--surface-2));
 }
 
 .pf-btn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-btn__icon {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
 }
 
 .pf-btn--primary {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 .pf-btn--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
+    background: color-mix(in srgb, var(--primary) 88%, black);
 }
 
 .pf-btn--follow[data-on="true"] {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 /* #endregion */
@@ -435,16 +442,16 @@
  * rule (0,3,0 vs 0,1,0), so it wins regardless of stylesheet order.
  */
 .ui-middle-nav--has-header:not(:has(.pf-stickyhead[data-condensed="true"])) {
-	--shell-frame-inset-block: var(--shell-topbar-h);
+    --shell-frame-inset-block: var(--shell-topbar-h);
 }
 
 .pf-stickyhead {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	inline-size: 100%;
-	/*
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    inline-size: 100%;
+    /*
 	* The band collapses to 0 until the body header scrolls away, then reveals to the header-band
 	* height. `max-block-size` (not `block-size`) drives the reveal: the sticky sits in the middle-nav
 	* frame's grid/flex context, which overrides an explicit `block-size` (verified) — only the
@@ -452,48 +459,48 @@
 	* pins the exact height; the `auto` header-band grid row then follows the content. Animating
 	* `max-block-size` gives the smooth slide (jump-to-final under reduced-motion, below).
 	*/
-	min-block-size: 0;
-	max-block-size: 0;
-	padding-inline: var(--space-4);
-	overflow: hidden;
-	opacity: 0;
-	/* `visibility: hidden` removes every descendant (Follow/Hire/Edit) from the tab order AND the
+    min-block-size: 0;
+    max-block-size: 0;
+    padding-inline: var(--space-4);
+    overflow: hidden;
+    opacity: 0;
+    /* `visibility: hidden` removes every descendant (Follow/Hire/Edit) from the tab order AND the
 	accessibility tree while collapsed — so keyboard users never land on the invisible controls. It
 	is delayed by the transition so it flips only after the collapse animation completes. */
-	visibility: hidden;
-	transition:
-		max-block-size var(--dur-medium) var(--spring-standard),
-		opacity var(--dur-fast) var(--ease-standard),
-		visibility 0s linear var(--dur-medium);
+    visibility: hidden;
+    transition:
+        max-block-size var(--dur-medium) var(--spring-standard),
+        opacity var(--dur-fast) var(--ease-standard),
+        visibility 0s linear var(--dur-medium);
 }
 
 .pf-stickyhead[data-condensed="true"] {
-	min-block-size: var(--shell-midnav-header-h);
-	max-block-size: var(--shell-midnav-header-h);
-	opacity: 1;
-	visibility: visible;
-	transition:
-		max-block-size var(--dur-medium) var(--spring-standard),
-		opacity var(--dur-fast) var(--ease-standard),
-		visibility 0s;
+    min-block-size: var(--shell-midnav-header-h);
+    max-block-size: var(--shell-midnav-header-h);
+    opacity: 1;
+    visibility: visible;
+    transition:
+        max-block-size var(--dur-medium) var(--spring-standard),
+        opacity var(--dur-fast) var(--ease-standard),
+        visibility 0s;
 }
 
 .pf-stickyhead__id {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-	text-decoration: none;
-	color: var(--on-surface);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    text-decoration: none;
+    color: var(--on-surface);
 }
 
 .pf-stickyhead__name {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
-	font-size: 0.9rem;
-	font-weight: 600;
-	white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 /*
@@ -502,19 +509,19 @@
  * authoritative rendered slightly soft. `--icon-sm` is 1rem, the nearest step.
  */
 .pf-stickyhead__verified {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	color: var(--primary);
-	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
-	--icon-knockout: var(--on-primary);
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    color: var(--primary);
+    /* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+    --icon-knockout: var(--on-primary);
 }
 
 .pf-stickyhead__handle {
-	font-size: 0.8rem;
-	color: var(--text-secondary);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /*
@@ -527,18 +534,18 @@
  * the case §B.8.2 exempts. Net: exactly one filled CTA on screen at every width and every scroll offset.
  */
 .pf-stickyhead__actions {
-	display: none;
+    display: none;
 }
 
 @media (max-width: 767px) {
-	.pf-stickyhead__actions {
-		display: block;
-	}
+    .pf-stickyhead__actions {
+        display: block;
+    }
 }
 
 .pf-stickyhead__actions .pf-btn {
-	padding: 0.3rem 0.7rem;
-	font-size: 0.78rem;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.78rem;
 }
 
 /* #endregion */
@@ -554,208 +561,208 @@
  * is honest at the only moment it applies.
  */
 .pf-tabs {
-	position: sticky;
-	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
-	z-index: var(--z-raised);
-	margin-block-start: 0;
-	/* Bleed the pinned strip to the page gutters so content cannot slide past it at the edges. */
-	margin-inline: calc(var(--space-6) * -1);
-	padding-inline: var(--space-6);
-	background: var(--surface);
-	border-block-end: var(--hairline);
-	overflow-x: auto;
-	scrollbar-width: none;
+    position: sticky;
+    inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+    z-index: var(--z-raised);
+    margin-block-start: 0;
+    /* Bleed the pinned strip to the page gutters so content cannot slide past it at the edges. */
+    margin-inline: calc(var(--space-6) * -1);
+    padding-inline: var(--space-6);
+    background: var(--surface);
+    border-block-end: var(--hairline);
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
 @container pf (max-width: 44rem) {
-	.pf-tabs {
-		margin-inline: calc(var(--space-4) * -1);
-		padding-inline: var(--space-4);
-	}
+    .pf-tabs {
+        margin-inline: calc(var(--space-4) * -1);
+        padding-inline: var(--space-4);
+    }
 }
 
 /* Mobile has neither the top bar's sibling bands nor a lane — pin to the header alone. */
 @media (max-width: 767px) {
-	.pf-tabs {
-		inset-block-start: var(--shell-topbar-h);
-		margin-inline: calc(var(--space-3) * -1);
-		padding-inline: var(--space-3);
-	}
+    .pf-tabs {
+        inset-block-start: var(--shell-topbar-h);
+        margin-inline: calc(var(--space-3) * -1);
+        padding-inline: var(--space-3);
+    }
 }
 
 .pf-tabs::-webkit-scrollbar {
-	display: none;
+    display: none;
 }
 
 .pf-tabs__list {
-	display: flex;
-	flex-wrap: nowrap;
-	align-items: stretch;
-	gap: var(--space-1);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	/* Fill the strip so the right group (Reviews · More) can pin to the far edge via auto margins. */
-	inline-size: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    /* Fill the strip so the right group (Reviews · More) can pin to the far edge via auto margins. */
+    inline-size: 100%;
 }
 
 /* Each item keeps its natural width — no flex-shrink — so the island measures true widths and the
    visible tabs never squeeze/clip (the JS overflow split, not flex, decides what shows). */
 .pf-tabs__item {
-	flex: none;
-	display: flex;
+    flex: none;
+    display: flex;
 }
 
 /* Right group: Reviews pins to the far right; the More control sits at the absolute far right after it.
    When there is no Reviews tab, More itself takes the auto margin and anchors the right edge. */
 .pf-tabs__item--trailing,
 .pf-tabs__item--more {
-	margin-inline-start: auto;
+    margin-inline-start: auto;
 }
 
-.pf-tabs__item--trailing ~ .pf-tabs__item--more {
-	margin-inline-start: 0;
+.pf-tabs__item--trailing~.pf-tabs__item--more {
+    margin-inline-start: 0;
 }
 
 .pf-tab {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.6rem 0.75rem;
-	font-size: 0.85rem;
-	font-weight: 600;
-	color: var(--text-secondary);
-	text-decoration: none;
-	white-space: nowrap;
-	transition: color var(--dur-fast) var(--ease-standard);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-tab::after {
-	content: "";
-	position: absolute;
-	inset-inline: 0.5rem;
-	inset-block-end: -1px;
-	block-size: 2px;
-	border-radius: 2px 2px 0 0;
-	background: var(--primary);
-	transform: scaleX(0);
-	transform-origin: center;
-	transition: transform var(--dur-medium) var(--spring-standard);
+    content: "";
+    position: absolute;
+    inset-inline: 0.5rem;
+    inset-block-end: -1px;
+    block-size: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--primary);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform var(--dur-medium) var(--spring-standard);
 }
 
 .pf-tab:hover {
-	color: var(--on-surface);
+    color: var(--on-surface);
 }
 
 .pf-tab[data-active="true"] {
-	color: var(--on-surface);
-	font-weight: 600;
+    color: var(--on-surface);
+    font-weight: 600;
 }
 
 .pf-tab[data-active="true"]::after {
-	transform: scaleX(1);
+    transform: scaleX(1);
 }
 
 .pf-tab:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
-	border-radius: var(--radius-sm);
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    border-radius: var(--radius-sm);
 }
 
 .pf-tab__icon {
-	display: inline-flex;
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
+    display: inline-flex;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
 }
 
 /* More ▾ overflow control — a text tab with a rotating caret; no box (it lives on the same hairline). */
 .pf-tab--more {
-	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 600;
-	background: transparent;
-	border: none;
-	cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    cursor: pointer;
 }
 
 .pf-tab--more[data-active="true"],
 .pf-tab--more[data-open="true"] {
-	color: var(--on-surface);
+    color: var(--on-surface);
 }
 
 .pf-tab__more-caret {
-	inline-size: 1rem;
-	block-size: 1rem;
-	flex: none;
-	/* The shared chevron glyph points right (›); rotate it to a downward ▾. */
-	transform: rotate(90deg);
-	transition: transform var(--dur-fast) var(--ease-standard);
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: none;
+    /* The shared chevron glyph points right (›); rotate it to a downward ▾. */
+    transform: rotate(90deg);
+    transition: transform var(--dur-fast) var(--ease-standard);
 }
 
 .pf-tab--more[data-open="true"] .pf-tab__more-caret {
-	transform: rotate(-90deg);
+    transform: rotate(-90deg);
 }
 
 /* Compact menu popover — actions render DIRECTLY inside `ui-popover__content` (no intermediary
    wrapper): the Popover already supplies the elevated surface/hairline/radius/shadow, so `.pf-menu`
    only tightens the content padding into a dense column. Shared by the tab overflow + lane kebab. */
 .ui-popover.pf-menu .ui-popover__content {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	padding: var(--space-1);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-1);
 }
 
 .pf-tabs__menu-item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.5rem var(--space-2);
-	font-size: 0.85rem;
-	color: var(--on-surface);
-	text-decoration: none;
-	border-radius: var(--radius-base);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.5rem var(--space-2);
+    font-size: 0.85rem;
+    color: var(--on-surface);
+    text-decoration: none;
+    border-radius: var(--radius-base);
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-tabs__menu-item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-tabs__menu-item:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-tabs__menu-item[data-active="true"] {
-	color: var(--on-surface);
-	font-weight: 600;
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--on-surface);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .pf-tabs__menu-icon {
-	display: inline-flex;
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
-	color: var(--text-secondary);
+    display: inline-flex;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
+    color: var(--text-secondary);
 }
 
 @media (max-width: 767px) {
-	.pf-tab__label {
-		display: none;
-	}
+    .pf-tab__label {
+        display: none;
+    }
 
-	.pf-tab[data-active="true"] .pf-tab__label {
-		display: inline;
-	}
+    .pf-tab[data-active="true"] .pf-tab__label {
+        display: inline;
+    }
 
-	/* Keep the More control legible on mobile (its label is its only affordance). */
-	.pf-tab--more .pf-tab__label {
-		display: inline;
-	}
+    /* Keep the More control legible on mobile (its label is its only affordance). */
+    .pf-tab--more .pf-tab__label {
+        display: inline;
+    }
 }
 
 /* #endregion */
@@ -777,211 +784,211 @@
  * out as a wrapping row rather than a tall column, directly under the Overview.
  */
 .pf-meta {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-inline-size: 0;
 }
 
 /* The lane variant is a section of the lane panel — no box of its own. */
 .pf-meta--lane {
-	padding-block-start: var(--space-3);
-	margin-block-start: var(--space-1);
-	border-block-start: var(--hairline);
+    padding-block-start: var(--space-3);
+    margin-block-start: var(--space-1);
+    border-block-start: var(--hairline);
 }
 
 /* The body fallback exists only where the lane cannot. */
 .pf-meta--inline {
-	display: none;
+    display: none;
 }
 
 @media (max-width: 767px) {
-	.pf-meta--inline {
-		display: flex;
-		gap: var(--space-4);
-	}
+    .pf-meta--inline {
+        display: flex;
+        gap: var(--space-4);
+    }
 
-	/* Wide-and-short beats tall-and-narrow in a single mobile column. */
-	.pf-meta--inline .pf-meta__rows {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2) var(--space-5);
-	}
+    /* Wide-and-short beats tall-and-narrow in a single mobile column. */
+    .pf-meta--inline .pf-meta__rows {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2) var(--space-5);
+    }
 }
 
 /* #endregion */
 
 /* #region Meta block content */
 .pf-meta__panel {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
 }
 
 /* The mobile fallback sits on the page surface, not the lane's, so it takes one tonal step. */
 .pf-meta--inline .pf-meta__panel {
-	padding: var(--space-4);
-	background: var(--surface-1);
-	border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    background: var(--surface-1);
+    border-radius: var(--radius-lg);
 }
 
 .pf-meta__rows {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-inline-size: 0;
 }
 
 .pf-meta__row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	min-inline-size: 0;
-	font-size: 0.9rem;
-	color: var(--on-surface);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    font-size: 0.9rem;
+    color: var(--on-surface);
 }
 
 .pf-meta__icon {
-	inline-size: var(--icon-md);
-	block-size: var(--icon-md);
-	flex: none;
-	color: var(--text-secondary);
+    inline-size: var(--icon-md);
+    block-size: var(--icon-md);
+    flex: none;
+    color: var(--text-secondary);
 }
 
 /* Location + response share ONE text size + weight so the two rows read consistently (Part 3). */
 .pf-meta__rowtext {
-	min-inline-size: 0;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--on-surface);
+    min-inline-size: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--on-surface);
 }
 
 /* Meta panel header — online status (left) · local clock + availability (right), per the reference. */
 .pf-meta__head {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: var(--space-3);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
 }
 
 .pf-meta__clockblock {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	gap: 0.1rem;
-	text-align: end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    text-align: end;
 }
 
 .pf-meta__avail {
-	font-size: 0.72rem;
-	color: var(--text-secondary);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
 }
 
 .pf-clock {
-	display: inline-flex;
-	flex-direction: column;
-	align-items: flex-end;
-	line-height: 1.1;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.1;
 }
 
 .pf-clock__zone {
-	font-size: 0.68rem;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	color: var(--text-secondary);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
 }
 
 .pf-clock__time {
-	font-size: 1.05rem;
-	font-weight: 700;
-	font-variant-numeric: tabular-nums;
-	color: var(--on-surface);
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
 }
 
 /* Reviews block — the whole block is the click-through into the Reviews tab (Part 1.2 / 3.2). It is
    interactive, so it may carry a hover tint (§B.4 tier 5); it bleeds to the host's gutters so the
    target reads as a row of the lane rather than a floating box inside it. */
 .pf-revpanel {
-	border-radius: var(--radius-base);
-	text-decoration: none;
-	color: inherit;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    border-radius: var(--radius-base);
+    text-decoration: none;
+    color: inherit;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-revpanel:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-meta--lane .pf-revpanel {
-	padding: var(--space-2);
-	margin-inline: calc(var(--space-2) * -1);
-	margin-block-start: var(--space-2);
-	border-block-start: var(--hairline);
-	padding-block-start: var(--space-3);
+    padding: var(--space-2);
+    margin-inline: calc(var(--space-2) * -1);
+    margin-block-start: var(--space-2);
+    border-block-start: var(--hairline);
+    padding-block-start: var(--space-3);
 }
 
 .pf-revpanel:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-revpanel__head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .pf-revpanel__head .pf-meta__heading {
-	margin: 0;
+    margin: 0;
 }
 
 .pf-revpanel__chevron {
-	inline-size: 1rem;
-	block-size: 1rem;
-	flex: none;
-	color: var(--text-secondary);
-	transition:
-		transform var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: none;
+    color: var(--text-secondary);
+    transition:
+        transform var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-revpanel:hover .pf-revpanel__chevron {
-	transform: translateX(2px);
-	color: var(--on-surface);
+    transform: translateX(2px);
+    color: var(--on-surface);
 }
 
 .pf-meta__heading {
-	margin: 0 0 var(--space-1);
-	font-size: 0.72rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-secondary);
+    margin: 0 0 var(--space-1);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
 }
 
 .pf-rep {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
 }
 
 .pf-rep__track {
-	display: flex;
-	flex-direction: column;
-	gap: 0.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
 }
 
 .pf-rep__role {
-	font-size: 0.75rem;
-	font-weight: 600;
-	color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
 }
 
 .pf-rep__empty {
-	margin: 0;
-	padding: var(--space-4) 0;
-	font-size: 0.85rem;
-	color: var(--text-secondary);
+    margin: 0;
+    padding: var(--space-4) 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 /*
@@ -991,100 +998,100 @@
  * over the create action that otherwise only exists in the panel head.
  */
 .pf-empty {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--space-2);
-	margin: 0;
-	padding-block: var(--space-7);
-	text-align: center;
-	color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    padding-block: var(--space-7);
+    text-align: center;
+    color: var(--text-secondary);
 }
 
 .pf-empty__mark {
-	inline-size: var(--icon-xl);
-	block-size: var(--icon-xl);
-	color: var(--text-secondary);
-	opacity: 0.55;
+    inline-size: var(--icon-xl);
+    block-size: var(--icon-xl);
+    color: var(--text-secondary);
+    opacity: 0.55;
 }
 
 .pf-empty__title {
-	font-size: 0.95rem;
-	font-weight: 600;
-	color: var(--on-surface);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--on-surface);
 }
 
 .pf-empty__note {
-	max-inline-size: 44ch;
-	font-size: 0.85rem;
-	line-height: 1.5;
-	color: var(--text-secondary);
+    max-inline-size: 44ch;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
 }
 
 .pf-empty__action {
-	margin-block-start: var(--space-2);
+    margin-block-start: var(--space-2);
 }
 
 /* #endregion */
 
 /* #region Online status + tier badges */
 .pf-online {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--on-surface);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--on-surface);
 }
 
 .pf-online__dot {
-	inline-size: 0.6rem;
-	block-size: 0.6rem;
-	border-radius: 50%;
-	background: var(--text-secondary);
-	flex: none;
+    inline-size: 0.6rem;
+    block-size: 0.6rem;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    flex: none;
 }
 
 .pf-online[data-online="true"] .pf-online__dot {
-	background: var(--success, var(--primary));
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, var(--primary)) 22%, transparent);
+    background: var(--success, var(--primary));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, var(--primary)) 22%, transparent);
 }
 
 .pf-online[data-online="true"] .pf-online__label {
-	color: var(--success, var(--primary));
+    color: var(--success, var(--primary));
 }
 
 .pf-tiers {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
 }
 
 .pf-tier {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.3rem;
-	padding: 0.25rem 0.55rem;
-	font-size: 0.74rem;
-	font-weight: 600;
-	color: var(--on-surface);
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	border-radius: var(--radius-full);
-	cursor: default;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+    border-radius: var(--radius-full);
+    cursor: default;
 }
 
 .pf-tier__mark {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	color: var(--primary);
-	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
-	--icon-knockout: var(--on-primary);
-	flex: none;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    color: var(--primary);
+    /* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+    --icon-knockout: var(--on-primary);
+    flex: none;
 }
 
 .pf-tier[data-tier="architect"] {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 /*
@@ -1093,13 +1100,13 @@
  * `--on-primary` on a seal that is ALSO `--on-primary`, and the tick would vanish into the star.
  */
 .pf-tier[data-tier="architect"] .pf-tier__mark {
-	color: var(--on-primary);
-	--icon-knockout: var(--primary);
+    color: var(--on-primary);
+    --icon-knockout: var(--primary);
 }
 
 .pf-tiers[data-size="sm"] .pf-tier {
-	padding: 0.15rem 0.45rem;
-	font-size: 0.68rem;
+    padding: 0.15rem 0.45rem;
+    font-size: 0.68rem;
 }
 
 /* #endregion */
@@ -1113,38 +1120,38 @@
  * is roughly half as tall and the story keeps its measure either way.
  */
 .pf-about {
-	display: flex;
-	flex-direction: column;
-	gap: var(--pf-block-gap, var(--space-5));
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-block-gap, var(--space-5));
+    min-inline-size: 0;
 }
 
 .pf-about__facets {
-	display: flex;
-	flex-direction: column;
-	gap: var(--pf-block-gap, var(--space-5));
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-block-gap, var(--space-5));
+    min-inline-size: 0;
 }
 
 /* Two columns once the CONTAINER can seat a readable measure plus a facet column — not before. The
    threshold is 56rem because a 1280px viewport resolves this container to 921px (57.6rem): the most
    common desktop must land on the useful side of the branch, not one rem short of it. */
 @container pf (min-width: 56rem) {
-	.pf-about {
-		display: grid;
-		grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-		column-gap: var(--space-7);
-		align-items: start;
-	}
+    .pf-about {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        column-gap: var(--space-7);
+        align-items: start;
+    }
 }
 
 .pf-about__heading {
-	margin: 0 0 var(--space-2);
-	font-size: 0.78rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-secondary);
+    margin: 0 0 var(--space-2);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
 }
 
 /*
@@ -1153,134 +1160,134 @@
  * table is ever a descendant of this rule (the /wallet band contract, Decision #60).
  */
 .pf-story__text {
-	margin: 0;
-	max-inline-size: 72ch;
-	font-size: 0.95rem;
-	line-height: 1.6;
-	color: var(--on-surface);
-	white-space: pre-wrap;
+    margin: 0;
+    max-inline-size: 72ch;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--on-surface);
+    white-space: pre-wrap;
 }
 
 /* Owner inline-edit: the clickable read state. */
 .pf-story__editable {
-	position: relative;
-	display: block;
-	inline-size: 100%;
-	text-align: start;
-	padding: var(--space-2);
-	margin: calc(var(--space-2) * -1);
-	font: inherit;
-	color: inherit;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: text;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    position: relative;
+    display: block;
+    inline-size: 100%;
+    text-align: start;
+    padding: var(--space-2);
+    margin: calc(var(--space-2) * -1);
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: text;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-story__editable:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .pf-story__editable:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-story__hint {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.3rem;
-	margin-block-start: var(--space-2);
-	font-size: 0.74rem;
-	font-weight: 500;
-	color: var(--text-secondary);
-	opacity: 0;
-	transition: opacity var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-block-start: var(--space-2);
+    font-size: 0.74rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 .pf-story__hint-icon {
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
 }
 
 .pf-story__editable:hover .pf-story__hint,
 .pf-story__editable:focus-visible .pf-story__hint {
-	opacity: 1;
+    opacity: 1;
 }
 
 .pf-story__actions {
-	display: flex;
-	gap: var(--space-2);
-	margin-block-start: var(--space-2);
+    display: flex;
+    gap: var(--space-2);
+    margin-block-start: var(--space-2);
 }
 
 /* Skills — styled tag chips (Part 2.1), each an Explore-filter anchor wrapping a `ui-tag`. */
 .pf-skills {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
 }
 
 .pf-skill {
-	display: inline-flex;
-	text-decoration: none;
-	border-radius: var(--radius-full);
-	transition: opacity var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    text-decoration: none;
+    border-radius: var(--radius-full);
+    transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 .pf-skill:hover {
-	opacity: 0.85;
+    opacity: 0.85;
 }
 
 .pf-skill:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 /* The `ui-tag` icon slot has no intrinsic size and the category glyph carries no width/height, so give
    it an explicit box — otherwise the skill icons collapse to 0 (retain the icons, keep the tags). */
 .pf-skill .ui-tag__icon {
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
 }
 
 .pf-skill .ui-tag__icon svg {
-	inline-size: 100%;
-	block-size: 100%;
+    inline-size: 100%;
+    block-size: 100%;
 }
 
 /* Languages — split `Language | Proficiency` pills (Part 2.2). The `|` is the level segment's leading
    hairline; the two halves carry distinct fills so the split reads at a glance. */
 .pf-langs {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .pf-langpill {
-	display: inline-flex;
-	align-items: stretch;
-	font-size: 0.8rem;
-	border-radius: var(--radius-full);
-	overflow: hidden;
-	background: var(--surface-2);
+    display: inline-flex;
+    align-items: stretch;
+    font-size: 0.8rem;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    background: var(--surface-2);
 }
 
 .pf-langpill__lang {
-	padding: 0.3rem 0.65rem;
-	font-weight: 600;
-	color: var(--on-surface);
+    padding: 0.3rem 0.65rem;
+    font-weight: 600;
+    color: var(--on-surface);
 }
 
 .pf-langpill__level {
-	padding: 0.3rem 0.65rem;
-	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
-	border-inline-start: var(--hairline);
+    padding: 0.3rem 0.65rem;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    border-inline-start: var(--hairline);
 }
 
 /*
@@ -1291,108 +1298,108 @@
  * pill picks up a faint wash so the two halves stay a unit.
  */
 .pf-langpill[data-level="native"] {
-	--lang-accent: var(--success);
+    --lang-accent: var(--success);
 }
 
 .pf-langpill[data-level="fluent"] {
-	--lang-accent: var(--secondary, var(--primary));
+    --lang-accent: var(--secondary, var(--primary));
 }
 
 .pf-langpill[data-level="conversational"],
 .pf-langpill[data-level="basic"] {
-	--lang-accent: var(--warning);
+    --lang-accent: var(--warning);
 }
 
 .pf-langpill[data-level="native"],
 .pf-langpill[data-level="fluent"],
 .pf-langpill[data-level="conversational"],
 .pf-langpill[data-level="basic"] {
-	background: color-mix(in srgb, var(--lang-accent) var(--tint-soft), var(--surface-2));
+    background: color-mix(in srgb, var(--lang-accent) var(--tint-soft), var(--surface-2));
 }
 
 .pf-langpill[data-level="native"] .pf-langpill__level,
 .pf-langpill[data-level="fluent"] .pf-langpill__level,
 .pf-langpill[data-level="conversational"] .pf-langpill__level,
 .pf-langpill[data-level="basic"] .pf-langpill__level {
-	color: color-mix(in srgb, var(--lang-accent) 82%, var(--on-surface));
-	background: color-mix(in srgb, var(--lang-accent) var(--tint-strong), transparent);
-	border-inline-start-color: color-mix(in srgb, var(--lang-accent) 30%, transparent);
-	font-weight: 600;
+    color: color-mix(in srgb, var(--lang-accent) 82%, var(--on-surface));
+    background: color-mix(in srgb, var(--lang-accent) var(--tint-strong), transparent);
+    border-inline-start-color: color-mix(in srgb, var(--lang-accent) 30%, transparent);
+    font-weight: 600;
 }
 
 /* Clients / Worked with — mini-cards with a prominent logo (Part 2.3), rendered through the reusable
    Carousel (a responsive, drag-swipeable track). Interactive, so a full border is allowed (§B.4). */
 .pf-clients-carousel {
-	margin-block-start: var(--space-1);
+    margin-block-start: var(--space-1);
 }
 
 .pf-clientcard {
-	display: flex;
+    display: flex;
 }
 
 /* A card sitting in a carousel slide fills its slot (the slide owns the inter-card gutter). */
 .pf-clientcard--slide {
-	inline-size: 100%;
+    inline-size: 100%;
 }
 
 .pf-clientcard__link {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-3);
-	min-inline-size: 0;
-	inline-size: 100%;
-	text-decoration: none;
-	color: var(--on-surface);
-	background: var(--surface-1);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    min-inline-size: 0;
+    inline-size: 100%;
+    text-decoration: none;
+    color: var(--on-surface);
+    background: var(--surface-1);
+    border: var(--hairline);
+    border-radius: var(--radius-lg);
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        border-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-clientcard__link:not(.pf-clientcard__link--static):hover {
-	background: var(--surface-2);
-	border-color: color-mix(in srgb, var(--outline) 40%, transparent);
+    background: var(--surface-2);
+    border-color: color-mix(in srgb, var(--outline) 40%, transparent);
 }
 
 .pf-clientcard__link--static {
-	cursor: default;
+    cursor: default;
 }
 
 .pf-clientcard__logo {
-	flex: none;
-	border-radius: var(--radius-base);
-	background: var(--surface);
+    flex: none;
+    border-radius: var(--radius-base);
+    background: var(--surface);
 }
 
 .pf-clientcard__name {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.3rem;
-	font-size: 0.9rem;
-	font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    font-weight: 600;
 }
 
 /* Same crest, same ramp step (§B.7.3): 0.9rem was 14.4px, an off-ramp fractional box. */
 .pf-clientcard__check {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	color: var(--primary);
-	/* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
-	--icon-knockout: var(--on-primary);
-	flex: none;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    color: var(--primary);
+    /* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+    --icon-knockout: var(--on-primary);
+    flex: none;
 }
 
 /* #endregion */
 
 /* #region Tab panels */
 .pf-panel {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
 }
 
 /*
@@ -1404,907 +1411,915 @@
  * The head is not rendered at all when there is no owner action, rather than reserving an empty row.
  */
 .pf-panel__head {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-3);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
 }
 
 .pf-create {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
-	padding: 0.4rem 0.75rem;
-	font: inherit;
-	font-size: 0.8rem;
-	font-weight: 600;
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-create:hover {
-	background: color-mix(in srgb, var(--primary) 16%, transparent);
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 
 .pf-create:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-create__icon {
-	inline-size: 1rem;
-	block-size: 1rem;
+    inline-size: 1rem;
+    block-size: 1rem;
 }
 
 .pf-modal__body {
-	margin: 0;
-	font-size: 0.9rem;
-	line-height: 1.6;
-	color: var(--on-surface);
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--on-surface);
 }
 
 .pf-modal__actions {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--space-2);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
 }
 
 .pf-projects {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
 }
 
 .pf-projects__sub {
-	margin: 0 0 var(--space-3);
-	font-size: 0.8rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-	color: var(--text-secondary);
+    margin: 0 0 var(--space-3);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
 }
 
 /* #endregion */
 
 /* #region Structured lists (education / experience / members / reviews) */
 .pf-timeline {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .pf-tl {
-	display: flex;
-	gap: var(--space-3);
-	align-items: flex-start;
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
 }
 
 .pf-tl__logo {
-	flex: none;
+    flex: none;
 }
 
 .pf-tl__body {
-	display: flex;
-	flex-direction: column;
-	gap: 0.1rem;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-inline-size: 0;
 }
 
 .pf-tl__title {
-	font-size: 0.95rem;
-	font-weight: 600;
-	color: var(--on-surface);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--on-surface);
 }
 
 .pf-tl__org {
-	font-size: 0.85rem;
-	color: var(--on-surface);
+    font-size: 0.85rem;
+    color: var(--on-surface);
 }
 
 .pf-tl__dates {
-	font-size: 0.78rem;
-	color: var(--text-secondary);
+    font-size: 0.78rem;
+    color: var(--text-secondary);
 }
 
 .pf-tl__summary {
-	margin: 0.35rem 0 0;
-	font-size: 0.85rem;
-	line-height: 1.5;
-	color: var(--text-secondary);
+    margin: 0.35rem 0 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
 }
 
 .pf-members {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-	gap: var(--space-4);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .pf-member__link {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 0.3rem;
-	padding: var(--space-3);
-	text-align: center;
-	text-decoration: none;
-	color: var(--on-surface);
-	border-radius: var(--radius-lg);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: var(--space-3);
+    text-align: center;
+    text-decoration: none;
+    color: var(--on-surface);
+    border-radius: var(--radius-lg);
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-member__link:hover {
-	background: var(--surface-1);
+    background: var(--surface-1);
 }
 
 .pf-member__name {
-	font-size: 0.85rem;
-	font-weight: 600;
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
 .pf-member__role {
-	font-size: 0.75rem;
-	color: var(--text-secondary);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
 /* Multi-department chips on a member card (Part 2.2) — shown only when a member spans >1 department. */
 .pf-member__depts {
-	display: inline-flex;
-	flex-wrap: wrap;
-	justify-content: center;
-	gap: 0.25rem;
-	margin-block-start: 0.15rem;
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+    margin-block-start: 0.15rem;
 }
 
 .pf-member__deptchip {
-	padding: 0.05rem 0.4rem;
-	font-size: 0.66rem;
-	font-weight: 600;
-	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-	border-radius: var(--radius-full);
+    padding: 0.05rem 0.4rem;
+    font-size: 0.66rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+    border-radius: var(--radius-full);
 }
 
 /* Department-grouped members (Organisation) — one section per department, set off by spacing + type
    weight + a single hairline (§B.4), never boxed. */
 .pf-deptgroups {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
 }
 
 .pf-deptgroup__head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-block-end: var(--space-3);
-	padding-block-end: var(--space-2);
-	border-block-end: var(--hairline);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-end: var(--space-3);
+    padding-block-end: var(--space-2);
+    border-block-end: var(--hairline);
 }
 
 .pf-deptgroup__icon {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
-	color: var(--text-secondary);
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
+    color: var(--text-secondary);
 }
 
 .pf-deptgroup__name {
-	margin: 0;
-	font-size: 0.95rem;
-	font-weight: 700;
-	letter-spacing: -0.01em;
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
 }
 
 /* Count chip — a tonal pill, not a bordered box. */
 .pf-deptgroup__count {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-inline-size: 1.4rem;
-	padding: 0.05rem 0.4rem;
-	font-size: 0.72rem;
-	font-weight: 600;
-	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	border-radius: var(--radius-full);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 1.4rem;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    border-radius: var(--radius-full);
 }
 
 /* Departments overview (Departments tab) — tonal cards (§B.4: tint, no four-sided border). */
 .pf-depts {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-	gap: var(--space-4);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .pf-deptcard {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
-	padding: var(--space-4);
-	background: var(--surface-1);
-	border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    background: var(--surface-1);
+    border-radius: var(--radius-lg);
 }
 
 .pf-deptcard__head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .pf-deptcard__icon {
-	inline-size: var(--icon-md);
-	block-size: var(--icon-md);
-	flex: none;
-	color: var(--text-secondary);
+    inline-size: var(--icon-md);
+    block-size: var(--icon-md);
+    flex: none;
+    color: var(--text-secondary);
 }
 
 .pf-deptcard__name {
-	font-size: 1rem;
-	font-weight: 700;
-	color: var(--on-surface);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--on-surface);
 }
 
 .pf-deptcard__count {
-	margin-inline-start: auto;
-	font-size: 0.75rem;
-	color: var(--text-secondary);
+    margin-inline-start: auto;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
 .pf-deptcard__summary {
-	margin: 0;
-	font-size: 0.85rem;
-	line-height: 1.5;
-	color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
 }
 
 /* The lead link is the one interactive element in the card, so it may carry a hover affordance. */
 .pf-deptcard__lead {
-	display: inline-flex;
-	align-items: baseline;
-	gap: 0.35rem;
-	font-size: 0.8rem;
-	text-decoration: none;
-	color: var(--on-surface);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    text-decoration: none;
+    color: var(--on-surface);
 }
 
 .pf-deptcard__leadlabel {
-	color: var(--text-secondary);
+    color: var(--text-secondary);
 }
 
 .pf-deptcard__leadhandle {
-	font-weight: 600;
-	color: var(--primary);
+    font-weight: 600;
+    color: var(--primary);
 }
 
 .pf-deptcard__lead:hover .pf-deptcard__leadhandle {
-	text-decoration: underline;
+    text-decoration: underline;
 }
 
 .pf-deptcard__lead:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
-	border-radius: var(--radius-sm);
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    border-radius: var(--radius-sm);
 }
 
 .pf-reviews {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
 }
 
 .pf-reviews__summary {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-6);
-	padding: var(--space-4);
-	background: var(--surface-1);
-	border-radius: var(--radius-lg);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+    padding: var(--space-4);
+    background: var(--surface-1);
+    border-radius: var(--radius-lg);
 }
 
 .pf-review-list {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-	margin: 0;
-	padding: 0;
-	list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .pf-review {
-	display: flex;
-	gap: var(--space-3);
-	padding-block-end: var(--space-4);
-	border-block-end: var(--hairline);
+    display: flex;
+    gap: var(--space-3);
+    padding-block-end: var(--space-4);
+    border-block-end: var(--hairline);
 }
 
 .pf-review:last-child {
-	border-block-end: none;
-	padding-block-end: 0;
+    border-block-end: none;
+    padding-block-end: 0;
 }
 
 .pf-review__body {
-	display: flex;
-	flex-direction: column;
-	gap: 0.25rem;
-	min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-inline-size: 0;
 }
 
 .pf-review__head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .pf-review__author {
-	font-size: 0.9rem;
-	font-weight: 700;
-	color: var(--on-surface);
-	text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--on-surface);
+    text-decoration: none;
 }
 
 .pf-review__author:hover {
-	color: var(--primary);
-	text-decoration: underline;
+    color: var(--primary);
+    text-decoration: underline;
 }
 
 .pf-review__role {
-	font-size: 0.7rem;
-	font-weight: 600;
-	padding: 0.1rem 0.45rem;
-	border-radius: var(--radius-full);
-	color: var(--text-secondary);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-review__role[data-role="client"] {
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .pf-review__meta {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
 }
 
 .pf-review__date {
-	font-size: 0.75rem;
-	color: var(--text-secondary);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
 .pf-review__text {
-	margin: 0.15rem 0 0;
-	font-size: 0.9rem;
-	line-height: 1.55;
-	color: var(--on-surface);
+    margin: 0.15rem 0 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--on-surface);
 }
 
 .pf-review__context {
-	font-size: 0.75rem;
-	color: var(--text-secondary);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
 /* #endregion */
 
 /* #region Action lane — mirrors ui-app-shell__sidebar; expanded stack + collapsed rail */
 .pf-lane {
-	display: flex;
-	flex-direction: column;
-	block-size: 100%;
-	min-block-size: 100%;
-	font-size: 0.85rem;
-	color: var(--on-surface);
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 100%;
+    font-size: 0.85rem;
+    color: var(--on-surface);
 }
 
 .pf-lane__full {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	block-size: 100%;
-	display: flex;
-	flex-direction: column;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    block-size: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Lane header — mirrors `.proj-detail__header` (Part 4.2): a fixed-height strip with Back / title on
    the left and the Share (+ owner Settings) icon buttons on the right, over a single hairline. */
 .pf-lane__header {
-	flex: none;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-2);
-	block-size: var(--shell-midnav-header-h);
-	padding-inline: var(--space-3);
-	border-block-end: var(--hairline);
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    block-size: var(--shell-midnav-header-h);
+    padding-inline: var(--space-3);
+    border-block-end: var(--hairline);
 }
 
 .pf-lane__back {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 0.3rem 0.5rem 0.3rem 0.35rem;
-	font-size: 0.8125rem;
-	font-weight: 500;
-	color: var(--text-secondary);
-	text-decoration: none;
-	background: transparent;
-	border-radius: var(--radius-full);
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.3rem 0.5rem 0.3rem 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    background: transparent;
+    border-radius: var(--radius-full);
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-lane__back:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
+    color: var(--on-surface);
+    background: var(--surface-2);
 }
 
 .pf-lane__back-icon {
-	inline-size: 1rem;
-	block-size: 1rem;
+    inline-size: 1rem;
+    block-size: 1rem;
 }
 
 /* Share · Star · Kebab, grouped on the right (`margin-auto` keeps them right-aligned even with no Back). */
 .pf-lane__header-actions {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	margin-inline-start: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-inline-start: auto;
 }
 
 .pf-lane__headbtn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	text-decoration: none;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-lane__headbtn:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
+    color: var(--on-surface);
+    background: var(--surface-2);
 }
 
 .pf-lane__headbtn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-lane__headbtn svg {
-	inline-size: var(--icon-md);
-	block-size: var(--icon-md);
+    inline-size: var(--icon-md);
+    block-size: var(--icon-md);
 }
 
 /* Favourited star + open kebab — tinted; the star fills to signal the active state. */
 .pf-lane__headbtn[data-on="true"],
 .pf-lane__headbtn[data-open="true"] {
-	color: var(--on-surface);
-	background: var(--surface-2);
+    color: var(--on-surface);
+    background: var(--surface-2);
 }
 
 .pf-lane__headbtn[data-on="true"] {
-	color: var(--primary);
+    color: var(--primary);
 }
 
 .pf-lane__headbtn[data-on="true"] svg {
-	fill: currentColor;
+    fill: currentColor;
 }
 
 /* Kebab dropdown menu — items render DIRECTLY inside `ui-popover__content` via the shared `.pf-menu`
    compact-popover style (above); no intermediary `.pf-lane__menu` wrapper. */
 .pf-lane__menu-item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: 0.5rem var(--space-2);
-	font: inherit;
-	font-size: 0.85rem;
-	color: var(--on-surface);
-	text-align: start;
-	text-decoration: none;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.5rem var(--space-2);
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--on-surface);
+    text-align: start;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-lane__menu-item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-lane__menu-item:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-lane__menu-item[data-danger="true"] {
-	color: var(--danger);
+    color: var(--danger);
 }
 
 .pf-lane__menu-item svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
 }
 
 /* Action stack (visitor / owner default) — availability toggle · Follow|Message row · full-width CTA. */
 .pf-lane__actions {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding-block: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
 }
 
 .pf-lane__row {
-	display: flex;
-	gap: var(--space-2);
+    display: flex;
+    gap: var(--space-2);
 }
 
 /* Follow / Message row buttons — equal-width, secondary by default. */
 .pf-lanebtn {
-	flex: 1 1 0;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-1);
-	min-block-size: 40px;
-	padding: 0 var(--space-2);
-	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 600;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	text-decoration: none;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    min-block-size: 40px;
+    padding: 0 var(--space-2);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-lanebtn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface-2));
+    background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface-2));
 }
 
 .pf-lanebtn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-lanebtn--follow[data-on="true"],
 .pf-lanebtn--primary {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 .pf-lanebtn--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
+    background: color-mix(in srgb, var(--primary) 88%, black);
 }
 
 .pf-lanebtn__icon {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: none;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
 }
 
 /* Main CTA — full-width primary action (Hire, or owner Edit profile). */
 .pf-lanecta {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	min-block-size: 44px;
-	font: inherit;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	text-decoration: none;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    min-block-size: 44px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-lanecta--primary {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 .pf-lanecta--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
+    background: color-mix(in srgb, var(--primary) 88%, black);
 }
 
 .pf-lanecta:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 /* Profile ⁄ Availability segmented toggle (Part 4.3) — shown only when availability is configured. */
 .pf-availtoggle {
-	display: flex;
-	padding: 3px;
-	background: var(--surface-2);
-	border-radius: var(--radius-full);
+    display: flex;
+    padding: 3px;
+    background: var(--surface-2);
+    border-radius: var(--radius-full);
 }
 
 .pf-availtoggle__opt {
-	flex: 1 1 0;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-block-size: 30px;
-	padding: 0 var(--space-2);
-	font-size: 0.8rem;
-	font-weight: 600;
-	color: var(--text-secondary);
-	text-decoration: none;
-	border-radius: var(--radius-full);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 30px;
+    padding: 0 var(--space-2);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-full);
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-availtoggle__opt[data-active="true"] {
-	color: var(--on-surface);
-	background: var(--surface);
-	box-shadow: var(--elevation-low);
+    color: var(--on-surface);
+    background: var(--surface);
+    box-shadow: var(--elevation-low);
 }
 
 .pf-availtoggle__opt:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-lane__scroll {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
-	padding: var(--space-2);
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
 }
 
 .pf-lane__nav {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
 }
 
 .pf-lane__sep {
-	margin-block: var(--space-1);
+    margin-block: var(--space-1);
 }
 
 /* Lane item — self-styled mirror of `.ui-nav-item` (so it looks right even on the guest shell where
    nav.css isn't loaded). Icon on a shared axis; label reveals beside it. */
 .pf-laneitem {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	min-block-size: 40px;
-	padding: 0 var(--space-2);
-	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 500;
-	color: var(--on-surface);
-	text-align: start;
-	text-decoration: none;
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    min-block-size: 40px;
+    padding: 0 var(--space-2);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--on-surface);
+    text-align: start;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-laneitem:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .pf-laneitem:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-laneitem.ui-nav-item--active,
 .pf-laneitem[data-on="true"] {
-	color: var(--on-surface);
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--on-surface);
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .pf-laneitem--primary {
-	color: var(--on-primary);
-	background: var(--primary);
+    color: var(--on-primary);
+    background: var(--primary);
 }
 
 .pf-laneitem--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
+    background: color-mix(in srgb, var(--primary) 88%, black);
 }
 
 .pf-laneitem .ui-nav-item__icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 24px;
-	block-size: 24px;
-	flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 24px;
+    block-size: 24px;
+    flex: none;
 }
 
 .pf-laneitem .ui-nav-item__label {
-	min-inline-size: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Footer collapse toggle. */
 .pf-lane__footer {
-	flex: none;
-	position: sticky;
-	inset-block-end: 0;
-	display: flex;
-	padding: var(--space-2);
-	background: var(--surface-1);
-	border-block-start: var(--hairline);
+    flex: none;
+    position: sticky;
+    inset-block-end: 0;
+    display: flex;
+    padding: var(--space-2);
+    background: var(--surface-1);
+    border-block-start: var(--hairline);
 }
 
 .pf-lane__collapse {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--shell-nav-block);
-	block-size: var(--shell-nav-block);
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--shell-nav-block);
+    block-size: var(--shell-nav-block);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-lane__collapse:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
+    color: var(--on-surface);
+    background: var(--surface-2);
 }
 
 .pf-lane__collapse:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-lane__collapse .shell-toggle {
-	inline-size: 22px;
-	block-size: 22px;
-	stroke-width: 1.8;
+    inline-size: 22px;
+    block-size: 22px;
+    stroke-width: 1.8;
 }
 
 /* The collapse toggle's dotted bar rests at the expanded (right) edge; scoped so it tracks THIS lane. */
 .pf-lane .pf-lane__collapse .shell-toggle__bar {
-	transition: transform var(--dur-medium) var(--spring-standard);
-	transform: translateX(6px);
+    transition: transform var(--dur-medium) var(--spring-standard);
+    transform: translateX(6px);
 }
 
 /* #endregion */
 
 /* #region Collapsed icon rail (density switch on .ui-splitter[data-mode="collapsed"]) */
 .pf-lane__rail {
-	display: none;
+    display: none;
 }
 
 .ui-splitter[data-mode="collapsed"] .pf-lane__full {
-	display: none;
+    display: none;
 }
 
 .ui-splitter[data-mode="collapsed"] .pf-lane__rail {
-	display: flex;
+    display: flex;
 }
 
-/* Widen the collapsed lane so its icon rail matches the global sidebar's collapsed rail. */
-.ui-splitter[data-mode="collapsed"]:has(.pf-lane) {
-	inline-size: calc(var(--shell-sidebar-w) + 6px);
+/*
+ * Widen the collapsed lane so its icon rail matches the global sidebar's collapsed rail.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
+ */
+.ui-middle-nav:has(.pf-lane) {
+    --shell-lane-rail-w: calc(var(--shell-sidebar-w) + 6px);
 }
 
 .pf-lane__rail {
-	flex: 1 1 auto;
-	min-block-size: 0;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--space-1);
-	padding-block: var(--space-2);
-	overflow-y: auto;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding-block: var(--space-2);
+    overflow-y: auto;
 }
 
 .pf-lane__rail-group {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--space-1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
 }
 
 .pf-lane__rail-group--bottom {
-	margin-block-start: auto;
+    margin-block-start: auto;
 }
 
 .pf-railbtn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--shell-nav-block);
-	block-size: var(--shell-nav-block);
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-base);
-	color: var(--on-surface-variant, var(--text-secondary));
-	background: transparent;
-	text-decoration: none;
-	cursor: pointer;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--shell-nav-block);
+    block-size: var(--shell-nav-block);
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-base);
+    color: var(--on-surface-variant, var(--text-secondary));
+    background: transparent;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
 }
 
 .pf-railbtn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
 }
 
 .pf-railbtn--active,
 .pf-railbtn[data-active="true"],
 .pf-railbtn[data-on="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--on-surface);
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--on-surface);
 }
 
 .pf-railbtn:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    outline: none;
+    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
 }
 
 .pf-railbtn svg {
-	inline-size: 24px;
-	block-size: 24px;
+    inline-size: 24px;
+    block-size: 24px;
 }
 
 .pf-railbtn--toggle .shell-toggle {
-	inline-size: 22px;
-	block-size: 22px;
-	stroke-width: 1.8;
+    inline-size: 22px;
+    block-size: 22px;
+    stroke-width: 1.8;
 }
 
 .pf-lane .pf-railbtn--toggle .shell-toggle__bar {
-	transition: transform var(--dur-medium) var(--spring-standard);
-	transform: translateX(0);
+    transition: transform var(--dur-medium) var(--spring-standard);
+    transform: translateX(0);
 }
 
 /* #endregion */
@@ -2319,57 +2334,58 @@
  * so it nests cleanly inside the profile split/tab column instead of adding a viewport of blank height.
  */
 .pf .ex {
-	min-block-size: 0;
-	background: transparent;
+    min-block-size: 0;
+    background: transparent;
 }
 
 /* DataView (teams/businesses grid⇄list) — spacing only; card look comes from the explore CSS above. */
 .pf-entitygrid {
-	margin-block-start: 0;
+    margin-block-start: 0;
 }
 
 /* #endregion */
 
 /* #region Availability + not-found */
 .pf-avail-status {
-	margin: 0 0 var(--space-2);
-	font-size: 1rem;
-	font-weight: 600;
-	color: var(--on-surface);
+    margin: 0 0 var(--space-2);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--on-surface);
 }
 
 .pf-notfound {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--space-3);
-	padding-block: var(--space-8);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding-block: var(--space-8);
 }
 
 .pf-notfound__title {
-	margin: 0;
-	font-size: 1.5rem;
-	font-weight: 700;
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
 }
 
 .pf-notfound__note {
-	margin: 0;
-	font-size: 0.95rem;
-	color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
 }
 
 /* #endregion */
 
 /* #region Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.pf-stickyhead,
-	.pf-tab::after,
-	.pf-lane__collapse .shell-toggle__bar,
-	.pf-railbtn--toggle .shell-toggle__bar,
-	.pf-story__editable,
-	.pf-story__hint {
-		transition-duration: 0ms;
-	}
+
+    .pf-stickyhead,
+    .pf-tab::after,
+    .pf-lane__collapse .shell-toggle__bar,
+    .pf-railbtn--toggle .shell-toggle__bar,
+    .pf-story__editable,
+    .pf-story__hint {
+        transition-duration: 0ms;
+    }
 }
 
 /* #endregion */
@@ -2385,12 +2401,12 @@
  * (The `.ui-middle-nav--has-header` inset rule is frame-scoped and simply never matches here.)
  */
 .guest-shell .pf-sections {
-	scroll-margin-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
+    scroll-margin-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
 }
 
 /* The pinned tab strip re-bases on the pill site header (there is no top bar + reserved band here). */
 .guest-shell .pf-tabs {
-	inset-block-start: var(--site-header-h, 5.5rem);
+    inset-block-start: var(--site-header-h, 5.5rem);
 }
 
 /*
@@ -2400,11 +2416,11 @@
  * flash-of-wrong-width). Mirrors the `.ui-splitter[data-mode="collapsed"]` rules above.
  */
 :root[data-guest-nav="collapsed"] .ui-guest-aside .pf-lane__full {
-	display: none;
+    display: none;
 }
 
 :root[data-guest-nav="collapsed"] .ui-guest-aside .pf-lane__rail {
-	display: flex;
+    display: flex;
 }
 
 /* #endregion */

@@ -66,9 +66,17 @@
 	display: flex;
 }
 
-/* Scoped with `:has` so only the FILES lane takes this width — every other lane keeps its own. */
-.ui-splitter[data-mode="collapsed"]:has(.fh-rail) {
-	inline-size: var(--fh-rail-w);
+/*
+ * The FILES lane's collapsed rail width.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
+ */
+.ui-middle-nav:has(.fh-rail) {
+	--shell-lane-rail-w: var(--fh-rail-w);
 }
 /* #endregion */
 

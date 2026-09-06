@@ -358,14 +358,17 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	}
 
 	/**
-	 * A minted draft — close the modal and route to its Stage-2 workspace by canonical **uuid**. Not
-	 * the slug: the owner's first act on that surface is usually to rename the project, and a slug is
-	 * derived from the title, so a slug link is stale as soon as it is used.
+	 * A minted draft — close the modal and route to its Stage-2 workspace by **slug**.
+	 *
+	 * This used to navigate by uuid, because the owner's first act on that surface is usually to rename
+	 * the project and a title-derived slug went stale the moment they did. The slug is minted opaquely
+	 * now and the database refuses to let it move, so it cannot go stale — and the uuid no longer
+	 * routes, so navigating by it would land a successful create on a 404.
 	 */
-	function onCreated(id: string): void {
+	function onCreated(slug: string): void {
 		modalOpen.value = false;
 		try {
-			globalThis.location.assign(`/projects/${id}`);
+			globalThis.location.assign(`/projects/${slug}`);
 		} catch { /* no-op */ }
 	}
 

@@ -1,6 +1,7 @@
 import { signal } from "@preact/signals";
 import {
 	hasStages,
+	pricedAtProjectLevel,
 	ROLE_SECTION_LABEL,
 	STAGE_SECTION_LABEL,
 } from "../types/projects-types.ts";
@@ -32,6 +33,7 @@ import type { ProjectSetup } from "../types/projects-types.ts";
 export type SetupSectionKey =
 	| "basics"
 	| "description"
+	| "details"
 	| "budget"
 	| "stages"
 	| "roles"
@@ -65,33 +67,63 @@ export interface SetupSectionMeta {
  *
  *  - a role-staffed engagement (`structure === "single_task"`) takes `roles` where every other takes
  *    `stages`, which is the same discrimination `setupSteps` makes when it emits its staffing row;
- *  - a stage-LESS engagement (the Has-stages toggle off) still renders the `stages` section, because
- *    that section is where the toggle itself lives — removing it would take away the only control
- *    that can turn stages back on;
+ *  - a stage-LESS engagement (the Use-stages toggle off) takes `details` INSTEAD of `stages` — the
+ *    same terms, asked flat. The toggle used to live inside the stage section, which is why that
+ *    section had to survive being turned off; it now lives in Basics, so the section it governs can
+ *    genuinely leave and be replaced rather than collapsing to the one control that undoes it;
+ *  - `budget` renders ONLY where the engagement has no stage to carry its price
+ *    ({@link pricedAtProjectLevel}). A staged run prices each stage and a flat one prices its root
+ *    stage inside `details`, so on either of those a project-level amount would be a SECOND answer to
+ *    "what does this cost" sitting beside the first — and the one the money path reads is the stage's,
+ *    since `finance.fn_hold_ticket_escrow` looks at `unit_price_cents` and nowhere else;
  *  - `attachments` is unconditional. A project with no reference files is the common case, and a
  *    section that appears only once it has content is a section nobody can add the first item to.
+ *
+ * `details` is placed directly after `description`, where the spec puts it, because on a flat project
+ * the description IS the scope and these are its terms — the two read as one statement of the work.
+ * The staged branch keeps its list in the same slot, where a run of priced stages belongs.
  */
 export function setupSections(setup: ProjectSetup): SetupSectionMeta[] {
 	const roleStaffed = setup.structure === "single_task";
-	const staffing: SetupSectionMeta = roleStaffed
-		? { key: "roles", label: ROLE_SECTION_LABEL, icon: "members" }
-		: {
+	const flat = !roleStaffed && !hasStages(setup.structure);
+
+	const sections: SetupSectionMeta[] = [
+		{ key: "basics", label: "Basics", icon: "info" },
+		{ key: "description", label: "Description", icon: "document" },
+	];
+
+	if (flat) sections.push({ key: "details", label: "Details", icon: "stages" });
+
+	if (pricedAtProjectLevel(setup.structure)) {
+		sections.push({ key: "budget", label: budgetSectionLabel(setup), icon: "wallet" });
+	}
+
+	if (roleStaffed) {
+		sections.push({ key: "roles", label: ROLE_SECTION_LABEL, icon: "members" });
+	} else if (!flat) {
+		sections.push({
 			key: "stages",
 			label: STAGE_SECTION_LABEL[setup.format],
 			icon: "stages",
-		};
+		});
+	}
 
-	return [
-		{ key: "basics", label: "Basics", icon: "info" },
-		{ key: "description", label: "Description", icon: "document" },
-		{ key: "budget", label: budgetSectionLabel(setup), icon: "wallet" },
-		staffing,
+	sections.push(
 		{ key: "attachments", label: "Attachments & NDA", icon: "attachment" },
 		{ key: "rules", label: "Terms & visibility", icon: "shield" },
-	];
+	);
+	return sections;
 }
 
-/** The heading a format gives its budget section. */
+/**
+ * The heading a format gives its budget section.
+ *
+ * Kept total over every format although only the last branch is reachable today: the section renders
+ * on {@link pricedAtProjectLevel}, which is true for `single_task` alone, and a Direct Deliverable is
+ * always a `one_off`. The other two arms exist for a legacy or hand-written row whose `format` and
+ * `structure` disagree, and so that widening the visibility rule does not also need a label written
+ * for it.
+ */
 export function budgetSectionLabel(setup: ProjectSetup): string {
 	if (setup.format === "session") return "Session pricing";
 	if (setup.format === "pipeline") return "Budget & pricing";
@@ -100,14 +132,16 @@ export function budgetSectionLabel(setup: ProjectSetup): string {
 
 /** The heading a format gives its staffing section. */
 export function staffingSectionLabel(setup: ProjectSetup): string {
-	return setup.structure === "single_task"
-		? ROLE_SECTION_LABEL
-		: STAGE_SECTION_LABEL[setup.format];
+	return setup.structure === "single_task" ? ROLE_SECTION_LABEL : STAGE_SECTION_LABEL[setup.format];
 }
 
-/** Whether the stage list itself renders, as opposed to just the toggle that turns it back on. */
+/**
+ * Whether this engagement renders the stage LIST rather than the flat Details section.
+ *
+ * False for a role-staffed engagement too, which takes neither: it has its own `roles` section.
+ */
 export function stageListVisible(setup: ProjectSetup): boolean {
-	return hasStages(setup.structure);
+	return setup.structure !== "single_task" && hasStages(setup.structure);
 }
 // #endregion
 

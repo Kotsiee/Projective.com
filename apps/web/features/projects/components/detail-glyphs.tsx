@@ -218,11 +218,6 @@ export interface ProjectViewLink {
 	icon: JSX.Element;
 	/** Sub-path segment after `/projects/{slug}` (`""` for the Details root). */
 	seg: string;
-	/**
-	 * Secondary destination — surfaced inline in the collapsed rail (which has vertical room) but
-	 * folded into the footer's "More" overflow menu so the footer stays minimalist.
-	 */
-	overflow?: boolean;
 }
 
 /**
@@ -237,8 +232,13 @@ export interface ProjectViewLink {
  * pipeline-format engagement adapts too.
  *
  * Settings is intentionally NOT a sidebar destination — consolidated project settings live inside the
- * `/edit` project page. Attachments + Finances are flagged `overflow` so the footer keeps only the
- * high-traffic views inline and tucks the rest behind a "More" menu.
+ * `/edit` project page.
+ *
+ * ORDER IS THE ONLY STATEMENT OF PRIORITY. There is no per-link "secondary" flag: the footer folds
+ * from the rightmost inward when it runs out of room, so being last IS being the first to go, and a
+ * lane wide enough for everything shows everything with no "More" menu at all. A flag saying
+ * otherwise would pin a link into the menu at every width — which is precisely what Attachments used
+ * to do, leaving a kebab on a 280px lane that had ~40px of room to spare.
  */
 export function projectViewLinks(
 	detail: ProjectDetail,
@@ -262,12 +262,12 @@ export function projectViewLinks(
 			seg: "submissions",
 		});
 	}
+	// Last, and last on purpose: the least-trafficked view is the one the footer folds away first.
 	links.push({
 		key: "attachments",
 		label: "Attachments",
 		icon: AttachmentsIcon,
 		seg: "attachments",
-		overflow: true,
 	});
 	// NOTE: a `finances` link was removed here. There is no `/projects/[slug]/finances` route, so the
 	// segment fell through to the `[channelId]` dynamic route; `resolveChannelMeta` returned null, both
