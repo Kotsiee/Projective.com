@@ -109,7 +109,10 @@ export function setupSections(setup: ProjectSetup): SetupSectionMeta[] {
 	}
 
 	sections.push(
-		{ key: "attachments", label: "Attachments & NDA", icon: "attachment" },
+		// "Attachments", not "Attachments & NDA": the NDA moved to Rules → Advanced options, where the
+		// other terms a freelancer agrees to live. A rail row naming two subjects would send the reader
+		// here looking for one of them.
+		{ key: "attachments", label: "Attachments", icon: "attachment" },
 		{ key: "rules", label: "Terms & visibility", icon: "shield" },
 	);
 	return sections;

@@ -4,14 +4,20 @@ import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { ProjectSetup } from "../types/projects-types.ts";
 import {
+	autoSaveEnabled,
 	currentSetup,
 	discardSetup,
+	isOnline,
 	requestSave,
 	setupDirty,
 	setupDraft,
+	setupQueued,
 	setupSaving,
+	setupSavedAt,
 } from "../core/setup-state.ts";
 import { useSaveShortcut } from "../hooks/useSaveShortcut.ts";
+import { useRelativeClock } from "../hooks/useRelativeClock.ts";
+import { resolveSaveStatus } from "../core/save-status.ts";
 
 /**
  * StageDetailsRig — the middle-nav FOOTER band on `/projects/[projectId]/[channelId]/details`:
@@ -69,11 +75,24 @@ export default function StageDetailsRig({ setup }: StageDetailsRigProps): JSX.El
 	/** Ctrl+S / Cmd+S, shared with the project rig so the shortcut behaves the same on both. */
 	useSaveShortcut();
 
+	/** Advances on its own so the auto-save line ages rather than freezing at "just now". */
+	const now = useRelativeClock();
+
 	const live = setupDraft.value ?? currentSetup(setup);
 	const dirty = setupDirty.value;
 	const saving = setupSaving.value;
+	const autoSave = autoSaveEnabled.value;
+	const online = isOnline.value;
 
-	const actions: RigAction[] = dirty
+	/*
+	 * Under auto-save there is no Save and no Discard — the same rule the project rig applies, and
+	 * read from the same place rather than re-decided, because the two bands edit ONE draft through
+	 * ONE store. A mode that removed the controls on one surface and left them on the other would
+	 * make "does this form save by itself" depend on which route the owner happened to be standing on.
+	 */
+	const showSaveControls = dirty && !autoSave;
+
+	const actions: RigAction[] = showSaveControls
 		? [
 			{
 				key: "save",
@@ -97,18 +116,24 @@ export default function StageDetailsRig({ setup }: StageDetailsRigProps): JSX.El
 		: [];
 
 	/*
-	 * The archived case is stated rather than hidden. Every control in the body still edits the local
-	 * draft — reading and comparing a configuration is a legitimate thing to do with a project out of
-	 * circulation — but the store refuses the write, so a band that silently offered Save would be
-	 * offering something that cannot happen.
+	 * Resolved by the shared rule, which is what keeps the two bands honest about the same draft.
+	 *
+	 * The archived case is stated rather than hidden — every control in the body still edits the local
+	 * draft, because reading and comparing a configuration is a legitimate thing to do with a project
+	 * out of circulation, but the store refuses the write, so a band that silently offered Save would
+	 * be offering something that cannot happen. That ordering now lives in `resolveSaveStatus`
+	 * alongside the offline and queued cases it has to outrank.
 	 */
-	const status = live.archivedAt !== null
-		? "Archived — changes can no longer be saved"
-		: saving
-		? "Saving…"
-		: dirty
-		? "Unsaved changes"
-		: "All changes saved";
+	const status = resolveSaveStatus({
+		saving,
+		dirty,
+		queued: setupQueued.value,
+		online,
+		archived: live.archivedAt !== null,
+		autoSave,
+		savedAt: setupSavedAt.value,
+		now: now.value,
+	});
 
 	return (
 		<div class="proj-sdrig">
@@ -118,7 +143,14 @@ export default function StageDetailsRig({ setup }: StageDetailsRigProps): JSX.El
 				 * stack, and a second region reporting the same event announces it twice.
 				 */
 			}
-			<p class="proj-sdrig__status">{status}</p>
+			<p class="proj-sdrig__status" data-tone={status.tone}>
+				{(status.tone === "offline" || status.tone === "archived") && (
+					<span class="proj-sdrig__statusmark" aria-hidden="true">
+						<Icon name={status.tone === "offline" ? "cloud-off" : "archive-box"} size="xs" />
+					</span>
+				)}
+				{status.label}
+			</p>
 
 			<div class="proj-sdrig__actions">
 				{actions.map((action) => (

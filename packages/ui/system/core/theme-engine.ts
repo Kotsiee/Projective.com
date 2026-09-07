@@ -43,6 +43,43 @@ const SEMANTIC_SEEDS: Record<string, string> = {
  * 10 the tinted case is still 6.64:1.
  */
 const HC_DELTA = 12;
+
+/**
+ * The brand pair — MODE-INVARIANT BY CONSTRUCTION (product owner, 2026-09-07).
+ *
+ * `--primary` and `--on-primary` resolve from these two constants in **both** branches, so the brand
+ * colour is byte-identical in light, dark, and both high-contrast variants: `#007680` on `#ebfdff`,
+ * always. `--primary` is the core brand identity and does not change with the theme.
+ *
+ * ## Why these bypass `fg()` / `on()`, which every other role uses
+ *
+ * Because writing the same expression in both branches would NOT have produced the same colour, and
+ * the failure was invisible in normal mode. `fgTone` widens a fill UP in dark and DOWN in light,
+ * while `onTone` does the opposite — so `fg(45)` / `on(98)` resolves to tone 45 on tone 98 in both
+ * modes ONLY while high contrast is off. Switch `data-contrast="high"` on and the dark branch lands
+ * on tone 57 over tone 86 — `#0097a4` on `#63e9f9`, measured **2.44:1**, under the 3:1 non-text
+ * floor — while light widens correctly to 8.42:1. The brand would have differed between themes in
+ * exactly the state a user turns on because they are struggling to read, which is both an
+ * accessibility failure and the opposite of the invariance this pair exists to hold.
+ *
+ * Passing raw tones removes the dependency entirely: there is no mode input left for the value to
+ * vary with.
+ *
+ * ## What this costs, stated rather than hidden
+ *
+ * `--primary` is the one role that does not widen under the high-contrast overlay; it holds 5.13:1
+ * in all four states. That is AA for normal-size text and above the 3:1 non-text floor, but it is
+ * not the ~7-8:1 a mode-adaptive pair reaches, and it is a deliberate trade of overlay response for
+ * brand constancy. It also makes `--primary` the only role whose POLARITY does not flip with the
+ * theme — dark fill, light ink, in both modes, where `--secondary`, `--tertiary` and every semantic
+ * ramp run light-fill/dark-ink in dark. `button.css` therefore cannot blend every severity in one
+ * direction, which is why the hover/active shade is a per-severity token (DESIGN_SYSTEM §B.12.4).
+ *
+ * Do not re-map either token inside a mode branch, and do not "fix" the pair by widening it: any
+ * alternate tone mapping is exactly the drift these constants exist to prevent.
+ */
+const BRAND_TONE = 55;
+const BRAND_ON_TONE = 98;
 // #endregion
 
 // #region Helpers
@@ -121,9 +158,20 @@ export function buildScheme(
 	// without flattening the depth that carries grouping.
 	const vars: Record<string, string> = dark
 		? {
-			// tone(80) on tone(20): 60 tones STRADDLING mid → 7.74:1 (AAA).
-			"--primary": hx(core.a1.tone(fg(55))),
-			"--on-primary": hx(core.a1.tone(on(98))),
+			// BRAND IDENTITY IS MODE-INVARIANT (product owner, 2026-09-07). `--primary` and
+			// `--on-primary` resolve from the SAME tones as the light branch below — tone(45) on
+			// tone(98) — so the brand colour is byte-identical in both themes. Do not re-map either
+			// token here, and do not "fix" the pair by widening it: any alternate tone mapping in this
+			// branch is exactly the drift this comment exists to prevent.
+			//
+			// The consequence is deliberate and is documented rather than hidden. tone(45) on tone(98)
+			// measures 5.13:1 — AA for normal text, not the 7:1 a straddled dark pair can reach — and it
+			// makes `--primary` the ONE role whose polarity does not flip with the theme: dark fill,
+			// light ink, in both modes, where `--secondary`, `--tertiary` and every semantic ramp run
+			// light-fill/dark-ink in dark mode. `button.css` cannot therefore blend every severity in one
+			// direction, which is why the hover/active shade is a per-severity token (§B.12.4).
+			"--primary": hx(core.a1.tone(BRAND_TONE)),
+			"--on-primary": hx(core.a1.tone(BRAND_ON_TONE)),
 			"--secondary": hx(core.a2.tone(fg(80))),
 			"--on-secondary": hx(core.a2.tone(on(20))),
 			"--tertiary": hx(core.a3.tone(fg(80))),
@@ -159,9 +207,10 @@ export function buildScheme(
 			"--focus-ring-shadow-inset": focusShadow(ringHalo, ringInk, hc, true),
 		}
 		: {
-			// Light already clears AA at tone(45)/tone(98) — 5.13:1. Left as shipped.
-			"--primary": hx(core.a1.tone(fg(45))),
-			"--on-primary": hx(core.a1.tone(on(98))),
+			// The same two constants as the dark branch, and deliberately not `fg()`/`on()`. See
+			// BRAND_TONE.
+			"--primary": hx(core.a1.tone(BRAND_TONE)),
+			"--on-primary": hx(core.a1.tone(BRAND_ON_TONE)),
 			"--secondary": hx(core.a2.tone(fg(40))),
 			"--on-secondary": hx(core.a2.tone(on(98))),
 			"--tertiary": hx(core.a3.tone(fg(40))),

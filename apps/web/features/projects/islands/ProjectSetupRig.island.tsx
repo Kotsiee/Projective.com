@@ -7,18 +7,23 @@ import { ToggleSwitch } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { type ProjectSetup, PUBLISH_LOCK_NOTICES } from "../types/projects-types.ts";
 import { useSaveShortcut } from "../hooks/useSaveShortcut.ts";
+import { useRelativeClock } from "../hooks/useRelativeClock.ts";
+import { resolveSaveStatus } from "../core/save-status.ts";
 import {
 	archiveSetup,
 	autoSaveEnabled,
 	currentSetup,
 	discardSetup,
 	hydrateAutoSave,
+	isOnline,
 	publishSetup,
 	requestSave,
 	setAutoSave,
 	setupDirty,
 	setupDraft,
+	setupQueued,
 	setupSaving,
+	setupSavedAt,
 } from "../core/setup-state.ts";
 
 /**
@@ -92,10 +97,32 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 	/** Ctrl+S / Cmd+S, shared with the single-stage rig so the shortcut behaves the same on both. */
 	useSaveShortcut();
 
+	/** Advances on its own so the auto-save line ages rather than freezing at "just now". */
+	const now = useRelativeClock();
+
 	const live = setupDraft.value ?? currentSetup(setup);
 	const dirty = setupDirty.value;
 	const saving = setupSaving.value;
 	const isDraft = live.status === "draft";
+	const autoSave = autoSaveEnabled.value;
+	const online = isOnline.value;
+	const queued = setupQueued.value;
+
+	/*
+	 * Under auto-save there is no Save and no Discard.
+	 *
+	 * Not "disabled", and not "hidden but still in the menu": a control whose entire job has been
+	 * taken over by a mode is a control that no longer exists, and the honest expression of a
+	 * capability that does not apply is ABSENCE — the same rule Publish already follows once a project
+	 * is live. Discard goes with Save deliberately, even though it would still technically do
+	 * something. Its meaning is "do not send this", and under auto-save the edit has already gone, so
+	 * a button offering to withdraw it would be describing a state the surface is no longer in.
+	 *
+	 * What replaces them is the status line, which is why that line grows a timestamp in this mode
+	 * rather than staying a bare "All changes saved" — with no control to press, the only useful thing
+	 * the band can say is when the last edit actually landed.
+	 */
+	const showSaveControls = dirty && !autoSave;
 
 	const close = () => {
 		menuOpen.value = false;
@@ -103,7 +130,7 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 
 	const actions: RigAction[] = [];
 
-	if (dirty) {
+	if (showSaveControls) {
 		actions.push({
 			key: "save",
 			label: "Save",
@@ -141,7 +168,9 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 				: `Finish ${
 					live.steps.filter((s) => s.required && !s.done).map((s) => s.label).join(" · ")
 				} to publish.`,
-			tone: dirty ? "tonal" : "primary",
+			// Leading emphasis goes to Save while Save is on screen. Under auto-save it is not, so
+			// Publish is the band's one primary rather than deferring to a control that is absent.
+			tone: showSaveControls ? "tonal" : "primary",
 			// Opens the confirmation; the write is behind `onAccept`. The `locked` test in `control`
 			// runs BEFORE this, so a Publish that is still waiting on a required step refuses on press
 			// and never reaches the dialog — the reason stays in the tooltip, where the outstanding
@@ -200,23 +229,46 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 		);
 	};
 
-	const status = saving
-		? "Saving…"
-		: dirty
-		? "Unsaved changes"
-		: isDraft
-		? "Draft — not visible to freelancers"
-		: "All changes saved";
+	/*
+	 * Resolved by the shared rule, so this band and the single-stage band cannot tell an owner two
+	 * different things about the same unsaved edit.
+	 *
+	 * The draft-status sentence this replaces ("Draft — not visible to freelancers") is dropped rather
+	 * than folded in: it describes the PROJECT's lifecycle, not whether the owner's typing has been
+	 * persisted, and the header band's ladder plus the Publish control already carry it. One line
+	 * answering two unrelated questions is a line that can only ever answer one of them at a time.
+	 */
+	const status = resolveSaveStatus({
+		saving,
+		dirty,
+		queued,
+		online,
+		archived: live.archivedAt !== null,
+		autoSave,
+		savedAt: setupSavedAt.value,
+		now: now.value,
+	});
 
 	return (
 		<div class="psu-rig">
 			{
 				/*
-				 * Not a live region: the body already announces the outcome of a save through its own
-				 * `Message`, and a second region reporting the same event announces it twice.
+				 * Not a live region: the body already announces the outcome of a save through the shared
+				 * toast stack, and a second region reporting the same event announces it twice.
+				 *
+				 * `data-tone` selects a MARK, never a colour on its own (§A.5) — and the sentence carries
+				 * the whole fact regardless, so a reader who sees neither the mark nor the tint loses
+				 * nothing.
 				 */
 			}
-			<p class="psu-rig__status">{status}</p>
+			<p class="psu-rig__status" data-tone={status.tone}>
+				{(status.tone === "offline" || status.tone === "archived") && (
+					<span class="psu-rig__statusmark" aria-hidden="true">
+						<Icon name={status.tone === "offline" ? "cloud-off" : "archive-box"} size="xs" />
+					</span>
+				)}
+				{status.label}
+			</p>
 
 			{
 				/*

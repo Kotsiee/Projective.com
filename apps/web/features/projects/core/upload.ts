@@ -106,7 +106,31 @@ export interface ProjectUploadOptions {
 	signal?: AbortSignal;
 	/** How many transfers run at once. Small on purpose; see {@link DEFAULT_CONCURRENCY}. */
 	concurrency?: number;
+	/**
+	 * One file has finished, one way or the other.
+	 *
+	 * Optional, and every existing caller correctly ignores it: they render a whole drop's outcome
+	 * from the returned {@link ProjectUploadOutcome} and have nothing to do in between. It exists for
+	 * the surfaces that show a CARD per file — a card carrying a spinner cannot be resolved by a
+	 * result that only arrives once the slowest file in the batch has finished, so without this a
+	 * small file dropped alongside a large one spins for the large one's duration and then completes
+	 * instantly, which reads as the interface having stalled.
+	 *
+	 * Reported per file rather than as progress: this module deliberately has no byte-level progress
+	 * engine (see the header), and a callback that could only ever say "0% then 100%" would be a
+	 * progress API in name only.
+	 *
+	 * Fired with the file's position in the caller's own `files` array, so a card can be matched
+	 * without relying on the name being unique — two files called `brief.pdf` from different folders
+	 * are an ordinary drop.
+	 */
+	onSettled?: (index: number, result: ProjectUploadSettlement) => void;
 }
+
+/** What became of one file, as reported to {@link ProjectUploadOptions.onSettled}. */
+export type ProjectUploadSettlement =
+	| { ok: true; assetId: string }
+	| { ok: false; message: string };
 // #endregion
 
 // #region Policy
@@ -289,6 +313,27 @@ export async function uploadForProject(
 				);
 				if ("assetId" in result) landed[index] = result.assetId;
 				else failures.push({ index, name: file.name, message: result.message });
+
+				/*
+				 * Reported inside the worker loop, so a card resolves the moment ITS file does rather
+				 * than when the batch does.
+				 *
+				 * Wrapped, because this is a caller's callback running inside the upload engine: a
+				 * consumer that throws while rendering a card would otherwise abort this worker, and the
+				 * files still queued behind it would never be attempted — one bad card would silently
+				 * cost the rest of the drop.
+				 */
+				try {
+					opts.onSettled?.(
+						index,
+						"assetId" in result
+							? { ok: true, assetId: result.assetId }
+							: { ok: false, message: result.message },
+					);
+				} catch {
+					// The batch's own result is still authoritative; a reporting failure changes nothing
+					// about what did or did not upload.
+				}
 			}
 		},
 	);

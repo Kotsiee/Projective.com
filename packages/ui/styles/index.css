@@ -68,6 +68,31 @@
     --spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
     --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
 
+    /* --- Press feedback (§B.12.1) --- One compression ramp for every pressable control, so a
+	button, a rig action and a lane icon all answer a press with the same amount of give.
+
+	Two values rather than one because compression is read RELATIVE to the control's own size: 3% off
+	a 96px-wide button is ~3px of travel, while 3% off a 32px square is under a pixel and reads as
+	nothing at all. The icon step is deeper so the smallest controls stay legible as controls.
+
+	These are the ONLY properties a press may move (§B.12.3). `transform` and `box-shadow` are
+	composited and reserve no space, so nothing around the control reflows; `padding`, `border-width`
+	and `line-height` are not available to a press because each one resizes the box and drags its
+	neighbours with it. */
+    --btn-press-scale: 0.97;
+    --btn-press-scale-icon: 0.92;
+    /* Press-in is faster than release. A press must feel like it lands under the finger, so the
+	compression is deliberately shorter than `--dur-fast`; the RETURN runs at the full token so the
+	control settles rather than snapping back. Colour and elevation ride the standard duration in the
+	same declaration, which is what keeps a hover-then-press sequence reading as one gesture. */
+    --dur-press: 50ms;
+    --btn-transition-press:
+        transform var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard),
+        border-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard),
+        box-shadow var(--dur-fast) var(--ease-standard);
+
     /* --- Overlay stacking / elevation index (§C.6, Cat 10) — one authoritative z-scale so every
 	layered surface stacks predictably.
 

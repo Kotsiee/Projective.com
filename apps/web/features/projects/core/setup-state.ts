@@ -11,6 +11,14 @@ import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { useToast } from "@projective/ui/feedback";
 import { ProjectSidebarService } from "./ProjectSidebarService.ts";
 import { resetFieldValidation } from "./setup-validation.ts";
+import { isOnline, markReachable, watchNetwork } from "@web/utils/network.ts";
+import {
+	dequeueWrite,
+	enqueueWrite,
+	listWrites,
+	peekWrite,
+	type QueuedWrite,
+} from "./offline-queue.ts";
 // `readDevSeam` is the shipping-safe contract in `@web/utils`; `watchDevSeam` is the subscription
 // half, which lives beside the projects feature's own seam consumers rather than in that module.
 import { readDevSeam } from "@web/utils/dev-seam.ts";
@@ -50,6 +58,30 @@ export const setupBaseline = signal<ProjectSetup | null>(null);
 export const setupSaving = signal<boolean>(false);
 
 /**
+ * When this device last watched a save land, as epoch milliseconds, or `null`.
+ *
+ * The auto-save presentation replaces Save · Discard with a "last updated" line, and this is the
+ * only honest source for it: `ProjectSetup` carries no `updatedAt`, so there is nothing on the
+ * server projection to render. It therefore says what it means — the last save THIS BROWSER saw —
+ * and is not offered as the project's modification time, which a second device editing the same
+ * project would contradict.
+ *
+ * Persisted per {@link LocalKeys.PROJECT_SAVED_AT} so it survives a reload, and scoped to the
+ * project id so opening a different engagement cannot inherit this one's timestamp.
+ */
+export const setupSavedAt = signal<number | null>(null);
+
+/**
+ * This project has an edit held on this device that the server has not accepted.
+ *
+ * Distinct from {@link setupDirty}, and the difference is what the surface reports. Dirty means "not
+ * sent yet" — the ordinary state of a form somebody is typing into. Queued means "sent, refused by
+ * the absence of a network, and stored", which is a promise that it will go out by itself. Only the
+ * second one licenses telling the owner they can safely close the tab.
+ */
+export const setupQueued = signal<boolean>(false);
+
+/**
  * Save · publish · archive outcomes are reported as TOASTS, not as a banner in the form.
  *
  * The two `setupError`/`setupNotice` signals this replaces rendered into a report block at the top of
@@ -81,8 +113,15 @@ let outcomeToastId: string | null = null;
 const OUTCOME_LIFE_MS = 4000;
 const REFUSAL_LIFE_MS = 6000;
 
-/** Raise the one outcome toast, retiring whichever one it supersedes. */
-function report(severity: "success" | "danger", summary: string): void {
+/**
+ * Raise the one outcome toast, retiring whichever one it supersedes.
+ *
+ * `info` is a third severity rather than a shade of the other two, and it carries a specific claim:
+ * nothing failed and nothing reached the server. A queued offline save reported as `success` would
+ * tell the owner their work is safe somewhere it is not; reported as `danger` it would ask them to
+ * act on something that is already handled.
+ */
+function report(severity: "success" | "danger" | "info", summary: string): void {
 	if (outcomeToastId) toast.remove(outcomeToastId);
 	outcomeToastId = toast.show({
 		severity,
@@ -214,7 +253,60 @@ export function seedSetup(setup: ProjectSetup): void {
 	setupBaseline.value = setup;
 	clearOutcome();
 	setupReveal.value = false;
+	setupSavedAt.value = readSavedAt(setup.id);
+	void restoreQueuedDraft(setup.id);
 }
+
+// #region The last-saved stamp
+/** The stored `{id, at}` pair, or `null` when it is absent, unparseable, or about another project. */
+function readSavedAt(projectId: string): number | null {
+	const raw = readStored("local", LocalKeys.PROJECT_SAVED_AT);
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw) as { id?: unknown; at?: unknown };
+		if (parsed.id !== projectId || typeof parsed.at !== "number") return null;
+		// A timestamp from the future is a clock that has been corrected backwards since it was
+		// written. Rendering it would produce "last updated in 3 hours", so it is discarded rather
+		// than clamped — there is no honest value to clamp it to.
+		return parsed.at <= Date.now() ? parsed.at : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Record that a save landed, for this project, now. */
+function stampSavedAt(projectId: string): void {
+	const at = Date.now();
+	setupSavedAt.value = at;
+	writeStored("local", LocalKeys.PROJECT_SAVED_AT, JSON.stringify({ id: projectId, at }));
+}
+// #endregion
+
+// #region Offline restore
+/**
+ * Adopt an edit this device made offline and has not managed to send.
+ *
+ * The SSR copy stays the BASELINE — it is genuinely what the server holds — while the stored working
+ * copy becomes the draft, so the form reopens exactly as the owner left it and reads as dirty, which
+ * it is. Adopting the stored copy as both would report the outage's edits as saved.
+ *
+ * Only ever runs on a fresh seed, and only writes if the draft is still the one it was seeded with:
+ * the read is asynchronous, and an owner who started typing during it must not have their first
+ * keystrokes overwritten by a restore they have already moved past.
+ */
+async function restoreQueuedDraft(projectId: string): Promise<void> {
+	const queued = await peekWrite(projectId);
+	if (!queued || seededId !== projectId) return;
+	setupQueued.value = true;
+	if (setupDraft.peek()?.id === projectId && !setupDirty.peek()) {
+		setupDraft.value = queued.draft;
+	}
+	// Back online with something owed: send it without waiting to be asked. The owner queued this
+	// edit deliberately, and making them press Save again for work they have already done is asking
+	// them to repeat a decision.
+	if (isOnline.peek()) void flushQueuedWrites();
+}
+// #endregion
 
 // #region Onboarding simulation (development only)
 /**
@@ -284,13 +376,22 @@ export function patchSetup(patch: ProjectSetupPatch): void {
 	autoSaveHeld = false;
 }
 
-/** Throw away every unsaved edit and return to the server's copy. */
+/**
+ * Throw away every unsaved edit and return to the server's copy.
+ *
+ * Also drops whatever this project had QUEUED, and that is the whole point rather than a tidy-up.
+ * Discard is the owner saying these edits should not exist; leaving the queued copy behind would
+ * send them the next time the connection came back, silently undoing the discard hours later with no
+ * press anywhere to explain it.
+ */
 export function discardSetup(): void {
 	const base = setupBaseline.value;
 	if (!base) return;
 	setupDraft.value = base;
 	clearOutcome();
 	setupReveal.value = false;
+	setupQueued.value = false;
+	void dequeueWrite(base.id);
 }
 
 /**
@@ -311,6 +412,10 @@ export function resetSetupState(): void {
 	setupDraft.value = null;
 	setupBaseline.value = null;
 	setupSaving.value = false;
+	setupSavedAt.value = null;
+	// The QUEUE is deliberately not cleared — it is durable by design and survives this surface. Only
+	// the in-memory flag is reset, and the next seed re-derives it from the store.
+	setupQueued.value = false;
 	clearOutcome();
 	resetFieldValidation();
 }
@@ -426,20 +531,73 @@ async function commit(
 	payload: UpdateProject,
 	notice: string,
 ): Promise<boolean> {
+	const draft = setupDraft.peek();
+
+	/*
+	 * Offline: store it and say so, rather than sending into the dark.
+	 *
+	 * Checked BEFORE the request rather than reading the failure afterwards, because the two are not
+	 * the same event. A transport failure could be an outage or a server that is down, and the two
+	 * want opposite handling — one is worth replaying automatically, the other would replay a payload
+	 * something has already refused, forever. `navigator.onLine === false` is the one signal that
+	 * distinguishes them, and it is only trusted in this direction (see `utils/network.ts`).
+	 *
+	 * The BASELINE deliberately does not move. Advancing it would make the form clean, retire the
+	 * Save control and leave the owner with no way to act if the flush later failed permanently — the
+	 * server does not have this configuration, and the surface must not imply that it does.
+	 */
+	if (draft && !isOnline.peek()) {
+		await enqueueWrite({
+			projectId: draft.id,
+			slug: draft.slug,
+			payload,
+			draft,
+			queuedAt: Date.now(),
+			title: draft.title,
+		});
+		setupQueued.value = true;
+		report("info", "You are offline — saved on this device and queued to sync.");
+		return false;
+	}
+
 	setupSaving.value = true;
 	clearOutcome();
 	// The exact object the payload was built from. `patchSetup` replaces the draft rather than mutating
 	// it, so identity is an exact answer to "has the owner typed since this request left".
-	const sent = setupDraft.peek();
+	// `draft` is the exact object the payload was built from. `patchSetup` replaces the draft rather
+	// than mutating it, so identity is an exact answer to "has the owner typed since this request
+	// left" — and it is peeked before the request, with no `await` between, so it names the state
+	// that was sent.
+	const sent = draft;
 	// The simulation rides the save as well as the read, or the two disagree: the form would be
 	// drawing locks computed from a simulated projection while the guard judged the payload against
 	// the real one, and a control the form disabled would be the only one the server allowed.
 	const res = await ProjectSidebarService.update(projectRef, payload, onboardingSim());
 	setupSaving.value = false;
 	if (!res.ok || !res.data) {
+		/*
+		 * The connection may have dropped DURING the request, which `navigator.onLine` now reports and
+		 * the pre-flight check could not have seen. Re-testing here rather than inferring an outage
+		 * from the failure keeps the distinction the pre-flight check draws: a refusal by a reachable
+		 * server is reported and dropped, and only an actual absence of network is queued.
+		 */
+		if (sent && !isOnline.peek()) {
+			await enqueueWrite({
+				projectId: sent.id,
+				slug: sent.slug,
+				payload,
+				draft: sent,
+				queuedAt: Date.now(),
+				title: sent.title,
+			});
+			setupQueued.value = true;
+			report("info", "You went offline mid-save — it is stored here and queued to sync.");
+			return false;
+		}
 		reportError(res.message ?? "That did not save — please try again.");
 		return false;
 	}
+	markReachable();
 	setupBaseline.value = res.data.setup;
 	/*
 	 * The server's copy replaces the DRAFT only if the owner has not moved on.
@@ -458,6 +616,12 @@ async function commit(
 	report("success", notice);
 	setupReveal.value = false;
 	autoSaveHeld = false;
+	// Whatever this project owed is now on the server — this payload is a superset of it, since every
+	// save sends the whole form. Clearing it here rather than only in the flush is what stops a
+	// queued entry outliving the edit it described and being replayed over newer work.
+	setupQueued.value = false;
+	void dequeueWrite(res.data.setup.id);
+	stampSavedAt(res.data.setup.id);
 	return true;
 }
 
@@ -628,6 +792,19 @@ export async function publishSetup(): Promise<boolean> {
 		setupReveal.value = true;
 		return false;
 	}
+	/*
+	 * Publishing is NOT queued offline, unlike an ordinary edit.
+	 *
+	 * An edit queued and applied later arrives at the same configuration the owner intended, whenever
+	 * it lands. Publishing is a lifecycle transition with consequences the owner was asked to confirm
+	 * on screen — the engagement becomes visible, applications open, and the onboarding locks begin to
+	 * bite — so it must happen while they are watching it, not silently at whatever moment their train
+	 * comes out of a tunnel.
+	 */
+	if (!isOnline.peek()) {
+		reportError("Publishing needs a connection — your edits are saved here in the meantime.");
+		return false;
+	}
 	return await commit(
 		draft.slug,
 		{ ...toPayload(draft), status: "active" },
@@ -650,6 +827,13 @@ export async function archiveSetup(): Promise<boolean> {
 		reportError("This project is already archived.");
 		return false;
 	}
+	// Not queued offline, for the reason publishing is not: a lifecycle transition happens while the
+	// person who chose it is watching. It also navigates away on success, which is not something to
+	// do to somebody hours after they pressed the button.
+	if (!isOnline.peek()) {
+		reportError("Archiving needs a connection.");
+		return false;
+	}
 	setupSaving.value = true;
 	clearOutcome();
 	// The slug, for the reason spelled out on `commit`: the uuid stopped routing (Decision #88), so an
@@ -663,4 +847,135 @@ export async function archiveSetup(): Promise<boolean> {
 	globalThis.location.href = "/projects";
 	return true;
 }
+// #endregion
+
+// #region Offline flush
+/**
+ * A flush is running. Concurrency is refused rather than queued: the entries supersede in place, so
+ * two flushes racing would send the same payload twice and the second would either duplicate a write
+ * that has already landed or resurrect an entry the first has just dequeued.
+ */
+let flushing = false;
+
+/**
+ * Send every write this device is holding, oldest first.
+ *
+ * Ordered across PROJECTS because that is the order the owner made them in and it is the only
+ * ordering that is meaningful — within one project there is never more than one entry (see
+ * `offline-queue.ts`), so nothing here has to reason about superseding.
+ *
+ * ## A failed entry is never dropped
+ *
+ * The tempting rule is "a refusal means this payload will never be accepted, so discard it" — and it
+ * is wrong here, because this layer cannot tell a refusal from an outage. `api.ts` folds a transport
+ * failure into the same soft `{ ok: false }` a 422 produces, so a server that is unreachable while
+ * `navigator.onLine` still reads `true` (a captive portal, a dropped VPN tunnel — the exact case
+ * `utils/network.ts` documents) is indistinguishable from a configuration the server has genuinely
+ * rejected. Discarding on that ambiguity would silently destroy work the owner believes is safe,
+ * which is the worst outcome this whole feature exists to prevent.
+ *
+ * So the entry STAYS and the flush stops. The retry is bounded rather than continuous — a flush runs
+ * only on the offline→online edge and when a setup surface mounts, never on a timer — so a payload
+ * the server really will not accept is retried once per reconnect and once per page open, not in a
+ * loop. And it stays visible: opening that project restores the queued draft into the form, where
+ * pressing Save produces the server's actual refusal in words the owner can act on.
+ *
+ * Stopping rather than continuing past a failure is deliberate too. The most likely single cause is
+ * that the connection has gone again, and walking the rest of the list into the same wall would
+ * spend a round trip per project to report one outage several times.
+ */
+export async function flushQueuedWrites(): Promise<void> {
+	if (flushing || !isOnline.peek()) return;
+	flushing = true;
+	try {
+		const queued = await listWrites();
+		if (queued.length === 0) {
+			setupQueued.value = false;
+			return;
+		}
+
+		const active = setupDraft.peek();
+		let sent = 0;
+		let stalled: QueuedWrite | null = null;
+
+		for (const entry of queued) {
+			if (!isOnline.peek()) break;
+			const res = await ProjectSidebarService.update(entry.slug, entry.payload, onboardingSim());
+
+			if (!res.ok || !res.data) {
+				stalled = entry;
+				break;
+			}
+
+			markReachable();
+			await dequeueWrite(entry.projectId);
+			stampSavedAt(entry.projectId);
+			sent += 1;
+
+			/*
+			 * Adopt the response only for the project currently on screen, and only if the owner has not
+			 * typed since. The other entries belong to projects no island is rendering, so there is
+			 * nothing to adopt into — writing their setup into these signals would put another project's
+			 * configuration in front of the person editing this one.
+			 */
+			if (active && active.id === entry.projectId) {
+				setupBaseline.value = res.data.setup;
+				if (setupDraft.peek() === active) setupDraft.value = res.data.setup;
+			}
+		}
+
+		const remaining = await listWrites();
+		setupQueued.value = remaining.length > 0;
+
+		if (stalled) {
+			// Named, because the entry that stalled may belong to a project the reader is not looking at
+			// — "an edit could not sync" with no subject is a sentence nobody can act on.
+			reportError(
+				`"${stalled.title || "An offline edit"}" could not sync yet — it is still saved on this device.`,
+			);
+		} else if (sent > 0) {
+			report("success", sent === 1 ? "Your offline edit has synced." : `${sent} offline edits synced.`);
+		}
+	} finally {
+		flushing = false;
+	}
+}
+
+/**
+ * Track the connection, and drain the queue the moment there is one. Returns its own unsubscribe.
+ *
+ * Started by the body island rather than globally, because a flush adopts a server response into
+ * these signals and those only mean anything while a setup surface is mounted. The consequence is
+ * stated plainly: an edit queued for project A and never returned to syncs the next time ANY project
+ * setup surface is opened online, not the instant the machine reconnects. That is the honest limit
+ * of a queue drained by a page rather than by the service worker's Background Sync, which is not
+ * available on every engine this app supports.
+ */
+export function watchOfflineFlush(): () => void {
+	const stopNetwork = watchNetwork();
+	let wasOnline = isOnline.peek();
+
+	const unsubscribe = isOnline.subscribe((online) => {
+		// Only the FALSE → TRUE edge. `subscribe` fires immediately with the current value and on every
+		// write, and a flush per write would run on any redundant `online` event the browser emits.
+		if (online && !wasOnline) void flushQueuedWrites();
+		wasOnline = online;
+	});
+
+	if (isOnline.peek()) void flushQueuedWrites();
+
+	return () => {
+		unsubscribe();
+		stopNetwork();
+	};
+}
+
+/**
+ * Re-exported so the two footer bands have ONE import for the whole save story.
+ *
+ * They already read six signals from this module to decide what to render; reaching past it into
+ * `utils/network.ts` for the seventh would make the connection look like a separate concern from
+ * whether the draft is saved, when on this surface it is the same question.
+ */
+export { isOnline };
 // #endregion

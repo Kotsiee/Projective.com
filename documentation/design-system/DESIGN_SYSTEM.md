@@ -79,21 +79,47 @@ Material exists.
    each a continuous function `tone(0..100) → color`. (The implementation uses `CorePalette` for
    version-robustness; the newer `DynamicScheme`/`SchemeTonalSpot` "flavor" API is an available
    upgrade path when a scheme flavor becomes user-selectable.)
-3. **Tone selection = the light/dark switch.** A **tone** is picked per role per mode. Because tone
-   correlates with contrast, the pairs are engineered, not eyeballed:
-   - Light: `primary = P.tone(45)`, `on-primary = P.tone(98)`, `surface = N.tone(100)`,
+3. **Tone selection = the light/dark switch — except for the brand pair, which does not switch.**
+   A **tone** is picked per role per mode. Because tone correlates with contrast, the pairs are
+   engineered, not eyeballed:
+   - Light: `secondary = P2.tone(40)`, `on-secondary = P2.tone(98)`, `surface = N.tone(100)`,
      `on-surface = N.tone(10)`, `outline = NV.tone(50)`.
-   - Dark: `primary = P.tone(80)`, `on-primary = P.tone(20)`, `surface = N.tone(6)`,
+   - Dark: `secondary = P2.tone(80)`, `on-secondary = P2.tone(20)`, `surface = N.tone(6)`,
      `on-surface = N.tone(90)`, `outline = NV.tone(60)`.
+   - **Both, identically:** `primary = P.tone(45)`, `on-primary = P.tone(98)` — see §A.1.1.
 
-   **The invariant is straddling mid-tone, not the size of the gap.** A pair must sit on opposite
-   sides of tone 50 with a gap of ~60 tones. This is stated precisely because the looser reading —
-   "any wide delta guarantees ≥4.5:1" — is false and the engine once shipped against it: dark
-   `primary = P.tone(60)` with `on-primary = P.tone(98)` is a 38-tone gap that is still
+   **The invariant is straddling mid-tone, not the size of the gap.** A mode-adaptive pair must sit
+   on opposite sides of tone 50 with a gap of ~60 tones. This is stated precisely because the looser
+   reading — "any wide delta guarantees ≥4.5:1" — is false and the engine once shipped against it:
+   dark `primary = P.tone(60)` with `on-primary = P.tone(98)` is a 38-tone gap that is still
    light-on-light, and computes to **3.02:1**, below AA, on every filled button, badge and chip in
-   dark mode. The documented pair above computes to **7.74:1** (AAA). Any change to a tone selection
-   is verified by reproducing `buildScheme()` against the real seed and printing WCAG ratios for
-   every `on-`/base pair in all four modes — never by eye.
+   dark mode. A straddled pair such as dark `secondary` computes to **7.72:1** (AAA). Any change to a
+   tone selection is verified by reproducing `buildScheme()` against the real seed and printing WCAG
+   ratios for every `on-`/base pair in all four modes — never by eye.
+
+**A.1.1 The brand pair is mode-invariant (product owner, 2026-09-07).** `--primary` and
+`--on-primary` are the core brand identity and are **the same colour in every state the product can
+be in** — light, dark, and both high-contrast variants: `#007680` on `#ebfdff`, always. They resolve
+from two module constants (`theme-engine.ts` `BRAND_TONE` / `BRAND_ON_TONE`) that deliberately
+bypass the `fg()` / `on()` helpers every other role uses.
+
+That bypass is not stylistic. `fgTone` widens a fill UP in dark and DOWN in light while `onTone` does
+the opposite, so writing `fg(45)` / `on(98)` in both branches — one expression, apparently
+symmetric — resolves to tone 45 on tone 98 **only while high contrast is off**. Switch
+`data-contrast="high"` on and the dark branch lands on tone 57 over tone 86: `#0097a4` on `#63e9f9`,
+measured **2.44:1**, under even the 3:1 non-text floor, while light widens correctly to 8.42:1. The
+brand would differ between themes in the one state a struggling reader opts into. Raw tones remove
+the mode input entirely, so there is nothing left for the value to vary with.
+
+**What this costs, stated rather than hidden.** `--primary` is the one role that does not widen under
+the high-contrast overlay: it holds **5.13:1** in all four states — AA for normal text, above the 3:1
+non-text floor, but not the ~7–8:1 a mode-adaptive pair reaches. It is also the only role whose
+_polarity_ does not flip with the theme (dark fill, light ink, in both modes), which is why
+`button.css` cannot blend every severity in one direction (§B.12.4), and why its fill sits at
+**3.05:1** against `--surface-3` in dark — enough to see, with 0.05 of a ratio point to spare and
+therefore nothing to spend. Every one of these figures is pinned by test in
+`packages/ui/system/core/theme-engine.test.ts`, including the byte-for-byte equality of the pair
+across all four states.
 4. **Emit CSS variables.** The engine serializes selected tones to `--primary`, `--on-primary`,
    `--surface-1…5`, `--outline`, etc., and sets them on `:root` (and on any nested
    `<DesignSystemProvider>` scope, §D.3).
@@ -1264,6 +1290,116 @@ disclosure, is this a numeral?* The first "no" is the finding.
 > register text with middot separators, not a smaller chip.
 
 ---
+
+### B.12 Button Feedback & the Contrast Invariant (merge gate)
+
+§B.8 governs **which** button an action gets. This section governs what a button does when a person
+actually touches it, and what its label is guaranteed to measure while they are looking at it. The
+two belong together because they fail together: a control that does not acknowledge a press invites a
+second press, and a control whose label thins out under the cursor is hardest to read in exactly the
+moment it is being read.
+
+> **Numbering note.** This is **§B.12**, not §B.11. §B.11 is Anti-Tagification and is referenced by
+> name from root `CLAUDE.md` §3 gate 7 and §9, from Part E's "six component laws", and from Part F.
+> Renumbering it to make room would have silently redirected five live cross-references.
+
+**B.12.1 Scale-compression baseline.** A pressable control compresses under the pointer:
+
+```css
+transform: translateZ(0) scale(var(--btn-press-scale)); /* 0.97 */
+transition-duration: var(--dur-press); /* 50ms in; --dur-fast out */
+```
+
+Icon-only controls take `--btn-press-scale-icon` (0.92) instead. The deeper step is not decoration:
+compression is read **relative to the control's own size**, so 3% off a 96px button is ~3px of travel
+while 3% off a 32px square is under a pixel and reads as nothing. The press-in is deliberately shorter
+than the release — a press should land under the finger and settle on the way back; equal durations in
+both directions read as a twitch. The resting `scale(1)` is **declared**, not implied: a transform
+that exists only in `:active` animates from `none`, which is not interpolable with `scale()` in every
+engine, and the return then snaps instead of easing.
+
+Reduced motion sets `transform: none !important` under **both** `@media (prefers-reduced-motion:
+reduce)` **and** `[data-motion="reduced"]`. These are two different populations — one reads the
+operating system, the other is this product's own in-app overlay (§A.5), which a user can set without
+touching an OS setting. Zeroing the duration is **not** sufficient, and that is the mistake to avoid:
+the token layer already zeroes every `--dur-*` under the media query, which removes the animation but
+leaves the compression, so the button still jumps to 97% instantly — which is the motion the setting
+was turned on to avoid. The press stays legible through the tonal shift, which is not motion.
+
+**B.12.2 The contrast invariant.** A filled control's label is `--on-<role>` on a `--<role>` fill, the
+single most repeated colour relationship in the product. **Every filled pair must measure ≥ 4.5:1 in
+every mode and contrast state; a mode-adaptive pair must reach ≥ 7:1 in dark; and the high-contrast
+overlay must never narrow a pair.** All three are pinned by test in
+`packages/ui/system/core/theme-engine.test.ts` — not asserted in prose, because this relationship
+failed silently for months and reading the stylesheet never revealed it.
+
+For a pair free to re-tone per mode, the mechanism is that the role and its `on-` partner must
+**straddle mid-tone**. Dark `--primary` / `--on-primary` was once written `fg(55)` / `on(98)` — both
+tones _above_ mid — and measured **3.57:1**. Worse, `fgTone` widens a fill upward in dark mode while
+`onTone` widens an `on-` role downward, so the two **converged** under `data-contrast="high"` and
+measured **1.75:1**: the accessibility setting made the product's most-used control unreadable, the
+exact inverse of its job. `--secondary` and `--tertiary` were always written straddled and measure
+**7.72:1**, and **14.55:1** under high contrast.
+
+> **The brand pair is exempt from the 7:1 rule, because it is exempt from re-toning.** `--primary` /
+> `--on-primary` are mode-invariant by product decision (§A.1.1): one colour in all four states,
+> `#007680` on `#ebfdff`, **5.13:1** everywhere. A pair that cannot re-tone cannot straddle in both
+> directions, so it is held to the AA floor and to the 3:1 non-text floor against every surface — not
+> to AAA. Demanding 7:1 of it would be demanding the thing brand invariance forbids.
+
+> **Ink is locked at the token layer, never by a literal.** Enforcing the invariant as a hardcoded
+> `color: #fff !important` would break **§D.7.7**, the inverted conversion-lane CTA, which is itself a
+> merge gate and works by overriding `--btn-on` — and after §A.1.1 it would be wrong on its own terms,
+> since the brand ink is a resolved token rather than white. The base rule stays `color:
+> var(--btn-on)`; the guarantee lives where it can be measured.
+
+**B.12.3 Zero layout shift.** An interaction may move `transform`, `box-shadow`, `background`,
+`border-color` and `color`. It may **not** move `padding`, `margin`, `inset`, `border-width`,
+`block-size` or `line-height`. Those resize the box, and a control that resizes on hover drags its
+neighbours with it — on a footer rig or a toolbar the whole row reflows under the cursor that is
+trying to hit one thing in it. `transform` and `box-shadow` are composited and reserve no space, which
+is why they lead the permitted set. A border that appears on hover is the common violation: give it a
+resting `transparent` border of the same width and recolour it — which is a real channel, and the one
+the brand button spends (§B.12.4).
+
+**B.12.4 Tonal blending, its direction, and when a control cannot afford it.** Hover shifts the fill
+by **8%**, active by **12%** — the §B.4 tint ramp (`--tint-soft` → `--tint`) reused rather than
+re-invented, so a button's hover reads at the same strength as every other hover in the product.
+
+The blend runs **toward `--btn-shade`** (`--on-surface`), and the direction is load-bearing. Mixing
+toward the button's own ink walks both sides of the pair together: measured, a light-mode primary goes
+from 5.13:1 at rest to **4.42:1 on hover and 4.12:1 pressed** — under the AA floor, in the state a
+reader spends the most time in. `--on-surface` is the pole opposite the _page_, so for any role whose
+polarity follows the theme it is also away from the ink, and contrast _rises_ with pressure:
+`--secondary` runs 7.72 → 7.91 → 8.00 in dark and 6.13 → 6.69 → 6.99 in light.
+
+> **A control with no contrast headroom spends a different channel — it does not spend the last 0.03.**
+> The brand fill is mode-invariant (§A.1.1), so the single value it has must be readable under a
+> near-white ink *and* findable on a near-black page at once, and in dark it clears both only just:
+> 5.13:1 against its ink, **3.05:1** against `--surface-3`. Measured, neither direction is available.
+> Darkening toward `--scrim` lifts the label but drops page visibility to 2.69:1 hovered and **2.51:1**
+> pressed, under the 3:1 non-text floor. Lightening toward `--on-surface` lifts visibility but drops
+> the label to 4.53:1 at 8% and **4.29:1** at 12%. The 8% step passes by 0.03, which is a rounding
+> artefact rather than a margin. So `--primary` carries `--btn-mix-hover: 100%` / `--btn-mix-active:
+> 100%` — a zero luminance step — and draws its hover on the **border**, a channel with no bearing on
+> either ratio, at a width the base already reserves as `transparent` (§B.12.3). The press is carried
+> by the scale compression every button shares. The rule this generalises: **when a state cannot be
+> afforded in one channel, move it to another; do not shave a floor.**
+
+`filter: brightness()` is **not** an acceptable substitute and was removed from the base button. It is
+applied to the rendered element, so it darkens the label and the icon by exactly as much as the fill;
+both sides move together, contrast is preserved only by luck, and the result cannot be measured
+statically at all, because it depends on whatever the fill happened to resolve to.
+
+> **Merge gate.** A PR is not mergeable if a pressable control gives no press feedback, or gives it by
+> a means other than `transform`; if an interaction moves any box-model property; if a hover or active
+> state lowers a filled control's label contrast or drops its fill under 3:1 against any surface it can
+> sit on; if a filled pair measures below 4.5:1, if a mode-adaptive one measures below 7:1 in dark, or
+> if any pair narrows under `data-contrast="high"`; if `--primary`/`--on-primary` differ between any
+> two mode/contrast states; or if press feedback survives either reduced-motion channel.
+
+---
+
 ## Part C — Component Library Architecture (`@projective/ui`)
 
 A single, decoupled, **copy-paste-portable** umbrella package (`packages/ui/`) with **multi-export
@@ -2400,13 +2536,21 @@ under `data-contrast="high"` in dark — **2.52:1** and **1.75:1** — so the ov
 them makes them unreadable. `--surface` resolves to `#ffffff` in light and `#0b0f0f` in dark, so it
 **is** the white text where white works and flips where it does not: 5.38:1 / 5.15:1.
 
-> **Root cause, for whoever fixes it at the layer it belongs to.** `theme-engine.ts` sets dark
+> **Root cause — FIXED at the token layer (§B.12.2).** `theme-engine.ts` set dark
 > `--primary: a1.tone(fg(55))` and `--on-primary: a1.tone(on(98))` — both above mid-tone 50, which
-> violates the file's own stated invariant that a colour and its `on-` pair must straddle it. Every
-> other dark `on-` pair correctly uses `on(20)`, and the comment directly above the offending line
-> describes code that is not there. This is the defect flagged since §8 Decision #64 and routed around
-> seven times; it is a one-line change that repaints every filled primary control in the product, so
-> it needs a human, not a silent edit.
+> violated the file's own stated invariant that a colour and its `on-` pair must straddle it. Every
+> other dark `on-` pair correctly used `on(20)`, and the comment directly above the offending line
+> described code that was not there. That is the defect flagged since §8 Decision #64 and routed
+> around seven times. It is now resolved a different way: `--primary` and `--on-primary` are
+> **mode-invariant** (§A.1.1, product owner 2026-09-07), resolving from raw tone constants in both
+> branches, so the pair is `#007680` on `#ebfdff` — **5.13:1** — in light, dark, and both
+> high-contrast states. It is pinned by test, so it cannot silently drift back.
+>
+> The measurements above are therefore **historical**, and the rig's own reasoning survives them
+> intact: `--surface` is still the right ink for the brand secondary here, because it is achromatic
+> and swaps sides with the theme by construction. What changed is that it is no longer the *only*
+> viable choice — a filled `--primary` control elsewhere in the product now clears AA on its own token
+> pair in every state, rather than 3.57:1 in dark and 1.75:1 under the overlay.
 
 Geometry: both pills are `--radius-full`, `--fw-medium`, and **36px** tall. That height is
 deliberately OFF the `--fld-h-*` ramp, which steps 32 → 40 → 48 — a compact commit control is neither
@@ -2451,8 +2595,11 @@ reflow.
 
 **D.8.1 Pipelines and multi-stage services.** The stage ledger is a **continuous vertical timeline
 track**: one hairline running the full height of the run, with each stage's step number in a small
-circular **outline** on it (a `--primary` ring with the numeral on the surface pair — never
-`--on-primary` on `--primary`, which measures 3.57:1 in dark, §8 Decisions #64/#65). A stage's title
+circular **outline** on it (a `--primary` ring with the numeral on the surface pair). The ring was
+originally chosen to route around `--on-primary` on `--primary` measuring 3.57:1 in dark; §B.12.2 has
+since fixed that pair at the token layer, so the ring is now a composition choice rather than a
+workaround — an outline reads as a waypoint on a track where a filled disc reads as a button. A
+stage's title
 is Section-header register, its brief is Body, its turnaround and stage budget are inline Meta.
 Expanding a stage reveals its deliverable checklist (§B.9.8) **inline, without interrupting the
 track** — the line runs behind the expansion, because a track that breaks at every open stage stops
@@ -2524,10 +2671,20 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 4. Reduced-motion + the four a11y overlays (§A.5) honored; comprehensive ARIA.
 5. Responsive at Desktop/Tablet/Mobile without app-side overrides.
 6. New/changed component ⇒ its entry in the §C.1 roster + this spec updated **in the same change.**
-7. **The six component laws** — §A.7 field state contract, §B.7 iconography, §B.8 buttons, §B.9
-   cards, §B.10 overlays, §B.11 anti-tagification. Each carries its own gate paragraph; they are
-   listed here so a reviewer has one place to check rather than six.
-8. **The three composition laws** — §A.4's four typographic registers (hierarchy over raw weight),
+7. **The seven component laws** — §A.7 field state contract, §B.7 iconography, §B.8 buttons, §B.9
+   cards, §B.10 overlays, §B.11 anti-tagification, §B.12 button feedback & the contrast invariant.
+   Each carries its own gate paragraph; they are listed here so a reviewer has one place to check
+   rather than seven.
+8. **§B.12's contrast invariant is machine-checked, and that is the point.** Every filled
+   `--<role>` / `--on-<role>` pair must measure ≥ 4.5:1 in all four mode/contrast states, a
+   mode-adaptive pair must reach ≥ 7:1 in dark, no pair may narrow under `data-contrast="high"`, and
+   `--primary`/`--on-primary` must be byte-identical across every state (§A.1.1). Press feedback must
+   be `transform`-only, must move no box-model property, and must be disabled by **both**
+   reduced-motion channels. The colour half is pinned in
+   `packages/ui/system/core/theme-engine.test.ts` because it is the one law here whose failure is
+   invisible to a source-reading review — the pair it governs shipped at 3.57:1, and at 1.75:1 under
+   the accessibility overlay, for months without anyone reading a stylesheet and noticing.
+9. **The three composition laws** — §A.4's four typographic registers (hierarchy over raw weight),
    §B.4.1–B.4.3 (asymmetric spacing, solid tonal steps, functional transparency only), and §D.7/§D.8
    (the conversion lane and the entity-view archetypes). These govern how a *page* is assembled
    rather than how a *component* is built, which is why they are listed apart: a PR can satisfy every

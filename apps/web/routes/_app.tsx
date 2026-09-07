@@ -3,6 +3,7 @@ import { buildScheme, schemeToCss } from "@projective/ui/system";
 import { CurrencyContext } from "@projective/ui/display/money";
 import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.island.tsx";
 import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.tsx";
+import ServiceWorkerBridge from "@web/features/shell/islands/ServiceWorkerBridge.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
@@ -149,6 +150,13 @@ export default define.page(function App({ Component, state }) {
 					locale={currency?.locale ?? "en-GB"}
 					table={currency?.table ?? null}
 				/>
+				{
+					/* The shell cache behind offline editing. Renders nothing; registers `/sw.js` in
+				    production and unregisters any leftover worker in development. Mounted globally
+				    because the cache belongs to the ORIGIN — registering it from the surface that
+				    needs it would only ever help somebody who had already been there online. */
+				}
+				<ServiceWorkerBridge />
 				{
 					/* The per-request currency for SERVER-rendered money. Context, not the module-level
 				    signal store: a server process renders many viewers concurrently, and a shared signal

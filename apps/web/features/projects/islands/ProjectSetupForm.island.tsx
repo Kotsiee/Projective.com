@@ -14,9 +14,11 @@ import {
 	resetSetupState,
 	seedSetup,
 	setupDraft,
+	watchOfflineFlush,
 	watchOnboardingSim,
 } from "../core/setup-state.ts";
 import { advanceOnEnter } from "../core/setup-validation.ts";
+import { watchFileDrag } from "../core/file-drag.ts";
 import { useSetupAutoSave } from "../hooks/useSetupAutoSave.ts";
 
 /**
@@ -66,6 +68,28 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 	 * listener for no reason.
 	 */
 	useEffect(watchOnboardingSim, []);
+
+	/**
+	 * Track the connection, and send whatever this device is holding the moment there is one.
+	 *
+	 * Started from the BODY rather than the footer rig, because the body is the one region present on
+	 * every owner render — the rig is absent on an archived project, and a queue whose drain depends
+	 * on a control that is not rendered is a queue that never drains.
+	 *
+	 * Empty deps: the subscription is to the browser's connection, not to this project, so
+	 * re-establishing it whenever the setup prop changed would tear down and rebuild a listener for
+	 * no reason.
+	 */
+	useEffect(watchOfflineFlush, []);
+
+	/**
+	 * Watch the window for file drags, so both drop zones can announce themselves at once.
+	 *
+	 * Bound here rather than inside a zone, because the point of the signal is that a zone can light
+	 * up before the pointer has reached it — a listener owned by a zone could only ever report on
+	 * itself, and could never show the reader that there is a second place the file could go.
+	 */
+	useEffect(watchFileDrag, []);
 
 	/**
 	 * Auto-save on blur, shared with the single-stage form so both surfaces settle identically.

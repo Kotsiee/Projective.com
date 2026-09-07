@@ -7,6 +7,33 @@
 .ui-button {
 	--btn-accent: var(--primary);
 	--btn-on: var(--on-primary);
+	/*
+	 * The tonal press ramp (§B.12.4): the pole hover/active blend TOWARD, and how far.
+	 *
+	 * The pole has to point AWAY from `--btn-on`, or pressure walks the fill and the ink together and
+	 * the label gets harder to read the more the control is used. `--on-surface` is the pole opposite
+	 * the PAGE, and for every role whose polarity follows the theme that is also away from the ink: in
+	 * light every ink is light and `--on-surface` is dark; in dark those inks flip dark and
+	 * `--on-surface` flips light with them.
+	 *
+	 * THE BRAND IS THE EXCEPTION, AND IT TAKES A ZERO STEP. `--primary`/`--on-primary` are
+	 * mode-invariant by construction (`theme-engine.ts` `BRAND_TONE`), which means the one fill it has
+	 * must be readable under a near-white ink AND findable on a near-black page at the same time, and
+	 * it sits close to both floors at rest: 5.13:1 against its ink, 3.05:1 against `--surface-3` in
+	 * dark. Measured, there is no direction left to move it. Darkening (toward `--scrim`) lifts the
+	 * label but drops page visibility to 2.69:1 hovered and 2.51:1 pressed, under the 3:1 non-text
+	 * floor; lightening (toward `--on-surface`) lifts visibility but drops the label to 4.53:1 at 8%
+	 * and 4.29:1 at 12%, under the 4.5:1 text floor. An 8% step technically passes by 0.03, which is
+	 * not a margin, it is a coincidence waiting for a seed change.
+	 *
+	 * So the brand fill does not move at all, and its hover is drawn on the border instead — a channel
+	 * with no bearing on either ratio, using a width the base already reserves (§B.12.3). The press is
+	 * carried by the scale compression every button shares. A control that cannot afford a tonal step
+	 * should spend a different channel, not spend the last 0.03 of its contrast budget.
+	 */
+	--btn-shade: var(--on-surface);
+	--btn-mix-hover: 100%;
+	--btn-mix-active: 100%;
 	--btn-height: var(--fld-h-md);
 	--btn-px: var(--space-4);
 	--btn-font: var(--fld-fs-md);
@@ -31,55 +58,172 @@
 	border-radius: var(--btn-radius);
 	cursor: pointer;
 	user-select: none;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		box-shadow var(--dur-fast) var(--ease-standard),
-		border-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
+	/* A press on a touch device must not flash the platform's own grey plate over the compression —
+	   two feedbacks for one gesture, one of which we cannot theme. */
+	-webkit-tap-highlight-color: transparent;
+	/* Suppresses the ~300ms tap delay, so the compression lands with the finger rather than after it. */
+	touch-action: manipulation;
+	/* The resting scale is declared, not implied. A transform that only exists in `:active` animates
+	   from `none`, and `none` is not interpolable with a `scale()` in every engine — the return then
+	   snaps instead of easing. Naming the rest state gives both directions something to interpolate.
+	   `translateZ(0)` puts the button on its own compositing layer so the scale never re-rasterises
+	   its label mid-press. */
+	transform: translateZ(0) scale(1);
+	transition: var(--btn-transition-press);
 }
 .ui-button:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring-shadow);
 }
-.ui-button:hover:not(:disabled) {
-	filter: brightness(0.94);
+/*
+ * Tonal blending, not `filter: brightness()` (§B.12.4).
+ *
+ * `brightness()` is applied to the rendered element, so it darkens the LABEL and the icon by exactly
+ * as much as the fill — both sides of the pair move together and the measured contrast is preserved
+ * only by luck. Worse, it cannot be measured statically at all, because the value it produces depends
+ * on whatever the fill happened to resolve to. Mixing the BACKGROUND by a known amount makes the
+ * resulting ratio a number the contrast gate can actually check.
+ *
+ * The blend runs TOWARD `--btn-shade` (`--on-surface`), and the direction is the whole point. Mixing
+ * toward the button's own ink walks the two sides of the pair together: measured against this seed
+ * that takes a light-mode primary from 5.13:1 at rest to 4.42:1 on hover and 4.12:1 pressed — under
+ * the 4.5:1 floor, in the state a reader spends the most time in. `--on-surface` is the pole opposite
+ * the PAGE, so for any role whose polarity follows the theme it is also away from the ink, and
+ * contrast RISES with pressure instead of falling: `--secondary` runs 7.72 → 7.91 → 8.00 in dark and
+ * 6.13 → 6.69 → 6.99 in light. Visibility against the page rises with it.
+ *
+ * `--primary` is deliberately excluded by carrying a 100% step — it is mode-invariant and has no
+ * luminance headroom in either direction (see the ramp comment on `.ui-button`), so it spends the
+ * border channel instead.
+ *
+ * 8% resting → 12% pressed is the §B.4 tint ramp (`--tint-soft` → `--tint`), reused rather than
+ * re-invented, so a button's hover reads at the same strength as every other hover in the product.
+ *
+ * Scoped AWAY from the three non-filled variants rather than TO `--filled`. Both spellings cover the
+ * component, which always emits a variant class — but a bare `.ui-button` in hand-written markup has
+ * no variant class at all, and the base rule treats that as filled. Excluding the three keeps those
+ * two facts in agreement. It also has to out-specify nothing: `--outlined`/`--text` own their hover
+ * already, and this rule can no longer reach them.
+ */
+.ui-button:hover:not(:disabled):not([aria-disabled="true"]):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+	background: color-mix(in srgb, var(--btn-accent) var(--btn-mix-hover), var(--btn-shade));
 }
-.ui-button:active:not(:disabled) {
-	transform: translateY(0.5px);
+/*
+ * Scale compression (§B.12.1) — replaces a 0.5px `translateY`.
+ *
+ * Half a pixel of travel is below the threshold at which a press reads as acknowledged on most
+ * displays, and on a 2× screen it lands on a physical pixel boundary and renders as nothing at all.
+ * A uniform scale is felt at any size and any density, and — because `transform` neither reserves
+ * space nor triggers layout — it moves nothing around the button (§B.12.3).
+ *
+ * The press-in runs at `--dur-press`; the RETURN inherits `--dur-fast` from the base declaration, so
+ * the control lands quickly and settles slowly. Equal durations both ways read as a twitch.
+ */
+.ui-button:active:not(:disabled):not([aria-disabled="true"]) {
+	transform: translateZ(0) scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
 }
-.ui-button:disabled {
+/* The pressed tonal step, filled-only for the same reason as hover. */
+.ui-button:active:not(:disabled):not([aria-disabled="true"]):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+	background: color-mix(in srgb, var(--btn-accent) var(--btn-mix-active), var(--btn-shade));
+}
+/* A square control has no label to carry the gesture, so it compresses further to stay legible. */
+.ui-button--icon-only:active:not(:disabled):not([aria-disabled="true"]) {
+	transform: translateZ(0) scale(var(--btn-press-scale-icon));
+}
+.ui-button:disabled,
+.ui-button[aria-disabled="true"] {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+/*
+ * Reduced motion (§A.5 · §B.12.1). BOTH channels, because they are not the same population: the
+ * media query reads the operating system, while `[data-motion="reduced"]` is this product's own
+ * in-app overlay, which a user can set without touching an OS setting.
+ *
+ * `transform: none` rather than a zero duration. The token layer's reduced-motion block already
+ * zeroes every `--dur-*`, which removes the ANIMATION but leaves the compression itself — the button
+ * would still jump to 97% instantly, which is the motion the setting was turned on to avoid. The
+ * press stays legible through the colour shift, which is not motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.ui-button,
+	.ui-button:active:not(:disabled):not([aria-disabled="true"]),
+	.ui-button--icon-only:active:not(:disabled):not([aria-disabled="true"]) {
+		transform: none !important;
+	}
+}
+:root[data-motion="reduced"] .ui-button,
+:root[data-motion="reduced"] .ui-button:active:not(:disabled):not([aria-disabled="true"]),
+:root[data-motion="reduced"] .ui-button--icon-only:active:not(:disabled):not([aria-disabled="true"]) {
+	transform: none !important;
 }
 
 /* #region Severities — set the accent pair only */
 .ui-button--primary {
 	--btn-accent: var(--primary);
 	--btn-on: var(--on-primary);
+	/* Inherits the base's ZERO tonal step. The brand fill has no luminance headroom in either
+	   direction — see the ramp comment on `.ui-button`. */
+}
+
+/*
+ * The brand's hover, drawn on a channel its contrast budget does not pay for.
+ *
+ * The border width is already reserved by the base rule as `transparent`, so recolouring it moves
+ * nothing (§B.12.3) and leaves both measured ratios — ink-on-fill and fill-on-page — exactly where
+ * they were. `--btn-on` is the ring colour because the invariant pinned in `theme-engine.test.ts`
+ * guarantees it clears 5.13:1 against this fill in every mode and contrast state, so the ring is
+ * visible by construction rather than by inspection. It is softened to 60% because a full-strength
+ * ink ring at rest weight reads as a second border rather than a state.
+ *
+ * `:not(:focus-visible)` so the focus ring is never traded for a hover cue on a keyboard user who
+ * happens to also be under the pointer.
+ */
+.ui-button--primary:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+	border-color: color-mix(in srgb, var(--btn-on) 60%, transparent);
 }
 .ui-button--secondary {
 	--btn-accent: var(--secondary);
 	--btn-on: var(--on-secondary);
+	/* Polarity follows the theme, so --on-surface is away from the ink and the full ramp is safe. */
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
 }
 .ui-button--success {
 	--btn-accent: var(--success);
 	--btn-on: var(--on-success);
+	/* Polarity follows the theme, so --on-surface is away from the ink and the full ramp is safe. */
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
 }
 .ui-button--info {
 	--btn-accent: var(--info);
 	--btn-on: var(--on-info);
+	/* Polarity follows the theme, so --on-surface is away from the ink and the full ramp is safe. */
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
 }
 .ui-button--warning {
 	--btn-accent: var(--warning);
 	--btn-on: var(--on-warning);
+	/* Polarity follows the theme, so --on-surface is away from the ink and the full ramp is safe. */
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
 }
 .ui-button--help {
 	--btn-accent: var(--tertiary);
 	--btn-on: var(--on-tertiary);
+	/* Polarity follows the theme, so --on-surface is away from the ink and the full ramp is safe. */
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
 }
 .ui-button--danger {
 	--btn-accent: var(--danger);
 	--btn-on: var(--on-danger);
+	/* Polarity follows the theme, so --on-surface is away from the ink and the full ramp is safe. */
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
 }
 /* #endregion */
 
@@ -91,7 +235,6 @@
 }
 .ui-button--outlined:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--btn-accent) var(--tint-soft), transparent);
-	filter: none;
 }
 .ui-button--text {
 	background: transparent;
@@ -100,7 +243,6 @@
 }
 .ui-button--text:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--btn-accent) var(--tint), transparent);
-	filter: none;
 }
 .ui-button--link {
 	background: transparent;
@@ -111,7 +253,6 @@
 	padding-inline: var(--space-1);
 }
 .ui-button--link:hover:not(:disabled) {
-	filter: none;
 	text-decoration-thickness: 2px;
 }
 /* #endregion */

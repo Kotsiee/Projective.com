@@ -173,6 +173,20 @@ export const LocalKeys = {
 	 */
 	PROJECT_AUTOSAVE: "pj.local.projects.autoSave",
 	/**
+	 * When the setup surface last had a save acknowledged, as `{"id":"<projectId>","at":<epoch ms>}`.
+	 *
+	 * A DEVICE fact, not a project one: `ProjectSetup` carries no `updatedAt`, so there is nothing on
+	 * the server projection to render and the only honest thing to report is what this browser
+	 * watched happen. It is scoped to the id so a stale timestamp cannot be attributed to a different
+	 * engagement — opening project B must not show project A's last save.
+	 *
+	 * ONE entry, deliberately, rather than a map keyed by project. A map grows without bound and
+	 * needs an eviction rule nobody would ever tune; a single most-recent entry answers the only
+	 * question the surface asks ("when did I last save THIS one?") and is empty for every other
+	 * project, which is the correct answer there anyway.
+	 */
+	PROJECT_SAVED_AT: "pj.local.projects.savedAt",
+	/**
 	 * The File Explorer's zoom-driven view density (a `0`–`1` float). Below the centre threshold the
 	 * workspace is the list/table view; above it, the grid — and within each half the value scales the
 	 * card/thumbnail size. Shared cross-island (the footer View Control Rig ↔ the explorer body).
@@ -346,6 +360,25 @@ export const CacheKeys = {
 	ONBOARDING_STAGE_CACHE: "pj-cache-onboarding-stage",
 	/** Cached avatar/asset blobs keyed by file id. */
 	ASSET_CACHE: "pj-cache-assets",
+	/**
+	 * IndexedDB database holding writes made while offline, awaiting a connection.
+	 *
+	 * IndexedDB rather than `localStorage` because a queued write is a structured payload measured in
+	 * tens of kilobytes, and `localStorage` is a synchronous ~5 MB string store shared by every key on
+	 * the origin — a project's whole configuration serialised into it would compete for that budget
+	 * with every preference beside it, and would block the main thread on each write.
+	 */
+	OFFLINE_DB: "pj-offline",
+	/** Object store inside {@link CacheKeys.OFFLINE_DB}: one pending write per project, keyed by id. */
+	OFFLINE_WRITES: "writes",
+	/**
+	 * `CacheStorage` bucket for the shell the service worker serves offline.
+	 *
+	 * Versioned in the name rather than by a stored generation number, so a deploy that changes the
+	 * caching rules discards the previous bucket wholesale on activate instead of inheriting entries
+	 * written under rules it no longer applies.
+	 */
+	SHELL_CACHE: "pj-shell-v1",
 } as const;
 // #endregion
 

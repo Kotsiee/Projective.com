@@ -122,10 +122,18 @@ const ADVANCEABLE_INPUT_TYPES: ReadonlySet<string> = new Set([
  * Containers whose descendants own Enter for themselves.
  *
  * `.ui-chips` commits the chip being typed; anything with `role="combobox"` selects the active
- * option; a rich-text editor's contenteditable starts a paragraph. Each of those is a real
- * interaction that advancing focus would silently replace.
+ * option; a rich-text editor's contenteditable starts a paragraph; `.psu-tasks` inserts the next
+ * step. Each of those is a real interaction that advancing focus would silently replace.
+ *
+ * The task list is the case that shows why this list has to exist at all rather than being handled
+ * at the call site. This handler runs in the CAPTURE phase on the form root, so it fires before any
+ * listener the list itself binds — a row that tried to claim Enter for itself would find focus
+ * already moved and the event already default-prevented. Worse than nothing happening: the next
+ * tabbable after a step's input is that step's own delete button, so the natural keystroke for "next
+ * item" left the reader one space bar from destroying the item they had just written.
  */
-const ENTER_OWNERS = '.ui-chips, [role="combobox"], [contenteditable="true"], .ql-editor';
+const ENTER_OWNERS =
+	'.ui-chips, [role="combobox"], [contenteditable="true"], .ql-editor, .psu-tasks';
 
 /** The nearest boundary the advance may walk within, so Enter never leaves the form for the chrome. */
 const ADVANCE_SCOPE = "form, .psu, .psu-shell";

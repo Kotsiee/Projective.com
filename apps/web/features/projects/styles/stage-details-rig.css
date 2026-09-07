@@ -37,6 +37,9 @@
  * which point the actions would silently jump to the leading edge.
  */
 .proj-sdrig__status {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
 	margin: 0;
 	flex: 1 1 auto;
 	min-inline-size: 0;
@@ -45,6 +48,25 @@
 	text-overflow: ellipsis;
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
+}
+
+/*
+ * The status tones, matching the project rig's exactly — the two bands report the same store, so a
+ * reader moving between them must not see one state drawn two ways. Two channels, never hue alone
+ * (§A.5): the mark and the sentence carry it without the tint.
+ */
+.proj-sdrig__status[data-tone="offline"] {
+	color: var(--warning);
+}
+
+.proj-sdrig__status[data-tone="archived"] {
+	color: var(--text-disabled);
+}
+
+.proj-sdrig__statusmark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
 }
 
 .proj-sdrig__actions {
@@ -84,11 +106,14 @@
 .proj-sdrig__action[data-tone="primary"] {
 	background: var(--primary);
 	border-color: var(--primary);
-	color: var(--surface);
+	/* `--on-primary`, not `--surface` — same reason as `.psu-rig__action`: the brand pair is now
+	   mode-invariant and pinned at 5.13:1, while `--surface` on `--primary` measures 3.58:1 in dark. */
+	color: var(--on-primary);
 }
 
+/* Border, not fill — the brand tone has no luminance headroom; see `.psu-rig__action`. */
 .proj-sdrig__action[data-tone="primary"]:hover {
-	background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
+	border-color: color-mix(in srgb, var(--on-primary) 65%, var(--primary));
 }
 
 /*
@@ -129,10 +154,17 @@
 	}
 }
 
+/*
+ * The status line STAYS, for the reason spelled out on the project rig's matching rule.
+ *
+ * It was hidden here while it only restated what the Save button said by being present. It now
+ * carries the offline and queued states, and under auto-save it is the band's only report — so it
+ * yields WIDTH rather than presence, and the ellipsis keeps the leading words, which are the ones
+ * that name the state.
+ */
 @container (max-width: 320px) {
-	/* The status line is the only thing that goes; both actions stay. */
 	.proj-sdrig__status {
-		display: none;
+		font-size: var(--text-xs);
 	}
 }
 

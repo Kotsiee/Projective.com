@@ -216,6 +216,26 @@ function toViewerRole(raw: string | undefined): ProjectViewerRole {
 }
 
 /**
+ * The viewer's role on one project row — ownership first, then the participant graph.
+ *
+ * An owner is frequently enrolled in NO participant row at all. `projects.create_project` writes one
+ * only for a business-owned project, and says why: `profile_type` is `('freelancer','business')`,
+ * which has no member for an individual buyer, and `projects.has_project_access` already resolves a
+ * personal owner through `owner_user_id`. The row is therefore genuinely unnecessary for ACCESS —
+ * but reading the role from participants ALONE then resolves every personal project's owner to
+ * `member`, which is not an authority tier, and {@link viewerIsClientOf} consequently hands the
+ * board's own owner the provider-side surface with no create actions.
+ *
+ * Ownership is checked FIRST, exactly as the detail read's `resolveViewerIsClient` and the setup
+ * projection's `row.owner_user_id === viewerId` already do. This is the third implementation of one
+ * question, and the two that were already correct are the precedent.
+ */
+function resolveSummaryRole(row: ProjectRow, ctx: SummaryContext): ProjectViewerRole {
+	if (ctx.viewerId.length > 0 && row.owner_user_id === ctx.viewerId) return "owner";
+	return toViewerRole(ctx.roles.get(row.id));
+}
+
+/**
  * Which workspace an engagement belongs to.
  *
  * The columns are checked most-specific first — an organisation-owned project also carries a team,
@@ -266,6 +286,11 @@ export interface SummaryContext {
 	stages: Map<string, [number, number]>;
 	/** Owner rows by `user_id`, from the separate `org.users_public` read. */
 	owners: Map<string, OwnerRow>;
+	/**
+	 * The acting viewer's user id, compared against `owner_user_id`. Empty for an anonymous read,
+	 * which then matches nothing — see {@link resolveSummaryRole}.
+	 */
+	viewerId: string;
 }
 
 /**
@@ -294,7 +319,7 @@ export function toSummary(row: ProjectRow, ctx: SummaryContext): ProjectSummary 
 		kind: (row.source_blueprint_id ? "service" : "project") as EngagementKind,
 		format: toFormat(row.format),
 		status: toStatus(row.status),
-		viewerRole: toViewerRole(ctx.roles.get(row.id)),
+		viewerRole: resolveSummaryRole(row, ctx),
 		scopeType,
 		scopeId,
 		scopeLabel: ctx.scopeLabels.get(scopeId) ?? "Personal",
@@ -537,7 +562,9 @@ export async function fetchProjectRows(
 		scopeLabels.set(scopeId, names.get(scopeId) ?? fallbackScopeLabel(scopeType));
 	}
 
-	return rows.map((row) => toSummary(row, { roles, scopeLabels, stages, owners }));
+	return rows.map((row) =>
+		toSummary(row, { roles, scopeLabels, stages, owners, viewerId: actor.userId })
+	);
 }
 
 /**
@@ -673,7 +700,7 @@ export async function fetchProjectBySlug(
 	const names = await fetchScopeLabels(actor, [row]);
 	const scopeLabels = new Map([[scopeId, names.get(scopeId) ?? fallbackScopeLabel(scopeType)]]);
 
-	return toSummary(row, { roles, scopeLabels, stages, owners });
+	return toSummary(row, { roles, scopeLabels, stages, owners, viewerId: actor.userId });
 }
 
 /**

@@ -1,5 +1,6 @@
 import { cloneElement, type ComponentChildren, isValidElement, type JSX } from "preact";
 import { useSignal } from "@preact/signals";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import { HintPopover } from "@projective/ui/feedback";
 import {
 	Checkbox,
@@ -18,15 +19,13 @@ import {
 	useFieldValidation,
 } from "@projective/ui/fields";
 import { RichTextEditor } from "@projective/ui/editor";
-import { DndContext, useSortable } from "@projective/ui/dnd";
+import { DndContext, DropIndicator, useSortable } from "@projective/ui/dnd";
 import { Icon } from "@projective/ui/icons";
 import { currencyExponent, DISPLAY_CURRENCIES, toMinorUnits } from "@projective/types/finance";
 import { FileKind } from "@projective/types/files";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
-import { extractMetadata } from "@web/features/files/core/media/extract.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
-import { AccountService } from "@web/features/shell/core/AccountService.ts";
 import {
 	blankStage,
 	DEADLINE_BONUS_RATE,
@@ -76,7 +75,11 @@ import {
 import { patchSetup, setupReveal } from "../../core/setup-state.ts";
 import { FieldGuard, fieldStatus } from "../../core/setup-validation.ts";
 import { formatBytes } from "../../core/composer-model.ts";
-import { uploadForProject } from "../../core/upload.ts";
+import { fileDragActive, filesFrom } from "../../core/file-drag.ts";
+import {
+	type PendingAttachment,
+	useAttachmentUpload,
+} from "../../hooks/useAttachmentUpload.ts";
 
 /**
  * SetupSections — the Stage-2 workspace's form body: every section of the owner's configuration, and
@@ -1005,55 +1008,265 @@ export function BudgetSection(
 // #endregion
 
 // #region Stage sub-editors
-/** The default checklist a ticket on a stage is seeded from. */
+/**
+ * The DOM id of one step's input — the handle focus management works through.
+ *
+ * An id rather than a ref map, because `InputText` exposes no ref and the rows this list focuses are
+ * frequently ones that did not exist a moment ago: pressing Enter creates a row and then focuses it,
+ * so whatever is focused must be resolvable AFTER the render that created it. A ref collected during
+ * the previous render is by definition a ref to the wrong set of rows.
+ *
+ * Scoped by stage as well as by task so the flat-details form (which renders this list for the root
+ * stage) and a stage's own disclosure cannot mint the same id on one page.
+ */
+function taskInputId(stageId: string, taskId: string): string {
+	return `psu-task-${stageId}-${taskId}`;
+}
+
+/** Strip the sortable's namespace back to the task id it wraps. */
+const taskIdOf = (raw: string): string => String(raw).replace("task:", "");
+
+/** One step: a grip, the text, and a remove control. */
+function TaskRow(props: {
+	stageId: string;
+	task: StageTask;
+	index: number;
+	onText: (text: string) => void;
+	onRemove: () => void;
+	onKeyDown: (event: KeyboardEvent) => void;
+}): JSX.Element {
+	const { task, index } = props;
+	const sortable = useSortable({
+		id: `task:${task.id}`,
+		data: { type: "task", accepts: ["task"] },
+		roleDescription: "step",
+	});
+
+	return (
+		<div
+			// deno-lint-ignore no-explicit-any
+			ref={sortable.setNodeRef as any}
+			class="psu-task"
+			data-dragging={sortable.isDragging.value || undefined}
+			/*
+			 * The keyboard rules are bound HERE, on the row, rather than on the control.
+			 *
+			 * `InputText` declares no `onKeyDown`, and `keydown` bubbles — so one listener on the row
+			 * covers the input without the package growing a prop, and without this file depending on a
+			 * handler that only works because a rest spread happens to forward it.
+			 */
+			onKeyDown={props.onKeyDown}
+		>
+			<button
+				type="button"
+				class="psu-task__grip"
+				aria-label={`Reorder step ${index + 1}`}
+				aria-roledescription={sortable.attributes["aria-roledescription"]}
+				tabIndex={sortable.attributes.tabIndex}
+				onPointerDown={sortable.listeners.onPointerDown}
+				onKeyDown={sortable.listeners.onKeyDown}
+			>
+				<Icon name="grip" size="xs" />
+			</button>
+			<InputText
+				id={taskInputId(props.stageId, task.id)}
+				value={task.text}
+				onValueChange={props.onText}
+				block
+				maxLength={240}
+				placeholder={`Step ${index + 1}`}
+				aria-label={`Step ${index + 1}`}
+				status={task.text.trim() ? "default" : "required"}
+			/>
+			<button
+				type="button"
+				class="psu-stage__remove"
+				aria-label={`Remove step ${index + 1}`}
+				onClick={props.onRemove}
+			>
+				<Icon name="trash" />
+			</button>
+		</div>
+	);
+}
+
+/**
+ * The default checklist a ticket on a stage is seeded from.
+ *
+ * Written as a LIST EDITOR rather than as a column of text fields, because that is what somebody
+ * typing a checklist expects it to be: Enter starts the next step, Backspace on an empty one removes
+ * it, and the rows drag. Before this, Enter fell through to the form-wide "advance focus" rule and
+ * landed on the row's own delete button — so the natural keystroke for "next item" put the reader one
+ * space bar away from destroying the item they had just written.
+ *
+ * Order is meaningful — a checklist is a sequence of work, not a set — so the landing position is
+ * drawn by the shared {@link DropIndicator} rather than left to a highlighted neighbour, which cannot
+ * express before-or-after.
+ */
 function TaskList(props: {
 	stage: StageSetup;
 	itemLabel: string;
 	onPatch: (patch: Partial<StageSetup>) => void;
 }): JSX.Element {
 	const { stage } = props;
+	const dragIndex = useSignal<number | null>(null);
+	const overIndex = useSignal<number | null>(null);
+
+	/**
+	 * The step whose input should hold focus once this render has landed.
+	 *
+	 * A ref rather than a signal: consuming it must not itself schedule a render, and nothing outside
+	 * the layout effect below ever reads it.
+	 */
+	const pendingFocus = useRef<string | null>(null);
+
+	/*
+	 * Focus is moved AFTER the DOM has been updated and BEFORE the browser paints.
+	 *
+	 * `useLayoutEffect` rather than `useEffect` for the second half of that: a row created by Enter
+	 * would otherwise be painted unfocused for one frame and then focused, which on a slow frame reads
+	 * as the caret jumping. No dependency array, because the request is consumed on whichever render
+	 * follows the patch that raised it, and that render is not identified by any value in this scope.
+	 */
+	useLayoutEffect(() => {
+		const id = pendingFocus.current;
+		if (!id) return;
+		pendingFocus.current = null;
+		const el = document.getElementById(id);
+		if (!(el instanceof HTMLInputElement)) return;
+		el.focus();
+		// Caret at the END, never a selection. After a Backspace-merge the reader is continuing a line
+		// they already wrote, and selecting it would mean their next keystroke replaced it.
+		const end = el.value.length;
+		try {
+			el.setSelectionRange(end, end);
+		} catch {
+			// Some input types refuse a selection range. Focus alone is the part that matters.
+		}
+	});
 
 	const patchTask = (id: string, text: string) => {
 		props.onPatch({ tasks: stage.tasks.map((t) => (t.id === id ? { ...t, text } : t)) });
 	};
 
+	const removeTask = (id: string) => {
+		props.onPatch({ tasks: stage.tasks.filter((t) => t.id !== id) });
+	};
+
+	/** Append an empty step and put the caret in it — the "Add step" control's whole job. */
+	const appendTask = () => {
+		const id = newRowId("task");
+		props.onPatch({ tasks: [...stage.tasks, { id, text: "" }] });
+		pendingFocus.current = taskInputId(stage.id, id);
+	};
+
+	/**
+	 * Enter inserts below; Backspace on an empty step removes it and steps back.
+	 *
+	 * **Enter inserts BELOW the current row, not at the end.** A checklist is written in order, and
+	 * somebody who has gone back to expand step 2 means the new step to follow step 2 — appending it
+	 * to the bottom would make the one keystroke that feels like "continue" the one that scatters the
+	 * sequence.
+	 *
+	 * **Backspace only fires on an EMPTY step**, which is what makes it safe to make destructive: on a
+	 * row with text it is an ordinary character delete and is left entirely alone. Focus then moves to
+	 * the row ABOVE — the direction the reader was travelling — falling back to the row that took the
+	 * deleted one's place when there is nothing above, so deleting the first step does not drop focus
+	 * out of the list. Deleting the ONLY step leaves nothing to focus, and the "Add step" control is
+	 * the next thing in the tab order, which is the correct place to land.
+	 */
+	const onRowKeyDown = (event: KeyboardEvent, index: number) => {
+		const target = event.target;
+		// The grip is a button inside the row and owns its own keys (the DnD keyboard sensor). Only the
+		// text control's keys are this list's to interpret.
+		if (!(target instanceof HTMLInputElement)) return;
+		// A modified press is somebody asking for something else — leave it to the browser.
+		if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+		if (event.isComposing) return;
+
+		if (event.key === "Enter") {
+			event.preventDefault();
+			const id = newRowId("task");
+			const next = stage.tasks.slice();
+			next.splice(index + 1, 0, { id, text: "" });
+			props.onPatch({ tasks: next });
+			pendingFocus.current = taskInputId(stage.id, id);
+			return;
+		}
+
+		if (event.key === "Backspace" && target.value.length === 0) {
+			event.preventDefault();
+			const neighbour = stage.tasks[index - 1] ?? stage.tasks[index + 1] ?? null;
+			removeTask(stage.tasks[index].id);
+			if (neighbour) pendingFocus.current = taskInputId(stage.id, neighbour.id);
+		}
+	};
+
+	// The seam is drawn on the side of the hovered row the dragged step would land on.
+	const from = dragIndex.value;
+	const over = overIndex.value;
+	const seamBefore = from !== null && over !== null && from > over ? over : null;
+	const seamAfter = from !== null && over !== null && from < over ? over : null;
+
 	return (
 		<Field
 			label="Default task list"
-			hint="Every ticket opened on this stage starts with these steps."
+			hint="Every ticket opened on this stage starts with these steps. Press Enter for the next one."
 		>
-			<ul class="psu-rows" role="list">
-				{stage.tasks.map((task: StageTask, index: number) => (
-					<li key={task.id} class="psu-rows__row">
-						<InputText
-							value={task.text}
-							onValueChange={(text: string) =>
-								patchTask(task.id, text)}
-							block
-							maxLength={240}
-							placeholder={`Step ${index + 1}`}
-							aria-label={`Step ${index + 1}`}
-							status={task.text.trim() ? "default" : "required"}
-						/>
-						<button
-							type="button"
-							class="psu-stage__remove"
-							aria-label={`Remove step ${index + 1}`}
-							onClick={() =>
-								props.onPatch({ tasks: stage.tasks.filter((t) => t.id !== task.id) })}
-						>
-							<Icon name="trash" />
-						</button>
-					</li>
-				))}
-			</ul>
-			<button
-				type="button"
-				class="psu-add psu-add--sm"
-				onClick={() => props.onPatch({
-					tasks: [...stage.tasks, { id: newRowId("task"), text: "" }],
-				})}
-			>
+			{
+				/*
+				 * `.psu-tasks` is named in `ENTER_OWNERS` (`core/setup-validation.ts`), which is what stops
+				 * the form-wide advance-on-Enter rule from running first. That rule is a CAPTURE listener on
+				 * the form root, so it fires before this row's own handler and would already have moved
+				 * focus and called `preventDefault` — the opt-out is the only place the conflict can be
+				 * resolved.
+				 */
+			}
+			<div class="psu-tasks">
+				<DndContext
+					onDragStart={(e) => {
+						dragIndex.value = stage.tasks.findIndex((t) =>
+							t.id === taskIdOf(String(e.active.id))
+						);
+					}}
+					onDragOver={(e) => {
+						overIndex.value = e.over === null
+							? null
+							: stage.tasks.findIndex((t) => t.id === taskIdOf(String(e.over)));
+					}}
+					onDragEnd={(e) => {
+						const start = dragIndex.value;
+						const target = e.over === null
+							? null
+							: stage.tasks.findIndex((t) => t.id === taskIdOf(String(e.over)));
+						dragIndex.value = null;
+						overIndex.value = null;
+						if (e.canceled || start === null || target === null || target < 0 || start < 0) {
+							return;
+						}
+						if (start === target) return;
+						props.onPatch({ tasks: arrayMove(stage.tasks, start, target) });
+					}}
+				>
+					<ul class="psu-tasks__list" role="list">
+						{stage.tasks.map((task: StageTask, index: number) => (
+							<li key={task.id} class="psu-tasks__slot">
+								<DropIndicator active={seamBefore === index} />
+								<TaskRow
+									stageId={stage.id}
+									task={task}
+									index={index}
+									onText={(text: string) => patchTask(task.id, text)}
+									onRemove={() => removeTask(task.id)}
+									onKeyDown={(event) => onRowKeyDown(event, index)}
+								/>
+								<DropIndicator active={seamAfter === index} />
+							</li>
+						))}
+					</ul>
+				</DndContext>
+			</div>
+			<button type="button" class="psu-add psu-add--sm" onClick={appendTask}>
 				<Icon name="plus" />
 				Add step
 			</button>
@@ -2043,28 +2256,154 @@ export function RoleListSection(
 }
 // #endregion
 
-// #region Attachments & NDA
+// #region File drop zones
 const ATTACHMENT_PICKER = "psu-attachments";
 const NDA_PICKER = "psu-nda";
 
-/** The library an upload is filed in, resolved from the session on first use. */
-async function actingOwnerId(): Promise<string | null> {
-	const me = await AccountService.current();
-	return me?.userId ?? null;
+/**
+ * A region that accepts a dropped file, and says so before the pointer reaches it.
+ *
+ * Two states, and the difference between them is the point. **Armed** is set from the WINDOW the
+ * moment a file drag enters the page ({@link fileDragActive}), so every place a file may go
+ * announces itself at once and the reader can see they have a choice; **over** is this zone
+ * specifically, and is what says which one a release would land in. A zone that only lit on hover
+ * could express neither — it would answer one move too late, and could never show the second option
+ * at all.
+ *
+ * The zone is a plain region rather than a `<button>`: the click affordances are the real controls
+ * inside it, and wrapping them in another activatable element would put a control inside a control.
+ * Dropping is a pointer gesture with no keyboard equivalent, which is exactly why the file input and
+ * the library picker beside it are not optional garnish — they are the whole keyboard path, and the
+ * drop is the shortcut.
+ */
+function DropZone(props: {
+	/** Names the zone in the drop prompt: "Drop <label> here". */
+	label: string;
+	/** Refuses drops — at the attachment cap, or while the field is not editable. */
+	disabled?: boolean;
+	onFiles: (files: File[]) => void;
+	children: ComponentChildren;
+}): JSX.Element {
+	const over = useSignal(false);
+	const armed = fileDragActive.value && !props.disabled;
+
+	return (
+		<div
+			class="psu-drop"
+			data-armed={armed || undefined}
+			data-over={(armed && over.value) || undefined}
+			/*
+			 * `preventDefault` on dragover is what makes this a drop target at all — without it the
+			 * browser's default is to refuse the drop and navigate to the file instead, which discards
+			 * the whole form. It is deliberately NOT done at the window (see `core/file-drag.ts`), so a
+			 * file released over the prose still gets the browser's own handling rather than being
+			 * silently swallowed by a page-wide target that does nothing with it.
+			 */
+			onDragOver={(event: JSX.TargetedDragEvent<HTMLDivElement>) => {
+				if (props.disabled) return;
+				event.preventDefault();
+				over.value = true;
+			}}
+			onDragEnter={() => {
+				if (!props.disabled) over.value = true;
+			}}
+			onDragLeave={(event: JSX.TargetedDragEvent<HTMLDivElement>) => {
+				// `dragleave` also fires when the pointer crosses into a CHILD of this zone, which would
+				// flicker the highlight off over every control inside it. `relatedTarget` is where the
+				// pointer went; if it is still within this element, the drag has not left.
+				const next = event.relatedTarget;
+				if (next instanceof Node && event.currentTarget.contains(next)) return;
+				over.value = false;
+			}}
+			onDrop={(event: JSX.TargetedDragEvent<HTMLDivElement>) => {
+				over.value = false;
+				if (props.disabled) return;
+				event.preventDefault();
+				const files = filesFrom(event as unknown as DragEvent);
+				if (files.length > 0) props.onFiles(files);
+			}}
+		>
+			{props.children}
+			{
+				/*
+				 * The prompt is rendered only while a drag is live. A permanent "or drop files here" line
+				 * is a sentence the reader has to skip on every visit to learn nothing, and this form is
+				 * long enough already.
+				 */
+			}
+			{armed && (
+				<p class="psu-drop__prompt" aria-hidden="true">
+					<Icon name="upload" size="sm" />
+					Drop {props.label} here
+				</p>
+			)}
+		</div>
+	);
 }
 
 /**
- * Reference files, and the NDA the engagement is offered under.
+ * One file that has been dropped but is not yet an asset.
+ *
+ * The thumbnail is a local object URL, so it is on screen before anything has been uploaded. The
+ * failure state lives on the row rather than in a notification: a drop of six files where one fails
+ * has to say WHICH, and a message naming a file the reader then has to find in a list is asking them
+ * to do the matching the interface exists to do.
+ */
+function PendingFileRow(
+	{ row, onDismiss }: { row: PendingAttachment; onDismiss: () => void },
+): JSX.Element {
+	const failed = row.status === "failed";
+	return (
+		<li class="psu-file psu-file--pending" data-status={row.status}>
+			<span class="psu-file__thumb">
+				{row.previewUrl
+					? <img src={row.previewUrl} alt="" loading="lazy" />
+					: <Icon name="attachment" size="sm" />}
+				{
+					/*
+					 * The spinner sits OVER the thumbnail, which is the thing whose state is in question.
+					 * `aria-hidden` because the row already announces itself through `aria-busy` below —
+					 * a spinner announced as well would say the same thing twice.
+					 */
+				}
+				{!failed && <span class="psu-file__spinner" aria-hidden="true" />}
+			</span>
+			<span class="psu-file__body">
+				<span class="psu-file__name">{row.name}</span>
+				{failed
+					? <span class="psu-file__error">{row.error}</span>
+					: <span class="psu-file__meta">{formatBytes(row.sizeBytes)} · Uploading…</span>}
+			</span>
+			<button
+				type="button"
+				class="psu-stage__remove"
+				aria-label={failed ? `Dismiss ${row.name}` : `Cancel ${row.name}`}
+				onClick={onDismiss}
+			>
+				<Icon name="trash" />
+			</button>
+		</li>
+	);
+}
+// #endregion
+
+// #region Attachments
+/**
+ * The engagement's reference files.
  *
  * An attachment is carried by `files.items` REFERENCE, never by URL, so the same asset can be a
  * project brief here and a submission deliverable elsewhere without the bytes having two lifetimes.
- * That is why both paths — picking from the library and uploading from the device — end in an asset
- * id: the upload is a way of getting a file INTO the library, not a second kind of attachment.
+ * That is why all three paths — picking from the library, choosing from the device, and dropping —
+ * end in an asset id: an upload is a way of getting a file INTO the library, not a second kind of
+ * attachment.
+ *
+ * **The NDA is no longer here.** It shares a shape with an attachment (a file reference) and nothing
+ * else: a reference file is material the freelancer reads to decide whether to apply, and the NDA is
+ * a legal instrument they sign before they are allowed to. Filed together, the section had to be
+ * called "Attachments & NDA" — a title that names two subjects is the surest sign a section has two.
+ * It now lives with the other terms of the engagement, in Rules → Advanced options.
  */
 export function AttachmentsSection({ setup }: { setup: ProjectSetup }): JSX.Element {
-	const busy = useSignal(false);
-	const failure = useSignal<string | null>(null);
-	const rules = setup.rules;
 	const room = MAX_PROJECT_ATTACHMENTS - setup.attachments.length;
 
 	const addAttachments = (items: ProjectAttachment[]) => {
@@ -2077,132 +2416,183 @@ export function AttachmentsSection({ setup }: { setup: ProjectSetup }): JSX.Elem
 		});
 	};
 
-	const fromLibrary = (assets: AssetItem[]) => {
-		addAttachments(
-			assets.map((a) => ({ id: a.id, name: a.name, sizeBytes: a.sizeBytes ?? null })),
-		);
-	};
-
 	/**
-	 * Upload device files into the owner's library, then attach what landed.
+	 * The room is read through a FUNCTION, not captured.
 	 *
-	 * A partial success is kept rather than refused: three of four references arriving is still three
-	 * useful references, and the one that failed is named so it can be retried. That is the opposite
-	 * of the chat composer's rule, and deliberately — a message is a statement about the things
-	 * attached to it, where a reference pack is a pack.
+	 * A drop of three files onto a project with one slot left must take one, and the number of slots
+	 * moves as earlier rows land. A value closed over when this render ran would be the answer from
+	 * before the previous drop finished.
 	 */
-	const fromDevice = async (files: File[]) => {
-		if (files.length === 0 || busy.value) return;
-		busy.value = true;
-		failure.value = null;
-		try {
-			const ownerId = await actingOwnerId();
-			if (!ownerId) {
-				failure.value =
-					"We could not tell whose library to file these in — sign in again and retry.";
-				return;
-			}
-			const sent = files.slice(0, Math.max(0, room));
-			const outcome = await uploadForProject(sent, {
-				ownerType: "user",
-				ownerId,
-				metadataFor: extractMetadata,
-			});
+	const uploads = useAttachmentUpload({
+		room: () => MAX_PROJECT_ATTACHMENTS - setup.attachments.length,
+		onLanded: (assets) => addAttachments(assets),
+	});
 
-			// `assetIds` keeps the caller's ORDER but drops the files that did not land, so it cannot be
-			// zipped against `sent` by index: one failure at position 0 would name every asset after it
-			// with the file before it. The failed positions are removed from `sent` first, which leaves
-			// two lists that are the same length and in the same order by construction.
-			const failedAt = new Set(outcome.failures.map((f) => f.index));
-			const kept = sent.filter((_, i) => !failedAt.has(i));
-			addAttachments(
-				outcome.assetIds.map((id, i) => ({
-					id,
-					name: kept[i]?.name ?? id,
-					sizeBytes: kept[i]?.size ?? null,
-				})),
-			);
-
-			if (outcome.failures.length > 0) {
-				failure.value = `${
-					outcome.failures.map((f) => f.name).join(", ")
-				} could not be uploaded. Everything else was attached.`;
-			}
-		} finally {
-			busy.value = false;
-		}
-	};
+	const pending = uploads.pending.value;
+	const previews = uploads.previews.value;
+	const full = room <= 0;
+	// The empty state is about what the reader can SEE, so an in-flight card counts: a zone that
+	// shrank to its compact form the moment a file was dropped would move the controls out from under
+	// the pointer that had just used them.
+	const empty = setup.attachments.length === 0 && pending.length === 0;
 
 	const onFileInput = (event: JSX.TargetedEvent<HTMLInputElement>) => {
 		const picked = event.currentTarget.files;
-		if (picked) void fromDevice(Array.from(picked));
+		if (picked) uploads.send(Array.from(picked));
 		event.currentTarget.value = "";
 	};
 
 	return (
-		<Section sectionKey="attachments" title="Attachments & NDA">
+		<Section sectionKey="attachments" title="Attachments">
 			<Field
 				label="Reference files"
 				hint={`Briefs, brand sheets, specs. Up to ${MAX_PROJECT_ATTACHMENTS}.`}
 			>
-				<ul class="psu-rows" role="list">
-					{setup.attachments.map((file) => (
-						<li key={file.id} class="psu-file">
-							<Icon class="psu-file__glyph" name="attachment" size="sm" />
-							<span class="psu-file__name">{file.name}</span>
-							{file.sizeBytes !== null && (
-								<span class="psu-file__meta">{formatBytes(file.sizeBytes)}</span>
-							)}
-							<button
-								type="button"
-								class="psu-stage__remove"
-								aria-label={`Remove ${file.name}`}
-								onClick={() =>
-									patchSetup({
-										attachments: setup.attachments.filter((a) => a.id !== file.id),
-									})}
-							>
-								<Icon name="trash" />
-							</button>
-						</li>
-					))}
-					{setup.attachments.length === 0 && <li class="psu-list__empty">Nothing attached yet.</li>}
-				</ul>
+				<DropZone label="reference files" disabled={full} onFiles={uploads.send}>
+					<ul class="psu-rows" role="list" aria-busy={uploads.busy.value || undefined}>
+						{setup.attachments.map((file) => (
+							<li key={file.id} class="psu-file">
+								<span class="psu-file__thumb">
+									{previews[file.id]
+										? <img src={previews[file.id]} alt="" loading="lazy" />
+										: <Icon name="attachment" size="sm" />}
+								</span>
+								<span class="psu-file__body">
+									<span class="psu-file__name">{file.name}</span>
+									{file.sizeBytes !== null && (
+										<span class="psu-file__meta">{formatBytes(file.sizeBytes)}</span>
+									)}
+								</span>
+								<button
+									type="button"
+									class="psu-stage__remove"
+									aria-label={`Remove ${file.name}`}
+									onClick={() =>
+										patchSetup({
+											attachments: setup.attachments.filter((a) => a.id !== file.id),
+										})}
+								>
+									<Icon name="trash" />
+								</button>
+							</li>
+						))}
+						{pending.map((row) => (
+							<PendingFileRow
+								key={row.key}
+								row={row}
+								onDismiss={() => uploads.dismiss(row.key)}
+							/>
+						))}
+					</ul>
 
-				<div class="psu-actions">
-					<button
-						type="button"
-						class="psu-add psu-add--sm"
-						disabled={room <= 0 || busy.value}
-						onClick={() =>
-							openPicker({
-								requesterId: ATTACHMENT_PICKER,
-								title: "Attach from your files",
-								multiple: true,
-								max: Math.max(1, room),
-							})}
-					>
-						<Icon name="attachment" />
-						Add from your files
-					</button>
+					{
+						/*
+						 * The action row grows when there is nothing to act on.
+						 *
+						 * An empty list makes these controls the only content in the region, so they carry the
+						 * section on their own and are sized to be found. Once a file is attached they are a
+						 * way of adding another to a list that is already the subject, and step down. The two
+						 * buttons stretch to a common height in both tiers — a row of controls at two
+						 * different heights reads as two different KINDS of control, which these are not.
+						 */
+					}
+					<div class="psu-actions" data-scale={empty ? "lead" : "compact"}>
+						<button
+							type="button"
+							class="psu-add"
+							disabled={full}
+							onClick={() =>
+								openPicker({
+									requesterId: ATTACHMENT_PICKER,
+									title: "Attach from your files",
+									multiple: true,
+									max: Math.max(1, room),
+								})}
+						>
+							<Icon name="attachment" />
+							Add from your files
+						</button>
 
-					<label class="psu-add psu-add--sm" data-disabled={room <= 0 || busy.value || undefined}>
-						<Icon name="upload" />
-						{busy.value ? "Uploading…" : "Upload"}
-						<input
-							type="file"
-							class="psu-visually-hidden"
-							multiple
-							disabled={room <= 0 || busy.value}
-							onChange={onFileInput}
-						/>
-					</label>
-				</div>
+						<label class="psu-add" data-disabled={full || undefined}>
+							<Icon name="upload" />
+							Upload
+							<input
+								type="file"
+								class="psu-visually-hidden"
+								multiple
+								disabled={full}
+								onChange={onFileInput}
+							/>
+						</label>
+					</div>
+				</DropZone>
 
-				{failure.value && <Note>{failure.value}</Note>}
-				{room <= 0 && <Note>That is the limit — remove one to attach another.</Note>}
+				{full && <Note>That is the limit — remove one to attach another.</Note>}
 			</Field>
 
+			<AssetPicker
+				requesterId={ATTACHMENT_PICKER}
+				onPick={(assets: AssetItem[]) =>
+					addAttachments(
+						assets.map((a) => ({ id: a.id, name: a.name, sizeBytes: a.sizeBytes ?? null })),
+					)}
+			/>
+		</Section>
+	);
+}
+// #endregion
+
+// #region NDA
+/**
+ * The confidentiality term the engagement is offered under.
+ *
+ * Lives inside Rules → Advanced options, with the other things a freelancer agrees to and the owner
+ * sets once. It was previously filed beside the reference attachments because both hold a file
+ * reference — which is a similarity of STORAGE, not of subject, and it produced a section whose
+ * title had to name two things.
+ *
+ * The three states of the source are deliberate: the platform standard needs no upload and no legal
+ * review and is what most engagements want; a custom document is a real choice with a real
+ * obligation attached, which is why choosing it and not attaching one is called out as a publish
+ * blocker rather than left to be discovered at the gate.
+ */
+function NdaFields({ setup }: { setup: ProjectSetup }): JSX.Element {
+	const rules = setup.rules;
+
+	/**
+	 * The custom document's filename, for as long as this session knows it.
+	 *
+	 * `ProjectRules` stores only the asset id, so a reload has nothing else to show and the row falls
+	 * back to it. That is worse than a name and better than a lie — the alternative, a generic
+	 * "Uploaded document", would hide which of several documents is actually in force.
+	 */
+	const documentName = useSignal<string | null>(null);
+
+	const attachDocument = (id: string, name: string | null) => {
+		documentName.value = name;
+		patchSetup({ rules: { ndaDocumentId: id } });
+	};
+
+	const uploads = useAttachmentUpload({
+		// One document, and only while there is not one already.
+		room: () => (rules.ndaDocumentId ? 0 : 1),
+		onLanded: (assets) => {
+			const doc = assets[0];
+			if (doc) attachDocument(doc.id, doc.name);
+		},
+	});
+
+	const pending = uploads.pending.value;
+	const held = rules.ndaDocumentId !== null;
+
+	const onFileInput = (event: JSX.TargetedEvent<HTMLInputElement>) => {
+		const picked = event.currentTarget.files;
+		if (picked && picked.length > 0) uploads.send([picked[0]]);
+		event.currentTarget.value = "";
+	};
+
+	return (
+		<>
 			<div class="psu-toggles">
 				<Checkbox
 					value={rules.ndaRequired}
@@ -2242,26 +2632,70 @@ export function AttachmentsSection({ setup }: { setup: ProjectSetup }): JSX.Elem
 							label="NDA document"
 							hint="Freelancers sign this before they can see the stage they are applying to."
 						>
-							{rules.ndaDocumentId
-								? (
+							{
+								/*
+								 * Its own drop zone, independent of the attachments one.
+								 *
+								 * Both light up together when a drag enters the page, which is the whole reason
+								 * this is a second zone rather than one shared target: an owner with the NDA in
+								 * their hand and Advanced options open can put it where it belongs in one gesture,
+								 * instead of dropping it into the reference pack and then moving it.
+								 *
+								 * When Advanced options is CLOSED this subtree is not rendered at all — a
+								 * `<details>` body is `display: none` — so "only the attachments zone highlights"
+								 * is true by construction rather than by a rule somebody has to remember to keep.
+								 */
+							}
+							<DropZone label="your NDA" disabled={held} onFiles={uploads.send}>
+								{held && (
 									<div class="psu-file">
-										<Icon class="psu-file__glyph" name="document" size="sm" />
-										<span class="psu-file__name">{rules.ndaDocumentId}</span>
+										<span class="psu-file__thumb">
+											<Icon name="document" size="sm" />
+										</span>
+										<span class="psu-file__body">
+											<span class="psu-file__name">
+												{documentName.value ?? rules.ndaDocumentId}
+											</span>
+										</span>
 										<button
 											type="button"
 											class="psu-stage__remove"
 											aria-label="Remove the NDA document"
-											onClick={() => patchSetup({ rules: { ndaDocumentId: null } })}
+											onClick={() => {
+												documentName.value = null;
+												patchSetup({ rules: { ndaDocumentId: null } });
+											}}
 										>
 											<Icon name="trash" />
 										</button>
 									</div>
-								)
-								: (
-									<>
+								)}
+
+								{
+									/*
+									 * One list around the rows, not one per row. `PendingFileRow` renders an `<li>`,
+									 * so it has to have a list parent — but a `<ul>` per item would announce "list of
+									 * 1" once per file, which is the sort of markup that reads correctly on screen
+									 * and wrongly to anything that follows structure.
+									 */
+								}
+								{pending.length > 0 && (
+									<ul class="psu-rows" role="list" aria-busy={uploads.busy.value || undefined}>
+										{pending.map((row) => (
+											<PendingFileRow
+												key={row.key}
+												row={row}
+												onDismiss={() => uploads.dismiss(row.key)}
+											/>
+										))}
+									</ul>
+								)}
+
+								{!held && (
+									<div class="psu-actions" data-scale={pending.length > 0 ? "compact" : "lead"}>
 										<button
 											type="button"
-											class="psu-add psu-add--sm"
+											class="psu-add"
 											onClick={() =>
 												openPicker({
 													requesterId: NDA_PICKER,
@@ -2273,26 +2707,39 @@ export function AttachmentsSection({ setup }: { setup: ProjectSetup }): JSX.Elem
 											<Icon name="document" />
 											Choose a document
 										</button>
-										<Note>
-											You have chosen your own NDA and not attached it yet — the engagement cannot
-											be published until you do.
-										</Note>
-									</>
+										<label class="psu-add">
+											<Icon name="upload" />
+											Upload
+											<input
+												type="file"
+												class="psu-visually-hidden"
+												accept=".pdf,.doc,.docx,application/pdf"
+												onChange={onFileInput}
+											/>
+										</label>
+									</div>
 								)}
+							</DropZone>
+
+							{!held && (
+								<Note>
+									You have chosen your own NDA and not attached it yet — the engagement cannot be
+									published until you do.
+								</Note>
+							)}
 						</Field>
 					)}
+
+					<AssetPicker
+						requesterId={NDA_PICKER}
+						onPick={(assets: AssetItem[]) => {
+							const doc = assets[0];
+							if (doc) attachDocument(doc.id, doc.name);
+						}}
+					/>
 				</>
 			)}
-
-			<AssetPicker requesterId={ATTACHMENT_PICKER} onPick={fromLibrary} />
-			<AssetPicker
-				requesterId={NDA_PICKER}
-				onPick={(assets: AssetItem[]) => {
-					const doc = assets[0];
-					if (doc) patchSetup({ rules: { ndaDocumentId: doc.id } });
-				}}
-			/>
-		</Section>
+		</>
 	);
 }
 // #endregion
@@ -2404,9 +2851,16 @@ export function RulesSection(
 				 * Visibility, timeline, locations and languages deliberately stay ABOVE this fold: they are
 				 * publication and matching terms that decide who ever sees the engagement, which is a
 				 * decision the owner is making right now rather than a default they inherited.
+				 *
+				 * The NDA joins them here, moved out of the attachments section. It is a term a freelancer
+				 * agrees to — the same category as ownership of the work and portfolio rights, which are
+				 * its immediate neighbours — and it was only ever filed beside the reference files because
+				 * both happen to hold an asset id.
 				 */
 			}
 			<Disclosure label="Advanced options">
+				<NdaFields setup={setup} />
+
 				<Field
 					label="Currency"
 					hint="Every figure on this page is priced in it. Changing it relabels those figures; it does not convert them."

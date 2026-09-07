@@ -289,6 +289,24 @@ const STATE = {
 			<path d="M8 12.3l2.7 2.7L16 9.5" />
 		</>
 	),
+	/**
+	 * No connection — a cloud struck through.
+	 *
+	 * A distinct entry rather than a second meaning for `globe` (a language / a website) or for
+	 * `warning` (something needs attention). Neither is what this says: the network is absent, which
+	 * is a state of the machine and not a fault the reader has to act on — and §B.7.7 makes one name
+	 * for two concepts a merge gate rather than a preference.
+	 *
+	 * The bar is drawn corner-to-corner across the whole 24-unit box so it reads as a strike at every
+	 * size on the ramp; at 12px a shorter one closes up into the cloud's own outline.
+	 */
+	"cloud-off": () => (
+		<>
+			<path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .8-7.5 5.6 5.6 0 0 0-9.4-3" />
+			<path d="M7.5 18.5a3.8 3.8 0 0 1-.6-7.55" />
+			<path d="M3.5 3.5l17 17" />
+		</>
+	),
 	/** A circled question. */
 	"help": () => (
 		<>
