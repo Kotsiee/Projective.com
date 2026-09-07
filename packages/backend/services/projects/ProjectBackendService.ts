@@ -86,7 +86,7 @@ import { findProjectDetail } from "./detail-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
-import { findBoardPage } from "./board-fixtures.ts";
+import { BOARD_FIXTURE_NOW, findBoardPage } from "./board-fixtures.ts";
 import { findMemberRoster } from "./members-fixtures.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { buildViewPage } from "../explore/view-fixtures.ts";
@@ -98,6 +98,7 @@ import type {
 } from "@projective/types/services";
 import {
 	blankStage,
+	buildProjectTimeline,
 	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
@@ -109,6 +110,8 @@ import type {
 	BoardListParams,
 	BoardPage,
 	ChatMessage,
+	TimelineListParams,
+	TimelinePage,
 	CommitTicket,
 	CreatedProject,
 	CreateProject,
@@ -695,6 +698,51 @@ export class ProjectBackendService {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
 		return ok({ page: overlayBoardPage(page, actor) });
+	}
+
+	/**
+	 * The Timeline / Gantt read — `/projects/[projectId]/timeline` for the whole engagement, or one
+	 * stage's schedule when `channelId` is set.
+	 *
+	 * A PROJECTION over {@link board}, not a second read: the same live query (and the same cache
+	 * entry) or the same fixture page, laid onto a time axis by the SSOT's `buildProjectTimeline`.
+	 * The instant it is built at is the server's clock on the live path and the fixture corpus's
+	 * pinned clock on the stub path, because the fixtures' due dates were placed relative to THAT
+	 * instant and a "today" rule drawn from the real clock would put every one of them years in the
+	 * past. The display timezone is left `null` for the viewer's own zone to govern — the server has
+	 * no better answer than the browser does.
+	 */
+	static async timeline(
+		params: TimelineListParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: TimelinePage }>> {
+		const boardParams: BoardListParams = {
+			projectId: params.projectId,
+			channelId: params.channelId ?? null,
+			view: "stages",
+		};
+		const live = await liveRead(
+			"timeline",
+			actor,
+			"projects.board",
+			boardParams,
+			(a) => fetchBoardPage(a, boardParams),
+		);
+		if (live !== undefined) {
+			if (!live) {
+				return fail(404, { message: `No project found for id "${params.projectId}".` });
+			}
+			return ok({ page: buildProjectTimeline(live, { nowMs: Date.now(), timezone: null }) });
+		}
+		const board = findBoardPage(boardParams);
+		if (!board) {
+			return fail(404, { message: `No project found for id "${params.projectId}".` });
+		}
+		const page = buildProjectTimeline(overlayBoardPage(board, actor), {
+			nowMs: BOARD_FIXTURE_NOW,
+			timezone: null,
+		});
+		return ok({ page });
 	}
 
 	/**

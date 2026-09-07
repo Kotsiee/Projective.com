@@ -1,0 +1,858 @@
+/*
+ * @projective/ui/gantt — the Timeline / Gantt engine's ONE stylesheet: the token layer, the shell,
+ * the HTML header and task list, the accessible layer, the popover, the bottom sheet, and the
+ * PROBE the canvas reads its palette from.
+ *
+ * Token-only, strict BEM (DESIGN_SYSTEM.md §B.4 / §B.6). Non-interactive structure — the header
+ * rows, the lane list, the lattice — is separated by spacing, tonal washes and single hairlines,
+ * never a four-sided box. Bars and milestones are pixels, and the popover (an elevated INTERACTIVE
+ * surface) is the one thing here allowed a hairline plus a shadow.
+ *
+ * THE TOKENS ARE ON `:root`, AND THAT BLOCK HOLDS CUSTOM PROPERTIES AND NOTHING ELSE. The popover
+ * is `BodyPortal`'d out of `.gantt`, so a token scoped to it would silently fall back inside the one
+ * surface that most needs it (the `--wlt-*` trap, root CLAUDE.md §8 Decision #60) — and `:root` IS
+ * `<html>`, so a `display` or `overflow` riding along here would style the DOCUMENT (Decision #75).
+ * The engine's own box lives on `.gantt` below. Every name is `--gantt-`-prefixed.
+ */
+
+/* #region Tokens */
+:root {
+	--gantt-lanes-w: 15rem;
+	--gantt-head-row-h: 1.5rem;
+	--gantt-row-h: 2.5rem;
+	--gantt-row-expand: 1.125rem;
+	--gantt-bar-inset: 0.5rem;
+	--gantt-bar-radius: var(--radius-sm);
+	--gantt-bar-pad: 0.375rem;
+	--gantt-progress-h: 3px;
+	--gantt-milestone: 0.75rem;
+	--gantt-link-w: 1.5px;
+	--gantt-arrow: 6px;
+	--gantt-today-w: 2px;
+	--gantt-today-cap: 0.5rem;
+	--gantt-fly-ring: 2.25rem;
+	--gantt-pop-w: 20rem;
+	--gantt-pop-max-h: 26rem;
+	/* The two lattice tones: quiet enough that a bar on them reads as the foreground. */
+	--gantt-rule: color-mix(in srgb, var(--outline) 26%, transparent);
+	--gantt-rule-major: color-mix(in srgb, var(--outline) 52%, transparent);
+	/* The draft block: a dashed, washed provisional span. */
+	--gantt-draft-dash: 5px;
+	--gantt-draft-gap: 4px;
+	--gantt-draft-alpha: 0.78;
+}
+
+/* #endregion */
+
+/* #region Root */
+/*
+ * A bounded flex ROW — the lane list and the main column. `min-block-size: 0` + `block-size: 100%`
+ * are what let the viewport be bounded by its host, and `overflow: hidden` keeps the canvas's
+ * intrinsic 300×150 box from bidding for room while it is being measured.
+ */
+.gantt {
+	position: relative;
+	display: flex;
+	inline-size: 100%;
+	block-size: 100%;
+	min-block-size: 0;
+	overflow: hidden;
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+	background: var(--surface);
+}
+
+.gantt--empty {
+	align-items: center;
+	justify-content: center;
+	min-block-size: 8rem;
+}
+
+.gantt__empty {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+/* #endregion */
+
+/* #region Lane list */
+.gantt__lanes {
+	flex: 0 0 var(--gantt-lanes-w);
+	inline-size: var(--gantt-lanes-w);
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	border-inline-end: var(--hairline);
+	overflow: hidden;
+}
+
+/* The list's own head — exactly the header's two rows tall, so the first lane sits on the first row. */
+.gantt__lanehead {
+	flex: none;
+	display: flex;
+	align-items: flex-end;
+	block-size: calc(var(--gantt-head-row-h) * 2);
+	padding: 0 var(--space-3) var(--space-1);
+	border-block-end: var(--hairline);
+}
+
+.gantt__laneheading {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.gantt-lanes {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow: hidden;
+	position: relative;
+}
+
+/*
+ * The rows are in normal flow behind a spacer, and the whole list translates with the vertical
+ * offset (a `transform` written per frame — a paint-only change). The hovered row grows by
+ * `--gantt-expand`, which the store publishes as a RESOLVED number, and every row beneath it is pushed
+ * down by the flow. No transition on the height, because the number is already the spring's output.
+ */
+.gantt-lanes__list {
+	padding-block-start: var(--gantt-lanes-spacer, 0px);
+	will-change: transform;
+}
+
+.gantt-lane {
+	block-size: calc(var(--gantt-row-h-live, var(--gantt-row-h)) + var(--gantt-expand, 0px));
+	border-block-end: 1px solid color-mix(in srgb, var(--outline) 26%, transparent);
+	box-sizing: border-box;
+}
+
+.gantt-lane--selected {
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+.gantt-lane__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 100%;
+	padding-inline: calc(var(--space-3) + var(--gantt-lane-depth, 0) * var(--space-4)) var(--space-3);
+	color: inherit;
+	text-decoration: none;
+	font: inherit;
+	text-align: start;
+	background: none;
+	border: none;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.gantt-lane__row--link,
+.gantt-lane__row--button {
+	cursor: pointer;
+}
+
+.gantt-lane__row--link:hover .gantt-lane__label,
+.gantt-lane__row--button:hover .gantt-lane__label {
+	color: var(--primary);
+}
+
+.gantt-lane__row:focus-visible {
+	outline: none;
+	box-shadow: inset var(--focus-ring-shadow);
+}
+
+.gantt-lane__dot {
+	flex: none;
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-radius: var(--radius-full);
+	background: var(--gantt-lane-accent, var(--outline));
+}
+
+.gantt-lane__face {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.5rem;
+	block-size: 1.5rem;
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	overflow: hidden;
+}
+
+.gantt-lane__photo {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.gantt-lane__text {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	flex: 1 1 auto;
+}
+
+.gantt-lane__label {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.gantt-lane__sub {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.gantt-lane__meta {
+	flex: none;
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Main column: header + viewport */
+.gantt__main {
+	position: relative;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	min-block-size: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.gantt-head {
+	flex: none;
+	position: relative;
+	block-size: calc(var(--gantt-head-row-h) * 2);
+	overflow: hidden;
+	border-block-end: var(--hairline);
+	user-select: none;
+}
+
+/* The strip is translated by the time offset per frame; its cells sit at content-space x. */
+.gantt-head__strip {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: 0;
+	will-change: transform;
+}
+
+.gantt-head__row {
+	position: relative;
+	block-size: var(--gantt-head-row-h);
+}
+
+.gantt-head__row + .gantt-head__row {
+	border-block-start: 1px solid var(--gantt-rule);
+}
+
+.gantt-head__cell {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: var(--gantt-cell-x);
+	inline-size: var(--gantt-cell-w);
+	display: flex;
+	align-items: center;
+	padding-inline: var(--space-1);
+	border-inline-start: 1px solid var(--gantt-rule);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.gantt-head__cell--major {
+	border-inline-start-color: var(--gantt-rule-major);
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.gantt-head__cell--today {
+	color: var(--primary);
+	font-weight: var(--fw-semibold);
+}
+
+/*
+ * The viewport. Its ONLY child is the canvas. `touch-action: none` hands BOTH one-finger pan and the
+ * two-finger pinch to the engine (§Part C asks for both on the time scale); page zoom stays reachable
+ * by keyboard and the browser's own menu, and the trade is recorded in the roster.
+ */
+.gantt__viewport {
+	position: relative;
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow: hidden;
+	touch-action: none;
+	overscroll-behavior: contain;
+}
+
+.gantt__viewport[data-cursor="cell"] {
+	cursor: crosshair;
+}
+
+.gantt__viewport[data-cursor="pointer"] {
+	cursor: pointer;
+}
+
+.gantt__viewport[data-cursor="grabbing"] {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.gantt__viewport[data-cursor="fly"] {
+	cursor: move;
+	user-select: none;
+}
+
+/*
+ * `inline-size`/`block-size` are stated rather than left to the insets: a canvas is a REPLACED element
+ * with an intrinsic 300×150 box, so an `auto` size between two insets resolves to 300px.
+ */
+.gantt__canvas {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	pointer-events: none;
+}
+
+/* The return-to-today pill — HTML chrome floating over the stage. */
+.gantt__today {
+	position: absolute;
+	inset-block-end: var(--space-3);
+	inset-inline-end: var(--space-3);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: 2rem;
+	padding-inline: var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+	color: var(--primary);
+	font: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	box-shadow: var(--elevation-low);
+	cursor: pointer;
+	z-index: var(--z-raised);
+}
+
+.gantt__today[data-direction="before"] {
+	inset-inline-end: auto;
+	inset-inline-start: var(--space-3);
+}
+
+.gantt__today:hover {
+	background: var(--surface-2);
+}
+
+.gantt__today:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* #endregion */
+
+/* #region Accessible layer */
+/*
+ * Visually hidden rather than absent: the drawing is already on screen, and the canvas paints the
+ * focus ring for whichever control has focus. The rules are `.ui-visually-hidden`'s, restated locally
+ * because this package is copy-paste-portable.
+ */
+.gantt__a11y {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.gantt__a11ylist {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.gantt__a11yitem {
+	font: inherit;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+}
+
+/* #endregion */
+
+/* #region Popover */
+/* The inline ownership tether — zero-sized, never hit. */
+.gantt-pop__tether {
+	position: absolute;
+	inline-size: 0;
+	block-size: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/* The portalled positioning proxy, parked on the anchor rectangle. Physical, viewport coordinates. */
+.gantt-pop__anchor {
+	position: fixed;
+	top: var(--gantt-pop-anchor-y, -9999px);
+	left: var(--gantt-pop-anchor-x, -9999px);
+	inline-size: var(--gantt-pop-anchor-w, 0);
+	block-size: var(--gantt-pop-anchor-h, 0);
+	pointer-events: none;
+}
+
+/*
+ * Physical `top`/`left`: `--float-*` come from `getBoundingClientRect`, a left-origin frame that does
+ * not mirror under `dir="rtl"`. Everything INSIDE the panel is logical. The resting state is CLOSED
+ * and `[data-state="open"]` corrects it, so a tab that never services a frame still arrives open.
+ */
+.gantt-pop {
+	position: fixed;
+	top: var(--float-top, -9999px);
+	left: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-popover));
+	opacity: 0;
+	transform: translateY(-4px);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.gantt-pop[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+
+.gantt-pop__panel {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: var(--gantt-pop-w);
+	max-inline-size: min(var(--container-sm), calc(100vw - var(--space-8)));
+	max-block-size: min(var(--gantt-pop-max-h), var(--float-available-h, 100vh));
+	overflow: auto;
+	padding: var(--space-4);
+	background: var(--surface);
+	color: var(--on-surface);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
+	box-shadow: var(--elevation-high);
+}
+
+.gantt-pop__close {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.gantt-pop__close:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	color: var(--on-surface);
+}
+
+.gantt-pop__close:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.gantt-pop__item,
+.gantt-pop__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-inline-end: var(--space-6);
+}
+
+.gantt-pop__title {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-align: start;
+}
+
+.gantt-pop__title--open {
+	cursor: pointer;
+}
+
+.gantt-pop__title--open:hover .gantt-pop__titletext {
+	color: var(--primary);
+}
+
+.gantt-pop__title--open:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-sm);
+}
+
+/* The item's accent as a small mark: a rounded bar, or a diamond for a milestone. */
+.gantt-pop__mark {
+	flex: none;
+	inline-size: 0.75rem;
+	block-size: 0.5rem;
+	border-radius: 2px;
+	background: var(--gantt-pop-accent, var(--primary));
+}
+
+.gantt-pop__mark--milestone {
+	inline-size: 0.625rem;
+	block-size: 0.625rem;
+	border-radius: 1px;
+	transform: rotate(45deg);
+}
+
+.gantt-pop__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.gantt-pop__fact {
+	display: grid;
+	grid-template-columns: 5rem minmax(0, 1fr);
+	gap: var(--space-2);
+	font-size: var(--text-xs);
+}
+
+.gantt-pop__fact dt {
+	color: var(--text-secondary);
+}
+
+.gantt-pop__fact dd {
+	margin: 0;
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.gantt-pop__fact--quiet dd {
+	color: var(--text-secondary);
+}
+
+.gantt-pop__srdt {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+}
+
+.gantt-pop__fact--quiet {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.gantt-pop__progress {
+	display: inline-block;
+	inline-size: 5rem;
+	block-size: 0.375rem;
+	margin-inline-end: var(--space-2);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	vertical-align: middle;
+	overflow: hidden;
+}
+
+.gantt-pop__progressfill {
+	display: block;
+	inline-size: var(--gantt-pop-progress, 0%);
+	block-size: 100%;
+	background: var(--gantt-pop-accent, var(--primary));
+}
+
+.gantt-pop__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.gantt-pop__range {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--on-surface);
+}
+
+.gantt-pop__rangelane {
+	color: var(--text-secondary);
+}
+
+.gantt-pop__rangedur {
+	display: block;
+	color: var(--text-secondary);
+}
+
+.gantt-pop__facticon {
+	flex: none;
+	color: var(--text-secondary);
+	margin-block-start: 2px;
+}
+
+.gantt-pop__label {
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.gantt-pop__input {
+	font: inherit;
+	font-size: var(--text-sm);
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-sm);
+	background: var(--surface-1);
+	color: var(--on-surface);
+}
+
+.gantt-pop__input:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.gantt-pop__submit,
+.gantt-pop__expand {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	font: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-full);
+	cursor: pointer;
+}
+
+.gantt-pop__submit {
+	border: none;
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.gantt-pop__submit:disabled {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--text-secondary);
+	cursor: not-allowed;
+}
+
+.gantt-pop__expand {
+	border: 1px solid var(--border-subtle);
+	background: transparent;
+	color: var(--on-surface);
+}
+
+.gantt-pop__submit:focus-visible,
+.gantt-pop__expand:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* The bottom sheet's body reuses the panel's inner vocabulary at the sheet's own width. */
+.gantt-pop__sheetbody {
+	padding: var(--space-2) var(--space-4) var(--space-6);
+}
+
+.gantt-sheet {
+	max-block-size: 70dvh;
+}
+
+/* #endregion */
+
+/* #region Probe (the theme bridge's swatches) */
+/*
+ * Every colour and length the canvas draws with is declared HERE against `var(--*)`, and
+ * `core/theme-bridge.ts` reads the RESOLVED value back. `transition: none` is load-bearing: the
+ * global theme crossfade transitions `color` on `*`, and a swatch read mid-crossfade would report the
+ * value the animation was passing through — forever, in a hidden tab.
+ */
+.gantt-probe {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	inline-size: 0;
+	block-size: 0;
+	overflow: hidden;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.gantt-probe__swatch {
+	display: block;
+	transition: none;
+}
+
+.gantt-probe__swatch--rule {
+	border-block-start: 1px solid var(--gantt-rule);
+}
+
+.gantt-probe__swatch--rule-major {
+	border-block-start: 1px solid var(--gantt-rule-major);
+}
+
+.gantt-probe__swatch--row-rule {
+	border-block-start: 1px solid var(--gantt-rule);
+}
+
+/* The row: its alternating wash on `color`, its height on `block-size`, its hover expansion on
+   `padding-block-end` — three values one element can carry without painting. */
+.gantt-probe__swatch--row {
+	color: color-mix(in srgb, var(--on-surface) 3%, transparent);
+	block-size: var(--gantt-row-h);
+	padding-block-end: var(--gantt-row-expand);
+}
+
+.gantt-probe__swatch--row-hover {
+	color: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+.gantt-probe__swatch--row-selected {
+	color: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+}
+
+.gantt-probe__swatch--weekend {
+	color: color-mix(in srgb, var(--on-surface) 4%, transparent);
+}
+
+.gantt-probe__swatch--today {
+	inline-size: var(--gantt-today-cap);
+	border-block-start: var(--gantt-today-w) solid var(--primary);
+}
+
+.gantt-probe__swatch--label {
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.gantt-probe__swatch--meta {
+	font-family: var(--font-sans);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+/* Radius on the corner, inset on `block-size`, text pad on a padding, progress height on a margin —
+   every one a length that resolves exactly rather than snapping to a device pixel. */
+.gantt-probe__swatch--bar {
+	border-start-start-radius: var(--gantt-bar-radius);
+	block-size: var(--gantt-bar-inset);
+	padding-inline-start: var(--gantt-bar-pad);
+	margin-block-end: var(--gantt-progress-h);
+}
+
+.gantt-probe__swatch--milestone {
+	inline-size: var(--gantt-milestone);
+}
+
+.gantt-probe__swatch--link {
+	inline-size: var(--gantt-arrow);
+	border-block-start: var(--gantt-link-w) solid color-mix(in srgb, var(--outline) 70%, transparent);
+}
+
+.gantt-probe__swatch--draft {
+	background-color: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+	border-block-start: 1px solid var(--primary);
+	column-rule: var(--gantt-draft-dash) solid transparent;
+	outline: var(--gantt-draft-gap) solid transparent;
+	opacity: var(--gantt-draft-alpha);
+}
+
+.gantt-probe__swatch--focus {
+	outline: 2px solid var(--focus-ring);
+	border-block-start: 2px solid var(--focus-ring-halo);
+}
+
+.gantt-probe__swatch--fly {
+	inline-size: var(--gantt-fly-ring);
+	border-block-start: 1.5px solid var(--primary);
+}
+
+/*
+ * One paint per accent token on screen. `color` the solid accent; `background-color` the resting
+ * fill — the accent WASHED toward the surface, so `--on-surface` ink reads on it in both themes;
+ * the block-start border colour the hovered fill, one step stronger; `text-decoration-color` the
+ * verified ink for text drawn on the solid accent.
+ */
+.gantt-probe__swatch--accent {
+	color: var(--gantt-accent);
+	background-color: color-mix(in srgb, var(--gantt-accent) 22%, var(--surface));
+	border-block-start: 1px solid color-mix(in srgb, var(--gantt-accent) 34%, var(--surface));
+	text-decoration-color: var(--gantt-accent-on);
+}
+
+/* #endregion */
+
+/* #region Responsive */
+@media (max-width: 767.98px) {
+	.gantt {
+		--gantt-lanes-w: 7.5rem;
+	}
+
+	.gantt-lane__sub,
+	.gantt-lane__meta {
+		display: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.gantt-pop {
+		transition: none;
+	}
+}
+
+/* #endregion */

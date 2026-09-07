@@ -51,13 +51,9 @@
     align-items: center;
     gap: var(--space-1);
     max-inline-size: 26rem;
-    /* margin-inline: auto; */
     padding-inline-end: var(--space-1);
     block-size: calc(var(--space-7) + var(--space-2) - var(--space-4));
     border-radius: var(--radius-lg);
-    /* background: color-mix(in srgb, var(--surface-2) 55%, transparent); */
-    /* border-bottom: 1px solid var(--hairline-color); */
-    box-shadow: 0 2px 2px #0006;
 }
 
 .shell-search:hover,
@@ -148,7 +144,6 @@
     font: inherit;
     font-size: 0.9rem;
     outline: none;
-    padding-inline-start: var(--space-2);
 }
 
 .shell-search__search-go {
@@ -836,6 +831,7 @@
     cursor: default;
     opacity: 0.6;
 }
+
 /* #endregion */
 
 /* Status picker list. */

@@ -67,6 +67,18 @@ export function MonthViewIcon({ size = 18, class: cls }: IconProps): JSX.Element
 	);
 }
 
+/** Timeline view — a horizontal track with milestone nodes. */
+export function TimelineViewIcon({ size = 18, class: cls }: IconProps): JSX.Element {
+	return (
+		<IconShell {...base(size, cls)}>
+			<path d="M3 12h18" />
+			<circle cx="7" cy="12" r="2" />
+			<circle cx="13" cy="12" r="2" />
+			<circle cx="19" cy="12" r="2" />
+		</IconShell>
+	);
+}
+
 /** Return-to-today target. */
 export function TodayIcon({ size = 18, class: cls }: IconProps): JSX.Element {
 	return (

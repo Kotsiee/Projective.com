@@ -108,6 +108,7 @@ const VIEW_ICON: Record<CalendarViewMode, IconName> = {
 	day: "list",
 	week: "grid",
 	month: "calendar",
+	timeline: "timeline",
 };
 
 /** Which half of the lane the tab strip is showing. */

@@ -37,6 +37,7 @@ import { CalendarHeader } from "../components/CalendarHeader.tsx";
 import { TimeGrid } from "../components/TimeGrid.tsx";
 import { DayTimeline } from "../components/DayTimeline.tsx";
 import { MonthGrid } from "../components/MonthGrid.tsx";
+import { TimelineView } from "../components/TimelineView.tsx";
 import { EventPopoverLayer } from "../components/EventPopoverLayer.tsx";
 import type { EventPopoverState } from "../components/EventPopoverLayer.tsx";
 
@@ -240,7 +241,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		try {
 			if (!hostOwnsView) {
 				const v = localStorage.getItem(`${props.storageKey}:view`);
-				if (v === "day" || v === "week" || v === "month") view.value = v;
+				if (v === "day" || v === "week" || v === "month" || v === "timeline") view.value = v;
 			}
 			const z = localStorage.getItem(`${props.storageKey}:zoom`);
 			if (z) pph.value = Math.max(MIN_PPH, Math.min(MAX_PPH, Number(z)));
@@ -335,6 +336,9 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 	 */
 	function zoom(dir: "in" | "out"): void {
 		const v = view.value;
+		// The Gantt owns its own scale (and its own Ctrl+wheel, which it stops before it reaches
+		// here); the hour continuum has no meaning on a day-per-pixel axis.
+		if (v === "timeline") return;
 		/*
 		 * The PENDING scale, not the live one.
 		 *
@@ -408,7 +412,9 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		setFocus(
 			v === "day"
 				? addZonedDays(f, delta, tz)
-				: v === "week"
+				// A Gantt step is a week: its axis is continuous, and a month jump would leap past the
+				// whole viewport at every zoom but the widest.
+				: v === "week" || v === "timeline"
 				? addZonedDays(f, delta * 7, tz)
 				: addZonedMonths(f, delta, tz),
 		);
@@ -449,6 +455,7 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 		? fmtFullDate(focusMs.value, tz)
 		: v === "week"
 		? `${fmtDayLabel(days[0], tz)} – ${fmtDayLabel(days[6], tz)}`
+		// Month, and the Gantt (whose axis has no fixed period — the trail names the centred month).
 		: fmtMonthYear(focusMs.value, tz);
 
 	const presentKinds = Array.from(new Set(props.events.map((e) => e.kind)));
@@ -524,7 +531,27 @@ export default function Calendar(props: CalendarProps): JSX.Element {
 					: null}
 
 				<div class="cal__view">
-					{v === "month"
+					{v === "timeline"
+						? (
+							<TimelineView
+								events={events}
+								tz={tz}
+								hour12={hour12}
+								focusMs={focusMs.value}
+								todayMs={todayMs.value}
+								canCreate={props.canCreate}
+								storageKey={props.storageKey ? `${props.storageKey}:timeline` : undefined}
+								renderEventActions={props.renderEventActions}
+								onSelectRange={props.onSelectRange}
+								onQuickCreate={props.onQuickCreate}
+								onExpandCreate={props.onExpandCreate}
+								onOpenEvent={props.onOpenEvent}
+								onMoveEvent={props.onMoveEvent}
+								onFocusChange={setFocus}
+								avoid={POPOVER_AVOID}
+							/>
+						)
+						: v === "month"
 						? (
 							<MonthGrid
 								focusMs={focusMs.value}

@@ -22,6 +22,7 @@ import {
 	DayViewIcon,
 	FilterIcon,
 	MonthViewIcon,
+	TimelineViewIcon,
 	SearchIcon,
 	TodayIcon,
 	WeekViewIcon,
@@ -35,6 +36,7 @@ const VIEWS: {
 	{ key: "day", label: "Day", icon: DayViewIcon },
 	{ key: "week", label: "Week", icon: WeekViewIcon },
 	{ key: "month", label: "Month", icon: MonthViewIcon },
+	{ key: "timeline", label: "Timeline", icon: TimelineViewIcon },
 ];
 
 export interface CalendarHeaderProps {

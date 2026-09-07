@@ -14,7 +14,12 @@ import type { Signal } from "@preact/signals";
 
 // #region View + selection
 /** The three primary view modes the header switches between (and Ctrl+wheel zooms across). */
-export type CalendarViewMode = "day" | "week" | "month";
+/**
+ * The four views. `timeline` is the Gantt: every event on a horizontal time axis, one lane per KIND,
+ * drawn by `@projective/ui/gantt` — the calendar hands it the same events and the same callbacks and
+ * owns nothing of its geometry.
+ */
+export type CalendarViewMode = "day" | "week" | "month" | "timeline";
 
 /** A time range the user selected (drag-to-select) or clicked (an empty cell → a zero/slot range). */
 export interface CalendarRange {

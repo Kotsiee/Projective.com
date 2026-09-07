@@ -541,14 +541,29 @@ This package provides high-performance data visualization tools ranging from pro
 
 #### Components
 
-**GanttChart** A specialized tool for project timelines and stage management.
+**GanttChart** A specialized tool for project timelines and stage management. **Implemented** as
+`@projective/ui/gantt` (root `CLAUDE.md` §8 Decision #91) — the `Gantt` island.
 
 - **Design:**
-  - **Left List:** HTML-based `GanttTaskList` for rich interactions and BEM styling.
-  - **Timeline:** Canvas-based viewport supporting infinite horizontal and vertical scrolling.
-  - **Header:** Dynamic "Tiered" header (Years -> Months -> Days) that adapts as you zoom via a
-    slider or `Ctrl+Wheel`.
-- **Features:** Supports milestones, task dependencies, and progress tracking.
+  - **Left List:** HTML-based `GanttTaskList` (`gantt/components/GanttTaskList.tsx`) for rich
+    interactions and BEM styling; its rows are in normal flow and virtualized by lane window, and the
+    hovered lane grows by the store's `expandPx` so the DOM list and the canvas shift together.
+  - **Timeline:** ONE immediate-mode Canvas2D viewport (`gantt/islands/Gantt.tsx` + the pure
+    `core/gantt-paint.ts`) supporting infinite horizontal scrolling (a linear day axis two centuries
+    each way, virtualized by date offset) and vertical scrolling bounded by the lanes. Every gesture
+    is resolved by mapping the pointer into content space and asking `core/layout.ts`'s
+    `hitTestItems` what is there. A parallel, visually-hidden accessible layer carries the same
+    items as real controls. A WebGL/PIXI tier is the documented escalation above ~1,000 nodes and is
+    not built; the theme bridge already returns the numeric hex that tier would take.
+  - **Header:** Dynamic "Tiered" header (`GanttHeader`, `core/time-scale.ts` — seven tiers from
+    `year/quarter` to `day/hour`) that adapts as you zoom via the footer rig's slider or
+    `Ctrl+Wheel`, cursor-anchored, with ticks generated through the calendar's zoned-time matrix so a
+    23-hour DST day is 23 hours wide.
+- **Features:** Supports milestones (an instant drawn as a diamond, never a box), task dependencies
+  (elbowed links via `dependencyPath`), progress tracking (a strip along the bar's base; `null` is
+  "no progress channel", a different fact from `0`), drag-to-create on empty lane space,
+  drag-to-move, a built-in anchored popover (a bottom-sheet drawer below `--bp-md`), fly mode on a
+  middle click, and native pinch-to-zoom.
 
 **AnalyticsDisplay** A polymorphic container for data visualization that allows users to swap
 between chart types without reloading data.
@@ -581,16 +596,28 @@ power.
 
 #### Core Architecture
 
-**GanttStore (Signal Store)** Manages the global state of a chart instance, including `scrollX`,
-`visibleDays`, and `hoveredTask`. It calculates the `timeScale` used by all child components to map
-Dates to Pixels.
+**GanttStore (Signal Store)** — `gantt/core/gantt-store.ts`, `createGanttStore()`. Manages the
+state of one chart instance as `@preact/signals`: `scrollX`/`scrollY`, `pxPerDay` (the time scale),
+`rowScale`, the viewport metrics, `hoverId`/`hoverLane`/`expandPx`, `focusId`/`selectedId`, the pan
+and fly flags; and the computed `tier`, `visibleRange`, `contentH`. It owns the time-to-pixel map
+(`xOf`/`msAtViewX`, `x = (ms − origin) / DAY × pxPerDay`) used by every child, the cursor-anchored
+`setZoom`/`zoomBy`, `fitRange`, `centerOn` and `reveal*`. Writes are synchronous, so the geometry is
+always correct before any frame is asked for.
 
-**GanttManager (The Orchestrator)** Coordinates the PIXI.js application. It manages the `Ticker` for
-smooth scrolling animations and triggers renderers for the Grid, Tasks, and Scrollbars.
+**GanttManager (The Orchestrator)** — realised as two hooks rather than a class, because the stage
+is Canvas2D and there is no PIXI `Ticker` to coordinate: `useGanttViewport` owns the gesture map
+(wheel · pan with momentum · fly mode · the zoom spring · pinch · keyboard) and writes the store;
+`useGanttCanvas` paints the scene synchronously in a layout effect and re-paints on resize, DPR,
+theme or accent-set change. The canvas twin of the DOM lever physics (`joystickVelocity`) drives fly
+mode. Every rAF loop is decoration over geometry the store has already settled.
 
-**ThemeBridge** A critical utility that forces the browser to evaluate CSS `calc()` and `var()`
-statements, returning a numeric Hex code for the Canvas engine. This ensures that when `--primary`
-changes in `variables.md`, the Canvas tasks update their color instantly.
+**ThemeBridge** — `gantt/core/theme-bridge.ts`, `readGanttPalette()`. A critical utility that forces
+the browser to evaluate CSS `calc()`, `var()` and `color-mix()` statements, returning resolved
+colours (and `cssColorToHex` for a numeric Hex code) for the Canvas engine. It reads a hidden swatch
+subtree (`GanttProbe`) through `getComputedStyle` — one swatch per rule, row, link, focus-ring and
+per-ACCENT token the data names — and is re-run on any root theme write (`data-theme`,
+`data-contrast`, `data-cvd`, `data-font`), so that when `--primary` changes the canvas tasks update
+their colour instantly, and the a11y overlays reach the canvas at all.
 
 ---
 

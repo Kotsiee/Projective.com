@@ -314,6 +314,9 @@ Deno.test("a ticket's cost comes from the stage's rate, never from the payload",
 			ticketCount: 0,
 			assignmentMode: "open_pull",
 			maxConcurrentIntensity: null,
+			startAt: null,
+			endAt: null,
+			dependsOnStageId: null,
 		}],
 		undefined,
 		"ticket-1",
@@ -338,6 +341,9 @@ Deno.test("intensity is the one lever that moves both the cost and the capacity"
 		ticketCount: 0,
 		assignmentMode: "open_pull" as const,
 		maxConcurrentIntensity: null,
+		startAt: null,
+		endAt: null,
+		dependsOnStageId: null,
 	};
 	const at = Date.parse("2026-08-31T12:00:00Z");
 	const ref = {

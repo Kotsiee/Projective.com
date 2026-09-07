@@ -250,7 +250,9 @@ export function projectViewLinks(
 		: boardView(detail.format, detail.kind);
 	const links: ProjectViewLink[] = [
 		{ key: "details", label: "Details", icon: DetailsIcon, seg: "" },
-		{ key: "board", label: board.label, icon: board.icon, seg: "board" },
+		// A one-off engagement's "board" IS its timeline (PRODUCT_SPEC §Project Types: one-off ⇒ Timeline
+		// view), so the link lands on the Gantt rather than on a Kanban titled "Timeline".
+		{ key: "board", label: board.label, icon: board.icon, seg: board.label === "Timeline" ? "timeline" : "board" },
 		{ key: "members", label: "Members", icon: MembersIcon, seg: "members" },
 	];
 	// Sessions have no stage submissions — hide the view (consistent with the hidden Submissions tab).

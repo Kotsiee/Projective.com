@@ -29,6 +29,7 @@ export const CHANNEL_TABS: ChannelTab[] = [
 	{ key: "submissions", label: "Submissions", seg: "submissions" },
 	{ key: "calendar", label: "Calendar", seg: "calendar" },
 	{ key: "tasks", label: "Tasks", seg: "tasks" },
+	{ key: "timeline", label: "Timeline", seg: "timeline" },
 	// LAST, and that is a placement rather than an ordering accident: it is the only tab that edits
 	// the engagement rather than working inside it, and it is the only one most viewers never see.
 	{ key: "details", label: "Details", seg: "details" },
@@ -53,7 +54,7 @@ export function activeTabOf(pathname: string, base: string): string {
  * on ANY session-based service they are hidden completely (a session has no stage submissions/tasks —
  * task §2). `calendar` is handled separately (session-ONLY), so it is not in this set.
  */
-export const STAGE_GATED_TAB_KEYS = ["submissions", "tasks"] as const;
+export const STAGE_GATED_TAB_KEYS = ["submissions", "tasks", "timeline"] as const;
 
 /** The viewer capabilities that decide stage-tab visibility (resolved by the caller). */
 export interface ChannelTabAccess {
@@ -87,9 +88,10 @@ export interface ChannelTabAccess {
  *
  * - `Chat` / `Files` / `Members` — always shown.
  * - `Calendar` — shown ONLY for a session-based service (any channel); hidden for standard projects.
- * - `Tasks` / `Submissions` — hidden completely for any session; on a standard project they appear only
- *   on a **stage** channel AND only for a reviewer (client/admin/manager) or a freelancer assigned to
- *   that stage — a freelancer not part of the stage loses them.
+ * - `Tasks` / `Submissions` / `Timeline` — hidden completely for any session; on a standard project
+ *   they appear only on a **stage** channel AND only for a reviewer (client/admin/manager) or a
+ *   freelancer assigned to that stage — a freelancer not part of the stage loses them. Timeline is
+ *   gated exactly like Tasks because it is the same tickets on a time axis instead of in lanes.
  * - `Details` — a **stage** channel only, and only for a viewer who may configure the engagement
  *   ({@link ChannelTabAccess.canConfigure}). Unlike Tasks and Submissions it is NOT hidden for a
  *   session: a session's stages are its sittings, and their scope, price and capacity are configured

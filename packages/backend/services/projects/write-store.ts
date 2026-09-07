@@ -878,6 +878,11 @@ function overlayStages(
 			ticketCount,
 			assignmentMode: "open_pull",
 			maxConcurrentIntensity: null,
+			// A stage minted from a setup save has no schedule yet; the timeline draws it as an
+			// unscheduled lane rather than guessing a week for it.
+			startAt: null,
+			endAt: null,
+			dependsOnStageId: null,
 		});
 	});
 	// A stage the edit did not mention is still a stage. Dropping it would delete a column because a
@@ -1198,6 +1203,7 @@ export function buildStubCard(
 		// Escrow is moved by `trg_ticket_escrow_sync` on the live path and by nothing at all here. A
 		// stub that flipped these would report money as held that no ledger has a record of.
 		claimed: previous?.claimed ?? false,
+		claimedAt: previous?.claimedAt ?? null,
 		escrowHeld: previous?.escrowHeld ?? false,
 		priority: input.priority,
 		intensity: input.intensity,

@@ -12,6 +12,7 @@ import {
 	BellIcon,
 	BellOffIcon,
 	CalendarIcon,
+	TimelineIcon,
 	ClockIcon,
 	DmIcon,
 	HashIcon,
@@ -62,6 +63,7 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 	// control, and `cloneElement` throws on an absent entry — so a tab key with no icon here does not
 	// degrade, it takes the header island down on every channel route the tab is visible on.
 	details: SettingsIcon,
+	timeline: TimelineIcon,
 };
 // #endregion
 

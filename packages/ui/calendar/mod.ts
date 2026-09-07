@@ -54,6 +54,8 @@ export { DayTimeline } from "./components/DayTimeline.tsx";
 export type { DayTimelineProps } from "./components/DayTimeline.tsx";
 export { MonthGrid } from "./components/MonthGrid.tsx";
 export type { MonthGridProps } from "./components/MonthGrid.tsx";
+export { TimelineView } from "./components/TimelineView.tsx";
+export type { TimelineViewProps } from "./components/TimelineView.tsx";
 export { GridCanvas } from "./components/GridCanvas.tsx";
 export type { GridCanvasProps } from "./components/GridCanvas.tsx";
 export { GridProbe } from "./components/GridProbe.tsx";

@@ -26,7 +26,6 @@ import {
 	type BoardStageRef,
 	type BoardView,
 	buildBoardColumns,
-	type CommitTicket,
 	type TicketStatus,
 } from "../types/projects-types.ts";
 import {
@@ -57,7 +56,7 @@ import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { type BoardWarningKind, BoardWarnings } from "../components/BoardWarnings.tsx";
 import { TicketView } from "../components/ticket/TicketView.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
-import { newTicketCard, reconcileCard } from "../core/ticket-model.ts";
+import { newTicketCard, reconcileCard, ticketCommitPayload } from "../core/ticket-model.ts";
 import {
 	filesAtPath,
 	firstUnitUnder,
@@ -140,28 +139,6 @@ function isManualLane(col: BoardColumn): boolean {
 }
 
 /** The ticket as the commit endpoint wants it — the card's own fields, never a re-derived total. */
-function commitPayload(projectId: string, clientId: string, card: BoardCard): CommitTicket {
-	return {
-		projectId,
-		clientId,
-		title: card.title,
-		description: card.description ?? "",
-		status: card.status,
-		stageId: card.stageId,
-		priority: card.priority,
-		intensity: card.intensity,
-		dueDate: card.dueDate,
-		// A party carries a handle, not an id — the handle IS the identifier a member is addressed by
-		// across this product (Decision #3), and the server maps it back to the seat.
-		ownerId: card.owner?.handle ?? null,
-		tasks: card.tasks,
-		stages: card.stages,
-		// The assets already linked to the ticket. The Attachments tab stages a pick as a COUNT and
-		// never writes a fabricated row into `attachments`, so every id here is a real `files.items` id.
-		attachmentIds: card.attachments.map((a) => a.id),
-	};
-}
-
 export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const { scope, channelId, initial } = props;
 
@@ -591,7 +568,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			repointFrame(clientId, optimisticId, "view");
 		}
 
-		const res = await BoardService.commit(commitPayload(props.projectId, clientId, card));
+		const res = await BoardService.commit(ticketCommitPayload(props.projectId, clientId, card));
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			cards.value = cards.value.map((c) => (c.id === optimisticId ? saved : c));
@@ -628,6 +605,9 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				ticketCount: 0,
 				assignmentMode: "open_pull",
 				maxConcurrentIntensity: null,
+				startAt: null,
+				endAt: null,
+				dependsOnStageId: null,
 			},
 		];
 		stageModalOpen.value = false;

@@ -54,6 +54,7 @@ import { TicketFinanceTab } from "./tabs/TicketFinanceTab.tsx";
 import { TicketAttachmentsTab } from "./tabs/TicketAttachmentsTab.tsx";
 import { TicketHistoryTab } from "./tabs/TicketHistoryTab.tsx";
 import { TicketSubmissionsTab } from "./tabs/TicketSubmissionsTab.tsx";
+import { TicketTimelineTab } from "./tabs/TicketTimelineTab.tsx";
 
 /**
  * TicketView — the ONE ticket surface. Creating, reading and editing a ticket are the same modal.
@@ -108,6 +109,11 @@ export interface TicketViewProps {
 	/** The client-side seats a ticket can be handed to; empty on a personal engagement. */
 	clientMembers: ProjectParty[];
 	projectId: string;
+	/**
+	 * The reference instant the Timeline tab measures "overdue" against, epoch ms. A host built from
+	 * a fixture corpus passes that corpus's pinned clock; absent → the real clock.
+	 */
+	now?: number;
 	onClose: () => void;
 	/** Commit the working copy — creates the ticket, or saves the changes to an existing one. */
 	onSubmit: (card: BoardCard) => void;
@@ -492,6 +498,16 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 													patch({
 														stages: stageOps.patch(card.stages, id, { parallel }, stages),
 													})}
+											/>
+										)
+										: null}
+									{tab.value === "timeline"
+										? (
+											<TicketTimelineTab
+												card={card}
+												stages={stages}
+												now={props.now}
+												onOpenStage={openStage}
 											/>
 										)
 										: null}

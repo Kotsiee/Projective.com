@@ -262,6 +262,12 @@ const STAGE_COLUMNS = [
 	"unit_price_cents",
 	"assignment_mode",
 	"max_concurrent_intensity",
+	"fixed_start_date",
+	"start_dependency_stage_id",
+	"start_dependency_lag_days",
+	"file_duration_mode",
+	"file_duration_days",
+	"file_due_date",
 ].join(", ");
 
 /** The `projects.tickets` columns one {@link BoardCard} needs. */
@@ -317,6 +323,12 @@ interface StageRow {
 	unit_price_cents: number | string | null;
 	assignment_mode: string | null;
 	max_concurrent_intensity: number | string | null;
+	fixed_start_date: string | null;
+	start_dependency_stage_id: string | null;
+	start_dependency_lag_days: number | string | null;
+	file_duration_mode: string | null;
+	file_duration_days: number | string | null;
+	file_due_date: string | null;
 }
 
 /** One `projects.tickets` row as selected by {@link TICKET_COLUMNS}. */
@@ -574,6 +586,86 @@ interface StageContext {
 	rosters: Map<string, ProjectParty[]>;
 	/** Raw assignment-row counts per stage, for the reorder lock's third condition. */
 	assignmentCounts: Map<string, number>;
+	/** Every stage's resolved scheduled window, from {@link stageWindows}. */
+	windows: Map<string, StageWindow>;
+}
+
+/** A stage's resolved scheduled window — the pair {@link BoardStageRef} carries. */
+interface StageWindow {
+	startAt: string | null;
+	endAt: string | null;
+}
+
+const DAY_MS = 86_400_000;
+
+/** Parse a timestamptz the row carries, or `null` for anything that is not an instant. */
+function instantOf(raw: string | null | undefined): number | null {
+	if (!raw) return null;
+	const ms = Date.parse(raw);
+	return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Resolve every stage's scheduled window from the six scheduling columns.
+ *
+ * A stage STARTS at `fixed_start_date`, or — when that is null and `start_dependency_stage_id`
+ * names a stage whose END resolves — at that end plus `start_dependency_lag_days`. It ENDS at
+ * `file_due_date` under `fixed_deadline`, at its start plus `file_duration_days` under
+ * `relative_duration`, and nowhere under `no_due_date`; a null mode takes whichever of the two the
+ * row actually carries. Nothing else is inferred: a stage whose only date is a dependency on a
+ * stage that itself has no end is a stage with no start, and the timeline draws it as one.
+ *
+ * Dependencies can chain, and the rows arrive in sort order rather than dependency order, so this
+ * iterates to a fixed point (bounded by the row count — a cycle simply stops making progress and
+ * the stages in it stay unresolved, which is the honest answer to a schedule that depends on
+ * itself).
+ */
+function stageWindows(rows: readonly StageRow[]): Map<string, StageWindow> {
+	const starts = new Map<string, number | null>();
+	const ends = new Map<string, number | null>();
+	const endFor = (row: StageRow, start: number | null): number | null => {
+		const due = instantOf(row.file_due_date);
+		const days = intAtLeastZero(row.file_duration_days);
+		switch (row.file_duration_mode) {
+			case "fixed_deadline":
+				return due;
+			case "relative_duration":
+				return start !== null && days !== null ? start + days * DAY_MS : null;
+			case "no_due_date":
+				return null;
+			default:
+				return due ?? (start !== null && days !== null ? start + days * DAY_MS : null);
+		}
+	};
+	for (const row of rows) {
+		const start = instantOf(row.fixed_start_date);
+		starts.set(row.id, start);
+		ends.set(row.id, endFor(row, start));
+	}
+	for (let pass = 0; pass < rows.length; pass++) {
+		let changed = false;
+		for (const row of rows) {
+			if (starts.get(row.id) !== null || !row.start_dependency_stage_id) continue;
+			const predecessorEnd = ends.get(row.start_dependency_stage_id) ?? null;
+			if (predecessorEnd === null) continue;
+			const lag = intAtLeastZero(row.start_dependency_lag_days) ?? 0;
+			const start = predecessorEnd + lag * DAY_MS;
+			starts.set(row.id, start);
+			ends.set(row.id, endFor(row, start));
+			changed = true;
+		}
+		if (!changed) break;
+	}
+	const out = new Map<string, StageWindow>();
+	for (const row of rows) {
+		const start = starts.get(row.id) ?? null;
+		const end = ends.get(row.id) ?? null;
+		out.set(row.id, {
+			startAt: start === null ? null : new Date(start).toISOString(),
+			endAt: end === null ? null : new Date(end).toISOString(),
+		});
+	}
+	return out;
 }
 
 /**
@@ -598,6 +690,11 @@ function toStageRef(stage: StageRow, ctx: StageContext): BoardStageRef {
 		ticketCount: inStage.length,
 		assignmentMode: toAssignmentMode(stage.assignment_mode),
 		maxConcurrentIntensity: toCapacityCap(stage.max_concurrent_intensity),
+		startAt: ctx.windows.get(stage.id)?.startAt ?? null,
+		endAt: ctx.windows.get(stage.id)?.endAt ?? null,
+		dependsOnStageId: stage.start_dependency_stage_id
+			? clamp(stage.start_dependency_stage_id, 80)
+			: null,
 	};
 }
 
@@ -1052,6 +1149,7 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		// a ticket mid-review still has one, and the escrow warning this flag gates must not be
 		// skipped on a ticket somebody is demonstrably working.
 		claimed: ticket.claimed_at !== null || assignee !== null,
+		claimedAt: ticket.claimed_at,
 		escrowHeld: escrowHeldOf(ticket.payment_status),
 		priority: toPriority(ticket.priority),
 		intensity: NEUTRAL_INTENSITY,
@@ -1400,8 +1498,9 @@ export async function fetchBoardPage(
 		rosters.set(row.project_stage_id, roster);
 	}
 
+	const windows = stageWindows(stageRows);
 	const stages: BoardStageRef[] = stageRows.map((stage) =>
-		toStageRef(stage, { tickets: ticketRows, rosters, assignmentCounts })
+		toStageRef(stage, { tickets: ticketRows, rosters, assignmentCounts, windows })
 	);
 	// #endregion
 

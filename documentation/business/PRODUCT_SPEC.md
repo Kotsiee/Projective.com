@@ -1810,9 +1810,10 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `finance`                | Project budget/costs                                                                           |
 |               |                           | `settings`               | Project configuration                                                                          |
 |               |                           | `team`                   | Project-specific members                                                                       |
-|               |                           | `timeline`               | Roadmap view                                                                                   |
+|               |                           | `timeline`               | Timeline / Gantt — the stage run on a time axis (one lane per stage: scheduled window, dated tickets, dependency links). The One-Off project's board view. |
 |               |                           | `calendar`               | Project dates                                                                                  |
 |               |                           | `[channel id]/index`     | In-project channel/DM conversation (`/projects/[project id]/[channel id]`; §Unified Messaging) |
+|               |                           | `[channel id]/timeline`  | One stage's Gantt — its window, then a lane per ticket (the channel header's Timeline tab, gated like Tasks) |
 |               |                           | `[stage id]/index`       | Specific stage view                                                                            |
 |               |                           | `[stage id]/review`      | Stage approval/review                                                                          |
 |               |                           | `[stage id]/files`       | Stage-specific files                                                                           |

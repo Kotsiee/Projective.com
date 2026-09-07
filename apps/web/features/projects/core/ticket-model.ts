@@ -1,6 +1,7 @@
 import {
 	type BoardCard,
 	type BoardStageRef,
+	type CommitTicket,
 	executionBands,
 	formatTicketMoney,
 	type ProjectParty,
@@ -74,6 +75,7 @@ export function newTicketCard(
 		owner,
 		contributors: [],
 		claimed: false,
+		claimedAt: null,
 		escrowHeld: false,
 		priority: "normal",
 		intensity: "standard",
@@ -457,4 +459,38 @@ export const INTENSITY_OPTIONS: { value: TicketIntensity; label: string }[] = [
 	{ value: "standard", label: TICKET_INTENSITY_LABEL.standard },
 	{ value: "high", label: TICKET_INTENSITY_LABEL.high },
 ];
+// #endregion
+
+// #region Commit payload
+/**
+ * The write payload for one card — what the board AND the timeline send to `/api/projects/board/ticket`.
+ *
+ * One builder for both surfaces, because the two open the same modal over the same card and a
+ * second mapping would be a second place for a field to go missing on the way to the server.
+ */
+export function ticketCommitPayload(
+	projectId: string,
+	clientId: string,
+	card: BoardCard,
+): CommitTicket {
+	return {
+		projectId,
+		clientId,
+		title: card.title,
+		description: card.description ?? "",
+		status: card.status,
+		stageId: card.stageId,
+		priority: card.priority,
+		intensity: card.intensity,
+		dueDate: card.dueDate,
+		// A party carries a handle, not an id — the handle IS the identifier a member is addressed by
+		// across this product (Decision #3), and the server maps it back to the seat.
+		ownerId: card.owner?.handle ?? null,
+		tasks: card.tasks,
+		stages: card.stages,
+		// The assets already linked to the ticket. The Attachments tab stages a pick as a COUNT and
+		// never writes a fabricated row into `attachments`, so every id here is a real `files.items` id.
+		attachmentIds: card.attachments.map((a) => a.id),
+	};
+}
 // #endregion

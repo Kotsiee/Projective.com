@@ -67,6 +67,7 @@ export type TicketTab =
 	| "details"
 	| "submissions"
 	| "stages"
+	| "timeline"
 	| "finances"
 	| "attachments"
 	| "history";
@@ -115,6 +116,10 @@ export function ticketTabs(card: BoardCard, mode: TicketMode = "view"): TicketTa
 	}
 	tabs.push(
 		{ key: "stages", label: "Stages", icon: "stages", count: card.stages.length, iconOnly: false },
+		// The same stages on a time axis: which of them is scheduled when, and where the ticket's own
+		// claim-to-deadline sits against them. Present in create mode too — a stage's window is a fact
+		// about the stage, and choosing stages is when a client wants to see one.
+		{ key: "timeline", label: "Timeline", icon: "timeline", count: null, iconOnly: false },
 		{ key: "finances", label: "Finances", icon: "wallet", count: null, iconOnly: false },
 		{
 			key: "attachments",

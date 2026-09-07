@@ -47,6 +47,13 @@ import { mockCover } from "../../mocks/assets.ts";
 /** Fixed reference "now" (no `Date.now()`), matching the sibling fixtures. */
 const NOW = Date.parse("2026-07-17T16:20:00Z");
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+/**
+ * The fixture corpus's reference instant, exported for the reads that project THIS corpus onto a
+ * clock — the timeline's "today" rule must sit where these cards' due dates were placed relative
+ * to, or every fixture ticket reads as years overdue the day the corpus is opened.
+ */
+export const BOARD_FIXTURE_NOW = NOW;
 
 /** A tiny stable hash → non-negative int (no RNG; SSR/resume stable — keep every index UNSIGNED). */
 function hash(s: string): number {
@@ -168,6 +175,56 @@ function stageEconomics(stage: StageChannel): {
 		assignmentMode: ASSIGNMENT_MODES[h % ASSIGNMENT_MODES.length],
 		maxConcurrentIntensity: h % 3 === 0 ? null : 2 + (h % 3),
 	};
+}
+
+/** One stage's scheduled window, in the shape {@link BoardStageRef} carries. */
+interface StageWindow {
+	startAt: string | null;
+	endAt: string | null;
+	dependsOnStageId: string | null;
+}
+
+/**
+ * Deterministic scheduled windows for every stage of an engagement, keyed by stage id.
+ *
+ * Laid out as a SEQUENCE anchored on the reference clock so the windows agree with the statuses
+ * the detail fixtures already assign: every completed stage ends before now, the first
+ * non-completed stage is partway through, every later stage starts after now. Each stage after the
+ * first depends on the one before it — a pipeline, not a pile — with a small lag between them. One
+ * stage in eight carries NO window at all, so the "not scheduled yet" lane the timeline draws for
+ * a real stage with no dates is reachable in the stub and not only in production.
+ */
+function stageWindows(detail: ProjectDetail): Map<string, StageWindow> {
+	const stages = [...detail.channels.stages].sort((a, b) => a.order - b.order);
+	const out = new Map<string, StageWindow>();
+	if (stages.length === 0) return out;
+
+	const durations = stages.map((s) => (7 + (hash(`${s.id}:dur`) % 10)) * DAY);
+	const lags = stages.map((s, i) => (i === 0 ? 0 : hash(`${s.id}:lag`) % 3) * DAY);
+	// The stage the clock sits inside: the first that has not finished. When every stage has
+	// finished the whole run sits in the past.
+	const current = stages.findIndex((s) => s.status !== "completed" && s.status !== "cancelled");
+	let elapsed = 0;
+	for (let i = 0; i < stages.length; i++) {
+		if (current !== -1 && i >= current) break;
+		elapsed += durations[i] + lags[i];
+	}
+	elapsed += current === -1 ? 3 * DAY : Math.floor(durations[current] * 0.45) + lags[current];
+	let cursor = NOW - elapsed;
+
+	stages.forEach((stage, i) => {
+		cursor += lags[i];
+		const start = cursor;
+		const end = cursor + durations[i];
+		cursor = end;
+		const unscheduled = hash(`${stage.id}:sched`) % 8 === 5;
+		out.set(stage.id, {
+			startAt: unscheduled ? null : new Date(start).toISOString(),
+			endAt: unscheduled ? null : new Date(end).toISOString(),
+			dependsOnStageId: i === 0 ? null : stages[i - 1].id,
+		});
+	});
+	return out;
 }
 
 /**
@@ -616,6 +673,16 @@ function makeCard(c: CardSeed): BoardCard {
 		? "new_ticket" as const
 		: null;
 	const updatedAt = NOW - ((c.seed % 96) * HOUR);
+	/*
+	 * When the work was picked up. A completed ticket was claimed some days before its last update;
+	 * anything else being worked was claimed within the last fortnight. Derived from the same seed
+	 * as the due date so a bar never runs backwards by accident of two independent draws.
+	 */
+	const claimedAt = !claimed
+		? null
+		: c.status === "completed"
+		? new Date(updatedAt - (3 + (c.seed % 10)) * DAY).toISOString()
+		: new Date(NOW - (1 + (c.seed % 14)) * DAY).toISOString();
 
 	// Money and capacity are SUMMED from the stages, never invented for the card — the same rule the
 	// composer's footer follows, so a card and the modal that opens it can never quote different totals.
@@ -628,10 +695,11 @@ function makeCard(c: CardSeed): BoardCard {
 		) * 100,
 	) / 100;
 
-	// Two tickets in five carry a date; one of those is already past, so the overdue tone is reachable.
-	const dueOffsetDays = (c.seed % 5) - 1;
-	const dated = c.seed % 5 < 2 && c.status !== "completed";
-	const dueMs = NOW + dueOffsetDays * 24 * HOUR;
+	// Three tickets in five carry a date; one of those is already past, so the overdue tone is
+	// reachable. A claimed ticket's date sits a little further out, so its span has a width.
+	const dueOffsetDays = (c.seed % 5) - 1 + (claimed ? 2 + (c.seed % 6) : 0);
+	const dated = c.seed % 5 < 3 && c.status !== "completed";
+	const dueMs = NOW + dueOffsetDays * DAY;
 	/*
 	 * Who could have ticked a step off. The freelancer who claimed the work leads, because completion
 	 * is claimed at the submission level and that is who submits; the client follows, for the steps a
@@ -683,6 +751,7 @@ function makeCard(c: CardSeed): BoardCard {
 		owner: c.owner,
 		contributors: contributorsOf(history),
 		claimed,
+		claimedAt,
 		escrowHeld,
 		priority: PRIORITIES[c.seed % PRIORITIES.length],
 		intensity: c.intensity,
@@ -920,8 +989,10 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 	cards = cards.filter((c) => matches(c, params));
 
 	const pool = assigneePool(detail);
+	const windows = stageWindows(detail);
 	const stages: BoardStageRef[] = detail.channels.stages.map((s) => {
 		const econ = stageEconomics(s);
+		const window = windows.get(s.id) ?? { startAt: null, endAt: null, dependsOnStageId: null };
 		const h = hash(`${s.id}:roster`);
 		// Rotate a deterministic slice of the provider cast onto each stage. Capped at the cast size —
 		// a longer run would wrap and list the same person twice, and a roster that repeats a name is
@@ -941,6 +1012,9 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 			ticketCount: all.filter((c) => c.stageId === s.id).length,
 			assignmentMode: econ.assignmentMode,
 			maxConcurrentIntensity: econ.maxConcurrentIntensity,
+			startAt: window.startAt,
+			endAt: window.endAt,
+			dependsOnStageId: window.dependsOnStageId,
 		};
 	});
 	const columns = buildBoardColumns(stages, view, kind);

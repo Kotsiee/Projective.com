@@ -210,6 +210,8 @@ export const LocalKeys = {
 	BOARD_VIEW: "pj.local.board.view",
 	/** The project board's column grouping (`stages` | `statuses`), remembered across sessions. */
 	BOARD_GROUPING: "pj.local.board.grouping",
+	/** The project timeline's zoom, in px per day (the Gantt footer rig + the `Ctrl`+wheel gesture). */
+	TIMELINE_ZOOM: "pj.local.timeline.zoom",
 	/**
 	 * The `/calendar` hub's view mode (`day` | `week` | `month`).
 	 *

@@ -54,7 +54,7 @@ export const CALENDAR_REFERENCE = Date.parse("2026-07-17T16:20:00Z");
 export const calendarView = signal<CalendarViewMode>("week");
 
 /**
- * The three view modes and the words for them.
+ * The four view modes and the words for them.
  *
  * Shared rather than declared twice because the switch and its collapsed-rail equivalent now live in
  * two REGIONS — the footer band owns the control, the lane's icon rail still offers the same three —
@@ -65,6 +65,7 @@ export const CALENDAR_VIEWS: readonly { value: CalendarViewMode; label: string }
 	{ value: "day", label: "Day" },
 	{ value: "week", label: "Week" },
 	{ value: "month", label: "Month" },
+	{ value: "timeline", label: "Timeline" },
 ];
 
 /**
@@ -83,7 +84,9 @@ export function restoreCalendarView(): void {
 	if (typeof localStorage === "undefined") return;
 	try {
 		const stored = localStorage.getItem(LocalKeys.CALENDAR_VIEW);
-		if (stored === "day" || stored === "week" || stored === "month") calendarView.value = stored;
+		if (stored === "day" || stored === "week" || stored === "month" || stored === "timeline") {
+			calendarView.value = stored;
+		}
 	} catch { /* storage unavailable — the default view is a fine answer */ }
 }
 
@@ -109,7 +112,8 @@ export const calendarFocus = signal<number>(CALENDAR_REFERENCE);
  */
 export function periodLabelFor(view: CalendarViewMode, focusMs: number, tz: string): string {
 	if (view === "day") return calendarTime.fmtFullDate(focusMs, tz);
-	if (view === "month") return calendarTime.fmtMonthYear(focusMs, tz);
+	// The Gantt's axis has no fixed period; the trail names the month the viewport is centred in.
+	if (view === "month" || view === "timeline") return calendarTime.fmtMonthYear(focusMs, tz);
 	const days = calendarTime.weekDays(focusMs, tz);
 	return `${calendarTime.fmtDayLabel(days[0], tz)} – ${calendarTime.fmtDayLabel(days[6], tz)}`;
 }

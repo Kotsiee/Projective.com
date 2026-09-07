@@ -18,6 +18,7 @@ import { stageDetailsFooterFor } from "@web/features/projects/core/stage-details
 import { filesFooterFor as channelFilesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
 import { submissionsFooterFor } from "@web/features/projects/core/submissions-footer-slot.tsx";
 import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.tsx";
+import { timelineFooterFor } from "@web/features/projects/core/timeline-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
 import { conversationFooterFor } from "@web/features/messaging/core/conversation-footer-slot.tsx";
 import {
@@ -124,6 +125,7 @@ async function middleNavFooterFor(
 		(await stageDetailsFooterFor(url, context, actor)) ??
 		channelFilesFooterFor(url, context) ??
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
+		timelineFooterFor(url, context) ??
 		(await projectFooterFor(url, context, actor)) ??
 		(await inboxFooterFor(url, context, actor)) ??
 		(await conversationFooterFor(url, context, actor)) ??

@@ -451,6 +451,12 @@ export const BoardCardSchema = z.object({
 	contributors: z.array(ProjectPartySchema).max(24).default([]),
 	/** Whether a freelancer has claimed the ticket — escrow is held from Claim (the financial warning). */
 	claimed: z.boolean(),
+	/**
+	 * ISO instant the ticket was claimed (`projects.tickets.claimed_at`), or `null` while unclaimed.
+	 * The timeline's bar for a ticket runs from here to {@link dueDate}; before a claim the ticket is
+	 * a milestone at its due date, because nobody has started and a span would be inventing one.
+	 */
+	claimedAt: z.string().max(40).nullable().default(null),
 	/** Whether escrow is currently held for this ticket (moving it into Done releases it). */
 	escrowHeld: z.boolean(),
 	priority: TicketPriority,
@@ -593,6 +599,22 @@ export const BoardStageRefSchema = z.object({
 	assignmentMode: StageAssignmentMode,
 	/** The Project Hard Cap on summed $W_i$ per freelancer in this stage; `null` = unlimited. */
 	maxConcurrentIntensity: z.number().min(0).nullable(),
+	/**
+	 * ISO instant the stage is scheduled to START, or `null` when nothing schedules it.
+	 *
+	 * Resolved from `project_stages.fixed_start_date`, or from the predecessor named by
+	 * {@link dependsOnStageId} plus `start_dependency_lag_days` when that predecessor has an end.
+	 * NEVER fabricated: a stage with no date on either path stays `null`, and the timeline draws it as
+	 * an unscheduled lane rather than guessing a plausible week.
+	 */
+	startAt: z.string().max(40).nullable().default(null),
+	/**
+	 * ISO instant the stage is due to END, or `null`. `project_stages.file_due_date` for a fixed
+	 * deadline, else {@link startAt} + `file_duration_days` for a relative one, else `null`.
+	 */
+	endAt: z.string().max(40).nullable().default(null),
+	/** The stage this one starts after (`project_stages.start_dependency_stage_id`), or `null`. */
+	dependsOnStageId: z.string().max(80).nullable().default(null),
 });
 export type BoardStageRef = z.infer<typeof BoardStageRefSchema>;
 // #endregion

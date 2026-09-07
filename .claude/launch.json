@@ -721,6 +721,18 @@
 				"--strictPort"
 			],
 			"port": 10973
+		},
+		{
+			"name": "web-gantt",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"11173",
+				"--strictPort"
+			],
+			"port": 11173
 		}
 	]
 }

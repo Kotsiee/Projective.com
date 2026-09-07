@@ -110,6 +110,12 @@ export default function NavSearchBar() {
 				)}
 			</div>
 
+			<button type="submit" class="shell-search__search-go" aria-label="Search">
+				<svg viewBox="0 0 20 20" aria-hidden="true">
+					<path d={SEARCH_ICON} fill="currentColor" />
+				</svg>
+			</button>
+
 			<input
 				class="shell-search__search-input"
 				type="search"
@@ -120,12 +126,6 @@ export default function NavSearchBar() {
 				autoComplete="off"
 				onInput={(e) => (query.value = (e.currentTarget as HTMLInputElement).value)}
 			/>
-
-			<button type="submit" class="shell-search__search-go" aria-label="Search">
-				<svg viewBox="0 0 20 20" aria-hidden="true">
-					<path d={SEARCH_ICON} fill="currentColor" />
-				</svg>
-			</button>
 		</form>
 	);
 }

@@ -76,7 +76,9 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 		const from = calendarFocus.value;
 		calendarFocus.value = view === "day"
 			? calendarTime.addZonedDays(from, delta, tz)
-			: view === "week"
+			// A Gantt step is a week: its axis is continuous, and a month jump would leap past the
+			// whole viewport at every zoom but the widest.
+			: view === "week" || view === "timeline"
 			? calendarTime.addZonedDays(from, delta * 7, tz)
 			: calendarTime.addZonedMonths(from, delta, tz);
 	}
@@ -230,7 +232,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 					 */
 				}
 				<div class="cal-band__views" role="group" aria-label="Calendar view">
-					{(["day", "week", "month"] as const).map((v) => (
+					{(["day", "week", "month", "timeline"] as const).map((v) => (
 						<button
 							key={v}
 							type="button"
@@ -239,7 +241,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 							aria-pressed={calendarView.value === v ? "true" : "false"}
 							onClick={() => (calendarView.value = v)}
 						>
-							{v === "day" ? "D" : v === "week" ? "W" : "M"}
+							{v === "day" ? "D" : v === "week" ? "W" : v === "month" ? "M" : "T"}
 							<span class="cal-band__viewname">{v}</span>
 						</button>
 					))}
