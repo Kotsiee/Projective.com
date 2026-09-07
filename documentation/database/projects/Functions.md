@@ -41,11 +41,51 @@ or not at all:
 | `visibility`                                                     | hardcoded `unlisted`        | Not from the payload — publishing is a later, deliberate write.                                                                    |
 | `client_business_id` / `owner_team_id` / `owner_organisation_id` | payload, membership-checked | Active membership of that workspace is required; the three are mutually exclusive. Personal scope is the **absence** of all three. |
 
-**The slug.** `payload.slug` (or the title) is normalised to the column's `^[a-z0-9-]{1,96}$` CHECK,
-truncated to 80 characters, and falls back to the generated `p-<12 hex>` form when a title has
-nothing usable in it. On `unique_violation` it appends a 6-hex disambiguator and retries, up to five
-times — the retry is on the CONSTRAINT rather than a prior `SELECT`, because two callers naming a
-project the same thing in the same instant both see the address free.
+**The slug is MINTED, never derived** — not from the title, not from anything. `security.mint_slug`
+produces the canonical `prj-` address; the whole point of an opaque slug is that no input exists
+which could change it, so a project stays reachable at the same URL through every rename it will
+ever have.
+
+A caller-supplied slug is honoured ONLY when it already has the canonical shape, which makes the
+call idempotent against a client's own retry. Anything else is discarded rather than normalised:
+`ck_projects_slug_shape` would refuse it anyway, and a normalisation that silently produced a
+DIFFERENT address from the one requested is worse than ignoring the request.
+
+On `unique_violation` it draws a fresh slug and retries, up to five times — a new sample rather than
+a search around a taken address. The retry is on the CONSTRAINT rather than a prior `SELECT`,
+because two callers minting in the same instant both see the address free, and it re-raises anything
+that is not `projects_slug_key` so a duplicate primary key is not reported as an address problem.
+
+**The NDA pair.** The payload speaks in `projects.nda_mode` — the enum TYPE
+`none | platform_standard
+| custom` — and the row stores a PAIR: `nda_required` (does one apply) and
+`nda_source` (which instrument). **`projects.projects` has no `nda_mode` column and never has.** The
+INSERT named one regardless, so every call to this function raised
+`42703 column "nda_mode" of relation "projects"
+does not exist` — a create that could not work at
+all, invisible to a type-checker because the statement is a string, and unreachable from the
+application because the app's create path does a direct insert instead.
+
+The mapping is `ndaRequiredFor` / `ndaSourceFor` / `ndaDocumentFor` in `@projective/types/projects`,
+and it is cross-checked against this file by `nda.contract.test.ts` — two implementations of one
+mapping is what caused the defect, so the test reads the SQL and fails if either side moves:
+
+| `nda_mode`          | `nda_required` | `nda_source` |
+| :------------------ | :------------- | :----------- |
+| `none`              | `false`        | `platform`   |
+| `platform_standard` | `true`         | `platform`   |
+| `custom`            | `true`         | `custom`     |
+
+`none` maps to `platform` because the column is `NOT NULL` with two members and `platform` is its
+own `DEFAULT` — the value is meaningless while `nda_required` is false, and nothing reads it. When
+only the legacy boolean arrives, `true` means `platform_standard`: "an NDA governs this and nobody
+said which" is exactly what that member names.
+
+`nda_document_id` is passed through untouched and `ck_projects_nda_document` refuses a
+contradiction. That is deliberate and differs from `ndaDocumentFor`, which DROPS the reference —
+that is an UPDATE rule, for tidying away a document after a mode change. On create there is no
+earlier document, so a payload naming one alongside a mode that forbids it is a caller
+contradiction, and refusing it is more honest than storing something other than what was sent.
 
 **The participant row is written only for a business-scoped project**, as
 `('business', client_business_id, 'owner')`. `profile_type` is `('freelancer','business')` and has

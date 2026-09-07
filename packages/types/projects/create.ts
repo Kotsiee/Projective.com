@@ -52,33 +52,72 @@ export const PortfolioDisplayRights = z.enum(["allowed", "forbidden", "embargoed
 export type PortfolioDisplayRights = z.infer<typeof PortfolioDisplayRights>;
 
 /**
- * What governs confidentiality on the engagement — `projects.projects.nda_mode`.
+ * What governs confidentiality on the engagement — the CREATE payload's vocabulary.
  *
  * Three members, not four: "use a document I uploaded before" and "upload a new one" both resolve to
  * `custom` plus a document id. A fourth member would encode HOW the file arrived rather than what
  * governs the work, and every consumer would then have to collapse the two back together before it
  * could answer the only question that matters.
+ *
+ * **There is no `nda_mode` column.** The row stores this as a PAIR — `nda_required` (does one apply)
+ * and `nda_source` (which instrument) — and the three functions below are the whole mapping between
+ * the two shapes. The pair carries strictly more states than the enum, and exactly one of them is
+ * unreachable from here: `nda_required = false` leaves `nda_source` meaningless, so it takes the
+ * column's own `DEFAULT 'platform'` and nothing reads it.
+ *
+ * `projects.nda_mode` DOES exist as a Postgres enum type with these three members, which is what
+ * `projects.create_project` parses the payload into before splitting it across the pair. A type and a
+ * column of the same name are easy to confuse, and confusing them is how the RPC came to INSERT into
+ * `nda_mode` for months: the statement referenced a column that had never existed, so every call
+ * raised `42703 column "nda_mode" of relation "projects" does not exist` — a create that could not
+ * work at all, and that no type-checker could see because the statement is a string.
  */
 export const NdaMode = z.enum(["none", "platform_standard", "custom"]);
 export type NdaMode = z.infer<typeof NdaMode>;
 
 /**
- * The legacy `projects.projects.nda_required` boolean, derived from {@link NdaMode}.
+ * The `projects.projects.nda_required` boolean, derived from {@link NdaMode}.
  *
- * The column is kept and stays readable by every existing consumer, so the two must never disagree
- * about whether an NDA governs the engagement. One implementation, called by whichever layer writes
- * the row, is what makes that structural rather than a convention.
+ * The column is readable by every existing consumer, so the two must never disagree about whether an
+ * NDA governs the engagement. One implementation, called by whichever layer writes the row, is what
+ * makes that structural rather than a convention.
  */
 export function ndaRequiredFor(mode: NdaMode): boolean {
 	return mode !== "none";
 }
 
 /**
+ * The `projects.projects.nda_source` value, derived from {@link NdaMode}.
+ *
+ * The third member of the trio, and the one that was missing — which is precisely why the create RPC
+ * had nowhere to put the mode and wrote it to a column name instead.
+ *
+ * `none` maps to `platform`, and that is the schema's own answer rather than a choice made here: the
+ * column is `NOT NULL DEFAULT 'platform'`, its comment calls `platform` "the answer that needs no
+ * upload and no legal review, and therefore the default", `DEFAULT_PROJECT_RULES` already pairs
+ * `ndaRequired: false` with `ndaSource: "platform"`, and `ProjectRules.ndaSource` documents itself as
+ * "meaningless, and ignored" while the boolean is false. There is no third value to reach for — the
+ * column has two members and cannot be null.
+ *
+ * Deliberately the same collapse the READ projection performs (`row.nda_source === "custom" ?
+ * "custom" : "platform"`), so a row written through this mapping reads back as the mode it was
+ * created under.
+ */
+export function ndaSourceFor(mode: NdaMode): "platform" | "custom" {
+	return mode === "custom" ? "custom" : "platform";
+}
+
+/**
  * The document reference a mode may legitimately carry.
  *
- * Mirrors `CHECK (nda_mode = 'custom' OR nda_document_id IS NULL)`: only a custom NDA names a file,
- * so switching the mode back to `none` or `platform_standard` must drop the reference rather than
- * leave a document pointed at by an engagement that no longer uses it.
+ * Mirrors `ck_projects_nda_document`, `CHECK (nda_source = 'custom' OR nda_document_id IS NULL)`:
+ * only a custom NDA names a file, so switching the mode back to `none` or `platform_standard` must
+ * drop the reference rather than leave a document pointed at by an engagement that no longer uses it.
+ *
+ * That is an UPDATE rule. On CREATE the RPC deliberately does NOT apply it and lets the CHECK refuse
+ * instead: there is no earlier document to tidy away, so a payload naming one alongside a mode that
+ * forbids it is a caller contradiction rather than a leftover, and refusing it is more honest than
+ * silently storing something other than what was sent.
  */
 export function ndaDocumentFor(mode: NdaMode, documentId: string | null): string | null {
 	return mode === "custom" ? documentId : null;

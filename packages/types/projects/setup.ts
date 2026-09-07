@@ -515,9 +515,13 @@ export const ProjectRulesSchema = z.object({
 	visibility: ProjectVisibility,
 	ipOwnershipMode: IpOwnershipMode,
 	/**
-	 * The legacy boolean, kept because existing consumers read it. It is DERIVED from `ndaMode` —
-	 * `ndaRequiredFor(ndaMode)` — and the fat service keeps the two in step on every write, so a
-	 * reader that only knows the boolean still gets the right answer.
+	 * Whether an NDA governs the engagement at all — `projects.projects.nda_required`.
+	 *
+	 * On this surface it is an INDEPENDENT field the owner sets, not a derived one: the Rules section
+	 * edits the stored pair directly, so there is no mode to derive it from. It is derived only on
+	 * CREATE, where the payload speaks in `NdaMode` and `ndaRequiredFor` splits it across this and
+	 * {@link ProjectRules.ndaSource}. The two shapes describe the same pair of columns; which one a
+	 * layer sees depends on whether it is creating a project or editing one.
 	 */
 	ndaRequired: z.boolean(),
 	/** Which NDA applies when `ndaRequired`. Meaningless, and ignored, when it is false. */

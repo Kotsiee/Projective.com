@@ -204,12 +204,20 @@ BEGIN
     v_budget_type := COALESCE(NULLIF(payload->>'budget_type', '')::budget_type, 'fixed_price'::budget_type);
     v_budget_cents := NULLIF(payload->>'budget_amount_cents', '')::bigint;
 
-    -- The NDA pair, resolved so it cannot be stored disagreeing with itself. `nda_mode` is
-    -- authoritative when the caller sends one and `nda_required` is then its shadow; when only the
-    -- legacy boolean arrives, a `true` means the platform's standard terms, because "an NDA governs
-    -- this and nobody said which" is exactly what `platform_standard` names. `nda_document_id` is
-    -- passed through untouched -- `ck_projects_nda_document` is the single authority on whether a
-    -- document may accompany the mode, and a second opinion here could only disagree with it.
+    -- The NDA mode, resolved so the pair it writes cannot disagree with itself.
+    --
+    -- `projects.nda_mode` here is the enum TYPE (`none|platform_standard|custom`), NOT a column --
+    -- `projects.projects` has never had one. The row stores this as a PAIR, `nda_required` (does one
+    -- apply) and `nda_source` (which instrument), and steps 5's INSERT splits it across the two
+    -- through the same mapping `ndaRequiredFor`/`ndaSourceFor` state in `@projective/types/projects`.
+    -- Writing `nda_mode` as though it were a column is exactly the mistake that made every call to
+    -- this function raise `42703`.
+    --
+    -- The mode is authoritative when the caller sends one; when only the legacy boolean arrives, a
+    -- `true` means the platform's standard terms, because "an NDA governs this and nobody said which"
+    -- is exactly what `platform_standard` names. `nda_document_id` is passed through untouched --
+    -- `ck_projects_nda_document` is the single authority on whether a document may accompany the
+    -- mode, and a second opinion here could only disagree with it.
     v_nda_mode := COALESCE(
         NULLIF(payload->>'nda_mode', '')::projects.nda_mode,
         CASE
@@ -236,7 +244,7 @@ BEGIN
                 budget_type, budget_amount_cents,
                 industry_category_id, visibility, currency,
                 timeline_preset, target_project_start_date,
-                ip_ownership_mode, nda_required, nda_mode, nda_document_id,
+                ip_ownership_mode, nda_required, nda_source, nda_document_id,
                 portfolio_display_rights, allow_deadline_bonuses,
                 location_restriction, language_requirement, screening_questions
             ) VALUES (
@@ -269,8 +277,13 @@ BEGIN
                 COALESCE(NULLIF(payload->>'timeline_preset', '')::timeline_preset, 'sequential'::timeline_preset),
                 NULLIF(payload->>'target_project_start_date', '')::timestamptz,
                 v_ip_mode,
+                -- `ndaRequiredFor`: an NDA governs unless the mode says none.
                 v_nda_mode <> 'none'::projects.nda_mode,
-                v_nda_mode,
+                -- `ndaSourceFor`: only `custom` names the client's own document; both other modes
+                -- take `platform`. `none` maps there because the column is NOT NULL with two members
+                -- and `platform` is its own DEFAULT -- the value is meaningless while
+                -- `nda_required` is false, and nothing reads it.
+                CASE WHEN v_nda_mode = 'custom'::projects.nda_mode THEN 'custom' ELSE 'platform' END,
                 NULLIF(payload->>'nda_document_id', '')::uuid,
                 COALESCE(NULLIF(payload->>'portfolio_display_rights', '')::portfolio_rights, 'allowed'::portfolio_rights),
                 -- Pipeline-only, and deliberately NOT clamped to the format here: the flag arriving
