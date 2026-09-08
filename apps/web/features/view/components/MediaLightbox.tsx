@@ -41,7 +41,7 @@ export function MediaLightbox(
 	const originX = useSignal(50);
 	const originY = useSignal(50);
 	const { mounted, state } = usePresence(open.value);
-	const stack = useOverlayStack({ active: mounted, lockScroll: true });
+	const stack = useOverlayStack({ active: mounted, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: mounted, containerRef: panelRef });
 	useDismiss({ open: mounted, onDismiss: onClose, panelRef, closeOnOutside: false });

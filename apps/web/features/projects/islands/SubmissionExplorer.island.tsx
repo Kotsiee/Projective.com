@@ -909,7 +909,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			/>
 
 			<CreateSubmissionModal
-				open={createOpen.value}
+				open={createOpen}
 				projectTitle={projectTitle}
 				stageName={currentStageName}
 				tickets={tickets}
@@ -918,13 +918,13 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			/>
 
 			<UploadFilesModal
-				open={uploadOpen.value}
+				open={uploadOpen}
 				submissionName={draftName}
 				onClose={() => (uploadOpen.value = false)}
 			/>
 
 			<DeleteSubmissionDialog
-				open={deleteOpen.value}
+				open={deleteOpen}
 				name={draftName}
 				onClose={() => (deleteOpen.value = false)}
 				onConfirm={onDeleteSubmission}

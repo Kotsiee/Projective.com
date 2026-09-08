@@ -120,44 +120,24 @@
 /* #endregion */
 
 /* #region Create / Upload modal (BodyPortal overlay) */
-.subm-modal {
-	position: fixed;
-	inset: 0;
-	z-index: var(--z-overlay);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-4);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-heavy), transparent);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
-}
-.subm-modal__panel {
-	inline-size: min(28rem, 100%);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding: var(--space-5);
-	background: var(--surface);
-	border-radius: var(--radius-xl);
-	box-shadow: var(--elevation-high);
-}
-.subm-modal__title {
-	margin: 0;
-	font-size: 1.0625rem;
-	font-weight: 700;
-	color: var(--on-surface);
-}
+/*
+ * The modal SURFACE — scrim, panel, elevation, title, focus trap, Escape and backdrop dismissal — is
+ * the shared `Dialog`'s (`packages/ui/feedback/islands/Dialog.tsx`); `.subm-modal` is only a scoping
+ * class on its panel. What used to live here was a second, divergent implementation: a local scrim
+ * mixing from `--on-surface`, which is near-WHITE in dark mode, so the page brightened behind the
+ * modal instead of dimming, at 4px of blur against the canonical 8px. Only the body layout remains.
+ */
 .subm-modal__note {
 	margin: 0;
-	font-size: 0.8125rem;
-	line-height: 1.5;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 .subm-modal__form {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
+	margin-block-start: var(--space-4);
 }
 .subm-modal__field {
 	display: flex;
@@ -165,26 +145,9 @@
 	gap: var(--space-2);
 }
 .subm-modal__label {
-	font-size: 0.75rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fw-medium);
 	color: var(--text-secondary);
-}
-.subm-modal__input {
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: var(--hairline);
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
-	color: var(--on-surface);
-	font: inherit;
-	font-size: 0.875rem;
-}
-.subm-modal__input:focus-visible {
-	outline: none;
-	border-color: var(--primary);
-	box-shadow: none;
 }
 .subm-modal__revtag {
 	display: inline-flex;
@@ -241,59 +204,24 @@
 /* #endregion */
 
 /* #region Delete confirmation (alertdialog) */
-.subm-confirm {
-	position: fixed;
-	inset: 0;
-	z-index: var(--z-overlay);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-4);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-heavy), transparent);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
-}
-.subm-confirm__panel {
-	inline-size: min(24rem, 100%);
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-5);
-	text-align: center;
-	background: var(--surface);
-	border-radius: var(--radius-xl);
-	box-shadow: var(--elevation-high);
-}
-.subm-confirm__icon {
+/*
+ * `DeleteSubmissionDialog` is a binding over the shared `ConfirmDialog`, so the panel, the action pair,
+ * the `alertdialog` role and every dismissal path come from the package. The one thing that does not
+ * survive that move is the icon's DANGER tone: `.ui-confirm__icon` is deliberately neutral
+ * (`--on-surface-variant`), because severity belongs on the control that acts, not on decoration
+ * (§B.8.3). An irreversible delete is the case where the mark should carry it too, so this is a
+ * scoped, token-only exception on that one dialog — never a re-tint of the shared class.
+ */
+.subm-delete .ui-confirm__icon {
+	flex: none;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	inline-size: 3rem;
 	block-size: 3rem;
 	border-radius: var(--radius-full);
-}
-.subm-confirm__icon[data-tone="danger"] {
 	color: var(--danger);
 	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
-}
-.subm-confirm__title {
-	margin: 0;
-	font-size: 1.0625rem;
-	font-weight: 700;
-	color: var(--on-surface);
-}
-.subm-confirm__body {
-	margin: 0;
-	font-size: 0.8125rem;
-	line-height: 1.5;
-	color: var(--text-secondary);
-}
-.subm-confirm__actions {
-	display: flex;
-	justify-content: center;
-	gap: var(--space-2);
-	margin-block-start: var(--space-2);
 }
 /* #endregion */
 

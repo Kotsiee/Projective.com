@@ -890,7 +890,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				: null}
 
 			<CreateStageModal
-				open={stageModalOpen.value}
+				open={stageModalOpen}
 				projectTitle={boardTitle}
 				onClose={() => (stageModalOpen.value = false)}
 				onCreate={onCreateStage}

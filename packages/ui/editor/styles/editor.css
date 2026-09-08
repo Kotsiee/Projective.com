@@ -240,6 +240,43 @@
     min-inline-size: var(--rte-w-min);
 }
 
+/*
+ * THE PRE-MOUNT STATE.
+ *
+ * Quill is behind a dynamic import, so between first paint and hydration this control is a box with
+ * nothing in it and a toolbar whose buttons are styled exactly like working ones. Both are lies of a
+ * kind this repo already grades as a defect: a control that renders must do something (root
+ * `CLAUDE.md` §3 gate 11), and an empty field reads as broken rather than as loading.
+ *
+ * `data-ready` is written to the DOM by the mount effect rather than rendered from state, because a
+ * re-render would have Preact diff a subtree Quill owns by then. Until it flips: the same ghost text
+ * Quill would show is drawn from `data-placeholder` (a component prop — never stored content, which
+ * is why it can be an attribute and not innerHTML), and the toolbar recedes and stops offering a
+ * pointer it cannot honour. `pointer-events` is deliberately NOT removed — a press still reaches the
+ * container, where the mount effect is listening for exactly that, and spends it on focusing the
+ * editor the moment it exists.
+ */
+.ui-rte[data-ready="false"] .ui-rte__editor::before {
+    content: attr(data-placeholder);
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-start: var(--space-3);
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+.ui-rte[data-ready="false"] .ui-rte__editor {
+    cursor: text;
+}
+
+.ui-rte[data-ready="false"] .ui-rte__toolbar {
+    opacity: var(--fld-disabled-alpha);
+}
+
+.ui-rte[data-ready="false"] .ui-rte__btn {
+    cursor: default;
+}
+
 /* Placeholder — Quill adds `.ql-blank` and copies `placeholder` to `data-placeholder`. */
 .ui-rte .ql-editor.ql-blank::before {
     content: attr(data-placeholder);

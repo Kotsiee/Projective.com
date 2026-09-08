@@ -7,6 +7,13 @@ import type { Bindable, FieldStatus, ValueChange } from "../../fields/types/mod.
 import { markdownToHtml, shouldParseMarkdown } from "../core/markdown.ts";
 import { cssLength } from "../core/resize.ts";
 import { useEditorResize } from "../hooks/useEditorResize.ts";
+import {
+	loadedQuill,
+	loadQuill,
+	type QuillConstructor,
+	type QuillInstance,
+	warmQuill,
+} from "../core/quill-loader.ts";
 
 /**
  * RichTextEditor — a lightweight, token-driven QuillJS wrapper.
@@ -17,8 +24,12 @@ import { useEditorResize } from "../hooks/useEditorResize.ts";
  * `snow`/`bubble` themes are NOT imported, so nothing here hardcodes a hue/radius/shadow and the
  * component stays copy-paste portable (root `packages/ui/CLAUDE.md` §1).
  *
- * Client-only: Quill is `import()`-ed inside an effect so the module (which touches `document`) never
- * evaluates during SSR. The initial paint is a plain container; Quill upgrades it on hydration. The
+ * Client-only: Quill is behind a dynamic `import()` because the module touches `document` while it
+ * EVALUATES, so it must never be reachable from the SSR pass. It is a hand-assembled `quill/core`
+ * build carrying only the seven things this toolbar offers — see
+ * {@link ../core/quill-runtime.ts | `quill-runtime`} — and the fetch is started during RENDER by
+ * {@link warmQuill} rather than in the mount effect, so it overlaps the rest of hydration instead of
+ * queueing behind it. The initial paint is a plain container; Quill upgrades it on hydration. The
  * component is a packages/ui *island-folder* component — it hydrates as part of whichever app island
  * mounts it (e.g. the Project Creation Modal), not as a standalone Fresh island.
  *
@@ -202,8 +213,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const toolbarRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<HTMLDivElement>(null);
-	// deno-lint-ignore no-explicit-any -- Quill instance is loaded dynamically on the client.
-	const quillRef = useRef<any>(null);
+	const quillRef = useRef<QuillInstance | null>(null);
 
 	const resize = useEditorResize({
 		containerRef,
@@ -211,10 +221,18 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 		horizontal: enableHorizontalResize,
 	});
 
+	/*
+	 * Start fetching Quill now rather than in the mount effect below. Render runs before effects
+	 * flush, so on a page with many islands this overlaps the download with the rest of hydration
+	 * instead of queueing behind it — and because it is here rather than at module scope, a page
+	 * whose islands merely CAN render an editor never pays for one it does not draw. No-op on the
+	 * server, and memoised, so N editors on one surface still perform exactly one import.
+	 */
+	warmQuill();
+
 	useEffect(() => {
 		let disposed = false;
-		// deno-lint-ignore no-explicit-any
-		let editor: any = null;
+		let editor: QuillInstance | null = null;
 		const container = containerRef.current;
 
 		/**
@@ -260,9 +278,27 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 		};
 		container?.addEventListener("paste", onPasteCapture, true);
 
-		(async () => {
-			const mod = await import("quill");
-			const Quill = mod.default;
+		/*
+		 * Someone who clicks the box before Quill has arrived has told us where they want to be, and
+		 * the click reaches nothing because the editable surface does not exist yet. Remember it and
+		 * spend it on `focus()` at mount, so the intent survives the wait instead of being dropped.
+		 * Removed as soon as Quill is up, since from then on the real editor handles its own focus.
+		 */
+		let focusWhenReady = false;
+		const onEarlyPointer = () => {
+			if (!quillRef.current) focusWhenReady = true;
+		};
+		// The editing SURFACE, not the container: a press on a resize handle or a toolbar button is
+		// not a request to put the caret in the document, and should not be spent as one.
+		editorRef.current?.addEventListener("pointerdown", onEarlyPointer);
+
+		/*
+		 * `loadedQuill()` first, and the branch is not a micro-optimisation: a second editor opened
+		 * later in the session — the ticket modal over a board that already mounted one — would
+		 * otherwise still yield to a microtask, painting its container once while empty. With the
+		 * class already in hand there is no await at all, so it is never drawn unmounted.
+		 */
+		const mount = (Quill: QuillConstructor) => {
 			const editorEl = editorRef.current;
 			const toolbarEl = toolbarRef.current;
 			if (disposed || !editorEl || !toolbarEl) return;
@@ -277,17 +313,36 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 			const initial = resolveInitial(value);
 			if (initial) editor.clipboard.dangerouslyPasteHTML(initial);
 
+			/*
+			 * Ready is announced by writing the DOM, not by flipping a signal, and that is the same
+			 * call `useEditorResize` makes for the same reason: a re-render would have Preact diff a
+			 * subtree Quill now owns, and this component deliberately renders once. The attribute is
+			 * what the stylesheet reads to retire the pre-mount placeholder and wake the toolbar.
+			 */
+			container?.setAttribute("data-ready", "true");
+			container?.removeAttribute("aria-busy");
+			toolbarEl.removeAttribute("aria-disabled");
+			// A click that landed while the box was still loading is honoured rather than swallowed.
+			if (focusWhenReady) editor.focus();
+
 			editor.on("text-change", () => {
-				const empty = editor.getText().trim().length === 0;
-				const html = empty ? "" : editor.getSemanticHTML();
+				const current = quillRef.current;
+				if (!current) return;
+				const empty = current.getText().trim().length === 0;
+				const html = empty ? "" : current.getSemanticHTML();
 				if (value instanceof Signal) value.value = html;
 				onValueChange?.(html);
 			});
-		})();
+		};
+
+		const ready = loadedQuill();
+		if (ready) mount(ready);
+		else loadQuill().then(mount).catch(() => {});
 
 		return () => {
 			disposed = true;
 			container?.removeEventListener("paste", onPasteCapture, true);
+			editorRef.current?.removeEventListener("pointerdown", onEarlyPointer);
 			if (editor) editor.off("text-change");
 			quillRef.current = null;
 		};
@@ -321,8 +376,16 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 				className,
 			)}
 			style={sizing}
+			data-ready="false"
+			aria-busy="true"
 		>
-			<div class="ui-rte__toolbar" ref={toolbarRef} role="toolbar" aria-label="Formatting">
+			<div
+				class="ui-rte__toolbar"
+				ref={toolbarRef}
+				role="toolbar"
+				aria-label="Formatting"
+				aria-disabled="true"
+			>
 				<span class="ui-rte__group">
 					{INLINE_BUTTONS.map((b) => <ToolbarButton key={b.format} btn={b} />)}
 				</span>
@@ -335,11 +398,21 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 					{LIST_BUTTONS.map((b) => <ToolbarButton key={b.value} btn={b} />)}
 				</span>
 			</div>
+			{
+				/*
+				 * `data-placeholder` is set here as well as by Quill, so the ghost text is on screen
+				 * from the first server-rendered byte instead of appearing when the editor mounts.
+				 * It is a component prop, never stored content — nothing user-authored is put into
+				 * this container as markup, which is what keeps a description carrying
+				 * `<img onerror=…>` from becoming a script the moment it is rendered.
+				 */
+			}
 			<div
 				class="ui-rte__editor"
 				ref={editorRef}
 				id={id}
 				aria-label={ariaLabel}
+				data-placeholder={placeholder}
 			/>
 			{
 				/*

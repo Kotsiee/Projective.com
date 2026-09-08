@@ -27,7 +27,9 @@
 		"preact/hooks": "npm:preact@^10.29.0/hooks",
 		"preact/jsx-runtime": "npm:preact@^10.29.0/jsx-runtime",
 		"@preact/signals": "npm:@preact/signals@^2.9.0",
-		"@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0"
+		"@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0",
+		"quill": "npm:quill@^2.0.3",
+		"quill/": "npm:/quill@^2.0.3/"
 	},
 	"compilerOptions": {
 		"jsx": "react-jsx",

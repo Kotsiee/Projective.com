@@ -807,6 +807,18 @@
 			"port": 11773
 		},
 		{
+			"name": "web-notfound",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"11973",
+				"--strictPort"
+			],
+			"port": 11973
+		},
+		{
 			"name": "web-nested",
 			"runtimeExecutable": "deno",
 			"runtimeArgs": [

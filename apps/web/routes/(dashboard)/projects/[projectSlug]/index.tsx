@@ -6,6 +6,7 @@ import { ProjectMemberDashboard } from "@features/projects/components/dashboard/
 import { resolveProjectSetup } from "@features/projects/core/setup-ssr.ts";
 import { resolveProjectOverview } from "@features/projects/core/overview-ssr.ts";
 import { resolveProjectShowcase } from "@features/projects/core/showcase-ssr.ts";
+import { projectsNoticeHref } from "@features/projects/core/project-notice.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import type { ProjectOverview, ProjectSetup } from "@features/projects/types/projects-types.ts";
 
@@ -31,10 +32,29 @@ import type { ProjectOverview, ProjectSetup } from "@features/projects/types/pro
  * a stranger evaluating the engagement belongs; `/projects/*` is the working surface for people
  * already inside it.
  *
- * `projectId` is an OPAQUE address, not a parsed one. Quick-Init sends a newly minted draft here by
- * its row uuid — a uuid cannot collide, cannot be squatted, and survives the first rename, which a
- * title-derived slug does not — while every link minted before that carries a slug. Both are handed
- * straight through to resolvers that accept either, so nothing here needs to know which it received.
+ * `projectSlug` is an OPAQUE address, not a parsed one: the minted, immutable `prj-…` slug (root
+ * CLAUDE.md §8 Decision #88), handed straight through to a resolver that does the matching. Nothing
+ * here inspects it — including on the way out, which is why a malformed address and a real one that
+ * matched nothing take the same exit.
+ *
+ * ## A project that is not there
+ *
+ * The showcase read is also the existence check, so the miss is caught before either branch has
+ * chosen a surface, and the request ends in a `303` to `/projects` carrying a `?notice=` flash that
+ * the list turns into one toast (`core/project-notice.ts`). Two things follow from doing it here
+ * rather than in the body:
+ *
+ *   • **Nothing half-built is ever sent.** The alternative — render, notice the `null`, redirect from
+ *     the client — has to paint something in order to run, and what it would paint is a page missing
+ *     the engagement it is entirely about. The server already has the answer before the first byte.
+ *   • **The wasted second read goes away.** A miss used to fall through with `viewerIsClient: false`
+ *     into the member branch and pay for an overview read that could only come back empty too.
+ *
+ * `detail` being `null` covers a project that never existed AND one this viewer may not see, and the
+ * flash says "does not exist" for both deliberately — see `project-notice.ts`. The narrower case of a
+ * project that resolved but whose SETUP read came back empty is left alone: the engagement is there,
+ * so telling the owner it is not would be a lie about a partial failure, and the in-body miss state
+ * still catches it.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -47,7 +67,18 @@ export const handler = define.handlers({
 			asAuthenticatedContext(ctx.state.userContext),
 			actor,
 		);
-		ctx.state.title = detail ? `${detail.title} · Projective` : "Project · Projective";
+
+		// A miss ends the request here, before the branch below picks a surface to render for a project
+		// that is not there. Returned from `define.handlers`, never from the page component: a
+		// `Response` returned by a `define.page` component is dead code and the body renders anyway
+		// (root CLAUDE.md §8 Decision #61).
+		if (!detail) {
+			return new Response(null, {
+				status: 303,
+				headers: { location: projectsNoticeHref("project-not-found") },
+			});
+		}
+		ctx.state.title = `${detail.title} · Projective`;
 
 		if (viewerIsClient) {
 			const { setup } = await resolveProjectSetup(projectId, actor);

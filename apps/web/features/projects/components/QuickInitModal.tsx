@@ -147,7 +147,7 @@ export function QuickInitModal(props: QuickInitModalProps): JSX.Element | null {
 	const { open, initialFormat, defaultCurrency, scopeId, onClose, onCreated } = props;
 
 	const { mounted, state } = usePresence(open);
-	const stack = useOverlayStack({ active: mounted, lockScroll: true });
+	const stack = useOverlayStack({ active: mounted, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	const titleFieldRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: mounted, containerRef: panelRef, initialFocusRef: titleFieldRef });

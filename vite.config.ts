@@ -454,6 +454,27 @@ export default defineConfig(({ mode }) => {
 			noExternal: true,
 		},
 
+		/*
+		 * There is deliberately no `optimizeDeps` here, and it is not an oversight — Vite's dependency
+		 * pre-bundler CANNOT be enabled in this repo.
+		 *
+		 * Turning it on (even pinned with `noDiscovery` and an explicit `include`) makes Vite append a
+		 * `?v=<hash>` cache key to every bare dependency URL it rewrites. Those specifiers are resolved
+		 * by @fresh/plugin-vite's Deno loader, which hands the path straight to the file system — so it
+		 * tries to open `…/preact/hooks/dist/hooks.module.js?v=1b4765e3` literally and dies with ENOENT.
+		 * Verified by execution: every route 500s, on preact, @preact/signals, zod, @material and
+		 * @prefresh alike, i.e. the failure is not specific to whatever was named in `include`.
+		 *
+		 * The consequence is worth stating plainly, because it is invisible until someone profiles a
+		 * page: in DEVELOPMENT every npm dependency is served unbundled, one HTTP request per module.
+		 * The project setup surface measured ~3,400 requests, of which ~700 are Quill and its
+		 * `lodash-es` tail (640 of those are lodash alone). That cost is a property of this Deno/Vite
+		 * pairing rather than of any one library, it does not exist in production (Rollup emits one
+		 * chunk per dynamic import), and the fix is not a per-library workaround — it is either an
+		 * upstream loader that tolerates the cache key, or a decision to pre-bundle deliberately.
+		 * Until then, do not reach for `optimizeDeps`: it has been tried and it breaks the app.
+		 */
+
 		build: {
 			sourcemap: false,
 			commonjsOptions: {

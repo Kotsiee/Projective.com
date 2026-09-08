@@ -1,17 +1,25 @@
 import type { JSX } from "preact";
+import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { BodyPortal } from "@projective/ui/overlay";
+import { Button, InputText, Textarea } from "@projective/ui/fields";
+import { Dialog } from "@projective/ui/feedback";
 import { PlusIcon } from "./glyphs.tsx";
 
 /**
  * CreateStageModal — the client-only "Create New Stage" surface, triggered from the Stages group's
- * inline ＋ (Project Details sidebar) AND from the Kanban board's Add-Column / footer Create Stage. STUB:
- * shaping is real (Title + optional rich-text Description, aligned to `CreateProjectStageSchema`), but
+ * inline ＋ (Project Details sidebar) AND from the Kanban board's Add-Column / footer Create Stage.
+ * STUB: shaping is real (Title + optional Description, aligned to `CreateProjectStageSchema`), but
  * persistence is deferred to the live path (`projects.create_stage` RPC + escrow milestone wiring).
- * Accessible: `role="dialog"` + `aria-modal`, Escape to close, focus moves to the name field on open,
- * backdrop click dismisses. Rendered through {@link BodyPortal} so its `position: fixed` never re-bases
- * onto the transformed/blurred shell chrome (the glass-blur trap) when opened from the board body.
+ *
+ * Built on the shared {@link Dialog}, which supplies the whole overlay contract — the unified
+ * `Backdrop`, the modal z-band, the focus trap, Escape, and backdrop dismissal. It replaced a
+ * hand-rolled surface whose own scrim mixed from `--on-surface` (near-white in dark mode, so it
+ * *brightened* the page instead of dimming it) and whose bespoke buttons declared
+ * `:focus-visible { outline: none; box-shadow: none }` — no keyboard focus indicator at all.
+ *
+ * The footer's submit is wired to the body form by `form={FORM_ID}`, so Enter in either field and a
+ * click on Create stage take the one path, rather than the footer duplicating the submit logic.
  */
 
 /** The drafted stage — Title required, Description optional (the purchasing gate lives at the ticket). */
@@ -21,33 +29,32 @@ export interface CreateStagePayload {
 }
 
 export interface CreateStageModalProps {
-	open: boolean;
+	/** Visibility, owned by the caller (the shared overlay contract is signal-first). */
+	open: Signal<boolean>;
 	projectTitle: string;
 	onClose: () => void;
 	/** Called with the drafted stage (stub — the parent decides what to do). */
 	onCreate: (payload: CreateStagePayload) => void;
 }
 
+const FORM_ID = "create-stage-form";
+const NAME_ID = "create-stage-name";
+const DESC_ID = "create-stage-description";
+
 export function CreateStageModal(
 	{ open, projectTitle, onClose, onCreate }: CreateStageModalProps,
-): JSX.Element | null {
-	const nameRef = useRef<HTMLInputElement>(null);
+): JSX.Element {
+	const nameRef = useRef<HTMLDivElement>(null);
 	const name = useSignal("");
 	const description = useSignal("");
 
+	// Reset the draft each time the surface opens. Focus is the Dialog's job (`initialFocusRef`), so
+	// this effect no longer moves it, and the Escape listener it used to own is gone with it.
 	useEffect(() => {
-		if (!open) return;
+		if (!open.value) return;
 		name.value = "";
 		description.value = "";
-		nameRef.current?.focus();
-		function onKey(e: KeyboardEvent): void {
-			if (e.key === "Escape") onClose();
-		}
-		globalThis.addEventListener?.("keydown", onKey);
-		return () => globalThis.removeEventListener?.("keydown", onKey);
-	}, [open, onClose]);
-
-	if (!open) return null;
+	}, [open.value]);
 
 	function submit(e: Event): void {
 		e.preventDefault();
@@ -57,59 +64,56 @@ export function CreateStageModal(
 	}
 
 	return (
-		<BodyPortal>
-			<div class="proj-stage-modal" role="presentation" onClick={onClose}>
-				<div
-					class="proj-stage-modal__panel"
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="create-stage-title"
-					onClick={(e) => e.stopPropagation()}
-				>
-					<h2 id="create-stage-title" class="proj-stage-modal__title">Create new stage</h2>
-					<p class="proj-stage-modal__note">
-						Add a stage to{" "}
-						<strong>{projectTitle}</strong>. Reordering stages changes the workflow sequence; its
-						escrow milestone is negotiated with the freelancer before work begins.
-					</p>
-					<form class="proj-stage-modal__form" onSubmit={submit}>
-						<label class="proj-stage-modal__field">
-							<span class="proj-stage-modal__label">Stage name</span>
-							<input
-								ref={nameRef}
-								type="text"
-								class="proj-stage-modal__input"
-								placeholder="e.g. Design Review"
-								maxLength={120}
-								value={name.value}
-								onInput={(e) => (name.value = (e.target as HTMLInputElement).value)}
-							/>
-						</label>
-						<label class="proj-stage-modal__field">
-							<span class="proj-stage-modal__label">
-								Description <span class="proj-stage-modal__hint">Optional</span>
-							</span>
-							<textarea
-								class="proj-stage-modal__input proj-stage-modal__textarea"
-								rows={3}
-								maxLength={2000}
-								placeholder="What this stage delivers, acceptance criteria, notes…"
-								value={description.value}
-								onInput={(e) => (description.value = (e.target as HTMLTextAreaElement).value)}
-							/>
-						</label>
-						<div class="proj-stage-modal__actions">
-							<button type="button" class="proj-stage-modal__btn" onClick={onClose}>
-								Cancel
-							</button>
-							<button type="submit" class="proj-stage-modal__btn proj-stage-modal__btn--primary">
-								<span class="proj-stage-modal__btn-icon" aria-hidden="true">{PlusIcon}</span>
-								Create stage
-							</button>
-						</div>
-					</form>
+		<Dialog
+			visible={open}
+			class="proj-stage-modal"
+			header="Create new stage"
+			width="min(26rem, 100%)"
+			initialFocusRef={nameRef}
+			onVisibleChange={(v) => !v && onClose()}
+			footer={
+				<div class="proj-stage-modal__actions">
+					<Button label="Cancel" variant="text" severity="secondary" onClick={onClose} />
+					<Button
+						type="submit"
+						form={FORM_ID}
+						label="Create stage"
+						icon={PlusIcon}
+					/>
 				</div>
-			</div>
-		</BodyPortal>
+			}
+		>
+			<p class="proj-stage-modal__note">
+				Add a stage to{" "}
+				<strong>{projectTitle}</strong>. Reordering stages changes the workflow sequence; its escrow
+				milestone is negotiated with the freelancer before work begins.
+			</p>
+			<form id={FORM_ID} class="proj-stage-modal__form" onSubmit={submit}>
+				<div ref={nameRef} class="proj-stage-modal__field">
+					<label class="proj-stage-modal__label" for={NAME_ID}>Stage name</label>
+					<InputText
+						id={NAME_ID}
+						value={name}
+						fluid
+						required
+						placeholder="e.g. Design Review"
+						maxLength={120}
+					/>
+				</div>
+				<div class="proj-stage-modal__field">
+					<label class="proj-stage-modal__label" for={DESC_ID}>
+						Description <span class="proj-stage-modal__hint">Optional</span>
+					</label>
+					<Textarea
+						id={DESC_ID}
+						value={description}
+						fluid
+						rows={3}
+						maxLength={2000}
+						placeholder="What this stage delivers, acceptance criteria, notes…"
+					/>
+				</div>
+			</form>
+		</Dialog>
 	);
 }

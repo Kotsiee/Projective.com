@@ -368,7 +368,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 			</div>
 
 			<CreateStageModal
-				open={createStageOpen.value}
+				open={createStageOpen}
 				projectTitle={view.title}
 				onClose={() => (createStageOpen.value = false)}
 				onCreate={onCreateStage}

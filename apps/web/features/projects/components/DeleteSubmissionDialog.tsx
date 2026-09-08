@@ -1,18 +1,26 @@
 import type { JSX } from "preact";
-import { useEffect, useRef } from "preact/hooks";
-import { BodyPortal } from "@projective/ui/overlay";
+import type { Signal } from "@preact/signals";
+import { ConfirmDialog } from "@projective/ui/feedback";
 import { TrashGlyph } from "./submission-glyphs.tsx";
 
 /**
- * DeleteSubmissionDialog — the freelancer's "Delete Submission" confirmation (root task §3.2). A small
- * danger-tinted confirm surface: it names the submission being removed and requires an explicit confirm
- * so an irreversible delete is never a single misclick. STUB — persistence is deferred (the parent runs
- * the optimistic removal). Rendered through {@link BodyPortal} so its `position: fixed` never re-bases
- * onto the transformed/blurred shell chrome (the glass-blur trap); Escape + backdrop click dismiss and
- * focus moves to the cancel control on open.
+ * DeleteSubmissionDialog — the freelancer's "Delete Submission" confirmation (root task §3.2). A thin
+ * binding over the shared {@link ConfirmDialog}: it names the submission being removed and requires an
+ * explicit confirm so an irreversible delete is never a single misclick. STUB — persistence is deferred
+ * (the parent runs the optimistic removal).
+ *
+ * `ConfirmDialog` supplies the whole overlay contract — the unified `Backdrop`, the modal z-band, the
+ * focus trap, Escape, and backdrop dismissal — and raises the role to `alertdialog`. **Dismissal is
+ * rejection**: Escape, the backdrop and the × all route to `onClose`, never to `onConfirm`, so there is
+ * no path where dismissing this prompt could be mistaken for confirming the delete. Initial focus lands
+ * on Cancel, so a stray Enter takes the safe branch.
+ *
+ * This replaced a hand-rolled surface whose own scrim mixed from `--on-surface` — near-white in dark
+ * mode — so it *brightened* the page instead of dimming it, at half the canonical blur.
  */
 export interface DeleteSubmissionDialogProps {
-	open: boolean;
+	/** Visibility, owned by the caller (the shared overlay contract is signal-first). */
+	open: Signal<boolean>;
 	/** The submission unit's name, shown in the confirmation copy. */
 	name: string;
 	onClose: () => void;
@@ -21,62 +29,24 @@ export interface DeleteSubmissionDialogProps {
 
 export function DeleteSubmissionDialog(
 	{ open, name, onClose, onConfirm }: DeleteSubmissionDialogProps,
-): JSX.Element | null {
-	const cancelRef = useRef<HTMLButtonElement>(null);
-
-	useEffect(() => {
-		if (!open) return;
-		cancelRef.current?.focus();
-		function onKey(e: KeyboardEvent): void {
-			if (e.key === "Escape") onClose();
-		}
-		globalThis.addEventListener?.("keydown", onKey);
-		return () => globalThis.removeEventListener?.("keydown", onKey);
-	}, [open, onClose]);
-
-	if (!open) return null;
-
+): JSX.Element {
 	return (
-		<BodyPortal>
-			<div class="subm-confirm" role="presentation" onClick={onClose}>
-				<div
-					class="subm-confirm__panel"
-					role="alertdialog"
-					aria-modal="true"
-					aria-labelledby="delete-subm-title"
-					aria-describedby="delete-subm-body"
-					onClick={(e) => e.stopPropagation()}
-				>
-					<div class="subm-confirm__icon" data-tone="danger" aria-hidden="true">
-						<TrashGlyph size={22} />
-					</div>
-					<h2 id="delete-subm-title" class="subm-confirm__title">Delete submission?</h2>
-					<p id="delete-subm-body" class="subm-confirm__body">
-						<strong>{name || "This submission"}</strong>{" "}
-						and its uploaded files will be removed. This cannot be undone.
-					</p>
-					<div class="subm-confirm__actions">
-						<button
-							ref={cancelRef}
-							type="button"
-							class="subm-actions__btn subm-actions__btn--soft"
-							onClick={onClose}
-						>
-							Cancel
-						</button>
-						<button
-							type="button"
-							class="subm-actions__btn subm-actions__btn--danger-solid"
-							onClick={onConfirm}
-						>
-							<span class="subm-actions__icon" aria-hidden="true">
-								<TrashGlyph size={16} />
-							</span>
-							Delete submission
-						</button>
-					</div>
-				</div>
-			</div>
-		</BodyPortal>
+		<ConfirmDialog
+			visible={open}
+			class="subm-delete"
+			header="Delete submission?"
+			icon={<TrashGlyph size={22} />}
+			message={
+				<>
+					<strong>{name || "This submission"}</strong>{" "}
+					and its uploaded files will be removed. This cannot be undone.
+				</>
+			}
+			rejectLabel="Cancel"
+			acceptLabel="Delete submission"
+			acceptSeverity="danger"
+			onAccept={onConfirm}
+			onReject={onClose}
+		/>
 	);
 }

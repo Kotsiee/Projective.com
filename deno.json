@@ -30,6 +30,7 @@
 		"pixi.js": "npm:pixi.js@^8.17.1",
 		"preact": "npm:preact@^10.29.0",
 		"quill": "npm:quill@^2.0.3",
+		"quill/": "npm:/quill@^2.0.3/",
 		"quill-delta-to-html": "npm:quill-delta-to-html@^0.12.1",
 		"supabase": "npm:supabase@^2.105.0",
 		"supabaseClient": "npm:@supabase/supabase-js@2.76.1",

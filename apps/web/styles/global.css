@@ -7,98 +7,98 @@
  */
 
 :root {
-    color-scheme: light dark;
+	color-scheme: light dark;
 }
 
 body {
-    margin: 0;
-    font-family: var(--font-sans, system-ui, sans-serif);
-    /*
-	 * The document's base size and leading. Both were previously unset, so every element that did not
-	 * declare its own inherited the UA defaults — and critically `line-height: normal`, which is about
-	 * 1.2 on a system sans. 1,080 of the repo's 1,372 font-size declarations (78.8%) have no sibling
-	 * line-height, so 1.2 was the *only* leading in the cascade for all of them. It shows worst on
-	 * wrapping empty-state copy — .cat-empty__note, .msg-empty__note, .fx-empty__note,
-	 * .brd-empty__note, .pf-notfound__note — which is precisely where a stuck reader lands.
-	 *
-	 * Setting them here makes the ~22 downstream line-height declarations deliberate overrides rather
-	 * than the only leading anyone gets.
-	 */
-    font-size: var(--text-base);
-    line-height: var(--leading-normal);
-    letter-spacing: var(--tracking-normal);
-    color: var(--on-surface);
-    background: var(--bg);
-    /* Long words, URLs and CJK strings wrap instead of forcing a horizontal scrollbar. */
-    overflow-wrap: break-word;
+	margin: 0;
+	font-family: var(--font-sans, system-ui, sans-serif);
+	/*
+	* The document's base size and leading. Both were previously unset, so every element that did not
+	* declare its own inherited the UA defaults — and critically `line-height: normal`, which is about
+	* 1.2 on a system sans. 1,080 of the repo's 1,372 font-size declarations (78.8%) have no sibling
+	* line-height, so 1.2 was the *only* leading in the cascade for all of them. It shows worst on
+	* wrapping empty-state copy — .cat-empty__note, .msg-empty__note, .fx-empty__note,
+	* .brd-empty__note, .pf-notfound__note — which is precisely where a stuck reader lands.
+	*
+	* Setting them here makes the ~22 downstream line-height declarations deliberate overrides rather
+	* than the only leading anyone gets.
+	*/
+	font-size: var(--text-base);
+	line-height: var(--leading-normal);
+	letter-spacing: var(--tracking-normal);
+	color: var(--on-surface);
+	background: var(--bg);
+	/* Long words, URLs and CJK strings wrap instead of forcing a horizontal scrollbar. */
+	overflow-wrap: break-word;
 }
 
 /* Signature corner-curve app frame (DESIGN_SYSTEM.md Part D.1). */
 .app-frame {
-    min-block-size: 100dvh;
-    padding: clamp(0px, 1vw, 12px);
-    box-sizing: border-box;
+	min-block-size: 100dvh;
+	padding: clamp(0px, 1vw, 12px);
+	box-sizing: border-box;
 }
 
 .app-frame__canvas {
-    min-block-size: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
-    border-radius: var(--radius-xl);
-    background: var(--surface);
-    overflow: clip;
+	min-block-size: calc(100dvh - 2 * clamp(0px, 1vw, 12px));
+	border-radius: var(--radius-xl);
+	background: var(--surface);
+	overflow: clip;
 }
 
 /* Skeleton page body — replaced by real feature layouts. */
 .page {
-    padding: clamp(1rem, 4vw, 3rem);
+	padding: clamp(1rem, 4vw, 3rem);
 }
 
 .page__title {
-    margin: 0 0 var(--space-1);
-    /* `rem + vw`, never bare `vw`: a pure-viewport slope ignores the reader's font size everywhere
-	   between the two bounds, so zooming or raising the browser's base size moves nothing. */
-    font-size: clamp(var(--text-2xl), 1.15rem + 1.6vw, 2rem);
-    line-height: var(--leading-tight);
-    letter-spacing: var(--tracking-tight);
-    text-wrap: balance;
+	margin: 0 0 var(--space-1);
+	/* `rem + vw`, never bare `vw`: a pure-viewport slope ignores the reader's font size everywhere
+	between the two bounds, so zooming or raising the browser's base size moves nothing. */
+	font-size: clamp(var(--text-2xl), 1.15rem + 1.6vw, 2rem);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	text-wrap: balance;
 }
 
 .page__path {
-    margin: 0 0 var(--space-4);
-    color: var(--text-secondary);
-    font-size: var(--text-md);
+	margin: 0 0 var(--space-4);
+	color: var(--text-secondary);
+	font-size: var(--text-md);
 }
 
 .page__note {
-    color: var(--text-secondary);
-    /* Logical property: `max-width` is physical and §A.6 prohibits it. Harmless in a horizontal
-	   writing mode, but this is the global sheet authors copy the house pattern from. */
-    max-inline-size: var(--measure);
+	color: var(--text-secondary);
+	/* Logical property: `max-width` is physical and §A.6 prohibits it. Harmless in a horizontal
+	writing mode, but this is the global sheet authors copy the house pattern from. */
+	max-inline-size: var(--measure);
 }
 
 /* Shell brand slot + middle-nav lane (app-side chrome around @projective/ui/navigation). */
 .brand {
-    font-weight: var(--fw-bold);
-    letter-spacing: var(--tracking-tight);
+	font-weight: var(--fw-bold);
+	letter-spacing: var(--tracking-tight);
 }
 
 .lane-nav {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding-block: var(--space-2);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding-block: var(--space-2);
 }
 
 /* Nested-theme scope wrapper (DesignSystemProvider, non-root). */
 .ds-scope {
-    display: contents;
+	display: contents;
 }
 
 /* Demo topbar hosting the theme toggle. */
 .app-frame__topbar {
-    display: flex;
-    justify-content: flex-end;
-    padding-block: var(--space-2);
-    padding-inline: clamp(1rem, 4vw, 3rem);
+	display: flex;
+	justify-content: flex-end;
+	padding-block: var(--space-2);
+	padding-inline: clamp(1rem, 4vw, 3rem);
 }
 
 /*
@@ -108,24 +108,24 @@ body {
  * fail loudly, not quietly render last year's palette.
  */
 .theme-toggle {
-    border: 1px solid var(--outline);
-    background: var(--surface-1);
-    color: var(--on-surface);
-    border-radius: var(--radius-base);
-    padding-block: var(--space-1);
-    padding-inline: var(--space-3);
-    font: inherit;
-    font-weight: var(--fw-medium);
-    cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	border: 1px solid var(--outline);
+	background: var(--surface-1);
+	color: var(--on-surface);
+	border-radius: var(--radius-base);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-3);
+	font: inherit;
+	font-weight: var(--fw-medium);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .theme-toggle:hover {
-    background: var(--surface-2);
+	background: var(--surface-2);
 }
 
 .theme-toggle:focus-visible {
-    outline: none;
+	outline: none;
 }
 
 /* #region Scrollbar tracks — app-side surface roots */
@@ -146,6 +146,13 @@ body {
  * "the thumb clears 3:1 against EVERY track variant" and that is a claim you can only check against
  * the whole set at once.
  */
+/*
+ * `.proj-stage-modal__panel`, `.subm-modal__panel` and `.subm-confirm__panel` used to be listed here.
+ * Those three surfaces now render through the shared `Dialog`/`ConfirmDialog`, so `.ui-dialog__panel`
+ * in the package sheet already gives them `--surface` and the track inherits to the modal body. They
+ * are removed rather than kept as harmless duplicates: this list is only checkable as a whole, and a
+ * selector matching nothing makes the set look like it covers a surface it no longer describes.
+ */
 .tagselect__menu,
 .evm__panel,
 .dev-log__list,
@@ -156,15 +163,12 @@ body {
 .fx-modal__menu,
 .fx-modal__aside,
 .qim__panel,
-.proj-stage-modal__panel,
 .proj-modifier__menu,
 .proj-combo__menu,
-.subm-modal__panel,
-.subm-confirm__panel,
 .subm-review__panel,
 .tkv__panel,
 .vw-lightbox__panel {
-    --scrollbar-track: var(--surface);
+	--scrollbar-track: var(--surface);
 }
 
 .evm__side,
@@ -178,21 +182,20 @@ body {
  * Found by measuring the painted ground behind every scroller against its resolved track, not by
  * reading the stylesheet — the rail's `overflow` is declared in `profile.css` (it reuses the
  * `.pf-lane` skeleton) while its background is declared here, so no single-file audit sees both.
- */
-.evp-lane__full,
+ */ .evp-lane__full,
 .evp-canvas__stage,
 .evp-canvas__code,
 .wsp-chart__card,
 .wlt-deck--expanded .wlt-deck__wrap,
 .vw-lightbox__stage {
-    --scrollbar-track: var(--surface-1);
+	--scrollbar-track: var(--surface-1);
 }
 
 .ex-actions__menu,
 .shv__stage,
 .site-header__entity-menu,
 .hero-search__menu {
-    --scrollbar-track: var(--surface-2);
+	--scrollbar-track: var(--surface-2);
 }
 
 /*
@@ -202,7 +205,7 @@ body {
  * `features/shell/styles/guest-shell.css`, where its own veil is declared.
  */
 .site-header__drawer {
-    --scrollbar-track: transparent;
+	--scrollbar-track: transparent;
 }
 
 /* #endregion */
@@ -243,14 +246,14 @@ body {
  */
 :root,
 :root[data-contrast="high"] {
-    --focus-ring: transparent !important;
-    --focus-ring-halo: transparent !important;
-    --focus-ring-tint: transparent !important;
-    --focus-ring-w: 0px !important;
-    --focus-ring-offset: 0px !important;
-    --focus-ring-glow: 0 0 0 0 transparent !important;
-    --focus-ring-shadow: 0 0 0 0 transparent !important;
-    --focus-ring-shadow-inset: inset 0 0 0 0 transparent !important;
+	--focus-ring: transparent !important;
+	--focus-ring-halo: transparent !important;
+	--focus-ring-tint: transparent !important;
+	--focus-ring-w: 0px !important;
+	--focus-ring-offset: 0px !important;
+	--focus-ring-glow: 0 0 0 0 transparent !important;
+	--focus-ring-shadow: 0 0 0 0 transparent !important;
+	--focus-ring-shadow-inset: inset 0 0 0 0 transparent !important;
 }
 
 /*
@@ -277,8 +280,8 @@ summary:focus-visible,
 [tabindex]:focus,
 [tabindex]:focus-visible,
 [tabindex]:focus-within {
-    outline: none !important;
-    box-shadow: none !important;
+	outline: none !important;
+	box-shadow: none !important;
 }
 
 /*
@@ -291,18 +294,18 @@ summary:focus-visible,
 .ui-scroll-top:focus-visible,
 .cal-tg__present:focus-visible,
 .cal-month__present:focus-visible {
-    box-shadow: var(--elevation-medium) !important;
+	box-shadow: var(--elevation-medium) !important;
 }
 
 .ui-button--raised:focus,
 .ui-button--raised:focus-visible,
 .auth-otp__box:focus-visible,
 .vw-gallery__main:focus-visible {
-    box-shadow: var(--elevation-low) !important;
+	box-shadow: var(--elevation-low) !important;
 }
 
 .ui-button--raised:hover:not(:disabled):focus-visible {
-    box-shadow: var(--elevation-medium) !important;
+	box-shadow: var(--elevation-medium) !important;
 }
 
 /* #endregion */

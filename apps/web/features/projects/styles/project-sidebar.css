@@ -1261,41 +1261,20 @@
 /* #endregion */
 
 /* #region Create-Stage modal */
-.proj-stage-modal {
-	position: fixed;
-	inset: 0;
-	z-index: var(--z-overlay);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-4);
-	background: color-mix(in srgb, var(--on-surface) var(--tint-heavy), transparent);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
-}
-
-.proj-stage-modal__panel {
-	inline-size: min(24rem, 100%);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-	padding: var(--space-4);
-	background: var(--surface);
-	border-radius: var(--radius-container-lg, var(--radius-lg));
-	box-shadow: var(--elevation-high);
-}
-
-.proj-stage-modal__title {
-	margin: 0;
-	font-size: 1.05rem;
-	font-weight: 700;
-	color: var(--on-surface);
-}
-
+/*
+ * The modal SURFACE — scrim, panel, elevation, title, focus trap, Escape and backdrop dismissal — is
+ * the shared `Dialog`'s (`packages/ui/feedback/islands/Dialog.tsx`); `.proj-stage-modal` is only a
+ * scoping class on its panel, and the controls are the shared `Button` / `InputText` / `Textarea`.
+ * What used to live here was a second, divergent implementation of all of it, carrying three defects
+ * the shared components do not have: a scrim mixed from `--on-surface` (near-WHITE in dark mode, so
+ * the page brightened behind the modal instead of dimming) at half the canonical blur; a heading at
+ * `font-weight: 700`, which §A.4 forbids; and `:focus-visible { outline: none; box-shadow: none }` on
+ * the buttons, i.e. no keyboard focus indicator at all.
+ */
 .proj-stage-modal__note {
 	margin: 0;
-	font-size: 0.8rem;
-	line-height: 1.5;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
 	color: var(--text-secondary);
 }
 
@@ -1303,6 +1282,7 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
+	margin-block-start: var(--space-4);
 }
 
 .proj-stage-modal__field {
@@ -1312,41 +1292,13 @@
 }
 
 .proj-stage-modal__label {
-	font-size: 0.74rem;
-	font-weight: 600;
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fw-medium);
 	color: var(--text-secondary);
 }
 
-.proj-stage-modal__input {
-	inline-size: 100%;
-	padding: 0.55rem 0.7rem;
-	font: inherit;
-	font-size: 0.85rem;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: 1px solid transparent;
-	border-radius: var(--radius-sm);
-	transition:
-		border-color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-stage-modal__input:focus-visible {
-	outline: none;
-	background: var(--surface);
-	border-color: var(--primary);
-	box-shadow: none;
-}
-
-.proj-stage-modal__textarea {
-	resize: vertical;
-	min-block-size: 3.75rem;
-	line-height: 1.5;
-	font-family: inherit;
-}
-
 .proj-stage-modal__hint {
-	font-weight: 500;
+	font-weight: var(--fw-regular);
 	text-transform: none;
 	color: var(--text-secondary);
 	opacity: 0.8;
@@ -1356,47 +1308,6 @@
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--space-2);
-}
-
-.proj-stage-modal__btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 0.45rem 0.9rem;
-	font: inherit;
-	font-size: 0.8rem;
-	font-weight: 600;
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-stage-modal__btn:hover {
-	background: var(--surface-3, var(--surface-2));
-}
-
-.proj-stage-modal__btn--primary {
-	color: var(--on-primary);
-	background: var(--primary);
-}
-
-.proj-stage-modal__btn--primary:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
-}
-
-.proj-stage-modal__btn:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-.proj-stage-modal__btn-icon {
-	display: inline-flex;
-	font-size: 0.95rem;
 }
 
 /* #endregion */

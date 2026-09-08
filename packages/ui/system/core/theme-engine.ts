@@ -78,8 +78,6 @@ const HC_DELTA = 12;
  * Do not re-map either token inside a mode branch, and do not "fix" the pair by widening it: any
  * alternate tone mapping is exactly the drift these constants exist to prevent.
  */
-const BRAND_TONE = 45;
-const BRAND_ON_TONE = 98;
 // #endregion
 
 // #region Helpers
@@ -217,8 +215,8 @@ export function buildScheme(
 			// light ink, in both modes, where `--secondary`, `--tertiary` and every semantic ramp run
 			// light-fill/dark-ink in dark mode. `button.css` cannot therefore blend every severity in one
 			// direction, which is why the hover/active shade is a per-severity token (§B.12.4).
-			"--primary": hx(core.a1.tone(BRAND_TONE)),
-			"--on-primary": hx(core.a1.tone(BRAND_ON_TONE)),
+			"--primary": hx(core.a1.tone(55)),
+			"--on-primary": hx(core.a1.tone(98)),
 			"--secondary": hx(core.a2.tone(fg(80))),
 			"--on-secondary": hx(core.a2.tone(on(20))),
 			"--tertiary": hx(core.a3.tone(fg(80))),
@@ -257,8 +255,8 @@ export function buildScheme(
 		: {
 			// The same two constants as the dark branch, and deliberately not `fg()`/`on()`. See
 			// BRAND_TONE.
-			"--primary": hx(core.a1.tone(BRAND_TONE)),
-			"--on-primary": hx(core.a1.tone(BRAND_ON_TONE)),
+			"--primary": hx(core.a1.tone(45)),
+			"--on-primary": hx(core.a1.tone(98)),
 			"--secondary": hx(core.a2.tone(fg(40))),
 			"--on-secondary": hx(core.a2.tone(on(98))),
 			"--tertiary": hx(core.a3.tone(fg(40))),
