@@ -18,7 +18,10 @@ import { bottomNavItems } from "@web/features/shell/core/bottom-nav-model.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 
 export interface UserShellProps {
-	/** Current pathname — drives active-state across the sidebar + nav. */
+	/**
+	 * Current pathname — drives active-state across the sidebar, the nav, and the header tray (the
+	 * Basket control marks itself current across the basket ⁄ checkout flow).
+	 */
 	path: string;
 	/**
 	 * The hydrated user context (from `ctx.state.userContext`). Tailors the global rail to the actor's
@@ -174,7 +177,9 @@ export function UserShell(
 				}
 				utilityBar={focus
 					? null
-					: <UserActions context={context} protectedRoute={protectedRoute} />}
+					: (
+						<UserActions path={path} context={context} protectedRoute={protectedRoute} />
+					)}
 				sidebar={focus ? undefined : <ShellSidebar path={path} context={context} />}
 			>
 				{framed

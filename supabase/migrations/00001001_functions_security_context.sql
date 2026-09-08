@@ -178,8 +178,16 @@ $$;
 --
 -- They live in `security` rather than beside any one table because three schemas mint slugs
 -- (`projects`, `marketplace`) and a copy per schema is a copy per schema to keep in step. EXECUTE is
--- revoked below: a trigger runs as the table owner and needs no grant, and `security` IS exposed to
--- PostgREST, so an un-revoked function here is an RPC anybody can call.
+-- revoked below, and `security` IS exposed to PostgREST, so an un-revoked function here is an RPC
+-- anybody can call.
+--
+-- A TRIGGER DOES NOT RUN AS THE TABLE OWNER. Postgres checks EXECUTE on the trigger FUNCTION once, at
+-- `CREATE TRIGGER` time, against the trigger's creator — but the body still executes as the INVOKING
+-- role, so a call it makes to another function is privilege-checked at runtime against THAT role.
+-- This file previously said otherwise, and the guard below was `SECURITY INVOKER` as a result: every
+-- INSERT into a slugged table by `authenticated` OR `service_role` failed with
+-- `permission denied for function mint_slug`, raised from inside a guard the caller never named.
+-- The guard is `SECURITY DEFINER` for exactly that reason — see the note above it.
 
 -- Mint one slug: `p_prefix`, a hyphen, and 10 symbols drawn uniformly from the 32-symbol alphabet.
 --
@@ -226,9 +234,22 @@ COMMENT ON FUNCTION security.mint_slug(text) IS
 -- equals `OLD.slug` and nothing fires; the only way to reach the exception is to genuinely try to move
 -- an address, which is a bug worth hearing about rather than absorbing. Silently reverting it would
 -- let the caller believe the write landed.
+--
+-- SECURITY DEFINER, and it is load-bearing rather than defensive. A trigger function runs as the
+-- INVOKING role, so as `authenticated` this called `security.mint_slug` — which is deliberately
+-- revoked from PUBLIC — and every insert into a slugged table died on a function the caller never
+-- named. Running as the owner breaks that cycle without handing any client role EXECUTE, which is
+-- what keeps `mint_slug` off PostgREST: granting it instead would make `POST /rpc/mint_slug`
+-- callable by anyone signed in, and by `anon` too, which is the surface the REVOKE below removes.
+--
+-- Definer is safe here because the body is closed. It touches no table, runs no dynamic SQL, and
+-- takes exactly two inputs: `TG_ARGV[0]`, fixed at `CREATE TRIGGER` time and therefore settable only
+-- by someone who already owns the table, and `NEW.slug`, which is compared and — when NULL —
+-- overwritten. There is no value a caller can supply that reaches the owner's privileges.
 CREATE OR REPLACE FUNCTION security.fn_slug_guard()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
@@ -250,7 +271,12 @@ COMMENT ON FUNCTION security.fn_slug_guard() IS
 
 -- Neither is callable over PostgREST. `security` is an exposed schema and CREATE FUNCTION grants
 -- EXECUTE to PUBLIC by default, so without this a signed-out caller could mint slugs at will —
--- harmless in itself, but surface with no purpose, since triggers execute as the table owner.
+-- harmless in itself, but surface with no purpose.
+--
+-- These REVOKEs hold for every client role BECAUSE the guard above is `SECURITY DEFINER`: the only
+-- caller that needs `mint_slug` reaches it as the owner. Do not answer a
+-- `permission denied for function mint_slug` by granting EXECUTE here — that re-opens the RPC this
+-- removes. The cause is a slug caller running as the invoker; make that caller a definer instead.
 REVOKE ALL ON FUNCTION security.mint_slug(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION security.fn_slug_guard() FROM PUBLIC;
 

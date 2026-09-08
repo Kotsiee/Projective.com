@@ -58,7 +58,7 @@
 }
 
 .ui-rte:focus-within {
-    box-shadow: 0 2px 0 var(--primary);
+    box-shadow: none;
     outline: none;
     background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
@@ -131,7 +131,7 @@
 
 .ui-rte__btn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /* Quill toggles `.ql-active` on the bound button when the format is on at the caret. */
@@ -407,7 +407,7 @@
 .ui-rte__handle:focus-visible {
     outline: none;
     border-radius: var(--radius-sm);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .ui-rte__handle--block {

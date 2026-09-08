@@ -24,7 +24,7 @@
 	outline: none;
 }
 .fx-card:focus-visible {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .fx-card__thumb {

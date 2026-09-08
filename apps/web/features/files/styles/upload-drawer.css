@@ -371,6 +371,6 @@
 .fh-rig__uploads:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */

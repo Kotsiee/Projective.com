@@ -84,8 +84,7 @@
 }
 
 .ex-results-head__tag:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .ex-dash__bar {
@@ -130,8 +129,7 @@
 }
 
 .ex-dash__filter-btn:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* The facet sidebar moved to the navigation rail (guest aside / middle-nav lane), so the results grid is
@@ -185,8 +183,7 @@
 }
 
 .ex-filters__clear:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .ex-filters__group {
@@ -210,8 +207,7 @@
 }
 
 .ex-filters__summary:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -620,8 +616,7 @@
 }
 
 .ex-view__back:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 /* #endregion */
@@ -690,8 +685,7 @@
 }
 
 .ex-sheet__done:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 

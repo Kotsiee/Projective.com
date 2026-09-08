@@ -86,7 +86,7 @@
 }
 .qim__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

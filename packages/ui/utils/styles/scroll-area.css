@@ -21,7 +21,7 @@
 }
 .ui-scroll-area__viewport:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 /* #region Bars (tracks) */

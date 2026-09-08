@@ -335,8 +335,7 @@
 }
 
 .wlt-chart--project .wlt-chart__legenditem :focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-base);
 }
 /* #endregion */

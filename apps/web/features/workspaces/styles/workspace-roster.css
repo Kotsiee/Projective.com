@@ -85,8 +85,7 @@
 }
 
 .wsp-roster__tab:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-roster__tab[aria-selected="true"],
@@ -177,8 +176,7 @@
 }
 
 .wsp-invitestrip__dismiss:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-invitestrip__list {
@@ -275,8 +273,7 @@
 
 .wsp-invitestrip__accept:focus-visible,
 .wsp-invitestrip__decline:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 /* #endregion */
 
@@ -347,8 +344,7 @@
 }
 
 .wsp-card__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-card__top {
@@ -445,8 +441,7 @@
 }
 
 .wsp-card__kebab:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* People are circular; the entity mark above is the square. */
@@ -654,8 +649,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 .wsp-rtable__row:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-rtable__row[data-acting="true"] {
@@ -924,8 +918,7 @@ index, and it disappears at 100% — a completed checklist is noise. */
 }
 
 .wsp-create__kind:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /*
@@ -1013,8 +1006,7 @@ answer to a question the user just asked. */
 }
 
 .wsp-create__suggestion:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* A live preview of the mark, so the initial badge is never a surprise. */

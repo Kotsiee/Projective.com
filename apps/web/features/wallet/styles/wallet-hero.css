@@ -477,8 +477,7 @@
 }
 
 .wlt-hero__key:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* Declared after hover so a selected cell keeps its tint while the pointer is over it. */
@@ -561,8 +560,7 @@
 }
 
 .wlt-hero__gate-link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 

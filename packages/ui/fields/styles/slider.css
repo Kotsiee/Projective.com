@@ -68,7 +68,7 @@
 }
 .ui-slider__handle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-slider__handle:active {
 	cursor: grabbing;

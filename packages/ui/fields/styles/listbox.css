@@ -19,7 +19,7 @@
 .ui-listbox:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-listbox--disabled {
 	opacity: 0.55;
@@ -67,7 +67,7 @@
 .ui-listbox__filter-input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-listbox__filter-input::placeholder {
 	color: var(--text-secondary);

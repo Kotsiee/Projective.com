@@ -47,8 +47,7 @@ a.ui-breadcrumb__crumb:hover {
 }
 
 .ui-breadcrumb__crumb:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .ui-breadcrumb__crumb--current {

@@ -83,7 +83,7 @@
 }
 .ui-switch__track:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-switch__track[aria-checked="true"] {
 	background: var(--primary);

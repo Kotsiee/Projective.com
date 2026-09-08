@@ -862,6 +862,16 @@ export type BoardPage = z.infer<typeof BoardPageSchema>;
 // #endregion
 
 // #region Ticket creation payload (the composer)
+/**
+ * The most stages one ticket's write payload may carry.
+ *
+ * Exported rather than repeated as a literal because the composer now SEEDS a stage list rather than
+ * only accepting one a client built by hand: a default that ran past this cap would produce a ticket
+ * the write path refuses, which is a save that fails on a selection the client never made. Anything
+ * seeding stages clamps to this, so the two can never disagree.
+ */
+export const TICKET_MAX_STAGES = 50;
+
 /** A per-stage configuration captured in the composer's stage inspector. */
 export const CreateTicketStageSchema = z.object({
 	stageId: z.string().min(1).max(80),
@@ -899,7 +909,7 @@ export const CreateTicketSchema = z.object({
 	/** Names of files staged in the composer (upload wiring lands with the live backend). */
 	attachmentNames: z.array(z.string().max(200)).max(20).default([]),
 	/** Selected stages, in the ticket's order (multi-stage); pre-seeded from the origin stage column. */
-	stages: z.array(CreateTicketStageSchema).max(50).default([]),
+	stages: z.array(CreateTicketStageSchema).max(TICKET_MAX_STAGES).default([]),
 	/** Which column the ticket is created in (a stage id or the New column); server defaults when "". */
 	columnId: z.string().max(80).default(""),
 });
@@ -1062,7 +1072,7 @@ export const CommitTicketSchema = z.object({
 	dueDate: z.string().max(40).nullable(),
 	ownerId: z.string().max(80).nullable(),
 	tasks: z.array(TicketTaskSchema).max(100),
-	stages: z.array(TicketStageRefSchema).max(50),
+	stages: z.array(TicketStageRefSchema).max(TICKET_MAX_STAGES),
 	attachmentIds: z.array(z.string().min(1).max(120)).max(50).default([]),
 });
 export type CommitTicket = z.infer<typeof CommitTicketSchema>;

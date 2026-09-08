@@ -64,8 +64,7 @@
 }
 
 .wsp-moneyhead__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 /* #endregion */
@@ -115,8 +114,7 @@
 }
 
 .wsp-split__modelbtn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-split__modelbtn[aria-pressed="true"],
@@ -254,8 +252,7 @@
 }
 
 .wsp-split__handle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-split__handle:focus-visible::before {
@@ -415,8 +412,7 @@
 }
 
 .wsp-split__key-hold:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-split__key[data-held="true"] .wsp-split__key-hold {
@@ -487,8 +483,7 @@
 }
 
 .wsp-split__template:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-split__template[data-default="true"] {
@@ -703,8 +698,7 @@
 }
 
 .wsp-spend__limit-edit:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 /* #endregion */
 
@@ -1016,8 +1010,7 @@
 }
 
 .wsp-lock__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 

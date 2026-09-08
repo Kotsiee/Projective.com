@@ -131,7 +131,7 @@
 
 .cat-hdr__type:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-hdr__type[data-on="true"] {
@@ -170,7 +170,7 @@
 
 .cat-period__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-period__btn[data-on="true"] {
@@ -244,7 +244,7 @@
 
 .cat-lhdr__back:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-lhdr__title {
@@ -386,7 +386,7 @@
 
 .cat-rig__new:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 @media (max-width: 767px) {
@@ -519,7 +519,7 @@
 
 .cat-lane__newbtn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-lane__newicon {
@@ -563,7 +563,7 @@
 
 .cat-newmenu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Delivery-model filter pills (services only) — now hosted inside the lane Filter popover. */
@@ -592,7 +592,7 @@
 
 .cat-model-pill:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-model-pill[data-on="true"] {
@@ -650,7 +650,7 @@
 
 .cat-filter__reset:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-filter__facet {
@@ -714,7 +714,7 @@
 
 .cat-lrow:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset, var(--focus-ring-shadow));
+	box-shadow: none;
 }
 
 .cat-lrow[data-active="true"] {
@@ -858,7 +858,7 @@
 .cat-rail__item:focus-visible,
 .cat-rail__toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-rail__item[data-active="true"] {
@@ -1160,7 +1160,7 @@
  * an outset one on every edge.
  */
 .cat-card:focus-within {
-	box-shadow: var(--focus-ring-shadow-inset), var(--elevation-medium);
+	box-shadow: var(--elevation-medium);
 }
 
 .cat-card__link:focus-visible {
@@ -1379,7 +1379,7 @@
 .cat-card__kebab:focus-visible {
 	opacity: 1;
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -1414,7 +1414,7 @@
 
 .cat-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-menu__item[data-danger="true"] {
@@ -1597,7 +1597,7 @@
 
 .cat-th__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-th__btn > span {
@@ -1634,7 +1634,7 @@
 
 .cat-trow:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset, var(--focus-ring-shadow));
+	box-shadow: none;
 }
 
 .cat-td {
@@ -1780,7 +1780,7 @@
 
 .cat-state__cta:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-state__cta--primary {
@@ -1940,7 +1940,7 @@
 
 .cat-media__remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cat-media__remove {
@@ -2009,7 +2009,7 @@
 
 .cat-avail__day:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*

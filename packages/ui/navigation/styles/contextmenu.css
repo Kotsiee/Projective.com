@@ -70,7 +70,7 @@
 }
 .ui-contextmenu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-contextmenu__item--current {
 	color: var(--primary);

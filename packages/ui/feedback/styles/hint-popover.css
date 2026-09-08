@@ -30,7 +30,7 @@
 .ui-hint__trigger:focus-visible {
 	outline: none;
 	border-radius: var(--radius-full);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -66,5 +66,5 @@
 .ui-hint__body a:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }

@@ -115,7 +115,7 @@
 
 .evm__stack:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .evm__acts {
@@ -150,7 +150,7 @@
 
 .evm__act:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -277,7 +277,7 @@ label.evm-meta__k {
 
 .evm__badge:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .evm-person {
@@ -351,7 +351,7 @@ label.evm-meta__k {
 
 .evm-tabs__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -416,7 +416,7 @@ label.evm-meta__k {
    alpha, and it dropped the halo that carries the ring against a light surface. */
 .evm__body:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 /* The roster is told apart by one hairline and a tonal step. No box. */
@@ -590,7 +590,7 @@ label.evm-meta__k {
 
 .evm-link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -864,7 +864,7 @@ label.evm-meta__k {
 
 .evm-addfile:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -963,7 +963,7 @@ label.evm-meta__k {
 
 .evm-rail__note:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -1015,7 +1015,7 @@ label.evm-meta__k {
 
 .evm-people__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -1096,7 +1096,7 @@ label.evm-meta__k {
 
 .evm-log__entry--go:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 

@@ -45,7 +45,7 @@
 }
 .ui-slidemenu__back:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-slidemenu__back:disabled {
 	opacity: 0;
@@ -107,7 +107,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-slidemenu__item:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-slidemenu__item--current {
 	color: var(--primary);

@@ -88,11 +88,53 @@ Deno.test("security.mint_slug produces the SAME number of symbols", () => {
 
 Deno.test("neither SQL helper is callable over PostgREST", () => {
 	// `security` is an exposed schema and CREATE FUNCTION grants EXECUTE to PUBLIC by default, so the
-	// revoke is what keeps these off the public API. A trigger runs as the table owner and needs no
-	// grant, so nothing legitimate breaks by revoking.
+	// revoke is what keeps these off the public API. Nothing legitimate breaks by revoking BECAUSE the
+	// guard is a definer (below) — not, as this comment used to claim, because a trigger runs as the
+	// table owner. It does not.
 	const sql = read(FUNCTIONS_SQL);
 	assertStringIncludes(sql, "REVOKE ALL ON FUNCTION security.mint_slug(text) FROM PUBLIC;");
 	assertStringIncludes(sql, "REVOKE ALL ON FUNCTION security.fn_slug_guard() FROM PUBLIC;");
+});
+
+Deno.test("the slug guard is SECURITY DEFINER, or every insert into a slugged table fails", () => {
+	// THE REGRESSION THIS EXISTS FOR. A trigger function runs as the INVOKING role: Postgres checks
+	// EXECUTE on the trigger function once, at CREATE TRIGGER time, but a call the body then makes to
+	// another function is checked at runtime against whoever fired it. So while this guard was
+	// SECURITY INVOKER, its call to the (correctly) revoked `security.mint_slug` failed for every
+	// client role, and `INSERT INTO projects.projects` answered
+	// `permission denied for function mint_slug` — raised from inside a function the caller never
+	// named, on a statement that mentions no slug at all.
+	//
+	// Asserted over the function's own header rather than the file, because `SECURITY DEFINER` appears
+	// throughout these migrations and a file-wide match would pass while this one function lost it.
+	const sql = read(FUNCTIONS_SQL);
+	const open = sql.indexOf("CREATE OR REPLACE FUNCTION security.fn_slug_guard()");
+	assert(open !== -1, "security.fn_slug_guard must be defined in " + FUNCTIONS_SQL);
+	const header = sql.slice(open, sql.indexOf("AS $$", open));
+	assertStringIncludes(
+		header,
+		"SECURITY DEFINER",
+		"security.fn_slug_guard() must be SECURITY DEFINER. As the invoker it cannot call " +
+			"security.mint_slug, which is revoked from PUBLIC, so no client role could insert a row " +
+			"into any slugged table.",
+	);
+});
+
+Deno.test("the minter is never granted to a client role", () => {
+	// The other half of the same rule, and the wrong fix somebody will reach for first. Answering a
+	// `permission denied for function mint_slug` with a GRANT makes `POST /rpc/mint_slug` callable by
+	// anyone signed in — and by `anon` — which is the exact surface the REVOKE removes. The guard
+	// being a definer is what makes the grant unnecessary.
+	//
+	// A literal substring rather than a pattern: every grant in these files is written on one line in
+	// this exact form, and a regex here has to survive more layers of escaping than the rule is worth.
+	const GRANTS = "supabase/migrations/00002510_permissions_function_grants.sql";
+	for (const file of [FUNCTIONS_SQL, GRANTS]) {
+		assert(
+			!read(file).toUpperCase().includes("GRANT EXECUTE ON FUNCTION SECURITY.MINT_SLUG"),
+			`${file} must not GRANT EXECUTE on security.mint_slug — make the caller a definer instead.`,
+		);
+	}
 });
 // #endregion
 

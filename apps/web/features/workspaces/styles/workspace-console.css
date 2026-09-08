@@ -147,8 +147,7 @@ here and there must never be one. */
 }
 
 .wsp-band__action:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-xs);
 }
 
@@ -270,8 +269,7 @@ here and there must never be one. */
 }
 
 .wsp-idhead__handle:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-xs);
 }
 
@@ -356,8 +354,7 @@ here and there must never be one. */
 }
 
 .wsp-propose__link:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-xs);
 }
 
@@ -473,8 +470,7 @@ here and there must never be one. */
 }
 
 .wsp-checklist__dismiss:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .wsp-checklist__items {
@@ -507,8 +503,7 @@ here and there must never be one. */
 }
 
 .wsp-checklist__link:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /* An unchecked step is a hollow square, a done step a filled tick. Shape first, colour fourth. */
@@ -751,8 +746,7 @@ here and there must never be one. */
 }
 
 .wsp-projects__row:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /* State is a glyph, and the word lives in its Tooltip (§B.6). */
@@ -902,8 +896,7 @@ a.wsp-activity__row:hover {
 }
 
 .wsp-activity__row:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .wsp-activity__glyph {
@@ -953,8 +946,7 @@ a.wsp-activity__row:hover {
 }
 
 .wsp-activity__link:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
 }
 
 .wsp-activity__text {
@@ -1024,8 +1016,7 @@ a.wsp-activity__row:hover {
 }
 
 .wsp-error__retry:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-xs);
 }
 

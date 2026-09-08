@@ -484,7 +484,7 @@
 .psu-disclosure__summary:focus-visible {
 	outline: none;
 	border-radius: var(--radius-base);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .psu-disclosure__chev {
@@ -600,7 +600,7 @@
 .psu-stage__main:focus-visible,
 .psu-add:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .psu-stage__main {
@@ -714,7 +714,7 @@
 
 .psu-adv__summary:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .psu-adv__mark {
@@ -1042,7 +1042,7 @@
 
 .psu-add:focus-within {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -1126,7 +1126,7 @@
 
 .psu-task__grip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .psu-task__grip:active {
@@ -1329,7 +1329,7 @@
 .psu-rig__action:focus-visible,
 .psu-rig__more:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*

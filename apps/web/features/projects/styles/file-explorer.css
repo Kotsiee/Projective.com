@@ -93,7 +93,7 @@
 
 .fx-tree__node:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .fx-tree__node[data-active="true"] {

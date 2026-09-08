@@ -161,7 +161,7 @@
 
 .gantt-lane__row:focus-visible {
 	outline: none;
-	box-shadow: inset var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .gantt-lane__dot {
@@ -367,7 +367,7 @@
 
 .gantt__today:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -489,7 +489,7 @@
 
 .gantt-pop__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .gantt-pop__item,
@@ -525,7 +525,7 @@
 
 .gantt-pop__title--open:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -657,7 +657,7 @@
 .gantt-pop__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .gantt-pop__submit,
@@ -695,7 +695,7 @@
 .gantt-pop__submit:focus-visible,
 .gantt-pop__expand:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The bottom sheet's body reuses the panel's inner vocabulary at the sheet's own width. */

@@ -138,7 +138,7 @@
 .fsh__close:focus-visible,
 .drv__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .fsh__body,
@@ -267,7 +267,7 @@
 	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
 }
 .fsh-choice:has(.fsh-choice__input:focus-visible) {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .fsh-choice__input {
 	grid-column: 1;
@@ -408,7 +408,7 @@
 .fsh-link__url:focus-visible {
 	outline: none;
 	border-color: var(--fld-focus-bd);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -488,7 +488,7 @@
 }
 .prov-chip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .prov-chip:disabled {
 	cursor: not-allowed;
@@ -627,7 +627,7 @@
 }
 .drv-crumbs__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .drv-crumbs__here {
 	display: inline-flex;
@@ -687,7 +687,7 @@
 }
 .drv-item__out:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .drv-row {
@@ -712,7 +712,7 @@
 }
 .drv-row:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .drv-row[aria-pressed="true"] {
 	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
@@ -807,7 +807,7 @@
 	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface));
 }
 .drv-mode:has(.drv-mode__input:focus-visible) {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .drv-mode--blocked {
 	cursor: not-allowed;

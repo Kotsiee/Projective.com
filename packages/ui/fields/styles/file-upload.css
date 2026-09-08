@@ -58,7 +58,7 @@
 .ui-file-upload__zone:focus-visible,
 .ui-file-upload__remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-file-upload__action--ghost {
 	color: var(--on-surface);

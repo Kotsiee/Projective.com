@@ -194,7 +194,7 @@
 
 .pf-header__imgbtn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .pf-header__imgbtn--banner {
@@ -405,7 +405,7 @@
 
 .pf-btn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-btn__icon {
@@ -666,7 +666,7 @@
 
 .pf-tab:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
     border-radius: var(--radius-sm);
 }
 
@@ -733,7 +733,7 @@
 
 .pf-tabs__menu-item:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-tabs__menu-item[data-active="true"] {
@@ -929,7 +929,7 @@
 
 .pf-revpanel:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-revpanel__head {
@@ -1191,7 +1191,7 @@
 
 .pf-story__editable:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-story__hint {
@@ -1242,7 +1242,7 @@
 
 .pf-skill:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 /* The `ui-tag` icon slot has no intrinsic size and the category glyph carries no width/height, so give
@@ -1439,7 +1439,7 @@
 
 .pf-create:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-create__icon {
@@ -1702,7 +1702,7 @@
 
 .pf-deptcard__lead:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
     border-radius: var(--radius-sm);
 }
 
@@ -1895,7 +1895,7 @@
 
 .pf-lane__headbtn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-lane__headbtn svg {
@@ -1943,7 +1943,7 @@
 
 .pf-lane__menu-item:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-lane__menu-item[data-danger="true"] {
@@ -1998,7 +1998,7 @@
 
 .pf-lanebtn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-lanebtn--follow[data-on="true"],
@@ -2050,7 +2050,7 @@
 
 .pf-lanecta:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 /* Profile ⁄ Availability segmented toggle (Part 4.3) — shown only when availability is configured. */
@@ -2086,7 +2086,7 @@
 
 .pf-availtoggle__opt:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-lane__scroll {
@@ -2139,7 +2139,7 @@
 
 .pf-laneitem:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-laneitem.ui-nav-item--active,
@@ -2207,7 +2207,7 @@
 
 .pf-lane__collapse:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-lane__collapse .shell-toggle {
@@ -2303,7 +2303,7 @@
 
 .pf-railbtn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring, 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent));
+    box-shadow: none;
 }
 
 .pf-railbtn svg {

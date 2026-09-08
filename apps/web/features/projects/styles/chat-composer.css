@@ -155,7 +155,7 @@
 
 .chat-composer__card-remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -221,7 +221,7 @@
 
 .chat-composer__paste-remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -246,7 +246,7 @@
 /* The lift says "this composer is active" and is right for a click too; only the RING is
    keyboard-only, so the two are separate rules rather than one `:focus-within`. */
 .chat-composer__bar:has(:focus-visible) {
-	box-shadow: var(--focus-ring-shadow), var(--elevation-high);
+	box-shadow: var(--elevation-high);
 }
 
 .chat-composer__field {
@@ -305,7 +305,7 @@
 
 .chat-composer__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .chat-composer__btn:disabled {
@@ -477,7 +477,7 @@
 
 .chat-composer__menu-item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .chat-composer__menu-icon {

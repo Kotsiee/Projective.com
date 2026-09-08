@@ -116,7 +116,7 @@
 }
 .ui-orgchart__card:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-orgchart__card--selected {
 	border-color: var(--primary);
@@ -144,6 +144,6 @@
 }
 .ui-orgchart__toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */

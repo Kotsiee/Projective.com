@@ -108,7 +108,7 @@
 }
 .inbox-row__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Avatar + its mute overlay. */
@@ -246,7 +246,7 @@
 }
 .inbox-row__kebab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .inbox-row__kebab:hover {
 	color: var(--on-surface);
@@ -604,7 +604,7 @@
 .inbox-head__search-input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .inbox-head__clear {
 	min-block-size: var(--fld-hit);
@@ -622,7 +622,7 @@
 }
 .inbox-head__clear:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -664,7 +664,7 @@
 }
 .inbox-foot__density-opt:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .inbox-foot__actions {
 	display: flex;
@@ -715,7 +715,7 @@
 }
 .inbox-scope__row:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* Active carries weight + ink + a leading bar, so the state survives a greyscale overlay. */
 .inbox-scope__row[data-active="true"] {
@@ -776,7 +776,7 @@
 }
 .inbox-scope__clear:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

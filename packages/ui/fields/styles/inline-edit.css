@@ -41,7 +41,7 @@
 
 .ui-inline-edit:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-inline-edit__value {
@@ -89,7 +89,7 @@
 
 .ui-inline-edit__input:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-inline-edit__input::placeholder {

@@ -92,7 +92,7 @@
 
 .ui-carousel__nav:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-carousel__nav:disabled {
@@ -132,7 +132,7 @@
 
 .ui-carousel__indicator:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-carousel__live {

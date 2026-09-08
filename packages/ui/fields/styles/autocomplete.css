@@ -65,7 +65,7 @@
 }
 .ui-autocomplete__token-remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -87,7 +87,7 @@
 }
 .ui-autocomplete__trigger:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-autocomplete__chevron {
 	inline-size: 0.5em;

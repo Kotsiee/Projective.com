@@ -38,7 +38,7 @@
 .ui-datetime__icon:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -203,7 +203,7 @@
 }
 .ui-datetime__bar-btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-datetime__bar-btn:disabled {
 	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));

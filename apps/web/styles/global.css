@@ -125,8 +125,7 @@ body {
 }
 
 .theme-toggle:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
 }
 
 /* #region Scrollbar tracks — app-side surface roots */
@@ -204,6 +203,106 @@ body {
  */
 .site-header__drawer {
     --scrollbar-track: transparent;
+}
+
+/* #endregion */
+/* #region Focus indicator suppression */
+
+/*
+ * NO VISIBLE FOCUS INDICATOR (product-owner directive).
+ *
+ * The 662 component focus rules that used to draw a ring have been stripped at source; this layer is
+ * the guarantee that nothing re-introduces one — a rule added later, a user-agent default, or a
+ * third-party sheet. It is the LAST app stylesheet loaded (`apps/web/client.ts`), so it also wins on
+ * source order against everything in `@projective/ui`.
+ *
+ * ACCESSIBILITY: this deliberately removes the WCAG 2.2 SC 2.4.11 (Focus Appearance) indicator, so
+ * keyboard-only users can no longer see which control holds focus. It is a conformance regression
+ * accepted on request, and the mechanism is reversible in one place — delete this region and revert
+ * the `--focus-ring-*` neutralisation below, and every component rule that still says
+ * `box-shadow: none` will need its `var(--focus-ring-shadow)` back.
+ */
+
+/*
+ * The token layer, and it is the load-bearing half.
+ *
+ * `--focus-ring-shadow` is composed at runtime by the Material You engine and consumed 455 times;
+ * neutralising it here defeats every one of those without a specificity fight, INCLUDING the two
+ * canvas engines (calendar + gantt), which do not read CSS rules at all — they read `--focus-ring`
+ * and `--focus-ring-w` back off a hidden probe swatch (`.gantt-probe__swatch--focus`,
+ * `.cal-probe__swatch--focus`) and paint their own ring from the resolved values.
+ *
+ * `!important` rather than source order: the engine injects its `:root` block as a runtime <style>,
+ * which can land after this sheet. A custom-property declaration honours `!important`, so this wins
+ * regardless of injection order.
+ *
+ * The shadows are `0 0 0 0 transparent` and NOT `none`, because nine rules compose the ring with an
+ * elevation layer (`box-shadow: var(--focus-ring-shadow), var(--elevation-medium)`), and `none` is
+ * not a legal member of a shadow list — it would invalidate the whole declaration and take the
+ * elevation with it. A zero-size transparent layer composes legally and paints nothing.
+ */
+:root,
+:root[data-contrast="high"] {
+    --focus-ring: transparent !important;
+    --focus-ring-halo: transparent !important;
+    --focus-ring-tint: transparent !important;
+    --focus-ring-w: 0px !important;
+    --focus-ring-offset: 0px !important;
+    --focus-ring-glow: 0 0 0 0 transparent !important;
+    --focus-ring-shadow: 0 0 0 0 transparent !important;
+    --focus-ring-shadow-inset: inset 0 0 0 0 transparent !important;
+}
+
+/*
+ * The element layer — the user-agent default ring, and any hardcoded rule that does not go through
+ * the tokens above. `:focus` and `:focus-visible` are both listed because a sheet may target either,
+ * and `:focus-within` is listed for the wrapper pattern (`.ui-field`, `.ui-rte`) where the ring is
+ * drawn by an ancestor of the element that actually holds focus.
+ */
+input:focus,
+input:focus-visible,
+input:focus-within,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible,
+button:focus,
+button:focus-visible,
+a:focus,
+a:focus-visible,
+summary:focus,
+summary:focus-visible,
+[contenteditable]:focus,
+[contenteditable]:focus-visible,
+[tabindex]:focus,
+[tabindex]:focus-visible,
+[tabindex]:focus-within {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/*
+ * Elevation is not a focus indicator, and the blanket `box-shadow: none` above cannot tell the two
+ * apart. These six controls carry a real lift that they must keep while focused — five of them
+ * compose it into their own focus rule, and `--raised` carries it at rest — so the shadow is
+ * restored for them explicitly. Without this, a focused FAB or raised button flattens onto the page.
+ */
+.ui-scroll-top:focus,
+.ui-scroll-top:focus-visible,
+.cal-tg__present:focus-visible,
+.cal-month__present:focus-visible {
+    box-shadow: var(--elevation-medium) !important;
+}
+
+.ui-button--raised:focus,
+.ui-button--raised:focus-visible,
+.auth-otp__box:focus-visible,
+.vw-gallery__main:focus-visible {
+    box-shadow: var(--elevation-low) !important;
+}
+
+.ui-button--raised:hover:not(:disabled):focus-visible {
+    box-shadow: var(--elevation-medium) !important;
 }
 
 /* #endregion */

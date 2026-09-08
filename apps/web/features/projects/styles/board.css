@@ -194,8 +194,7 @@
 }
 
 .brd-colhead__add:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }
 /* #endregion */
 
@@ -300,7 +299,7 @@
 
 .tkt__m:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -375,7 +374,7 @@
 .tkt__pay:focus-visible,
 .tkt__lock:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -424,8 +423,7 @@
 }
 
 .brd-list__row:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .brd-list__row--head {

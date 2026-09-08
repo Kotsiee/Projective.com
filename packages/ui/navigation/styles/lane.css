@@ -85,7 +85,7 @@
 
 .ui-lane-tabs__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
 /* #endregion */
@@ -141,7 +141,7 @@
 	outline: none;
 	background: var(--surface);
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -187,7 +187,7 @@
 
 .ui-lane-iconbtn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-lane-iconbtn--accent {
@@ -263,7 +263,7 @@
 
 .ui-lane-toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -305,7 +305,7 @@
 
 .ui-lane-section__toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-lane-section__chevron {
@@ -397,7 +397,7 @@
 
 .ui-lane-collapse:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-lane-collapse .shell-toggle {

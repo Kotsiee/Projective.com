@@ -169,7 +169,7 @@
 .cko-contract__change:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -446,7 +446,7 @@
 .cko-wallet-opt__link:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-wallet-opt__note {
@@ -660,7 +660,7 @@
 
 .cko-cardlist__add:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -712,7 +712,7 @@
 .cko-cards__addlink:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -830,7 +830,7 @@
 .cko-rail__change:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -866,7 +866,7 @@
 .cko-rail__sec:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-rail__empty {
@@ -1054,7 +1054,7 @@
 
 .cko-rail__buy:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-rail__reassure {
@@ -1243,7 +1243,7 @@
  */
 .cko-xpay__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -1340,7 +1340,7 @@
 
 .cko-contrib__info:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-contrib__amount {
@@ -1424,7 +1424,7 @@
 .cko-limit__request:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -1468,7 +1468,7 @@
 .cko-addpm__tab:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-addpm__panel {

@@ -244,7 +244,7 @@
 
 .ckod-chip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ckod-chip[data-active="true"] {
@@ -612,7 +612,7 @@
 .ckod-missing__jump:focus-visible {
 	border-radius: var(--radius-xs);
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

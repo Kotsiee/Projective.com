@@ -112,7 +112,7 @@
 }
 .ui-split-button__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-split-button__item--disabled {
 	color: var(--text-secondary);

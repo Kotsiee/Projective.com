@@ -54,7 +54,7 @@
 .cal-header__iconbtn:focus-visible,
 .cal-header__view:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cal-header__iconbtn {
@@ -268,7 +268,7 @@
 
 .cal-mini__day:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */

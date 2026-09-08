@@ -33,7 +33,7 @@
 }
 .ui-tieredmenu__trigger:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -98,7 +98,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-tieredmenu__item:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-tieredmenu__item--current {
 	color: var(--primary);

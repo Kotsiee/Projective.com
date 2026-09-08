@@ -50,8 +50,7 @@
 }
 
 .ui-stepper__step:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .ui-stepper__step:disabled {
@@ -147,8 +146,7 @@
 }
 
 .ui-stepper__nav-btn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

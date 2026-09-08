@@ -182,7 +182,7 @@
 
 .ui-number-input__step:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* One disabled alpha, the same one every other control in the taxonomy uses. */

@@ -77,7 +77,7 @@
 }
 .vw__back:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* An SVG arrow does not mirror itself — the glyph is drawn, so flip it in the mirrored direction. */
 [dir="rtl"] .vw__back-arrow {
@@ -163,7 +163,7 @@
 }
 .vw-thumb:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .vw-thumb--more::after {
@@ -197,7 +197,7 @@
 }
 .vw-gallery__main:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow), var(--elevation-low);
+	box-shadow: var(--elevation-low);
 }
 .vw-gallery__main img {
 	inline-size: 100%;
@@ -318,7 +318,7 @@
 }
 .fx-modal__act:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .vw-lightbox__stage {
@@ -494,7 +494,7 @@
 }
 .vw-creator:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .vw-creator__id {
 	display: flex;
@@ -537,7 +537,7 @@
 }
 .vw-ratesum:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .vw-ratesum__score {
 	font-weight: var(--fw-bold);
@@ -780,7 +780,7 @@
 }
 .view-schedule__back:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-full);
 }
 /* A page title, sized like one. It measured 21.6px — below several body elements on the sibling route
@@ -891,7 +891,7 @@
 }
 .vw-showcase__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Availability calendar frame inside the showcase. */
@@ -938,7 +938,7 @@
 }
 .pf-availtoggle__opt:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* A subtle text link to the full-page calendar under the booking CTAs. */
@@ -1246,7 +1246,7 @@
 }
 .vw-revbar:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .vw-revbar[data-on="true"] {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
@@ -1323,7 +1323,7 @@
 }
 .vw-revlist__clear:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .vw-sort {
 	display: inline-flex;
@@ -1353,7 +1353,7 @@
 }
 .vw-sort__opt:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .vw-revlist__items {

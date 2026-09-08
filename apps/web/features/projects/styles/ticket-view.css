@@ -133,7 +133,7 @@
 
 .tkv__stack:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -185,7 +185,7 @@
 
 .tkv__act:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -289,7 +289,7 @@
 
 .tkv-meta__trigger:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkv-meta__caret {
@@ -353,7 +353,7 @@
 
 .tkv-person:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkv-tabs {
@@ -414,7 +414,7 @@
 
 .tkv-tabs__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -486,7 +486,7 @@
 
 .tkv__body:focus-visible {
 	outline: none;
-	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
+	box-shadow: none;
 }
 
 /* The side panel is told apart by one hairline and a tonal step. No box. */
@@ -584,6 +584,112 @@
 	margin: 0;
 	font-size: var(--text-2xs);
 	color: var(--text-secondary);
+}
+
+/*
+ * The Details tab's stage MEMBERSHIP picker.
+ *
+ * A container that toggles is a control, which is exactly what earns one (§B.11) — these are not
+ * metadata pills. It answers only "does this ticket cover that stage", because that is the question
+ * the footer's total depends on; order, concurrency and per-stage briefs are the Stages tab's
+ * pipeline diagram, and both write the same field through the same reducer.
+ */
+.tkv-stagepick {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*
+ * The border is declared at full width on every state and only ever RECOLOURED, so selecting and
+ * hovering move paint and never geometry (§B.12.3).
+ */
+.tkv-stagepick__opt {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fld-h-sm);
+	padding-inline: var(--space-3);
+	border: 1px solid var(--outline);
+	border-radius: var(--radius-full);
+	background: transparent;
+	font: inherit;
+	font-size: var(--text-xs);
+	color: var(--on-surface);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.tkv-stagepick__opt:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.tkv-stagepick__opt[aria-pressed="true"] {
+	border-color: var(--primary);
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+/*
+ * The selected pill hovers on its BORDER, not its fill. `--primary` is mode-invariant and carries
+ * almost no headroom against its own ink, so a tonal step in either direction spends contrast this
+ * pair cannot pay (§B.12.4 · Decision #92) — the border channel costs it nothing.
+ */
+.tkv-stagepick__opt[aria-pressed="true"]:hover {
+	background: var(--primary);
+	border-color: var(--on-primary);
+}
+
+/* Press feedback (§B.12): compression only, on `transform`, moving no box-model property. */
+.tkv-stagepick__opt:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+/*
+ * BOTH reduced-motion channels, and by `transform: none` rather than a zero duration: the token
+ * layer already zeroes every `--dur-*`, which removes the animation and leaves the compression.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.tkv-stagepick__opt,
+	.tkv-stagepick__opt:active {
+		transform: none !important;
+	}
+}
+
+:root[data-motion="reduced"] .tkv-stagepick__opt,
+:root[data-motion="reduced"] .tkv-stagepick__opt:active {
+	transform: none !important;
+}
+
+.tkv-stagepick__mark {
+	flex: none;
+}
+
+.tkv-stagepick__name {
+	max-inline-size: 16rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tkv-stagepick__rate {
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* On the filled pill the rate takes the full `--on-primary`; a de-emphasising alpha would drop the
+   pair's 5.13:1 under AA. */
+.tkv-stagepick__opt[aria-pressed="true"] .tkv-stagepick__rate {
+	color: inherit;
 }
 
 .tkv-chip {
@@ -784,7 +890,7 @@
 
 .tkv-live__name:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -1011,7 +1117,7 @@
 
 .tkv-addfile:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -1053,7 +1159,7 @@
 
 .tkv-log__entry--go:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -1276,7 +1382,7 @@
 
 .tkv-rail__more:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The stage inspector fills the panel it is docked in rather than scrolling inside a scroller. */
@@ -1319,7 +1425,7 @@
 
 .tkv-money__fig:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkv-money__k {
@@ -1414,7 +1520,7 @@
 
 .tkv-metric:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkv-metric[data-active="true"] {
@@ -1465,7 +1571,7 @@
 
 .tkv-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkv-menu__item--danger {

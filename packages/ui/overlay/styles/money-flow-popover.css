@@ -204,8 +204,7 @@
  * `fields` radio/checkbox pair uses on the same hidden-input pattern.
  */
 .ui-money-flow__wallethead:has(:focus-visible) {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-money-flow__pick {
@@ -504,7 +503,7 @@
 
 .ui-money-flow__sectionhead:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* A chevron drawn in `currentColor` — no asset, no hardcoded glyph. It only reinforces a state the
@@ -593,7 +592,7 @@
 .ui-money-flow__select:focus-visible {
 	outline: none;
 	border-color: var(--fld-focus-bd);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-money-flow__input[aria-invalid="true"] {
@@ -634,8 +633,7 @@
 
 /* Keyboard-only, for the reason given on `__wallethead` above. */
 .ui-money-flow__stage:has(:focus-visible) {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-money-flow__stage input {
@@ -726,7 +724,7 @@
 
 .ui-money-flow__iconbtn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-money-flow__iconbtn:disabled {

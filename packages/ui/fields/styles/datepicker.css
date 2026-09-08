@@ -47,7 +47,7 @@
 .ui-datepicker__icon:focus-visible {
 	outline: none;
 	border-radius: var(--radius-xs);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -325,7 +325,7 @@
 }
 .ui-datepicker__nav-btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* The remaining native `<select>`s (hour / minute / second / meridiem in the time picker). */
 .ui-datepicker__select {
@@ -346,7 +346,7 @@
 .ui-datepicker__select:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -526,7 +526,7 @@
 }
 .ui-datepicker__day:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* De-emphasised, not dimmed. This carried `opacity: 0.5` on top of an already-secondary ink, which
    compounded to roughly 2.5:1 — below the floor, on the days that tell you where the month ends.
@@ -606,6 +606,6 @@
 }
 .ui-datepicker__bar-btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */

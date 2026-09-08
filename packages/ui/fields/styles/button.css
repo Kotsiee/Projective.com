@@ -73,7 +73,7 @@
 }
 .ui-button:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /*
  * Tonal blending, not `filter: brightness()` (§B.12.4).

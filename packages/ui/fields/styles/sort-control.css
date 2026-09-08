@@ -54,7 +54,7 @@
 .ui-sort__trigger:focus-visible,
 .ui-sort__dir:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-sort__trigger[aria-expanded="true"] {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
@@ -123,7 +123,7 @@
 .ui-sort__option:focus-visible {
 	outline: none;
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-sort__option[data-selected="true"] {
 	color: var(--primary);

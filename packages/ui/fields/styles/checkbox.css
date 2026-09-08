@@ -118,7 +118,7 @@
 	border-color: var(--primary);
 }
 .ui-checkbox__input:focus-visible + .ui-checkbox__box {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Glyphs: hidden until the matching state is active. */
@@ -215,7 +215,7 @@
 	outline: none;
 }
 .ui-tristate-checkbox:focus-visible .ui-checkbox__box {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

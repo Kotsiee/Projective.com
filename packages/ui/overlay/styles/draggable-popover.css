@@ -65,7 +65,7 @@
 }
 .ui-draggable-popover__resize:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	opacity: 1;
 }
 
@@ -99,7 +99,7 @@
 }
 .ui-draggable-popover__handle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-draggable-popover__icon {
@@ -151,7 +151,7 @@
 }
 .ui-draggable-popover__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* --- Body --- */

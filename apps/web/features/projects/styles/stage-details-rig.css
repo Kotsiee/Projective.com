@@ -99,7 +99,7 @@
 
 .proj-sdrig__action:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* At most one leading emphasis on the row (§B.8.2) — the rig emits exactly one `primary` action. */

@@ -137,8 +137,7 @@
 	color: var(--danger);
 }
 .mem-iconbtn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 /* #endregion */
 
@@ -485,8 +484,7 @@
 	color: currentColor;
 }
 .mem-menu__item:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 /* #endregion */
 
@@ -576,8 +574,7 @@
 	transform: scaleX(1);
 }
 .mem-tab:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .mem-invite__form {

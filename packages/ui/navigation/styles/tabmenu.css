@@ -72,7 +72,7 @@
 
 .ui-tabmenu__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -125,7 +125,7 @@
 
 .ui-tabmenu__chevron:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

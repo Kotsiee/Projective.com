@@ -333,7 +333,7 @@
 }
 .ints-card__docs:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

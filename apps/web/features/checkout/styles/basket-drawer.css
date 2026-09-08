@@ -51,7 +51,7 @@
 
 .bskd__retry:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd__pending {
@@ -99,7 +99,7 @@
 
 .bskd__empty-cta:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -197,7 +197,7 @@
 
 .bskd-line__check:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd-line__link {
@@ -213,7 +213,7 @@
 .bskd-line__link:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd-line__thumb {
@@ -316,7 +316,7 @@
 .bskd-line__seller:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd-line__flag {
@@ -365,7 +365,7 @@
 
 .bskd-line__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd-line__btn:disabled {
@@ -415,7 +415,7 @@
 
 .bskd-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd-menu__label {
@@ -488,7 +488,7 @@
 
 .bskd__cta:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bskd__note {

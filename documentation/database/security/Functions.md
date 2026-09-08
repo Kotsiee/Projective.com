@@ -105,7 +105,7 @@ tables (`projects.projects`, `projects.project_stages`, `projects.tickets`, `pro
 | Function                       | Returns | Notes                                                        |
 | :----------------------------- | :------ | :----------------------------------------------------------- |
 | `security.mint_slug(p_prefix)` | text    | `VOLATILE`, `search_path = ''`. Prefix + 10 uniform symbols. |
-| `security.fn_slug_guard()`     | trigger | `BEFORE INSERT OR UPDATE`; prefix arrives as `TG_ARGV[0]`.   |
+| `security.fn_slug_guard()`     | trigger | `SECURITY DEFINER`, `search_path = ''`. `BEFORE INSERT OR UPDATE`; prefix arrives as `TG_ARGV[0]`. |
 
 **`VOLATILE` is load-bearing.** `gen_random_bytes` is not stable, and a mislabelled `IMMUTABLE` or
 `STABLE` would let the planner evaluate the call once and hand the same slug to every row of a
@@ -126,8 +126,27 @@ reach the exception is to genuinely try to move an address — and absorbing tha
 believe the write landed.
 
 **Neither is callable over PostgREST.** `security` is an exposed schema and `CREATE FUNCTION` grants
-`EXECUTE` to `PUBLIC` by default, so both are explicitly `REVOKE`d. A trigger executes as the table
-owner and needs no grant, so nothing legitimate breaks.
+`EXECUTE` to `PUBLIC` by default, so both are explicitly `REVOKE`d.
+
+**`fn_slug_guard` is `SECURITY DEFINER`, and that is what makes the revoke survivable.** A TRIGGER
+DOES NOT EXECUTE AS THE TABLE OWNER — this page said it did, and the guard was `SECURITY INVOKER` on
+that reasoning. Postgres checks `EXECUTE` on a trigger **function** once, at `CREATE TRIGGER` time,
+against the trigger's creator; the body then runs as the **invoking** role, so a call it makes to
+another function is privilege-checked at runtime against whoever fired it. The guard calls
+`security.mint_slug`, which is revoked — so every `INSERT` into a slugged table by `authenticated`
+**or** `service_role` failed with `permission denied for function mint_slug`, raised from inside a
+function the caller never named, on a statement mentioning no slug at all. Running the guard as its
+owner breaks that cycle while handing no client role `EXECUTE`.
+
+**Do not answer that error with a `GRANT`.** Granting `EXECUTE` on `mint_slug` makes
+`POST /rpc/mint_slug` callable by anyone signed in, and by `anon`, which is precisely the surface the
+`REVOKE` exists to remove. `slug.contract.test.ts` pins both halves: the guard must be a definer, and
+no migration may grant the minter to a client role.
+
+Definer is safe on this particular function because its body is closed: it touches no table, runs no
+dynamic SQL, and takes exactly two inputs — `TG_ARGV[0]`, fixed at `CREATE TRIGGER` time and so
+settable only by someone who already owns the table, and `NEW.slug`, which is compared and, when
+`NULL`, overwritten. No value a caller can supply reaches the owner's privileges.
 
 The triggers themselves are declared together in `00001890_triggers_slugs.sql` — one per slugged
 table, adjacent on purpose. A table added without one fails loudly against `NOT NULL`; a trigger

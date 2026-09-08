@@ -56,7 +56,7 @@
 
 .ui-tabview__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -80,7 +80,7 @@
 
 .ui-tabview__tab-close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-tabview__ink {
@@ -102,7 +102,7 @@
 
 .ui-tabview__panel:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

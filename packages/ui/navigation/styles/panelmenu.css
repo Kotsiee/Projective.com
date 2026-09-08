@@ -53,7 +53,7 @@
 }
 .ui-panelmenu__header:focus-visible,
 .ui-panelmenu__leaf:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-panelmenu__header--disabled,
 .ui-panelmenu__leaf--disabled {

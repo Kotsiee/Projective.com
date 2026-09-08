@@ -35,8 +35,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 .dev-json__toggle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }
 
 .dev-json__chevron {

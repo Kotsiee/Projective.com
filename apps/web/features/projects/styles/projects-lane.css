@@ -74,7 +74,7 @@
 
 .proj-modifier__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -135,7 +135,7 @@
 
 .proj-modifier__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -197,7 +197,7 @@
 
 .proj-roletoggle__seg:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #region Popovers (create menu + glass filter panel) */
@@ -248,7 +248,7 @@
 
 .proj-cardmenu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-cardmenu__icon {
@@ -354,7 +354,7 @@
 
 .proj-create__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -416,7 +416,7 @@
 
 .proj-filter__reset:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -471,7 +471,7 @@
 
 .proj-textmatrix__opt:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
 /* #endregion */
@@ -512,7 +512,7 @@
 
 .proj-matrix__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -545,7 +545,7 @@
  * as the control; the input inside it keeps its suppression so only one ring is painted.
  */
 .proj-combo__field:has(:focus-visible) {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-combo__tag {
@@ -643,7 +643,7 @@
 
 .proj-combo__option:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -697,7 +697,7 @@
 
 .proj-card__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Row 1 — header: avatar | (title + status dot / owner) | actions. */
@@ -850,7 +850,7 @@
 .proj-card__star:focus-visible,
 .proj-card__menu:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-card__star[data-on="true"] {
@@ -968,7 +968,7 @@
 
 .proj-statusicon:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-statusicon[data-tone="ticket"] {
@@ -1028,7 +1028,7 @@
 
 .proj-incoming:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-incoming__icon {
@@ -1081,7 +1081,7 @@
 
 .proj-lane__create:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-lane__create-icon {

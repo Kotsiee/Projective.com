@@ -7,6 +7,7 @@ import {
 	type ProjectParty,
 	stageCostCents,
 	TICKET_INTENSITY_LABEL,
+	TICKET_MAX_STAGES,
 	type TicketIntensity,
 	type TicketStageRef,
 	type TicketTask,
@@ -51,7 +52,45 @@ export function newDraftId(): string {
 
 // #region Construction
 /**
- * A blank ticket, optionally pre-seeded with the stage column the modal was opened from.
+ * Which stages a brand-new ticket starts with. Pure, so the board, the composer and any future
+ * server-side default all answer the question the same way.
+ *
+ * Two contexts, one rule. Opened from a STAGE column the origin names the work, so that stage alone
+ * is seeded — anything wider would price a ticket against work the column never asked for. Opened
+ * from the New lane there is no origin, and `selectAll` decides: a seat that owns the engagement's
+ * terms starts with the whole pipeline selected, because a ticket that runs the project end to end
+ * is the common case and deselecting is cheaper than picking five stages one at a time. Any narrower
+ * seat starts empty and composes deliberately.
+ *
+ * `selectAll` NEVER widens a column-seeded ticket. That is what keeps a create from a stage column —
+ * and the stage-level Tasks board, whose every create carries an origin — behaving identically
+ * whoever opens it.
+ */
+export function seedStageSelection(
+	originStageId: string | null,
+	stages: readonly BoardStageRef[],
+	selectAll: boolean,
+): BoardStageRef[] {
+	if (originStageId !== null) return stages.filter((s) => s.id === originStageId);
+	// Clamped to the write payload's own cap. A seed is the one stage list nobody chose, so a default
+	// that ran past what `CommitTicket` accepts would fail the save on a selection the client never
+	// made — and it would fail at Zod, with nothing on screen to say which stage was the fifty-first.
+	return selectAll ? stages.slice(0, TICKET_MAX_STAGES) : [];
+}
+
+/** How a blank ticket is seeded. */
+export interface NewTicketOptions {
+	/**
+	 * Seed EVERY stage of the engagement when the ticket is created outside a stage column.
+	 *
+	 * The caller decides, because the caller is the only layer that knows which seat is acting.
+	 * Ignored when an origin stage is given — see {@link seedStageSelection}.
+	 */
+	selectAllStages?: boolean;
+}
+
+/**
+ * A blank ticket, pre-seeded with stages by {@link seedStageSelection}.
  *
  * Every field a saved ticket carries is present and empty rather than absent, so the create surface
  * and the view surface render from identical data and no tab has to ask whether it is looking at a
@@ -62,8 +101,9 @@ export function newTicketCard(
 	defaultStageId: string | null,
 	stages: readonly BoardStageRef[],
 	owner: ProjectParty | null = null,
+	options: NewTicketOptions = {},
 ): BoardCard {
-	const seed = defaultStageId ? stages.filter((s) => s.id === defaultStageId) : [];
+	const seed = seedStageSelection(defaultStageId, stages, options.selectAllStages === true);
 	return reconcileCard({
 		id: newDraftId(),
 		title: "",

@@ -42,7 +42,7 @@
 
 .ui-audioviz__toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-audioviz__wave {
@@ -55,7 +55,7 @@
 
 .ui-audioviz__wave:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -88,5 +88,5 @@
 
 .ui-audioviz__speed:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }

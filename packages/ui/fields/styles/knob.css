@@ -19,7 +19,7 @@
 }
 .ui-knob__svg:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-knob__range {

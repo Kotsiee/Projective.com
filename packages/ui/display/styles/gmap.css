@@ -69,7 +69,7 @@
 	box-shadow: var(--elevation-low);
 }
 .ui-gmap__marker:focus-visible .ui-gmap__marker-pin {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-gmap__marker-label {
 	margin-block-start: var(--space-1);
@@ -113,6 +113,6 @@
 }
 .ui-gmap__control:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */

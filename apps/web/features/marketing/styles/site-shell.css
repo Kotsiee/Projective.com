@@ -269,8 +269,7 @@
 }
 
 .site-header__mega-link:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -300,8 +299,7 @@
 
 .site-header__pillar-trigger:focus-visible,
 .site-header__mega-all:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 /* #endregion */
@@ -389,8 +387,7 @@
 }
 
 .site-header__entity-option:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .site-header__search-input {
@@ -512,8 +509,7 @@
 .site-header__entity-btn:focus-visible,
 .site-header__search-go:focus-visible,
 .theme-toggle.theme-toggle--icon:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -633,8 +629,7 @@
 }
 
 .site-header__drawer-link:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* #region Mobile drawer accordions — the four discovery pillars, translated for touch */
@@ -675,8 +670,7 @@
 }
 
 .site-header__acc-trigger:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -734,8 +728,7 @@
 }
 
 .site-header__acc-link:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .site-header__acc-all {
@@ -749,8 +742,7 @@
 }
 
 .site-header__acc-all:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 

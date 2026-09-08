@@ -86,7 +86,7 @@
 }
 .ui-treetable__head-button:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-treetable__head-label {
 	overflow: hidden;
@@ -135,7 +135,7 @@
 }
 .ui-treetable__toggle:not(.ui-treetable__toggle--placeholder):focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-treetable__toggle-icon {
 	transition: transform var(--dur-fast) var(--ease-standard);
@@ -182,7 +182,7 @@
 }
 .ui-treetable__row:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-treetable__row--selected {
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);

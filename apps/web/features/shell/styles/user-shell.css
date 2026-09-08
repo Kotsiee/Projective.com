@@ -27,8 +27,7 @@
 }
 
 .shell-brand:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
 }
 
 /* #endregion */
@@ -131,8 +130,7 @@
 }
 
 .shell-search__entity-option:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-search__search-input {
@@ -207,6 +205,38 @@
     color: var(--on-surface);
 }
 
+/* Current destination — the basket flow (`/basket`, `/checkout`). This control is the ONLY chrome
+   entry the basket has (the global rail no longer carries a twin), so it has to do the wayfinding a
+   `NavItem` would.
+
+   TWO channels, deliberately. Colour alone does not survive the colour-blindness token overlays,
+   and it is also the channel the OPEN state already spends — `[aria-expanded="true"]` below tints
+   the background `--primary`, so a control that is active AND open must stay tellable from one that
+   is merely open. The bar is a shape, so it reads in both cases and under `data-contrast="high"`.
+   The ink reuses the `--primary`-on-header pairing that rule already ships on this same element, so
+   no new ratio is introduced.
+
+   Placed AFTER `:hover` (they tie at 0,2,0, so source order decides) so pointing at the current
+   destination cannot neutralise its ink; hover keeps the background channel and its feedback. */
+.shell-util__btn--active {
+    color: var(--primary);
+}
+
+.shell-util__btn--active::after {
+    content: "";
+    position: absolute;
+    /* Centred without a transform: both inline insets zeroed plus `margin-inline: auto` resolves the
+       same in either writing direction, where an `inset-inline-start: 50%` + translate pair does not
+       (the start edge flips under RTL and the translate does not follow it). */
+    inset-block-end: 4px;
+    inset-inline: 0;
+    margin-inline: auto;
+    inline-size: 16px;
+    block-size: 2px;
+    border-radius: var(--radius-full);
+    background: currentcolor;
+}
+
 /* Open ≠ hovered. Both had resolved to the same `--tint-soft` neutral, so the trigger of a drawer
    currently covering a third of the screen looked exactly like one under the pointer. */
 .shell-util__btn[aria-expanded="true"] {
@@ -216,8 +246,7 @@
 
 .shell-util__btn:focus-visible,
 .shell-util__profile:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /* Pulsing update indicator — a dot, never a count (Part D). */
@@ -309,8 +338,7 @@
 }
 
 .shell-menu__item:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-menu__icon {
@@ -376,8 +404,7 @@
 }
 
 .shell-icon-btn:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /* #endregion */
@@ -402,8 +429,7 @@
 }
 
 .shell-account__id:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-account__ident {
@@ -561,8 +587,7 @@
 }
 
 .shell-account__switch:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /* Become a Freelancer — a prominent tonal CTA shown only for a client context (§B.4: tint, no border). */
@@ -586,8 +611,7 @@
 }
 
 .shell-account__cta:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-account__cta-icon {
@@ -619,8 +643,7 @@
 }
 
 .shell-status:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-status__label {
@@ -692,8 +715,7 @@
 }
 
 .shell-theme-btn:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /* Sub-view scaffold (status + context) — a titled header with a back affordance. */
@@ -736,8 +758,7 @@
 }
 
 .shell-subview__back:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-subview__title {
@@ -786,8 +807,7 @@
 }
 
 .shell-currency:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 /*
@@ -861,8 +881,7 @@
 }
 
 .shell-picker__item:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-picker__text {
@@ -932,8 +951,7 @@
 }
 
 .shell-ctx__tab:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-ctx__list {
@@ -968,8 +986,7 @@
 }
 
 .shell-ctx__item:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: -2px;
+    outline: none;
 }
 
 .shell-ctx__body {
@@ -1101,8 +1118,7 @@
 
 .shell-drawer__all:focus-visible,
 .shell-drawer__cta:focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
 }
 
 /* #endregion */

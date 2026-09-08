@@ -233,7 +233,7 @@
 
 .evp__back:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -389,7 +389,7 @@
 
 .evp-navstrip__back:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -585,7 +585,7 @@
 
 .evp-canvas__stage--open:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -712,7 +712,7 @@
 
 .evp-canvas__thumb:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /* The overflow card. Full opacity at rest: it is a control, not a de-emphasised thumbnail. */
@@ -803,7 +803,7 @@
 
 .evp-seller__link:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-seller__crest {
@@ -1216,7 +1216,7 @@
 
 .evp-track__summary:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-track__heads {
@@ -1418,7 +1418,7 @@
 
 .evp-navrail__back:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1544,7 +1544,7 @@
 
 .evp-lane__owner:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -1585,7 +1585,7 @@
 
 .evp-lane__kebab:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-lane__scroll {
@@ -1734,7 +1734,7 @@
 
 .evp-cta__link:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -1827,7 +1827,7 @@ a.evp-cta__btn--inverted {
 
 .evp-cta__ghost:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1967,7 +1967,7 @@ a.evp-cta__btn--inverted {
 
 .evp-lane__rating:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2052,7 +2052,7 @@ a.evp-cta__btn--inverted {
 
 .evp-stages__item:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2223,7 +2223,7 @@ a.evp-cta__btn--inverted {
 
 .evp-menu__item:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-menu__item[data-danger="true"] {
@@ -2450,7 +2450,7 @@ a.evp-cta__btn--inverted {
 
 .evp-stickyhead__rating:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-stickyhead__seller:hover .evp-stickyhead__handle {
@@ -2461,7 +2461,7 @@ a.evp-cta__btn--inverted {
 
 .evp-stickyhead__seller:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-stickyhead__crest {
@@ -2539,7 +2539,7 @@ a.evp-cta__btn--inverted {
 
 .evp-scheduler__tab:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /* The timezone disclosure — a fact, so Meta register and no container. */
@@ -2622,7 +2622,7 @@ a.evp-cta__btn--inverted {
 
 .evp-inquiry__text:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-inquiry__error {

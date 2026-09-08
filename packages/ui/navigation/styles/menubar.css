@@ -54,7 +54,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menubar__top:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-menubar__top--current {
 	color: var(--primary);
@@ -130,7 +130,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-menubar__menuitem:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-menubar__menuitem--disabled {
 	opacity: 0.45;
@@ -198,7 +198,7 @@
 }
 .ui-menubar__hamburger:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-menubar__mobile {
 	position: fixed;

@@ -534,7 +534,7 @@
 .art-composer__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .art-composer__foot {
 	display: flex;

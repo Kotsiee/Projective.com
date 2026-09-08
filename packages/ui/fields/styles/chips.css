@@ -46,7 +46,7 @@
 }
 .ui-chips__token-remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

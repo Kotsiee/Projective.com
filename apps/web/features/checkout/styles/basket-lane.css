@@ -128,7 +128,7 @@
 
 .bsk-lane__row:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The open destination: a raised tonal surface plus a leading accent — two channels, so the state
@@ -271,7 +271,7 @@
 
 .bsk-lane__railbtn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .bsk-lane__railbtn[data-active="true"] {

@@ -73,8 +73,7 @@
 	transform: translateX(1rem);
 }
 .dev-ctx__switch:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -136,7 +135,7 @@
 .dev-ctx__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .dev-ctx__input:disabled {
 	cursor: not-allowed;
@@ -179,8 +178,7 @@
 	cursor: not-allowed;
 }
 .dev-ctx__seg:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }
 
 /* --- Effective-context summary (borderless tonal panel, §B.4) --- */
@@ -244,6 +242,5 @@
 	color: var(--on-surface);
 }
 .dev-ctx__reset:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }

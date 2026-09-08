@@ -312,7 +312,7 @@
 
 .cko-note__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-note__dismiss {
@@ -335,7 +335,7 @@
 
 .cko-note__dismiss:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -392,7 +392,7 @@
 
 .cko-block__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* A price that moved is the one blocker the buyer must re-read a figure for, so it reads louder. */
@@ -455,7 +455,7 @@
 
 .cko-group__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-group__caption {
@@ -581,7 +581,7 @@
 
 .cko-line__title:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-line__out {
@@ -644,7 +644,7 @@
 
 .cko-line__seller:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-line__flag {
@@ -765,7 +765,7 @@
 
 .cko-deliver__chip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-stage__mark,
@@ -818,7 +818,7 @@
 .cko-stage__link:focus-visible,
 .cko-when__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-when__link {
@@ -1048,7 +1048,7 @@
 
 .cko-result:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-result__icon {
@@ -1144,7 +1144,7 @@
 .cko-result__jump:focus-visible,
 .cko-result__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-result__link {

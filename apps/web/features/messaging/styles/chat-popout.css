@@ -88,7 +88,7 @@
 }
 .pop-chat__earlier:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .pop-chat__earlier:disabled {
 	opacity: var(--fld-disabled-alpha);

@@ -50,6 +50,5 @@
 	color: var(--on-surface);
 }
 .ui-input-icon--interactive:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 2px;
+	outline: none;
 }

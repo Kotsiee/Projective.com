@@ -196,7 +196,7 @@
 .chan-tab:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Desktop reads as clean text items; the leading glyph is reserved for the compact mobile row. */
@@ -257,7 +257,7 @@
 
 .chan-action:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The dynamic primary create action — a filled accent pill so it reads as the room's main affordance. */
@@ -334,7 +334,7 @@
 
 .chan-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .chan-menu__icon {

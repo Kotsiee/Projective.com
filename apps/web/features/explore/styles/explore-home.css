@@ -224,7 +224,7 @@
 
 .ex-chip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -257,7 +257,7 @@
 
 .ex-railbtn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -375,7 +375,7 @@
 
 .ex-rec__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -481,7 +481,7 @@
 
 .ex-rail__titlelink:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -591,7 +591,7 @@
  * as the control; the input inside it keeps its suppression so only one ring is painted.
  */
 .ex-rail__search:has(:focus-visible) {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ex-rail__search-input {

@@ -630,8 +630,7 @@
 }
 
 .wlt-accounts__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wlt-accounts__who {
@@ -882,8 +881,7 @@
 }
 
 .wlt-link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 

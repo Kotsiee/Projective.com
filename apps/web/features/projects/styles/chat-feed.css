@@ -232,7 +232,7 @@
 .chat-pinned__nav:focus-visible,
 .chat-pinned__body:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -274,7 +274,7 @@
 
 .msg-row__avatar-link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .msg-row__gutter-time {
@@ -539,7 +539,7 @@
 
 .msg-actions__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* React quick-picker */
@@ -606,7 +606,7 @@
 
 .msg-menu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .msg-menu__icon {
@@ -662,7 +662,7 @@
 
 .msg-system__pill--link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .msg-system__icon {

@@ -200,7 +200,7 @@ button.cal-daycol__stackbadge:hover {
 
 button.cal-daycol__stackbadge:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* An open cluster's "show fewer" control. Same coin, and deliberately in the same corner: the
@@ -313,7 +313,7 @@ button.cal-daycol__stackbadge:focus-visible {
 
 button.cal-event:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*

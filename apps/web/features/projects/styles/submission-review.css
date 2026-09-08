@@ -107,7 +107,7 @@
 }
 .subm-review__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -168,7 +168,7 @@
 }
 .subm-ctx__add:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 @media (prefers-reduced-motion: reduce) {
 	.subm-ctx__add {
@@ -244,7 +244,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-ctx__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-ctx__tab[data-active="true"] {
 	color: var(--primary);
@@ -327,7 +327,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-work__tool:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-work__tool[aria-pressed="true"] {
 	color: var(--primary);
@@ -375,7 +375,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-work__railitem:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-work__railglyph {
 	display: inline-flex;
@@ -452,7 +452,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 .subm-work__notefield:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-work__noteactions {
 	display: flex;
@@ -596,7 +596,7 @@ a.subm-ctx__who:hover .subm-ctx__name {
 }
 .subm-btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-btn:disabled {
 	opacity: 0.5;

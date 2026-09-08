@@ -76,8 +76,7 @@
 }
 
 .wsp-people__view:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-people__view[aria-pressed="true"],
@@ -207,8 +206,7 @@
 }
 
 .wsp-mcard__name-link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -255,8 +253,7 @@
 }
 
 .wsp-mcard__kebab:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* Availability is a dot on the avatar's corner, with the word in its Tooltip (§B.6). */
@@ -390,8 +387,7 @@
 }
 
 .wsp-mtable:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-base);
 }
 
@@ -456,8 +452,7 @@
 }
 
 .wsp-mtable__row:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-mtable__row[data-self="true"] {
@@ -542,8 +537,7 @@
 }
 
 .wsp-chart:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-base);
 }
 
@@ -640,8 +634,7 @@
 }
 
 .wsp-chart__card:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-chart__card[data-self="true"] {
@@ -699,8 +692,7 @@
 }
 
 .wsp-chart__toggle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* The caret rotates on the BLOCK axis, so its meaning does not invert under RtL. */
@@ -778,8 +770,7 @@
 }
 
 .wsp-mdrawer__handle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -960,8 +951,7 @@ does anything (§B.4 — the fill is the separator). */
 }
 
 .wsp-mdrawer__lastowner-link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 /* #endregion */

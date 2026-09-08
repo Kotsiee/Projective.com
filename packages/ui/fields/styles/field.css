@@ -20,7 +20,6 @@
 	--field-fg: var(--fld-rest-fg);
 	--field-accent: var(--primary);
 	--field-on-accent: var(--on-primary);
-	/* The status icon channel (§A.5). Unset at rest; a status sets it and the `__mark` slot paints. */
 	--field-mark: transparent;
 
 	box-sizing: border-box;
@@ -103,9 +102,6 @@
 
 .ui-field--bare.ui-field--focused,
 .ui-field--bare:focus-within {
-	/* --field-border: transparent; */
-	/* background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent); */
-	/* box-shadow: var(--focus-ring-shadow); */
 	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
@@ -118,14 +114,12 @@
 
 /* #region Interaction states */
 .ui-field:hover:not(.ui-field--disabled):not(.ui-field--readonly) {
-	/* --field-border: var(--fld-hover-bd); */
 	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .ui-field--focused,
 .ui-field:focus-within {
-	/* --field-border: var(--field-accent); */
-	box-shadow: 0 2px 0 var(--primary);
+	box-shadow: none;
 	outline: none;
 	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
@@ -150,9 +144,8 @@
  * order is the only thing that lets it re-open the `outline: none` set above.
  */
 .ui-field:has(:focus-visible) {
-	box-shadow: 0 2px 0 var(--primary), var(--focus-ring-glow);
-	outline: var(--focus-ring-w) solid var(--focus-ring);
-	outline-offset: var(--focus-ring-offset);
+	box-shadow: none;
+	outline: none;
 }
 
 /*

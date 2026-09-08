@@ -106,7 +106,7 @@
 }
 .ui-drawer__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-drawer__body {
 	flex: 1 1 auto;

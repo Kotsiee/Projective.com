@@ -207,7 +207,7 @@
 
 .cal-pop__back:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -311,7 +311,7 @@
 
 .cal-pop__title--open:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The accent, at full strength, in the one place it can be spent without competing with the type it
@@ -528,7 +528,7 @@
 .cal-pop__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -564,7 +564,7 @@
 
 .cal-pop__submit:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -609,7 +609,7 @@
 .cal-pop__expand:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */

@@ -42,7 +42,7 @@
 }
 .ui-toggle-button:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-toggle-button:active:not(:disabled) {
 	transform: translateY(0.5px);

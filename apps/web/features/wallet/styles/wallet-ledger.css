@@ -57,8 +57,7 @@ a.wlt-incoming__link:hover {
 }
 
 a.wlt-incoming__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wlt-incoming__glyph {
@@ -145,8 +144,7 @@ a.wlt-recent__link:hover {
 }
 
 a.wlt-recent__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* The direction mark is a 2px bar on the row's START edge — one edge, never a box. */
@@ -229,8 +227,7 @@ a.wlt-recent__link:focus-visible {
 }
 
 .wlt-recent__seeall:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -291,8 +288,7 @@ a.wlt-recent__link:focus-visible {
 }
 
 .wlt-ledger__sortbtn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* The mark encodes all three sort states, so "cleared" is visible rather than merely absent. */
@@ -343,8 +339,7 @@ a.wlt-recent__link:focus-visible {
 }
 
 .wlt-ledger__row:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wlt-ledger__cell {

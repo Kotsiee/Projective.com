@@ -138,8 +138,7 @@
 }
 
 .proj-railbtn:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .proj-railbtn svg {
@@ -204,7 +203,7 @@
 
 .proj-detail__back:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-detail__back-icon {
@@ -254,7 +253,7 @@
 .proj-detail__star:focus-visible,
 .proj-detail__kebab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -298,7 +297,7 @@
 
 .proj-cardmenu__item:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-cardmenu__icon {
@@ -384,7 +383,7 @@
 
 .proj-ctx__owner-name:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Lone project-type glyph, pinned top-right; the type is named by its Tooltip only (no text badge). */
@@ -442,7 +441,7 @@
 
 .proj-ctx__desc:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #endregion */
@@ -497,7 +496,7 @@
 
 .proj-chan-group__plus:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-chan-empty {
@@ -543,7 +542,7 @@
 
 .proj-chan:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-chan__glyph {
@@ -610,7 +609,7 @@
 
 .proj-chan__pending:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* Stage activity status icon (icon-only + Tooltip; tones shared with the feed card's Status Icon). */
@@ -637,7 +636,7 @@
 
 .proj-statusicon:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-statusicon[data-tone="ticket"] {
@@ -807,7 +806,7 @@
 
 .sess-next__cta:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .sess-next__cta-icon {
@@ -878,7 +877,7 @@
 
 .sess-link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .sess-link__icon {
@@ -1139,7 +1138,7 @@
 
 .sess-continue__cta:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .sess-continue__cta:disabled {
@@ -1228,7 +1227,7 @@
 .proj-viewnav__btn:focus-visible,
 .proj-viewnav__collapse:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-viewnav__icon {
@@ -1336,7 +1335,7 @@
 	outline: none;
 	background: var(--surface);
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-stage-modal__textarea {
@@ -1392,7 +1391,7 @@
 
 .proj-stage-modal__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .proj-stage-modal__btn-icon {

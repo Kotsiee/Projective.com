@@ -14,8 +14,7 @@
 }
 
 .ui-mobile-menu__trigger:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .ui-mobile-menu {

@@ -34,8 +34,7 @@
 }
 
 .ui-fieldset__toggle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .ui-fieldset__chevron {

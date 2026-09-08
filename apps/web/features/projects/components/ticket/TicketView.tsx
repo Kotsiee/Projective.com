@@ -223,6 +223,22 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 		tab.value = "stages";
 	}
 
+	/**
+	 * Add or remove a stage from the ticket — the ONE implementation, shared by the Details tab's
+	 * membership picker and the Stages tab's pipeline.
+	 *
+	 * Two controls over one field is only safe while they are the same reducer over the same working
+	 * copy; a second copy of this is how a checkbox and a diagram come to disagree about what the
+	 * ticket covers. Removing the stage currently open in the side panel closes it, because the panel
+	 * would otherwise be inspecting something the ticket no longer includes.
+	 */
+	function toggleStage(stageId: string): void {
+		const stage = stages.find((s) => s.id === stageId);
+		if (!stage) return;
+		patch({ stages: stageOps.toggle(card.stages, stage, stages, card.intensity) });
+		if (selectedStage.value === stageId) selectedStage.value = null;
+	}
+
 	function commit(): void {
 		if (!gate.canSave || !canEdit) return;
 		const committed = reconcileCard({ ...draft.value, title: draft.value.title.trim() }, stages);
@@ -458,9 +474,11 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											<TicketDetailsTab
 												card={card}
 												stageViews={stageViews}
+												projectStages={stages}
 												canEdit={canEdit}
 												creating={creating}
 												onPatch={patch}
+												onToggleStage={toggleStage}
 												onOpenStage={openStage}
 											/>
 										)
@@ -484,14 +502,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 												available={available}
 												selected={selectedStage}
 												editable={canEdit}
-												onToggle={(id) => {
-													const stage = stages.find((s) => s.id === id);
-													if (!stage) return;
-													patch({
-														stages: stageOps.toggle(card.stages, stage, stages, card.intensity),
-													});
-													if (selectedStage.value === id) selectedStage.value = null;
-												}}
+												onToggle={toggleStage}
 												onMove={(from, to) =>
 													patch({ stages: stageOps.move(card.stages, from, to, stages) })}
 												onParallel={(id, parallel) =>

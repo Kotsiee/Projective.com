@@ -367,7 +367,7 @@
 
 .cko-order__act:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-order__act[aria-disabled="true"] {
@@ -488,7 +488,7 @@
 
 .cko-order__menuitem:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -627,7 +627,7 @@
 .cko-order__recentlink:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cko-order__recentmeta {

@@ -17,8 +17,7 @@
 }
 
 .ui-scrollpanel__viewport:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .ui-scrollpanel__content {

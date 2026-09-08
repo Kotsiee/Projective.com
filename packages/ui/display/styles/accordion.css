@@ -42,7 +42,7 @@
 .ui-accordion__header:focus-visible {
 	outline: none;
 	border-color: var(--focus-ring);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-accordion__header:disabled {
 	color: var(--on-surface-variant);

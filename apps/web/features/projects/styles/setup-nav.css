@@ -119,7 +119,7 @@
 .psu-nav__link:focus-visible {
 	outline: none;
 	border-radius: var(--radius-base);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The ink channel — independent of the mark, and the one that survives a frozen clock. */

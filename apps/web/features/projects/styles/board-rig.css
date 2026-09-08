@@ -46,8 +46,7 @@
 }
 
 .brd-rig__icon:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 1px;
+    outline: none;
 }
 
 .brd-rig__spacer {
@@ -81,8 +80,7 @@
 }
 
 .brd-rig__action:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
+    outline: none;
 }
 
 .brd-rig__action--primary {

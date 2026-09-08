@@ -95,8 +95,7 @@ body:has(.auth) {
 }
 
 .auth .theme-toggle.theme-toggle--icon:focus-visible {
-	outline: 2px solid var(--primary);
-	outline-offset: 3px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -569,7 +568,7 @@ body:has(.auth) {
 
 .auth-skip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .auth-alt {
@@ -633,7 +632,7 @@ body:has(.auth) {
 }
 
 .auth-choice:has(.auth-choice__native:focus-visible) {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .auth-choice__native {
@@ -733,7 +732,7 @@ body:has(.auth) {
 .auth .ui-autocomplete__control:focus-within {
 	background: var(--surface);
 	border-color: transparent;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -862,7 +861,7 @@ body:has(.auth) {
 
 .auth-oauth__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .auth-oauth__glyph {
@@ -973,9 +972,7 @@ body:has(.auth) {
 .auth-otp__box:focus-visible {
 	outline: none;
 	background: var(--surface);
-	/* Was a bespoke `0 0 0 2px var(--primary)`, which is the single-tone ring the canonical token
-	   exists to replace: it abuts the box fill on the inside with nothing to separate it. */
-	box-shadow: var(--focus-ring-shadow), var(--elevation-low);
+	box-shadow: var(--elevation-low);
 }
 
 .auth-otp.is-invalid .auth-otp__box {
@@ -1187,7 +1184,7 @@ body:has(.auth) {
 
 .join-aside__brand:focus-visible {
 	outline: none;
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--on-primary) 55%, transparent);
+	box-shadow: none;
 }
 
 /* Was a gradient-filled rounded square standing in for a logo the project did not have yet. Now the
@@ -1392,7 +1389,7 @@ body:has(.auth) {
 
 .auth-oauth-inline:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .auth-oauth-inline__glyph {
@@ -1441,7 +1438,7 @@ body:has(.auth) {
 
 .tagselect__pill:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tagselect__pill:disabled {
@@ -1522,7 +1519,7 @@ body:has(.auth) {
 
 .tagselect__input-wrap:focus-within {
 	background: var(--surface);
-	box-shadow: 0 0 0 2px var(--primary), var(--elevation-low);
+	box-shadow: var(--elevation-low);
 }
 
 .tagselect__input-wrap.is-disabled {

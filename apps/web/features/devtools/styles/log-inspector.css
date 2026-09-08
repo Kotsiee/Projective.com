@@ -91,8 +91,7 @@
 	text-overflow: ellipsis;
 }
 .dev-log__switch:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -119,8 +118,7 @@
 	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .dev-log__clearcache:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }
 .dev-log__clearcache-glyph {
 	display: inline-flex;
@@ -158,7 +156,7 @@
  * as the control; the input inside it keeps its suppression so only one ring is painted.
  */
 .dev-log__search:has(:focus-visible) {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .dev-log__search-icon {
 	display: inline-flex;
@@ -213,8 +211,7 @@
 	border-color: color-mix(in srgb, var(--tone-color) var(--tint-heavy), transparent);
 }
 .dev-log__chip:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }
 .dev-log__chip-glyph {
 	display: inline-flex;
@@ -264,8 +261,7 @@
 	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
 }
 .dev-log__tool:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 1px;
+	outline: none;
 }
 
 /* --- Row list --- */
@@ -313,8 +309,7 @@
 	background: color-mix(in srgb, var(--tone-color) var(--tint-soft), transparent);
 }
 .dev-log__row:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .dev-log__row-glyph {

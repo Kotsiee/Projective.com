@@ -35,7 +35,7 @@
 }
 .subm-actions__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .subm-actions__btn--primary {
@@ -184,7 +184,7 @@
 .subm-modal__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-modal__revtag {
 	display: inline-flex;
@@ -351,7 +351,7 @@
 }
 .subm-tasks__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .subm-tasks__body {
 	flex: 1 1 auto;

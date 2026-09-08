@@ -58,7 +58,7 @@
 
 .subm-rig__tasks:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .subm-rig__tasksicon {

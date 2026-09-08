@@ -24,7 +24,7 @@
 	outline: none;
 }
 .subm-card:focus-visible {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .subm-card__thumb {
@@ -130,7 +130,7 @@
 	outline: none;
 }
 .subm-noderow:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .subm-noderow__lead {
 	flex: none;

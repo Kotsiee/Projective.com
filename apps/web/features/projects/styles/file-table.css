@@ -52,7 +52,7 @@
 .fx-th__btn:focus-visible {
 	outline: none;
 	color: var(--on-surface);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
 .fx-th__sort {
@@ -125,7 +125,7 @@
 	outline: none;
 }
 .fx-row:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 .fx-cell {

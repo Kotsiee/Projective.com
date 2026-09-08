@@ -90,7 +90,7 @@
 }
 .ui-select__clear:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -172,7 +172,7 @@
 .ui-select__filter-input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-select__filter-input::placeholder {
 	color: var(--text-secondary);

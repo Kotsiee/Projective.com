@@ -92,7 +92,7 @@
 
 .ui-select-button__option:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-select-button__option:disabled {

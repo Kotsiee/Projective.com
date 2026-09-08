@@ -240,7 +240,7 @@
    clip an outset ring away exactly where it matters. */
 .cal-tg__scroll:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 .cal-tg__scroll--panning {
@@ -336,7 +336,7 @@
 
 .cal-tg__present:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow), var(--elevation-medium);
+	box-shadow: var(--elevation-medium);
 }
 
 .cal-tg__daymark {

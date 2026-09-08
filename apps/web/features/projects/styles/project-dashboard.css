@@ -125,7 +125,7 @@
 
 .pjd-hero__owner:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .pjd-hero__owner-name {
@@ -296,7 +296,7 @@
 
 .pjd-block__more:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -352,7 +352,7 @@ a.pjd-row:hover {
 
 a.pjd-row:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .pjd-row__icon {
@@ -589,7 +589,7 @@ a.pjd-row:focus-visible {
 
 .pjd-money__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -644,7 +644,7 @@ a.pjd-row:focus-visible {
 
 .pjd-miss__cta:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

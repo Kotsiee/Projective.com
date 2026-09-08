@@ -119,7 +119,7 @@
 
 .tkc-task__grip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -142,7 +142,7 @@
 
 .tkc-task__text:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkc-task__remove {
@@ -173,7 +173,7 @@
 
 .tkc-task__remove:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkc-task--static {
@@ -227,7 +227,7 @@
 
 .tkc-tasks__newinput:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -438,7 +438,7 @@
 
 .tkc-stage__grip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 	opacity: 1;
 }
@@ -498,7 +498,7 @@
 
 .tkc-stage__lock:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-full);
 }
 
@@ -544,7 +544,7 @@
 
 .tkc-stage__cost:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -579,7 +579,7 @@
 
 .tkc-stage__act:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkc-stage__act--open[aria-expanded="true"] {
@@ -659,7 +659,7 @@
 
 .tkc-join__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkc-join[data-parallel="true"] .tkc-join__btn {
@@ -715,7 +715,7 @@
 
 .tkc-avail__row:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .tkc-avail__mark {
@@ -800,7 +800,7 @@
 
 .tkc-insp__close:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The stage's price for this ticket, stated once and at size — it is the number the client is
@@ -876,7 +876,7 @@
 
 .tkc-insp__tab:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -1064,7 +1064,7 @@
 
 .tkc-task__by:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* A stage the engagement has since deleted keeps its row and its price, and says so. */

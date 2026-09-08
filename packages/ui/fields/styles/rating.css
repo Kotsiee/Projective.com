@@ -42,7 +42,7 @@
 .ui-rating__star:focus-visible,
 .ui-rating__cancel:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-sm);
 }
 .ui-rating__star--on {

@@ -759,8 +759,7 @@ frozen animation clock costs nothing. */
 }
 
 .wsp-menu__item:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* A refused action stays visible and explains itself through its note, rather than vanishing — a

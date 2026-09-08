@@ -143,7 +143,7 @@
 }
 .apk__act:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .apk__act[aria-pressed="true"] {
 	color: var(--primary);
@@ -243,7 +243,7 @@
 .apk-nav__source:focus-visible,
 .apk-nav__drive:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .apk-nav__source[aria-current="true"],
 .apk-nav__drive[aria-current="true"] {
@@ -377,7 +377,7 @@
 .apk-cell .fx-card:focus-visible,
 .apk-cell .subm-card:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*
@@ -540,7 +540,7 @@
 }
 .apk-state__link:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .apk-state--error .apk-state__title {
 	color: var(--danger);
@@ -654,7 +654,7 @@
 }
 .apk-tray__drop:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .apk__quota {

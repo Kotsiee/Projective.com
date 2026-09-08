@@ -366,7 +366,7 @@
 
 .cal__filterchip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cal__filterdot {

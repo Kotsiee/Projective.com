@@ -171,8 +171,7 @@
 }
 
 .ex-viewall:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 3px;
+    outline: none;
     border-radius: var(--radius-xs);
 }
 
@@ -217,8 +216,7 @@
 }
 
 .ex-btn:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 3px;
+    outline: none;
 }
 
 /* #endregion */
@@ -255,8 +253,7 @@
 }
 
 .ex-owner__avatar-link:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-sm);
 }
 
@@ -299,8 +296,7 @@
 }
 
 .ex-owner__handle:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-xs);
 }
 
@@ -514,8 +510,7 @@
 }
 
 .ex-pill:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none;
     border-radius: var(--radius-sm);
 }
 
@@ -624,7 +619,7 @@
 
 .ex-card__link:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow-inset);
+    box-shadow: none;
 }
 
 /*
@@ -1393,8 +1388,7 @@
 
 .ex-actions__btn:focus-visible,
 .ex-actions__item:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none;
 }
 
 .ex-actions__menu-wrap {
@@ -1812,8 +1806,7 @@
 }
 
 .ex-sponsored:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 3px;
+    outline: none;
 }
 
 .ex-sponsored__media {
@@ -1914,8 +1907,7 @@
 }
 
 .ex-help__link:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none;
 }
 
 .ex-help__glyph {
@@ -2172,8 +2164,7 @@
 }
 
 .ex-hero__quicklink:focus-visible {
-    outline: 2px solid var(--on-primary);
-    outline-offset: 2px;
+    outline: none;
 }
 
 /* #endregion */

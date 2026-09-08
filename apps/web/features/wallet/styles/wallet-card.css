@@ -130,8 +130,7 @@
 }
 
 .wlt-card:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /*
@@ -466,8 +465,7 @@
 }
 
 .wlt-deck__expand:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* Announcements only - the state change is already visible, so it carries no visual weight.

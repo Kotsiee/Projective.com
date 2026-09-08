@@ -88,8 +88,7 @@
 }
 
 .wsp-lane__switch:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /* Acting: hairline ring + one tonal step. The loud channel is the chip in the body, not here. */
@@ -160,8 +159,7 @@
 }
 
 .wsp-lane__entity:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-lane__entity[data-acting="true"] {
@@ -252,7 +250,7 @@
 
 .wsp-lane__filter-pill:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .wsp-lane__filter-reset {
@@ -309,8 +307,7 @@
 }
 
 .wsp-lane__new:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-lane__new[data-blocked="true"] {
@@ -347,8 +344,7 @@
 }
 
 .wsp-lane__row:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-lane__row[data-active="true"] {
@@ -429,8 +425,7 @@ sentence, and the explanation lives in the row's Tooltip (§B.6). */
 }
 
 .wsp-lane__verify-link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-lane__acting {
@@ -490,8 +485,7 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-rail__switch:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 3px;
+	outline: none;
 }
 
 .wsp-rail__items {
@@ -535,8 +529,7 @@ words — a ring colour on its own is not a channel. */
 
 .wsp-rail__item:focus-visible,
 .wsp-rail__toggle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* The module-group boundary, so a 12-icon rail still reads as five groups. */
@@ -597,8 +590,7 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-headerband__identity:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -659,8 +651,7 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-headerband__icon:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-headerband__panel {
@@ -730,8 +721,7 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-headerband__tab:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -814,8 +804,7 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-footerrig__action:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-footerrig__action[data-variant="primary"] {
@@ -890,8 +879,7 @@ words — a ring colour on its own is not a channel. */
 }
 
 .wsp-footerrig__more:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .wsp-footerrig__menu {

@@ -21,7 +21,7 @@ import {
 } from "@web/features/shell/core/nav-fixtures.ts";
 import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx";
 import { basketCount } from "@web/features/checkout/core/basket-state.ts";
-import { defaultOwnerParam } from "@web/features/checkout/core/basket-model.ts";
+import { defaultOwnerParam, isCheckoutPath } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
 import { commitDisplayCurrency, displayCurrency } from "@web/features/shell/core/currency-state.ts";
 import { DISPLAY_CURRENCIES } from "@projective/types/finance";
@@ -74,6 +74,15 @@ export interface UserActionsProps {
 	 * that owns the route group (the reliable public/protected source of truth). Defaults to public.
 	 */
 	protectedRoute?: boolean;
+	/**
+	 * Current pathname — the only thing the tray needs it for is the **Basket** control's active
+	 * state across the basket ⁄ checkout flow, which is now that control's alone: the global rail no
+	 * longer carries a Basket entry, so this is the surface's single wayfinding cue for it.
+	 *
+	 * Optional, and `undefined` reads as "no active state" rather than as a path — a caller that has
+	 * not threaded it must leave the control unmarked, never mark it wrongly.
+	 */
+	path?: string;
 }
 
 /**
@@ -95,7 +104,7 @@ export interface UserActionsProps {
  * that shares the very same view-driven body, so the two surfaces never drift.
  */
 export default function UserActions(
-	{ context = PERSONAL_MEMBER_CONTEXT, protectedRoute = false }: UserActionsProps,
+	{ context = PERSONAL_MEMBER_CONTEXT, protectedRoute = false, path }: UserActionsProps,
 ): JSX.Element {
 	const createOpen = useSignal(false);
 	const profileOpen = useSignal(false);
@@ -163,6 +172,12 @@ export default function UserActions(
 	// Whose basket the drawer opens. Follows the effective context, so a simulated persona flip
 	// re-scopes the drawer with the rest of the header rather than leaving it on the real session's.
 	const basketOwner = defaultOwnerParam(effCtx);
+	// Whether the reader is INSIDE the basket flow, which is what makes this control the current
+	// destination. Answered by `isCheckoutPath` — the same guard every checkout slot resolver opens
+	// with — so the control and the lane, header and footer bands the flow mounts cannot disagree
+	// about where the flow begins and ends. It covers `/basket` as well as `/checkout`: `/basket`
+	// redirects into the flow and, with the rail entry gone, this control is now its only cue.
+	const onBasketFlow = path !== undefined && isCheckoutPath(path);
 
 	// Resolved account display — the live projection when present, else the context-derived fallback.
 	// A dev persona override wins over the fetched account for the role/identity display, so the
@@ -650,10 +665,13 @@ export default function UserActions(
 			}
 			<button
 				type="button"
-				class="shell-util__btn shell-util__slot--desktop"
+				class={`shell-util__btn shell-util__slot--desktop${
+					onBasketFlow ? " shell-util__btn--active" : ""
+				}`}
 				aria-label={basketLines > 0
 					? `Basket — ${basketLines} ${basketLines === 1 ? "item" : "items"}`
 					: "Basket"}
+				aria-current={onBasketFlow ? "page" : undefined}
 				aria-haspopup="dialog"
 				onClick={() => (basketOpen.value = true)}
 			>

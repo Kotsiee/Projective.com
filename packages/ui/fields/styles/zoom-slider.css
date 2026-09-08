@@ -66,7 +66,7 @@
 }
 .ui-zoom__btn:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The draggable track. A minimum width keeps the segments legible; it may grow to fill. */
@@ -84,7 +84,7 @@
 	outline: none;
 }
 .ui-zoom__track:focus-visible .ui-zoom__handle {
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-zoom__rail {

@@ -117,7 +117,7 @@ a.cko-stepper__step:hover {
 
 a.cko-stepper__step:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*

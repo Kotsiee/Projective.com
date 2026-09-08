@@ -23,7 +23,7 @@
 }
 .ui-image__trigger:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* #region Preview overlay */
@@ -69,7 +69,7 @@
 }
 .ui-image__tool:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-image__tool:disabled {
 	opacity: 0.4;

@@ -34,8 +34,7 @@
 }
 
 .wsp-matrix:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /*
@@ -170,8 +169,7 @@
 }
 
 .wsp-matrix__colbtn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 /* #endregion */
 
@@ -276,8 +274,7 @@
 }
 
 .wsp-matrix__cell:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .wsp-matrix__cell[data-state="allowed"] {

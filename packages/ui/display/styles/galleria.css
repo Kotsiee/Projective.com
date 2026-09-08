@@ -115,7 +115,7 @@
 .ui-galleria__nav:focus-visible,
 .ui-galleria__fullscreen-toggle:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-galleria__nav:disabled {
 	opacity: 0.4;
@@ -164,7 +164,7 @@
 }
 .ui-galleria__indicator:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 
@@ -235,7 +235,7 @@
 }
 .ui-galleria__thumb:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-galleria__thumb-image {
 	inline-size: 100%;
@@ -262,7 +262,7 @@
 }
 .ui-galleria__thumb-nav:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 /* #endregion */
 

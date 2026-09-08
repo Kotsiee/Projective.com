@@ -75,7 +75,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-megamenu__top:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-megamenu__top--current {
 	color: var(--primary);
@@ -163,7 +163,7 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-megamenu__leaf:focus-visible {
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 .ui-megamenu__leaf--current {
 	color: var(--primary);

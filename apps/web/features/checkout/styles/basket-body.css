@@ -142,7 +142,7 @@
 .bsk__notice-jump:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -419,7 +419,7 @@
 .bsk-eng__link:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-eng__meta {
@@ -454,7 +454,7 @@ a.bsk-eng__seller:hover {
 a.bsk-eng__seller:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-eng__alert {
@@ -601,7 +601,7 @@ a.bsk-eng__seller:focus-visible {
 .bsk-sub__title:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-sub__title[disabled] {
@@ -704,7 +704,7 @@ a.bsk-eng__seller:focus-visible {
 .bsk-act:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-act[disabled] {
@@ -893,7 +893,7 @@ a.bsk-eng__seller:focus-visible {
 .bsk-row__seller-link:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-row__heading {
@@ -915,7 +915,7 @@ a.bsk-eng__seller:focus-visible {
 .bsk-row__title:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-row__subtitle {
@@ -1029,7 +1029,7 @@ a.bsk-row__fact-value:hover {
 a.bsk-row__fact-value:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -1466,7 +1466,7 @@ a.bsk-row__fact-value:focus-visible {
 .bsk-card__title:focus-visible {
     outline: none;
     border-radius: var(--radius-xs);
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-card__fact {
@@ -1644,7 +1644,7 @@ a.bsk-row__fact-value:focus-visible {
 
 .bsk-summary__dest:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-summary__dest-value {
@@ -1828,7 +1828,7 @@ a.bsk-row__fact-value:focus-visible {
 
 .bsk-contrib__info:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /* #endregion */
@@ -1986,7 +1986,7 @@ a.bsk-row__fact-value:focus-visible {
 
 .bsk-promo__clear:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-promo__clear[disabled] {

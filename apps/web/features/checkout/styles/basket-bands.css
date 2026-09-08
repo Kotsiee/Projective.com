@@ -125,7 +125,7 @@
 
 .cko-band__btn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /* The one signal that a filter is narrowing what the reader is looking at (§B.6 — a dot, not a count). */
@@ -152,7 +152,7 @@
 }
 
 .cko-band__findfield:focus-within {
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .cko-band__findicon {
@@ -359,7 +359,7 @@ a.cko-rig__btn[aria-disabled="true"] {
 
 a.cko-rig__btn:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -510,7 +510,7 @@ a.cko-rig__btn--cta {
 
 .bsk-menu__item:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .bsk-menu__item[disabled] {

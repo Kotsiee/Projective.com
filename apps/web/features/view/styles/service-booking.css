@@ -226,7 +226,7 @@
 
 .sbk-rail__page:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk-rail__page:disabled {
@@ -264,7 +264,7 @@
 
 .sbk-day:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk-day[data-selected="true"] {
@@ -392,7 +392,7 @@
 
 .sbk-slot:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk-slot[data-selected="true"] {
@@ -462,7 +462,7 @@
 
 .sbk__calltypeopt:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /* ============================================================================
@@ -497,7 +497,7 @@
 
 .sbk__scopeopt:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk__scopelabel {
@@ -620,7 +620,7 @@
 .sbk__notefield:focus-visible,
 .sbk__input:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
     border-color: var(--primary);
 }
 
@@ -648,7 +648,7 @@
 }
 
 .sbk__inputwrap:focus-within {
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
     border-color: var(--primary);
 }
 
@@ -724,7 +724,7 @@
 }
 
 .sbk__filepick:focus-within {
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk__files {
@@ -785,7 +785,7 @@
 
 .sbk__fileremove:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk__filenote {
@@ -862,7 +862,7 @@
 
 .sbk-contact__item:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .sbk-contact__itemtext {
@@ -920,7 +920,7 @@
 
 .sbk-contact__field:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
     border-color: var(--primary);
 }
 
@@ -961,7 +961,7 @@
 .sbk-contact__back:focus-visible,
 .sbk-contact__send:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 /*
@@ -1084,7 +1084,7 @@
 .evp-cta__confirmno:focus-visible,
 .evp-cta__confirmyes:focus-visible {
     outline: none;
-    box-shadow: var(--focus-ring-shadow);
+    box-shadow: none;
 }
 
 .evp-cta__confirm {

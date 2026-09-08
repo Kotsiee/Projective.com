@@ -99,7 +99,7 @@
 }
 .ui-tumbler__step:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-tumbler__step:disabled {
 	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
@@ -135,7 +135,7 @@
  */
 .ui-tumbler__viewport:focus-within {
 	border-color: var(--fld-focus-bd);
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .ui-tumbler--invalid .ui-tumbler__viewport,
 .ui-tumbler--required .ui-tumbler__viewport {
@@ -258,7 +258,6 @@
 	border-radius: var(--radius-xs);
 }
 .ui-tumbler__value:focus {
-	/* The ring lives on the viewport (see above); a second one here would be clipped in half. */
 	outline: none;
 }
 .ui-tumbler__value:disabled {

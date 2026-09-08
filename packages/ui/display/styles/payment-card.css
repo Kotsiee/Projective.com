@@ -670,7 +670,7 @@
 
 .ui-paycard__flip:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /* The glyph turns with the card, so the control reads as the same object in both states. */
@@ -723,7 +723,7 @@
 
 .ui-paycard-option:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 /*

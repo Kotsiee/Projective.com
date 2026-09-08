@@ -124,8 +124,7 @@
 
 .cal-rail__item:focus-visible,
 .cal-rail__toggle:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .cal-rail__item[data-active="true"] {
@@ -182,8 +181,7 @@
 }
 
 .cal-up__link:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -303,8 +301,7 @@
 }
 
 .cal-avail-block__configure:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 	border-radius: var(--radius-xs);
 }
 
@@ -472,8 +469,7 @@
 
 .cal-band__navbtn:focus-visible,
 .cal-band__iconbtn:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .cal-band__iconbtn[data-on="true"] {
@@ -563,8 +559,7 @@
 }
 
 .cal-band__view:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* The full word is the accessible name; the letter is what is drawn (§B.6.3). */
@@ -653,8 +648,7 @@
 }
 
 .cal-filters__option:focus-within {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .cal-filters__mark {
@@ -750,8 +744,7 @@
 }
 
 .cal-rig__view:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 /* The initial is drawn only in the narrowest tier; the word is the name at every width. */
@@ -794,8 +787,7 @@
 }
 
 .cal-rig__action:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .cal-rig__action[data-variant="primary"] {
@@ -1006,8 +998,7 @@
 }
 
 .cal-connect__action:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .cal-connect__providers {
@@ -1037,8 +1028,7 @@
 }
 
 .cal-connect__provider:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 /*
@@ -1108,8 +1098,7 @@
 }
 
 .cal-import__drop:focus-within {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .cal-import__input {

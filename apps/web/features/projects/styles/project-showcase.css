@@ -95,8 +95,7 @@
 }
 
 .proj-pvtab:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: -2px;
+    outline: none;
     border-radius: var(--radius-sm);
 }
 
@@ -333,8 +332,7 @@
 }
 
 .proj-estage__grip:focus-visible {
-    outline: 2px solid var(--focus-ring, var(--primary));
-    outline-offset: -2px;
+    outline: none;
     border-radius: var(--radius-sm);
 }
 
@@ -427,8 +425,7 @@
 }
 
 .proj-estage__remove:focus-visible {
-    outline: 2px solid var(--focus-ring, var(--primary));
-    outline-offset: -2px;
+    outline: none;
 }
 
 .proj-estage__body {
@@ -536,8 +533,7 @@
 }
 
 .proj-editor__add:focus-visible {
-    outline: 2px solid var(--focus-ring, var(--primary));
-    outline-offset: 2px;
+    outline: none;
 }
 
 .proj-editor__add-icon {

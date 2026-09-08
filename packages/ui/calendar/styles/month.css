@@ -52,7 +52,7 @@
 /* Inset, because the grid fills its region edge to edge — an outset ring would be clipped away. */
 .cal-month__grid:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow-inset);
+	box-shadow: none;
 }
 
 .cal-month__grid[data-dragging="true"] {
@@ -184,7 +184,7 @@
 
 .cal-month__daynum:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .cal-month__cell--today .cal-month__daynum {
@@ -296,7 +296,7 @@ button.cal-month__more:hover {
 
 .cal-month__present:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow), var(--elevation-medium);
+	box-shadow: var(--elevation-medium);
 }
 
 /* #endregion */

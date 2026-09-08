@@ -53,7 +53,7 @@
 .ui-paginator__nav-btn:focus-visible,
 .ui-paginator__page:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-paginator__page--active {
@@ -91,7 +91,7 @@
 
 .ui-paginator__rows-select:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
 .ui-paginator__report {

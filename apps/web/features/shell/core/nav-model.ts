@@ -72,10 +72,14 @@ export function globalNav(
 	path: string,
 	context: UserContext = PERSONAL_MEMBER_CONTEXT,
 ): NavModelItem[] {
-	const { isFreelancer, contextType } = context;
+	const { isFreelancer, contextType, role } = context;
 	const caps = getAccountCapabilities();
 
 	// #region Capability predicates (chrome only)
+	// Chrome-only auth test. `asAuthenticatedContext` collapses a guest to `PERSONAL_MEMBER_CONTEXT`
+	// before `UserShell` ever reaches here, so on every shipping path this is true — it guards this
+	// function's own contract (`context` is optional and defaults in), never an access decision.
+	const isAuthed = role !== "guest";
 	const isTeamCtx = contextType === "team";
 	const isBusinessCtx = contextType === "business";
 	const belongsToOrg = caps.belongsToTeam || caps.belongsToBusiness || isTeamCtx || isBusinessCtx ||
@@ -110,12 +114,22 @@ export function globalNav(
 
 	const items: Array<NavModelItem | null> = [
 		{ key: "home", label: "Home", href: "/home", icon: "home", active: isActive(path, "/home") },
+		// Explore — and the entity viewer it opens into. `/view/[id]` is Explore's DETAIL surface, not
+		// a destination of its own: every card on `/explore` links there and it carries no rail entry,
+		// so without this the rail goes wholly unhighlighted the moment a reader opens a result.
+		//
+		// Gated on authentication because the rail is not the only navigation carrying an Explore link:
+		// the guest `SiteHeader` resolves its own, and that one must keep answering for the public
+		// marketing surface. No route reaches this function with a guest context today (`GuestShell`
+		// renders no global sidebar at all), so the test states the contract rather than describing a
+		// live branch — but it is real at the signature level, since `context` is optional both here
+		// and in `ShellSidebar`, and a caller may pass `GUEST_CONTEXT`.
 		{
 			key: "explore",
 			label: "Explore",
 			href: "/explore",
 			icon: "explore",
-			active: isActive(path, "/explore"),
+			active: isActive(path, "/explore") || (isAuthed && isActive(path, "/view")),
 		},
 		{
 			key: "messages",
@@ -134,7 +148,7 @@ export function globalNav(
 			active: isActive(path, "/projects"),
 			children: workspaceSublinks("project"),
 		},
-		// Calendar — the acting account's own agenda. UNGATED for the same reason Files and Basket are:
+		// Calendar — the acting account's own agenda. UNGATED for the same reason Files is:
 		// everyone has a week, whichever side of the market they are on, so this destination carries no
 		// capability predicate — which also keeps it clear of the unresolved `is_operator` ⁄
 		// `isFreelancer` gate inconsistency still flagged against the seller surfaces (Decisions #17 /
@@ -203,22 +217,11 @@ export function globalNav(
 				active: isActive(path, "/analytics"),
 			}
 			: null,
-		// Basket — the buying counterpart of Wallet, and UNGATED for the same reason Files is: everyone
-		// buys, whichever side of the market they are on.
-		//
-		// It belongs in the rail even though the header already carries a Basket utility, because the two
-		// answer different questions. The header control is a transient PEEK — a drawer with a dot and a
-		// "Go to basket" link — while `/basket` is a full middle-nav surface with a lane, two bands and a
-		// checkout step, in the same class as `/wallet` and `/files`. Without a rail entry it would be
-		// reachable only from inside an overlay, and not at all from the collapsed icon rail. The dot
-		// stays on the header control alone, so one signal has one owner.
-		{
-			key: "basket",
-			label: "Basket",
-			href: "/basket",
-			icon: "basket",
-			active: isActive(path, "/basket") || isActive(path, "/checkout"),
-		},
+		// NO Basket entry. The basket has exactly ONE control on the chrome and it is the header's,
+		// which already owns the drawer, the line count and — on a checkout route — the active state
+		// (see `UserActions`). A rail twin is a second answer to "where is my basket": the two would
+		// sit within a hand's width of each other carrying different affordances and different state,
+		// and the checkout flow would light two controls for one surface.
 		{
 			key: "wallet",
 			label: "Wallet",

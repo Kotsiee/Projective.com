@@ -55,8 +55,7 @@
 }
 
 .ui-bottom-nav__item:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -3px;
+	outline: none;
 	border-radius: var(--radius-base);
 }
 

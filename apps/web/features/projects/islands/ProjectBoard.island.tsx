@@ -518,9 +518,21 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * It opens the SAME modal a saved ticket opens, on the same chain, in `create` posture — so a
 	 * client who composes a ticket and then reads it back is never handed a different surface, and the
 	 * chain's own state cache keeps a half-written brief alive across anything that replaces it.
+	 *
+	 * The stage seed is {@link seedStageSelection}'s: a stage column seeds itself, and the New lane —
+	 * which carries no origin — seeds the WHOLE pipeline for an owning seat and nothing for anyone
+	 * else. `canEditTicket` is the ownership signal, not `isClient`, and it is the nearest one this
+	 * board actually holds: `BoardPage` carries no `owner_id`, only the server-derived
+	 * `viewerIsClient` (live: `viewerRole` ∈ owner|admin|client), which {@link resolveBoardAccess}
+	 * narrows to ownership-or-admin inside a shared workspace. It is also the right question — the
+	 * seat that may rewrite a ticket's terms is the seat whose default terms these are. A narrower
+	 * client seat still composes freely; it just starts from an empty pipeline rather than one it did
+	 * not choose.
 	 */
 	function openCompose(stageId: string | null): void {
-		const blank = newTicketCard(stageId, stages.value);
+		const blank = newTicketCard(stageId, stages.value, null, {
+			selectAllStages: access.value.canEditTicket,
+		});
 		composing.value = blank;
 		ticketStack.open("ticket", blank.id, { ticketId: blank.id, mode: "create" });
 	}

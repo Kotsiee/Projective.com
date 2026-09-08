@@ -367,7 +367,7 @@
 }
 .vw-stage__head:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 	border-radius: var(--radius-md);
 }
 .vw-stage__heading {
@@ -651,7 +651,7 @@
 }
 .vw-jump:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 .vw-jump__idx {
 	inline-size: 1.4rem;

@@ -79,8 +79,7 @@
 }
 
 .ui-shell-sidebar__toggle:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .ui-shell-sidebar__toggle .shell-toggle {
@@ -137,8 +136,7 @@
 }
 
 .ui-sidebar-group__caret:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 	border-radius: var(--radius-sm);
 }
 
@@ -214,8 +212,7 @@
 }
 
 .ui-sidebar-sublink:focus-visible {
-	outline: 3px solid var(--focus-ring);
-	outline-offset: -2px;
+	outline: none;
 }
 
 .ui-sidebar-sublink__icon {
