@@ -95,6 +95,8 @@ interface DetailRow {
 /** One `projects.project_stages` row, reduced to what the stage tree renders. */
 interface StageRow {
 	id: string;
+	/** The stage's `stg-…` route address — see {@link StageChannelSchema.slug}. */
+	slug: string;
 	name: string;
 	sort_order: number;
 	status: string;
@@ -386,7 +388,9 @@ function buildStageChannels(
 		const name = clampOr(stage.name, 120, `Stage ${index + 1}`);
 		out.push({
 			id: room.id,
-			// The two keys this function is the only place to hold at once — see `StageChannelSchema`.
+			// The three keys this function is the only place to hold at once — see `StageChannelSchema`.
+			// `slug` is what a link carries; `id` is the room it opens; `stageId` is the row it configures.
+			slug: stage.slug,
 			stageId: stage.id,
 			name,
 			order: index,
@@ -510,7 +514,7 @@ async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<D
 async function fetchStages(db: SupabaseClient, projectId: string): Promise<StageRow[]> {
 	const { data, error } = await db
 		.from("project_stages")
-		.select("id, name, sort_order, status")
+		.select("id, slug, name, sort_order, status")
 		.eq("project_id", projectId)
 		.order("sort_order", { ascending: true });
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);

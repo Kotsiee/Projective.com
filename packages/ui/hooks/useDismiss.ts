@@ -10,9 +10,14 @@
  * SIBLING. Testing `panelRef.current.contains(target)` therefore reports a click on the overlay's own
  * child menu as an outside click — which closed the parent modal and, where the modal kept its
  * working copy in a frame cache, discarded the edit in progress. Containment is delegated to
- * {@link isWithinOverlay}, which counts this overlay's panel, its trigger, and the panel of anything
- * transitively opened FROM it. Every open overlay registers for the whole time it is open, not only
- * while it owns dismissal, because a child is by definition never the parent's `isTop`.
+ * {@link isWithinOverlay}, which counts this overlay's panel, its trigger, and the whole layer —
+ * backdrop included — of anything transitively opened FROM it. Every open overlay registers for the
+ * whole time it is open, not only while it owns dismissal, because a child is by definition never
+ * the parent's `isTop`.
+ *
+ * A nested overlay is linked to its opener by its trigger, else by {@link DismissOptions.hostRef},
+ * else by the overlay that was open when it registered. Passing neither ref is supported and is what
+ * most modals do; passing a host is strictly better where one exists.
  */
 import { useEffect } from "preact/hooks";
 import type { RefObject } from "preact";
@@ -26,6 +31,17 @@ export interface DismissOptions {
 	panelRef: RefObject<HTMLElement>;
 	/** The trigger element — clicks here are ignored (its own handler toggles). */
 	triggerRef?: RefObject<HTMLElement>;
+	/**
+	 * An element this overlay renders IN PLACE — not portalled — for a surface opened from state
+	 * rather than from one particular control.
+	 *
+	 * A modal usually has no `triggerRef`: it is opened by a signal, often from a menu item that
+	 * unmounts as the modal appears, so there is no live element tying it to its opener. Ownership
+	 * then falls back to open order, which is right in practice but weaker than the DOM. A host node
+	 * makes the link exact again — the asset picker renders one inside the tab that mounted it, so it
+	 * is provably the ticket modal's child however many other overlays opened in between.
+	 */
+	hostRef?: RefObject<HTMLElement>;
 	/** Close on Escape (default true). */
 	closeOnEscape?: boolean;
 	/** Close on outside pointer (default true). */
@@ -49,6 +65,7 @@ export function useDismiss(opts: DismissOptions): void {
 		onDismiss,
 		panelRef,
 		triggerRef,
+		hostRef,
 		closeOnEscape = true,
 		closeOnOutside = true,
 		enabled = true,
@@ -65,8 +82,9 @@ export function useDismiss(opts: DismissOptions): void {
 		return registerOverlay(id, {
 			panel: () => panelRef.current ?? null,
 			trigger: () => triggerRef?.current ?? null,
+			host: () => hostRef?.current ?? null,
 		});
-	}, [open, id, panelRef, triggerRef]);
+	}, [open, id, panelRef, triggerRef, hostRef]);
 
 	/*
 	 * The two channels are gated DIFFERENTLY, because they fail in opposite directions.

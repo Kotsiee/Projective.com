@@ -26,6 +26,7 @@ import {
 	shapeLocked,
 	STAGE_PRICE_LOCK_REASON,
 	stagePredecessorOptions,
+	stageTimingApplies,
 	structureForStages,
 	wouldCycle,
 } from "./setup.ts";
@@ -856,5 +857,53 @@ Deno.test("a stage the base does not know has onboarded nobody", () => {
 		{ stages: [staffed("s1", 0, 2), staffed("stage-draft-9", 1, 7)] },
 	);
 	assertEquals(setup.stages[1].onboardedCount, 0);
+});
+// #endregion
+
+// #region Stage timing
+/**
+ * When the timing group is worth asking about.
+ *
+ * Every control it holds is relative — where this stage sits among the others — so on a run with no
+ * others the whole group is an affordance nothing reads. The two ways to get there are independent,
+ * and each of these pins one of them, because a fix written against either alone leaves the other
+ * shipping a dead control.
+ */
+Deno.test("a run with two or more stages asks about timing", () => {
+	assert(stageTimingApplies("standard", [priced("a", 0, 1), priced("b", 1, 1)]));
+	assert(stageTimingApplies("one_off", [priced("a", 0, 1), priced("b", 1, 1)]));
+});
+
+Deno.test("one stage has nothing to be sequenced against", () => {
+	assertFalse(stageTimingApplies("standard", [priced("only", 0, 1)]));
+	assertFalse(stageTimingApplies("standard", []));
+});
+
+Deno.test("a structure that does not use stages never asks, however many rows it kept", () => {
+	// The case a row count alone gets wrong. Turning stages OFF leaves the old rows in place — deleting
+	// them would destroy their tickets and submissions — so this shape routinely carries several while
+	// the surface speaks about one, and it has no sequence for any of them to sit in.
+	const leftovers = [priced("root", 0, 250_00), priced("left", 1, null), priced("over", 2, null)];
+	assertFalse(stageTimingApplies("single_stage", leftovers));
+	assertFalse(stageTimingApplies("single_task", leftovers));
+});
+
+Deno.test("stage timing tracks the has-stages toggle in both directions", () => {
+	// Read through `structureForStages` rather than against literals, so the predicate and the toggle
+	// that drives it cannot drift apart: whatever structure the toggle produces is the one tested.
+	const stages = [priced("a", 0, 1), priced("b", 1, 1)];
+	assert(stageTimingApplies(structureForStages(true, "pipeline"), stages));
+	assertFalse(stageTimingApplies(structureForStages(false, "pipeline"), stages));
+	assert(stageTimingApplies(structureForStages(true, "one_off"), stages));
+	assertFalse(stageTimingApplies(structureForStages(false, "one_off"), stages));
+});
+
+Deno.test("stage timing agrees with hasStages wherever hasStages has an opinion", () => {
+	// Not a restatement: it pins that the count is the ONLY thing this adds. If the two ever disagree
+	// on a multi-stage run, one of them has grown a rule the other does not know about.
+	const many = [priced("a", 0, 1), priced("b", 1, 1)];
+	for (const structure of ["standard", "one_off", "single_stage", "single_task"] as const) {
+		assertEquals(stageTimingApplies(structure, many), hasStages(structure));
+	}
 });
 // #endregion

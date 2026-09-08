@@ -31,6 +31,18 @@ export const BoardService = {
 	},
 
 	/**
+	 * One ticket by its `tkt-…` slug, with the board it belongs to — the `?tkv=` deep link's read.
+	 *
+	 * The whole board comes back beside the card because the modal cannot render from a card alone
+	 * (it shows the engagement's stages, roster and sibling load), and the deep link is opened from
+	 * pages that hold none of that.
+	 */
+	ticket(slug: string): Promise<ProjectsResult<{ page: BoardPage; card: BoardCard }>> {
+		const qs = new URLSearchParams({ slug });
+		return getProjects<{ page: BoardPage; card: BoardCard }>(`/api/projects/ticket?${qs}`);
+	},
+
+	/**
 	 * Create or replace one ticket.
 	 *
 	 * The payload carries the client's optimistic `clientId` so the answer can be matched back to the

@@ -213,12 +213,7 @@
 	text-align: start;
 	font: inherit;
 	color: var(--on-surface);
-	cursor: pointer;
-}
-
-.tkt:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
+	/* Cursor + focus ring belong to the KanbanCard root, which is the interactive element. */
 }
 
 .tkt[data-priority="danger"] {
@@ -348,6 +343,55 @@
 	border-radius: var(--radius-full);
 	border: 1.5px dashed var(--border-subtle, color-mix(in srgb, var(--outline) 40%, transparent));
 }
+
+/*
+ * Funding state. "Unpaid" is a lifecycle status the client must act on, so it earns a container
+ * (§B.11.3); "Paid" is redundant with the price beside it and is an icon-only mark, so the foot
+ * never carries two adjacent fills. Ink is the role colour mixed toward `--on-surface`, which is
+ * self-correcting in both themes (Decision #76(6)) where the raw role ink measures ~3.2:1 in light.
+ */
+.tkt__pay {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.tkt__pay--unpaid {
+	padding: 0 0.4rem;
+	border-radius: var(--radius-full);
+	font-size: 0.625rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	background: color-mix(in srgb, var(--warning) var(--tint-strong), transparent);
+	color: color-mix(in srgb, var(--warning) 60%, var(--on-surface));
+}
+
+.tkt__pay--paid {
+	color: color-mix(in srgb, var(--success) 70%, var(--on-surface));
+}
+
+.tkt__pay:focus-visible,
+.tkt__lock:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-sm);
+}
+
+/* The client's drag lock — a glyph beside the title; the reason lives in its tooltip (§B.6). */
+.tkt__lock {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	margin-inline-start: auto;
+	color: var(--text-secondary);
+}
+
+/* A described ticket sitting in a stage nobody has paid for reads as parked, not as live work. */
+.tkt[data-unpaid] .tkt__budget {
+	color: var(--text-secondary);
+}
 /* #endregion */
 
 /* #region List view */
@@ -439,6 +483,17 @@
 .brd-list__draft {
 	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 	color: var(--text-secondary);
+}
+
+.brd-list__pay {
+	flex: none;
+	margin-inline-start: var(--space-2);
+	padding: 1px 0.45rem;
+	border-radius: var(--radius-full);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	background: color-mix(in srgb, var(--warning) var(--tint-strong), transparent);
+	color: color-mix(in srgb, var(--warning) 60%, var(--on-surface));
 }
 
 .brd-list__lane {

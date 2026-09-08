@@ -12,6 +12,7 @@ import "../styles/submission-explorer.css";
 import "../styles/submission-card.css";
 import "../styles/file-card.css";
 import { Gantt, type GanttItem, type GanttRange } from "@projective/ui/gantt";
+import { isSlug } from "@projective/types/slugs";
 import { Button } from "@projective/ui/fields";
 import {
 	type BoardCard,
@@ -26,6 +27,7 @@ import { TicketView } from "../components/ticket/TicketView.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { newTicketCard, reconcileCard, ticketCommitPayload } from "../core/ticket-model.ts";
 import { type TicketMode, ticketStack, ticketSubmissionHref } from "../core/ticket-view.ts";
+import { registerTicketSurface } from "../core/ticket-link.ts";
 import {
 	type BoardAccess,
 	readDevSeam,
@@ -109,7 +111,18 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	useEffect(() => {
 		restoreTimelineZoom();
 		if (!initial) void loadFallback();
+		// The page's ticket surface for the `?tkv=` deep link: a link opened here lands on this chain
+		// with this board's cards (the board island registers the same way).
+		const unregister = registerTicketSurface({
+			openBySlug: (slug) => {
+				const card = cardsOf().find((c) => c.slug === slug);
+				if (!card) return false;
+				openDetail(card.id);
+				return true;
+			},
+		});
 		return () => {
+			unregister();
 			resetTimelineState();
 			ticketStack.close();
 		};
@@ -201,7 +214,10 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 
 	// #region Ticket modal (the board's chain, verbatim)
 	function openDetail(ticketId: string): void {
-		ticketStack.open("ticket", ticketId, { ticketId });
+		// The slug rides the frame so the deep-link host can write `?tkv=` for it (the board does the
+		// same); a card the board does not hold, or one without an address yet, opens unaddressed.
+		const slug = cardsOf().find((c) => c.id === ticketId)?.slug;
+		ticketStack.open("ticket", ticketId, { ticketId, slug });
 	}
 
 	/** Start composing a ticket in `stageId` (or the backlog), optionally already dated. */
@@ -214,14 +230,14 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		ticketStack.open("ticket", blank.id, { ticketId: blank.id, mode: "create" });
 	}
 
-	function repointFrame(fromId: string, toId: string, mode: TicketMode): void {
+	function repointFrame(fromId: string, toId: string, mode: TicketMode, slug?: string): void {
 		const top = ticketStack.top.value;
 		if (!top || top.kind !== "ticket") return;
 		if ((top.input?.ticketId ?? top.id) !== fromId) return;
 		ticketStack.replace(
 			"ticket",
 			toId,
-			mode === "create" ? { ticketId: toId, mode } : { ticketId: toId },
+			mode === "create" ? { ticketId: toId, mode } : { ticketId: toId, slug },
 		);
 	}
 
@@ -251,7 +267,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			patchBoard((b) => ({ ...b, cards: b.cards.map((c) => (c.id === optimisticId ? saved : c)) }));
-			if (saved.id !== optimisticId) repointFrame(optimisticId, saved.id, "view");
+			if (saved.id !== optimisticId) repointFrame(optimisticId, saved.id, "view", saved.slug);
 			return;
 		}
 
@@ -278,6 +294,10 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 					...b.stages,
 					{
 						id: `stage-draft-${order}`,
+						// Deliberately NOT a `stg-…` shape. This stage does not exist yet, so it has no
+						// address, and `isSlug` refusing this placeholder is what stops anything linking
+						// to a URL the server has never minted.
+						slug: `stage-draft-${order}`,
 						name: stage.name,
 						order,
 						status: "draft",
@@ -336,7 +356,14 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 			return;
 		}
 		if (wire.subject === "stage" && wire.stageId && scope === "project") {
-			globalThis.location.href = `/projects/${props.projectId}/${wire.stageId}/timeline`;
+			// The stage's ROUTE address, resolved from the board this timeline was built over. `stageId`
+			// is a `projects.project_stages` uuid, which the channel route does not resolve — building a
+			// path out of it produced a link that rendered, hovered and reached nothing. Absent the
+			// stage, no navigation at all: a jump to a URL known not to resolve is worse than a no-op.
+			const stageSlug = page.value?.board.stages.find((s) => s.id === wire.stageId)?.slug;
+			if (stageSlug && isSlug(stageSlug, "stage")) {
+				globalThis.location.href = `/projects/${props.projectId}/${stageSlug}/timeline`;
+			}
 		}
 	}
 	// #endregion
@@ -426,7 +453,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 					)}
 			</div>
 
-			{frame?.kind === "ticket" && viewing
+			{frame?.kind === "ticket" && viewing && !frame.input?.standalone
 				? (
 					<TicketView
 						key={frame.uid}

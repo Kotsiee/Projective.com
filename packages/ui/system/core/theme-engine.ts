@@ -78,7 +78,7 @@ const HC_DELTA = 12;
  * Do not re-map either token inside a mode branch, and do not "fix" the pair by widening it: any
  * alternate tone mapping is exactly the drift these constants exist to prevent.
  */
-const BRAND_TONE = 55;
+const BRAND_TONE = 45;
 const BRAND_ON_TONE = 98;
 // #endregion
 
@@ -109,24 +109,61 @@ function onTone(t: number, highContrast: boolean, dark: boolean): number {
 }
 
 /**
- * Build the canonical focus-ring shadow: a TWO-TONE ring (halo against the control, ring against the
- * page). This is the same technique the browser's own `outline: auto` uses, and it is not stylistic.
+ * An ARGB tone at a given alpha, as `rgba()`.
  *
- * A single-color ring cannot satisfy WCAG 2.2 SC 2.4.11 here, by computation rather than by opinion.
- * The ring abuts two different colors at once — the control's fill on the inside, the page on the
- * outside — and must clear 3:1 against both. Measured against this seed: a near-white ring (the only
- * value that works on the dark page) lands at 1.34:1 on `--primary` in dark mode, and a near-black
- * ring (the only value that works on the light page) lands at 2.65:1 on `--danger` in light mode.
- * There is no third color that rescues both, because accent fills sit on both sides of mid-tone.
- *
- * Two tones of OPPOSITE polarity remove the dependency entirely: whatever sits behind the indicator,
- * one of the two contrasts with it. The halo is drawn first (touching the control), the ring outside
- * it (touching the page), so neither has to work alone.
+ * `color-mix()` is not usable here: this string is emitted into a `box-shadow` custom property that
+ * the browser resolves in contexts where the mix's own percentage would have to come through a
+ * `var()`, and this engine drops a `color-mix` whose percentage is not a literal. A resolved `rgba()`
+ * has no such dependency and composites identically.
  */
-function focusShadow(halo: string, ring: string, hc: boolean, inset = false): string {
+function rgba(argb: number, alpha: number): string {
+	return `rgba(${(argb >> 16) & 255}, ${(argb >> 8) & 255}, ${argb & 255}, ${alpha})`;
+}
+
+/**
+ * Build the canonical focus-ring shadow: a GAP, a thin brand ring, and an outer glow.
+ *
+ * The structure is still TWO TONES of opposite polarity, and that is not stylistic — it is what makes
+ * the indicator satisfy WCAG 2.2 SC 2.4.11 by computation rather than by opinion. A box-shadow ring
+ * has no `outline-offset` available to it, so its innermost layer necessarily abuts the control's own
+ * fill while its outermost abuts the page, and it must clear 3:1 against both. No single color does:
+ * measured against this seed, a near-white ring lands at 1.34:1 on `--primary` in dark, and a
+ * near-black one at 2.65:1 on `--danger` in light, because accent fills sit on both sides of mid-tone.
+ *
+ * So the halo keeps its job — drawn first, touching the control, in the neutral pole opposite the
+ * page — and reads as the offset gap, since it resolves to very nearly the page color on an ordinary
+ * surface. What changed (2026-09-07) is the OUTER tone: it is now `--secondary` rather than neutral
+ * ink, which is what turns the old heavy black/white band into a refined brand ring. That is safe
+ * because the outer tone only ever abuts the PAGE, and `--secondary` measures 5.23:1 at worst against
+ * the surface ramp in light and 9.61:1 in dark (`theme-engine.test.ts` pins every state). It reads as
+ * a ring rather than a smudge because it also clears 6.43:1 / 11.30:1 against the halo beneath it.
+ *
+ * Polarity is preserved, which is the property the whole scheme rests on: `--secondary` is DARK in
+ * light mode and LIGHT in dark mode, exactly as the neutral ink it replaces was, so the pair still
+ * straddles mid-tone and one of the two always contrasts with whatever sits behind the indicator.
+ *
+ * The glow is decorative and carries no contrast duty — the solid ring above it does. Its spread is
+ * therefore not a free parameter: a box-shadow layer paints from the border box outward and earlier
+ * layers cover later ones, so a glow with less spread than the ring's outer edge is drawn entirely
+ * underneath it and is invisible. It is pinned to that edge and blurs outward from there.
+ */
+function focusShadow(halo: string, ring: string, glow: string, hc: boolean, inset = false): string {
 	const i = inset ? "inset " : "";
-	const [a, b] = hc ? [3, 6] : [2, 4];
-	return `${i}0 0 0 ${a}px ${halo}, ${i}0 0 0 ${b}px ${ring}`;
+	// Gap, then the ring's outer edge — so the ring is `edge - gap` thick: 1px normally, 2px under high
+	// contrast, which widens the indicator for a reader who asked for more of it as well as its tone.
+	//
+	// 1px rather than the 1.5px this was first written at, and the reason is a rendering fact rather
+	// than a preference. The ring ships through TWO mechanisms — this shadow, and the `outline` the base
+	// rule draws — and a browser FLOORS `outline-width` to whole device pixels while it antialiases a
+	// box-shadow spread freely. Measured in Chrome at DPR 1: `outline-width: 1.5px` computes to `1px`
+	// (so does 1.25px, and so does 1.75px), while a 1.5px shadow ring paints at 1.5px. At 1.5px the two
+	// mechanisms therefore drew visibly different rings on the same screen. Whole numbers agree
+	// everywhere. Keep this in step with `--focus-ring-w` in `styles/index.css` — the contract test in
+	// `theme-engine.test.ts` reads that file and fails if the two drift apart.
+	const [gap, edge] = hc ? [2, 4] : [2, 3];
+	const ringLayers = `${i}0 0 0 ${gap}px ${halo}, ${i}0 0 0 ${edge}px ${ring}`;
+	// An inset ring has no outside to glow into, so it is composed without one.
+	return inset ? ringLayers : `${ringLayers}, 0 0 5px ${edge}px ${glow}`;
 }
 // #endregion
 
@@ -141,12 +178,22 @@ export function buildScheme(
 	const core = CorePalette.of(argbFromHex(seed));
 	const hc = highContrast;
 	const hx = (argb: number) => hexFromArgb(argb);
-	// Focus indicator: neutral ink + its opposite. Deliberately NOT accent-derived — the previous
-	// `rgba(a1.tone(…), 0.4)` was the same hue as `--primary`, so focusing a primary button drew the
-	// ring in the button's own color at 1.00:1 (dark) / 1.07:1 (light). Invisible exactly where it
-	// mattered most. Neutral also keeps the indicator readable when the seed is re-themed.
-	const ringInk = hx(core.n1.tone(dark ? 98 : 4));
+	// Focus indicator. The HALO stays neutral and stays opposite the page: it touches the control, it
+	// reads as the offset gap on an ordinary surface, and it is the tone that rescues the indicator on
+	// an accent fill. The RING is `--secondary` — the same expression as the token itself, so the two
+	// can never drift — and it is safe there because a ring only ever abuts the page (5.23:1 worst in
+	// light, 9.61:1 in dark; pinned in `theme-engine.test.ts`).
+	//
+	// Deliberately NOT `--primary`, and this is the trap worth remembering: the pre-2026-07-30 ring was
+	// `rgba(a1.tone(…), 0.4)`, the same hue as `--primary`, so focusing a primary button drew the ring
+	// in the button's own color at 1.00:1 (dark) / 1.07:1 (light) — invisible exactly where it mattered
+	// most. `a2` is a different palette from `a1`, and the halo beneath it is the neutral pole, so
+	// neither failure returns. Unlike the neutral ink it replaces, the ring takes `fg()`, so it widens
+	// with the high-contrast overlay instead of opting out of it.
+	const ringInk = hx(core.a2.tone(dark ? fgTone(80, hc, dark) : fgTone(40, hc, dark)));
 	const ringHalo = hx(core.n1.tone(dark ? 4 : 100));
+	// The glow is the ring at low alpha — one hue for the whole indicator, so a re-theme moves both.
+	const ringGlow = rgba(core.a2.tone(dark ? fgTone(80, hc, dark) : fgTone(40, hc, dark)), 0.35);
 	/** Foreground roles: text, accents, outlines — everything drawn ON a surface. */
 	const fg = (t: number) => fgTone(t, hc, dark);
 	/** `on-` roles: text drawn on a FILLED role, so its background moves the other way. */
@@ -203,8 +250,9 @@ export function buildScheme(
 			"--scrim-tint": "62%",
 			"--focus-ring": ringInk,
 			"--focus-ring-halo": ringHalo,
-			"--focus-ring-shadow": focusShadow(ringHalo, ringInk, hc),
-			"--focus-ring-shadow-inset": focusShadow(ringHalo, ringInk, hc, true),
+			"--focus-ring-tint": ringGlow,
+			"--focus-ring-shadow": focusShadow(ringHalo, ringInk, ringGlow, hc),
+			"--focus-ring-shadow-inset": focusShadow(ringHalo, ringInk, ringGlow, hc, true),
 		}
 		: {
 			// The same two constants as the dark branch, and deliberately not `fg()`/`on()`. See
@@ -236,8 +284,9 @@ export function buildScheme(
 			"--scrim-tint": "42%",
 			"--focus-ring": ringInk,
 			"--focus-ring-halo": ringHalo,
-			"--focus-ring-shadow": focusShadow(ringHalo, ringInk, hc),
-			"--focus-ring-shadow-inset": focusShadow(ringHalo, ringInk, hc, true),
+			"--focus-ring-tint": ringGlow,
+			"--focus-ring-shadow": focusShadow(ringHalo, ringInk, ringGlow, hc),
+			"--focus-ring-shadow-inset": focusShadow(ringHalo, ringInk, ringGlow, hc, true),
 		};
 
 	// Fixed-hue semantic ramps + their on- pairs. These take `hc` too: without it success/warning/

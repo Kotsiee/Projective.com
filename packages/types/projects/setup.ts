@@ -914,6 +914,40 @@ export function pricedStages(
 	return hasStages(structure) ? stages : stages.slice(0, 1);
 }
 
+/**
+ * Whether a stage has any timing left to configure, or whether the question is meaningless here.
+ *
+ * Every control in the timing group is RELATIVE: `Starts` chooses between running alongside the
+ * project and running after something else, and `Starts with` / `Delay` name that something and the
+ * lag from it. All three ask where a stage sits among OTHER stages, so a run with nothing else in it
+ * has no answer to give, and a control rendered anyway is a live affordance whose value the board
+ * never reads (§3 gate 11).
+ *
+ * There are two independent ways to arrive there, and NEITHER implies the other — which is why this
+ * reads the structure and the count rather than either alone:
+ *
+ *  - The engagement does not break its work into stages (`single_stage`, `single_task`). Its one root
+ *    stage IS the work, so it begins when the project does and waits for nothing.
+ *  - It does use stages, and has exactly one. This is the ordinary state of a run somebody has just
+ *    started building, and it resolves itself the moment they add a second.
+ *
+ * A project whose owner turned stages OFF keeps every row it already had — deleting them would
+ * destroy their tickets and submissions, the same reason {@link pricedStages} slices rather than
+ * filters — so `!hasStages` is routinely true with several stages present, and a count alone would
+ * keep offering timing on a shape that has no sequence. A `standard` run genuinely can be one stage
+ * long, so the structure alone would keep offering it there.
+ *
+ * It is one function rather than a test restated per surface because the accordion on the project
+ * page and the standalone stage Details tab render the same fields, and a group that appeared on one
+ * and not the other would be exactly the drift that sharing the component exists to prevent.
+ */
+export function stageTimingApplies(
+	structure: ProjectStructure,
+	stages: readonly StageSetup[],
+): boolean {
+	return hasStages(structure) && stages.length > 1;
+}
+
 // #region Post-onboarding immutability
 /**
  * post-onboarding immutability — which terms stop being the client's to change once a provider has

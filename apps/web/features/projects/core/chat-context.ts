@@ -12,8 +12,14 @@
 // #region Link builder
 /**
  * Build the in-project href for a channel: `/projects/{projectId}/{channelId}`. `projectId` is the
- * engagement's route slug; `channelId` is the channel's short route segment (e.g. `general`,
- * `stage-2`, `dm-mara`).
+ * engagement's route slug.
+ *
+ * The second segment is POLYMORPHIC, and the caller decides which key it passes. A **stage** is
+ * addressed by its own `stg-…` slug — never by the id of the room it opens, which is a
+ * `comms.project_channels` uuid that says nothing about what it addresses and is provisioned lazily,
+ * so a link built from it cannot exist until somebody has already been there. Everything else carries
+ * its own channel id (`general`, a team room's id, a DM's unified `dm-mara`). The prefix is what keeps
+ * the two apart with no lookup: a stage slug is not a legal uuid and a uuid is not a legal slug.
  */
 export function channelHref(projectId: string, channelId: string): string {
 	return `/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(channelId)}`;

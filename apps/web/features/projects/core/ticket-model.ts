@@ -77,6 +77,8 @@ export function newTicketCard(
 		claimed: false,
 		claimedAt: null,
 		escrowHeld: false,
+		paymentScope: "unpaid",
+		paidStageIds: [],
 		priority: "normal",
 		intensity: "standard",
 		workload: 0,

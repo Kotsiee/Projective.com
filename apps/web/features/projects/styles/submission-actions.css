@@ -181,9 +181,10 @@
 	font: inherit;
 	font-size: 0.875rem;
 }
-.subm-modal__input:focus {
+.subm-modal__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
+	box-shadow: var(--focus-ring-shadow);
 }
 .subm-modal__revtag {
 	display: inline-flex;

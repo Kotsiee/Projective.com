@@ -8,21 +8,49 @@
  */
 
 /* #region Preview / Edit header band (client, in `ui-middle-nav__header`) */
+/*
+ * Three columns, and the outer two are `minmax(0, 1fr)` so they resolve to the SAME width whatever
+ * either side happens to hold. That is the whole reason this is a grid and not a flex row: under
+ * `space-between` the bar sat wherever the title's width left it — measured on a 930px band, a
+ * two-character name put its centre 82px left of the band's, a 21-character one 14px left, and a long
+ * one pushed it 193px RIGHT while crushing its track from 352px to 53px, because a flex row lets a
+ * growing sibling take space from a shrinkable one. Equal `fr` tracks cannot do that: the leftover is
+ * split in two before either side sees it, so the middle track is centred by construction and the
+ * sides are what remains, rather than the middle being what the sides leave over.
+ *
+ * `minmax(0, 1fr)` rather than a bare `1fr`, because a `1fr` track's automatic minimum is `auto` — one
+ * long unbreakable title would set a floor the track then refuses to go below, which is the same bug
+ * again in a grid's clothing.
+ *
+ * `container-type: inline-size` measures THIS BAND, not the window. The band is the middle-nav content
+ * column and the shell spends ~350px on the rail and lane before it starts (measured: a 1280px
+ * viewport gives a 930px band), so a viewport media query here reads a box a third wider than the one
+ * actually running out of room. Safe for the locked tab's `Tooltip`: every `@projective/ui` overlay
+ * renders its panel through `BodyPortal`, so the panel is a sibling of `<body>` and never a descendant
+ * whose containing block this could re-base.
+ */
 .proj-pvhead {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
+    column-gap: var(--space-4);
     block-size: var(--shell-midnav-header-h, 3rem);
     padding-inline: var(--space-4);
     background: var(--surface-1);
+    container: pvhead / inline-size;
 }
 
+/*
+ * `overflow: hidden` alongside the zero minimum, so the column can be narrower than the name inside it
+ * and the title's own ellipsis has an edge to truncate against. Without the zero minimum the item's
+ * automatic minimum is its content, and it would push out of its track rather than clip inside it.
+ */
 .proj-pvhead__id {
     display: flex;
     flex-direction: column;
     justify-content: center;
     min-inline-size: 0;
+    overflow: hidden;
     line-height: 1.15;
 }
 
@@ -39,7 +67,13 @@
 .proj-pvhead__tabs {
     display: inline-flex;
     align-items: stretch;
-    block-size: 100%;
+    /*
+     * Flush to the trailing edge of its own track, and the full height of the band so the 2px active
+     * underline still lands on the bottom hairline — the grid centres its items, and a tab shorter
+     * than the band gives `inset-block-end: -1px` nothing to sit against.
+     */
+    justify-self: end;
+    align-self: stretch;
     flex: none;
 }
 

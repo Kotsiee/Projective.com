@@ -11,6 +11,7 @@ import type {
 } from "@projective/types/projects";
 import { allProjects } from "./fixtures.ts";
 import { matchesProjectKey } from "./project-identity.ts";
+import { SLUG_ALPHABET, SLUG_BODY_LENGTH, SLUG_PREFIXES } from "@projective/types/slugs";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
@@ -51,6 +52,40 @@ function hash(slug: string): number {
 	let h = 0;
 	for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
 	return h;
+}
+
+/**
+ * An avalanche over {@link hash}, so nearby seeds do not produce nearby outputs.
+ *
+ * `hash` multiplies by 31, and 31 is 1 mod 3 — so seeds differing by a trailing digit walk a small
+ * modulus in lockstep, and any stride through them lands on one residue forever. That has already
+ * cost this codebase a whole class of fixture (the scheduling corpus lost every pending ballot to
+ * exactly this). Mixing before taking a modulus is what makes consecutive stage indices independent.
+ */
+function mix32(h: number): number {
+	h = Math.imul(h ^ (h >>> 16), 0x21f0aaad) >>> 0;
+	h = Math.imul(h ^ (h >>> 15), 0x735a2d97) >>> 0;
+	return (h ^ (h >>> 15)) >>> 0;
+}
+
+/**
+ * A deterministic, WELL-FORMED `stg-…` address for a fixture stage.
+ *
+ * Drawn from {@link SLUG_ALPHABET} at {@link SLUG_BODY_LENGTH} symbols so it satisfies the same
+ * pattern the column's CHECK enforces and `isSlug` tests. That agreement is the point: a fixture slug
+ * of a shape the database would refuse makes the stub MORE permissive than production, and a route
+ * that resolves all through development then 404s the day the gate is turned on.
+ *
+ * Seeded per symbol from the project slug, the stage index and the position, so two stages of one
+ * engagement cannot collide and the corpus is stable across SSR and resume.
+ */
+function fixtureStageSlug(projectSlug: string, index: number): string {
+	let body = "";
+	for (let i = 0; i < SLUG_BODY_LENGTH; i++) {
+		const seed = mix32(hash(`${projectSlug}:stage:${index}:${i}`));
+		body += SLUG_ALPHABET[seed % SLUG_ALPHABET.length];
+	}
+	return `${SLUG_PREFIXES.stage}-${body}`;
 }
 
 /** Pick `n` distinct entries from `pool`, offset by the slug hash (stable, wraps). */
@@ -150,6 +185,10 @@ function stageChannels(row: ProjectSummary): StageChannel[] {
 		const name = STAGE_NAMES[i] ?? `Stage ${i + 1}`;
 		out.push({
 			id: `stage-${i}`,
+			// A REAL `stg-…` address, not `stage-${i}`. The route resolves a stage by this, so a fixture
+			// carrying a shape the column's CHECK would refuse is a stub that routes where production
+			// does not.
+			slug: fixtureStageSlug(row.slug, i),
 			// Equal to `id` here, and deliberately still written out. The stub's channel and its stage
 			// are one row, so the two keys coincide — but a consumer that read `id` because the fixture
 			// let it would break the moment it met a real `comms` channel id.

@@ -970,10 +970,12 @@ body:has(.auth) {
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
 
-.auth-otp__box:focus {
+.auth-otp__box:focus-visible {
 	outline: none;
 	background: var(--surface);
-	box-shadow: 0 0 0 2px var(--primary), var(--elevation-low);
+	/* Was a bespoke `0 0 0 2px var(--primary)`, which is the single-tone ring the canonical token
+	   exists to replace: it abuts the box fill on the inside with nothing to separate it. */
+	box-shadow: var(--focus-ring-shadow), var(--elevation-low);
 }
 
 .auth-otp.is-invalid .auth-otp__box {

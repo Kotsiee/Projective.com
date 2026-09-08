@@ -301,6 +301,32 @@ read via `projects.has_project_access` (the brief is what a participant works ag
 owner-only. See [Policies.md](Policies.md). Note that admitting a **link** never admits a **file** —
 the bytes are governed separately by `files.fn_can_read`.
 
+### `projects.tickets`
+
+The unit of work a client commissions and a freelancer claims. Its lifecycle columns (`status`,
+`current_stage_id`, `claimed_at`, `payment_status`, `unit_price_cents`) are written only by the
+`SECURITY DEFINER` ticket RPCs; the board's commit writes the client-owned content.
+
+| Column | Type        | Notes                                                                   |
+| :----- | :---------- | :---------------------------------------------------------------------- |
+| `slug` | text UNIQUE | **The public address.** `tkt-` + 10 symbols. Minted once, immutable.   |
+
+**The slug is the deep link, not a path.** A ticket is opened by `?tkv=<slug>` on whichever page the
+viewer is already on (the modal is global — `apps/web/features/projects/islands/TicketDeepLinkHost`),
+so unlike a project or stage it has no route segment of its own. It is globally unique for the same
+reason a stage's is: the link arrives with no project alongside it and must name exactly one row.
+Same contract as `projects.projects.slug` — `NOT NULL` with **no** `DEFAULT`, filled and pinned by
+`security.fn_slug_guard('tkt')` (`00001890_triggers_slugs.sql`), shaped by `ck_tickets_slug_shape`
+(`^tkt-[23456789abcdefghjkmnopqrstuvwxyz]{10}$`), cross-checked against `@projective/types/slugs` by
+`slug.contract.test.ts`. Because every insert passes through the trigger, a ticket created by any
+path — the board's PostgREST insert, `projects.create_project`'s seeding, a future RPC — is
+addressable from the moment it exists, and there is no backfill to run on a reset-driven schema.
+
+Read by `/api/projects/ticket?slug=` (`ProjectBackendService.ticket`), which resolves the ticket's
+project under the caller's own JWT and then performs the ordinary board read — so RLS on this table
+and the board's participant scoping make the access decision, and a ticket the viewer may not open
+is reported with the same words as one that does not exist.
+
 ### `projects.ticket_history`
 
 The ticket audit log: who moved what, when, and out of which status. Every row is written by a

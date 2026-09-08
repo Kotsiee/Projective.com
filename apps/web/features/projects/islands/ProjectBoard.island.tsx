@@ -26,7 +26,10 @@ import {
 	type BoardStageRef,
 	type BoardView,
 	buildBoardColumns,
+	providerVisibleCards,
+	ticketPaidHere,
 	type TicketStatus,
+	ticketWorkLocked,
 } from "../types/projects-types.ts";
 import {
 	assigneeOptions,
@@ -65,6 +68,7 @@ import {
 	ticketStack,
 	ticketSubmissionHref,
 } from "../core/ticket-view.ts";
+import { registerTicketSurface, withTicketParam } from "../core/ticket-link.ts";
 import {
 	type BoardAccess,
 	readDevSeam,
@@ -181,8 +185,13 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * restores this on the way back; reading `location` at restore time would read whatever the chain
 	 * itself last wrote.
 	 */
+	// Captured WITHOUT any `?tkv=` the page arrived with: the deep-link host re-adds the parameter for
+	// whichever ticket is on top when the chain returns here, so a stale one baked into this string
+	// would put the wrong address back after a review.
 	const boardUrl = useRef(
-		typeof location === "undefined" ? "" : location.pathname + location.search,
+		typeof location === "undefined"
+			? ""
+			: withTicketParam(location.pathname + location.search, null),
 	).current;
 	const pending = useSignal<PendingWarning | null>(null);
 	const warningVisible = useSignal(false);
@@ -215,6 +224,23 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const sortActive = sortKey.value !== "manual";
 	const laneOf = (c: BoardCard) => boardCardColumn(c, grouping, boardKind);
 
+	/**
+	 * Whether the viewer may pick this card up.
+	 *
+	 * A frozen card never moves. The project pipeline is the client's to arrange, so only the client
+	 * drags there — into and out of New and Completed alike, in both the Stages and the Status view;
+	 * on a stage's Tasks board a provider progresses their own work through the status lanes. The
+	 * client's drag is LOCKED while a freelancer is actively working the ticket
+	 * ({@link ticketWorkLocked}). Before a claim the client moves a card wherever they like — paid or
+	 * not, and whether or not anybody has been onboarded yet: payment is a badge, not a barrier.
+	 */
+	const canDrag = (c: BoardCard): boolean => {
+		if (c.frozen) return false;
+		const a = access.value;
+		if (a.isClient) return !ticketWorkLocked(c);
+		return boardKind !== "project";
+	};
+
 	const boardColumns = buildBoardColumns(stages.value, grouping, boardKind);
 	const kanbanColumns: KanbanColumnModel<BoardColumn>[] = boardColumns.map((col) => ({
 		id: col.id,
@@ -225,8 +251,25 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		data: col,
 	}));
 
+	/*
+	 * Provider visibility, re-applied on the client. The server already withheld what this viewer may
+	 * not see, but an optimistic move can carry a per-stage-paid ticket into an unpaid stage, and the
+	 * card has to leave the board at once rather than on the next fetch. Under the Dev Context
+	 * Switcher the simulated `stageAssignment` stands in for the server's onboarding list — the seam
+	 * is a client surface the server never sees (assigned → every stage, unassigned → none). The
+	 * client side is never filtered: a client sees every ticket, paid or not.
+	 */
+	const providerStageIds: readonly string[] = access.value.isClient
+		? []
+		: access.value.simulated
+		? (access.value.stageAssigned ? stages.value.map((s) => s.id) : [])
+		: initial?.viewerStageIds ?? [];
+	const scoped = access.value.isClient
+		? cards.value
+		: providerVisibleCards(cards.value, providerStageIds);
+
 	const visible = sortCards(
-		filterCards(cards.value, {
+		filterCards(scoped, {
 			query: query.value,
 			priorities: priorityFilter.value,
 			assignees: assigneeFilter.value,
@@ -235,18 +278,18 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		sortDir.value,
 	);
 
-	const basketCount = cards.value.filter(
-		(c) => c.hasDescription && !c.claimed && c.status === "backlog",
-	).length;
+	// The basket holds what still needs BUYING: described, unclaimed, and not yet paid for the stage
+	// it sits in. A ticket already paid where it is has nothing to check out, whatever lane it is in.
+	const needsFunding = (c: BoardCard): boolean =>
+		c.hasDescription && !c.claimed && !ticketPaidHere(c);
+	const basketCount = cards.value.filter(needsFunding).length;
 	// #endregion
 
 	// #region Cross-island coordination (publish caps · consume footer intents · cleanup)
 	useSignalEffect(() => {
 		// Re-read `cards` + `access` so the footer republishes as tickets change AND as the developer
 		// flips a persona — the rig is a separate hydration root and this signal is its only input.
-		const basket = cards.value.filter(
-			(c) => c.hasDescription && !c.claimed && c.status === "backlog",
-		).length;
+		const basket = cards.value.filter(needsFunding).length;
 		const a = access.value;
 		publishBoardCaps({
 			isClient: a.isClient,
@@ -292,6 +335,23 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		if (!initial) void loadFallback();
 		return () => resetBoardState();
 	});
+
+	/*
+	 * Volunteer as the page's ticket surface for the `?tkv=` deep link. A link opened on this page
+	 * lands on THIS board's chain, with this board's cards, so a save made through it updates the
+	 * card beside the modal rather than a detached copy; the host only fetches when no surface holds
+	 * the slug. `cards` is peeked because the server has already withheld what this viewer may not
+	 * see — a slug it does not find here is one the host will resolve (and be refused) itself.
+	 */
+	useEffect(() =>
+		registerTicketSurface({
+			openBySlug: (slug) => {
+				const card = cards.peek().find((c) => c.slug === slug);
+				if (!card) return false;
+				openDetail(card);
+				return true;
+			},
+		}), []);
 
 	// The chain is page-local state; leaving the page discards it (and its caches) rather than
 	// leaking frames into whatever mounts next.
@@ -407,6 +467,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			toast("Only the client can move a ticket to Done (confirm delivery).");
 			return;
 		}
+		// The same lock `canDrag` draws. A keyboard drag that was armed before a persona flip, or a
+		// stale board, must refuse here as well — the gate on the handle is not the gate on the write.
+		if (access.value.isClient && ticketWorkLocked(card)) {
+			toast("A freelancer is working this ticket — it can be moved once the work is handed back.");
+			return;
+		}
 		const kind = classifyMove(card, move.fromColumn, move.toColumn, boardColumns);
 		if (kind === "free") {
 			void commitMove(move);
@@ -441,7 +507,9 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * to a ticket the viewer was never looking at.
 	 */
 	function openDetail(card: BoardCard): void {
-		ticketStack.open("ticket", card.id, { ticketId: card.id });
+		// The slug rides the frame so the deep-link host can write `?tkv=` for it; a card without one
+		// (an optimistic row) opens with no address and the host withholds the parameter.
+		ticketStack.open("ticket", card.id, { ticketId: card.id, slug: card.slug });
 	}
 
 	/**
@@ -480,7 +548,13 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			ticketStack.close();
 			return;
 		}
-		setUrl(boardUrl);
+		// The board's address PLUS the restored ticket's `?tkv=`. The deep-link host writes that
+		// parameter the instant `back()` lands, synchronously, onto the review's URL — so this write,
+		// which runs after it, has to carry the parameter itself or it would strip what the host just
+		// put there.
+		const restored = ticketStack.top.peek();
+		const slug = restored?.kind === "ticket" ? restored.input?.slug ?? null : null;
+		setUrl(withTicketParam(boardUrl, slug));
 	}
 
 	/**
@@ -527,14 +601,16 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * still SHOWING the id being replaced: by the time the server answers the reader may have closed
 	 * the modal or opened another ticket, and re-pointing then would haul them back.
 	 */
-	function repointFrame(fromId: string, toId: string, mode: TicketMode): void {
+	function repointFrame(fromId: string, toId: string, mode: TicketMode, slug?: string): void {
 		const top = ticketStack.top.value;
 		if (!top || top.kind !== "ticket") return;
 		if ((top.input?.ticketId ?? top.id) !== fromId) return;
+		// The address arrives only with the server's card — a draft and an optimistic row have none,
+		// so re-pointing at either leaves the frame unaddressed and the URL without a parameter.
 		ticketStack.replace(
 			"ticket",
 			toId,
-			mode === "create" ? { ticketId: toId, mode } : { ticketId: toId },
+			mode === "create" ? { ticketId: toId, mode } : { ticketId: toId, slug },
 		);
 	}
 
@@ -572,7 +648,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			cards.value = cards.value.map((c) => (c.id === optimisticId ? saved : c));
-			if (saved.id !== optimisticId) repointFrame(optimisticId, saved.id, "view");
+			if (saved.id !== optimisticId) repointFrame(optimisticId, saved.id, "view", saved.slug);
 			return;
 		}
 
@@ -592,6 +668,9 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			...stages.value,
 			{
 				id: `stage-draft-${order}`,
+				// Deliberately NOT a `stg-…` shape — an unsaved stage has no address yet, and `isSlug`
+				// refusing this placeholder is what stops anything linking to a URL that does not exist.
+				slug: `stage-draft-${order}`,
 				name: stage.name,
 				order,
 				status: "draft",
@@ -710,7 +789,13 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 							getItemId={(c) => c.id}
 							getItemColumn={laneOf}
 							getItemLabel={(c) => c.title}
-							renderItem={(c) => <TicketCard card={c} onOpen={openDetail} />}
+							renderItem={(c) => (
+								<TicketCard
+									card={c}
+									lockedForClient={access.value.isClient && ticketWorkLocked(c)}
+								/>
+							)}
+							onItemActivate={openDetail}
 							renderColumnHeader={(ctx) => (
 								<BoardColumnHeader
 									ctx={ctx}
@@ -719,8 +804,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 									onCreate={openCreateForColumn}
 								/>
 							)}
-							itemDraggable={(c) =>
-								(boardKind === "project" ? access.value.isClient : true) && !c.frozen}
+							itemDraggable={canDrag}
 							onItemMove={onItemMove}
 							onColumnMove={onColumnMove}
 							columnsReorderable={boardKind === "project" && grouping === "stages" &&
@@ -739,7 +823,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				 * the frame cache rather than rebuilt.
 				 */
 			}
-			{frame?.kind === "ticket" && viewing
+			{frame?.kind === "ticket" && viewing && !frame.input?.standalone
 				? (
 					<TicketView
 						key={frame.uid}

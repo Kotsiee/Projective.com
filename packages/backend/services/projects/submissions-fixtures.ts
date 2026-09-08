@@ -19,6 +19,7 @@ import type {
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
+import { findStageChannel } from "@projective/types/projects";
 
 /**
  * projects submissions fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the
@@ -598,17 +599,17 @@ function buildRoots(
 }
 
 /**
- * The stage a channel belongs to, or null for a general/team/DM channel.
+ * The stage a routed segment addresses, or null for a general/team/DM channel.
  *
- * The mapping only exists on the server: a URL carries `stage-2` while a submission row wants the
- * stage's own id, and a client that treated the two as one would anchor every delivery to an id no
- * stage has.
+ * The mapping only exists on the server: a URL carries the stage's `stg-…` address while a submission
+ * row wants the stage's own id, and a client that treated the two as one would anchor every delivery
+ * to an id no stage has.
  */
 function stageForChannel(
 	detail: ProjectDetail,
 	channelId: string,
 ): ProjectDetail["channels"]["stages"][number] | null {
-	return detail.channels.stages.find((s) => s.channel.id === channelId) ?? null;
+	return findStageChannel(detail.channels.stages, channelId);
 }
 
 function resolveChannel(
@@ -618,9 +619,8 @@ function resolveChannel(
 	for (const c of detail.channels.general) {
 		if (c.id === channelId) return { name: c.name, kind: "general" };
 	}
-	for (const s of detail.channels.stages) {
-		if (s.channel.id === channelId || s.id === channelId) return { name: s.name, kind: "stage" };
-	}
+	const stage = findStageChannel(detail.channels.stages, channelId);
+	if (stage) return { name: stage.name, kind: "stage" };
 	for (const t of detail.channels.teams) {
 		for (const c of t.channels) {
 			if (c.id === channelId) return { name: `${t.teamName} · ${c.name}`, kind: "team" };

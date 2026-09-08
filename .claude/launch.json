@@ -733,6 +733,90 @@
 				"--strictPort"
 			],
 			"port": 11173
+		},
+		{
+			"name": "web-fieldgroups",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"11273",
+				"--strictPort"
+			],
+			"port": 11273
+		},
+		{
+			"name": "web-stageslug",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"11473",
+				"--strictPort"
+			],
+			"port": 11473
+		},
+		{
+			"name": "web-lanesync",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"11373",
+				"--strictPort"
+			],
+			"port": 11373
+		},
+		{
+			"name": "web-pvhead",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"11573",
+				"--strictPort"
+			],
+			"port": 11573
+		},
+		{
+			"name": "web-focusring",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"11673",
+				"--strictPort"
+			],
+			"port": 11673
+		},
+		{
+			"name": "web-tkv",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"11773",
+				"--strictPort"
+			],
+			"port": 11773
+		},
+		{
+			"name": "web-nested",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"11873",
+				"--strictPort"
+			],
+			"port": 11873
 		}
 	]
 }

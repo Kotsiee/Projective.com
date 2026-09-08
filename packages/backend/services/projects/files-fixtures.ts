@@ -12,6 +12,7 @@ import type {
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
+import { findStageChannel } from "@projective/types/projects";
 
 /**
  * projects files fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the File
@@ -349,7 +350,12 @@ function corpusFor(detail: ProjectDetail, channelId: string | null | undefined):
 	channels: FileChannelRef[];
 } {
 	const chans = channelsOf(detail);
-	const scoped = channelId ? chans.filter((c) => c.id === channelId) : chans;
+	// A stage carries its own `stg-…` address rather than its room's id, so the segment is resolved to
+	// a channel before the corpus is narrowed. Without this a stage's Files tab scopes to nothing while
+	// its Chat tab scopes correctly — the same URL, two answers.
+	const stageRoom = findStageChannel(detail.channels.stages, channelId)?.channel.id ?? null;
+	const wanted = stageRoom ?? channelId;
+	const scoped = channelId ? chans.filter((c) => c.id === wanted) : chans;
 
 	// The channel index (tree top level) — counts reflect the WHOLE channel, filter-independent. In
 	// channel scope it is just the one channel; in project scope every channel that holds files.

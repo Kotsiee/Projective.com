@@ -23,7 +23,10 @@ interface FakeNode {
 	name: string;
 	parentNode: FakeNode | null;
 	children: FakeNode[];
+	/** Stands in for the `data-ui-portal` attribute `BodyPortal` stamps on its container. */
+	isPortal: boolean;
 	contains(other: unknown): boolean;
+	closest(selector: string): FakeNode | null;
 }
 
 function node(name: string, parent: FakeNode | null = null): FakeNode {
@@ -31,6 +34,7 @@ function node(name: string, parent: FakeNode | null = null): FakeNode {
 		name,
 		parentNode: parent,
 		children: [],
+		isPortal: false,
 		contains(other: unknown): boolean {
 			let cur = other as FakeNode | null;
 			while (cur) {
@@ -39,8 +43,26 @@ function node(name: string, parent: FakeNode | null = null): FakeNode {
 			}
 			return false;
 		},
+		// Only the one selector the registry actually asks for. A fake that pretended to be a real
+		// matcher would be a second, worse CSS engine to keep honest.
+		closest(selector: string): FakeNode | null {
+			if (selector !== "[data-ui-portal]") return null;
+			let cur: FakeNode | null = n;
+			while (cur) {
+				if (cur.isPortal) return cur;
+				cur = cur.parentNode;
+			}
+			return null;
+		},
 	};
 	parent?.children.push(n);
+	return n;
+}
+
+/** A `BodyPortal` container: a `document.body` child holding one overlay's backdrop and panel. */
+function portal(name: string, parent: FakeNode): FakeNode {
+	const n = node(name, parent);
+	n.isPortal = true;
 	return n;
 }
 
@@ -246,3 +268,235 @@ Deno.test("a null target is never inside anything", () => {
 		off();
 	}
 });
+
+// #region Nested modals — a child with no trigger of its own
+/**
+ * The reported bug, in its real shape.
+ *
+ * A ticket modal's Attachments tab opens the asset picker. Neither is anchored to a control: both are
+ * opened from state, so BOTH register `trigger: () => null`. The ownership walk used to abort the
+ * moment it met an overlay with no trigger, which reported every click inside the picker as OUTSIDE
+ * the ticket modal — so the first click anywhere in the picker closed both.
+ */
+Deno.test("a click inside a triggerless child modal is inside its opener", () => {
+	const body = node("body");
+	const ticketLayer = portal("ticketPortal", body);
+	const ticketPanel = node("ticketPanel", ticketLayer);
+	const pickerLayer = portal("pickerPortal", body);
+	const pickerPanel = node("pickerPanel", pickerLayer);
+	const closeX = node("closeX", pickerPanel);
+	const searchField = node("searchField", pickerPanel);
+
+	const offTicket = registerOverlay("ticket", {
+		panel: () => as(ticketPanel),
+		trigger: () => null,
+	});
+	const offPicker = registerOverlay("picker", {
+		panel: () => as(pickerPanel),
+		trigger: () => null,
+	});
+	try {
+		assert(isWithinOverlay(closeX as unknown as TargetNode, "ticket"), "the X is the ticket's");
+		assert(isWithinOverlay(searchField as unknown as TargetNode, "ticket"), "so is a field");
+		assert(isWithinOverlay(closeX as unknown as TargetNode, "picker"), "and the picker's own");
+	} finally {
+		offPicker();
+		offTicket();
+	}
+});
+
+/**
+ * A child's backdrop belongs to the child, not to nothing.
+ *
+ * It is a sibling of the child's panel inside the same portal container, so it lands in no registered
+ * PANEL — which is why clicking it used to dismiss every ancestor. The two directions are asymmetric
+ * on purpose, and both halves are asserted here: inside for the opener, outside for the owner.
+ */
+Deno.test("a child's backdrop is inside its opener but outside itself", () => {
+	const body = node("body");
+	const ticketPanel = node("ticketPanel", body);
+	const pickerLayer = portal("pickerPortal", body);
+	const backdrop = node("backdrop", pickerLayer);
+	const pickerPanel = node("pickerPanel", pickerLayer);
+
+	const offTicket = registerOverlay("ticket", {
+		panel: () => as(ticketPanel),
+		trigger: () => null,
+	});
+	const offPicker = registerOverlay("picker", {
+		panel: () => as(pickerPanel),
+		trigger: () => null,
+	});
+	try {
+		assert(
+			isWithinOverlay(backdrop as unknown as TargetNode, "ticket"),
+			"the opener must not close on its child's backdrop",
+		);
+		assertFalse(
+			isWithinOverlay(backdrop as unknown as TargetNode, "picker"),
+			"but the child itself still dismisses on it",
+		);
+	} finally {
+		offPicker();
+		offTicket();
+	}
+});
+
+/**
+ * Dismissing the child leaves the parent intact and independently dismissable.
+ *
+ * "Intact" is the half that matters: after the child unregisters, a click genuinely outside must
+ * still reach the parent. A fix that kept ancestors open by deafening them would pass the bug report
+ * and strand every modal underneath.
+ */
+Deno.test("closing a child modal leaves the parent open and still dismissable", () => {
+	const body = node("body");
+	const ticketPanel = node("ticketPanel", body);
+	const pickerLayer = portal("pickerPortal", body);
+	const pickerPanel = node("pickerPanel", pickerLayer);
+	const pickerBody = node("pickerBody", pickerPanel);
+	const pageButton = node("pageButton", body);
+
+	const offTicket = registerOverlay("ticket", {
+		panel: () => as(ticketPanel),
+		trigger: () => null,
+	});
+	const offPicker = registerOverlay("picker", {
+		panel: () => as(pickerPanel),
+		trigger: () => null,
+	});
+
+	assert(isWithinOverlay(pickerBody as unknown as TargetNode, "ticket"));
+	offPicker();
+
+	assertFalse(
+		isWithinOverlay(pickerBody as unknown as TargetNode, "ticket"),
+		"the closed child's stale panel is nobody's",
+	);
+	assertFalse(
+		isWithinOverlay(pageButton as unknown as TargetNode, "ticket"),
+		"and the parent still reads a real outside click as outside",
+	);
+	offTicket();
+});
+
+/**
+ * Open order is the LAST resort, never an override.
+ *
+ * An overlay with a live trigger on the page is not a child of whatever happened to be open when it
+ * appeared — otherwise a header menu opened over a modal would deafen that modal permanently.
+ */
+Deno.test("a live trigger outranks open order", () => {
+	const body = node("body");
+	const modalPanel = node("modalPanel", body);
+	const pageTrigger = node("pageTrigger", body);
+	const menuPanel = node("menuPanel", body);
+	const menuItem = node("menuItem", menuPanel);
+
+	const offModal = registerOverlay("modal", { panel: () => as(modalPanel), trigger: () => null });
+	// Registers while the modal is open, so open order would call it a child — the trigger must win.
+	const offMenu = registerOverlay("menu", {
+		panel: () => as(menuPanel),
+		trigger: () => as(pageTrigger),
+	});
+	try {
+		assertFalse(isWithinOverlay(menuItem as unknown as TargetNode, "modal"));
+		assert(isWithinOverlay(menuItem as unknown as TargetNode, "menu"));
+	} finally {
+		offMenu();
+		offModal();
+	}
+});
+
+/**
+ * A host node is the exact link for a surface with no single trigger: the asset picker renders one
+ * in place inside the tab that mounted it, so ownership is DOM-derived rather than order-derived.
+ * Asserted against a decoy that registered later, which open order alone would have chosen.
+ */
+Deno.test("a host node names the opener exactly, even out of open order", () => {
+	const body = node("body");
+	const ticketPanel = node("ticketPanel", body);
+	const pickerHost = node("pickerHost", ticketPanel); // rendered in place, inside the ticket
+	const decoyPanel = node("decoyPanel", body);
+	const pickerPanel = node("pickerPanel", body);
+	const pickerRow = node("pickerRow", pickerPanel);
+
+	const offs = [
+		registerOverlay("ticket", { panel: () => as(ticketPanel), trigger: () => null }),
+		registerOverlay("decoy", { panel: () => as(decoyPanel), trigger: () => null }),
+		registerOverlay("picker", {
+			panel: () => as(pickerPanel),
+			trigger: () => null,
+			host: () => as(pickerHost),
+		}),
+	];
+	try {
+		assert(
+			isWithinOverlay(pickerRow as unknown as TargetNode, "ticket"),
+			"the host names the ticket",
+		);
+		assertFalse(
+			isWithinOverlay(pickerRow as unknown as TargetNode, "decoy"),
+			"not the overlay that merely opened last",
+		);
+	} finally {
+		offs.reverse().forEach((f) => f());
+	}
+});
+
+/** Three deep with a triggerless middle link: modal → picker (no trigger) → its own Select. */
+Deno.test("ownership survives a triggerless link mid-chain", () => {
+	const body = node("body");
+	const modalPanel = node("modalPanel", body);
+	const pickerPanel = node("pickerPanel", body);
+	const selectTrigger = node("selectTrigger", pickerPanel);
+	const dropPanel = node("dropPanel", body);
+	const option = node("option", dropPanel);
+
+	const offs = [
+		registerOverlay("modal", { panel: () => as(modalPanel), trigger: () => null }),
+		registerOverlay("picker", { panel: () => as(pickerPanel), trigger: () => null }),
+		registerOverlay("drop", { panel: () => as(dropPanel), trigger: () => as(selectTrigger) }),
+	];
+	try {
+		assert(isWithinOverlay(option as unknown as TargetNode, "modal"), "three levels up");
+		assert(isWithinOverlay(option as unknown as TargetNode, "picker"), "two levels up");
+		assert(isWithinOverlay(option as unknown as TargetNode, "drop"), "own panel");
+	} finally {
+		offs.reverse().forEach((f) => f());
+	}
+});
+
+/**
+ * The focus counterpart for a triggerless child. Without this the parent's trap treats focus landing
+ * in the picker as an escape and yanks it back, making every control in the picker unreachable by
+ * keyboard — the same defect as the click bug, one channel over.
+ */
+Deno.test("containerOwnsNode — a trap stands aside for a triggerless child it opened", () => {
+	const body = node("body");
+	const ticketPanel = node("ticketPanel", body);
+	const pickerPanel = node("pickerPanel", body);
+	const pickerInput = node("pickerInput", pickerPanel);
+
+	const offTicket = registerOverlay("ticket", {
+		panel: () => as(ticketPanel),
+		trigger: () => null,
+	});
+	const offPicker = registerOverlay("picker", {
+		panel: () => as(pickerPanel),
+		trigger: () => null,
+	});
+	try {
+		assert(
+			containerOwnsNode(
+				ticketPanel as unknown as PanelEl,
+				pickerInput as unknown as TargetNode,
+			),
+			"the ticket's trap must release focus into the picker it opened",
+		);
+	} finally {
+		offPicker();
+		offTicket();
+	}
+});
+// #endregion

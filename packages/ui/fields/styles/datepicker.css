@@ -108,8 +108,7 @@
  * the tint says the same thing in the space available, and the field's own `--focused` border is
  * what says the control has focus at all.
  */
-.ui-datepicker__seg:focus-visible,
-.ui-datepicker__seg:focus {
+.ui-datepicker__seg:focus-visible {
 	outline: none;
 	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 	color: var(--on-surface);

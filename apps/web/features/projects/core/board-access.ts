@@ -45,6 +45,15 @@ export interface BoardAccess {
 	 * distinction is "no such thing here", not "you may not".
 	 */
 	hasTickets: boolean;
+	/**
+	 * For a provider-side seat: whether the viewer is onboarded to the stages in view. With no
+	 * override this is always `true` and the SERVER's `viewerStageIds` decide which stages; under the
+	 * Dev Context Switcher the simulated `stageAssignment` flag stands in for that list (assigned →
+	 * every stage, unassigned → none), because the seam is a client surface the server cannot see.
+	 */
+	stageAssigned: boolean;
+	/** Whether an override is active — the board reads the seam's answer instead of the server's list. */
+	simulated: boolean;
 }
 // #endregion
 
@@ -71,6 +80,8 @@ export function resolveBoardAccess(
 			isFreelancer: viewer.isFreelancer,
 			canEditTicket: viewer.isReviewer,
 			hasTickets,
+			stageAssigned: viewer.stageAssigned,
+			simulated: false,
 		};
 	}
 
@@ -82,6 +93,8 @@ export function resolveBoardAccess(
 		isFreelancer: viewer.isFreelancer,
 		canEditTicket: viewer.isReviewer && (outrightOwner || seam.isOwner || seam.role === "admin"),
 		hasTickets,
+		stageAssigned: viewer.stageAssigned,
+		simulated: true,
 	};
 }
 // #endregion

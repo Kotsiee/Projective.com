@@ -39,6 +39,12 @@ export interface KanbanBoardProps<T, C = unknown> {
 	renderColumnFooter?: (column: KanbanColumnModel<C>) => ComponentChildren;
 	/** Whether a given item can be picked up at all (default: all draggable). */
 	itemDraggable?: (item: T) => boolean;
+	/**
+	 * Activate an item — a click that did not become a drag, or Enter on the focused card. The card
+	 * itself is the interactive element (the drag handle AND the tab stop), so the consumer's
+	 * `renderItem` content must stay non-interactive and route its "open" through this instead.
+	 */
+	onItemActivate?: (item: T) => void;
 	onItemMove?: (move: KanbanItemMove) => void;
 	onColumnMove?: (move: KanbanColumnMove) => void;
 	/** Enable column drag-reorder board-wide (per-column still gated by `column.reorderable`). */
@@ -287,6 +293,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 			label: labelOf(it),
 			draggable: props.itemDraggable ? props.itemDraggable(it) : true,
 			render: (ctx) => props.renderItem(it, ctx),
+			onActivate: props.onItemActivate ? () => props.onItemActivate?.(it) : undefined,
 		}));
 
 	const colIndicator = (key: string) => (

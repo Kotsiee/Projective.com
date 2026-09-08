@@ -668,6 +668,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	const treeKeyRef = useRef<string>("");
 
 	const panelRef = useRef<HTMLDivElement>(null);
+	/** The in-place node that ties this portalled picker back to the surface that mounted it. */
+	const hostRef = useRef<HTMLDivElement>(null);
 	const gridRef = useRef<HTMLDivElement>(null);
 	const treeRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -683,10 +685,26 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		(props.onClose ?? closePicker)();
 	}
 
+	// A picker mounted INSIDE another overlay dies with it: closing the ticket modal unmounts this
+	// island mid-request. `pickerOpen` is module-global, so an instance that disappears while open
+	// leaves the flag set — and the next time that same host mounts, the picker springs open with
+	// nobody having asked for it. Released on unmount only while the live request is still ours;
+	// another host may legitimately have opened its own in the meantime.
+	useEffect(() => {
+		return () => {
+			if (pickerOpen.value && pickerRequest.value?.requesterId === requesterId) closePicker();
+		};
+	}, [requesterId]);
+
 	useDismiss({
 		open: isOpen,
 		onDismiss: dismiss,
 		panelRef,
+		// This picker is opened from state, not from one control, so it has no trigger to be located
+		// by. The host node it renders in place is the exact link back to its opener — without it the
+		// registry falls back to open order, and a click in here reads as OUTSIDE the modal that
+		// mounted it, closing both.
+		hostRef,
 		enabled: stack.isTop,
 		// A stray click on the backdrop must not throw away six deliberate choices. With nothing chosen
 		// there is nothing to lose, so the quick dismissal survives for the common "opened it by
@@ -1644,11 +1662,14 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	}
 	// #endregion
 
-	if (!isOpen) return <div class="apk-host" />;
-
+	// The host node renders in BOTH states and carries the ref in both. It is the only part of this
+	// island that stays where the author mounted it — inside the surface that opened the picker —
+	// which is what lets the overlay registry name that surface as this picker's opener instead of
+	// falling back to open order. Rendering it only while open would hand the registry a ref that is
+	// still null on the first pointerdown after opening.
 	return (
-		<div class="apk-host">
-			<BodyPortal>
+		<div class="apk-host" ref={hostRef}>
+			{!isOpen ? null : <BodyPortal>
 				<div class="apk" style={`--apk-z:${stack.zIndex}`}>
 					<Backdrop
 						visible
@@ -1990,7 +2011,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						}}
 					/>
 				</div>
-			</BodyPortal>
+			</BodyPortal>}
 		</div>
 	);
 }

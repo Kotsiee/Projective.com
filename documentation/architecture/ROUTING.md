@@ -107,20 +107,51 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   namespaces cannot overlap; a malformed segment is a 404 before a round trip, never a thrown
   `22P02`.
 
+- **A ticket is addressed by `?tkv=<ticket-slug>`, on whatever page the viewer is on.** A ticket
+  has no route of its own: its modal (`tkv`, the View Ticket surface) is opened by a QUERY parameter
+  carrying `projects.tickets.slug` — a minted `tkt-` address on the same contract as `prj-`/`stg-`
+  (Decision #88) — and the ONE owner of that parameter is the global `TicketDeepLinkHost` island
+  (`apps/web/features/projects/islands/`), mounted once per shell. Opening a ticket writes the
+  parameter (a `pushState` from a URL without one, so Back closes it and Forward reopens it;
+  `replaceState` thereafter); closing strips it and preserves every other parameter; `popstate`
+  re-syncs the modal to the address bar. The pure rules — the parameter's shape, the exclusion
+  policy, the surface registry — live in `apps/web/features/projects/core/ticket-link.ts`.
+
+  On a page that already holds the ticket (the board, the timeline) the link is handed to that
+  page's own modal chain, so an edit lands beside the board; anywhere else the host fetches
+  `/api/projects/ticket?slug=` and renders the modal itself. The parameter is **stripped and nothing
+  opens** on the landing/marketing pages (`/`, `/about`, `/help/**`, `/share/**`), the auth screens
+  (`/login`, `/join`, `/forgot-password`, `/verify`), exactly `/checkout/details` and
+  `/checkout/payment`, for a guest, for a malformed value, and for a ticket the read refuses — which
+  answers "not found" and "not yours" with the same words, because the link is pasted from anywhere.
+
 - **Conversations are addressed by their _entry surface_.** A thread keeps its stable `chatId` (so
   it stays **one continuous record** — `PRODUCT_SPEC.md` §Unified Messaging, Decision #21); only the
   **base path** changes with where it is opened (resolved 2026-07-16, Decisions #22 / #23):
 
-  | Opened from…               | Channel kind                       | URL                                   |
-  | :------------------------- | :--------------------------------- | :------------------------------------ |
-  | **the global `/messages`** | private / team message             | `/messages/[chat-id]`                 |
-  | **within a project**       | any channel / DM (all four groups) | `/projects/[project-slug]/[channel-id]` |
+  | Opened from…               | Channel kind                          | URL                                     |
+  | :------------------------- | :------------------------------------ | :-------------------------------------- |
+  | **the global `/messages`** | private / team message                | `/messages/[chat-id]`                   |
+  | **within a project**       | a **stage**                           | `/projects/[project-slug]/[stage-slug]` |
+  | **within a project**       | general / team / DM                   | `/projects/[project-slug]/[channel-id]` |
 
   Every row of a Project Details channel tree (General, Stages, Teams, Private Messages) routes into
-  the **project namespace** via `channelHref(projectSlug, channelId)`
+  the **project namespace** via `channelHref(projectSlug, ref)`
   (`apps/web/features/projects/core/chat-context.ts`); the destination page loads the thread by its
   shared `chatId`, so a project DM and the same person's global DM (`/messages/[chat-id]`) remain
   one continuous record.
+
+  **The second segment is polymorphic, and a stage is the exception that earns it.** A stage is
+  addressed by its own immutable `stg-…` slug (`projects.project_stages.slug`, Decision #88), never by
+  the id of the room it opens: that room is a `comms.project_channels` uuid, provisioned LAZILY on
+  first open, so a link built from it could not be minted before somebody had already been there and
+  said nothing about what it addressed once it was. Every other kind still carries its own channel id.
+  The two are told apart by SHAPE alone — `isSlug(ref, "stage")` — which costs no query and cannot be
+  fooled, because a stage slug is not a legal uuid and a uuid is not a legal slug. Resolution runs
+  through the one SSOT helper `findStageChannel` (`@projective/types/projects`), and it matches the
+  slug and **nothing else**: a stage's own row id and its room id are internal keys that never appear
+  in a path, and accepting them would let an address resolve in the fixtures — where those strings
+  coincide — and 404 in production, where they do not.
 
   The channel view itself is a **nested-route tab set** under `[projectSlug]/[channelId]/`: the pinned
   `ChannelHeader` (`apps/web/features/projects/islands/ChannelHeader.island.tsx`, resolved per route

@@ -133,9 +133,10 @@
 	color: var(--text-secondary);
 	font-family: var(--font-sans);
 }
-.dev-ctx__input:focus {
+.dev-ctx__input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
+	box-shadow: var(--focus-ring-shadow);
 }
 .dev-ctx__input:disabled {
 	cursor: not-allowed;

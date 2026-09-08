@@ -27,6 +27,7 @@ import {
 	filesDb,
 	projectsDb,
 	senderOf,
+	resolveChannelRef,
 } from "./live-support.ts";
 
 /**
@@ -886,11 +887,14 @@ export async function fetchFilePage(
 	}
 
 	const allChannels = (channelRead.data ?? []) as unknown as ChannelRow[];
-	const requestedChannelId = params.channelId ?? null;
+	// The routed segment is resolved to a room id first: a stage carries its `stg-…` address, which
+	// names no channel row directly. Resolved rather than matched so a stage's files scope the same way
+	// its chat does.
+	const requestedChannelId = await resolveChannelRef(actor, project.id, params.channelId);
 	// Narrowed in TypeScript rather than with a second `.eq()`, exactly as `corpusFor` does: the
 	// channel id reaching this service may be a fixture-shaped string rather than a uuid, and a
 	// non-uuid `.eq()` against a uuid column raises 22P02 instead of matching nothing.
-	const scopedChannels = requestedChannelId
+	const scopedChannels = params.channelId
 		? allChannels.filter((row) => row.id === requestedChannelId)
 		: allChannels;
 

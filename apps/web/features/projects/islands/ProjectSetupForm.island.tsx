@@ -137,12 +137,19 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 				 * that the archive is announced ONLY on refusal: this stack is the whole channel.
 				 * `Toast` is `position: fixed`, so it anchors to the viewport, not to this container.
 				 *
-				 * Bottom-right, away from the middle-nav header band: the top-right corner is where the
-				 * progress ladder sits, and an outcome landing on top of the gauge it just moved covers
-				 * the very thing the owner looks at to confirm it.
+				 * Bottom-CENTRE, and both halves of that are load-bearing. Bottom, because the top-right
+				 * corner is where the progress ladder sits and an outcome landing on the gauge it just
+				 * moved covers the very thing the owner looks at to confirm it. Centre, because the
+				 * footer rig's status line is `flex: 1 1 auto` and pushes Save · Discard · Publish hard
+				 * against the band's END edge — which is exactly where a bottom-end stack lands, over the
+				 * controls the owner is most likely to reach for next. A refusal that hides the button
+				 * you have to press to answer it is worse than no refusal at all.
+				 *
+				 * Centre needs no logical spelling: it has no start/end component, so it is already the
+				 * same point in both reading directions.
 				 */
 			}
-			<Toast position="bottom-right" />
+			<Toast position="bottom-center" />
 
 			{setupSections(live).map((section) => (
 				<SetupSection key={section.key} setup={live} section={section.key} />

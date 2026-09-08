@@ -364,3 +364,155 @@ Deno.test("the brand fill has no headroom to spend on a tonal step in dark", () 
 		}% lightening step now leaves ${labelHeadroom.toFixed(2)} of label headroom in dark — enough to afford a tonal hover. Re-evaluate the 100% --btn-mix-* on .ui-button (§B.12.4).`,
 	);
 });
+
+/**
+ * The focus indicator (§A.5, WCAG 2.2 SC 2.4.11 / SC 1.4.11).
+ *
+ * Pinned by test because every way this can fail is silent. The ring is `--secondary`, which is only
+ * legal because an `outline-offset` (or, for the box-shadow composite, the halo beneath it) keeps it
+ * off the control's own fill: measured against this seed it lands at 1.00:1 on a `--secondary` fill
+ * and 1.19:1 on `--primary`. Against the PAGE it is comfortable. So what these tests actually defend
+ * is the assumption the geometry rests on — that the ring's only neighbours are a surface and the
+ * halo — and they will fail loudly if a re-seed or a re-tone breaks it.
+ */
+const RING = "--focus-ring";
+
+for (const dark of [false, true]) {
+	for (const highContrast of [false, true]) {
+		const label = `${dark ? "dark" : "light"}${highContrast ? " + high contrast" : ""}`;
+		const scheme = buildScheme({ seed: SEED, dark, highContrast });
+
+		Deno.test(`focus ring clears ${FLOOR}:1 on every surface — ${label}`, () => {
+			for (const surface of SURFACES) {
+				const ratio = contrast(scheme[RING], scheme[surface]);
+				assert(
+					ratio >= FLOOR,
+					`focus ring ${scheme[RING]} on ${surface} ${scheme[surface]} measures ${
+						ratio.toFixed(2)
+					}:1 in ${label} — an indicator nobody can see`,
+				);
+			}
+		});
+
+		/**
+		 * The ring is drawn directly outside the halo, so it has to separate from it as well as from
+		 * the page — otherwise the two read as one thick band and the refinement is lost.
+		 */
+		Deno.test(`focus ring separates from its own halo — ${label}`, () => {
+			const ratio = contrast(scheme[RING], scheme["--focus-ring-halo"]);
+			assert(
+				ratio >= FLOOR,
+				`ring ${scheme[RING]} against halo ${
+					scheme["--focus-ring-halo"]
+				} measures ${ratio.toFixed(2)}:1 in ${label}`,
+			);
+		});
+
+		/**
+		 * Polarity is the property the two-tone scheme rests on: whatever sits behind the indicator,
+		 * one of the two tones contrasts with it. That only holds while the pair straddles mid-tone.
+		 */
+		Deno.test(`focus ring and halo straddle mid-tone — ${label}`, () => {
+			const ring = relativeLuminance(scheme[RING]);
+			const halo = relativeLuminance(scheme["--focus-ring-halo"]);
+			assert(
+				(ring > halo) === dark,
+				`ring and halo do not straddle in ${label} — in dark the ring must be the LIGHT tone and in light the DARK one, or the pair stops rescuing accent fills`,
+			);
+		});
+
+		/** One hue for the whole indicator: the ring IS the secondary token, not a copy of it. */
+		Deno.test(`focus ring is the secondary token itself — ${label}`, () => {
+			assertEquals(scheme[RING], scheme["--secondary"]);
+		});
+	}
+}
+
+/** The overlay must widen the indicator, never leave it out — the defect `--primary` still has. */
+Deno.test("high contrast never narrows the focus ring", () => {
+	for (const dark of [false, true]) {
+		const base = buildScheme({ seed: SEED, dark });
+		const hc = buildScheme({ seed: SEED, dark, highContrast: true });
+		for (const surface of SURFACES) {
+			const before = contrast(base[RING], base[surface]);
+			const after = contrast(hc[RING], hc[surface]);
+			assert(
+				after >= before,
+				`the focus ring narrowed on ${surface} under high contrast in ${
+					dark ? "dark" : "light"
+				}: ${before.toFixed(2)}:1 → ${after.toFixed(2)}:1`,
+			);
+		}
+	}
+});
+
+/**
+ * The glow's spread is pinned to the ring's outer edge. A box-shadow layer paints from the border box
+ * outward and earlier layers cover later ones, so a glow with LESS spread than the ring is painted
+ * entirely underneath it — present in the value, invisible on screen, and undetectable by reading it.
+ */
+Deno.test("the glow is not painted underneath the ring", () => {
+	for (const dark of [false, true]) {
+		for (const highContrast of [false, true]) {
+			const shadow = buildScheme({ seed: SEED, dark, highContrast })["--focus-ring-shadow"];
+			const layers = shadow.split(/,(?![^(]*\))/).map((l) => l.trim());
+			assertEquals(layers.length, 3, `expected gap + ring + glow, got: ${shadow}`);
+			const spread = (layer: string) => {
+				const px = layer.match(/(\d+(?:\.\d+)?)px/g) ?? [];
+				return parseFloat(px[px.length - 1]);
+			};
+			assert(
+				spread(layers[2]) >= spread(layers[1]),
+				`glow spread ${spread(layers[2])}px is inside the ring edge ${
+					spread(layers[1])
+				}px — it would be invisible`,
+			);
+		}
+	}
+});
+
+/** An inset ring has no outside, so composing a glow for it would paint a band nobody asked for. */
+Deno.test("the inset ring carries no glow", () => {
+	const inset = buildScheme({ seed: SEED, dark: false })["--focus-ring-shadow-inset"];
+	assertEquals(inset.split(/,(?![^(]*\))/).length, 2);
+	assert(inset.split("inset").length - 1 === 2, `every inset layer must say so: ${inset}`);
+});
+
+/**
+ * The ring's thickness is stated twice — as `--focus-ring-w` in `styles/index.css`, which the base
+ * `outline` rule reads, and as the gap/edge pair in `focusShadow()`, which the 556 box-shadow call
+ * sites read. Two numbers, two languages, one indicator: nothing but this test stops them drifting,
+ * and the symptom of drift is a product where the same ring is one thickness on a button and another
+ * on the input beside it.
+ *
+ * It reads the stylesheet rather than a copy of its values, so it fails on the real edit.
+ */
+Deno.test("the outline ring and the shadow ring are the same thickness", async () => {
+	const css = await Deno.readTextFile(new URL("../../styles/index.css", import.meta.url));
+
+	const widthIn = (block: string) => {
+		const m = block.match(/--focus-ring-w:\s*([\d.]+)px/);
+		assert(m, "--focus-ring-w not found");
+		return parseFloat(m![1]);
+	};
+	// The high-contrast override lives in its own `:root[data-contrast="high"]` block.
+	const hcStart = css.indexOf('[data-contrast="high"]');
+	assert(hcStart > 0, "high-contrast block not found");
+	const base = widthIn(css.slice(0, hcStart));
+	const high = widthIn(css.slice(hcStart));
+
+	const shadowRing = (highContrast: boolean) => {
+		const layers = buildScheme({ seed: SEED, dark: false, highContrast })["--focus-ring-shadow"]
+			.split(/,(?![^(]*\))/);
+		const px = (l: string) => parseFloat((l.match(/([\d.]+)px/g) ?? []).slice(-1)[0]);
+		return px(layers[1]) - px(layers[0]); // edge − gap
+	};
+
+	assertEquals(base, shadowRing(false), "base ring thickness disagrees between CSS and the engine");
+	assertEquals(high, shadowRing(true), "high-contrast ring disagrees between CSS and the engine");
+
+	// Whole pixels, because `outline-width` is floored to them and a fraction silently renders thinner.
+	assertEquals(base, Math.round(base), `--focus-ring-w ${base}px is fractional and will floor`);
+	assertEquals(high, Math.round(high), `high-contrast --focus-ring-w ${high}px is fractional`);
+	assert(high > base, "high contrast must widen the ring, not merely retint it");
+});

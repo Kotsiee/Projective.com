@@ -16,6 +16,8 @@ export interface KanbanColumnItem {
 	label: string;
 	draggable: boolean;
 	render: (ctx: KanbanItemRenderCtx) => ComponentChildren;
+	/** Activate the card (click / Enter) — the whole card is the control, so the card owns this. */
+	onActivate?: () => void;
 }
 
 /**
@@ -114,6 +116,7 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 								draggable={it.draggable}
 								label={it.label}
 								render={it.render}
+								onActivate={it.onActivate}
 							/>
 						</div>
 					</>

@@ -152,6 +152,22 @@
  * locks it to the viewport bottom under the native window scroll while the feed scrolls beneath it.
  * Only rendered when a route registers a footer (no empty bar otherwise). A positive stacking context
  * (`--z-sticky`) keeps it above the scrolling feed it overlays.
+ *
+ * CENTRING IS THE BAND'S JOB, NOT EACH RIG'S. The band has a `min-block-size` floor but an `auto`
+ * height, so a rig shorter than the floor used to sit at the TOP of the band as a plain block child,
+ * with the whole shortfall as dead space beneath it. Measured at 1440x900: `/wallet` and `/teams`
+ * (44px rigs) were 4px high, `/projects/{id}/files`, `/messages/{id}/files` and `/…/submissions`
+ * (44px) the same, and `/…/board` + `/…/timeline` (a 34.39px rig with zero block padding) sat 13.61px
+ * high in a 48px band. Every rig already declared `align-items: center`, which centres its own
+ * children inside a box that was never the band's height — so the declaration read as correct and did
+ * nothing. Four surfaces had each worked around it privately with `block-size: 100%`
+ * (`.cat-rig`, `.cat-arig`, `.psu-rig`, `.proj-sdrig`), and the rest passed only by accident, their
+ * content happening to exceed the floor. Making the band the flex container fixes all of them at once
+ * and leaves nothing for a new rig to remember.
+ *
+ * `align-items: center` deliberately does NOT stretch the rig: a rig taller than the floor (the chat
+ * composer at 90px, `.cal-rig`/`.inbox-foot` at 56px) still sets the band's height and fills it, so
+ * this only ever centres the shortfall.
  */
 .ui-middle-nav__footer {
     grid-column: 2;
@@ -160,6 +176,28 @@
     inset-block-end: 0;
     z-index: var(--z-sticky);
     min-block-size: var(--shell-midnav-footer-h);
+    display: flex;
+    align-items: center;
+}
+
+/*
+ * The rig fills the band's inline axis, which it got for free as a block child and would otherwise
+ * lose to flex's shrink-to-fit — several rigs push their trailing group to the edge with
+ * `justify-content: space-between` or an auto margin, and both need the full measure.
+ *
+ * `flex: 1 1 auto` rather than `inline-size: 100%`: seven rigs already declare that property at the
+ * same (0,1,0) specificity, so a second declaration here would be decided by bundle order rather than
+ * by intent. Growing from whatever basis the rig resolves reaches the same width without the tie —
+ * including for the five rigs carrying `container-type: inline-size`, whose inline-size containment
+ * makes their intrinsic contribution 0 (`flex-grow` then hands them the whole track).
+ *
+ * `min-inline-size: 0` because a flex item's automatic minimum is min-content, which would let a wide
+ * rig push past the frame's `overflow: clip` and destroy the excess rather than let the rig's own
+ * container queries narrow it.
+ */
+.ui-middle-nav__footer > * {
+    flex: 1 1 auto;
+    min-inline-size: 0;
 }
 
 .ui-middle-nav__footer::before {

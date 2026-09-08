@@ -4,7 +4,9 @@ import type { BoardCard, TicketPaymentKind } from "../../../types/projects-types
 import {
 	formatTicketMoney,
 	TICKET_INTENSITY_LABEL,
+	TICKET_PAYMENT_SCOPE_LABEL,
 	ticketCostLines,
+	ticketPaidHere,
 } from "../../../types/projects-types.ts";
 import { multiplierLabel } from "../../../core/ticket-view.ts";
 
@@ -123,6 +125,23 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 							W {card.workload}
 							<span class="tkv-facts__note">
 								summed across this ticket's stages
+							</span>
+						</dd>
+					</div>
+					<div class="tkv-facts__row">
+						<dt>Funding</dt>
+						<dd>
+							{TICKET_PAYMENT_SCOPE_LABEL[card.paymentScope]}
+							<span class="tkv-facts__note">
+								{card.paymentScope === "per_stage"
+									? `${card.paidStageIds.length} of ${card.stages.length} ${
+										card.stages.length === 1 ? "stage" : "stages"
+									} paid · ${
+										ticketPaidHere(card) ? "paid where it sits" : "not paid for its current stage"
+									}`
+									: card.paymentScope === "full"
+									? "claimable in every stage"
+									: "not visible to freelancers until it is paid for"}
 							</span>
 						</dd>
 					</div>

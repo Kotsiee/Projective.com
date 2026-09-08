@@ -94,12 +94,13 @@ unchanged so a chrome-only claim can never break login. `EXECUTE` is granted onl
 ## Route slugs — `security.mint_slug` and `security.fn_slug_guard`
 
 Every public route on this platform addresses a row by an opaque, prefixed, immutable slug:
-`prj-pkksys2xhd` (project), `stg-…`, `svc-…`, `ssn-…`. These two functions are the database half of
+`prj-pkksys2xhd` (project), `stg-…`, `svc-…`, `ssn-…`, and `tkt-…` (a ticket, carried by the
+`?tkv=` deep link rather than by a path segment). These two functions are the database half of
 that contract; the format itself is stated once in `packages/types/slugs/slug.ts`.
 
-They live in `security` rather than beside any one table because three schemas mint slugs
-(`projects.projects`, `projects.project_stages`, `projects.session_events`,
-`marketplace.service_blueprints`), and a copy per schema is a copy per schema to keep in step.
+They live in `security` rather than beside any one table because two schemas mint slugs across five
+tables (`projects.projects`, `projects.project_stages`, `projects.tickets`, `projects.session_events`,
+`marketplace.service_blueprints`), and a copy per table is a copy per table to keep in step.
 
 | Function                       | Returns | Notes                                                        |
 | :----------------------------- | :------ | :----------------------------------------------------------- |
@@ -131,4 +132,4 @@ owner and needs no grant, so nothing legitimate breaks.
 The triggers themselves are declared together in `00001890_triggers_slugs.sql` — one per slugged
 table, adjacent on purpose. A table added without one fails loudly against `NOT NULL`; a trigger
 given the **wrong prefix** would mint valid-looking addresses in another table's namespace, which is
-the failure keeping the four declarations side by side is meant to make visible.
+the failure keeping the five declarations side by side is meant to make visible.

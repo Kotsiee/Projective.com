@@ -1065,7 +1065,23 @@ the **Claimed** step, not at the subsequent "In Progress" transition.
 
 ##### Ticket Movement, Placement & Default Stage Selection
 
-- **Client-Initiated Movement:** Clients are permitted to move tickets between stages at will.
+- **Client-Initiated Movement:** Clients are permitted to move tickets between stages at will
+  **until a freelancer has claimed the ticket and is actively working it** (`claimed` /
+  `in_progress`). From that moment the client's drag is locked — moving the card would change the
+  stage the work was agreed for, and the escrow held against it, under a person mid-way through
+  delivering — until the work is handed back for review, or the ticket is reassigned or reset. This
+  applies to the Admin/Owner seat whether or not freelancers have been onboarded to the project:
+  before a claim the client moves freely, and payment state is a badge for the client, never a
+  barrier to a move. (Product-owner ruling, 2026-09-07 — root CLAUDE.md §8 Decision #94.)
+- **Funding Scope & Freelancer Visibility:** A ticket is paid for either **in full** (every stage it
+  requires) or **per stage** (a designated set of stages). Freelancers **never** see an unpaid
+  ticket: a ticket appears on a freelancer's board only when it is paid for the stage it currently
+  sits in AND that stage is one the freelancer has been onboarded to. Moving a per-stage-paid ticket
+  into a stage nobody paid for turns it **Unpaid** — visibly, on the card, for the client — and
+  removes it from every freelancer's board until that stage is funded; moving it back into a paid
+  stage makes it **Paid** and claimable again. A fully paid ticket stays paid wherever it is moved.
+  Nothing about the purchase changes on a move; only where the ticket sits does. The filter is
+  applied by the read service, not by the client alone.
 - **Multi-Stage Initialization:** A ticket may be created within one or multiple stages
   simultaneously, per the client's preference.
 - **Default Selection Rules:**

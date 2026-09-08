@@ -47,6 +47,7 @@ import {
 	STAGE_PRICE_LOCK_REASON,
 	STAGE_SECTION_LABEL,
 	stagePredecessorOptions,
+	stageTimingApplies,
 	structureForStages,
 } from "../../types/projects-types.ts";
 import type {
@@ -656,20 +657,49 @@ function outstanding(setup: ProjectSetup, key: ProjectSetupStepKey): boolean {
 	return setup.steps.some((step) => step.key === key && !step.done);
 }
 
-/** A note beneath a group of controls — prose, never a chip, never boxed. */
 /**
  * A two-column row that becomes a plain block when it has only one child to hold.
  *
  * `.psu-row` is a two-column grid, so a lone `Field` inside it renders against an empty half-width
  * column — and padding the gap with a labelless spacer `Field` would put an unlabelled control in the
  * accessibility tree to fix a visual problem. The wrapper is chosen instead of the class.
+ *
+ * `paired` is the CALLER's answer, never a count of the children handed in. The trailing half of one
+ * of these rows is a conditional element, and a `false` child is still a child — so a count taken
+ * here would report a pair on exactly the render that has one field and an empty column.
  */
-function PriceRow(
-	{ oneOff, children }: { oneOff: boolean; children: ComponentChildren },
+function PairRow(
+	{ paired, children }: { paired: boolean; children: ComponentChildren },
 ): JSX.Element {
-	return oneOff ? <div class="psu-row">{children}</div> : <>{children}</>;
+	return paired ? <div class="psu-row">{children}</div> : <>{children}</>;
 }
 
+/**
+ * A named run of related fields — grouped by a label and by SPACING, never by a box.
+ *
+ * §B.4 spends spacing first and a contour last, and a bordered group inside a section that already
+ * sits inside a card would be the third surface on one screen (§B.9.7). So the grouping is carried by
+ * the two channels that cost no separation device: a meta-register heading (§A.4) and an asymmetric
+ * gap — wider above the heading than beneath it, which is what attaches the label to the fields it
+ * names rather than to whatever preceded them. `.psu-group` owns that ratio; see the note there.
+ *
+ * The `role="group"` is named BY the heading it already renders rather than by a duplicate
+ * `aria-label`, so the accessible name cannot drift from the visible one (WCAG 2.5.3). The id is
+ * supplied by the caller because these fields render once per stage and several stages can be open
+ * at once on the project surface — a constant would collide.
+ */
+function FieldGroup(
+	{ id, label, children }: { id: string; label: string; children: ComponentChildren },
+): JSX.Element {
+	return (
+		<div class="psu-group" role="group" aria-labelledby={id}>
+			<p class="psu-subhead" id={id}>{label}</p>
+			{children}
+		</div>
+	);
+}
+
+/** A note beneath a group of controls — prose, never a chip, never boxed. */
 function Note({ children }: { children: ComponentChildren }): JSX.Element {
 	return <p class="psu-note">{children}</p>;
 }
@@ -1450,6 +1480,14 @@ export interface StageFieldsProps {
 	 * {@link StageFieldsProps} above.
 	 */
 	priceLocked: boolean;
+	/**
+	 * Whether this engagement has a sequence for the stage to sit in — {@link stageTimingApplies}.
+	 *
+	 * A boolean resolved by the caller for the same reason `priceLocked` is: the answer is about the
+	 * whole stage LIST and the project's structure, neither of which a component rendering one stage
+	 * has, and both callers already hold the configuration it is read from.
+	 */
+	timed: boolean;
 	/** Fold an edit into the stage. The caller owns the identity match against the stage list. */
 	onPatch: (patch: Partial<StageSetup>) => void;
 }
@@ -1579,7 +1617,7 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 				 * the board should draw.
 				 */
 			}
-			<PriceRow oneOff={props.oneOff}>
+			<PairRow paired={props.oneOff}>
 				{
 					/*
 					 * The lock reason arrives as the `hint`, so it is announced through the control's own
@@ -1618,88 +1656,104 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 						/>
 					</Field>
 				)}
-			</PriceRow>
-
-			<div class="psu-row">
-				<Field label="Starts">
-					<Select
-						options={DEPENDENCY_OPTIONS}
-						value={stage.dependency}
-						onValueChange={(v: string) => props.onPatch({ dependency: v as StageDependency })}
-						aria-label={`When ${stage.name || props.itemLabel} starts`}
-					/>
-				</Field>
-
-				<Field label="Capacity">
-					<SelectButton
-						options={CAPACITY_OPTIONS}
-						value={stage.capacity}
-						onValueChange={(v: string | string[]) =>
-							props.onPatch(normaliseSeats(v as StageCapacity, stage.seatCount))}
-						aria-label="Capacity"
-					/>
-				</Field>
-			</div>
+			</PairRow>
 
 			{
 				/*
-				 * Predecessor and lag are asked ONLY of a sequential stage that is not the first, and
-				 * that is the whole condition. A parallel stage starts with the project, so it waits for
-				 * nothing; the first stage has nothing above it to wait for. Rendering either control in
-				 * those cases would be a live affordance whose value the board never reads (§3 gate 11).
+				 * Timing and capacity are two questions, and a row pairing one of each said they were one.
+				 * `Starts` sat beside `Capacity` while `Seats` — the field `Capacity` switches on — landed
+				 * two rows below it, underneath the predecessor pair, so choosing "Fixed seats" put the
+				 * answer somewhere other than beside the control that had just asked for it. Each group
+				 * below holds one question's fields and holds them together whatever the toggles do.
 				 */
 			}
-			{stage.dependency === "sequential" && props.index > 0 && (
-				<div class="psu-row">
-					<Field label="Starts with" htmlFor={fieldId("startswith")}>
+			{props.timed && (
+				<FieldGroup id={fieldId("timing-head")} label="Timing & scheduling">
+					<Field label="Starts">
 						<Select
-							options={predecessorOptions}
-							value={stage.startsWithId ?? ""}
-							onValueChange={(v: string) => props.onPatch({ startsWithId: v === "" ? null : v })}
-							aria-label={`Which ${props.itemLabel} ${stage.name || props.itemLabel} follows`}
+							options={DEPENDENCY_OPTIONS}
+							value={stage.dependency}
+							onValueChange={(v: string) => props.onPatch({ dependency: v as StageDependency })}
+							aria-label={`When ${stage.name || props.itemLabel} starts`}
 						/>
 					</Field>
 
-					<Field
-						label="Delay"
-						htmlFor={fieldId("delay")}
-						hint="Days after it finishes. Negative starts early, overlapping it."
-					>
-						<NumberInput
-							{...COUNT_FIELD}
-							icon="clock"
-							id={fieldId("delay")}
-							value={stage.delayDays}
-							onValueChange={(v: number | null) => props.onPatch({ delayDays: clampDelay(v) })}
-							min={-STAGE_DELAY_MAX_DAYS}
-							max={STAGE_DELAY_MAX_DAYS}
-							suffix=" days"
+					{
+						/*
+						 * Predecessor and lag are asked ONLY of a sequential stage that is not the first, and
+						 * that is the whole condition. A parallel stage starts with the project, so it waits for
+						 * nothing; the first stage has nothing above it to wait for. Rendering either control in
+						 * those cases would be a live affordance whose value the board never reads (§3 gate 11).
+						 */
+					}
+					{stage.dependency === "sequential" && props.index > 0 && (
+						<div class="psu-row">
+							<Field label="Starts with" htmlFor={fieldId("startswith")}>
+								<Select
+									options={predecessorOptions}
+									value={stage.startsWithId ?? ""}
+									onValueChange={(v: string) =>
+										props.onPatch({ startsWithId: v === "" ? null : v })}
+									aria-label={`Which ${props.itemLabel} ${stage.name || props.itemLabel} follows`}
+								/>
+							</Field>
+
+							<Field
+								label="Delay"
+								htmlFor={fieldId("delay")}
+								hint="Days after it finishes. Negative starts early, overlapping it."
+							>
+								<NumberInput
+									{...COUNT_FIELD}
+									icon="clock"
+									id={fieldId("delay")}
+									value={stage.delayDays}
+									onValueChange={(v: number | null) => props.onPatch({ delayDays: clampDelay(v) })}
+									min={-STAGE_DELAY_MAX_DAYS}
+									max={STAGE_DELAY_MAX_DAYS}
+									suffix=" days"
+								/>
+							</Field>
+						</div>
+					)}
+				</FieldGroup>
+			)}
+
+			<FieldGroup id={fieldId("capacity-head")} label="Capacity & resourcing">
+				<PairRow paired={stage.capacity === "limited"}>
+					<Field label="Capacity">
+						<SelectButton
+							options={CAPACITY_OPTIONS}
+							value={stage.capacity}
+							onValueChange={(v: string | string[]) =>
+								props.onPatch(normaliseSeats(v as StageCapacity, stage.seatCount))}
+							aria-label="Capacity"
 						/>
 					</Field>
-				</div>
-			)}
 
-			{stage.capacity === "limited" && (
-				<Field label="Seats" htmlFor={fieldId("seats")}>
-					<NumberInput
-						{...COUNT_FIELD}
-						icon="members"
-						id={fieldId("seats")}
-						value={stage.seatCount}
-						onValueChange={(v: number | null) =>
-							props.onPatch(
-								normaliseSeats(
-									"limited",
-									v === null ? null : Math.max(1, Math.min(99, Math.round(v))),
-								),
-							)}
-						min={1}
-						max={99}
-					/>
-				</Field>
-			)}
+					{stage.capacity === "limited" && (
+						<Field label="Seats" htmlFor={fieldId("seats")}>
+							<NumberInput
+								{...COUNT_FIELD}
+								icon="members"
+								id={fieldId("seats")}
+								value={stage.seatCount}
+								onValueChange={(v: number | null) =>
+									props.onPatch(
+										normaliseSeats(
+											"limited",
+											v === null ? null : Math.max(1, Math.min(99, Math.round(v))),
+										),
+									)}
+								min={1}
+								max={99}
+							/>
+						</Field>
+					)}
+				</PairRow>
 
-			<StageRoleList stage={stage} currency={currency} onPatch={props.onPatch} />
+				<StageRoleList stage={stage} currency={currency} onPatch={props.onPatch} />
+			</FieldGroup>
 
 			<Disclosure label="Advanced settings">
 				<div class="psu-row">
@@ -1766,6 +1820,8 @@ function StageRow(props: {
 	 * one bit that concerns it.
 	 */
 	priceLocked: boolean;
+	/** Whether this engagement has a sequence for the stage to sit in — {@link stageTimingApplies}. */
+	timed: boolean;
 	open: boolean;
 	onToggle: () => void;
 	onPatch: (patch: Partial<StageSetup>) => void;
@@ -1847,6 +1903,7 @@ function StageRow(props: {
 						currency={props.currency}
 						projectRequiresNda={props.projectRequiresNda}
 						priceLocked={props.priceLocked}
+						timed={props.timed}
 						onPatch={props.onPatch}
 					/>
 				</div>
@@ -1937,6 +1994,9 @@ export function StageListSection(
 	if (!staged) return null;
 
 	const label = staffingSectionLabel(setup);
+	// Resolved once for the list rather than per row: it is an answer about the whole run, and asking
+	// it per row would let two rows of one project disagree about whether the project has a sequence.
+	const timed = stageTimingApplies(setup.structure, setup.stages);
 
 	return (
 		<Section sectionKey="stages" title={label} hint={hint}>
@@ -1954,6 +2014,7 @@ export function StageListSection(
 							currency={setup.budget.currency}
 							projectRequiresNda={setup.rules.ndaRequired}
 							priceLocked={lockedPrices.has(stage.id)}
+							timed={timed}
 							open={open.value === stage.id}
 							onToggle={() => (open.value = open.value === stage.id ? null : stage.id)}
 							onPatch={(patch) => patchRow(stage.id, patch)}
@@ -2071,60 +2132,71 @@ export function FlatDetailsSection(
 				/>
 			</Field>
 
-			<div class="psu-row">
-				<Field
-					label={priceLabel}
-					htmlFor="psu-details-price"
-					validation={price}
-					hint={priceLocked ? priceLockReasonFor(setup.structure) : undefined}
-				>
-					<NumberInput
-						{...MONEY_FIELD}
-						id="psu-details-price"
-						value={toMajor(root.unitPriceCents, currency)}
-						onValueChange={(v: number | null) =>
-							patchRoot({ unitPriceCents: toMinorUnits(v, currency) })}
-						currency={currency}
-						maxFractionDigits={exponent}
-						minFractionDigits={exponent}
-						precisionStep={minorUnit(currency)}
-						disabled={priceLocked}
-						status={price.status.value}
-					/>
-				</Field>
+			<Field
+				label={priceLabel}
+				htmlFor="psu-details-price"
+				validation={price}
+				hint={priceLocked ? priceLockReasonFor(setup.structure) : undefined}
+			>
+				<NumberInput
+					{...MONEY_FIELD}
+					id="psu-details-price"
+					value={toMajor(root.unitPriceCents, currency)}
+					onValueChange={(v: number | null) =>
+						patchRoot({ unitPriceCents: toMinorUnits(v, currency) })}
+					currency={currency}
+					maxFractionDigits={exponent}
+					minFractionDigits={exponent}
+					precisionStep={minorUnit(currency)}
+					disabled={priceLocked}
+					status={price.status.value}
+				/>
+			</Field>
 
-				<Field label="Capacity">
-					<SelectButton
-						options={CAPACITY_OPTIONS}
-						value={root.capacity}
-						onValueChange={(v: string | string[]) =>
-							patchRoot(normaliseSeats(v as StageCapacity, root.seatCount))}
-						aria-label="Capacity"
-					/>
-				</Field>
-			</div>
+			{
+				/*
+				 * The same capacity group — the same heading, the same order, `Seats` in the same row as the
+				 * control that switches it on — as {@link StageFields} renders on a staged engagement, so the
+				 * two surfaces read as one form. There is no timing group above it because a flat engagement
+				 * is ONE delivery unit: it has nothing above it to wait for, so `Starts`, `Starts with` and
+				 * `Delay` are not fields this shape hides, they are questions it never asks.
+				 */
+			}
+			<FieldGroup id="psu-details-capacity-head" label="Capacity & resourcing">
+				<PairRow paired={root.capacity === "limited"}>
+					<Field label="Capacity">
+						<SelectButton
+							options={CAPACITY_OPTIONS}
+							value={root.capacity}
+							onValueChange={(v: string | string[]) =>
+								patchRoot(normaliseSeats(v as StageCapacity, root.seatCount))}
+							aria-label="Capacity"
+						/>
+					</Field>
 
-			{root.capacity === "limited" && (
-				<Field label="Seats" htmlFor="psu-details-seats">
-					<NumberInput
-						{...COUNT_FIELD}
-						icon="members"
-						id="psu-details-seats"
-						value={root.seatCount}
-						onValueChange={(v: number | null) =>
-							patchRoot(
-								normaliseSeats(
-									"limited",
-									v === null ? null : Math.max(1, Math.min(99, Math.round(v))),
-								),
-							)}
-						min={1}
-						max={99}
-					/>
-				</Field>
-			)}
+					{root.capacity === "limited" && (
+						<Field label="Seats" htmlFor="psu-details-seats">
+							<NumberInput
+								{...COUNT_FIELD}
+								icon="members"
+								id="psu-details-seats"
+								value={root.seatCount}
+								onValueChange={(v: number | null) =>
+									patchRoot(
+										normaliseSeats(
+											"limited",
+											v === null ? null : Math.max(1, Math.min(99, Math.round(v))),
+										),
+									)}
+								min={1}
+								max={99}
+							/>
+						</Field>
+					)}
+				</PairRow>
 
-			<StageRoleList stage={root} currency={currency} onPatch={patchRoot} />
+				<StageRoleList stage={root} currency={currency} onPatch={patchRoot} />
+			</FieldGroup>
 		</Section>
 	);
 }

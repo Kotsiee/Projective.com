@@ -1,17 +1,15 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
+import { Tooltip } from "@projective/ui/feedback";
 import { LaneSection, LaneSections } from "@projective/ui/navigation";
 import { DmIcon, HashIcon, StagesIcon, TeamsIcon } from "./detail-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
 import type { ChannelFilterKey } from "./ChannelQuickFilters.tsx";
 import { channelHref } from "../core/chat-context.ts";
-import type {
-	DmChannel,
-	ProjectChannel,
-	ProjectDetail,
-	StageChannel,
-} from "../types/projects-types.ts";
+import type { SidebarStageRow } from "../core/sidebar-overlay.ts";
+import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects-types.ts";
 
 /**
  * ChannelTree — the four-group communication accordion of the Project Details sidebar: General,
@@ -99,29 +97,72 @@ export function ChannelRow(
 }
 
 /**
+ * What the pending mark says — the sole place the words appear, per §B.6: an in-row state is a glyph,
+ * and its explanation lives in the tooltip and the accessible name.
+ *
+ * Two reasons, two sentences, because they are different facts and only one of them asks the reader
+ * to do anything. An `unsaved` stage is lost if they navigate away; an `unlinked` one is stored and
+ * merely has no room yet, and telling its owner it is unsaved would be a false claim about work they
+ * have already done — the state every stage of a saved project is in until somebody opens it.
+ */
+const PENDING_STAGE_LABEL: Record<"unsaved" | "unlinked", string> = {
+	unsaved: "Not saved yet — save to open its channel",
+	unlinked: "No channel yet — it opens when this stage's conversation starts",
+};
+
+/**
  * A stage row — a hash (`#`) channel mark + the stage name, plus a tiny icon-only status signal (new
  * ticket / revision / stage-join request) when the stage has one. Stage channels read as ordinary
  * `#` channels (matching General/Team rows); their lifecycle state surfaces through the trailing
  * status signal + unread dot rather than a leading colour dot. Links into the stage channel.
+ *
+ * A row whose stage has NO channel yet — one the owner has just added in the setup form, or a saved
+ * stage whose room the server has not provisioned — renders as a non-navigable row carrying the
+ * pending mark. It is not an anchor, because an anchor here would be a link into a conversation that
+ * does not exist (root CLAUDE.md §3 gate 11), and it is not omitted, because the owner has just
+ * created the stage and would watch the sidebar ignore it.
  */
 function StageRow(
-	{ stage, slug, activeChannelId }: {
-		stage: StageChannel;
+	{ row, slug, activeChannelId }: {
+		row: SidebarStageRow;
 		slug: string;
 		activeChannelId?: string | null;
 	},
 ): JSX.Element {
-	const active = activeChannelId === stage.id;
+	const stage = row.channel;
+
+	if (!stage) {
+		const label = PENDING_STAGE_LABEL[row.pending ?? "unlinked"];
+		return (
+			<div class="proj-chan proj-chan--stage proj-chan--pending" data-status="draft">
+				<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
+				<span class="proj-chan__name">{row.name}</span>
+				<span class="proj-chan__status">
+					<Tooltip content={label} placement="top">
+						{/* Focusable so the explanation is reachable by keyboard: the row itself is not. */}
+						<span class="proj-chan__pending" role="img" aria-label={label} tabIndex={0}>
+							<Icon name="hourglass" size="2xs" />
+						</span>
+					</Tooltip>
+				</span>
+			</div>
+		);
+	}
+
+	// The stage's OWN address, not its room's id. `stage.id` is a `comms.project_channels` uuid on the
+	// live path, so a link built from it says nothing about what it opens and dies if the room is ever
+	// re-provisioned; the slug is minted with the stage and pinned immutable by the database.
+	const active = activeChannelId === stage.slug;
 	return (
 		<a
 			class="proj-chan proj-chan--stage"
-			href={channelHref(slug, stage.id)}
+			href={channelHref(slug, stage.slug)}
 			data-status={stage.status}
 			data-active={active ? "true" : undefined}
 			aria-current={active ? "page" : undefined}
 		>
 			<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
-			<span class="proj-chan__name">{stage.name}</span>
+			<span class="proj-chan__name">{row.name}</span>
 			{stage.activity && (
 				<span class="proj-chan__status">
 					<StageStatusIcon activity={stage.activity} />
@@ -159,6 +200,15 @@ export function DmRow(
 // #region Tree
 export interface ChannelTreeProps {
 	detail: ProjectDetail;
+	/**
+	 * The stage rows to draw, in order — the projection's, not `detail.channels.stages`.
+	 *
+	 * They are passed in rather than read off `detail` because a row may have no channel yet, which is
+	 * a state `StageChannel` cannot express: the owner's unsaved edits reach the lane through
+	 * {@link projectSidebarProjection}, which is also what supplies the plain list on every route that
+	 * has no draft. One prop, one code path — a live tree and a static tree could drift.
+	 */
+	stages: SidebarStageRow[];
 	/** Which groups are expanded (keyed `general|stages|teams|dms`). */
 	openGroups: Record<string, boolean>;
 	onToggleGroup: (key: string) => void;
@@ -172,10 +222,14 @@ export interface ChannelTreeProps {
 
 const anyUnread = (chans: { unread: boolean }[]) => chans.some((c) => c.unread);
 
+/** Whether a stage row carries unseen chatter. A row with no channel yet carries none. */
+const stageUnread = (row: SidebarStageRow) => row.channel?.channel.unread ?? false;
+
 export function ChannelTree(
-	{ detail, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }: ChannelTreeProps,
+	{ detail, stages, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }:
+		ChannelTreeProps,
 ): JSX.Element {
-	const { general, stages, teams, dms } = detail.channels;
+	const { general, teams, dms } = detail.channels;
 	const slug = detail.slug;
 	// Only project members the viewer has already messaged appear in the DM list.
 	const projectDms = dms.filter((d) => d.hasProjectContext);
@@ -186,11 +240,17 @@ export function ChannelTree(
 	// `starred` has no channel-level backing yet (deferred to the live backend), so it matches nothing
 	// on its own — the empty state below explains a no-result filter.
 	const matchChannel = (c: ProjectChannel) => !filtering || (has("unread") && c.unread);
-	const matchStage = (s: StageChannel) =>
-		!filtering ||
-		(has("unread") && s.channel.unread) ||
-		(has("tickets") && s.activity === "new_ticket") ||
-		(has("revisions") && s.activity === "revision_requested");
+	// A stage with no channel yet has no unread, no ticket and no revision, so it matches nothing while
+	// a filter is on — which is the right answer rather than a special case: the filters ask what is
+	// awaiting the viewer, and nothing can be awaiting them in a conversation that does not exist.
+	const matchStage = (row: SidebarStageRow) => {
+		if (!filtering) return true;
+		const s = row.channel;
+		if (!s) return false;
+		return (has("unread") && s.channel.unread) ||
+			(has("tickets") && s.activity === "new_ticket") ||
+			(has("revisions") && s.activity === "revision_requested");
+	};
 	const matchDm = (d: DmChannel) => !filtering || (has("unread") && d.unread);
 
 	const fGeneral = general.filter(matchChannel);
@@ -243,7 +303,7 @@ export function ChannelTree(
 					label="Stages"
 					open={groupOpen("stages")}
 					onToggle={() => onToggleGroup("stages")}
-					hasUnread={stages.some((s) => s.channel.unread)}
+					hasUnread={stages.some(stageUnread)}
 					action={!filtering && detail.viewerIsClient
 						? (
 							<button
@@ -257,8 +317,8 @@ export function ChannelTree(
 						)
 						: undefined}
 				>
-					{fStages.map((s) => (
-						<StageRow key={s.id} stage={s} slug={slug} activeChannelId={activeChannelId} />
+					{fStages.map((row) => (
+						<StageRow key={row.id} row={row} slug={slug} activeChannelId={activeChannelId} />
 					))}
 				</AccordionGroup>
 			)}

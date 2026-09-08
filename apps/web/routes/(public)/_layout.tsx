@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
+import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import { exploreFilterLaneFor } from "@features/explore/core/explore-lane-slot.tsx";
 import { viewLaneFor, viewLaneOptionsFor } from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
@@ -47,12 +48,19 @@ export default define.page(function PublicLayout(ctx) {
 				middleNavHeader={viewHeader}
 				bodyFooter={publicFooterFor(ctx.url)}
 			>
+				{/* The `?tkv=` ticket deep link — honoured on the authed public surfaces (Explore, View). */}
+				<TicketDeepLinkHost authed />
 				<ctx.Component />
 			</UserShell>
 		);
 	}
 	return (
 		<GuestShell lane={filterLane} header={viewHeader} returnTo={ctx.url.pathname + ctx.url.search}>
+			{
+				/* A guest never opens a ticket; the host only strips a `?tkv=` that reached this page, so a
+			    pasted link does not sit in the address bar promising something it cannot show. */
+			}
+			<TicketDeepLinkHost authed={false} />
 			<ctx.Component />
 		</GuestShell>
 	);

@@ -1,15 +1,27 @@
 import type { ComponentChildren, JSX } from "preact";
 import { cx } from "../../core/cx.ts";
+import { useDnd } from "../../dnd/core/context.ts";
 import { useSortable } from "../../dnd/hooks/useSortable.ts";
 import type { KanbanItemRenderCtx } from "../core/types.ts";
 
 /**
- * KanbanCard — one draggable/sortable card. POINTER drag works from anywhere on the card (the context's
- * movement threshold means a click that doesn't move still reaches the card's own `onClick` — e.g. open
- * a detail modal — while a real drag suppresses that click); KEYBOARD drag lives on the dedicated grip
- * (Space/Enter to pick up, Arrows to move, Enter to drop, Escape to cancel), so the card body keeps its
- * own Enter/click behaviour. While dragging the source stays in place, dimmed; the floating ghost mirrors
- * it and the enclosing column draws the drop indicator. Non-draggable cards render inertly.
+ * KanbanCard — one draggable/sortable card. THE WHOLE CARD IS THE HANDLE: pointer drag starts from
+ * anywhere on it (the context's movement threshold means a press that does not move is a click, and
+ * a real drag suppresses the click that would otherwise follow), and the card root is the single
+ * focusable element — Space picks it up for a keyboard drag (Arrows move · Enter drops · Escape
+ * cancels), while Enter, or a click, ACTIVATES it through {@link KanbanCardProps.onActivate} (e.g.
+ * opens a detail modal). There is deliberately no separate grip: a grip is a second tab stop per card
+ * and a second thing to explain, and a card whose entire surface says "grab me" with `cursor: grab`
+ * should be grabbable from wherever it was grabbed.
+ *
+ * The rendered content is therefore NON-interactive — the consumer's `render` must not nest its own
+ * `role="button"`/`tabIndex` root inside this one, or every card becomes two tab stops that both
+ * open it. A card that is neither draggable nor activatable renders inertly (no role, no tab stop),
+ * and `data-draggable` lets the stylesheet promise a drag only where one exists (§3 gate 11 — a
+ * `grab` cursor over a card that refuses to move is a control that renders and does nothing).
+ *
+ * While dragging the source stays in place, dimmed; the floating ghost mirrors it and the enclosing
+ * column draws the drop indicator.
  */
 export interface KanbanCardProps {
 	/** The card's item id (the board namespaces the DnD id as `card:{id}`). */
@@ -17,24 +29,15 @@ export interface KanbanCardProps {
 	draggable: boolean;
 	label: string;
 	render: (ctx: KanbanItemRenderCtx) => ComponentChildren;
+	/** Activate the card — a click that did not become a drag, or Enter (Space too when not draggable). */
+	onActivate?: () => void;
 }
 
-/** A 6-dot grip mark (fresh VNode per render — safe to mount in many cards at once). */
-function Grip(): JSX.Element {
-	return (
-		<svg width="12" height="18" viewBox="0 0 12 18" aria-hidden="true" fill="currentColor">
-			<circle cx="3.5" cy="4" r="1.3" />
-			<circle cx="8.5" cy="4" r="1.3" />
-			<circle cx="3.5" cy="9" r="1.3" />
-			<circle cx="8.5" cy="9" r="1.3" />
-			<circle cx="3.5" cy="14" r="1.3" />
-			<circle cx="8.5" cy="14" r="1.3" />
-		</svg>
-	);
-}
+const isSpace = (key: string): boolean => key === " " || key === "Spacebar";
 
 export function KanbanCard(props: KanbanCardProps): JSX.Element {
-	const { itemId, draggable, label, render } = props;
+	const { itemId, draggable, label, render, onActivate } = props;
+	const { keyboardActive } = useDnd();
 	const sortable = useSortable({
 		id: `card:${itemId}`,
 		data: { type: "card", accepts: ["card"] },
@@ -42,6 +45,32 @@ export function KanbanCard(props: KanbanCardProps): JSX.Element {
 		roleDescription: "draggable ticket",
 	});
 	const dragging = sortable.isDragging.value;
+	const interactive = draggable || !!onActivate;
+
+	const onKeyDown = (e: KeyboardEvent): void => {
+		/*
+		 * The keyboard sensor DROPS on Enter/Space from a window CAPTURE listener, which runs — and
+		 * tears the drag down — before this bubble handler does, so `keyboardActive()` is already false
+		 * by the time the drop's keydown reaches the card. That listener also `preventDefault`s, and a
+		 * key the sensor has already consumed is never an activation: without this guard every
+		 * keyboard drop would also open the ticket it had just placed.
+		 */
+		if (e.defaultPrevented || keyboardActive()) return;
+		if (isSpace(e.key)) {
+			if (draggable) {
+				// Prevents default and begins the keyboard drag.
+				sortable.listeners.onKeyDown(e);
+			} else if (onActivate) {
+				e.preventDefault();
+				onActivate();
+			}
+			return;
+		}
+		if (e.key === "Enter" && onActivate) {
+			e.preventDefault();
+			onActivate();
+		}
+	};
 
 	return (
 		<div
@@ -49,23 +78,16 @@ export function KanbanCard(props: KanbanCardProps): JSX.Element {
 			ref={sortable.setNodeRef as any}
 			class={cx("ui-kanban__card", dragging && "ui-kanban__card--dragging")}
 			data-dragging={dragging || undefined}
+			data-draggable={draggable ? "true" : "false"}
+			role={interactive ? "button" : undefined}
+			tabIndex={interactive ? 0 : undefined}
+			aria-label={interactive ? label : undefined}
+			aria-roledescription={draggable ? sortable.attributes["aria-roledescription"] : undefined}
+			aria-keyshortcuts={draggable ? "Space" : undefined}
 			onPointerDown={draggable ? sortable.listeners.onPointerDown : undefined}
+			onClick={onActivate ? () => onActivate() : undefined}
+			onKeyDown={interactive ? onKeyDown : undefined}
 		>
-			{draggable
-				? (
-					<button
-						type="button"
-						class="ui-kanban__card-grip"
-						aria-label={`Reorder ${label}`}
-						aria-roledescription={sortable.attributes["aria-roledescription"]}
-						tabIndex={sortable.attributes.tabIndex}
-						onKeyDown={sortable.listeners.onKeyDown}
-						onClick={(e) => e.stopPropagation()}
-					>
-						<Grip />
-					</button>
-				)
-				: null}
 			<div class="ui-kanban__card-body">{render({ dragging, overlay: false })}</div>
 		</div>
 	);

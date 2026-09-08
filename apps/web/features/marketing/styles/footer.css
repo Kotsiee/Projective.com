@@ -260,6 +260,10 @@
 
 .lp-footer__news-field:focus-within {
 	border-color: var(--primary);
+}
+
+/* The ring is keyboard-only; the border tint above stays for every route into the field. */
+.lp-footer__news-field:has(:focus-visible) {
 	box-shadow: var(--focus-ring-shadow);
 }
 

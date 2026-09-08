@@ -343,7 +343,7 @@ function updatesOf(
 			actor: null,
 			text: `${stage.name} was completed and signed off.`,
 			at,
-			href: `/projects/${slug}/${stage.channel.id}`,
+			href: `/projects/${slug}/${stage.slug}`,
 		});
 	}
 

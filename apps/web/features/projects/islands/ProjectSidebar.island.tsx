@@ -1,5 +1,5 @@
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import "../styles/project-sidebar.css";
 import { SidebarHeader, type SidebarMenuAction } from "../components/SidebarHeader.tsx";
@@ -24,6 +24,9 @@ import {
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { activeChannelIdOf } from "../core/chat-context.ts";
+import { projectSidebarProjection } from "../core/sidebar-overlay.ts";
+import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store.ts";
+import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
 /** SSR default open-set — the highest-traffic groups (General + Stages/Sub-groups) lead expanded. */
@@ -57,6 +60,20 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  *
  * Both presentations are rendered; CSS reveals exactly one, so no client width-observer is needed and
  * the collapse toggles are deterministic (the footer always collapses, the rail always expands).
+ *
+ * ## Live sync with the owner's setup form
+ *
+ * On `/projects/{slug}` the owner edits the engagement in the BODY, which is a different hydration
+ * root. Both read one store — `core/setup-store.ts` — so the identity the lane draws tracks the form
+ * as it is typed: the title (falling back to "Untitled Project"), the description, the engagement
+ * type, and the stage list including adds, removals, renames and reorders. Nothing is copied between
+ * the two regions and nothing is pushed: the form writes the draft, this island reads it, and
+ * {@link projectSidebarProjection} is the ONE place the fold is expressed.
+ *
+ * The draft is what is drawn, never the server's acknowledgement, so a save landing mid-sentence
+ * cannot flicker the sidebar back one edit. What the acknowledgement does trigger is a re-read of the
+ * engagement, and only when the projection says one would change something — which is how a stage
+ * created in the form acquires the channel it needs before the lane can offer a link to it.
  *
  * THIN: first paint comes from the SSR-resolved `detail`; it owns only view state (star, accordion
  * open-set, quick-filters, the Create-Stage modal) + the reactive session projection. Persistence lands
@@ -94,6 +111,70 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// tracked live from the dev Context Switcher, with the current seam snapshot kept for the derivations.
 	const kind = useSignal<SessionKind>(sessionKind);
 	const seam = useSignal<DevSeamState | null>(null);
+
+	/**
+	 * The freshest server copy of the engagement — the SSR prop until a re-read replaces it.
+	 *
+	 * Held in a signal rather than read straight off the prop because a write made in the setup form
+	 * can create things this projection needs and cannot invent: a stage acquires its channel
+	 * server-side, so until the engagement is re-read the lane knows the stage but not the room.
+	 */
+	const liveDetail = useSignal<ProjectDetail | null>(detail);
+
+	/**
+	 * The last unresolved-state key a completed re-read left behind — a `useRef`, not a signal,
+	 * because nothing renders it and a re-render on every write would be noise.
+	 */
+	const settledKey = useRef<string>("");
+
+	/**
+	 * How many writes the setup form has had acknowledged, read during render so this island
+	 * re-renders when one lands. It is the effect's dependency: a plain number, so the re-read below
+	 * fires once per acknowledged write and never once per keystroke.
+	 */
+	const committed = setupCommitEpoch.value;
+
+	/**
+	 * Re-read the engagement after a write, but only when a re-read would change what can be drawn.
+	 *
+	 * The condition is the projection's own `stale` — a stage with no channel, or a channel for a stage
+	 * the draft no longer has. A rename or a reorder is fully expressible from the draft, so those
+	 * cost nothing: with auto-save on, a round trip per blur would be a request per field.
+	 *
+	 * Signals are `peek`ed, never read, so this effect depends on the epoch alone. `cancelled` is what
+	 * makes a slow response harmless: a newer epoch tears this closure down first, so an older read can
+	 * never land on top of a newer one.
+	 *
+	 * A FAILED read is deliberately silent. The write that triggered it has already reported its own
+	 * outcome, and this one costs nothing the owner can act on — a stage row stays non-navigable until
+	 * the next navigation resolves it. A second toast here would interrupt with a problem that has no
+	 * remedy but waiting.
+	 */
+	useEffect(() => {
+		if (committed === 0) return;
+		const current = liveDetail.peek();
+		if (!current) return;
+		const { staleKey } = projectSidebarProjection(
+			current,
+			setupDraft.peek(),
+			setupBaseline.peek(),
+		);
+		// Nothing outstanding, or a read has already come back and left exactly this outstanding — the
+		// server cannot currently do better, so asking again would be a round trip per save forever.
+		if (staleKey === "" || staleKey === settledKey.current) return;
+
+		let cancelled = false;
+		void ProjectSidebarService.detail(current.slug).then((res) => {
+			if (cancelled || !res.ok || !res.data) return;
+			// Recorded only on a response: a read that FAILED has resolved nothing, and marking it
+			// settled would retire the retry along with it.
+			settledKey.current = staleKey;
+			liveDetail.value = res.data.detail;
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [committed]);
 
 	// Restore the persisted accordion open/closed preference once, client-side (never during SSR, so
 	// the server-rendered defaults stay authoritative for hydration). Merged onto the defaults so a
@@ -192,15 +273,32 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	const calendarHref = `${base}/calendar`;
 	const filesHref = `${base}/files`;
 
-	// The session projection recomputes when the archetype or the dev seam changes (both signals).
-	const normalData = activeKind === "normal" ? deriveNormalSession(detail, seam.value) : null;
-	const groupData = activeKind === "group" ? deriveGroupSession(detail, seam.value) : null;
+	/*
+	 * The engagement as the lane draws it RIGHT NOW: the server's copy with the owner's unsaved edits
+	 * folded on. Reading `setupDraft` here is the whole live-sync mechanism — the setup form writes the
+	 * store on every keystroke and this island is a subscriber, so the title, description, type and
+	 * stage list track the form without either side holding a copy of the other's state.
+	 *
+	 * On every route that is not the owner's setup surface there is no draft, and the projection hands
+	 * back the server's answer unchanged — so this is one code path, not a live one beside a static one.
+	 */
+	const projection = projectSidebarProjection(
+		liveDetail.value ?? detail,
+		setupDraft.value,
+		setupBaseline.value,
+	);
+	const view = projection.detail;
+
+	// The session projection recomputes when the archetype or the dev seam changes (both signals). It
+	// derives from the immutable `slug`, so folding the draft in cannot shuffle it as the owner types.
+	const normalData = activeKind === "normal" ? deriveNormalSession(view, seam.value) : null;
+	const groupData = activeKind === "group" ? deriveGroupSession(view, seam.value) : null;
 
 	return (
 		<div class="proj-detail" data-service={activeKind}>
 			{/* Collapsed presentation — CSS reveals it only at the narrow rail density. */}
 			<ProjectRail
-				detail={detail}
+				detail={view}
 				currentPath={currentPath.value}
 				sessionKind={activeKind}
 				onExpand={() => setLaneCollapsed(false)}
@@ -210,20 +308,20 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 			{/* Expanded presentation. */}
 			<div class="proj-detail__full">
 				<SidebarHeader
-					slug={detail.slug}
-					title={detail.title}
+					slug={view.slug}
+					title={view.title}
 					starred={starred.value}
 					onToggleStar={toggleStar}
 					onMenuAction={onMenuAction}
 				/>
 
 				<div class="proj-detail__scroll">
-					<ProjectContextCard detail={detail} />
+					<ProjectContextCard detail={view} />
 
 					{normalData
 						? (
 							<NormalSessionPanel
-								detail={detail}
+								detail={view}
 								data={normalData}
 								calendarHref={calendarHref}
 								filesHref={filesHref}
@@ -232,7 +330,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						: groupData
 						? (
 							<GroupSessionPanel
-								detail={detail}
+								detail={view}
 								data={groupData}
 								openGroups={openGroups.value}
 								onToggleGroup={toggleGroup}
@@ -246,7 +344,8 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 								<hr class="proj-detail__divider" />
 
 								<ChannelTree
-									detail={detail}
+									detail={view}
+									stages={projection.stages}
 									openGroups={openGroups.value}
 									onToggleGroup={toggleGroup}
 									onCreateStage={openCreateStage}
@@ -259,7 +358,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 				<div class="proj-detail__footer">
 					<ProjectViewNav
-						detail={detail}
+						detail={view}
 						currentPath={currentPath.value}
 						collapsed={false}
 						sessionKind={activeKind}
@@ -270,7 +369,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 			<CreateStageModal
 				open={createStageOpen.value}
-				projectTitle={detail.title}
+				projectTitle={view.title}
 				onClose={() => (createStageOpen.value = false)}
 				onCreate={onCreateStage}
 			/>

@@ -2,6 +2,7 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
+import { findStageChannel } from "@projective/types/projects";
 import { canConfigureStage } from "@web/features/projects/core/channel-view.ts";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
 import { resolveProjectSetup } from "@web/features/projects/core/setup-ssr.ts";
@@ -18,11 +19,12 @@ import type { ProjectSetup } from "@web/features/projects/types/projects-types.t
  * disclosure in a list on a different surface, so changing the terms of the work happening in this
  * room meant leaving it.
  *
- * **The stage is resolved through `stageId`, never through the routed segment.** `StageChannel.id` is
- * the channel the tree navigates to — a `comms.project_channels` row on the live path — while
- * `StageSetup.id` is a `projects.project_stages` row, and the two are different keys in different
- * schemas. The fixtures make them equal, which is precisely why a lookup written against the routed
- * id works in the stub and finds nothing in production.
+ * **The routed segment is the stage's `stg-…` address; the stage ROW is still resolved through
+ * `stageId`.** Three keys are in play and only one of them is a URL: the segment addresses the stage,
+ * `StageChannel.id` is the room the tree opens (a `comms.project_channels` row on the live path), and
+ * `StageSetup.id` is the `projects.project_stages` row this page writes to. The fixtures make the last
+ * two equal, which is precisely why a lookup written against the routed id worked in the stub and
+ * found nothing in production.
  *
  * **The guard lives here, in `define.handlers`, and never in the page component.** A `Response`
  * returned by a `define.page` component is dead code: the redirect silently never fires and the body
@@ -76,7 +78,7 @@ export const handler = define.handlers({
 		// A stage channel, or nothing. A general/team/DM channel has no configuration to edit and no
 		// Details tab, so its address here names a page that does not exist rather than one being
 		// withheld.
-		const channel = detail?.channels.stages.find((s) => s.id === channelId);
+		const channel = findStageChannel(detail?.channels.stages ?? [], channelId);
 		if (!detail || !channel) return page(miss);
 
 		// The owner test is the server's own (`projects.projects.owner_user_id === viewer`, which is

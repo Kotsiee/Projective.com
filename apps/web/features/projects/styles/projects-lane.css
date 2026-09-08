@@ -538,6 +538,16 @@
 	background: var(--surface);
 }
 
+/*
+ * Keyboard focus ring. The rule above tints the border for every route into the field, but a tint
+ * is not a focus indicator, and the inner input sets `outline: none` — so a keyboard user had
+ * nothing at all here. The ring is drawn on the WRAPPER because that is the box the reader sees
+ * as the control; the input inside it keeps its suppression so only one ring is painted.
+ */
+.proj-combo__field:has(:focus-visible) {
+	box-shadow: var(--focus-ring-shadow);
+}
+
 .proj-combo__tag {
 	display: inline-flex;
 	align-items: center;

@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import type { BoardCard } from "../types/projects-types.ts";
+import { type BoardCard, ticketPaidHere } from "../types/projects-types.ts";
 import { priorityLabel, priorityTone, statusLabel, statusTone } from "../core/board-model.ts";
 
 /**
@@ -61,7 +61,16 @@ export function TicketListView({ cards, laneOf, onOpen }: TicketListViewProps): 
 							{priorityLabel(c.priority)}
 						</span>
 					</span>
-					<span class="brd-list__cell brd-list__cell--num" role="cell">{c.budgetLabel ?? "—"}</span>
+					<span class="brd-list__cell brd-list__cell--num" role="cell">
+						{c.budgetLabel ?? "—"}
+						{c.hasDescription && !ticketPaidHere(c)
+							? (
+								<span class="brd-list__pay" aria-label="Unpaid for its current stage">
+									Unpaid
+								</span>
+							)
+							: null}
+					</span>
 					<span class="brd-list__cell brd-list__date" role="cell">{c.dateLabel}</span>
 				</button>
 			))}

@@ -60,7 +60,7 @@ import {
 	toSubmissionStatus,
 } from "./live-support.ts";
 import { insertWithSlugRetry } from "../../core/slug-retry.ts";
-import { UUID_RE } from "./live-support.ts";
+import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 
 /**
  * live-writes — the RLS-scoped WRITE path for the projects domain.
@@ -2524,13 +2524,29 @@ export async function insertProjectMessage(
 	input: SendProjectMessage,
 	now: number = Date.now(),
 ): Promise<WriteOutcome<ChatMessage>> {
-	if (!UUID_RE.test(input.channelId)) return null;
 	const db = commsDb(actor);
+
+	// The composer posts to whatever the URL addressed, and for a stage that is a `stg-…` slug rather
+	// than a room id. Resolving it needs the project's row id, so the route's own project slug is
+	// resolved first; an unresolvable project is a miss, not an outage.
+	const projectRow = await projectsDb(actor)
+		.from("projects")
+		.select("id")
+		.eq("slug", input.projectId)
+		.maybeSingle();
+	if (projectRow.error) throw new Error(`projects.projects read failed: ${projectRow.error.message}`);
+	if (!projectRow.data) return null;
+	const channelId = await resolveChannelRef(
+		actor,
+		(projectRow.data as unknown as { id: string }).id,
+		input.channelId,
+	);
+	if (!channelId) return null;
 
 	const { data: channel, error: channelError } = await db
 		.from("project_channels")
 		.select("id, project_id")
-		.eq("id", input.channelId)
+		.eq("id", channelId)
 		.maybeSingle();
 	if (channelError) throw new Error(`comms.project_channels read failed: ${channelError.message}`);
 	if (!channel) return null;
@@ -2539,7 +2555,7 @@ export async function insertProjectMessage(
 	const { data, error } = await db
 		.from("project_messages")
 		.insert({
-			channel_id: input.channelId,
+			channel_id: channelId,
 			// Pinned to the caller rather than taken from the payload. The INSERT policy asserts the
 			// same thing, so a mismatch would be refused — but sending a value the policy has to reject
 			// is how a client comes to believe it may choose an author.

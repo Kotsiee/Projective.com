@@ -3,6 +3,7 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
+import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import ProfileActionLane from "@features/profile/islands/ProfileActionLane.island.tsx";
 import ProfileStickyHeader from "@features/profile/islands/ProfileStickyHeader.island.tsx";
 import ProfileHeader from "@features/profile/islands/ProfileHeader.island.tsx";
@@ -73,6 +74,8 @@ export default define.page(function ProfileLayout(ctx) {
 					middleNavHeader={header}
 					bodyFooter={footer ? publicFooterFor(ctx.url) : null}
 				>
+					{/* The `?tkv=` ticket deep link — same host as the dashboard, same rules. */}
+					<TicketDeepLinkHost authed />
 					{children}
 				</UserShell>
 			);
@@ -84,6 +87,8 @@ export default define.page(function ProfileLayout(ctx) {
 				footer={footer}
 				returnTo={ctx.url.pathname + ctx.url.search}
 			>
+				{/* A guest only ever loses the parameter; the host opens nothing for them. */}
+				<TicketDeepLinkHost authed={false} />
 				{children}
 			</GuestShell>
 		);

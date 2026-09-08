@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
+import { findStageChannel } from "@projective/types/projects";
 import StageDetailsRig from "../islands/StageDetailsRig.island.tsx";
 import { canConfigureStage } from "./channel-view.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
@@ -40,7 +41,7 @@ export async function stageDetailsFooterFor(
 	const [, projectId, channelId] = segs;
 	const { detail } = await resolveProjectDetail(projectId, context, actor);
 	// A stage channel, or nothing — a general/team/DM channel has no configuration and no Details tab.
-	const channel = detail?.channels.stages.find((s) => s.id === channelId);
+	const channel = findStageChannel(detail?.channels.stages ?? [], channelId);
 	if (!detail || !channel) return null;
 
 	const canConfigure = detail.viewerIsClient || context.role === "admin";

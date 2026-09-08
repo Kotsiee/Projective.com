@@ -2,6 +2,7 @@ import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
 import type { ReadActor } from "../read-actor.ts";
 import type { ProjectStatus } from "@projective/types/projects";
+import { isSlug } from "@projective/types/slugs";
 
 /**
  * live-support — the plumbing every live read in this domain shares, and the single place each
@@ -99,6 +100,58 @@ export async function resolveProjectRef<T>(
  * empty string is a legitimate value for an optional field and a parse failure for a required one,
  * and this function cannot know which it is looking at.
  */
+/**
+ * The `comms.project_channels` id a routed channel segment opens, or `null`.
+ *
+ * The segment is polymorphic and self-describing, which is what lets one route serve four kinds of
+ * channel: a `stg-…` prefix names a STAGE and is resolved through it, and anything else is a channel
+ * id used directly. `isSlug` decides between them on shape alone, so the discrimination costs no
+ * query and cannot be fooled by a caller — a stage slug is not a legal uuid and a uuid is not a legal
+ * slug.
+ *
+ * Written once, here, because five live reads and one write each need this answer and each of them
+ * gated on `UUID_RE` before stage slugs existed. Five copies of a rule this small is how two of them
+ * end up disagreeing about whether a stage's own id is also acceptable.
+ *
+ * Scoped by `project_id` on BOTH arms. The slug is globally unique, so the scope adds nothing to
+ * uniqueness — it is there so a stage of ANOTHER project cannot be addressed through this project's
+ * URL, which would otherwise render one engagement's work under another's chrome. RLS is still the
+ * real gate; this only decides what was asked for.
+ *
+ * A stage whose `stage_all` room has not been provisioned yet resolves to `null`: the stage exists and
+ * its address is valid, but there is no room to open, and inventing one is not a read's job.
+ */
+export async function resolveChannelRef(
+	actor: ReadActor & { accessToken: string },
+	projectId: string,
+	ref: string | null | undefined,
+): Promise<string | null> {
+	if (!ref) return null;
+
+	if (isSlug(ref, "stage")) {
+		const stage = await projectsDb(actor)
+			.from("project_stages")
+			.select("id")
+			.eq("project_id", projectId)
+			.eq("slug", ref)
+			.maybeSingle();
+		if (stage.error || !stage.data) return null;
+		const stageId = (stage.data as unknown as { id: string }).id;
+
+		const room = await commsDb(actor)
+			.from("project_channels")
+			.select("id")
+			.eq("project_id", projectId)
+			.eq("stage_id", stageId)
+			.limit(1)
+			.maybeSingle();
+		if (room.error || !room.data) return null;
+		return (room.data as unknown as { id: string }).id;
+	}
+
+	return UUID_RE.test(ref) ? ref : null;
+}
+
 export function clamp(value: string | null | undefined, max: number): string {
 	if (!value) return "";
 	return value.length <= max ? value : value.slice(0, max);

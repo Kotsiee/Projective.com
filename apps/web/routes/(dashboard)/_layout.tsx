@@ -50,6 +50,7 @@ import { filesFooterFor } from "@web/features/files/core/files-footer-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
+import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
@@ -263,6 +264,11 @@ export default define.page(async function DashboardLayout(ctx) {
 		>
 			{/* Global floating "Pop Out Chat" host — survives navigations, re-seeds from sessionStorage. */}
 			<ChatPopoutHost path={path} />
+			{
+				/* The `?tkv=<ticket-slug>` deep link: one owner of the URL ⇄ ticket-modal relationship on
+			    every dashboard page (the two committing checkout steps opt out by policy, inside it). */
+			}
+			<TicketDeepLinkHost authed />
 			{
 				/* DEV-ONLY money-flow debugger — `MoneyFlowMount` returns null in production, so the host,
 			    the popover and its store are tree-shaken out of the shipped bundle. */

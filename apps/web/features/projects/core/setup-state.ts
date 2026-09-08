@@ -10,6 +10,7 @@ import {
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { useToast } from "@projective/ui/feedback";
 import { ProjectSidebarService } from "./ProjectSidebarService.ts";
+import { markSetupCommitted, setupBaseline, setupDraft } from "./setup-store.ts";
 import { resetFieldValidation } from "./setup-validation.ts";
 import { isOnline, markReachable, watchNetwork } from "@web/utils/network.ts";
 import {
@@ -48,11 +49,14 @@ import { watchDevSeam } from "./submission-access.ts";
  */
 
 // #region The working copy
-/** The live, possibly-unsaved configuration. `null` until the body island seeds it on mount. */
-export const setupDraft = signal<ProjectSetup | null>(null);
-
-/** The last configuration the SERVER acknowledged — the only honest measure of "unchanged". */
-export const setupBaseline = signal<ProjectSetup | null>(null);
+/**
+ * The working copy and the clean baseline, re-exported from the leaf that declares them.
+ *
+ * They live in `core/setup-store.ts` so the middle-nav LANE can read the draft — it renders on every
+ * `/projects/{slug}/…` route, most of which edit nothing — without importing this module's save
+ * serialiser, offline queue, toast channel and thin client service along with it.
+ */
+export { setupBaseline, setupDraft };
 
 /** A save/publish/archive is in flight; the rig blocks a second press against the same draft. */
 export const setupSaving = signal<boolean>(false);
@@ -84,6 +88,17 @@ export const setupQueued = signal<boolean>(false);
 /**
  * Save · publish · archive outcomes are reported as TOASTS, not as a banner in the form.
  *
+ * ## What is announced, and what is not
+ *
+ * A SUCCESS is announced only when somebody asked for it: the Save or Discard button (which exist
+ * only while auto-save is off), `Ctrl+S`, or Publish. An auto-save landing on blur says nothing —
+ * it fires on every focus move, and a toast per field turns the one channel that reports real
+ * trouble into something the eye learns to skip.
+ *
+ * REFUSALS are never gated. Whatever ran the write, an edit the server would not take has to
+ * interrupt: the alternative is an owner who watches a form look saved and closes the tab. The same
+ * goes for the offline/queued notices, which report where the work actually is.
+ *
  * The two `setupError`/`setupNotice` signals this replaces rendered into a report block at the top of
  * the body, which is the wrong place for the outcome of a press made in the FOOTER band: with
  * auto-save on, a blur near the bottom of a long form reported itself in a region that had scrolled
@@ -99,8 +114,9 @@ const toast = useToast();
 /**
  * The outcome currently on screen, so a new one REPLACES it instead of stacking beneath it.
  *
- * Auto-save fires on every blur, so tabbing through a section would otherwise leave a column of
- * near-identical "Changes saved" toasts obscuring the form they refer to.
+ * Auto-save fires on every blur, and a run of them can each have something to say — an offline
+ * queue notice, then a refusal — so without this the form would be read through a column of stacked
+ * reports. (Their SUCCESS no longer says anything at all; see {@link SaveTrigger}.)
  *
  * The previous toast is removed by ID and the replacement is given a FRESH one. Reusing a stable id
  * would look equivalent and is not: both writes land in one batch, so Preact reconciles by key and
@@ -387,11 +403,25 @@ export function patchSetup(patch: ProjectSetupPatch): void {
 export function discardSetup(): void {
 	const base = setupBaseline.value;
 	if (!base) return;
+	// Read BEFORE the draft is replaced — `setupDirty` is computed from draft-vs-baseline, so after
+	// the assignment it is false by construction and would report every discard as a no-op.
+	const discarded = setupDirty.peek();
 	setupDraft.value = base;
 	clearOutcome();
 	setupReveal.value = false;
 	setupQueued.value = false;
 	void dequeueWrite(base.id);
+	/*
+	 * Discard is announced, and it is the one outcome on this surface with nothing else to show for
+	 * itself. A save moves the status line and the ladder; a discard's whole effect is that the form
+	 * goes back to what the server already had, which on a long form can be entirely off-screen — the
+	 * owner presses a button and, from where they are standing, nothing happens.
+	 *
+	 * Guarded on there having been something to throw away rather than trusting the caller: the rig
+	 * only renders Discard while the draft is dirty, but "changes discarded" over a form that had no
+	 * changes is a claim about work that never existed.
+	 */
+	if (discarded) report("success", "Changes discarded");
 }
 
 /**
@@ -408,6 +438,7 @@ export function resetSetupState(): void {
 	// pending follow-up from firing against an engagement that is no longer on screen.
 	inFlight = null;
 	pending = false;
+	announceSave = false;
 	autoSaveHeld = false;
 	setupDraft.value = null;
 	setupBaseline.value = null;
@@ -529,7 +560,7 @@ function toPayload(setup: ProjectSetup): UpdateProject {
 async function commit(
 	projectRef: string,
 	payload: UpdateProject,
-	notice: string,
+	notice: string | null,
 ): Promise<boolean> {
 	const draft = setupDraft.peek();
 
@@ -613,7 +644,10 @@ async function commit(
 	 * this response is deliberately not overwriting.
 	 */
 	if (setupDraft.peek() === sent) setupDraft.value = res.data.setup;
-	report("success", notice);
+	// A `null` notice means this write's success is announced by its caller, or not at all. Ordinary
+	// saves take that path so an auto-save on blur can land in silence; publish still names itself
+	// here, because there is exactly one publish per press and no batch for it to be announced by.
+	if (notice !== null) report("success", notice);
 	setupReveal.value = false;
 	autoSaveHeld = false;
 	// Whatever this project owed is now on the server — this payload is a superset of it, since every
@@ -622,6 +656,16 @@ async function commit(
 	setupQueued.value = false;
 	void dequeueWrite(res.data.setup.id);
 	stampSavedAt(res.data.setup.id);
+	/*
+	 * Announce the acknowledgement to the middle-nav lane, LAST — after the baseline, the draft and
+	 * the queue have all settled, so a reader woken by it sees the finished state rather than a
+	 * half-applied one.
+	 *
+	 * It carries no payload: the lane keeps drawing the draft, which is ahead of this response
+	 * whenever the owner has typed since. What it says is only that a server round trip has landed,
+	 * which is the moment a stage created in this form can first have a channel to link to.
+	 */
+	markSetupCommitted();
 	return true;
 }
 
@@ -640,7 +684,9 @@ async function saveSetup(): Promise<boolean> {
 		setupReveal.value = true;
 		return false;
 	}
-	return await commit(draft.slug, toPayload(draft), "Changes saved successfully");
+	// `null`: an ordinary save never announces itself from here. Whether this one is worth a toast
+	// depends on WHY it ran, which this function cannot see — {@link runSaves} owns that answer.
+	return await commit(draft.slug, toPayload(draft), null);
 }
 
 // #region The save serialiser
@@ -652,6 +698,31 @@ let inFlight: Promise<boolean> | null = null;
 
 /** A save was asked for while one was already running, and has not been served yet. */
 let pending = false;
+
+/**
+ * Why a save ran — and therefore whether its SUCCESS is worth a toast.
+ *
+ * `explicit` is a deliberate press: the Save button, or `Ctrl+S`. The owner asked a question and is
+ * owed an answer. `implicit` is the auto-save on blur, which fires on every focus move — announcing
+ * those turned "your work is safe" into wallpaper, one toast per field tabbed past, sitting over the
+ * form it referred to.
+ *
+ * Only SUCCESS is gated. A refusal, and the offline/queued notices, are reported whatever triggered
+ * them: an auto-save that failed silently is an owner who closes the tab believing work is stored
+ * that is not, which is the one outcome this channel exists to prevent.
+ */
+export type SaveTrigger = "explicit" | "implicit";
+
+/**
+ * Some requester in the current batch was a deliberate press, so the batch announces when it lands.
+ *
+ * A flag on the BATCH rather than a parameter carried down to the write, because
+ * {@link requestSave} collapses overlapping requests: a Save pressed while an auto-save is in flight
+ * is served by that save's promise, and if the trigger travelled with the write instead, the press
+ * would inherit the blur's silence and look broken. OR-ing it upward means one deliberate requester
+ * anywhere in the batch is enough.
+ */
+let announceSave = false;
 
 /**
  * Ask for the draft to be persisted. THE entry point for every save trigger.
@@ -668,17 +739,25 @@ let pending = false;
  * genuinely nothing left to send. It also stops on failure — retrying a refused payload in a loop
  * would turn one error the owner can read into a stream of them.
  */
-export function requestSave(): Promise<boolean> {
+export function requestSave(trigger: SaveTrigger = "explicit"): Promise<boolean> {
 	// Nothing to send is not a failure: the server already holds this configuration, so the promise
 	// this returns is honestly `true`. The guard is here rather than only on the blur path because
 	// EVERY trigger reaches this function — measured before it was added, one Ctrl+S on an untouched
 	// form sent a full PATCH that rewrote the row, re-derived the ladder and re-indexed the project
 	// to arrive at exactly what was already stored.
+	//
+	// It also returns before `announceSave` is touched, so a no-op request cannot arm an announcement
+	// for a batch that never runs — nor leave one armed for the NEXT batch, which would hand an
+	// auto-save a toast it did not earn.
 	if (!inFlight && !setupDirty.peek()) return Promise.resolve(true);
 	if (inFlight) {
+		// OR, never assign: a deliberate press joining a batch must not be silenced by a blur that
+		// joins after it.
+		announceSave = announceSave || trigger === "explicit";
 		pending = true;
 		return inFlight;
 	}
+	announceSave = trigger === "explicit";
 	inFlight = runSaves();
 	return inFlight;
 }
@@ -696,6 +775,17 @@ async function runSaves(): Promise<boolean> {
 		inFlight = null;
 		pending = false;
 	}
+	/*
+	 * One announcement per BATCH, not per write.
+	 *
+	 * Read and cleared here rather than inside the loop because a batch is one answer to one press:
+	 * a Save that collapses three queued payloads into two round trips is still one "did that work?"
+	 * and deserves one reply. Failures are already reported by `commit` as they happen, with the
+	 * specific reason attached — this only ever adds the success case the write no longer claims.
+	 */
+	const announce = announceSave;
+	announceSave = false;
+	if (ok && announce) report("success", "Changes saved successfully");
 	return ok;
 }
 
@@ -761,7 +851,10 @@ export function autoSaveOnBlur(): void {
 	// An archived project refuses every write, and firstBlocker's refusals are for a deliberate press
 	// to answer — an auto-save must never paint the form red for a field the owner is walking past.
 	if (!draft || draft.archivedAt !== null || firstBlocker(draft) !== null) return;
-	void requestSave().then((ok) => {
+	// `implicit`: a blur is the owner moving through the form, not asking a question, so a save that
+	// lands says nothing. One that is REFUSED still reports itself — `commit` does that regardless of
+	// trigger, because an edit that silently failed to persist is the failure worth interrupting for.
+	void requestSave("implicit").then((ok) => {
 		if (!ok) autoSaveHeld = true;
 	});
 }
@@ -921,6 +1014,10 @@ export async function flushQueuedWrites(): Promise<void> {
 			if (active && active.id === entry.projectId) {
 				setupBaseline.value = res.data.setup;
 				if (setupDraft.peek() === active) setupDraft.value = res.data.setup;
+				// Only for the project on screen: the lane is rendering THIS engagement, and an epoch
+				// bumped by another project's queued write would send it to re-read for a change that
+				// happened somewhere it is not looking.
+				markSetupCommitted();
 			}
 		}
 
@@ -931,10 +1028,15 @@ export async function flushQueuedWrites(): Promise<void> {
 			// Named, because the entry that stalled may belong to a project the reader is not looking at
 			// — "an edit could not sync" with no subject is a sentence nobody can act on.
 			reportError(
-				`"${stalled.title || "An offline edit"}" could not sync yet — it is still saved on this device.`,
+				`"${
+					stalled.title || "An offline edit"
+				}" could not sync yet — it is still saved on this device.`,
 			);
 		} else if (sent > 0) {
-			report("success", sent === 1 ? "Your offline edit has synced." : `${sent} offline edits synced.`);
+			report(
+				"success",
+				sent === 1 ? "Your offline edit has synced." : `${sent} offline edits synced.`,
+			);
 		}
 	} finally {
 		flushing = false;

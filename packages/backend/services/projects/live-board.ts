@@ -9,14 +9,17 @@ import {
 	type BoardView,
 	buildBoardColumns,
 	cardColumnId,
+	countsAsOnboarded,
 	formatTicketMoney,
 	type ProjectParty,
+	providerVisibleCards,
 	type StageAssignmentMode,
 	stageCostCents,
 	TICKET_COLUMN_LABEL,
 	ticketColumnStatus,
 	type TicketHistoryEntry,
 	type TicketHistoryKind,
+	type TicketPaymentScope,
 	type TicketPriority,
 	type TicketStageRef,
 	type TicketStatus,
@@ -36,6 +39,7 @@ import {
 	toTicketStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
+import { isSlug } from "@projective/types/slugs";
 
 /**
  * live-board — the RLS-scoped Postgres read path for `ProjectBackendService.board`.
@@ -254,6 +258,7 @@ const NO_COMMENT_COUNT = 0;
 /** The `projects.project_stages` columns a {@link BoardStageRef} needs. */
 const STAGE_COLUMNS = [
 	"id",
+	"slug",
 	"project_id",
 	"name",
 	"description_text",
@@ -273,6 +278,7 @@ const STAGE_COLUMNS = [
 /** The `projects.tickets` columns one {@link BoardCard} needs. */
 const TICKET_COLUMNS = [
 	"id",
+	"slug",
 	"project_id",
 	"current_stage_id",
 	"current_assignee_id",
@@ -315,6 +321,8 @@ const HISTORY_COLUMNS = [
 /** One `projects.project_stages` row as selected by {@link STAGE_COLUMNS}. */
 interface StageRow {
 	id: string;
+	/** The stage's `stg-…` route address — what a channel-scoped board's segment carries. */
+	slug: string;
 	project_id: string;
 	name: string | null;
 	description_text: string | null;
@@ -334,6 +342,7 @@ interface StageRow {
 /** One `projects.tickets` row as selected by {@link TICKET_COLUMNS}. */
 interface TicketRow {
 	id: string;
+	slug: string | null;
 	project_id: string;
 	current_stage_id: string | null;
 	current_assignee_id: string | null;
@@ -679,6 +688,7 @@ function toStageRef(stage: StageRow, ctx: StageContext): BoardStageRef {
 	const inStage = ctx.tickets.filter((t) => t.current_stage_id === stage.id);
 	return {
 		id: clamp(stage.id, 80),
+		slug: clamp(stage.slug, 80),
 		name: clampOr(stage.name, 120, "Untitled stage"),
 		order: Math.max(0, intAtLeastZero(stage.sort_order) ?? 0),
 		status: toStageProjectStatus(stage.status),
@@ -1083,6 +1093,54 @@ function escrowHeldOf(paymentStatus: string | null | undefined): boolean {
 	return paymentStatus === "escrow_funded" || paymentStatus === "partially_released";
 }
 
+/**
+ * The ticket's funding scope — what the client has PAID FOR, and for which stages — projected from
+ * `projects.tickets.payment_status` + `current_stage_id`.
+ *
+ * This is the honest reading of the only two columns this read can see, and it is stated as a
+ * projection rather than as the truth because the truth lives in `finance.escrows`, which carries the
+ * `(project_stage_id, ticket_id)` pair per hold and is unreadable here (no `USAGE` on `finance` —
+ * root CLAUDE.md §8 Decision #68(a)):
+ *
+ *  - `escrow_funded` — `finance.fn_hold_ticket_escrow` holds ONE escrow, against the ticket's
+ *    `current_stage_id` at the moment of the claim, and refuses a second while one is held. So the
+ *    paid stage is the current one → `per_stage`, `[current_stage_id]`.
+ *  - `partially_released` — `fn_release_ticket_escrow` released every held escrow while the ticket
+ *    was NOT yet completed (a stage was approved and the ticket moved on). Nothing is held against
+ *    the stage it now sits in → `per_stage` with NO paid stage: the card reads Unpaid here and is
+ *    withheld from freelancers until this stage is funded, which is exactly the product rule.
+ *  - `released` — the ticket completed and every hold paid out → `full`.
+ *  - `unpaid` / `refunded` / anything unrecognised → `unpaid`, the safe side.
+ *
+ * **Known limit, stated rather than hidden:** a funded ticket that `move_ticket` carries to ANOTHER
+ * stage keeps `escrow_funded` while its hold stays pinned to the old stage, and this projection would
+ * then call the new stage paid. That move is unreachable through the board — a client's drag is
+ * locked while a ticket is claimed and being worked ({@link ticketWorkLocked}), and a freelancer's
+ * stage board only moves status — but a direct RPC caller could produce it. Closing it needs either
+ * `finance` USAGE for the read or a projects-side mirror of the funded stage set, both of which are
+ * schema decisions for a human. Distinguishing `full` from `per_stage` BEFORE a claim (a client who
+ * bought the whole ticket at checkout) has no column at all today; every pre-claim ticket therefore
+ * reads `unpaid` on the live path until a purchase record exists.
+ */
+function fundingOf(
+	paymentStatus: string | null | undefined,
+	currentStageId: string | null,
+): { paymentScope: TicketPaymentScope; paidStageIds: string[] } {
+	switch (paymentStatus) {
+		case "escrow_funded":
+			return {
+				paymentScope: "per_stage",
+				paidStageIds: currentStageId ? [currentStageId] : [],
+			};
+		case "partially_released":
+			return { paymentScope: "per_stage", paidStageIds: [] };
+		case "released":
+			return { paymentScope: "full", paidStageIds: [] };
+		default:
+			return { paymentScope: "unpaid", paidStageIds: [] };
+	}
+}
+
 /** Options for {@link toCard} — the per-ticket facts resolved by the secondary reads. */
 interface CardContext {
 	stagesById: Map<string, StageRow>;
@@ -1119,6 +1177,10 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 
 	return {
 		id: clamp(ticket.id, 120),
+		// The column is NOT NULL and trigger-filled, so a row without one cannot exist; the guard only
+		// keeps a malformed value (a row written around the CHECK, or a test double) from being offered
+		// as an address the route would then refuse.
+		slug: ticket.slug && isSlug(ticket.slug, "ticket") ? ticket.slug : undefined,
 		title: clampOr(ticket.title, 200, "Untitled ticket"),
 		description: description.length > 0 ? description : null,
 		/*
@@ -1151,6 +1213,7 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		claimed: ticket.claimed_at !== null || assignee !== null,
 		claimedAt: ticket.claimed_at,
 		escrowHeld: escrowHeldOf(ticket.payment_status),
+		...fundingOf(ticket.payment_status, ticket.current_stage_id),
 		priority: toPriority(ticket.priority),
 		intensity: NEUTRAL_INTENSITY,
 		workload: Math.max(0, num(ticket.workload_intensity) ?? 0),
@@ -1224,17 +1287,18 @@ function viewerIsClientOf(
 /**
  * The stage a channel-scoped board is showing, or `null`.
  *
- * A channel id is resolved against the stage's own id and against the `stage-{id}` column-id
- * convention. It is deliberately NOT resolved against `comms.project_channels`: the channel-to-
- * stage mapping belongs to the channel read, and duplicating it here would put a second answer to
- * "which stage is this channel" into the product.
+ * The segment is resolved against the stage's `stg-…` SLUG, which is what the route carries. It is
+ * deliberately NOT resolved against `comms.project_channels`: the channel-to-stage mapping belongs to
+ * the channel read, and duplicating it here would put a second answer to "which stage is this
+ * channel" into the product. Resolving the slug needs no such mapping — the address names the stage
+ * directly, which is the reason the route carries it.
  *
  * An unresolvable channel yields `null`, and the caller then returns an EMPTY card list — matching
  * the fixtures, and preferring an empty board to a board that silently shows every stage's tickets
  * under one stage's name.
  */
 function stageForChannel(stages: readonly StageRow[], channelId: string): StageRow | null {
-	return stages.find((s) => s.id === channelId || `stage-${s.id}` === channelId) ?? null;
+	return stages.find((s) => s.slug === channelId) ?? null;
 }
 
 /**
@@ -1556,6 +1620,34 @@ export async function fetchBoardPage(
 		cards = stage ? placed.filter((c) => c.stageId === stage.id) : [];
 	}
 	cards = cards.filter((card) => matches(card, params));
+
+	/*
+	 * Provider visibility — applied on the READ, never left to the island.
+	 *
+	 * The stages this viewer is onboarded to are the ones where they hold a `stage_assignments` row
+	 * that {@link countsAsOnboarded} (the same deny-list guard the setup surface's locks read, so the
+	 * two cannot disagree about what "onboarded" means), plus the stage of any ticket they currently
+	 * hold — an assignee IS onboarded to the stage of their own ticket, whether or not the assignment
+	 * row was ever written. A team assignment carries `team_id` and no user, so a viewer onboarded only
+	 * THROUGH a team resolves to nothing here (the `org` membership read belongs to another module —
+	 * flagged, not guessed). RLS's `"View tickets"` policy lets any participant read every ticket of
+	 * the project; this is the layer that turns that into "only what you are paid and seated for".
+	 */
+	const viewerIsClient = viewerIsClientOf(summary.kind, summary.viewerRole);
+	const viewerStageIds = viewerIsClient ? [] : [
+		...new Set([
+			...assignmentRows
+				.filter((row) =>
+					row.assignee_type === "freelancer" && row.freelancer_profile_id === actor.userId &&
+					countsAsOnboarded(row.status ?? "")
+				)
+				.map((row) => row.project_stage_id),
+			...ticketRows
+				.filter((t) => t.current_assignee_id === actor.userId && t.current_stage_id)
+				.map((t) => t.current_stage_id as string),
+		]),
+	].map((id) => clamp(id, 80));
+	if (!viewerIsClient) cards = providerVisibleCards(cards, viewerStageIds);
 	// #endregion
 
 	// #region Seats
@@ -1602,7 +1694,8 @@ export async function fetchBoardPage(
 		format: summary.format,
 		title: boardTitle(kind, summary.kind, summary.format),
 		view,
-		viewerIsClient: viewerIsClientOf(summary.kind, summary.viewerRole),
+		viewerIsClient,
+		viewerStageIds,
 		columns,
 		cards,
 		stages,
@@ -1613,6 +1706,41 @@ export async function fetchBoardPage(
 		viewerId: clamp(actor.userId, 80),
 		total: cards.length,
 	};
+}
+
+// #endregion
+
+// #region Ticket lookup (the deep link)
+
+/**
+ * Where a ticket lives, by its `tkt-…` slug: the `prj-…` slug of the engagement it belongs to, or
+ * `null` when no row answers to it.
+ *
+ * "No row" is deliberately the SAME answer for a ticket that does not exist and one the viewer may
+ * not see. The read runs under the caller's own JWT, so RLS on `projects.tickets` withholds the
+ * second case before this function can tell the two apart — and it must not try to: a deep link is
+ * pasted from anywhere, so distinguishing "no such ticket" from "not yours" would let anyone probe
+ * which addresses are real (the `/share/[slug]` precedent, Decision #67).
+ *
+ * Two single-row reads rather than a join: PostgREST's embedded-resource syntax needs a foreign-key
+ * relationship it can see, and `tickets.project_id → projects.id` is one, but the join would also be
+ * the only embedded read in this module, and a second shape for one lookup is not worth the
+ * discount of one round trip on a path that runs once per deep link.
+ */
+export async function fetchTicketLocation(
+	actor: ReadActor & { accessToken: string },
+	slug: string,
+): Promise<{ projectSlug: string } | null> {
+	if (!isSlug(slug, "ticket")) return null;
+	const db = projectsDb(actor);
+	const ticket = await db.from("tickets").select("project_id").eq("slug", slug).maybeSingle();
+	if (ticket.error) throw new Error(`projects.tickets read failed: ${ticket.error.message}`);
+	const projectId = (ticket.data as { project_id?: string } | null)?.project_id;
+	if (!projectId) return null;
+	const project = await db.from("projects").select("slug").eq("id", projectId).maybeSingle();
+	if (project.error) throw new Error(`projects.projects read failed: ${project.error.message}`);
+	const projectSlug = (project.data as { slug?: string } | null)?.slug;
+	return projectSlug ? { projectSlug } : null;
 }
 
 // #endregion

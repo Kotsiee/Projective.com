@@ -372,6 +372,20 @@ CREATE TABLE projects.tickets (
     current_stage_id uuid REFERENCES projects.project_stages(id) ON DELETE SET NULL,
     current_assignee_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
 
+-- The ticket's own public address, on the same contract as `projects.projects.slug`: opaque, derived
+-- from nothing, minted once by `security.fn_slug_guard('tkt')` when the insert supplies none, and
+-- refused by that same guard on any later update. It is what the `?tkv=` deep link carries, so a
+-- copied link to a ticket survives every rename, every move between stages and every re-pricing.
+--
+-- Globally unique rather than unique per project, like a stage's: the prefix already says what kind
+-- of thing it addresses, and a `tkt-` segment appearing anywhere — a notification, a chat message,
+-- a query string on an unrelated page — must identify exactly one row without its project alongside
+-- it, because the deep link is opened from pages that do not know the project.
+--
+-- NOT NULL with NO DEFAULT, deliberately. The BEFORE INSERT trigger fills a missing slug before the
+-- NOT NULL is checked; a DEFAULT would be a second, inline copy of the minter to keep in step.
+slug text NOT NULL,
+
 -- The CLIENT-side member accountable for this ticket inside a multi-member workspace. Kept
 -- distinct from `current_assignee_id`, the provider-side freelancer who claimed it: one is who
 -- commissioned the work and answers for it, the other is who is doing it, and only in a
@@ -427,7 +441,13 @@ claimed_at timestamp with time zone,
     workload_report_id uuid,
 
     created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now()
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+
+    CONSTRAINT tickets_slug_key UNIQUE (slug),
+    -- The minted shape and nothing else: prefix, hyphen, ten symbols of the confusable-free alphabet —
+    -- same alphabet and the same cross-check as `ck_projects_slug_shape`. See the slug column above.
+    CONSTRAINT ck_tickets_slug_shape
+      CHECK (slug ~ '^tkt-[23456789abcdefghjkmnopqrstuvwxyz]{10}$')
 );
 
 

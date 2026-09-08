@@ -33,6 +33,7 @@ import {
 	workloadIntensity,
 } from "@projective/types/projects";
 import { flattenRichText } from "@projective/types/richtext";
+import { mintSlug } from "@projective/types/slugs";
 import type { ReadActor } from "../read-actor.ts";
 
 /**
@@ -392,6 +393,26 @@ export function storedTicketCard(
 	ticketId: string,
 ): BoardCard | undefined {
 	return peekBucket(owner)?.cards.get(projectId)?.get(ticketId);
+}
+
+/**
+ * The project key a stub-written ticket was stored under, by the ticket's `tkt-…` slug, or `null`.
+ *
+ * The deep link arrives with no project alongside it, so the store has to be searchable by the
+ * address alone. A stub-created ticket is the one kind of ticket the fixture corpus cannot find,
+ * because it exists nowhere else — so without this a ticket created through the stub path would
+ * be addressable on the board and unreachable by its own link, which is the class of defect
+ * Decision #88 records (a stub more permissive than production, or here, less).
+ */
+export function storedTicketProjectBySlug(owner: string, slug: string): string | null {
+	const bucket = peekBucket(owner);
+	if (!bucket) return null;
+	for (const [projectId, cards] of bucket.cards) {
+		for (const card of cards.values()) {
+			if (card.slug === slug) return projectId;
+		}
+	}
+	return null;
 }
 // #endregion
 
@@ -867,6 +888,10 @@ function overlayStages(
 		}
 		out.push({
 			id,
+			// A stage this store invented has no route address: only the database mints one, and it
+			// refuses to move it afterwards. Echoing the id keeps the field populated without inventing
+			// a `stg-…` shape, so `isSlug` refuses it and nothing links to a URL that resolves nowhere.
+			slug: id,
 			name: stage.name ?? `Stage ${index + 1}`,
 			order: stage.order ?? index,
 			status: "draft",
@@ -1192,6 +1217,9 @@ export function buildStubCard(
 	const tasks = input.tasks;
 	return {
 		id,
+		// A saved ticket always has an address, so the stub mints one the way the database's trigger
+		// would — once, on creation, and never again: an edit keeps the address it was first given.
+		slug: previous?.slug ?? mintSlug("ticket"),
 		title: input.title,
 		description: description.length > 0 ? input.description : null,
 		hasDescription: description.length > 0,
@@ -1205,6 +1233,10 @@ export function buildStubCard(
 		claimed: previous?.claimed ?? false,
 		claimedAt: previous?.claimedAt ?? null,
 		escrowHeld: previous?.escrowHeld ?? false,
+		// Funding is bought, not typed. A commit carries what was already paid for; a ticket nobody has
+		// bought yet is unpaid, and this stub has no purchase path that could say otherwise.
+		paymentScope: previous?.paymentScope ?? "unpaid",
+		paidStageIds: previous?.paidStageIds ?? [],
 		priority: input.priority,
 		intensity: input.intensity,
 		workload: workloadOf(refs, stages),

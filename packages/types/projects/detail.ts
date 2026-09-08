@@ -69,6 +69,22 @@ export type StageActivity = z.infer<typeof StageActivity>;
 export const StageChannelSchema = z.object({
 	id: z.string().min(1).max(80),
 	/**
+	 * The stage's PUBLIC ADDRESS — the `stg-…` route slug, and the only one of this object's three
+	 * identifiers that appears in a URL.
+	 *
+	 * A stage row carries three keys that are easy to mistake for one another, so they are named for
+	 * what they are FOR rather than for what they hold: {@link StageChannelSchema.id} is the room the
+	 * tree opens, `stageId` is the configuration row behind it, and this is what a link points at.
+	 *
+	 * Routing on the slug rather than on `id` is what makes a stage link survivable. `id` is a
+	 * `comms.project_channels` uuid on the live path, and that room is provisioned LAZILY on first
+	 * open — so a link built from it could not be minted before somebody had already visited, and said
+	 * nothing about what it addressed once it was. The slug is minted with the stage itself, is
+	 * refused by `security.fn_slug_guard` on any later update, and its prefix identifies the row's
+	 * table from the bare segment.
+	 */
+	slug: z.string().min(1).max(80),
+	/**
 	 * The `projects.project_stages` row this channel belongs to — NOT the same string as `id`.
 	 *
 	 * `id` is the routed channel segment, and on the live path it is a `comms.project_channels` id
@@ -121,6 +137,27 @@ export const DmChannelSchema = z.object({
 	hasProjectContext: z.boolean(),
 });
 export type DmChannel = z.infer<typeof DmChannelSchema>;
+
+/**
+ * The stage a routed segment addresses, or `null` when the segment names no stage.
+ *
+ * The ONE implementation of "which stage is this URL talking about", called by the channel resolver,
+ * the board, the submissions tree, the calendar and the stage Details route alike. It was four
+ * separate `find` calls before, and they had already drifted: two matched the stage's own id, one
+ * matched the channel's, one matched both plus a `stage-{id}` string. Every one of them type-checks
+ * against any of the three keys, because all three are `string`.
+ *
+ * Matches the SLUG and nothing else. A stage's id and its channel's id are internal keys that never
+ * appear in a path, and accepting them here would let an address resolve in the stub — where the
+ * fixtures make those strings coincide — and 404 in production, where they do not.
+ */
+export function findStageChannel(
+	stages: readonly StageChannel[],
+	ref: string | null | undefined,
+): StageChannel | null {
+	if (!ref) return null;
+	return stages.find((s) => s.slug === ref) ?? null;
+}
 
 /** The four communication-tree groups, pre-partitioned server-side. */
 export const ProjectChannelsSchema = z.object({

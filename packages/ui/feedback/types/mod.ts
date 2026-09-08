@@ -29,17 +29,14 @@ export interface MessageItem {
 // #endregion
 
 // #region Toast
-/** Corner anchor for the {@link Toast} overlay — nine-point placement. */
-export type ToastPosition =
-	| "top-left"
-	| "top-center"
-	| "top-right"
-	| "center-left"
-	| "center"
-	| "center-right"
-	| "bottom-left"
-	| "bottom-center"
-	| "bottom-right";
+/*
+ * Placement lives in `../core/toast-position.ts`, not here.
+ *
+ * It is re-exported rather than declared because the resolver that turns a position into a class
+ * name has to live beside the anchor list — a second declaration would let the vocabulary and the
+ * mapping drift, and the mapping is the half that decides whether a stack is visible at all.
+ */
+export type { ToastAnchor, ToastLogicalAnchor, ToastPosition } from "../core/toast-position.ts";
 
 /**
  * A single toast notification pushed via `useToast().show(...)`. `life` defaults to `3000`ms;

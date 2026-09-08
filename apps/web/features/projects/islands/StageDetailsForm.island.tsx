@@ -12,6 +12,7 @@ import {
 	type ProjectSetup,
 	STAGE_ITEM_LABEL,
 	type StageSetup,
+	stageTimingApplies,
 } from "../types/projects-types.ts";
 import {
 	currentSetup,
@@ -181,11 +182,17 @@ export default function StageDetailsForm({ setup, stageId }: StageDetailsFormPro
 			{
 				/*
 				 * The toast stack for every save outcome, raised from `core/setup-state.ts` so the body and
-				 * the footer rig report through one channel. Bottom-right, away from the middle-nav header
-				 * band. `Toast` is `position: fixed`, so it is anchored to the viewport rather than here.
+				 * the footer rig report through one channel. `Toast` is `position: fixed`, so it is
+				 * anchored to the viewport rather than here.
+				 *
+				 * Bottom-CENTRE, for the reason the project surface uses it and read from the same place:
+				 * this band's actions sit at its END edge, so a bottom-end stack would cover Save and
+				 * Discard — the two controls a refused save asks the owner to use. Matching the project
+				 * surface also means one form, edited through one store across two routes, does not report
+				 * itself from two different corners depending on which route it is being edited from.
 				 */
 			}
-			<Toast position="bottom-right" />
+			<Toast position="bottom-center" />
 
 			<Section sectionKey="stages" title={sectionTitle(itemLabel)}>
 				<StageFields
@@ -198,6 +205,7 @@ export default function StageDetailsForm({ setup, stageId }: StageDetailsFormPro
 					currency={live.budget.currency}
 					projectRequiresNda={live.rules.ndaRequired}
 					priceLocked={lockedStagePriceIds(live, live.stages).has(stageId)}
+					timed={stageTimingApplies(live.structure, live.stages)}
 					onPatch={onPatch}
 				/>
 			</Section>

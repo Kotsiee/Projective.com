@@ -15,32 +15,72 @@
 
 /* #region Header band — the setup progress bar */
 /*
- * The fill's width comes STRAIGHT from `--psu-bar-pct`, which the island writes from the
- * server-derived `completeness`. It is deliberately not transitioned: a backgrounded tab freezes the
- * animation clock, and a bar whose width arrives through a transition then renders at 0% on a project
- * that has real progress. Motion here would decorate a fact, and this engine has shipped that defect
- * twice already — geometry that ENCODES data is always set directly.
+ * The bar sits in the header grid's middle track, which is `auto` — so the track is exactly as wide as
+ * this element and the two `minmax(0, 1fr)` tracks either side split the rest EQUALLY. That is what
+ * keeps the bar centred no matter how long the project's name grows; the width below decides how much
+ * of the band it takes, never where it sits.
+ *
+ * The formula reserves the tabs' room BEFORE the bar claims any, so the two cannot bid for the same
+ * pixels. Measured on this band, the tabs need 189px with their labels and 80px without — 189 rather
+ * than 183 because the locked Preview is a `<button>` inside a `Tooltip` anchor and runs 6px wider
+ * than the anchor it replaces, which is the state a narrow band is most likely to be in. Each reserve
+ * carries ~6% and ~10% over its measurement, so a font-metric difference cannot turn a tight fit into
+ * an overlap.
+ *
+ * Once the band is narrow enough that the subtraction bites, each side track settles at exactly
+ * `--psu-side-reserve` and the bar absorbs every further pixel of narrowing itself — the right trade,
+ * because a clipped tab is a control the reader cannot reach while a shorter track is still a true
+ * statement.
+ *
+ * `100cqi` is the header band's content box, not the window (see `.proj-pvhead`). The plain `22rem` is
+ * declared FIRST as the fallback for an engine that does not know container query units: an unknown
+ * unit makes the `clamp()` invalid at parse time, so the declaration is dropped and this one survives.
+ * Both `var()`s carry their own fallback for the other failure mode — a missing custom property makes
+ * a math expression invalid at COMPUTED-VALUE time, which resolves to `auto` rather than falling back
+ * to the previous declaration, and an `auto` here collapses the bar to the width of its percentage.
  */
 .psu-bar {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	flex: 1 1 auto;
+	justify-self: center;
 	min-inline-size: 0;
-	max-inline-size: 22rem;
-	margin-inline: var(--space-4);
+
+	/* Room each side track keeps for the tabs, and the narrowest useful bar. Both step at the collapse. */
+	--psu-side-reserve: 12.5rem;
+	--psu-bar-min: 8rem;
+
+	inline-size: 22rem;
+	inline-size: clamp(
+		var(--psu-bar-min, 8rem),
+		100cqi - 2 * var(--psu-side-reserve, 12.5rem) - 2 * var(--space-4, 1rem),
+		22rem
+	);
 }
 
 .psu-bar__track {
 	position: relative;
 	flex: 1 1 auto;
-	min-inline-size: 0;
+	/*
+	* A progressbar drawn at zero width is a false statement rather than a missing one, so the track
+	* never gives up its last pixels to the percentage beside it. The bar's own floor is 6rem and the
+	* figure and gap take 38px of it, so this is the invariant the width formula is written to respect
+	* rather than a constraint that ever binds.
+	*/
+	min-inline-size: 3rem;
 	block-size: 0.375rem;
 	border-radius: var(--radius-full);
 	background: var(--surface-3);
 	overflow: hidden;
 }
 
+/*
+ * The fill's width comes STRAIGHT from `--psu-bar-pct`, which the island writes from the
+ * server-derived `completeness`. It is deliberately not transitioned: a backgrounded tab freezes the
+ * animation clock, and a bar whose width arrives through a transition then renders at 0% on a project
+ * that has real progress. Motion here would decorate a fact, and this engine has shipped that defect
+ * twice already — geometry that ENCODES data is always set directly.
+ */
 .psu-bar__fill {
 	display: block;
 	block-size: 100%;
@@ -81,18 +121,22 @@
 	content: none;
 }
 
-@media (max-width: 720px) {
-	/*
-	* The band is too narrow for all three at full width, so something gives — but not the percentage.
-	* It is the only report of setup progress anywhere on the surface, and hiding it leaves a phone
-	* with no answer to "how far along am I"; measured, a bar left in the flow at 375px shrinks its
-	* track to 0px, which is worse still — a progressbar drawn at zero width is a false statement
-	* rather than a missing one.
-	*
-	* What gives instead is the width the TAB NAMES spend. They collapse to their glyphs, which is
-	* §B.6.3's icon-only rule, and the label is visually hidden rather than removed — so it is still
-	* the anchor's accessible name and still what "label in name" (WCAG 2.5.3) matches.
-	*/
+/*
+ * Icon-only tabs, keyed on the BAND rather than the window.
+ *
+ * 35rem is not a round number, it is the width at which the wide tier runs out: with a 12.5rem reserve
+ * each side, the subtraction above lands on the bar's 8rem floor at exactly 560px of container. Past
+ * that the bar can give up nothing more, so the next pixel of narrowing would come out of a side track
+ * and the tabs would begin overlapping the bar. What gives instead is the width the tab NAMES spend —
+ * §B.6.3's icon-only rule — which buys back 109px and lets the reserve drop to 5.5rem.
+ *
+ * The label is visually hidden, never removed: it is still the anchor's accessible name and still what
+ * "label in name" (WCAG 2.5.3) matches, and the locked tab keeps its portal `Tooltip` either way.
+ *
+ * The percentage is never what gives. It is the only report of setup progress anywhere on this
+ * surface, and hiding it leaves a narrow band with no answer to "how far along am I".
+ */
+@container pvhead (max-width: 35rem) {
 	.proj-pvhead .proj-pvtab__label {
 		position: absolute;
 		inline-size: 1px;
@@ -105,12 +149,8 @@
 	}
 
 	.psu-bar {
-		margin-inline: var(--space-3);
-	}
-
-	/* Never allowed to collapse: a track with no width cannot encode a share of anything. */
-	.psu-bar__track {
-		min-inline-size: 3rem;
+		--psu-side-reserve: 5.5rem;
+		--psu-bar-min: 6rem;
 	}
 }
 
@@ -353,15 +393,40 @@
 	color: var(--warning);
 }
 
-/* A grouping heading inside a disclosure — type, not a container. Nothing here is boxed (§B.4). */
+/*
+ * A grouping heading — type, not a container. Nothing here is boxed (§B.4).
+ *
+ * The meta register (§A.4): size, case and tracking move together and the weight stays `medium`, so it
+ * reads as a label for the run beneath it rather than as a title competing with the section's own.
+ * It carries no spacing of its own — `.psu-group` owns the ratio that attaches it to its fields.
+ */
 .psu-subhead {
 	margin: 0;
-	padding-block-start: var(--space-2);
 	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	color: var(--text-secondary);
+}
+
+/*
+ * A named run of related fields: timing here, capacity there.
+ *
+ * Grouped by spacing and a label, never by a border or a fill. §B.4 spends spacing first, and a box
+ * here would be the third surface on a screen where a section already sits inside a stage card
+ * (§B.9.7) — so the two channels that cost no separation device carry the whole grouping.
+ *
+ * The RATIO is what does the work (§B.4.1). The parent body is a flex column whose `--space-4` gap
+ * already sits above this element; the padding adds `--space-3` to it, putting the heading 28px below
+ * whatever preceded the group and 12px above the first field it names. A symmetric gap would attach
+ * it to both equally, which is the ambiguity the heading exists to resolve. The tighter internal gap
+ * is the same signal from the other side: fields inside a group sit closer than the groups do.
+ */
+.psu-group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
 }
 
 /* Two fields sharing a row, collapsing to one column where they would each become unreadable. */

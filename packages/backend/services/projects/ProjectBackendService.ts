@@ -1,4 +1,4 @@
-import { mintSlug } from "@projective/types/slugs";
+import { isSlug, mintSlug } from "@projective/types/slugs";
 import { SLUG_MAX_ATTEMPTS } from "../../core/slug-retry.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isProjectsBackendLive } from "../../core/supabase.ts";
@@ -11,7 +11,7 @@ import {
 } from "../../core/cache.ts";
 import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
 import { fetchProjectBySlug, fetchProjectRows, scopesFromRows } from "./live-queries.ts";
-import { fetchBoardPage } from "./live-board.ts";
+import { fetchBoardPage, fetchTicketLocation } from "./live-board.ts";
 import { fetchProjectDetail } from "./live-detail.ts";
 import { fetchFilePage } from "./live-files.ts";
 import { fetchMemberRoster as fetchLiveMemberRoster } from "./live-members.ts";
@@ -65,6 +65,7 @@ import {
 	setupPatchFrom,
 	storedCreatedProject,
 	storedTicketCard,
+	storedTicketProjectBySlug,
 	stubSlugTaken,
 	submissionCount,
 	submitStoredSubmission,
@@ -86,7 +87,7 @@ import { findProjectDetail } from "./detail-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
-import { BOARD_FIXTURE_NOW, findBoardPage } from "./board-fixtures.ts";
+import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
 import { findMemberRoster } from "./members-fixtures.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { buildViewPage } from "../explore/view-fixtures.ts";
@@ -102,6 +103,7 @@ import {
 	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
+	providerScopedPage,
 	reconcileSetup,
 } from "@projective/types/projects";
 import type {
@@ -697,7 +699,67 @@ export class ProjectBackendService {
 		if (!page) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
-		return ok({ page: overlayBoardPage(page, actor) });
+		// Scoped AFTER the overlay: the fixture read already withheld what a provider may not see, but
+		// the overlay can add stub-written cards, and those go through the same rule. Idempotent, so a
+		// second pass over an already-filtered page costs nothing and hides nothing extra.
+		return ok({ page: providerScopedPage(overlayBoardPage(page, actor)) });
+	}
+
+	/**
+	 * One ticket by its `tkt-…` slug — the `?tkv=` deep link's read — with the board it belongs to.
+	 *
+	 * A LOCATION lookup followed by the ordinary {@link board} read, and deliberately not a second
+	 * card assembler: the modal needs the engagement's stages, roster, workspace and every sibling
+	 * card beside the ticket itself, and a card composed on its own here would be a second answer to
+	 * what a ticket costs (the Decision #66 rule, one arithmetic path). Routing through `board` also
+	 * means the deep link inherits the board's cache entry, its stub overlay and — the part that
+	 * matters — its provider scoping, so the access decision is made ONCE, by the read every other
+	 * ticket surface already trusts.
+	 *
+	 * The access decision itself: on the live path RLS on `projects.tickets` answers the location
+	 * lookup, and `fetchBoardPage` re-applies the participant filter; on the stub path
+	 * {@link providerScopedPage} withholds what a provider may not see. In both, a ticket the viewer
+	 * may not open is simply ABSENT from the page — and absent is reported with the same words as
+	 * non-existent, because a deep link is pasted from anywhere and the difference would let anyone
+	 * probe which addresses are real.
+	 *
+	 * A malformed slug is refused before any read: the shape says it cannot address a ticket, and a
+	 * query for it would be a query matching nothing forever (the Decision #85 trap).
+	 */
+	static async ticket(
+		slug: string,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ page: BoardPage; card: BoardCard }>> {
+		const notFound = () =>
+			fail<{ page: BoardPage; card: BoardCard }>(404, {
+				message: "That ticket could not be found, or you do not have access to it.",
+			});
+		if (!isSlug(slug, "ticket")) return notFound();
+
+		let projectSlug: string | null;
+		const live = await liveRead(
+			"ticket",
+			actor,
+			"projects.ticket",
+			{ slug },
+			(a) => fetchTicketLocation(a, slug),
+		);
+		if (live !== undefined) {
+			if (!live) return notFound();
+			projectSlug = live.projectSlug;
+		} else {
+			// The stub store first: a ticket created through the stub path exists nowhere in the fixture
+			// corpus, and a corpus walk that ran first would spend its whole cost to say "not here".
+			projectSlug = storedTicketProjectBySlug(writeOwnerOf(actor), slug) ??
+				findTicketProjectSlug(slug);
+		}
+		if (!projectSlug) return notFound();
+
+		const board = await ProjectBackendService.board({ projectId: projectSlug, view: "stages" }, actor);
+		if (!board.ok || !board.data) return notFound();
+		const card = board.data.page.cards.find((c) => c.slug === slug);
+		if (!card) return notFound();
+		return ok({ page: board.data.page, card });
 	}
 
 	/**
@@ -738,7 +800,7 @@ export class ProjectBackendService {
 		if (!board) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
-		const page = buildProjectTimeline(overlayBoardPage(board, actor), {
+		const page = buildProjectTimeline(providerScopedPage(overlayBoardPage(board, actor)), {
 			nowMs: BOARD_FIXTURE_NOW,
 			timezone: null,
 		});

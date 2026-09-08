@@ -52,5 +52,7 @@ export type { SkeletonAnimation, SkeletonProps, SkeletonShape } from "./componen
 // #endregion
 
 // #region Shared types
-export type { MessageItem, ToastMessage, ToastPosition } from "./types/mod.ts";
+export type { MessageItem, ToastMessage } from "./types/mod.ts";
+export { DEFAULT_TOAST_POSITION, resolveToastAnchor } from "./core/toast-position.ts";
+export type { ToastAnchor, ToastLogicalAnchor, ToastPosition } from "./core/toast-position.ts";
 // #endregion

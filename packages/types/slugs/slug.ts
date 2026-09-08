@@ -74,13 +74,14 @@ export const SLUG_BODY_LENGTH = 10;
  *
  * The keys are the vocabulary the rest of the codebase names an entity by; the values are what appears
  * in a URL. Kept as one object rather than four constants so an exhaustive map over the entities is
- * possible and a fifth entity cannot be added without every consumer's type-checker seeing it.
+ * possible and a sixth entity cannot be added without every consumer's type-checker seeing it.
  */
 export const SLUG_PREFIXES = {
 	project: "prj",
 	stage: "stg",
 	service: "svc",
 	session: "ssn",
+	ticket: "tkt",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

@@ -19,6 +19,21 @@
 }
 
 /* #region Nine positions */
+/*
+ * Every anchor is LOGICAL. `-left` is the reading-START edge and `-right` the reading-END edge, so a
+ * stack mirrors to the opposite side under `dir="rtl"` without a direction-specific rule.
+ *
+ * The three CENTRED anchors are centred by `inset-inline: 0` + `margin-inline: auto`, NOT by the
+ * usual `inset-inline-start: 50%` + `translateX(-50%)`. That pairing is broken in RTL and silently:
+ * `inset-inline-start` resolves to `right`, which puts the box's END edge on the centre line, and
+ * `translateX` is PHYSICAL — it does not mirror — so it drags the box a further half-width toward the
+ * start instead of back to the middle. Measured, the stack landed a full width off-centre and could
+ * leave the viewport. Auto margins against a definite `inline-size` are direction-agnostic by
+ * construction, so there is no second rule to keep in step.
+ *
+ * Dropping the transform also stops the container establishing a containing block for `position:
+ * fixed` descendants — the re-basing trap this codebase meets whenever chrome carries a transform.
+ */
 .ui-toast--top-left {
 	inset-block-start: 0;
 	inset-inline-start: 0;
@@ -26,8 +41,8 @@
 }
 .ui-toast--top-center {
 	inset-block-start: 0;
-	inset-inline-start: 50%;
-	transform: translateX(-50%);
+	inset-inline: 0;
+	margin-inline: auto;
 	align-items: center;
 }
 .ui-toast--top-right {
@@ -43,8 +58,11 @@
 }
 .ui-toast--center {
 	inset-block-start: 50%;
-	inset-inline-start: 50%;
-	transform: translate(-50%, -50%);
+	inset-inline: 0;
+	margin-inline: auto;
+	/* Vertical only. `translateY` is unaffected by direction, and the block axis has no definite size
+	to centre with auto margins — `inset-block: 0` would stretch the stack rather than centre it. */
+	transform: translateY(-50%);
 	align-items: center;
 }
 .ui-toast--center-right {
@@ -61,8 +79,8 @@
 }
 .ui-toast--bottom-center {
 	inset-block-end: 0;
-	inset-inline-start: 50%;
-	transform: translateX(-50%);
+	inset-inline: 0;
+	margin-inline: auto;
 	align-items: center;
 	flex-direction: column-reverse;
 }
@@ -253,22 +271,31 @@
 		inline-size: calc(100vw - var(--space-4));
 		padding: var(--space-3);
 	}
+	/*
+	 * Below 480px the horizontal half of an anchor stops meaning anything: the stack is near
+	 * full-bleed, so start, centre and end all resolve to the same band and the only honest thing to
+	 * do is centre it. `margin-inline: auto` is what does that — without it the box is
+	 * over-constrained (both insets zero AND a definite width), and an over-constrained box resolves
+	 * by dropping ONE inset, which is `right` in LTR and `left` in RTL. The gutter would sit on
+	 * opposite sides in the two directions for no reason the reader could see.
+	 *
+	 * No `transform: none` reset: after the RTL fix above, not one anchor in these two lists sets a
+	 * transform to reset.
+	 */
 	.ui-toast--top-left,
 	.ui-toast--top-right,
 	.ui-toast--top-center {
-		inset-inline-start: 0;
-		inset-inline-end: 0;
+		inset-inline: 0;
 		inset-block-start: 0;
-		transform: none;
+		margin-inline: auto;
 		align-items: stretch;
 	}
 	.ui-toast--bottom-left,
 	.ui-toast--bottom-right,
 	.ui-toast--bottom-center {
-		inset-inline-start: 0;
-		inset-inline-end: 0;
+		inset-inline: 0;
 		inset-block-end: 0;
-		transform: none;
+		margin-inline: auto;
 		align-items: stretch;
 	}
 }

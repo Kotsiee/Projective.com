@@ -1,4 +1,5 @@
 import type { ChannelKind, ProjectDetail } from "../types/projects-types.ts";
+import { findStageChannel } from "@projective/types/projects";
 import { isSession, type SessionKind } from "./session-model.ts";
 
 /**
@@ -135,8 +136,28 @@ export function canConfigureStage(
 // #region Channel meta
 /** The header identity for a resolved channel — its display title, context sub-line, and group kind. */
 export interface ChannelMeta {
-	/** The routed channel id (the tree key / route segment). */
+	/**
+	 * The segment that ADDRESSED this channel — a stage's `stg-…` slug, or a general/team/DM channel
+	 * id. What a link is rebuilt from, and never what a channel is looked up by.
+	 *
+	 * Separate from {@link ChannelMeta.channelId} because for a stage the two are different strings:
+	 * the URL carries the stage's permanent address while the room behind it is a `comms` row whose id
+	 * appears nowhere in the path. Collapsing them into one field is how a slug ends up posted as a
+	 * channel id — which type-checks, because both are `string`.
+	 */
+	ref: string;
+	/**
+	 * The `comms.project_channels` row this address opens — the id every channel-scoped read and write
+	 * takes. Unchanged in meaning by stage-slug routing: a stage's ref resolves THROUGH to its room.
+	 */
 	channelId: string;
+	/**
+	 * The `projects.project_stages` row behind a stage channel; `null` on general/team/DM.
+	 *
+	 * Carried here so a surface that needs the configuration row does not have to re-walk the tree to
+	 * find it — the walk that produced this object is the only place all three keys are held at once.
+	 */
+	stageId: string | null;
 	/** The channel name shown as the header title (e.g. "General", a stage name, a DM party name). */
 	title: string;
 	/** A short context sub-line under the title (the engagement it belongs to). */
@@ -151,25 +172,39 @@ export interface ChannelMeta {
  * channel and gets no channel header). The route-id convention mirrors {@link channelHref}/`ChannelTree`:
  * general + team channels key off `channel.id`, stages off `stage.id`, and DMs off the unified `chatId`.
  */
-export function resolveChannelMeta(detail: ProjectDetail, channelId: string): ChannelMeta | null {
+export function resolveChannelMeta(detail: ProjectDetail, ref: string): ChannelMeta | null {
 	const { general, stages, teams, dms } = detail.channels;
 
 	for (const c of general) {
-		if (c.id === channelId) return { channelId, title: c.name, sub: detail.title, kind: "general" };
-	}
-	for (const s of stages) {
-		if (s.id === channelId) {
-			return { channelId, title: s.name, sub: `${detail.title} · Stage`, kind: "stage" };
+		if (c.id === ref) {
+			return { ref, channelId: c.id, stageId: null, title: c.name, sub: detail.title, kind: "general" };
 		}
+	}
+	// Delegated rather than written out, so the stage-addressing rule has ONE implementation. It lives
+	// in the types package beside the schema that declares the three keys, which is also the only place
+	// it can be unit-tested: this module reaches `dev-seam` transitively, and that reads
+	// `import.meta.env`, which exists only under Vite.
+	const stage = findStageChannel(stages, ref);
+	if (stage) {
+		return {
+			ref,
+			channelId: stage.id,
+			stageId: stage.stageId,
+			title: stage.name,
+			sub: `${detail.title} · Stage`,
+			kind: "stage",
+		};
 	}
 	for (const t of teams) {
 		for (const c of t.channels) {
-			if (c.id === channelId) return { channelId, title: c.name, sub: t.teamName, kind: "team" };
+			if (c.id === ref) {
+				return { ref, channelId: c.id, stageId: null, title: c.name, sub: t.teamName, kind: "team" };
+			}
 		}
 	}
 	for (const d of dms) {
-		if (d.chatId === channelId) {
-			return { channelId, title: d.party.name, sub: detail.title, kind: "dm" };
+		if (d.chatId === ref) {
+			return { ref, channelId: d.chatId, stageId: null, title: d.party.name, sub: detail.title, kind: "dm" };
 		}
 	}
 	return null;

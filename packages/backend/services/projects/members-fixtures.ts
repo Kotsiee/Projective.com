@@ -13,6 +13,7 @@ import type {
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar } from "../../mocks/assets.ts";
+import { findStageChannel } from "@projective/types/projects";
 
 /**
  * projects members fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Members
@@ -379,9 +380,8 @@ function channelIdentity(
 	for (const c of general) {
 		if (c.id === channelId) return { name: c.name, kind: "general", isStage: false };
 	}
-	for (const s of stages) {
-		if (s.id === channelId) return { name: s.name, kind: "stage", isStage: true };
-	}
+	const stage = findStageChannel(stages, channelId);
+	if (stage) return { name: stage.name, kind: "stage", isStage: true };
 	for (const t of teams) {
 		for (const c of t.channels) {
 			if (c.id === channelId) return { name: c.name, kind: "team", isStage: false };

@@ -28,7 +28,14 @@ import {
 import { messageAttachmentFacets } from "@projective/types/files";
 import type { ContextType } from "@projective/types/auth";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { allProjects } from "./fixtures.ts";
 import { mockCover } from "../../mocks/assets.ts";
+import { SLUG_ALPHABET, SLUG_BODY_LENGTH, SLUG_PREFIXES } from "@projective/types/slugs";
+import {
+	findStageChannel,
+	providerVisibleCards,
+	type TicketPaymentScope,
+} from "@projective/types/projects";
 
 /**
  * projects board fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Kanban
@@ -60,6 +67,39 @@ function hash(s: string): number {
 	let h = 0;
 	for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
 	return h;
+}
+
+/**
+ * An avalanche over {@link hash}, so nearby seeds do not produce nearby outputs. `hash` multiplies by
+ * 31, and 31 ≡ 1 (mod 3), so ids differing by a trailing digit walk a small modulus in lockstep —
+ * the fixture defect Decision #88 records; mixing before taking a modulus is what breaks the stride.
+ */
+function mix32(h: number): number {
+	h = Math.imul(h ^ (h >>> 16), 0x21f0aaad) >>> 0;
+	h = Math.imul(h ^ (h >>> 15), 0x735a2d97) >>> 0;
+	return (h ^ (h >>> 15)) >>> 0;
+}
+
+/**
+ * A deterministic, WELL-FORMED `tkt-…` address for a fixture ticket — the ticket twin of the
+ * detail fixtures' `fixtureStageSlug`.
+ *
+ * Drawn from {@link SLUG_ALPHABET} at {@link SLUG_BODY_LENGTH} symbols so it satisfies the same
+ * pattern `ck_tickets_slug_shape` enforces and `isSlug` tests. A fixture slug of a shape the database
+ * would refuse makes the stub MORE permissive than production, and a deep link that resolves all
+ * through development then 404s the day the gate is turned on (the Decision #88 lesson).
+ *
+ * Seeded per symbol from the card's own id, which is already unique across the corpus (it embeds
+ * the project slug), so two tickets cannot share an address and the corpus is stable across SSR and
+ * resume.
+ */
+function fixtureTicketSlug(cardId: string): string {
+	let body = "";
+	for (let i = 0; i < SLUG_BODY_LENGTH; i++) {
+		const seed = mix32(hash(`${cardId}:ticket:${i}`));
+		body += SLUG_ALPHABET[seed % SLUG_ALPHABET.length];
+	}
+	return `${SLUG_PREFIXES.ticket}-${body}`;
 }
 
 const MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -649,10 +689,63 @@ interface CardSeed {
 	revision?: boolean;
 }
 
+/** A ticket's funding scope plus, for `per_stage`, the stages the client has paid for. */
+interface TicketFunding {
+	scope: TicketPaymentScope;
+	paidStageIds: string[];
+}
+
+/**
+ * How the client has PAID for a ticket, derived from the lifecycle it has actually been through.
+ *
+ * The invariants the escrow engine imposes are honoured first: a claimed or completed ticket has
+ * escrow against the stage it sits in, so it is always paid at least THERE (fully, or per stage
+ * with its current stage in the list); a title-only draft cannot be bought at all (the purchasing
+ * gate), so it is `unpaid`. Everything else is spread so every state the board can render is
+ * reachable in the stub — unpaid; paid per stage and sitting in a paid stage (claimable); paid per
+ * stage but sitting in a stage NOBODY paid for (the "moved into an unpaid stage" badge, hidden from
+ * every freelancer); and paid in full.
+ */
+function fundingOf(c: CardSeed, claimed: boolean): TicketFunding {
+	if (!c.hasDesc) return { scope: "unpaid", paidStageIds: [] };
+	const ticketStages = c.stages.map((s) => s.stageId);
+	const here = c.stageId;
+	if (c.status === "completed") {
+		return c.seed % 2 === 0
+			? { scope: "full", paidStageIds: [] }
+			: { scope: "per_stage", paidStageIds: ticketStages };
+	}
+	if (claimed) {
+		if (c.seed % 3 === 0) return { scope: "full", paidStageIds: [] };
+		// Escrow is held against the current stage; an earlier stage in the run may be paid too.
+		const paid = ticketStages.filter((id, i) => id === here || i === 0);
+		return {
+			scope: "per_stage",
+			paidStageIds: here && !paid.includes(here) ? [...paid, here] : paid,
+		};
+	}
+	switch (c.seed % 4) {
+		case 0:
+			return { scope: "unpaid", paidStageIds: [] };
+		case 1:
+			// Paid for the stage it sits in — claimable by anyone onboarded there.
+			return { scope: "per_stage", paidStageIds: here ? [here] : ticketStages.slice(0, 1) };
+		case 2: {
+			// Paid for a stage OTHER than the one it sits in: the badge reads Unpaid here, and a drag
+			// back into the paid stage flips it to Paid with no write.
+			const other = ticketStages.find((id) => id !== here) ?? null;
+			return { scope: "per_stage", paidStageIds: other ? [other] : [] };
+		}
+		default:
+			return { scope: "full", paidStageIds: [] };
+	}
+}
+
 function makeCard(c: CardSeed): BoardCard {
 	const claimed = c.status === "claimed" || c.status === "in_progress" ||
 		c.status === "in_review" || c.status === "completed";
 	const escrowHeld = claimed && c.status !== "completed";
+	const funding = fundingOf(c, claimed);
 	const checklistTotal = 3 + (c.seed % 4);
 	/*
 	 * A step is ticked off at the SUBMISSION level, so completion implies somebody submitted. An
@@ -740,6 +833,7 @@ function makeCard(c: CardSeed): BoardCard {
 
 	return {
 		id: c.id,
+		slug: fixtureTicketSlug(c.id),
 		title: c.title,
 		description: c.hasDesc
 			? `${c.title}. Deliver against the task list with the agreed acceptance criteria, and attach the working files for review.`
@@ -753,6 +847,8 @@ function makeCard(c: CardSeed): BoardCard {
 		claimed,
 		claimedAt,
 		escrowHeld,
+		paymentScope: funding.scope,
+		paidStageIds: funding.paidStageIds,
 		priority: PRIORITIES[c.seed % PRIORITIES.length],
 		intensity: c.intensity,
 		workload,
@@ -981,12 +1077,24 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 	const all = buildCards(detail);
 	let cards = all;
 	if (kind === "stage") {
-		const stage = detail.channels.stages.find(
-			(s) => s.id === channelId || s.channel.id === channelId,
-		);
+		const stage = findStageChannel(detail.channels.stages, channelId);
 		cards = stage ? all.filter((c) => c.stageId === stage.id) : [];
 	}
 	cards = cards.filter((c) => matches(c, params));
+
+	/*
+	 * The provider side is onboarded to every stage that has started — the corpus's roster rotates
+	 * the whole provider cast onto every non-draft stage, and the acting viewer is one of them. A
+	 * draft stage has no roster yet, so nobody is onboarded to it. The client side is onboarded to
+	 * nothing: it is not a seat on a stage, and the filter below never applies to it.
+	 */
+	const viewerStageIds = detail.viewerIsClient
+		? []
+		: detail.channels.stages.filter((s) => s.status !== "draft").map((s) => s.id);
+	// Freelancers never see unpaid tickets, nor tickets in a stage they are not onboarded to. Applied
+	// HERE, on the read, and not only in the island — a client that hides a card it was handed is
+	// not withholding it (root task §5).
+	if (!detail.viewerIsClient) cards = providerVisibleCards(cards, viewerStageIds);
 
 	const pool = assigneePool(detail);
 	const windows = stageWindows(detail);
@@ -1001,6 +1109,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		const members = Array.from({ length: size }, (_, i) => pool[(h + i) % pool.length]);
 		return {
 			id: s.id,
+			slug: s.slug,
 			name: s.name,
 			order: s.order,
 			status: s.status,
@@ -1028,6 +1137,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		title: boardTitle(detail, kind),
 		view,
 		viewerIsClient: detail.viewerIsClient,
+		viewerStageIds,
 		columns,
 		cards,
 		stages,
@@ -1038,5 +1148,27 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		viewerId: VIEWER_ID,
 		total: cards.length,
 	};
+}
+// #endregion
+
+// #region Ticket lookup (the deep link)
+/**
+ * The `prj-…` slug of the fixture engagement a ticket belongs to, by the ticket's `tkt-…` slug, or
+ * `null` when no fixture ticket carries it.
+ *
+ * Walks every corpus project and derives its cards, which is the cost of an address being GLOBALLY
+ * unique with no project alongside it — exactly the shape the deep link arrives in. Deterministic
+ * derivation makes it cheap enough: a few dozen engagements, each a few dozen cards.
+ *
+ * Deliberately NOT the archived/created overlays' concern: a ticket written through the stub store
+ * is found by `write-store`'s own lookup, and the service consults both.
+ */
+export function findTicketProjectSlug(ticketSlug: string): string | null {
+	for (const row of allProjects()) {
+		const detail = findProjectDetail(row.slug);
+		if (!detail) continue;
+		if (buildCards(detail).some((card) => card.slug === ticketSlug)) return row.slug;
+	}
+	return null;
 }
 // #endregion

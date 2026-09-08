@@ -217,7 +217,7 @@
 	border: 1px solid var(--outline);
 	border-radius: var(--radius-sm);
 }
-.ui-multiselect__filter-input:focus {
+.ui-multiselect__filter-input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
 	box-shadow: var(--focus-ring-shadow);

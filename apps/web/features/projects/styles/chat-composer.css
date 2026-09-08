@@ -240,6 +240,12 @@
 }
 
 .chat-composer__bar:focus-within {
+	box-shadow: var(--elevation-high);
+}
+
+/* The lift says "this composer is active" and is right for a click too; only the RING is
+   keyboard-only, so the two are separate rules rather than one `:focus-within`. */
+.chat-composer__bar:has(:focus-visible) {
 	box-shadow: var(--focus-ring-shadow), var(--elevation-high);
 }
 

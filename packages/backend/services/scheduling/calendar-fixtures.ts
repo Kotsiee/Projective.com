@@ -7,6 +7,7 @@ import type {
 } from "@projective/types/scheduling";
 import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 import type { ProjectDetail } from "@projective/types/projects";
+import { findStageChannel } from "@projective/types/projects";
 import { findProjectDetail } from "../projects/detail-fixtures.ts";
 import {
 	addDaysLocal,
@@ -59,9 +60,7 @@ function buildEvents(
 	const weekMon = startOfWeekLocal(NOW, tz);
 	const events: CalendarEvent[] = [];
 
-	const channelStage = channelId
-		? stages.find((s) => s.channel.id === channelId || s.id === channelId)
-		: null;
+	const channelStage = findStageChannel(stages, channelId);
 	const scopeStages = channelStage ? [channelStage] : stages;
 
 	for (const stage of scopeStages) {

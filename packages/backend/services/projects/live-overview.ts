@@ -91,6 +91,8 @@ interface ProjectRow {
 /** One `projects.project_stages` row — the progress meter's two numbers come from these. */
 interface StageRow {
 	id: string;
+	/** The stage's `stg-…` route address — what a quick-entry link to a stage room must carry. */
+	slug: string;
 	name: string;
 	status: string;
 }
@@ -269,7 +271,7 @@ async function fetchStages(
 ): Promise<StageRow[]> {
 	const { data, error } = await projectsDb(actor)
 		.from("project_stages")
-		.select("id, name, status")
+		.select("id, slug, name, status")
 		.eq("project_id", projectId)
 		.order("sort_order", { ascending: true });
 	if (error) return [];
@@ -331,13 +333,23 @@ async function fetchActivity(
 
 // #region Mapping
 /** Project the visible rooms into the quick-entry list. */
-function channelsOf(slug: string, rows: readonly ChannelRow[]): ProjectOverviewChannel[] {
+function channelsOf(
+	slug: string,
+	rows: readonly ChannelRow[],
+	stages: readonly StageRow[],
+): ProjectOverviewChannel[] {
+	const stageSlugs = new Map(stages.map((s) => [s.id, s.slug]));
 	return rows.slice(0, CHANNEL_LIMIT).map((row) => {
 		const kind: ChannelKind = !row.stage_id
 			? "general"
 			: PRIVATE_ROOM.has(row.visibility)
 			? "team"
 			: "stage";
+		// A stage room is addressed by the STAGE, not by the room. Every other kind keeps its own id:
+		// a general room has no stage to be named by, and a private team room is reached as a room.
+		const ref = kind === "stage" && row.stage_id
+			? stageSlugs.get(row.stage_id) ?? row.id
+			: row.id;
 		return {
 			id: row.id,
 			name: clampOr(row.name, NAME_MAX, "Channel"),
@@ -345,7 +357,7 @@ function channelsOf(slug: string, rows: readonly ChannelRow[]): ProjectOverviewC
 			// No per-viewer watermark exists — see the module docblock.
 			unread: false,
 			lastMessagePreview: "",
-			href: clamp(`/projects/${slug}/${row.id}`, HREF_MAX),
+			href: clamp(`/projects/${slug}/${ref}`, HREF_MAX),
 		};
 	});
 }
@@ -463,7 +475,7 @@ export async function fetchProjectOverview(
 			totalStages: totalStages > 0 ? totalStages : null,
 		},
 		updates: activityOf(project.slug, activity, parties, now),
-		channels: channelsOf(project.slug, channels),
+		channels: channelsOf(project.slug, channels, stages),
 		assignments,
 		finance: neutralFinance(currency),
 	};

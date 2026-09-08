@@ -124,14 +124,19 @@
 /* #endregion */
 
 /* #region Card */
+/*
+ * The whole card is the drag handle AND the single focusable element (there is no grip). The cursor
+ * promises only what the card will do: `grab` where a drag exists, `pointer` where it only opens,
+ * and the default where it does neither — a grab cursor over a card that refuses to move is a
+ * control that renders and does nothing (root CLAUDE.md §3 gate 11). The focus ring is the canonical
+ * two-tone composite on the card root, since that root is now what the keyboard reaches.
+ */
 .ui-kanban__card {
 	display: flex;
 	align-items: stretch;
 	background: var(--surface);
 	border-radius: var(--radius-base);
 	box-shadow: var(--elevation-low);
-	cursor: grab;
-	touch-action: none;
 	transition:
 		box-shadow var(--dur-fast) var(--ease-standard),
 		opacity var(--dur-fast) var(--ease-standard);
@@ -141,37 +146,22 @@
 	box-shadow: var(--elevation-medium);
 }
 
-.ui-kanban__card:active {
+.ui-kanban__card:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-kanban__card[data-draggable="true"] {
+	cursor: grab;
+	touch-action: none;
+}
+
+.ui-kanban__card[data-draggable="true"]:active {
 	cursor: grabbing;
 }
 
-.ui-kanban__card-grip {
-	flex: none;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.1rem;
-	padding: 0;
-	border: none;
-	border-start-start-radius: var(--radius-base);
-	border-end-start-radius: var(--radius-base);
-	background: transparent;
-	color: var(--text-secondary);
-	opacity: 0;
-	cursor: grab;
-	touch-action: none;
-	transition: opacity var(--dur-fast) var(--ease-standard);
-}
-
-.ui-kanban__card:hover .ui-kanban__card-grip,
-.ui-kanban__card-grip:focus-visible {
-	opacity: 0.7;
-}
-
-.ui-kanban__card-grip:focus-visible {
-	outline: 2px solid var(--focus-ring);
-	outline-offset: -2px;
-	opacity: 1;
+.ui-kanban__card[data-draggable="false"][role="button"] {
+	cursor: pointer;
 }
 
 .ui-kanban__card-body {

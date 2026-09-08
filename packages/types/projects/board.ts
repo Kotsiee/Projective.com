@@ -273,6 +273,140 @@ export const TicketPaymentEntrySchema = z.object({
 export type TicketPaymentEntry = z.infer<typeof TicketPaymentEntrySchema>;
 // #endregion
 
+// #region Ticket funding scope (what has been paid for, and where that makes the ticket claimable)
+/**
+ * How a ticket has been PAID FOR — the purchase side of the money, distinct from the escrow LOCK.
+ *
+ * `PRODUCT_SPEC.md` §Purchase Methods lets a client buy a ticket before anybody claims it (Buy Now ·
+ * Basket Checkout · Invoicing), and §Payment Tracking says that payment may arrive in instalments.
+ * The escrow hold itself still happens at Claim (§Escrow Lifecycle for Tickets). So a ticket carries
+ * a funding scope that is decided by the client's purchase, not by a freelancer's action:
+ *
+ *  - **`unpaid`** — nothing has been bought. Freelancers never see it.
+ *  - **`per_stage`** — bought for the stages listed in {@link BoardCardSchema.paidStageIds} and no
+ *    others. It is claimable only while it sits in one of THOSE stages; dragged into a stage nobody
+ *    paid for it reads "Unpaid" and leaves every freelancer's board until that stage is funded, and
+ *    dragged back it reads "Paid" again. Nothing about the purchase changed — only where the ticket is.
+ *  - **`full`** — bought for every stage of the ticket. It stays paid wherever it is moved.
+ *
+ * On the live path this is a PROJECTION over `projects.tickets.payment_status` + `current_stage_id`
+ * (see `live-board.ts`), because `finance.escrows` — which holds the per-stage truth — is not readable
+ * by `authenticated` (root CLAUDE.md §8 Decision #68(a)).
+ */
+export const TicketPaymentScope = z.enum(["unpaid", "per_stage", "full"]);
+export type TicketPaymentScope = z.infer<typeof TicketPaymentScope>;
+
+/** Human labels for the funding scope (the ticket modal's Finances tab). */
+export const TICKET_PAYMENT_SCOPE_LABEL: Record<TicketPaymentScope, string> = {
+	unpaid: "Not paid",
+	per_stage: "Paid per stage",
+	full: "Paid in full",
+};
+
+/** The narrow projection every funding rule reads, so the server filter can call them from a row. */
+export interface TicketFundingInput {
+	paymentScope: TicketPaymentScope;
+	paidStageIds: readonly string[];
+}
+
+/**
+ * Whether a ticket is paid for ONE stage.
+ *
+ * `full` is paid everywhere, including the New backlog (`stageId === null`) — the client bought the
+ * whole ticket, so no lane can make it unpaid. `per_stage` is paid exactly where its purchase says,
+ * and the New backlog is not a stage, so a per-stage ticket parked there is not paid "here": there is
+ * no stage for the payment to attach to. `unpaid` is paid nowhere.
+ */
+export function ticketPaidForStage(card: TicketFundingInput, stageId: string | null): boolean {
+	if (card.paymentScope === "full") return true;
+	if (card.paymentScope === "per_stage") {
+		return stageId !== null && card.paidStageIds.includes(stageId);
+	}
+	return false;
+}
+
+/** Whether a ticket is paid for the stage it currently sits in — the fact the card's badge states. */
+export function ticketPaidHere(card: TicketFundingInput & { stageId: string | null }): boolean {
+	return ticketPaidForStage(card, card.stageId);
+}
+
+/**
+ * Whether the CLIENT side may still drag this ticket.
+ *
+ * Once a freelancer has claimed a ticket and is actively working it, the client's drag is locked —
+ * moving it would change the stage the work was agreed for, and the escrow held against it, under a
+ * person who is mid-way through delivering. Before a claim the client moves the ticket at will
+ * (`PRODUCT_SPEC.md` §Ticket Movement), whether or not freelancers have been onboarded — payment is
+ * a badge for the client, never a barrier.
+ *
+ * `in_review` is deliberately NOT locked: the freelancer has handed the work back, and what happens
+ * next (accept → Completed, or return for revision) is the client's move. `completed` is not locked
+ * either — dragging a finished ticket back into a stage is the revision request the board already
+ * warns about. Only the two "somebody is working this right now" states lock.
+ */
+export function ticketWorkLocked(card: { claimed: boolean; status: TicketStatus }): boolean {
+	return card.claimed && (card.status === "claimed" || card.status === "in_progress");
+}
+
+/** The narrow projection the provider-visibility rule reads. */
+export interface ProviderVisibilityInput extends TicketFundingInput {
+	stageId: string | null;
+}
+
+/**
+ * Whether a PROVIDER-side viewer (a freelancer, or any seat that is not the client's) may see this
+ * ticket at all.
+ *
+ * Two conditions, both required: the ticket is paid for the stage it sits in, AND that stage is one
+ * the viewer has been onboarded to. A ticket in the New backlog has no stage, so no freelancer is
+ * onboarded to it and it is never shown — the backlog is the client's planning space. The rule is
+ * deliberately blind to whether THIS viewer claimed the ticket: a claimed ticket the client has
+ * dragged into an unpaid stage disappears from its own assignee's board until that stage is funded,
+ * which is the product rule ("freelancers must never see unpaid tickets"), stated once here and
+ * applied by the fat service on BOTH read paths and by the board island on top of them.
+ */
+export function providerCanSeeCard(
+	card: ProviderVisibilityInput,
+	onboardedStageIds: ReadonlySet<string>,
+): boolean {
+	if (card.stageId === null) return false;
+	if (!onboardedStageIds.has(card.stageId)) return false;
+	return ticketPaidForStage(card, card.stageId);
+}
+
+/** {@link providerCanSeeCard} over a list — the shape both read paths and the island call. */
+export function providerVisibleCards<T extends ProviderVisibilityInput>(
+	cards: readonly T[],
+	onboardedStageIds: Iterable<string>,
+): T[] {
+	const onboarded = new Set(onboardedStageIds);
+	return cards.filter((card) => providerCanSeeCard(card, onboarded));
+}
+
+/**
+ * Narrow a resolved board page to what its viewer may see.
+ *
+ * The client side sees everything and the page comes back untouched. Every other seat gets
+ * {@link providerVisibleCards} over its own `viewerStageIds`, with `total` recounted — so a
+ * freelancer's "N tickets" caption counts the tickets they can actually open. Pure and idempotent,
+ * which is what lets the fat service call it once more after overlaying stub writes without
+ * double-filtering anything.
+ */
+export function providerScopedPage<
+	T extends {
+		viewerIsClient: boolean;
+		viewerStageIds: readonly string[];
+		cards: readonly C[];
+		total: number;
+	},
+	C extends ProviderVisibilityInput,
+>(page: T): T {
+	if (page.viewerIsClient) return page;
+	const cards = providerVisibleCards(page.cards, page.viewerStageIds);
+	return { ...page, cards, total: cards.length };
+}
+// #endregion
+
 // #region Ticket ↔ stage requirement
 /** One stage a ticket requires, in the ticket's own order (multi-stage tickets). */
 export const TicketStageRefSchema = z.object({
@@ -420,6 +554,16 @@ export function ticketSpentCents(payments: readonly TicketPaymentEntry[]): numbe
 /** One ticket card on the board. */
 export const BoardCardSchema = z.object({
 	id: z.string().min(1).max(120),
+	/**
+	 * The ticket's `tkt-…` route address (`projects.tickets.slug`) — what the `?tkv=` deep link carries.
+	 *
+	 * OPTIONAL rather than nullable, and the distinction is the contract: a saved ticket ALWAYS has one
+	 * (the database mints it on insert and refuses to move it), so `undefined` means exactly one thing
+	 * — this card has not been saved yet. A draft being composed and an optimistic row awaiting the
+	 * server's answer are the only cards without an address, and neither may be linked to, which is why
+	 * the URL sync withholds the param for them rather than inventing one.
+	 */
+	slug: z.string().max(80).optional(),
 	title: z.string().min(1).max(200),
 	/**
 	 * The ticket description. `null`/empty is the PURCHASING GATE: a title-only ticket is a draft
@@ -459,6 +603,15 @@ export const BoardCardSchema = z.object({
 	claimedAt: z.string().max(40).nullable().default(null),
 	/** Whether escrow is currently held for this ticket (moving it into Done releases it). */
 	escrowHeld: z.boolean(),
+	/**
+	 * How the client has paid for this ticket — see {@link TicketPaymentScope}. Whether it counts as
+	 * paid in the lane it currently sits in is DERIVED, by {@link ticketPaidHere}, never stored: a
+	 * stored flag is one a drag could leave stale, and this is the fact that decides whether a
+	 * freelancer sees the card at all.
+	 */
+	paymentScope: TicketPaymentScope.default("unpaid"),
+	/** For `per_stage`: the stage ids the client has paid for. Empty otherwise. */
+	paidStageIds: z.array(z.string().max(80)).max(50).default([]),
 	priority: TicketPriority,
 	/** The client's difficulty multiplier — the ticket's own default for every stage it touches. */
 	intensity: TicketIntensity,
@@ -580,6 +733,15 @@ export const ASSIGNMENT_MODE_LABEL: Record<StageAssignmentMode, string> = {
  */
 export const BoardStageRefSchema = z.object({
 	id: z.string().min(1).max(80),
+	/**
+	 * The stage's `stg-…` route address — what a link to this stage's own surfaces must carry.
+	 *
+	 * Projected here because the board is the only place that holds a stage's identity beside its
+	 * work, and without it the timeline's "open this stage" jump had to build a path out of `id` — a
+	 * `projects.project_stages` uuid, which the channel route does not resolve. That link was a
+	 * control that rendered and reached nothing.
+	 */
+	slug: z.string().min(1).max(80),
 	name: z.string().min(1).max(120),
 	order: z.number().int().min(0),
 	status: ProjectStatus,
@@ -664,6 +826,15 @@ export const BoardPageSchema = z.object({
 	view: BoardView,
 	/** Whether the acting user is the client — gates ticket moves, stage reorder + the create actions. */
 	viewerIsClient: z.boolean(),
+	/**
+	 * The stages the acting viewer has been ONBOARDED to as a provider (`projects.stage_assignments`,
+	 * plus any stage whose ticket they currently hold). Empty for the client side, which is not
+	 * onboarded to anything and needs no filter. Carried so the board island can re-apply
+	 * {@link providerVisibleCards} on top of the server's own filtering — the server has already
+	 * withheld what this viewer may not see, but the client re-derives the same set after every
+	 * optimistic move so a card dragged into an unpaid stage leaves the board at once.
+	 */
+	viewerStageIds: z.array(z.string().max(80)).max(200).default([]),
 	columns: z.array(BoardColumnSchema),
 	cards: z.array(BoardCardSchema),
 	/** Every stage of the engagement (for the ticket modal + the Stages toggle). */

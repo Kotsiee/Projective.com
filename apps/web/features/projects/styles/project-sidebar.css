@@ -582,6 +582,37 @@
 	background: var(--primary);
 }
 
+/*
+ * A stage the owner has added but not saved. It is a row, not a link — there is no conversation to
+ * open yet — so it takes no hover tint and no pointer cursor: an affordance that looks pressable and
+ * does nothing is the defect §3 gate 11 names, and withholding the affordance is the whole point.
+ * The name recedes to `--text-secondary`; the trailing mark carries the state and its tooltip carries
+ * the words (§B.6).
+ */
+.proj-chan--pending {
+	cursor: default;
+}
+
+.proj-chan--pending:hover {
+	background: transparent;
+}
+
+.proj-chan--pending .proj-chan__name {
+	color: var(--text-secondary);
+}
+
+.proj-chan__pending {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+	border-radius: var(--radius-sm);
+}
+
+.proj-chan__pending:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
 /* Stage activity status icon (icon-only + Tooltip; tones shared with the feed card's Status Icon). */
 .proj-statusicon {
 	position: relative;

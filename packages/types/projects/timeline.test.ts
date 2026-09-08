@@ -30,6 +30,9 @@ const at = (days: number) => new Date(NOW + days * DAY).toISOString();
 
 function stage(over: Partial<BoardStageRef> & { id: string; order: number }): BoardStageRef {
 	return BoardStageRefSchema.parse({
+		// A well-formed `stg-…` address derived from the id, so a factory-built stage is routable in
+		// exactly the way a real one is.
+		slug: `stg-${`${over.id}`.replace(/[^a-z0-9]/g, "").padEnd(10, "x").slice(0, 10)}`,
 		name: `Stage ${over.order + 1}`,
 		status: "active",
 		locked: false,

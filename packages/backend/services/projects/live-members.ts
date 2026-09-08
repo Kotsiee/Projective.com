@@ -26,7 +26,7 @@ import {
 	toInviteStatus,
 	toMemberRole,
 } from "./live-support.ts";
-import { UUID_RE } from "./live-support.ts";
+import { resolveChannelRef } from "./live-support.ts";
 
 /**
  * live-members — the RLS-scoped Postgres read path behind `ProjectBackendService.members`.
@@ -498,11 +498,13 @@ async function resolveChannel(
 	projectId: string,
 	channelId: string | null,
 ): Promise<ChannelRow | null> {
-	if (!channelId || !UUID_RE.test(channelId)) return null;
+	// A stage is addressed by its slug, so the segment is resolved to a room before it is looked up.
+	const resolved = await resolveChannelRef(actor, projectId, channelId);
+	if (!resolved) return null;
 	const { data, error } = await commsDb(actor)
 		.from("project_channels")
 		.select("id, project_id, name, stage_id")
-		.eq("id", channelId)
+		.eq("id", resolved)
 		.eq("project_id", projectId)
 		.maybeSingle();
 	if (error || !data) return null;

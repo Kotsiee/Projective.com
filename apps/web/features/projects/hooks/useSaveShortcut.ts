@@ -29,7 +29,9 @@ export function useSaveShortcut(): void {
 			 * does: the reader cannot tell which behaviour they are about to get.
 			 */
 			event.preventDefault();
-			void requestSave();
+			// `explicit`, stated rather than left to the default: a keystroke aimed at Save IS a press,
+			// so it is announced like one. Only the auto-save on blur saves without being asked.
+			void requestSave("explicit");
 		};
 		// On `window`, because the shortcut belongs to the SURFACE rather than to any one field — an
 		// owner halfway down the form should not have to be inside a particular input for it to work.

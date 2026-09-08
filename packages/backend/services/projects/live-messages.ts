@@ -20,7 +20,7 @@ import type {
 	MessageSender,
 } from "@projective/types/projects";
 import { describeFile, type FileKind } from "@projective/types/files";
-import { UUID_RE } from "./live-support.ts";
+import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 
 /**
  * live-messages — the RLS-scoped Postgres read path for ONE project channel's conversation
@@ -750,16 +750,18 @@ export async function fetchChannelMessagePage(
 	params: MessagePageParams,
 	now: number = Date.now(),
 ): Promise<MessagePage | null> {
-	if (!UUID_RE.test(params.channelId)) return null;
-
 	const db = commsDb(actor);
 
-	// Neither depends on the other, and the project resolution is only ever used to decide whether the
-	// channel the caller reached is the one the route claims.
-	const [channel, requestedProjectId] = await Promise.all([
-		fetchChannel(actor, params.channelId),
-		resolveProjectId(actor, params.projectId),
-	]);
+	// The route's project segment has to resolve FIRST here, unlike the reads below: a stage is
+	// addressed by its slug, and resolving that slug to a room is scoped by project id. A DM or general
+	// channel still carries its own id and passes straight through.
+	const requestedProjectId = await resolveProjectId(actor, params.projectId);
+	const channelId = requestedProjectId
+		? await resolveChannelRef(actor, requestedProjectId, params.channelId)
+		: (UUID_RE.test(params.channelId) ? params.channelId : null);
+	if (!channelId) return null;
+
+	const channel = await fetchChannel(actor, channelId);
 	if (!channel) return null;
 	// A project id we positively resolved and that disagrees is a mismatched route, not a permission
 	// question. An UNRESOLVED one constrains nothing — see {@link resolveProjectId}.

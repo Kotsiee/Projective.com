@@ -14,7 +14,9 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { nextId } from "../../fields/core/ids.ts";
 import { closeIcon, severityIcon } from "../core/icons.tsx";
-import type { ToastMessage, ToastPosition } from "../types/mod.ts";
+import { resolveToastAnchor } from "../core/toast-position.ts";
+import type { ToastPosition } from "../core/toast-position.ts";
+import type { ToastMessage } from "../types/mod.ts";
 
 // #region Shared store
 /** Module-scoped signal — the single source of truth every `<Toast/>` instance renders from. */
@@ -201,7 +203,14 @@ function ToastRow({ item }: RowProps): JSX.Element {
 // #endregion
 
 export interface ToastProps {
-	/** Corner (or edge/centre) anchor for this stack (default `top-right`). */
+	/**
+	 * Where this stack anchors — one of the nine points, in either spelling (default `top-right`).
+	 *
+	 * Every anchor is resolved with logical insets, so the horizontal half of a position follows the
+	 * READING direction: `bottom-right` and its synonym `bottom-end` both render bottom-left under
+	 * `dir="rtl"`. Pass the logical spelling when that is what you mean; the physical one is kept so
+	 * existing call sites keep working, and the two resolve to the same anchor.
+	 */
 	position?: ToastPosition;
 	id?: string;
 	class?: string;
@@ -209,7 +218,10 @@ export interface ToastProps {
 
 /** Renders the shared toast stack anchored at `position`. Mount once per corner you use. */
 export function Toast(props: ToastProps): JSX.Element {
-	const { position = "top-right", id, class: className } = props;
+	const { position, id, class: className } = props;
+	// Normalised here rather than interpolated raw: an unknown value must not become a class with no
+	// rule, which would leave a `position: fixed` stack at its static position — see the resolver.
+	const anchor = resolveToastAnchor(position);
 
 	return (
 		// The stack is a landmark, NOT a live region. Each row already carries its own `role="alert"` or
@@ -217,7 +229,7 @@ export function Toast(props: ToastProps): JSX.Element {
 		// forced an assertive danger toast down to the container's politeness.
 		<div
 			id={id}
-			class={cx("ui-toast", `ui-toast--${position}`, className)}
+			class={cx("ui-toast", `ui-toast--${anchor}`, className)}
 			role="region"
 			aria-label="Notifications"
 		>

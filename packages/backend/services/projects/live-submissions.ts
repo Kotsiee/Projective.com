@@ -136,7 +136,7 @@ const DEFAULT_LIMIT = 60;
 const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, client_business_id";
 
 /** The `projects.project_stages` columns the tree roots and the review projection need. */
-const STAGE_COLUMNS = "id, name, status, sort_order, description_text";
+const STAGE_COLUMNS = "id, slug, name, status, sort_order, description_text";
 
 /** The `projects.stage_submissions` columns one unit needs. */
 const SUBMISSION_COLUMNS = [
@@ -223,6 +223,8 @@ interface ProjectRow {
 /** One `projects.project_stages` row as selected by {@link STAGE_COLUMNS}. */
 interface StageRow {
 	id: string;
+	/** The stage's `stg-…` route address — what the channel segment carries. */
+	slug: string;
 	name: string;
 	status: string | null;
 	sort_order: number | null;
@@ -755,12 +757,15 @@ function resolveIsolation(viewerIsReviewer: boolean, params: SubmissionListParam
  * or DM channel has no submissions to show and correctly resolves to an empty tree rather than to the
  * whole project's.
  *
- * A channel id that is not uuid-shaped, names a channel in another project, or cannot be read at all
- * resolves to NO stages — never to every stage. Widening on a failed narrowing is how a scoped view
- * quietly becomes an unscoped one.
+ * A segment that names no stage of THIS project resolves to NO stages — never to every stage.
+ * Widening on a failed narrowing is how a scoped view quietly becomes an unscoped one.
+ *
+ * The `stg-…` address names the stage directly, so this needs no `comms` read and no channel at all:
+ * the stage list is already in hand and the segment is a key into it. That also means a stage whose
+ * room has not been provisioned still scopes correctly here, where the old channel round-trip resolved
+ * it to nothing.
  */
 async function resolveStages(
-	actor: ReadActor & { accessToken: string },
 	db: SupabaseClient,
 	project: ProjectRow,
 	channelId: string | null,
@@ -773,18 +778,7 @@ async function resolveStages(
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);
 	const stages = (data ?? []) as unknown as StageRow[];
 	if (!channelId) return stages;
-	if (!isUuid(channelId)) return [];
-
-	const channel = await commsDb(actor)
-		.from("project_channels")
-		.select("id, project_id, stage_id")
-		.eq("id", channelId)
-		.maybeSingle();
-	// A withheld or missing channel row is not an outage — it is a scope that resolves to nothing.
-	if (channel.error || !channel.data) return [];
-	const row = channel.data as unknown as { project_id: string; stage_id: string | null };
-	if (row.project_id !== project.id || !row.stage_id) return [];
-	return stages.filter((stage) => stage.id === row.stage_id);
+	return stages.filter((stage) => stage.slug === channelId);
 }
 
 /**
@@ -1219,7 +1213,7 @@ export async function fetchSubmissionPage(
 	const viewerIsReviewer = await resolveViewerIsReviewer(actor, project);
 	const isolate = resolveIsolation(viewerIsReviewer, params);
 
-	const stages = await resolveStages(actor, db, project, channelId);
+	const stages = await resolveStages(db, project, channelId);
 	const stageIds = stages.map((stage) => stage.id);
 	const submissions = await fetchSubmissions(db, stageIds, isolate ? actor.userId : null);
 	submissions.sort((a, b) => byNewest(a.created_at, b.created_at));

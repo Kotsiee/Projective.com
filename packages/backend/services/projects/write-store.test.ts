@@ -303,6 +303,7 @@ Deno.test("a ticket's cost comes from the stage's rate, never from the payload",
 		}),
 		[{
 			id: "stage-0",
+			slug: "stg-a1b2c3d4e5",
 			name: "Discovery",
 			order: 0,
 			status: "active",
@@ -330,6 +331,7 @@ Deno.test("a ticket's cost comes from the stage's rate, never from the payload",
 Deno.test("intensity is the one lever that moves both the cost and the capacity", () => {
 	const stage = {
 		id: "stage-0",
+		slug: "stg-a1b2c3d4e5",
 		name: "Discovery",
 		order: 0,
 		status: "active" as const,

@@ -131,6 +131,31 @@
 }
 
 /*
+ * The KEYBOARD focus ring, and it is a second rule rather than an edit to the one above on purpose.
+ *
+ * The rule above fires for every route into the control — a mouse click, a script calling `focus()`,
+ * the `--focused` class the field's own state machine writes — and its underline plus surface tint is
+ * the right weight for those. What it is not is an adequate focus INDICATOR: `--primary` is
+ * mode-invariant, so it does not respond to `data-contrast="high"` at all, and it measures 3.05:1
+ * against `--surface-3` in dark, which is inside the margin of SC 1.4.11 rather than clear of it. The
+ * ring measures 5.23:1 at worst in light and 9.61:1 in dark, and widens with the overlay.
+ *
+ * `:has(:focus-visible)` is the composite-control equivalent of `:focus-visible`. It is needed
+ * because a `.ui-field` is a wrapper: the element that actually takes focus is the `__input` inside
+ * it, so the ring has to be drawn by an ancestor reacting to a descendant's modality. `:focus-within`
+ * cannot do this job — it has no modality-aware form and fires on a mouse click, which is exactly the
+ * behaviour being removed.
+ *
+ * Specificity ties with `.ui-field:focus-within` at (0,2,0), so this MUST stay below it — source
+ * order is the only thing that lets it re-open the `outline: none` set above.
+ */
+.ui-field:has(:focus-visible) {
+	box-shadow: 0 2px 0 var(--primary), var(--focus-ring-glow);
+	outline: var(--focus-ring-w) solid var(--focus-ring);
+	outline-offset: var(--focus-ring-offset);
+}
+
+/*
  * Disabled fades the INK and the BORDER, never the whole box.
  *
  * The previous `opacity: 0.55` on the root also faded the focus ring and — paired with

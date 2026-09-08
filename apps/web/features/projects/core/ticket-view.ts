@@ -44,6 +44,19 @@ export interface TicketFrameInput {
 	/** The ticket the chain started from — a review frame still needs it to go back. */
 	ticketId?: string;
 	/**
+	 * The ticket's `tkt-…` address, when it has one — what the global deep-link host writes into the
+	 * URL as `?tkv=` while this frame is on top. Absent on a draft being composed and on an
+	 * optimistic row awaiting the server, which is exactly why those are never linkable: the host
+	 * withholds the parameter rather than inventing an address.
+	 */
+	slug?: string;
+	/**
+	 * `true` when the frame was opened by the deep-link host on a page that holds no board of its own,
+	 * so the HOST renders it from the page it fetched. A board or timeline island renders only frames
+	 * WITHOUT this flag — one frame, one renderer, never two modals for one chain.
+	 */
+	standalone?: boolean;
+	/**
 	 * `create` when the frame is composing a ticket that does not exist yet.
 	 *
 	 * Carried on the frame rather than held beside the stack so the posture survives a review round

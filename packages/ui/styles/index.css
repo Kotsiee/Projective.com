@@ -738,6 +738,27 @@
     --fld-loading-alpha: 0.7;
     --fld-loading-fg: var(--text-secondary);
 
+    /*
+	 * Focus indicator geometry (§A.5). The COLOURS come from the theme engine at runtime
+	 * (`--focus-ring` · `--focus-ring-halo` · `--focus-ring-tint` · `--focus-ring-shadow`); only the
+	 * measurements live here, because they are the half a designer retunes and the half that must not
+	 * be restated per component.
+	 *
+	 * The offset is what makes a single-tone brand ring legal at all. A ring drawn ON the border box
+	 * abuts the control's own fill, and `--secondary` measures 1.00:1 on a `--secondary` fill and
+	 * 1.19:1 on `--primary` — invisible on exactly the controls that matter. Pushed 2px clear it abuts
+	 * the PAGE instead, where it measures 5.23:1 at worst in light and 9.61:1 in dark. So the offset
+	 * is a correctness requirement, not breathing room: never set it to 0 to "tighten" the ring.
+	 */
+    /* Whole pixels only: a browser floors `outline-width` to whole device pixels, so 1.5px renders as
+	1px here while the box-shadow form paints it at 1.5px — one indicator, two thicknesses. Kept in
+	step with `focusShadow()` in the theme engine, and pinned by a contract test. */
+    --focus-ring-w: 1px;
+    --focus-ring-offset: 2px;
+    /* Spread is pinned to the ring's outer edge (offset + width). A glow with less spread than that
+	is painted underneath the solid ring and is simply invisible. */
+    --focus-ring-glow: 0 0 5px calc(var(--focus-ring-offset) + var(--focus-ring-w)) var(--focus-ring-tint);
+
     /* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
 }
@@ -757,6 +778,9 @@
     --fld-disabled-mix: 78%;
     --fld-disabled-alpha: 0.78;
     --fld-loading-alpha: 0.85;
+    /* Matches the geometry step `focusShadow()` already makes for the box-shadow composite, so the
+	outline-drawn ring and the shadow-drawn ring stay the same thickness as each other. */
+    --focus-ring-w: 2px;
 }
 
 /*
@@ -848,6 +872,45 @@
 *::before,
 *::after {
     box-sizing: border-box;
+}
+
+/*
+ * THE BASE FOCUS INDICATOR (§A.5, WCAG 2.2 SC 2.4.11 / SC 1.4.11).
+ *
+ * Until now this product had no base focus rule at all: a control with its own sheet drew a ring,
+ * and everything else fell through to the user agent's default — the heavy black-or-white
+ * `outline: auto` this replaces. That is the gap this rule closes, and it is why it lists element
+ * types rather than component classes.
+ *
+ * `:focus-visible`, never `:focus`. The two differ precisely on pointer input: a mouse click focuses
+ * a button, and only `:focus-visible` declines to draw a ring for it, which is the whole reason the
+ * bare `:focus` spellings elsewhere in the codebase were converted rather than left alone.
+ *
+ * Wrapped in `:where()` so the whole selector weighs ZERO. That is deliberate and load-bearing: 556
+ * component rules already draw this same indicator through `--focus-ring-shadow`, and a base rule
+ * that could win against them would double the ring on every one. At zero specificity ANY component
+ * rule replaces it, so the base is a floor for the unstyled remainder and never a competitor. It
+ * still beats the user-agent default, because author origin outranks UA origin regardless of weight.
+ *
+ * `[tabindex="-1"]` is excluded on purpose: that value means "focusable by script, not by keyboard",
+ * and it is routinely set on a dialog or a region so focus can be MOVED there. Ringing those would
+ * draw an indicator around a whole panel every time an overlay opened.
+ */
+:where(
+	a[href],
+	area[href],
+	button,
+	input,
+	select,
+	textarea,
+	summary,
+	iframe,
+	[contenteditable="true"],
+	[tabindex]:not([tabindex="-1"])
+):focus-visible {
+    outline: var(--focus-ring-w) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+    box-shadow: var(--focus-ring-glow);
 }
 
 /*
