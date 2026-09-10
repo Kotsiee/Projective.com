@@ -307,12 +307,14 @@ is the destination of every Explore card, every profile tab item and every searc
 the last surface before money moves — so its job is to make an offer **legible, comparable and
 honest**, not to decorate it.
 
-**One page, five archetypes.** The listing's own delivery model decides which body renders; the
-buyer never chooses a "view mode". A **Pipeline** is progressive multi-stage delivery, funded and
+**One page, six bodies.** The listing's own delivery model decides which body renders; the buyer
+never chooses a "view mode". A **Pipeline** is progressive multi-stage delivery, funded and
 released stage by stage. A **One-Off** is a single deliverable against a fixed scope. A **1-on-1
 Session** is time booked in the provider's real availability. A **Group Session (cohort)** is a
 seated, scheduled cohort. A **Digital Product** is an instant-delivery artefact (templates, 3D
-assets, audio stems, video presets, code kits). Pricing is resolved from the same source as the card
+assets, audio stems, video presets, code kits). A **Project** is a brief being staffed — applied to,
+never bought — and renders through the same frame with the same containers and registers, so a
+brief and a service read as one design system. Pricing is resolved from the same source as the card
 that linked here, so a listing can never quote two different prices in two places.
 
 **The transaction has exactly one home.** The contextual navigation lane carries the identity line,
@@ -1896,7 +1898,7 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
-|               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, five archetypes (Pipeline · One-Off · Session · Cohort · Digital Product) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
+|               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, six bodies (Pipeline · One-Off · Session · Cohort · Digital Product · Project) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |
 |               | `/[handle]/view/[item]`   | `index` / `schedule`     | Profile-scoped twin of the above; identical body, back-links scoped to the profile              |
 

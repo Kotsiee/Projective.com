@@ -31,8 +31,8 @@ export default define.page(function PublicLayout(ctx) {
 	// exclusive by route, so the first non-null resolver wins.
 	const filterLane = exploreFilterLaneFor(ctx.url) ??
 		viewLaneFor(ctx.url, !!ctx.state.isAuthenticated, ctx.state.userContext);
-	// The Projects view mirrors the profile page's scroll-migrated header in the middle-nav header band;
-	// every other view/route resolves to `null` (no band). Shares the same lane the view already mounts.
+	// Every non-article Entity View mounts its scroll-migrated header in the middle-nav header band;
+	// every other route resolves to `null` (no band).
 	const viewHeader = viewHeaderFor(ctx.url, !!ctx.state.isAuthenticated, ctx.state.userContext);
 	if (ctx.state.isAuthenticated) {
 		// The marketing footer is resolved per-URL and mounted INSIDE the canvas body (see

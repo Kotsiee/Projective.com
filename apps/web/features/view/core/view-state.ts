@@ -17,10 +17,10 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * Whether the body identity region has scrolled up under the sticky chrome, so the middle-nav header
  * band should reveal the condensed identity.
  *
- * Shared by BOTH entity-view templates: the custom project view (body `ProjectViewHeader` →
- * `ProjectStickyHeader`) and every commerce archetype (body `EntityHeroProbe` →
- * `EntityStickyHeader`). That is safe because `viewHeaderFor` returns exactly ONE band per URL, so
- * only one producer and one consumer are ever mounted together.
+ * Every non-article archetype — the five commerce bodies and a project — shares it: the body
+ * `EntityHeroProbe` flips it and `EntityStickyHeader` in the band reads it. That is safe because
+ * `viewHeaderFor` returns exactly ONE band per URL, so only one producer and one consumer are ever
+ * mounted together.
  *
  * The band expands from 0 via `min-block-size`/`max-block-size` — never `block-size`, which the
  * frame's grid context overrides (recorded in `profile-skeleton.css`). Reusing the `.pf-stickyhead` skeleton is
@@ -31,24 +31,11 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
 export const viewHeaderCondensed = signal(false);
 
 /**
- * Whether the viewer has saved/followed this project — shared so the Save control reads consistently
- * across the body header, the migrated sticky header, and the side-nav lane. Optimistic/client-only
- * until the follow-write path lands.
- */
-export const projectSaved = signal(false);
-
-/**
  * Whether the viewer has applied to / expressed interest in this project — optimistic client stub
  * (the real application flow is a Phase-2 route). Shared so the header CTA, sticky header, and lane
  * all reflect the applied state together.
  */
 export const projectApplied = signal(false);
-
-/** Toggle the saved state; returns the new value. Shared by the header and the lane. */
-export function toggleProjectSaved(): boolean {
-	projectSaved.value = !projectSaved.value;
-	return projectSaved.value;
-}
 
 /**
  * Apply to / express interest in a project. Guests bounce to sign-in (returning to this item);
@@ -64,53 +51,31 @@ export function applyToProject(item: ExploreItem, authed: boolean, ctx: HrefCont
 }
 // #endregion
 
-// #region Project — stage flow ↔ side-nav quick jumps
+// #region Stage quick-jumps
 /**
- * The stage the Stage Flow visualizer currently has expanded. The side-nav quick-jump list writes it
- * (and scrolls the flow into view); the `StageFlow` island reads it to expand + highlight that stage.
- * `null` before any interaction — the flow then defaults to expanding the active stage.
- */
-export const selectedStageId = signal<string | null>(null);
-
-/** The id of the stage-flow scroll container, so a quick-jump can bring it into view. */
-export const STAGE_FLOW_ANCHOR = "view-stage-flow";
-
-/**
- * Select a stage — the quick-jump entry point used by both lanes.
+ * Select a stage — the quick-jump entry point used by every conversion lane.
  *
- * It has to serve two structurally different stage renderers, and getting that wrong made eight
- * visible controls inert:
+ * Every archetype that shows a stage run — a pipeline service, a one-off showcase, and now a project
+ * — renders the SAME `StageProgressLedger`, a **server component** built on native `<details>`. It
+ * has no signals and cannot observe anything, so a jump drives the DOM directly: open the stage, then
+ * bring it into view. This used to write a signal an island observed as well, and the island is gone;
+ * a signal nobody reads is a control that appears to work and reaches nothing (root CLAUDE.md §3
+ * gate 11), so the write went with it.
  *
- * - The PROJECT template renders `StageFlow`, an island that observes {@link selectedStageId} and owns
- *   its own expand + scroll.
- * - The COMMERCE templates render `StageProgressLedger`, a **server component** built on native
- *   `<details>`. It has no signals and cannot observe anything, so a signal write alone reaches
- *   nothing — which is exactly what shipped: the conversion lane's "Stages" list and its numbered rail
- *   squares were styled, hoverable, focusable, and did nothing at all on click.
- *
- * So it writes the signal for the island AND drives the DOM directly for the server-rendered ledger.
- * The DOM half is a no-op when no such element exists, so neither renderer needs to know about the
- * other, and a page carrying both would simply have one of them respond.
+ * It uses `scrollToElement` rather than `scrollIntoView`, for two reasons that are both defects it
+ * used to have. `scrollIntoView({ block: "start" })` aligns the target with the top of the SCROLLPORT,
+ * which on this surface is underneath ~112–152px of pinned chrome — so the stage a reader asked for
+ * landed behind the header band. And the scroll was `auto`, which arrived but did not animate;
+ * `scrollToElement` requests `smooth` and keeps a watchdog so arrival is still guaranteed in an
+ * environment that does not composite frames (see its docblock).
  */
 export function jumpToStage(id: string): void {
-	selectedStageId.value = id;
-
-	/*
-	 * The server-rendered ledger: open the stage, then bring it into view.
-	 *
-	 * It uses `scrollToElement` rather than `scrollIntoView`, for two reasons that are both defects it
-	 * used to have. `scrollIntoView({ block: "start" })` aligns the target with the top of the
-	 * SCROLLPORT, which on this surface is underneath ~112–152px of pinned chrome — so the stage a
-	 * reader asked for landed behind the header band. And the scroll was `auto`, which arrived but did
-	 * not animate; `scrollToElement` requests `smooth` and keeps a watchdog so arrival is still
-	 * guaranteed in an environment that does not composite frames (see its docblock).
-	 */
 	try {
 		const target = document.getElementById(`stage-${id}`);
 		if (!target) return;
 		target.querySelector("details")?.setAttribute("open", "");
 		scrollToElement(target);
-	} catch { /* SSR / no document — the signal write above is the island's path */ }
+	} catch { /* SSR / no document — nothing to jump to */ }
 }
 // #endregion
 

@@ -1,8 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
-import { MoneyView } from "@projective/ui/display/money";
-import { PriceOrigin } from "../components/entity-view-parts.tsx";
+import { PriceBlock } from "../components/lane-parts.tsx";
 import "../styles/entity-view.css";
 import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";
 import { signInHref } from "../core/view-model.ts";
@@ -109,26 +108,12 @@ export default function EntityBuyBar(
 
 	return (
 		<div class="evp-buybar">
-			<div class="evp-price">
-				{price.amount
-					? (
-						<>
-							<span class="evp-price__figure">
-								{price.isFloor && <span class="evp-price__from">From&#32;</span>}
-								<MoneyView
-									minor={price.amount.minor}
-									currency={price.amount.currency}
-									size="figure"
-									hideOrigin
-									class="evp-price__money"
-								/>
-							</span>
-							{price.unit && <span class="evp-price__unit">/ {price.unit}</span>}
-							<PriceOrigin minor={price.amount.minor} currency={price.amount.currency} />
-						</>
-					)
-					: <span class="evp-price__figure evp-price__figure--quote">{price.fallback}</span>}
-			</div>
+			<PriceBlock
+				amount={price.amount}
+				fallback={price.fallback}
+				unit={price.unit}
+				isFloor={price.isFloor}
+			/>
 
 			<BookingCtaRig
 				offer={offer}

@@ -4,6 +4,7 @@ import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { BodyPortal } from "@projective/ui/overlay";
 import { useEdgeDetection } from "@projective/ui/hooks";
+import { Button } from "@ui/fields/components/Button.tsx";
 
 /**
  * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Star · kebab**,
@@ -130,14 +131,14 @@ export default function CardActions(
 	return (
 		<div class="ex-actions" ref={rootRef} data-stop>
 			<Tooltip content="Share">
-				<button
+				<Button
 					type="button"
 					class="ex-actions__btn"
 					aria-label={`Share ${title}`}
 					onClick={share}
 				>
 					<Icon name="share" />
-				</button>
+				</Button>
 			</Tooltip>
 
 			{
@@ -150,7 +151,7 @@ export default function CardActions(
 			{authed
 				? (
 					<Tooltip content={starred.value ? "Saved" : "Save"}>
-						<button
+						<Button
 							type="button"
 							class="ex-actions__btn"
 							aria-label={starred.value ? `Remove ${title} from saved` : `Save ${title}`}
@@ -158,7 +159,7 @@ export default function CardActions(
 							onClick={star}
 						>
 							<Icon name="star" filled={starred.value} />
-						</button>
+						</Button>
 					</Tooltip>
 				)
 				: (
@@ -171,7 +172,7 @@ export default function CardActions(
 
 			<div class="ex-actions__menu-wrap">
 				<Tooltip content="More actions">
-					<button
+					<Button
 						type="button"
 						ref={menu.triggerRef}
 						class="ex-actions__btn"
@@ -181,7 +182,7 @@ export default function CardActions(
 						onClick={() => (open.value = !open.value)}
 					>
 						<Icon name="kebab" />
-					</button>
+					</Button>
 				</Tooltip>
 
 				{open.value && (
@@ -197,7 +198,7 @@ export default function CardActions(
 							{helper && (
 								authed
 									? (
-										<button
+										<Button
 											type="button"
 											class="ex-actions__item"
 											role="menuitem"
@@ -205,7 +206,7 @@ export default function CardActions(
 										>
 											<Icon name="plus" />
 											<span>Add to project</span>
-										</button>
+										</Button>
 									)
 									: (
 										<a class="ex-actions__item" role="menuitem" href={signIn}>
@@ -215,7 +216,7 @@ export default function CardActions(
 									)
 							)}
 
-							<button
+							<Button
 								type="button"
 								class="ex-actions__item ex-actions__item--danger"
 								role="menuitem"
@@ -223,7 +224,7 @@ export default function CardActions(
 							>
 								<Icon name="flag" />
 								<span>Report</span>
-							</button>
+							</Button>
 						</div>
 					</BodyPortal>
 				)}

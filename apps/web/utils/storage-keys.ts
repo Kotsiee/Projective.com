@@ -129,11 +129,6 @@ export const LocalKeys = {
 	 */
 	VIEW_LANE_WIDTH: "pj.local.shell.viewLaneWidth",
 	/**
-	 * The commerce `/view` nav rail's width. Its own key on purpose: the rail is pinned shut, and a
-	 * width restored from any shared key would reopen a lane that holds a single back button.
-	 */
-	VIEW_NAV_RAIL_WIDTH: "pj.local.shell.viewNavRailWidth",
-	/**
 	 * Guest floating side-nav collapsed vs expanded preference (`"1"` collapsed | `"0"` expanded).
 	 * The guest equivalent of {@link SIDEBAR_COLLAPSED}: read pre-paint in `_app.tsx` to set
 	 * `:root[data-guest-nav]` before first paint (no flash-of-wrong-width), re-synced by the

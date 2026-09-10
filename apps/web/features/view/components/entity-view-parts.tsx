@@ -1,7 +1,10 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
+import { Avatar, RatingStars } from "@projective/ui/display";
 import { displayCurrency, displayLocale, formatMoney } from "@projective/ui/display/money";
+import type { EntityView } from "@projective/types/explore";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
+import { sellerBadges } from "../core/view-model.ts";
 
 /**
  * Entity View — the unboxed composition primitives.
@@ -296,5 +299,76 @@ export function PriceOrigin(
 			Orig. {formatMoney(minor, origin, displayLocale.value || "en-GB")} {origin}
 		</span>
 	);
+}
+// #endregion
+
+// #region Seller line
+/**
+ * The seller line — avatar, name, one compact rating, then earned signals as TEXT LINKS (§B.11.4).
+ *
+ * Shared by every archetype's hero, including a project's (where the "seller" is the client who
+ * posted the brief). The signals carry an explanation rather than a fill: six earned badges beside
+ * one lifecycle status makes the status compete with them for the colour channel, and the status is
+ * the only one of the seven whose colour means anything.
+ *
+ * They are derived by the SHARED `sellerBadges` rule, which the lane's identity band also calls.
+ * Two thresholds for one badge is how a seller comes to read "Top rated" in the lane and unmarked
+ * eighteen inches to its left, on the same screen.
+ *
+ * `avatar` is off where the hero already carries the owner's face (the project banner strip), so one
+ * identity is never drawn twice in one block. `headline` is the owner's role line, Meta register.
+ */
+export function SellerLine(
+	{ item, rating, responseMinutes, avatar = true, headline }: {
+		item: EntityView["item"];
+		rating: { value: number; count: number } | null;
+		responseMinutes?: number;
+		avatar?: boolean;
+		headline?: string;
+	},
+): JSX.Element {
+	const signals: TrustSignal[] = sellerBadges(item, responseMinutes).map((badge) => ({
+		label: badge.label,
+		explanation: explainBadge(badge.id, item, rating, responseMinutes),
+	}));
+
+	return (
+		<div class="evp-seller">
+			<a class="evp-seller__link" href={`/${item.owner.handle}`}>
+				{avatar && <Avatar image={item.owner.avatar} label={item.owner.name} size="sm" />}
+				<span class="evp-seller__name">{item.owner.name}</span>
+				{item.owner.verified && (
+					<Icon name="verified" size="sm" filled class="evp-seller__crest" aria-label="Verified" />
+				)}
+			</a>
+			{headline && <span class="evp-seller__headline">{headline}</span>}
+			{rating && <RatingStars value={rating.value} count={rating.count} compact size="sm" />}
+			<TrustSignals signals={signals} />
+		</div>
+	);
+}
+
+/**
+ * Why a badge was earned, in one sentence, from the datum that earned it.
+ *
+ * Never a generic gloss: "Top rated" with no numbers is marketing, and the numbers are the only part
+ * a reader can check.
+ */
+function explainBadge(
+	id: string,
+	item: EntityView["item"],
+	rating: { value: number; count: number } | null,
+	responseMinutes?: number,
+): string {
+	if (id === "fast-replies") {
+		const minutes = responseMinutes ??
+			("responseMinutes" in item ? item.responseMinutes : undefined);
+		return typeof minutes === "number"
+			? `Typically replies within ${minutes} minutes — a measured median, not an estimate.`
+			: "Replies faster than most sellers on the platform.";
+	}
+	return rating
+		? `${rating.value.toFixed(1)} average across ${rating.count} completed engagements.`
+		: "Rated well across completed engagements.";
 }
 // #endregion

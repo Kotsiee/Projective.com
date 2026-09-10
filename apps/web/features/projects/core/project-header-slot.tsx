@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
-import ProjectStickyHeader from "@features/view/islands/ProjectStickyHeader.island.tsx";
+import EntityStickyHeader from "@features/view/islands/EntityStickyHeader.island.tsx";
 import ProjectSetupHeader from "../islands/ProjectSetupHeader.island.tsx";
 import { resolveProjectShowcase } from "./showcase-ssr.ts";
 import { resolveProjectSetup } from "./setup-ssr.ts";
@@ -22,8 +22,8 @@ import type { ReadActor } from "@server/services/read-actor.ts";
  * CLAUDE.md §6):
  *   • **Client / owner** → {@link ProjectSetupHeader}: identity · the setup progress bar · the
  *     Details ⁄ Preview switch, with Preview rendered-and-locked until every required step is done.
- *   • **Freelancer / member** → the reused view {@link ProjectStickyHeader}, so a non-owner's band on
- *     the engagement looks and behaves exactly as it does on `/view/[id]?type=projects`.
+ *   • **Freelancer / member** → the reused view {@link EntityStickyHeader} (archetype `project`), so a
+ *     non-owner's band on the engagement is the SAME band a brief shows on `/view/[id]?type=projects`.
  *
  * Server-only (it reaches `@server/services`); never imported by an island.
  */
@@ -63,7 +63,14 @@ export async function projectHeaderFor(
 		// The preview route is owner-only and redirects a non-owner, so only `details` reaches here.
 		// Authed (the whole dashboard is behind the guard); the projects scope has no
 		// back-to-explore/profile context, so the neutral `explore` scope drives the owner link.
-		return <ProjectStickyHeader item={showcase.item} authed ctx={{ scope: "explore" }} />;
+		return (
+			<EntityStickyHeader
+				item={showcase.item}
+				archetype="project"
+				authed
+				ctx={{ scope: "explore" }}
+			/>
+		);
 	}
 
 	const { setup } = await resolveProjectSetup(slug, actor);

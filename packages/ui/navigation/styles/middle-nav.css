@@ -35,6 +35,25 @@
     --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
 }
 
+/*
+ * A FRAME WITH NO LANE ADDS NO LANE TERM.
+ *
+ * `--shell-frame-inset-inline` is a seam accumulator and the rule above adds the lane's width to it
+ * unconditionally, which is right for every frame that HAS one. A route may legitimately register a
+ * header or a footer band and no lane (`MiddleNav` renders the element only when `lane` is passed), and
+ * the accumulator then points the fixed corner seam `--shell-lane-w` inboard of the frame it is meant to
+ * trace — a stray hairline and a stray tint running down the middle of the page, which is the same
+ * failure `[data-chrome="focus"]` already corrects for its own laneless shell in `app-shell.css`.
+ *
+ * This is the general form of that correction: it keys off the lane ELEMENT rather than off a shell
+ * mode, so it holds for any laneless frame, and it leaves `--shell-sidebar-cur-w` alone — the rail's
+ * contribution belongs to `.ui-app-shell` and is not this frame's number to correct (same reasoning as
+ * the mobile block below).
+ */
+.ui-middle-nav:not(:has(> .ui-middle-nav__lane)) {
+    --shell-frame-inset-inline: var(--shell-sidebar-cur-w);
+}
+
 /* The Blue frame's OWN exposed edge is already traced by `.ui-shell-topbar__border` (the outer L), so
    it must not draw a second, lane-shifted seam over the canvas — only its descendant Green frame does. */
 .ui-middle-nav::after {
