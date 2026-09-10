@@ -1,0 +1,959 @@
+/*
+ * profile-skeleton — the legacy lane / header / sticky-header / action-button skeleton that the
+ * ENTITY VIEW feature (`apps/web/features/view/**`) layers its own chrome on top of (Decisions #41,
+ * #43, #79). The profile surface itself no longer renders any of these (root CLAUDE.md §8 Decision
+ * #96 dismantled the profile's lane, splitter and migrating sticky header), so this sheet is owned by
+ * `/view` in everything but its file path and class prefix: it keeps the `pf-` names because
+ * thirteen view files select on them, and renaming a skeleton is a pass of its own.
+ *
+ * It is imported by the view islands that reuse the skeleton (never by a profile island), and it
+ * carries the two explore sheets those same islands used to receive transitively through the old
+ * `profile.css` — a server component's CSS import reaches nothing, so the island graph is the only
+ * carrier (Decision #39 / `CardStyleAnchor`).
+ */
+@import "../../explore/styles/explore.css";
+@import "../../explore/styles/explore-results.css";
+
+/* The hairline the lane separators and header seams share. */
+.pf-hairline {
+    block-size: 0;
+    margin: 0;
+    border: none;
+    border-block-start: var(--hairline);
+}
+
+
+/* #region Header — banner (7:2) + overlapping avatar (§C.4) */
+.pf-header {
+    display: flex;
+    flex-direction: column;
+    /*
+	 * A positioning context for the owner's "change cover image" control, which sits over the banner.
+	 * `position: relative` does NOT re-base a fixed descendant (only transform/filter/backdrop-filter
+	 * and containment do), so the Asset Picker's portalled dialog is unaffected.
+	 */
+    position: relative;
+}
+
+/*
+ * The cover holds its 7:2 proportion while that proportion is affordable, and stops growing after it
+ * is not. Unbounded, it scales with the page: now that the page is full-bleed, a 1440px display gave
+ * the banner 309px and a 1920px one would take 430px — so the wider the display, the more of the first
+ * viewport is decorative photograph, and the further the work falls below the fold. The cap trades a
+ * ratio nobody can verify by eye for reading order they feel immediately. (7:2 is the §C.4 brand-MARK
+ * ratio, Decision #4 — it was never a mandate for the profile cover.)
+ */
+.pf-header__banner {
+    aspect-ratio: 7 / 2;
+    inline-size: 100%;
+    max-block-size: 15rem;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--surface-2);
+    border-radius: var(--radius-container-lg, var(--radius-xl));
+}
+
+.pf-header__bar {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding-inline: var(--space-3);
+}
+
+/* The avatar overlaps the banner's bottom edge with a thick page-background border. */
+/*
+ * The avatar's flex placement and its overlap moved OUT to the wrapper, so the wrapper can be the
+ * positioning context for the owner's "change profile picture" control while the disc keeps sitting
+ * exactly where it did. The disc's own negative margin is cleared here rather than removed from the
+ * rule below, so the responsive override still has one place to change the overlap.
+ */
+.pf-header__avatarwrap {
+    position: relative;
+    flex: none;
+    margin-block-start: -56px;
+}
+
+.pf-header__avatar {
+    flex: none;
+    margin-block-start: 0;
+    border: 4px solid var(--surface);
+    background: var(--surface);
+    box-shadow: var(--elevation-low);
+}
+
+/*
+ * The two image controls. Interactive, so a full border is allowed (§B.4). Each is a 2rem target — the
+ * WCAG 2.2 AA 2.5.8 floor — regardless of the glyph inside it.
+ */
+.pf-header__imgbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    box-shadow: var(--elevation-low);
+    transition: background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-header__imgbtn:hover {
+    background: var(--surface-2);
+    color: var(--on-surface);
+}
+
+.pf-header__imgbtn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-header__imgbtn--banner {
+    position: absolute;
+    inset-block-start: var(--space-3);
+    inset-inline-end: var(--space-3);
+}
+
+.pf-header__imgbtn--avatar {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-end: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pf-header__imgbtn {
+        transition: none;
+    }
+}
+
+.pf-header__id {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-block-start: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.pf-header__name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+}
+
+.pf-header__headline {
+    margin: 0.35rem 0 0;
+    font-size: 0.95rem;
+    color: var(--on-surface-variant, var(--text-secondary));
+}
+
+/*
+ * The identity header carries NO action cluster above the lane breakpoint — the lane owns Follow ·
+ * Message · Hire, and the header band owns the condensed pair once the identity scrolls away. Three
+ * simultaneous copies of the same filled CTA is a §B.8.2 breach ("one filled action per decision
+ * region") and it was measurably worse than that: two copies sat ~12px apart in the same eyeline at
+ * rest, three once scrolled.
+ *
+ * Below 767px the lane does not exist (middle-nav.css / guest-shell.css both drop it at that exact
+ * width), so the body carries the ONE fallback. It was previously `flex: none` beside a `flex: 1`
+ * identity block, so it never wrapped: at 768px the Hire button ran 51px past the canvas clip, and
+ * at 375px it started at x=379 — entirely off-screen, with the lane copy `display:none` and the band
+ * copy `visibility:hidden`. Three Hire buttons in the DOM, none reachable. It is now its own
+ * full-width row under the identity.
+ */
+.pf-header__actions {
+    display: none;
+    flex: none;
+    padding-block-start: var(--space-3);
+}
+
+@media (max-width: 767px) {
+    .pf-header__bar {
+        flex-wrap: wrap;
+    }
+
+    .pf-header__actions {
+        display: block;
+        flex: 1 0 100%;
+        padding-block-start: var(--space-4);
+    }
+
+    .pf-actions {
+        justify-content: stretch;
+    }
+
+    .pf-actions>.pf-btn {
+        flex: 1 1 0;
+        justify-content: center;
+        min-block-size: 40px;
+    }
+}
+
+/*
+ * A 112px avatar over a 7:2 banner stops working once the banner is shorter than the avatar it is
+ * meant to hold: at a 375px container the banner is 107px tall and the disc is 112px, so the overlap
+ * inverts. Scale the disc and its negative offset together against the CONTAINER.
+ */
+@container pf (max-width: 34rem) {
+
+    /* The overlap lives on the wrapper (see `.pf-header__avatarwrap`); the disc keeps its own size. */
+    .pf-header .pf-header__avatarwrap {
+        margin-block-start: -36px;
+    }
+
+    .pf-header .pf-header__avatar {
+        inline-size: 72px;
+        block-size: 72px;
+        border-width: 3px;
+    }
+
+    .pf-header__name {
+        font-size: 1.25rem;
+    }
+}
+
+/* #endregion */
+
+/* #region Action buttons (Follow · Hire/Message · Edit) */
+.pf-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.pf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.5rem 0.95rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-btn:hover {
+    background: var(--surface-3, var(--surface-2));
+}
+
+.pf-btn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-btn__icon {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
+}
+
+.pf-btn--primary {
+    color: var(--on-primary);
+    background: var(--primary);
+}
+
+.pf-btn--primary:hover {
+    background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-btn--follow[data-on="true"] {
+    color: var(--on-primary);
+    background: var(--primary);
+}
+
+/* #endregion */
+
+/* #region Sticky migrated header (in ui-middle-nav__header band) */
+/*
+ * Keep the header band OUT of the layout until the body header actually scrolls away. The profile
+ * always mounts a sticky-header slot, so `MiddleNav` stamps `--has-header` on the frame, which bumps
+ * the Green canvas's seam inset (`--shell-frame-inset-block`) down by the band height — reserving a
+ * visible empty header strip above the content BEFORE any scroll. Until the migrated header reveals
+ * (`.pf-stickyhead[data-condensed="true"]`), reset the inset to the top-bar line so the rounded canvas
+ * corner sits flush at the top with no empty strip; once revealed, the package `--has-header` inset
+ * applies again and the canvas drops below the now-visible band. Higher specificity than the package
+ * rule (0,3,0 vs 0,1,0), so it wins regardless of stylesheet order.
+ */
+.ui-middle-nav--has-header:not(:has(.pf-stickyhead[data-condensed="true"])) {
+    --shell-frame-inset-block: var(--shell-topbar-h);
+}
+
+.pf-stickyhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    inline-size: 100%;
+    /*
+	* The band collapses to 0 until the body header scrolls away, then reveals to the header-band
+	* height. `max-block-size` (not `block-size`) drives the reveal: the sticky sits in the middle-nav
+	* frame's grid/flex context, which overrides an explicit `block-size` (verified) — only the
+	* min/max logical-size constraints are honoured there. Clamping both min + max to the same value
+	* pins the exact height; the `auto` header-band grid row then follows the content. Animating
+	* `max-block-size` gives the smooth slide (jump-to-final under reduced-motion, below).
+	*/
+    min-block-size: 0;
+    max-block-size: 0;
+    padding-inline: var(--space-4);
+    overflow: hidden;
+    opacity: 0;
+    /* `visibility: hidden` removes every descendant (Follow/Hire/Edit) from the tab order AND the
+	accessibility tree while collapsed — so keyboard users never land on the invisible controls. It
+	is delayed by the transition so it flips only after the collapse animation completes. */
+    visibility: hidden;
+    transition:
+        max-block-size var(--dur-medium) var(--spring-standard),
+        opacity var(--dur-fast) var(--ease-standard),
+        visibility 0s linear var(--dur-medium);
+}
+
+.pf-stickyhead[data-condensed="true"] {
+    min-block-size: var(--shell-midnav-header-h);
+    max-block-size: var(--shell-midnav-header-h);
+    opacity: 1;
+    visibility: visible;
+    transition:
+        max-block-size var(--dur-medium) var(--spring-standard),
+        opacity var(--dur-fast) var(--ease-standard),
+        visibility 0s;
+}
+
+.pf-stickyhead__id {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    text-decoration: none;
+    color: var(--on-surface);
+}
+
+.pf-stickyhead__name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/*
+ * On the ramp, not near it. 0.95rem resolves to 15.2px, and a fractional box half-pixels the crest's
+ * stroke on every device-pixel boundary it crosses (§B.7.3) — a mark whose whole job is to look
+ * authoritative rendered slightly soft. `--icon-sm` is 1rem, the nearest step.
+ */
+.pf-stickyhead__verified {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    color: var(--primary);
+    /* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
+    --icon-knockout: var(--on-primary);
+}
+
+.pf-stickyhead__handle {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*
+ * The band is identity, not action. Where a lane exists it already holds Follow · Message · Hire
+ * permanently and in view, so a second filled `Hire` in the band put two primaries ~154px apart in one
+ * eyeline — §B.8.2 counts per decision region, and the shell chrome is one region.
+ *
+ * Below 767px there is no lane, and by the time this band reveals the body header's action row has
+ * scrolled away by definition — so the two are mutually exclusive by render condition, which is exactly
+ * the case §B.8.2 exempts. Net: exactly one filled CTA on screen at every width and every scroll offset.
+ */
+.pf-stickyhead__actions {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .pf-stickyhead__actions {
+        display: block;
+    }
+}
+
+.pf-stickyhead__actions .pf-btn {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.78rem;
+}
+
+/* #endregion */
+
+/* Compact menu popover — actions render DIRECTLY inside `ui-popover__content` (no intermediary
+   wrapper): the Popover already supplies the elevated surface/hairline/radius/shadow, so `.pf-menu`
+   only tightens the content padding into a dense column. Shared by the view lane kebabs. */
+.ui-popover.pf-menu .ui-popover__content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-1);
+}
+
+/* #region Action lane — mirrors ui-app-shell__sidebar; expanded stack + collapsed rail */
+.pf-lane {
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 100%;
+    font-size: 0.85rem;
+    color: var(--on-surface);
+}
+
+.pf-lane__full {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    block-size: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Lane header — mirrors `.proj-detail__header` (Part 4.2): a fixed-height strip with Back / title on
+   the left and the Share (+ owner Settings) icon buttons on the right, over a single hairline. */
+.pf-lane__header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    block-size: var(--shell-midnav-header-h);
+    padding-inline: var(--space-3);
+    border-block-end: var(--hairline);
+}
+
+.pf-lane__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.3rem 0.5rem 0.3rem 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    background: transparent;
+    border-radius: var(--radius-full);
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__back:hover {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.pf-lane__back-icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+}
+
+/* Share · Star · Kebab, grouped on the right (`margin-auto` keeps them right-aligned even with no Back). */
+.pf-lane__header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-inline-start: auto;
+}
+
+.pf-lane__headbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__headbtn:hover {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.pf-lane__headbtn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-lane__headbtn svg {
+    inline-size: var(--icon-md);
+    block-size: var(--icon-md);
+}
+
+/* Favourited star + open kebab — tinted; the star fills to signal the active state. */
+.pf-lane__headbtn[data-on="true"],
+.pf-lane__headbtn[data-open="true"] {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.pf-lane__headbtn[data-on="true"] {
+    color: var(--primary);
+}
+
+.pf-lane__headbtn[data-on="true"] svg {
+    fill: currentColor;
+}
+
+/* Kebab dropdown menu — items render DIRECTLY inside `ui-popover__content` via the shared `.pf-menu`
+   compact-popover style (above); no intermediary `.pf-lane__menu` wrapper. */
+.pf-lane__menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.5rem var(--space-2);
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--on-surface);
+    text-align: start;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__menu-item:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.pf-lane__menu-item:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-lane__menu-item[data-danger="true"] {
+    color: var(--danger);
+}
+
+.pf-lane__menu-item svg {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
+}
+
+/* Action stack (visitor / owner default) — availability toggle · Follow|Message row · full-width CTA. */
+.pf-lane__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+}
+
+.pf-lane__row {
+    display: flex;
+    gap: var(--space-2);
+}
+
+/* Follow / Message row buttons — equal-width, secondary by default. */
+.pf-lanebtn {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    min-block-size: 40px;
+    padding: 0 var(--space-2);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lanebtn:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint), var(--surface-2));
+}
+
+.pf-lanebtn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-lanebtn--follow[data-on="true"],
+.pf-lanebtn--primary {
+    color: var(--on-primary);
+    background: var(--primary);
+}
+
+.pf-lanebtn--primary:hover {
+    background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-lanebtn__icon {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    flex: none;
+}
+
+/* Main CTA — full-width primary action (Hire, or owner Edit profile). */
+.pf-lanecta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    min-block-size: 44px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: var(--surface-2);
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lanecta--primary {
+    color: var(--on-primary);
+    background: var(--primary);
+}
+
+.pf-lanecta--primary:hover {
+    background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-lanecta:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Profile ⁄ Availability segmented toggle (Part 4.3) — shown only when availability is configured. */
+.pf-availtoggle {
+    display: flex;
+    padding: 3px;
+    background: var(--surface-2);
+    border-radius: var(--radius-full);
+}
+
+.pf-availtoggle__opt {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 30px;
+    padding: 0 var(--space-2);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-full);
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-availtoggle__opt[data-active="true"] {
+    color: var(--on-surface);
+    background: var(--surface);
+    box-shadow: var(--elevation-low);
+}
+
+.pf-availtoggle__opt:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-lane__scroll {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+}
+
+.pf-lane__nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.pf-lane__sep {
+    margin-block: var(--space-1);
+}
+
+/* Lane item — self-styled mirror of `.ui-nav-item` (so it looks right even on the guest shell where
+   nav.css isn't loaded). Icon on a shared axis; label reveals beside it. */
+.pf-laneitem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    inline-size: 100%;
+    min-block-size: 40px;
+    padding: 0 var(--space-2);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--on-surface);
+    text-align: start;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-laneitem:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.pf-laneitem:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-laneitem.ui-nav-item--active,
+.pf-laneitem[data-on="true"] {
+    color: var(--on-surface);
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+
+.pf-laneitem--primary {
+    color: var(--on-primary);
+    background: var(--primary);
+}
+
+.pf-laneitem--primary:hover {
+    background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.pf-laneitem .ui-nav-item__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 24px;
+    block-size: 24px;
+    flex: none;
+}
+
+.pf-laneitem .ui-nav-item__label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Footer collapse toggle. */
+.pf-lane__footer {
+    flex: none;
+    position: sticky;
+    inset-block-end: 0;
+    display: flex;
+    padding: var(--space-2);
+    background: var(--surface-1);
+    border-block-start: var(--hairline);
+}
+
+.pf-lane__collapse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--shell-nav-block);
+    block-size: var(--shell-nav-block);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-lane__collapse:hover {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+.pf-lane__collapse:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-lane__collapse .shell-toggle {
+    inline-size: 22px;
+    block-size: 22px;
+    stroke-width: 1.8;
+}
+
+/* The collapse toggle's dotted bar rests at the expanded (right) edge; scoped so it tracks THIS lane. */
+.pf-lane .pf-lane__collapse .shell-toggle__bar {
+    transition: transform var(--dur-medium) var(--spring-standard);
+    transform: translateX(6px);
+}
+
+/* #endregion */
+
+/* #region Collapsed icon rail (density switch on .ui-splitter[data-mode="collapsed"]) */
+.pf-lane__rail {
+    display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .pf-lane__full {
+    display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .pf-lane__rail {
+    display: flex;
+}
+
+/*
+ * Widen the collapsed lane so its icon rail matches the global sidebar's collapsed rail.
+ *
+ * Set on the FRAME, not on the splitter: `--shell-lane-rail-w` is the one number both the
+ * collapsed lane's `inline-size` and the nested frame's inset accumulator read, so the lane's
+ * trailing edge and the Green canvas's rounded corner stay one boundary. An `inline-size`
+ * override here would move the lane and leave the seam behind (a measured 14px of canvas painting
+ * under the rail). `:has()` scopes it, so every other lane keeps its own rail width.
+ */
+.ui-middle-nav:has(.pf-lane) {
+    --shell-lane-rail-w: calc(var(--shell-sidebar-w) + 6px);
+}
+
+.pf-lane__rail {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding-block: var(--space-2);
+    overflow-y: auto;
+}
+
+.pf-lane__rail-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.pf-lane__rail-group--bottom {
+    margin-block-start: auto;
+}
+
+.pf-railbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--shell-nav-block);
+    block-size: var(--shell-nav-block);
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-base);
+    color: var(--on-surface-variant, var(--text-secondary));
+    background: transparent;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-railbtn:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+    color: var(--on-surface);
+}
+
+.pf-railbtn--active,
+.pf-railbtn[data-active="true"],
+.pf-railbtn[data-on="true"] {
+    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+    color: var(--on-surface);
+}
+
+.pf-railbtn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-railbtn svg {
+    inline-size: 24px;
+    block-size: 24px;
+}
+
+.pf-railbtn--toggle .shell-toggle {
+    inline-size: 22px;
+    block-size: 22px;
+    stroke-width: 1.8;
+}
+
+.pf-lane .pf-railbtn--toggle .shell-toggle__bar {
+    transition: transform var(--dur-medium) var(--spring-standard);
+    transform: translateX(0);
+}
+
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-stickyhead,
+    .pf-lane__collapse .shell-toggle__bar,
+    .pf-railbtn--toggle .shell-toggle__bar {
+        transition-duration: 0ms;
+    }
+}
+
+/* #endregion */
+
+/*
+ * #region Guest floating shell overrides
+ *
+ * The floating side nav (`.ui-guest-aside`) hosts the SAME `.pf-lane` content as the authed lane, but
+ * it is NOT a `.ui-splitter`, so the density reveal keys off the PRE-PAINTED `:root[data-guest-nav]`
+ * instead of `.ui-splitter[data-mode]` — the collapsed rail paints correctly on the first byte (no
+ * flash-of-wrong-width). Mirrors the `.ui-splitter[data-mode="collapsed"]` rules above.
+ */
+:root[data-guest-nav="collapsed"] .ui-guest-aside .pf-lane__full {
+    display: none;
+}
+
+:root[data-guest-nav="collapsed"] .ui-guest-aside .pf-lane__rail {
+    display: flex;
+}
+
+/* #endregion */

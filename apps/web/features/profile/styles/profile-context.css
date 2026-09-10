@@ -1,0 +1,201 @@
+/*
+ * profile-context — the context bar between the hero and the tab sections: headline + story on the
+ * reading side (65), the Skills / Languages facets on the other (35). Monochrome, unboxed, separated
+ * by whitespace alone; the facet labels are the shared `.pf-h` register and the tags the shared
+ * `.pf-tag`. Every breakpoint keys off the `pf` container, never the viewport.
+ */
+
+/* #region Bar */
+.pf-context {
+    display: grid;
+    grid-template-columns: minmax(0, 65fr) minmax(0, 35fr);
+    gap: var(--space-8);
+    align-items: start;
+    min-inline-size: 0;
+}
+
+.pf-context--solo {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@container pf (max-width: 44rem) {
+    .pf-context {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--pf-block-gap);
+    }
+}
+
+/* #endregion */
+
+/* #region Story column */
+.pf-context__story {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.pf-context__headline {
+    margin: 0;
+    font-size: var(--text-xl);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--on-surface);
+    overflow-wrap: anywhere;
+}
+
+.pf-context__body {
+    max-inline-size: var(--measure);
+    min-inline-size: 0;
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed, 1.7);
+    color: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region Facets */
+.pf-context__facets {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-block-gap);
+    min-inline-size: 0;
+}
+
+.pf-context__facet {
+    min-inline-size: 0;
+}
+
+.pf-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-tags__item {
+    display: inline-flex;
+    min-inline-size: 0;
+}
+
+.pf-tag__level {
+    display: inline-flex;
+    gap: var(--space-1);
+    font-weight: var(--fw-normal);
+    color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Story */
+.pf-story {
+    min-inline-size: 0;
+}
+
+.pf-story__text {
+    margin: 0;
+    max-inline-size: var(--measure);
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed, 1.7);
+    color: var(--on-surface);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.pf-story__text--placeholder {
+    color: var(--text-secondary);
+}
+
+.pf-story__editable {
+    display: block;
+    inline-size: calc(100% + var(--space-2) * 2);
+    margin: calc(var(--space-2) * -1);
+    padding: var(--space-2);
+    border: 0;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: text;
+}
+
+.pf-story__editable:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-story__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-block-start: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.pf-story__hint-icon {
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
+}
+
+.pf-story__editable:hover .pf-story__hint,
+.pf-story__editable:focus-visible .pf-story__hint {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .pf-story__hint {
+        opacity: 1;
+    }
+}
+
+.pf-story--editing {
+    --fld-focus-bd: var(--on-surface);
+    display: flex;
+    flex-direction: column;
+    max-inline-size: var(--measure);
+}
+
+.pf-story__actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-block-start: var(--space-3);
+}
+
+.ui-button.pf-story__save {
+    --btn-accent: var(--on-surface);
+    --btn-on: var(--surface);
+    --btn-mix-hover: 88%;
+    --btn-mix-active: 80%;
+    --btn-shade: var(--surface);
+}
+
+.ui-button.pf-story__save:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+    border-color: transparent;
+}
+
+.ui-button.pf-story__cancel {
+    --btn-accent: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-story__hint {
+        transition-duration: 0ms;
+    }
+}
+
+:root[data-motion="reduced"] .pf-story__hint {
+    transition-duration: 0ms;
+}
+
+/* #endregion */

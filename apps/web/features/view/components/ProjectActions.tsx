@@ -10,7 +10,7 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * stay in lockstep; rendered inside island trees, so the read is reactive.
  *
  * **Exactly one mount is ever visible, and which one depends on width.** Above 767px the lane owns the
- * CTA and both `pf-header__actions` and `pf-stickyhead__actions` are `display:none` (profile.css) —
+ * CTA and both `pf-header__actions` and `pf-stickyhead__actions` are `display:none` (profile-skeleton.css) —
  * §B.8.2 counts per decision region and the shell chrome is one region. Below 767px there is no lane, so
  * the body header carries it until it scrolls away and the condensed band takes over. Do not read the
  * duplicate mounts as three competing primaries: they are one button in three mutually exclusive states.

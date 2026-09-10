@@ -10,7 +10,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 // Mirror the profile page's banner/avatar chrome by reusing its `pf-header*` skeleton; `project-view.css`
 // layers the project-specific meta/CTA styling on top.
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/project-view.css";
 import { ViewIcon } from "../components/view-glyphs.tsx";
 import { ProjectActions } from "../components/ProjectActions.tsx";

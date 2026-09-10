@@ -1,0 +1,17 @@
+/*
+ * profile-posts — the Posts section: the reused explore articles grid/list inside the panel. This
+ * sheet only neutralises the collection's spacing; the card chrome is the explore sheet's, made
+ * monochrome by the `.pf .ex-*` overrides in profile-work.css.
+ */
+
+/* #region Block */
+.pf-posts {
+	min-inline-size: 0;
+}
+
+.pf-posts .ex-artcombo {
+	margin: 0;
+	padding: 0;
+}
+
+/* #endregion */

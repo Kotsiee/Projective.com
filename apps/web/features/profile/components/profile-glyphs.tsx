@@ -258,13 +258,17 @@ export function ProfileIcon(
 	return <IconShell {...svg}>{PATHS[name]}</IconShell>;
 }
 
-/** The glyph name for a profile tab. Most tab names map 1:1 to a glyph; a few are aliased. */
+/** The glyph name for a profile section (Decision #96 — the four consolidated tabs). */
 export function tabGlyph(tab: ProfileTab): ProfileGlyph {
 	switch (tab) {
-		case "about":
-			return "overview";
-		default:
-			return tab as ProfileGlyph;
+		case "work":
+			return "portfolio";
+		case "experience":
+			return "experience";
+		case "reviews":
+			return "reviews";
+		case "posts":
+			return "articles";
 	}
 }
 

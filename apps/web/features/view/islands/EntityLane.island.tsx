@@ -7,11 +7,11 @@ import { PriceOrigin } from "../components/entity-view-parts.tsx";
 import { MoneyView } from "@projective/ui/display/money";
 import { Icon } from "@projective/ui/icons";
 // The lane reuses the profile lane's `pf-lane*` skeleton (header + scroll + footer geometry), so
-// `profile.css` must ride this island's client bundle — and it is what pulls in `explore.css`, whose
+// `profile-skeleton.css` must ride this island's client bundle — and it is what pulls in `explore.css`, whose
 // `.ex-status` rules the identity band's earned badges render with. `entity-view.css` layers the
 // conversion-rail content on top, and it is this island that delivers the whole page's sheet
 // (§C.1 — a sheet imported by a server component alone never ships).
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/entity-view.css";
 import { StatusChip } from "@features/explore/components/StatusChip.tsx";
 import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";

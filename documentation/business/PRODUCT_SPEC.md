@@ -364,6 +364,49 @@ Two rules follow, and both exist because the near-miss is easy:
   paragraph away. Bounce first, with a return path back to the listing.
 
 ---
+### The Public Profile — the entity's editorial front page
+
+`/[handle]` is where a visitor decides whether to open a conversation. It is the destination of
+every `@handle` on the platform — a card's owner line, a message sender, a review author, a roster
+row — and its job is to make an entity's **work, standing and story** legible in one screen, not to
+list every table the entity has a row in.
+
+**One page, four sections.** The profile is a single column: a split hero, a context bar, and a
+four-section tab bar over the routed section body. **Work** (the index) shows the client proof, the
+packaged services, the completed projects, the portfolio, and — for a team, business or
+organisation — the roster. **Experience** shows a person's career history, education and verified
+certifications, and renders only for an individual (a company has no CV). **Reviews** is the
+dual-track reputation. **Posts** is what the entity has published. There is no fifth section; a
+fact that fits none of the four does not get a tab, it gets a line in the context bar or nothing.
+
+**The hero states identity, proof and one conversion.** Avatar · name · `@handle` and entity kind ·
+**Message** (primary) · **Follow** (secondary) · three inline metrics — the rating, completed
+stages, and the earned Standing rung (with delivered volume, when disclosed) — beside a showcase
+frame that holds a looping showreel or a high-resolution cover. When no showcase is uploaded the
+hero collapses to a single typography-first column; it never renders an empty frame, because an
+empty frame is a placeholder and a placeholder is an invitation nobody asked for. There is no
+"Hire" control on a profile: a seller is hired through a listing in Work, which names what is
+being bought, and a control that cannot name it would only route to that section anyway.
+
+**Colour is reserved for what the entity uploaded.** The profile chrome is monochrome — the neutral
+ramp, the ink, one hairline — so the avatar, the showreel and the portfolio tiles are the only
+colour on the page and therefore the first thing the eye lands on. Tags and client logos are
+grayscale for the same reason: a logo strip in six brand palettes competes with the work it is
+meant to vouch for.
+
+**Availability, presence and clocks are not part of a profile.** The availability calendar remains
+a bookable surface where a listing needs it (`/view/[id]/schedule`, and the `/[handle]/availability`
+route for anyone holding its address), but a profile no longer shows a local time, an "online"
+pip, or an availability label — they were the three facts on the old page that could be wrong
+without anyone noticing, and none of them tells a visitor anything Work and Reviews do not.
+
+**Every retired address still resolves.** The eleven legacy tabs (`services` · `products` ·
+`projects` · `portfolio` · `education` · `articles` · `teams` · `businesses` · `members` ·
+`departments` · `about`) redirect permanently into their consolidated section. A link in a
+message or a bookmark keeps working; nothing that was reachable on the old profile is a dead end on
+the new one.
+
+---
 ### Clients & Businesses
 
 While an individual can hire freelancers directly, the **Business** entity is designed for
@@ -1845,14 +1888,12 @@ fire for the same person on a device that genuinely does not have the file.
 | **Public**    | `/index`                  |                          | Landing Page                                                                                   |
 |               | `/about`                  |                          | Company information                                                                            |
 |               | `/explore`                |                          | Discovery/Search                                                                               |
-|               | `/[handle]`               | `index`                  | Public profile home                                                                            |
-|               |                           | `reviews`                | User reviews/ratings                                                                           |
-|               |                           | `teams`                  | Public team listings                                                                           |
-|               |                           | `projects`               | Public project showcase                                                                        |
-|               |                           | `services`               | Offered services                                                                               |
-|               |                           | `products`               | Products for sale                                                                              |
-|               |                           | `articles`               | Blog/Published posts                                                                           |
-|               |                           | `portfolio`              | Work portfolio items                                                                           |
+|               | `/[handle]`               | `index`                  | Public profile — the **Work** section (client proof · services · completed projects · portfolio · roster) under the split hero + context bar (§The Public Profile) |
+|               |                           | `experience`             | Career history · education · verified certifications (individuals only)                        |
+|               |                           | `reviews`                | Verified client and peer reviews                                                               |
+|               |                           | `posts`                  | Published articles and updates                                                                 |
+|               |                           | `availability`           | Full-page availability calendar (no profile chrome; no longer linked from the profile)         |
+|               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
 |               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, five archetypes (Pipeline · One-Off · Session · Cohort · Digital Product) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |

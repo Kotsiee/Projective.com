@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import "../styles/profile.css";
 import "../styles/profile-message.css";
 import { DraggablePopover } from "@projective/ui/overlay";
 import { Avatar } from "@projective/ui/display";

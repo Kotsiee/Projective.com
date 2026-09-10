@@ -99,3 +99,19 @@ export function mockAvatar(id: string, size = 96, q = 80): string {
 export function mockCover(id: string, w: number, h?: number, q = 80): string {
 	return unsplashUrl(id, { fit: "crop", w, h, q });
 }
+
+/**
+ * A short, silent, CC0 showreel clip — the profile hero's auto-looping video showcase while
+ * `PROFILE_BACKEND_LIVE` is off.
+ *
+ * Hosted on MDN's interactive-examples media bucket (public-domain "cc0-videos"), the same class of
+ * open registry the Unsplash stills come from (`DESIGN_SYSTEM.md` §C.4). Two clips so a corpus of
+ * profiles does not all loop the same footage; the id is any stable string — a handle — so the pick
+ * is deterministic (SSR == client, resume-safe).
+ */
+export function mockShowreel(id: string): string {
+	const clips = ["flower.mp4", "friday.mp4"];
+	let h = 0;
+	for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+	return `https://interactive-examples.mdn.mozilla.net/media/cc0-videos/${clips[h % clips.length]}`;
+}

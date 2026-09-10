@@ -1,0 +1,346 @@
+/*
+ * profile-base — the page container, the shared spacing + type vocabulary every profile region
+ * reads, and the small shared parts (section header · hairline · empty state · not-found · the
+ * availability identity strip).
+ *
+ * Tokens are declared on `.pf` and read by every sheet in the barrel. Nothing on this surface
+ * declares a hex, a px radius or a duration of its own: the geometry comes from the ramp, the colour
+ * from the neutral roles, and the motion from `--dur-*` / `--ease-*`.
+ *
+ * `.pf-scope` carries `container-type` because a container cannot query itself. Every breakpoint on
+ * this surface keys off the CONTAINER, not the viewport: the surface lives in a canvas ~64px narrower
+ * than the window under the authenticated shell and full-bleed under the guest one, and a viewport
+ * query would read a box that is not the one that is actually too narrow.
+ */
+
+/* #region Page container */
+.pf-scope {
+    container-type: inline-size;
+    container-name: pf;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.pf {
+    /* The horizontal page gutter. */
+    --pf-gutter: var(--space-6);
+    /* hero | context bar | sections — the three regions of the page. */
+    --pf-region-gap: var(--space-8);
+    /* Sections inside one tab body (Work: proof · services · projects · portfolio · roster). */
+    --pf-section-gap: var(--space-7);
+    /* Blocks inside one section. */
+    --pf-block-gap: var(--space-5);
+    /* Rows inside one block (a timeline entry, a review). */
+    --pf-row-gap: var(--space-4);
+    /* The masonry gutter — deliberately tight, so the tiles read as one field of work. */
+    --pf-tile-gap: var(--space-2);
+    /* The one corner the media tiles take. */
+    --pf-tile-radius: var(--radius-xs);
+    /* The monochrome tag: a `--surface-1` fill under `--text-secondary` ink, no border. */
+    --pf-tag-bg: var(--surface-1);
+    --pf-tag-ink: var(--text-secondary);
+    /* The client-proof logos: grayscale at rest, the brief's opacity. */
+    --pf-logo-opacity: 0.6;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-region-gap);
+    inline-size: 100%;
+    min-inline-size: 0;
+    padding-inline: var(--pf-gutter);
+    padding-block: var(--space-6) var(--space-8);
+    color: var(--on-surface);
+}
+
+/* Tab region: the tab bar + the routed section body. `scroll-margin` lands the hero's rating
+   click-through (`#profile-sections`) below the sticky top bar, not under it. */
+.pf-sections {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    scroll-margin-block-start: calc(var(--shell-topbar-h, 3rem) + var(--space-3));
+}
+
+.guest-shell .pf-sections {
+    scroll-margin-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
+}
+
+.pf-tabpanel {
+    margin-block-start: var(--pf-block-gap);
+    min-inline-size: 0;
+}
+
+/* The section panel every tab body sits in: an optional owner-action row over the routed body. */
+.pf-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-block-gap);
+    min-inline-size: 0;
+}
+
+.pf-panel__head {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.pf-panel__body {
+    min-inline-size: 0;
+}
+
+/* Tighter cadence once the CONTAINER (not the window) is narrow — the regions still read apart. */
+@container pf (max-width: 44rem) {
+    .pf {
+        --pf-region-gap: var(--space-7);
+        --pf-section-gap: var(--space-6);
+        --pf-gutter: var(--space-4);
+    }
+}
+
+@media (max-width: 767px) {
+    .pf {
+        --pf-gutter: var(--space-3);
+    }
+}
+
+/* #endregion */
+
+/* #region Shared parts */
+/*
+ * The section header — §A.4's second register verbatim: `--text-xs`, uppercase, `--tracking-wide`,
+ * `--fw-semibold`, in `--text-secondary`. It is the boundary device that costs no ink (§B.4 tier 3),
+ * and its margin is ASYMMETRIC on purpose (§B.4.1): far from what precedes it, close to what it names.
+ */
+.pf-h {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    line-height: var(--leading-snug, 1.35);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+/* A section header with a trailing count, on one baseline. */
+.pf-h__count {
+    margin-inline-start: var(--space-2);
+    font-weight: var(--fw-normal);
+    letter-spacing: var(--tracking-normal);
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The single hairline — the ONLY border this surface draws around static content. */
+.pf-rule {
+    block-size: 0;
+    margin: 0;
+    border: none;
+    border-block-start: var(--hairline);
+}
+
+/* The monochrome tag — a `--surface-1` fill under `--text-secondary` ink, `--text-xs`, no border. A
+   LINK tag (a skill → its Explore search) darkens its ink on hover; a static one does nothing. */
+.pf-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--pf-tag-bg);
+    color: var(--pf-tag-ink);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+a.pf-tag:hover {
+    color: var(--on-surface);
+    background: var(--surface-2);
+}
+
+a.pf-tag:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* The teaching empty state — what the section holds, and the owner's way to fill it. Unboxed. */
+.pf-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    max-inline-size: var(--measure-narrow, 52ch);
+    padding-block: var(--space-6);
+    color: var(--text-secondary);
+}
+
+.pf-empty__mark {
+    display: inline-flex;
+    inline-size: var(--icon-lg);
+    block-size: var(--icon-lg);
+    color: var(--text-secondary);
+}
+
+.pf-empty__mark svg {
+    inline-size: 100%;
+    block-size: 100%;
+}
+
+.pf-empty__title {
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.pf-empty__note {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal, 1.5);
+    color: var(--text-secondary);
+}
+
+.pf-empty__action {
+    margin-block-start: var(--space-2);
+}
+
+/* The owner's "+ New …" trigger: a text control with the plus glyph, no fill. */
+.pf-create {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-create:hover {
+    color: var(--text-secondary);
+}
+
+.pf-create:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-radius: var(--radius-xs);
+}
+
+.pf-create__icon {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+}
+
+.pf-modal__body {
+    margin: 0;
+    font-size: var(--text-md);
+    line-height: var(--leading-relaxed, 1.7);
+    color: var(--on-surface);
+}
+
+.pf-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
+
+/* The shared rating stars paint their fill in the brand hue; on this surface every star is ink. */
+.pf .ui-ratingstars__row--fill,
+.pf .ui-ratingstars--compact .ui-ratingstars__meter {
+    color: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region Not-found */
+.pf-notfound {
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding-block: var(--space-8);
+}
+
+.pf-notfound__title {
+    margin: 0;
+    font-size: var(--text-2xl);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight, 1.2);
+}
+
+.pf-notfound__note {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+}
+
+.pf-notfound__link {
+    margin-block-start: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+/* #endregion */
+
+/* #region Availability calendar identity strip */
+/*
+ * `/[handle]/availability` fills the content region with the calendar engine; this one-line strip is
+ * the only profile chrome it keeps — whose calendar this is, and a way back. The calendar owns the
+ * rest of the column, which is why the scope is a flex column and the strip is `flex: none`.
+ */
+.pf-scope--calendar {
+    min-block-size: 100%;
+}
+
+.pf-calhead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: none;
+    padding-inline: var(--space-4);
+    padding-block: var(--space-3);
+    border-block-end: var(--hairline);
+}
+
+.pf-calhead__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--on-surface);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    text-decoration: none;
+}
+
+.pf-calhead__back:hover {
+    color: var(--text-secondary);
+}
+
+.pf-calhead__back:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-radius: var(--radius-xs);
+}
+
+.pf-calhead__back-icon {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+}
+
+.pf-calhead__name {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+/* #endregion */

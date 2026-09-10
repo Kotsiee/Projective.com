@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/article-view.css";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";

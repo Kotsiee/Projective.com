@@ -355,6 +355,14 @@ glyphs around it; proportional digits make a figure appear to jitter while it is
 > **Merge gate.** A PR that sets a heading at `--fw-bold` or above, distinguishes two adjacent levels
 > by weight alone while size / case / tracking match, or renders a changing figure in proportional
 > digits, is not mergeable.
+>
+> **One scoped exception (product owner, 2026-09-10 — §8 Decision #96).** The public profile's hero
+> name (`.pf-hero__name`, `/[handle]`) is set at `--text-3xl` / **`--fw-bold`**. It is the only
+> element on that page above `--fw-medium`: the `@handle` line beside it is Meta register, every
+> section title is the `--text-xs` uppercase register, and the surface carries no other display
+> step, so the "next more important thing has no register left" cost does not arise — there is no
+> next thing. It is recorded here so it is not generalised to a listing or an article title, where
+> the rule stands.
 ### A.5 Accessibility themes (design tokens)
 
 Accessibility is a set of **token overlays** toggled at the framework level (a `data-a11y-*`
@@ -1305,6 +1313,15 @@ disclosure, is this a numeral?* The first "no" is the finding.
 > **Merge gate.** A PR that wraps non-actionable metadata in a pill, chip, tag or badge — or that
 > ships two adjacent non-interactive fills on one row — is not mergeable. The fix is inline Meta-
 > register text with middot separators, not a smaller chip.
+>
+> **One scoped exception (product owner, 2026-09-10 — §8 Decision #96).** The public profile's
+> context bar renders its **Skills** and **Languages** as monochrome, borderless pills (`.pf-tag`:
+> `--surface-1` fill, `--text-secondary` ink, `--text-xs`). Skills are CONTROLS — each is a link
+> into the Explore search for that skill — and are compliant on their own terms. Languages are not
+> clickable and are the one non-actionable row on the platform permitted a fill, by the owner's
+> explicit direction for that surface's editorial cluster. The pills are achromatic and identical in
+> shape, so the exception does not smuggle a status colour in; it is recorded here so it is not
+> generalised to a card, a lane or any other surface, where B.11.2 stands.
 
 ---
 
@@ -2310,8 +2327,9 @@ unchanged (the Explore **Search Results** now supply a filter lane — Decision 
 - **Floating pill header.** The unchanged `SiteHeader` (full-width, morphing to a glass pill on
   scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
   prior marketing-only header and the guest `AppShell` `ui-shell-topbar`.
-- **Side nav (route-driven).** When a route supplies a lane (today: the profile action lane; the
-  Explore Search filters — Decision #40) it mounts in a glass `.ui-guest-aside` (rounded, glass) —
+- **Side nav (route-driven).** When a route supplies a lane (today: the Entity View action lane on
+  `/[handle]/view/[id]`; the Explore Search filters — Decision #40; the profile itself mounts NONE
+  since Decision #96) it mounts in a glass `.ui-guest-aside` (rounded, glass) —
   the guest counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. It is
   an **in-flow `position: sticky`** flex item of `.guest-shell__region` (Decision #40 changed it
   from `position: fixed`): it pins below the header while the page scrolls, but is bounded by the
@@ -2327,19 +2345,18 @@ unchanged (the Explore **Search Results** now supply a filter lane — Decision 
   window (never inheriting the aside's inline gutter) and pins to the viewport bottom on short
   pages. Lane-less routes keep the plain `.site` block flow with the footer at the body's end
   (already full-width).
-- **Floating sub-header (route-driven).** A route sticky header (the profile `ProfileStickyHeader`)
-  mounts in a floating `.guest-shell__subheader` beneath the site header, adjacent to the side nav,
+- **Floating sub-header (route-driven).** A route sticky header (the Entity View's
+  `EntityStickyHeader` / `ProjectStickyHeader`) mounts in a floating `.guest-shell__subheader` beneath the site header, adjacent to the side nav,
   revealed on scroll. It overlays the body (no reserved band).
 - **Glass on a `::before` underlay.** Both floating panels carry their `backdrop-filter` on a
   `::before` (not the element), so neither becomes a containing block for the `position: fixed`
-  overlays the lane renders (the profile kebab Popover) — the same fixed-overlay-trap fix as
+  overlays the lane renders (the view lane's kebab Popover) — the same fixed-overlay-trap fix as
   `.ui-shell-topbar--glass::before` (root CLAUDE.md §8 #8/#9).
 - **Mobile (`< --bp-md`).** The floating side nav + sub-header `display: none`; the body gutters
   collapse — header + full-bleed native-scrolling body only (Part D.3).
 
-Content chrome written for the authed frame (the profile tab/meta-rail sticky offsets, which assume
-`--shell-topbar-h + --shell-midnav-header-h`) is re-based under `.guest-shell` to the site-header
-height `--site-header-h`.
+Content chrome written for the authed frame (the profile tab-bar sticky offset, which assumes
+`--shell-topbar-h`) is re-based under `.guest-shell` to the site-header height `--site-header-h`.
 
 ### D.6 Focus chrome (the distraction-free mode)
 
@@ -2498,8 +2515,7 @@ at 390×844 before the fix, a product page rendered its price, _Buy now_, _Add t
 _Message_ all at `0×0`. A single body-side transactional block is revealed by media query **exactly
 where the lane is not**, so the two are mutually exclusive by `display` and only ever one is in the
 accessibility tree. Both derive their offer from the same resolver, so they cannot drift. This is the
-same pattern as `.pf-header__actions` on the profile page and the `/wallet` header switcher (§8
-Decision #63): **a duty removed from one region is re-homed in another, never rendered twice.**
+same pattern as the `/wallet` header switcher (§8 Decision #63): **a duty removed from one region is re-homed in another, never rendered twice.**
 
 **D.7.5 Resolution is a per-URL slot resolver, and it dispatches on the item's type.**
 `viewLaneFor(url, authed)` is a member of the `laneFor` / `middleNavHeaderFor` / `middleNavFooterFor`
@@ -2524,7 +2540,7 @@ Four things about it are rules rather than choices:
   conflict. Contacting the seller is not a purchase, so the one control here is safe.
 - **The reveal is `min-block-size` + `max-block-size`, never `block-size`.** The band sits in the
   frame's grid context, which overrides an explicit height; only the min/max logical constraints are
-  honoured. Recorded in `profile.css`, verified twice.
+  honoured. Recorded in `profile-skeleton.css`, verified twice.
 - **The band root must carry `.pf-stickyhead`.** That is load-bearing, not cosmetic reuse: the guest
   shell keys its glass underlay, hairline and elevation off the literal selector
   `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`. A band that drops the class

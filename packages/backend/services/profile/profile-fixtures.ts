@@ -1,17 +1,21 @@
 import type {
+	CertificationEntry,
 	DepartmentEntry,
 	EducationEntry,
 	ExperienceEntry,
 	MemberEntry,
 	ProfileKind,
 	ProfileLanguage,
+	ProfileShowcase,
+	ProfileStats,
 	ProfileTab,
 	ProfileTabPayload,
 	ProfileView,
 	ReviewEntry,
 	VerificationTier,
+	WorkPiece,
 } from "@projective/types/profile";
-import type { ExploreOwner, ProfileItem } from "@projective/types/explore";
+import type { ExploreOwner, ProductItem, ProfileItem } from "@projective/types/explore";
 import {
 	ARTICLES,
 	BUSINESSES,
@@ -23,7 +27,7 @@ import {
 	USERS,
 } from "../explore/fixtures.ts";
 import { resolveSkills } from "../explore/skills.ts";
-import { mockAvatar, mockCover } from "../../mocks/assets.ts";
+import { mockAvatar, mockCover, mockShowreel } from "../../mocks/assets.ts";
 
 /**
  * profile fixtures — the fat {@link ProfileBackendService}'s in-memory answer for a public profile
@@ -329,6 +333,67 @@ function storyOf(name: string, headline: string, summary: string, kind: ProfileK
 	].join(" ");
 }
 
+// #region Hero showcase + metrics
+/** The five rungs of the earned Standing ladder (finance-model.md §16.3), by level. */
+const STANDING_LABELS = ["New", "Established", "Trusted", "Expert", "Elite"] as const;
+
+/**
+ * The hero showcase. Three states, spread deterministically so the corpus exercises every branch of
+ * the hero: a looping showreel, a high-resolution cover, and NONE — the collapse case, which must be
+ * reachable from the stub or the single-column hero would only ever be seen the day a real profile
+ * has nothing uploaded. Buyer entities (business / organisation) always carry a brand cover: a
+ * company has a mark, not a reel.
+ */
+function showcaseFor(
+	kind: ProfileKind,
+	bare: string,
+	seed: number,
+	cover: string,
+	name: string,
+): ProfileShowcase | null {
+	if (kind === "business" || kind === "organisation") {
+		return { kind: "image", src: cover, alt: `${name} — cover` };
+	}
+	switch (seed % 3) {
+		case 0:
+			return { kind: "video", src: mockShowreel(bare), poster: cover, alt: `${name} — showreel` };
+		case 1:
+			return { kind: "image", src: cover, alt: `${name} — selected work` };
+		default:
+			return null;
+	}
+}
+
+/**
+ * The inline metrics strip. Standing exists only for a SELLER (finance-model.md §16 — a buyer-only
+ * subject carries none), and the rung is derived from the same completed-stage count the ladder's
+ * volume gate reads, so the two facts on the strip cannot contradict each other. Volume is a
+ * server-formatted string on purpose (root CLAUDE.md §8 Decision #55: the client never totals or
+ * converts money).
+ */
+function statsFor(kind: ProfileKind, seed: number): ProfileStats {
+	const seller = kind === "freelancer" || kind === "team";
+	const completedStages = seller ? 8 + (seed % 140) : 3 + (seed % 40);
+	if (!seller) return { completedStages, volumeLabel: null, standing: null };
+	// Volume floors 0 · 5 · 20 · 50 · 120 (the ladder's second gate), read as the rung.
+	const level = completedStages >= 120
+		? 5
+		: completedStages >= 50
+		? 4
+		: completedStages >= 20
+		? 3
+		: completedStages >= 5
+		? 2
+		: 1;
+	const volumeK = Math.round(completedStages * (1.8 + (seed % 7) * 0.35) * 10) / 10;
+	return {
+		completedStages,
+		volumeLabel: `£${volumeK >= 100 ? Math.round(volumeK) : volumeK}k delivered`,
+		standing: { level, label: STANDING_LABELS[level - 1] },
+	};
+}
+// #endregion
+
 /**
  * Build the {@link ProfileView} for a handle. A known discovery handle derives its identity from that
  * row; any other (non-reserved) handle synthesises a deterministic freelancer-shaped profile so every
@@ -382,16 +447,15 @@ export function findProfile(handle: string): ProfileView | null {
 		verified: r.owner.verified ?? false,
 	}));
 
+	const coverId = row?.cover ? bannerIdFrom(row.cover) : BANNERS[seed % BANNERS.length];
 	return {
 		handle: owner.handle,
 		name,
 		kind,
 		avatar: owner.avatar,
-		banner: unsplash(
-			row?.cover ? bannerIdFrom(row.cover) : BANNERS[seed % BANNERS.length],
-			1600,
-			460,
-		),
+		banner: unsplash(coverId, 1600, 460),
+		showcase: showcaseFor(kind, bare, seed, unsplash(coverId, 1600, 1000), name),
+		stats: statsFor(kind, seed),
 		headline,
 		story: storyOf(name, headline, summary, kind),
 		skills: row?.skills ?? resolveSkills(["Design", "Product", "Strategy"]),
@@ -510,6 +574,53 @@ function experienceFor(_name: string, seed: number): ExperienceEntry[] {
 	}));
 }
 
+/**
+ * Verified certifications. The issuer set is fixed and the `verified` flag alternates so the Experience
+ * section always exercises BOTH renderings — a crest beside a checked credential and plain text beside
+ * an unchecked one — rather than a corpus in which every row happens to be verified.
+ */
+function certificationsFor(seed: number): CertificationEntry[] {
+	const pool = [
+		{ name: "Professional Scrum Product Owner", issuer: "Scrum.org", logo: "1523050854058-8df90110c9f1" },
+		{ name: "Google UX Design Certificate", issuer: "Google", logo: "1592280771190-3e2e4d571952" },
+		{ name: "AWS Certified Developer – Associate", issuer: "Amazon Web Services", logo: "1461749280684-dccba630e2f6" },
+		{ name: "Adobe Certified Professional", issuer: "Adobe", logo: "1550684848-fac1c5b4e853" },
+	];
+	return pick(pool, 3, seed).map((c, i) => ({
+		id: `cert-${seed}-${i}`,
+		name: c.name,
+		issuer: c.issuer,
+		issued: `${2019 + ((seed + i) % 6)}`,
+		expires: i === 1 ? `${2026 + ((seed + i) % 3)}` : undefined,
+		verified: (seed + i) % 3 !== 2,
+		logo: unsplash(c.logo, 96, 96),
+	}));
+}
+
+/**
+ * The portfolio masonry. Derived from the discovery products (so a tile opens the SAME item the
+ * profile-scoped viewer resolves) with the aspect ratio taken from the masonry span the product
+ * already carries — 1 = short (landscape) · 2 = square · 3 = tall (portrait) — so the tiles interlock
+ * the way the explore masonry already does. `client` is a stable slice of the notable-client pool.
+ */
+function piecesFor(
+	handle: string,
+	products: ProductItem[],
+	clients: readonly string[],
+	seed: number,
+): WorkPiece[] {
+	const aspectOf = (span: 1 | 2 | 3): number => span === 1 ? 4 / 3 : span === 2 ? 1 : 3 / 4;
+	return products.map((p, i) => ({
+		id: p.id,
+		title: p.title,
+		// Roughly one tile in three is undisclosed work — the caption then carries no client line.
+		client: (seed + i) % 3 === 2 ? undefined : clients[(seed + i) % Math.max(1, clients.length)],
+		category: p.category,
+		media: { kind: "image", src: p.media ?? "", aspect: aspectOf(p.span), alt: p.title },
+		href: `/${handle}/view/${p.id}?type=products`,
+	}));
+}
+
 function membersFor(seed: number, count: number): MemberEntry[] {
 	const roles = ["Founder", "Design lead", "Engineer", "Producer", "Strategist", "Motion lead"];
 	return Array.from({ length: count }, (_, i) => ({
@@ -544,15 +655,20 @@ function reviewsFor(seed: number, count: number): ReviewEntry[] {
 }
 
 /**
- * Build the payload for one profile tab. Only the collections relevant to the tab are populated; the
- * renderer reads what it needs. Item grids reuse the discovery fixtures so they flow into the same
- * explore cards.
+ * Build the payload for one profile SECTION (Decision #96 — the four consolidated tabs). Only the
+ * collections the section renders are populated; the renderer reads what it needs. Item grids reuse
+ * the discovery fixtures so they flow into the same explore cards.
+ *
+ * The Work section is deliberately built ONCE from the union of every legacy tab's slice (services ·
+ * projects · products-as-pieces · roster), so a bookmark to `/[handle]/services` that lands on Work
+ * finds exactly the services it used to open.
  */
 export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPayload | null {
 	const profile = findProfile(handle);
 	if (!profile) return null;
 	const bare = bareHandle(handle);
 	const seed = hash(bare + tab);
+	const seller = profile.kind === "freelancer" || profile.kind === "team";
 	// The owner attribution for the profile's own work.
 	const owner: ExploreOwner = {
 		handle: profile.handle,
@@ -573,67 +689,63 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 	const base: ProfileTabPayload = {
 		handle: profile.handle,
 		tab,
-		items: [],
+		services: [],
 		openProjects: [],
 		pastProjects: [],
-		education: [],
-		experience: [],
+		pieces: [],
 		members: [],
 		departments: [],
+		experience: [],
+		education: [],
+		certifications: [],
 		reviews: [],
+		articles: [],
 	};
 
 	switch (tab) {
-		case "services":
-			return { ...base, items: reown(pick(SERVICES, SERVICES.length, seed), owner, "sv") };
-		case "products":
-			return { ...base, items: reown(pick(PRODUCTS, PRODUCTS.length, seed), owner, "pr") };
-		case "portfolio":
-			return { ...base, items: reown(pick(PRODUCTS, 8, seed), owner, "pf") };
-		case "articles":
-			return { ...base, items: reown(pick(ARTICLES, ARTICLES.length, seed), owner, "ar") };
-		case "teams": {
-			// Never list the profile itself among the teams it belongs to.
-			const pool = TEAMS.filter((t) => bareHandle(t.owner.handle) !== bare);
-			return { ...base, items: pick(pool, pool.length, seed) };
-		}
-		case "businesses": {
-			const pool = BUSINESSES.filter((b) => bareHandle(b.owner.handle) !== bare);
-			return { ...base, items: pick(pool, pool.length, seed) };
-		}
-		case "projects": {
-			const all = reown(pick(PROJECTS, PROJECTS.length, seed), owner, "pj");
-			// Split by a stable parity — half open/available, half past/completed.
+		case "work": {
+			const projects = reown(pick(PROJECTS, PROJECTS.length, hash(bare + "projects")), owner, "pj");
+			const products = reown(pick(PRODUCTS, 8, hash(bare + "portfolio")), owner, "pf");
+			// The roster: an organisation groups by department; a team / business is flat; an
+			// individual has none.
+			const roster = profile.kind === "organisation"
+				? orgRoster(bare)
+				: profile.kind === "team" || profile.kind === "business"
+				? {
+					members: membersFor(hash(bare + "members"), profile.metrics.members ?? 5),
+					departments: [] as DepartmentEntry[],
+				}
+				: { members: [] as MemberEntry[], departments: [] as DepartmentEntry[] };
 			return {
 				...base,
-				openProjects: all.filter((_, i) => i % 2 === 0),
-				pastProjects: all.filter((_, i) => i % 2 === 1),
+				services: seller
+					? reown(pick(SERVICES, SERVICES.length, hash(bare + "services")), owner, "sv")
+					: [],
+				// A buyer entity's Work leads with what it is hiring for; a seller's with what it shipped.
+				openProjects: seller ? [] : projects.filter((_, i) => i % 2 === 0),
+				pastProjects: projects.filter((_, i) => i % 2 === 1),
+				pieces: seller
+					? piecesFor(profile.handle, products, profile.notableClients.map((c) => c.name), seed)
+					: [],
+				members: roster.members,
+				departments: roster.departments,
 			};
 		}
-		case "education":
-			return { ...base, education: educationFor(profile.name, seed) };
 		case "experience":
-			return { ...base, experience: experienceFor(profile.name, seed) };
-		case "members": {
-			// Organisations group their roster by department (multi-department members included); every
-			// other entity has a flat roster.
-			if (profile.kind === "organisation") {
-				const { members, departments } = orgRoster(bare);
-				return { ...base, members, departments };
-			}
-			return { ...base, members: membersFor(seed, profile.metrics.members ?? 5) };
-		}
-		case "departments": {
-			const { departments } = orgRoster(bare);
-			return { ...base, departments };
-		}
+			return {
+				...base,
+				experience: experienceFor(profile.name, seed),
+				education: educationFor(profile.name, seed),
+				certifications: certificationsFor(seed),
+			};
 		case "reviews":
 			return {
 				...base,
 				reviews: reviewsFor(seed, profile.metrics.reviews ?? 8),
 				reviewSummary: profile.rating,
 			};
-		case "about":
+		case "posts":
+			return { ...base, articles: reown(pick(ARTICLES, ARTICLES.length, seed), owner, "ar") };
 		default:
 			return base;
 	}

@@ -1,29 +1,150 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
-import { Empty } from "./tab-shared.tsx";
-import type { ExperienceEntry } from "../../types/profile-types.ts";
+import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
+import { newestFirst } from "./tab-shared.tsx";
+import type {
+	CertificationEntry,
+	EducationEntry,
+	ExperienceEntry,
+	ProfileTabPayload,
+} from "../../types/profile-types.ts";
 
 /**
- * ExperienceTab — a structured timeline of work experience (role · organisation · dates · summary),
- * each with the organisation's square logo (root CLAUDE.md Part 2).
+ * ExperienceTab — the Experience section: career history, education and certifications as three
+ * hairline-separated lists in one column, newest first. A SERVER component; the only hydration root
+ * it mounts is the verified crest's Tooltip.
  */
-export function ExperienceTab({ entries }: { entries: ExperienceEntry[] }): JSX.Element {
-	if (!entries.length) return <Empty note="No experience listed yet." />;
+export interface ExperienceTabProps {
+	payload: ProfileTabPayload;
+}
+
+// #region Row
+interface RowProps {
+	logo?: string;
+	org: string;
+	title: ComponentChildren;
+	dates: string;
+	summary?: string;
+	link?: string;
+}
+
+function Row({ logo, org, title, dates, summary, link }: RowProps): JSX.Element {
 	return (
-		<ul class="pf-timeline" role="list">
-			{entries.map((e) => (
-				<li class="pf-tl" key={e.id}>
-					<Avatar image={e.logo} label={e.org} size="md" shape="square" class="pf-tl__logo" />
-					<div class="pf-tl__body">
-						<span class="pf-tl__title">{e.role}</span>
-						<span class="pf-tl__org">{e.org}</span>
-						<span class="pf-tl__dates">
-							{e.start} – {e.current ? "Present" : e.end ?? "Present"}
-						</span>
-						<p class="pf-tl__summary">{e.summary}</p>
-					</div>
-				</li>
-			))}
-		</ul>
+		<li class="pf-tl">
+			<Avatar image={logo} label={org} size={40} shape="square" class="pf-tl__logo" />
+			<div class="pf-tl__body">
+				<span class="pf-tl__title">{title}</span>
+				<span class="pf-tl__org">{org}</span>
+				{summary ? <p class="pf-tl__summary">{summary}</p> : null}
+				{link
+					? (
+						<a class="pf-tl__link" href={link} target="_blank" rel="noopener">
+							View credential <Icon name="external-link" size="2xs" />
+						</a>
+					)
+					: null}
+			</div>
+			<span class="pf-tl__dates">{dates}</span>
+		</li>
+	);
+}
+
+function Section(
+	{ title, children }: { title: string; children: ComponentChildren },
+): JSX.Element {
+	return (
+		<section class="pf-exp__section">
+			<h2 class="pf-h">{title}</h2>
+			<ul class="pf-exp__list" role="list">{children}</ul>
+		</section>
+	);
+}
+// #endregion
+
+// #region Entry shapes
+function experienceDates(e: ExperienceEntry): string {
+	const end = e.current ? "Present" : e.end ?? "Present";
+	return `${e.start} – ${end}`;
+}
+
+function educationDates(e: EducationEntry): string {
+	return `${e.start} – ${e.end ?? "Present"}`;
+}
+
+function certificationDates(c: CertificationEntry): string {
+	return c.expires ? `${c.issued} – ${c.expires}` : c.issued;
+}
+
+function certificationTitle(c: CertificationEntry): ComponentChildren {
+	if (!c.verified) return c.name;
+	return (
+		<>
+			{c.name}
+			<Tooltip content="Verified by Projective">
+				<span class="pf-tl__crest" tabIndex={0} role="img" aria-label="Verified by Projective">
+					<Icon name="verified" filled size="xs" />
+				</span>
+			</Tooltip>
+		</>
+	);
+}
+// #endregion
+
+export function ExperienceTab({ payload }: ExperienceTabProps): JSX.Element {
+	const experience = newestFirst(payload.experience, (e) => e.start);
+	const education = newestFirst(payload.education, (e) => e.start);
+	const certifications = newestFirst(payload.certifications, (c) => c.issued);
+
+	return (
+		<div class="pf-exp">
+			{experience.length
+				? (
+					<Section title="Experience">
+						{experience.map((e) => (
+							<Row
+								key={e.id}
+								logo={e.logo}
+								org={e.org}
+								title={e.role}
+								dates={experienceDates(e)}
+								summary={e.summary}
+							/>
+						))}
+					</Section>
+				)
+				: null}
+			{education.length
+				? (
+					<Section title="Education">
+						{education.map((e) => (
+							<Row
+								key={e.id}
+								logo={e.logo}
+								org={e.school}
+								title={`${e.credential} · ${e.field}`}
+								dates={educationDates(e)}
+							/>
+						))}
+					</Section>
+				)
+				: null}
+			{certifications.length
+				? (
+					<Section title="Certifications">
+						{certifications.map((c) => (
+							<Row
+								key={c.id}
+								logo={c.logo}
+								org={c.issuer}
+								title={certificationTitle(c)}
+								dates={certificationDates(c)}
+								link={c.credentialUrl}
+							/>
+						))}
+					</Section>
+				)
+				: null}
+		</div>
 	);
 }

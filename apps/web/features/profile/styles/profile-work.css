@@ -1,0 +1,372 @@
+/*
+ * profile-work — the Work section of `/[handle]`: the client-proof strip, the reused explore
+ * collections neutralised to monochrome, the CSS-column portfolio masonry and the roster.
+ * Token-only, logical properties, whitespace or one hairline per boundary (§B.4), no accent fills.
+ */
+
+/* #region Section stack */
+.pf-work {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-section-gap);
+    min-inline-size: 0;
+}
+
+.pf-work__section {
+    min-inline-size: 0;
+}
+
+/* #endregion */
+
+/* #region Client proof strip */
+.pf-proof {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.pf-proof::-webkit-scrollbar {
+    display: none;
+}
+
+.pf-proof__item {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+}
+
+.pf-proof__link {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-xs);
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-proof__link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-proof__logo {
+    display: block;
+    block-size: 1.75rem;
+    inline-size: auto;
+    object-fit: contain;
+    filter: grayscale(100%);
+    opacity: var(--pf-logo-opacity);
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.pf-proof__item:hover .pf-proof__logo,
+.pf-proof__link:focus-visible .pf-proof__logo {
+    opacity: 1;
+}
+
+.pf-proof__name {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-proof__item:hover .pf-proof__name,
+.pf-proof__link:focus-visible .pf-proof__name {
+    color: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region Portfolio masonry */
+.pf-masonry {
+    column-count: 4;
+    column-gap: var(--pf-tile-gap);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-masonry__item {
+    display: block;
+    break-inside: avoid;
+    margin-block-end: var(--pf-tile-gap);
+}
+
+.pf-tile {
+    position: relative;
+    display: block;
+    overflow: clip;
+    border-radius: var(--pf-tile-radius);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    text-decoration: none;
+}
+
+.pf-tile:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-tile__media {
+    display: block;
+    inline-size: 100%;
+    block-size: auto;
+}
+
+.pf-tile__scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to top,
+        color-mix(in srgb, var(--surface) 95%, transparent),
+        transparent 60%
+    );
+    opacity: 0;
+    transition: opacity var(--dur-medium) var(--ease-standard);
+    pointer-events: none;
+}
+
+.pf-tile__caption {
+    position: absolute;
+    inset-inline: var(--space-3);
+    inset-block-end: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+    opacity: 0;
+    transform: translateY(var(--space-2));
+    transition:
+        opacity var(--dur-medium) var(--ease-standard),
+        transform var(--dur-medium) var(--ease-standard);
+}
+
+.pf-tile__title {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pf-tile__meta {
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pf-tile:hover .pf-tile__scrim,
+.pf-tile:focus-visible .pf-tile__scrim {
+    opacity: 1;
+}
+
+.pf-tile:hover .pf-tile__caption,
+.pf-tile:focus-visible .pf-tile__caption {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+@container pf (max-width: 72rem) {
+    .pf-masonry {
+        column-count: 3;
+    }
+}
+
+@container pf (max-width: 48rem) {
+    .pf-masonry {
+        column-count: 2;
+    }
+}
+
+@container pf (max-width: 30rem) {
+    .pf-masonry {
+        column-count: 1;
+    }
+}
+
+@media (max-width: 767px) {
+    .pf-tile__scrim,
+    .pf-tile__caption {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* #endregion */
+
+/* #region Roster */
+.pf-roster {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: var(--space-4) var(--space-6);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-roster__groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-block-gap);
+}
+
+.pf-roster__group {
+    min-inline-size: 0;
+}
+
+.pf-roster__dept {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--on-surface);
+}
+
+.pf-person {
+    min-inline-size: 0;
+}
+
+.pf-person__link {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-3);
+    align-items: center;
+    border-radius: var(--radius-xs);
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-person__link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-person__avatar {
+    grid-row: 1 / span 2;
+}
+
+.pf-person__name {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-person__link:hover .pf-person__name {
+    color: var(--text-secondary);
+}
+
+.pf-person__role {
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* #endregion */
+
+/* #region Reused explore cards, monochrome */
+.pf .ex {
+    --ex-tag-bg: var(--pf-tag-bg);
+    --ex-tag-ink: var(--pf-tag-ink);
+
+    min-block-size: 0;
+    background: transparent;
+}
+
+.pf .ex-card {
+    --ex-accent: var(--on-surface);
+}
+
+.pf .ex-media {
+    border-radius: var(--pf-tile-radius);
+}
+
+.pf .ex-status,
+.pf .ex-status[data-signal] {
+    --ex-status-role: var(--on-surface);
+    --ex-status-ink: var(--surface);
+
+    box-shadow: none;
+}
+
+.pf .ex-kind[data-type] {
+    color: var(--on-surface-variant);
+}
+
+.pf .ex-pill {
+    background: var(--pf-tag-bg);
+    color: var(--pf-tag-ink);
+}
+
+.pf .ex-pill__icon,
+.pf .ex-pill:hover .ex-pill__icon {
+    color: var(--pf-tag-ink);
+}
+
+.pf .ex-pill:hover,
+.pf .ex-card:hover .ex-pill:hover {
+    background: var(--surface-2);
+    color: var(--on-surface);
+}
+
+.pf .ex-verified {
+    --icon-knockout: var(--surface);
+
+    color: var(--on-surface);
+}
+
+.pf .ex-stars--single,
+.pf .ex-stars__fill {
+    color: var(--on-surface);
+}
+
+.pf .ex-owner__handle:hover {
+    color: var(--on-surface);
+}
+
+.pf .ex-actions__btn:hover {
+    background: color-mix(in srgb, var(--on-surface) 12%, var(--ex-glass));
+}
+
+.pf .ex-actions__btn[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--on-surface) 45%, transparent);
+    color: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-tile__scrim,
+    .pf-tile__caption {
+        transition-duration: 0ms;
+        transform: none;
+    }
+}
+
+:root[data-motion="reduced"] .pf-tile__scrim,
+:root[data-motion="reduced"] .pf-tile__caption {
+    transition-duration: 0ms;
+    transform: none;
+}
+
+/* #endregion */

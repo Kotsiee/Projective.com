@@ -1,0 +1,102 @@
+/*
+ * profile-tabs — the four-section tab bar. Underlined text tabs on ONE shared hairline: the strip
+ * draws the hairline, the active tab draws a 2px `--on-surface` underline that lands exactly on it
+ * (`inset-block-end: -1px`), so the boundary is one device (§B.4 / §D.4). No pill, no box, no teal.
+ *
+ * The bar is sticky under the top chrome so a long masonry keeps its section switcher in reach. Its
+ * ground is the SOLID page surface — never glass (§B.4.3) — so the tiles scroll cleanly beneath it.
+ */
+
+/* #region Strip */
+.pf-tabs {
+    position: sticky;
+    inset-block-start: var(--shell-topbar-h, 3rem);
+    z-index: var(--z-raised, 2);
+    background: var(--surface);
+    border-block-end: var(--hairline);
+}
+
+.guest-shell .pf-tabs {
+    inset-block-start: var(--site-header-h, 5.5rem);
+}
+
+.pf-tabs__list {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-6);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.pf-tabs__list::-webkit-scrollbar {
+    display: none;
+}
+
+.pf-tabs__item {
+    flex: none;
+}
+
+/* #endregion */
+
+/* #region Tab */
+.pf-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    padding-block: var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+    color: var(--text-secondary);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-tab::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: -1px;
+    block-size: 2px;
+    background: var(--on-surface);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform var(--dur-medium) var(--ease-standard);
+}
+
+.pf-tab:hover {
+    color: var(--on-surface);
+}
+
+.pf-tab[data-active="true"] {
+    color: var(--on-surface);
+}
+
+.pf-tab[data-active="true"]::after {
+    transform: scaleX(1);
+}
+
+.pf-tab:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-radius: var(--radius-xs);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-tab::after {
+        transition-duration: 0ms;
+    }
+}
+
+:root[data-motion="reduced"] .pf-tab::after {
+    transition-duration: 0ms;
+}
+
+/* #endregion */

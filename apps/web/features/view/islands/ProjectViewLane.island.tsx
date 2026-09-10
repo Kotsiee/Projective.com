@@ -3,7 +3,7 @@ import { Tooltip } from "@projective/ui/feedback";
 // Reuse the profile lane's `pf-lane*` skeleton (collapsed rail ⇄ expanded stack, density-switched by
 // `.ui-splitter[data-mode]` / `:root[data-guest-nav]`); `project-view.css` layers the finance/jump
 // content on top.
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/project-view.css";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";

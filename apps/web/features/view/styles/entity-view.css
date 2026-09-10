@@ -2276,7 +2276,7 @@ a.evp-cta__btn--inverted {
  * MIGRATED STICKY HEADER (§D.7.6)
  *
  * The reveal transition, the `visibility`-based tab-order gating and the guest shell's glass underlay
- * all come from `.pf-stickyhead` in `profile.css` — this block only lays out the content. In
+ * all come from `.pf-stickyhead` in `profile-skeleton.css` — this block only lays out the content. In
  * particular the guest slab is keyed on the literal selector
  * `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, so dropping that class would
  * render the band unstyled for guests while looking correct when signed in.

@@ -1,12 +1,12 @@
 import type { JSX } from "preact";
 import { Avatar, RatingStars } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
-// `profile.css` is load-bearing here, not cosmetic reuse: the GUEST shell keys its sub-header glass
+// `profile-skeleton.css` is load-bearing here, not cosmetic reuse: the GUEST shell keys its sub-header glass
 // underlay, hairline and elevation off the literal selector
-// `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, and `profile.css` supplies the
+// `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, and `profile-skeleton.css` supplies the
 // reveal transition plus the `visibility`-based tab-order gating. A band that drops `.pf-stickyhead`
 // renders unstyled for guests while looking correct when signed in — the worst kind of regression.
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/entity-view.css";
 import { ARCHETYPE_LABEL, type EntityArchetype } from "../core/entity-archetype.ts";
 import { viewHeaderCondensed } from "../core/view-state.ts";
@@ -21,7 +21,7 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * It reads the shared {@link viewHeaderCondensed} signal, which the body {@link EntityHeroProbe} flips
  * from an IntersectionObserver on `.evp-hero`. Reveal is driven by `min-block-size`/`max-block-size`,
  * **never `block-size`** — the band sits in the frame's grid context, which overrides an explicit
- * height, so only the min/max logical constraints are honoured (verified and recorded in `profile.css`).
+ * height, so only the min/max logical constraints are honoured (verified and recorded in `profile-skeleton.css`).
  *
  * **It carries no control that commits, and now no control that opens a panel either.** The band is
  * identity plus one navigation jump: what you are looking at, who is selling it, and how they rate.

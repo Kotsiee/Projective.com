@@ -90,10 +90,17 @@ export default define.page(function App({ Component, state }) {
 					/* Brand mark. The SVG is self-contained (it carries the brand background and a literal
 					   white glyph) because a favicon renders outside the document and can inherit neither
 					   `currentColor` nor a token — unlike the inline `@web/components/Logo.tsx` used in the
-					   page, which does. `sizes="any"` lets it win over a legacy `/favicon.ico` probe. */
+					   page, which does. The raster set is generated FROM logo.svg (favicon.ico 16/32/48,
+					   favicon-16/32.png, apple-touch-icon.png 180 full-bleed, icon-192/512.png) — the
+					   SVG wins wherever it is supported (`sizes="any"`), the PNGs serve engines and
+					   surfaces that will not rasterise an SVG icon, and the ICO answers the legacy
+					   `/favicon.ico` probe. */
 				}
 				<link rel="icon" href="/logo.svg" type="image/svg+xml" sizes="any" />
-				<link rel="apple-touch-icon" href="/logo.svg" />
+				<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+				<link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
+				<link rel="icon" href="/favicon.ico" sizes="48x48" />
+				<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 				{state.description ? <meta name="description" content={state.description} /> : null}
 				<style id="ds-tokens" dangerouslySetInnerHTML={{ __html: TOKENS_CSS }} />
 				<script

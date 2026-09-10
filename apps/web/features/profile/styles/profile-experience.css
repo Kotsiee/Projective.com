@@ -1,0 +1,151 @@
+/*
+ * profile-experience — the Experience section: career history · education · certifications as
+ * hairline-separated rows (no card, no rail). Monochrome, token-only, logical properties.
+ */
+
+/* #region Sections */
+.pf-exp {
+	display: flex;
+	flex-direction: column;
+	gap: var(--pf-section-gap);
+	min-inline-size: 0;
+}
+
+.pf-exp__section {
+	min-inline-size: 0;
+}
+
+.pf-exp__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* #endregion */
+
+/* #region Rows */
+.pf-tl {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	column-gap: var(--space-4);
+	row-gap: var(--space-1);
+	align-items: start;
+	padding-block: var(--pf-row-gap);
+}
+
+.pf-tl:first-child {
+	padding-block-start: 0;
+}
+
+.pf-tl + .pf-tl {
+	border-block-start: var(--hairline);
+}
+
+.pf-tl .pf-tl__logo {
+	grid-column: 1;
+	grid-row: 1 / span 2;
+	border-radius: var(--radius-xs);
+	filter: grayscale(100%);
+}
+
+.pf-tl__body {
+	display: contents;
+}
+
+.pf-tl__title {
+	grid-column: 2;
+	grid-row: 1;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.pf-tl__org {
+	grid-column: 2;
+	grid-row: 2;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.pf-tl__summary {
+	grid-column: 2;
+	margin: var(--space-1) 0 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-md);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.pf-tl__dates {
+	grid-column: 3;
+	grid-row: 1;
+	font-size: var(--text-sm);
+	line-height: calc(var(--text-base) * var(--leading-snug));
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* #endregion */
+
+/* #region Certifications */
+.pf-tl__crest {
+	display: inline-flex;
+	align-items: center;
+	color: var(--on-surface);
+	border-radius: var(--radius-xs);
+}
+
+.pf-tl__crest:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-tl__link {
+	grid-column: 2;
+	justify-self: start;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-block-start: var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-tl__link:hover {
+	color: var(--text-secondary);
+}
+
+.pf-tl__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+	border-radius: var(--radius-xs);
+}
+
+/* #endregion */
+
+/* #region Narrow container */
+@container pf (max-width: 44rem) {
+	.pf-tl {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.pf-tl__dates {
+		grid-column: 2;
+		grid-row: 3;
+		line-height: var(--leading-snug);
+		white-space: normal;
+	}
+}
+
+/* #endregion */

@@ -23,7 +23,7 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * only one producer and one consumer are ever mounted together.
  *
  * The band expands from 0 via `min-block-size`/`max-block-size` — never `block-size`, which the
- * frame's grid context overrides (recorded in `profile.css`). Reusing the `.pf-stickyhead` skeleton is
+ * frame's grid context overrides (recorded in `profile-skeleton.css`). Reusing the `.pf-stickyhead` skeleton is
  * load-bearing rather than cosmetic: the GUEST shell keys its glass underlay, hairline and elevation
  * off the literal selector `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, so a
  * band that drops that class renders unstyled for guests while looking correct when signed in.

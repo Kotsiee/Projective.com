@@ -1,0 +1,297 @@
+/*
+ * profile-hero — the split hero: identity column (avatar · name · handle line · CTA rig · metrics)
+ * beside the 16:10 showcase frame, collapsing to one typography-first column when there is no
+ * showcase. Monochrome chrome on the neutral ramp only; the only colour is the media. No box, no
+ * border on anything static, one hairline nowhere — separation is whitespace alone.
+ */
+
+/* #region Frame */
+.pf-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-7);
+    align-items: start;
+    min-inline-size: 0;
+}
+
+.pf-hero[data-showcase="true"] {
+    grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
+}
+
+.pf-hero[data-showcase="false"] .pf-hero__id {
+    max-inline-size: 45rem;
+}
+
+@container pf (max-width: 56rem) {
+    .pf-hero[data-showcase="true"] {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-6);
+    }
+}
+
+/* #endregion */
+
+/* #region Identity */
+.pf-hero__id {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-inline-size: 0;
+}
+
+.pf-hero__avatarwrap {
+    position: relative;
+    display: flex;
+    flex: none;
+}
+
+.pf-hero__avatar {
+    display: block;
+}
+
+.pf-hero__name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-4) 0 0;
+    font-size: var(--text-3xl);
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight, 1.2);
+    color: var(--on-surface);
+    overflow-wrap: anywhere;
+}
+
+.pf-hero__nametext {
+    min-inline-size: 0;
+}
+
+.pf-hero__crest {
+    flex: none;
+    color: var(--on-surface);
+    --icon-knockout: var(--surface);
+}
+
+.pf-hero__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+.pf-hero__handle {
+    font-variant-numeric: tabular-nums;
+}
+
+.pf-hero__dot {
+    color: var(--on-surface-variant);
+}
+
+/* #endregion */
+
+/* #region Action rig */
+.pf-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-start: var(--space-5);
+}
+
+.ui-button.pf-hero__cta {
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+    text-decoration: none;
+}
+
+.ui-button.pf-hero__cta--primary {
+    --btn-accent: var(--on-surface);
+    --btn-on: var(--surface);
+    --btn-mix-hover: 88%;
+    --btn-mix-active: 80%;
+    --btn-shade: var(--surface);
+}
+
+.ui-button.pf-hero__cta--primary:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+    border-color: transparent;
+}
+
+.ui-button.pf-hero__cta--secondary {
+    --btn-accent: var(--on-surface);
+    --btn-on: var(--surface);
+}
+
+.ui-button.pf-hero__cta--secondary[aria-pressed="true"] {
+    color: var(--text-secondary);
+    border-color: var(--hairline-strong-color);
+}
+
+.pf-hero__status {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Metrics strip */
+.pf-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-6);
+    margin: var(--space-6) 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-metric {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+.pf-metric__link {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-metric__link:hover .pf-metric__value {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+
+.pf-metric__link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-radius: var(--radius-xs);
+}
+
+.pf-metric__value {
+    font-size: var(--text-lg);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-tight, 1.2);
+    letter-spacing: var(--tracking-tight);
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+}
+
+.pf-metric__caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+.pf-metric__dot {
+    color: var(--on-surface-variant);
+}
+
+.pf-metric__sub {
+    font-variant-numeric: tabular-nums;
+}
+
+/* #endregion */
+
+/* #region Showcase */
+.pf-hero__showcase {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+}
+
+.pf-showcase {
+    aspect-ratio: 16 / 10;
+    inline-size: 100%;
+    overflow: clip;
+    border-radius: var(--radius-xs);
+    background: var(--surface-1);
+}
+
+.pf-showcase__media {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+}
+
+/* #endregion */
+
+/* #region Owner image pickers */
+.pf-hero__imgslot {
+    position: absolute;
+    inset-block-end: calc(-1 * var(--space-1));
+    inset-inline-end: calc(-1 * var(--space-1));
+    display: flex;
+}
+
+.pf-hero__imgslot--showcase {
+    inset-block-end: auto;
+    inset-block-start: var(--space-3);
+    inset-inline-end: var(--space-3);
+}
+
+.pf-hero__imgbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+    border: var(--hairline-strong);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transform: scale(1);
+    transition: background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
+}
+
+.pf-hero__imgbtn:hover {
+    background: var(--surface-2);
+    color: var(--on-surface);
+}
+
+.pf-hero__imgbtn:active {
+    transform: scale(var(--btn-press-scale-icon));
+    transition-duration: var(--dur-press);
+}
+
+.pf-hero__imgbtn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-hero__imgbtn,
+    .pf-hero__imgbtn:active {
+        transform: none;
+        transition: none;
+    }
+}
+
+:root[data-motion="reduced"] .pf-hero__imgbtn,
+:root[data-motion="reduced"] .pf-hero__imgbtn:active {
+    transform: none;
+    transition: none;
+}
+
+/* #endregion */

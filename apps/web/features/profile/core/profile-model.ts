@@ -1,5 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import {
+	LEGACY_TAB_TARGET,
+	LegacyProfileTab,
 	normalizeHandle,
 	type ProfileKind,
 	ProfileTab,
@@ -7,183 +9,99 @@ import {
 } from "@projective/types/profile";
 
 /**
- * profile-model — the pure, JSX-free brains of the `/[handle]` profile shell: the entity-driven tab
- * matrix, tab labels + route segments, active-tab + own-profile resolution, and the primary-CTA rule.
+ * profile-model — the pure, JSX-free brains of the `/[handle]` profile: the four-section tab matrix,
+ * labels + route segments, active-tab / legacy-redirect / own-profile resolution, and the CTA rule.
  * Imported freely by islands, components, and routes (no DOM, no server deps).
  */
 
 // #region Tab labels + segments
-/** Human label per tab (the tab-bar text + the sub-route title). */
+/** Human label per section (the tab-bar text + the sub-route title). */
 export const TAB_LABEL: Record<ProfileTab, string> = {
-	about: "Overview",
-	services: "Services",
-	products: "Products",
-	projects: "Projects",
-	portfolio: "Portfolio",
-	education: "Education",
+	work: "Work",
 	experience: "Experience",
-	teams: "Teams",
-	businesses: "Businesses",
-	articles: "Articles",
 	reviews: "Reviews",
-	members: "Members",
-	departments: "Departments",
+	posts: "Posts",
 };
 
-/** Route segment per tab. `about` is the index (`/[handle]`); the rest are `/[handle]/<segment>`. */
+/** Route segment per section. `work` is the index (`/[handle]`); the rest are `/[handle]/<segment>`. */
 export function tabSegment(tab: ProfileTab): string {
-	return tab === "about" ? "" : tab;
+	return tab === "work" ? "" : tab;
 }
 // #endregion
 
 // #region Entity tab matrix
 /**
- * The tabs shown for a profile kind (root CLAUDE.md — the entity tab matrix). The **Overview is a
- * PERMANENT section** at the top of the body, NOT a tab, so `about` no longer appears here; the tab bar
- * below the Overview holds only the content tabs.
- *  - Client: Projects · Articles · Businesses · Reviews.
- *  - Freelancer: the full craft set.
- *  - Business: Projects · Articles · Businesses · Reviews · Members.
- *  - Team: Business ∪ Freelancer, minus Education + Experience.
- *  - Organisation (buyer-only, department-structured): Projects · Departments · Members · Articles ·
- *    Businesses · Reviews — no seller tabs (Services/Products/Portfolio), but a Departments tab and a
- *    department-grouped Members view (root CLAUDE.md — Part 2).
+ * The sections shown for a profile kind (root CLAUDE.md §8 Decision #96). Work · Reviews · Posts are
+ * universal; **Experience is an individual's section** — a career history, degrees and personal
+ * certifications belong to a person, and a team / business / organisation has no such ledger, so
+ * rendering the tab for them would be an empty section with a name on it.
  */
 export function tabsFor(kind: ProfileKind): ProfileTab[] {
 	switch (kind) {
-		case "client":
-			return ["projects", "articles", "businesses", "reviews"];
 		case "freelancer":
-			return [
-				"services",
-				"products",
-				"projects",
-				"portfolio",
-				"education",
-				"experience",
-				"teams",
-				"businesses",
-				"articles",
-				"reviews",
-			];
-		case "business":
-			return ["projects", "articles", "businesses", "reviews", "members"];
+		case "client":
+			return ["work", "experience", "reviews", "posts"];
 		case "team":
-			return [
-				"services",
-				"products",
-				"projects",
-				"portfolio",
-				"teams",
-				"businesses",
-				"articles",
-				"reviews",
-				"members",
-			];
+		case "business":
 		case "organisation":
-			return ["projects", "departments", "members", "articles", "businesses", "reviews"];
+			return ["work", "reviews", "posts"];
 	}
 }
 
-/**
- * The tab opened by default below the permanent Overview (root CLAUDE.md — Part 1.1: default to
- * **Services**). Sellers (freelancer/team) lead with Services; buyer entities (client/business) have no
- * Services tab, so they fall back to the first tab in their matrix (Projects).
- */
-export function defaultTabFor(kind: ProfileKind): ProfileTab {
-	return tabsFor(kind)[0];
-}
-
-/**
- * The management tabs the side-nav reveals in Edit mode (root CLAUDE.md — Part 3.2), intersected with
- * the profile's own matrix so a client never gets a Portfolio management link. The explicit Profile /
- * Availability / Settings quick-links are added by the lane separately.
- */
-const MANAGEMENT_ORDER: ProfileTab[] = [
-	"services",
-	"products",
-	"projects",
-	"portfolio",
-	"departments",
-	"education",
-	"experience",
-	"teams",
-	"businesses",
-	"articles",
-];
-
-export function managementTabsFor(kind: ProfileKind): ProfileTab[] {
-	const allowed = new Set(tabsFor(kind));
-	return MANAGEMENT_ORDER.filter((t) => allowed.has(t));
-}
-// #endregion
-
-// #region Tab-bar arrangement (Reviews pinned last)
-/**
- * Reviews is always pinned to the far right of the tab bar (root CLAUDE.md — Part 3.3 / Decision #40):
- * it never collapses into the `More ▾` overflow. The rest are "content" tabs the width-aware
- * {@link ../islands/ProfileTabs.island.tsx} fits inline or moves into the dropdown, measured live —
- * there is no longer a static inline threshold. `trailing` holds Reviews when the kind has it.
- */
-export interface TabArrangement {
-	/** Content tabs (everything except Reviews), in matrix order — the island measures + splits these. */
-	content: ProfileTab[];
-	/** The pinned trailing slot — Reviews, when the kind has it. */
-	trailing: ProfileTab[];
-}
-
-export function arrangeTabs(kind: ProfileKind): TabArrangement {
-	const all = tabsFor(kind);
-	const trailing: ProfileTab[] = all.includes("reviews") ? ["reviews"] : [];
-	const content = all.filter((t) => t !== "reviews");
-	return { content, trailing };
+/** The section the bare `/[handle]` index renders — Work, for every kind. */
+export function defaultTabFor(_kind: ProfileKind): ProfileTab {
+	return "work";
 }
 // #endregion
 
 // #region Active tab + paths
-/** DOM id of the tab-sections region — the Reviews block scroll-links here (Part 1.2). */
+/** DOM id of the tab-sections region — the hero's rating figure scroll-links here. */
 export const TABS_ANCHOR = "profile-sections";
 
 /**
- * Parse the active tab from a pathname. `null` when there is no sub-segment (the `/@handle` index — the
- * caller resolves the kind's {@link defaultTabFor}) or the segment isn't a content tab. `about` is no
- * longer a tab (the Overview is permanent), so `/@handle` resolves to the default (Services), not About.
+ * Parse the active section from a pathname. `null` when there is no sub-segment (the `/@handle`
+ * index, which the caller resolves to {@link defaultTabFor}) or the segment is not a section.
  */
 export function activeTabOf(pathname: string): ProfileTab | null {
 	const segs = pathname.split("/").filter(Boolean); // [handle, segment?, …]
 	const segment = segs[1];
 	if (!segment) return null;
 	const parsed = ProfileTab.safeParse(segment);
-	if (!parsed.success || parsed.data === "about") return null;
-	return parsed.data;
+	return parsed.success ? parsed.data : null;
 }
 
-/** Build the deep-link for a tab. `handle` carries the leading `@` (canonical, Decision #3). */
+/**
+ * Where a RETIRED tab segment now lives, or `null` when the segment was never a profile tab. The
+ * `[tab]` route answers a legacy segment with a 308 to this target — a bookmark to
+ * `/@handle/portfolio` lands on Work rather than "Section not found". `work` itself is also
+ * canonicalised to the bare index so one section has one address.
+ */
+export function legacyTabTarget(segment: string): ProfileTab | null {
+	if (segment === "work") return "work";
+	const parsed = LegacyProfileTab.safeParse(segment);
+	return parsed.success ? LEGACY_TAB_TARGET[parsed.data] : null;
+}
+
+/** Build the deep-link for a section. `handle` carries the leading `@` (canonical, Decision #3). */
 export function tabHref(handle: string, tab: ProfileTab): string {
 	const seg = tabSegment(tab);
 	return seg ? `/${handle}/${seg}` : `/${handle}`;
 }
 
 /**
- * Deep-link to the Reviews tab that also SCROLLS the tab region into view (Part 1.2 — the Overview's
- * review summary focuses the Reviews tab). The `#` anchor targets the {@link TABS_ANCHOR} region, so a
- * full navigation lands scrolled onto the tabs rather than at the top of the permanent Overview.
+ * Deep-link to the Reviews section that also SCROLLS the tab region into view — the hero's rating
+ * figure targets it, so a full navigation lands on the reviews rather than at the top of the hero.
  */
 export function reviewsHref(handle: string): string {
 	return `${tabHref(handle, "reviews")}#${TABS_ANCHOR}`;
-}
-
-/** The Availability sub-route (an action-lane destination, not a tab). */
-export function availabilityHref(handle: string): string {
-	return `/${handle}/availability`;
 }
 // #endregion
 
 // #region Ownership + CTA
 /**
- * Whether the acting user owns this profile — unlocks the owner chrome (Edit Profile, inline editing,
- * always-visible Settings). Matches on the hydrated `userId` OR the acting `@handle` (skeleton tokens
- * may carry only one). Guests never match.
+ * Whether the acting user owns this profile — unlocks the owner chrome (inline story editing, the
+ * image pickers, the Settings CTA). Matches on the hydrated `userId` OR the acting `@handle` (skeleton
+ * tokens may carry only one). Guests never match.
  */
 export function isOwnProfile(
 	profile: ProfileView,
@@ -197,18 +115,17 @@ export function isOwnProfile(
 	return false;
 }
 
-/** The primary + secondary calls-to-action for a profile kind. */
+/**
+ * The hero's two-control rig for a VISITOR. `Message` is the primary on every kind — it is the one
+ * conversion every profile offers (a seller is hired through the Work section's listings, not from a
+ * "Hire" control that has no listing to name); `Follow` is the secondary.
+ */
 export interface ProfileCta {
-	/** Primary CTA label — Hire a seller, Message a buyer. */
-	primary: "Hire" | "Message";
-	/** Whether to also surface a secondary Message action. */
-	showMessage: boolean;
+	primary: "Message";
+	secondary: "Follow";
 }
 
-export function ctaFor(kind: ProfileKind): ProfileCta {
-	const seller = kind === "freelancer" || kind === "team";
-	return seller
-		? { primary: "Hire", showMessage: true }
-		: { primary: "Message", showMessage: false };
+export function ctaFor(_kind: ProfileKind): ProfileCta {
+	return { primary: "Message", secondary: "Follow" };
 }
 // #endregion

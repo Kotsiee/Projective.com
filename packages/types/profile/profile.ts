@@ -5,12 +5,17 @@ import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
  * profile.profile — the Zod SSOT for a public profile's header + overview projection
  * (`/[handle]`, the `@handle` wildcard namespace).
  *
- * This is the chrome the profile page paints: the banner + avatar identity, the story/skills/
- * languages/notable-clients overview, the sticky meta rail (local time, online status, location,
- * DUAL-track reputation as a helper AND as a client, response time, verification tiers), and the
- * counts that drive the entity-conditional tab bar. It currently backs deterministic fixtures; when
- * the `org.users_public` / profile tables land, the same schema validates the read (root CLAUDE.md
- * §1, the Zod SSOT rule — a read projection over the eventual tables, like projects `detail`).
+ * This is the chrome the profile page paints: the split hero (avatar + name + `@handle`, the
+ * Message / Follow rig, the inline metrics strip, and the showcase media frame), the context bar
+ * (headline + story beside the skills / languages cluster), the client-proof strip, and the counts
+ * that drive the four-section tab bar. It currently backs deterministic fixtures; when the
+ * `org.users_public` / profile tables land, the same schema validates the read (root CLAUDE.md §1,
+ * the Zod SSOT rule — a read projection over the eventual tables, like projects `detail`).
+ *
+ * Several fields are carried but NOT painted by the profile since the editorial redesign (root
+ * CLAUDE.md §8 Decision #96): `online`, `location.timezone`, `availabilityLabel`, `hasAvailability`
+ * and `responseTime` — availability, clocks and presence were stripped from the layout. They stay in
+ * the projection because the shape is additive-only and the live path will read them regardless.
  *
  * It reuses the discovery SSOT's {@link SkillRefSchema} and {@link DualRatingSchema} so a profile's
  * skill pills and reputation render through the SAME explore atoms the cards use — no shape drift.
@@ -89,6 +94,46 @@ export const ProfileLocationSchema = z.object({
 export type ProfileLocation = z.infer<typeof ProfileLocationSchema>;
 
 /**
+ * The hero's showcase media — an auto-looping showreel or a high-resolution cover, filling the hero's
+ * second column. `null` is a real state, not an absence to paper over: the hero then collapses to a
+ * single typography-first column rather than drawing an empty frame (root CLAUDE.md §8 Decision #96).
+ */
+export const ProfileShowcaseSchema = z.object({
+	kind: z.enum(["video", "image"]),
+	src: z.string(),
+	/** The still a video draws before playback (and the only frame a reduced-motion viewer sees). */
+	poster: z.string().optional(),
+	alt: z.string(),
+});
+export type ProfileShowcase = z.infer<typeof ProfileShowcaseSchema>;
+
+/**
+ * The hero's inline metrics strip — the three facts a visitor weighs before reading anything else.
+ *
+ * `standing` is the EARNED rung of the Reliability Index (`@projective/types/org/standing`,
+ * finance-model.md §16) — it is never purchasable, so the strip carries it as a plain label with no
+ * upgrade affordance. `volumeLabel` is SERVER-formatted money ("£48k delivered") because a client
+ * must never total or convert a figure; `null` means the entity has no disclosed volume, which
+ * renders as absence rather than "£0".
+ */
+export const ProfileStandingSchema = z.object({
+	level: z.number().int().min(1).max(5),
+	/** "New" · "Established" · "Trusted" · "Expert" · "Elite". */
+	label: z.string().max(40),
+});
+export type ProfileStanding = z.infer<typeof ProfileStandingSchema>;
+
+export const ProfileStatsSchema = z.object({
+	/** Stages signed off across every engagement (the volume gate of the Standing ladder). */
+	completedStages: z.number().int().min(0),
+	/** Lifetime delivered volume as a server-formatted display string; `null` when undisclosed. */
+	volumeLabel: z.string().nullable(),
+	/** The earned rung; `null` for a buyer-only entity, which has no seller standing. */
+	standing: ProfileStandingSchema.nullable(),
+});
+export type ProfileStats = z.infer<typeof ProfileStatsSchema>;
+
+/**
  * Per-tab item counts — feed the tab-bar count chips + the "empty tab" gate. All optional so a kind
  * that never has a given tab simply omits it.
  */
@@ -124,10 +169,18 @@ export const ProfileViewSchema = z.object({
 	name: z.string(),
 	/** Entity type — drives the tab matrix + capabilities. */
 	kind: ProfileKind,
-	/** Circular avatar (1:1) URL — overlaps the banner's bottom edge (§C.4). */
+	/** Circular avatar (1:1) URL — the 72px disc that leads the hero. */
 	avatar: z.string(),
-	/** Wide cover banner (7:2) URL. */
+	/**
+	 * Wide cover (7:2) URL. The profile hero no longer paints a banner (Decision #96 — the showcase
+	 * frame took its column); the field survives because the Projects view (`/view/[id]?type=projects`)
+	 * still borrows a profile's cover for header parity (Decision #43).
+	 */
 	banner: z.string(),
+	/** The hero showcase (showreel / cover); `null` collapses the hero to one column. */
+	showcase: ProfileShowcaseSchema.nullable(),
+	/** The hero's inline metrics strip. */
+	stats: ProfileStatsSchema,
 	/** One-line LinkedIn-style headline (craft / value proposition). */
 	headline: z.string(),
 	/** The long-form story/description — inline-editable by the owner (auto-resizing textarea). */

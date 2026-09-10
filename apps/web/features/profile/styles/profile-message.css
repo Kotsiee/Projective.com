@@ -21,17 +21,17 @@
 }
 .pf-msgpop__recipient-name {
 	font-family: var(--font-sans);
-	font-size: 0.95rem;
-	font-weight: 600;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 .pf-msgpop__recipient-handle {
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .pf-msgpop__hint {
 	margin: 0;
-	font-size: 0.8125rem;
+	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
 .pf-msgpop__composer {

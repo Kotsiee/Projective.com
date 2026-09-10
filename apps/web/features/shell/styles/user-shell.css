@@ -14,8 +14,14 @@
     line-height: 0;
     border-radius: var(--radius-sm);
     width: calc(var(--shell-sidebar-w) - var(--space-5));
-    /* The mark draws in `currentColor`, so the brand tint is set once here and inherited. */
+    /* The mark draws in `currentColor`, so the brand tint is set once here and inherited. Brand
+       teal on the light surface; in dark it takes the surface ink instead, because `--primary` is
+       mode-invariant (§A.1.1) and the same mid-tone teal reads dull against the near-black bar. */
     color: var(--primary);
+}
+
+:root[data-theme="dark"] .shell-brand {
+    color: var(--on-surface);
 }
 
 /* Height-driven, with `inline-size: auto` deriving the width from the mark's own aspect ratio —

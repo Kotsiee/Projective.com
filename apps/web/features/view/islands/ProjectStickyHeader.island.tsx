@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
-import "@features/profile/styles/profile.css";
+import "@features/profile/styles/profile-skeleton.css";
 import "../styles/project-view.css";
 import { ProjectActions } from "../components/ProjectActions.tsx";
 import { viewHeaderCondensed } from "../core/view-state.ts";
