@@ -829,6 +829,18 @@
 				"--strictPort"
 			],
 			"port": 11873
+		},
+		{
+			"name": "web-evplayout",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"12073",
+				"--strictPort"
+			],
+			"port": 12073
 		}
 	]
 }

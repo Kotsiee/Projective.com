@@ -126,18 +126,17 @@ export default define.page(function ProfileLayout(ctx) {
 			return shell(undefined, undefined, <ctx.Component />, false);
 		}
 		/*
-		 * `viewLaneFor` owns the slot for any id that RESOLVES, and for a commerce archetype it returns a
-		 * collapsed back rail on the authenticated shell and `null` on the guest one — that listing's
-		 * conversion rail is the view page's own end column, so the shell must never mount a second
-		 * panel beside it. Falling back to the profile lane there would pin a panel about the SELLER on
-		 * one edge of a page about one of their listings, with the listing's conversion rail on the
-		 * other. The profile lane stays the fallback for an id that resolves to nothing.
+		 * `viewLaneFor` owns the slot for any id that RESOLVES, and for every archetype but an article it
+		 * returns `null` in both shells — that listing's (or brief's) conversion rail is the view page's
+		 * own end column, so the shell must never mount a second panel beside it. Falling back to the
+		 * profile lane there would pin a panel about the SELLER on one edge of a page about one of their
+		 * listings, with the listing's conversion rail on the other. The profile lane stays the fallback
+		 * for an id that resolves to nothing.
 		 */
 		const viewLane = viewOwnsLaneSlot(ctx.url)
 			? viewLaneFor(ctx.url, authed, ctx.state.userContext)
 			: lane;
-		// The Projects view mirrors the profile's scroll-migrated sticky header in the middle-nav band
-		// (null for articles / the generic view — no band).
+		// Every non-article archetype mounts the scroll-migrated sticky header in the middle-nav band.
 		const viewHeader = viewHeaderFor(ctx.url, authed, ctx.state.userContext);
 		return shell(viewLane, viewHeader, <ctx.Component />);
 	}

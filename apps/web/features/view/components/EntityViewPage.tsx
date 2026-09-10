@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { EmptyState } from "@projective/ui/utils";
 import { Icon } from "@projective/ui/icons";
-import { Avatar, RatingStars } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import "@features/explore/styles/explore.css";
 import "@features/explore/styles/explore-results.css";
@@ -13,25 +12,26 @@ import type { UserContext } from "@projective/types/auth";
 import EntityCanvas from "../islands/EntityCanvas.island.tsx";
 import EntityBuyBar from "../islands/EntityBuyBar.island.tsx";
 import EntityLane from "../islands/EntityLane.island.tsx";
+import ProjectLane from "../islands/ProjectLane.island.tsx";
+import ProjectApplyBar from "../islands/ProjectApplyBar.island.tsx";
 import SessionSchedulerStage from "../islands/SessionSchedulerStage.island.tsx";
 import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
-import { ProjectViewScreen } from "./ProjectViewScreen.tsx";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
+import { ProjectBody, ProjectHero } from "./project-view-parts.tsx";
 import {
 	MetaLine,
 	PermissionLedger,
 	ScopeChecklist,
 	SeatMeter,
 	Section,
+	SellerLine,
 	SpecLedger,
-	type TrustSignal,
-	TrustSignals,
 } from "./entity-view-parts.tsx";
-import { backHrefFor, backLabelFor, sellerBadges } from "../core/view-model.ts";
+import { backHrefFor, backLabelFor } from "../core/view-model.ts";
 import { headlinePriceFor } from "../core/view-pricing.ts";
 import { resolveBookingOffer } from "../core/booking-ssr.ts";
 import {
@@ -54,34 +54,53 @@ import {
  *
  *   nav strip · media column · hero · conversion lane
  *
- * # The lane is IN the page now
+ * # One frame, six bodies
  *
- * It used to be resolved into the shell's navigation slot, which meant two different presentations of
- * one panel — a drag-resizable middle-nav lane on the page's start edge for a signed-in buyer, a
+ * Every commerce archetype AND a project render through this frame. A project used to have its
+ * own template — a profile-page banner as a hero, boxed stage cards, a lane resolved into the
+ * SHELL's navigation slot — so the two pages a reader most often opens back to back were two
+ * design systems. Now a project is one more branch of this controller: it has no media column, so
+ * its hero spans the two content tracks (the same shape a session's scheduler stage takes), its
+ * lane is `ProjectLane` in the frame's END column, and its body is composed from the same unboxed
+ * primitives as everything else. What differs between a brief and a service is the DATA each shows;
+ * the containers, registers, rhythm and gates are shared.
+ *
+ * # The Gutenberg reading gravity
+ *
+ * The frame is read top-left to bottom-right: the hero's title and identifiers are the primary
+ * optical area (leading the DOM, and top-left wherever no media column precedes it); the lane's
+ * identity band and price are the strong follow area at the top-right; the archetype body is the
+ * weak follow through the centre; and the lane's PINNED footer carries the CTA as the terminal
+ * area at the bottom-right — on screen at the moment the reader decides, not at the moment they
+ * happen to have scrolled back to the top.
+ *
+ * # The lane is IN the page
+ *
+ * It used to be resolved into the shell's navigation slot, which meant two different presentations
+ * of one panel — a drag-resizable middle-nav lane on the page's start edge for a signed-in buyer, a
  * floating glass aside on the same edge for a guest. It is now the frame's END column for everyone,
- * so the transaction sits in one place regardless of who is looking at it, and `viewLaneFor` declines
- * the shell slot for every commerce archetype.
+ * so the transaction sits in one place regardless of who is looking at it, and `viewLaneFor`
+ * declines the shell slot for every archetype but an article.
  *
  * # The canvas still carries no price and no purchase control on desktop (§D.7.3)
  *
  * The offer has exactly one home. An offer stated twice on one screen is an offer that can disagree
  * with itself, and a buyer who sees two prices has been given a reason to distrust both. Below the
- * frame breakpoint the lane is not rendered at all and the transaction is re-homed into
- * `EntityBuyBar` — moved, never duplicated (§D.7.4).
+ * frame breakpoint the lane is not rendered at all and the transaction is re-homed into the
+ * archetype's body-side block — moved, never duplicated (§D.7.4).
  *
  * # Where the media sits, and the one gate this deviates from
  *
- * §D.7.8 asks for a content-first canvas: structured information leading, media trailing, reversed in
- * the DOM. The requested layout puts the media column BEFORE the hero, which the letter of that rule
- * forbids. It is honoured where it does the work: the DOM order here is still nav → hero → media, and
- * the frame's `grid-template-areas` place the media in the earlier visual column. So a keyboard or
- * screen-reader user still reaches the title of the thing they are being asked to buy before a strip
- * of thumbnails, which is the consequence §D.7.8 exists to prevent; only the left-right assignment
- * differs, and grid placement — not `order`, and not `direction` — is what does it.
+ * §D.7.8 asks for a content-first canvas: structured information leading, media trailing, reversed
+ * in the DOM. The requested layout puts the media column BEFORE the hero, which the letter of that
+ * rule forbids. It is honoured where it does the work: the DOM order here is still nav → hero → media,
+ * and the frame's `grid-template-areas` place the media in the earlier visual column. So a keyboard
+ * or screen-reader user still reaches the title of the thing they are being asked to buy before a
+ * strip of thumbnails, which is the consequence §D.7.8 exists to prevent; only the left-right
+ * assignment differs, and grid placement — not `order`, and not `direction` — is what does it.
  *
- * Projects and articles keep their own bespoke templates (Decisions #43/#44): a brief being staffed
- * and an editorial read are not purchases, and folding them into a commerce controller would mean
- * rendering a body that has to suppress most of itself.
+ * Articles keep their own editorial template (Decision #43): an editorial read is not a purchase,
+ * and its lane is a table of contents rather than a transaction.
  */
 export interface EntityViewPageProps {
 	view: EntityView | undefined;
@@ -100,15 +119,14 @@ export function EntityViewPage(
 
 	const archetype = resolveArchetype(view);
 
-	// Non-commerce formats keep their bespoke templates.
-	if (archetype === "project" && view.project) {
-		return <ProjectViewScreen view={view} project={view.project} ctx={ctx} authed={authed} />;
-	}
+	// The one non-frame format: an editorial read owns its own reading measure and TOC lane.
 	if (archetype === "article" && view.article) {
 		return <ArticleViewScreen view={view} article={view.article} ctx={ctx} authed={authed} />;
 	}
 
 	const { item, gallery, deliverables, moreByOwner, similar, reviews } = view;
+	const project = archetype === "project" ? view.project : undefined;
+	const isProject = !!project;
 	const meta = inlineMetaFor(view, archetype);
 	const capacity = seatCapacityFor(view, archetype);
 	const rating = item.rating?.asHelper ?? item.rating?.asClient ?? null;
@@ -118,19 +136,26 @@ export function EntityViewPage(
 	 * (`scheduling` §Part 1.4): a public listing page discloses that a time is free, never who else is
 	 * in it — the roster, join URL and per-occurrence earnings are withheld from every non-party.
 	 */
-	const schedule = showsScheduler(archetype) ? resolveSchedulePage(item.id).page : null;
-	const offer = resolveBookingOffer(item.id, {
+	const scheduled = showsScheduler(archetype);
+	const schedule = scheduled ? resolveSchedulePage(item.id).page : null;
+	// A project is applied to, never booked or bought, so it resolves no booking offer at all.
+	const offer = isProject ? null : resolveBookingOffer(item.id, {
 		context,
 		handle: ctx.scope === "profile" ? ctx.handle : null,
 		url,
 	});
-	const scheduled = showsScheduler(archetype);
+	/*
+	 * A frame with no media column: the hero takes both content tracks. A session's artefact is the
+	 * full-width scheduler stage, and a project has no gallery at all — its identity is the client's
+	 * banner strip inside the hero.
+	 */
+	const noMedia = scheduled || isProject;
 
 	return (
 		<div class="evp" data-archetype={archetype}>
 			<ViewStyleAnchor />
 
-			<div class="evp-frame" data-scheduled={scheduled ? "true" : undefined}>
+			<div class={noMedia ? "evp-frame evp-frame--nomedia" : "evp-frame"}>
 				{
 					/*
 				  ---- The START strip: one control, and it is the way out ----
@@ -138,8 +163,8 @@ export function EntityViewPage(
 				  A thin rail carrying a single circular ghost affordance back to Explore (or to the
 				  profile, in the profile-scoped namespace). It is a real anchor with a real href, so
 				  middle-click and open-in-new-tab work, and its accessible name is the sentence the
-				  visible glyph cannot say. Below `--bp-md` the strip collapses and the same link
-				  renders inline at the top of the body — moved, not duplicated.
+				  visible glyph cannot say. Below the frame breakpoint the strip collapses and the same
+				  link renders inline at the top of the body — moved, not duplicated.
 				*/
 				}
 				<div class="evp-navstrip">
@@ -176,25 +201,31 @@ export function EntityViewPage(
 				*/
 				}
 				<div class="evp-hero">
-					<div class="evp-overview">
-						<h1 class="evp-overview__title">{item.title}</h1>
+					{project ? <ProjectHero view={view} project={project} /> : (
+						<div class="evp-overview">
+							<h1 class="evp-overview__title">{item.title}</h1>
 
-						{
-							/*
-						  Metadata as ONE muted middot-separated line (§B.11.2). This replaced a row of up
-						  to nine pills, none of which could be clicked — containment is a promise of
-						  interactivity, and offering nine affordances that all refuse is worse than
-						  offering none.
-						*/
-						}
-						<MetaLine items={meta} />
+							{
+								/*
+								  Metadata as ONE muted middot-separated line (§B.11.2). This replaced a row
+								  of up to nine pills, none of which could be clicked — containment is a
+								  promise of interactivity, and offering nine affordances that all refuse is
+								  worse than offering none.
+								*/
+							}
+							<MetaLine items={meta} />
 
-						<p class="evp-overview__summary">{item.summary}</p>
+							<p class="evp-overview__summary">{item.summary}</p>
 
-						<SellerLine item={item} rating={rating} responseMinutes={view.responseMinutes} />
+							<SellerLine
+								item={item}
+								rating={rating}
+								responseMinutes={view.responseMinutes}
+							/>
 
-						{capacity && archetype === "cohort" && <SeatMeter capacity={capacity} />}
-					</div>
+							{capacity && archetype === "cohort" && <SeatMeter capacity={capacity} />}
+						</div>
+					)}
 
 					{/* Zero-UI sentinel driving the migrated sticky header (§D.7.6). */}
 					<EntityHeroProbe />
@@ -206,11 +237,12 @@ export function EntityViewPage(
 
 				  A session or a cohort has no media column at all: its artefact is the scheduler stage,
 				  which needs the whole content width or the calendar engine drops its own mini-month and
-				  availability panel — the only place the provider's working hours are explained.
-				  `data-scheduled` collapses the media track for them and the hero takes the width.
+				  availability panel — the only place the provider's working hours are explained. A
+				  project has none either. `--nomedia` collapses the track for them and the hero takes
+				  the width.
 				*/
 				}
-				{!scheduled && (
+				{!noMedia && (
 					<div class="evp-media">
 						<EntityCanvas
 							gallery={gallery}
@@ -225,9 +257,15 @@ export function EntityViewPage(
 				  ---- The END column: the conversion lane ----
 
 				  Rendered here rather than resolved into the shell, so both shells show one panel in one
-				  place. It is `display: none` below `--bp-md`, where `EntityBuyBar` takes the duty.
+				  place. It is `display: none` below the frame breakpoint, where the archetype's
+				  body-side block takes the duty.
 				*/
 				}
+				{project && (
+					<aside class="evp-laneslot" aria-label={`Apply to ${item.title}`}>
+						<ProjectLane view={view} project={project} authed={authed} ctx={ctx} />
+					</aside>
+				)}
 				{offer && (
 					<aside class="evp-laneslot" aria-label={`Purchase ${item.title}`}>
 						<EntityLane
@@ -264,7 +302,7 @@ export function EntityViewPage(
 
 					{
 						/*
-					  The ≤767px transactional block, and the booking overlay layer with it.
+					  The below-breakpoint transactional block, and the booking overlay layer with it.
 
 					  `offer` is the SAME object the lane receives, so the two regions describe one offer
 					  rather than two independently-derived ones — §D.7.4's rule applied to the data and
@@ -272,6 +310,7 @@ export function EntityViewPage(
 					  this branch has already returned for.
 					*/
 					}
+					{project && <ProjectApplyBar view={view} project={project} authed={authed} ctx={ctx} />}
 					{offer && (
 						<EntityBuyBar
 							view={view}
@@ -284,9 +323,11 @@ export function EntityViewPage(
 					)}
 
 					{/* ---- Archetype body ---- */}
-					<ArchetypeBody view={view} archetype={archetype} deliverables={deliverables} />
+					{project
+						? <ProjectBody view={view} project={project} />
+						: <ArchetypeBody view={view} archetype={archetype} deliverables={deliverables} />}
 
-					{/* ---- Commercial rails + reviews ---- */}
+					{/* ---- Commercial rails ---- */}
 					{showsCommercialRails(archetype) && (
 						<div class="evp-body">
 							<RelatedSection
@@ -304,20 +345,42 @@ export function EntityViewPage(
 								ctx={ctx}
 								authed={authed}
 							/>
-							{
-								/*
-							  The anchor the lane's review count links to. On the section rather than inside
-							  the island, so the target exists in the first byte and a jump lands even if the
-							  panel has not hydrated.
-							*/
-							}
-							<div id="evp-reviews">
-								<ReviewsPanel summary={reviews.summary} list={reviews.list} />
-							</div>
 						</div>
 					)}
 				</div>
 			</div>
+
+			{
+				/*
+			  ---- Reviews: OUTSIDE the frame, and that placement is doing two jobs ----
+
+			  It is a sibling of `.evp-frame`, not a row inside it, so the review list gets the page's
+			  whole content width instead of the ~876px `main` is left with after the conversion lane.
+
+			  It is also what bounds the lane. A sticky box is constrained by its containing block, and
+			  MEASURED in Chrome that is the grid CONTAINER's content box for a grid item — not the item's
+			  own grid area, which is what a `"reviews reviews reviews reviews"` row was tried first and
+			  found not to do (the lane rode 386px past its own area's foot). Ending the frame where the
+			  reviews begin makes the constraint and the intent the same edge, so the lane comes to rest on
+			  the reviews' top with no scroll listener, no sentinel and nothing to keep in sync.
+
+			  `.evp` is a flex column gapped at `--evp-gap-section`, which is the same 48px step this
+			  boundary carried while the reviews were the last child of `.evp-body` — the rhythm is
+			  preserved by the new context rather than reconstructed on top of it.
+
+			  The `id` stays on this wrapper: it is what the lane's review count and the sticky header's
+			  rating both jump to (`scrollToId`), and it has to exist in the first byte so the jump lands
+			  whether or not the panel has hydrated.
+
+			  A project renders no reviews and no cross-sell (Decision #44): a brief being staffed is
+			  not being cross-sold.
+			*/
+			}
+			{showsCommercialRails(archetype) && (
+				<div class="evp-reviewsrow" id="evp-reviews">
+					<ReviewsPanel summary={reviews.summary} list={reviews.list} />
+				</div>
+			)}
 		</div>
 	);
 }
@@ -494,70 +557,6 @@ function TeamRoles({ view }: { view: EntityView }): JSX.Element | null {
 			/>
 		</Section>
 	);
-}
-// #endregion
-
-// #region Seller
-/**
- * The seller line — avatar, name, one compact rating, then earned signals as TEXT LINKS (§B.11.4).
- *
- * The signals carry an explanation rather than a fill: six earned badges beside one lifecycle status
- * makes the status compete with them for the colour channel, and the status is the only one of the
- * seven whose colour means anything.
- *
- * They are derived by the SHARED `sellerBadges` rule, which the lane's identity band also calls.
- * Two thresholds for one badge is how a seller comes to read "Top rated" in the lane and unmarked
- * eighteen inches to its left, on the same screen.
- */
-function SellerLine(
-	{ item, rating, responseMinutes }: {
-		item: EntityView["item"];
-		rating: { value: number; count: number } | null;
-		responseMinutes?: number;
-	},
-): JSX.Element {
-	const signals: TrustSignal[] = sellerBadges(item, responseMinutes).map((badge) => ({
-		label: badge.label,
-		explanation: explainBadge(badge.id, item, rating, responseMinutes),
-	}));
-
-	return (
-		<div class="evp-seller">
-			<a class="evp-seller__link" href={`/${item.owner.handle}`}>
-				<Avatar image={item.owner.avatar} label={item.owner.name} size="sm" />
-				<span class="evp-seller__name">{item.owner.name}</span>
-				{item.owner.verified && (
-					<Icon name="verified" size="sm" filled class="evp-seller__crest" aria-label="Verified" />
-				)}
-			</a>
-			{rating && <RatingStars value={rating.value} count={rating.count} compact size="sm" />}
-			<TrustSignals signals={signals} />
-		</div>
-	);
-}
-
-/**
- * Why a badge was earned, in one sentence, from the datum that earned it.
- *
- * Never a generic gloss: "Top rated" with no numbers is marketing, and the numbers are the only part
- * a reader can check.
- */
-function explainBadge(
-	id: string,
-	item: EntityView["item"],
-	rating: { value: number; count: number } | null,
-	responseMinutes?: number,
-): string {
-	if (id === "fast-replies") {
-		const minutes = responseMinutes ??
-			("responseMinutes" in item ? item.responseMinutes : undefined);
-		return typeof minutes === "number"
-			? `Typically replies within ${minutes} minutes — a measured median, not an estimate.`
-			: "Replies faster than most sellers on the platform.";
-	}
-	return rating
-		? `${rating.value.toFixed(1)} average across ${rating.count} completed engagements.`
-		: "Rated well across completed engagements.";
 }
 // #endregion
 

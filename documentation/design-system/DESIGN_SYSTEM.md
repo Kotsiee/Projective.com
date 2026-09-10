@@ -2606,9 +2606,10 @@ the only version that moves both, and it is the version that survives the mobile
 > DOM (§D.7.8), or resolves the lane from an island rather than a URL resolver.
 ### D.8 Entity-view archetypes — the render contract
 
-One page, five bodies. The archetype is resolved server-side from the listing's own delivery model,
-and each dictates what the main stage renders and what the lane's summary ledger says. All five
-inherit §B.4, §B.9.7 and §B.11 without exception — **none of these is built from cards.**
+One page, six bodies. The archetype is resolved server-side from the listing's own delivery model,
+and each dictates what the main stage renders and what the lane's summary ledger says. All six —
+the five commerce archetypes and a project (§D.8.6) — inherit §B.4, §B.9.7 and §B.11 without
+exception — **none of these is built from cards.**
 
 **D.8.0 The media showcase is common to all five.** A 16:10 primary canvas
 (`--card-media-ratio`) with the active thumbnail strip **directly beneath it**, never floating over
@@ -2679,12 +2680,36 @@ version), and the licence permissions in full — as hairline-separated rows in 
 is never abbreviated into a chip: it is the term of the sale, and a reader who cannot see whether
 commercial use is included has not been told the price of anything.
 
+**D.8.6 Projects — a brief being staffed.** A project renders through the SAME frame as the five
+commerce bodies, never a template of its own. It has no media column, so its hero spans the frame's
+two content tracks (the shape a session's scheduler stage already takes) and its title is the page's
+primary optical area — top-left, directly after the start strip. The client's profile banner survives
+as a slim decorative strip at the top of the hero (7:1, capped at `8.5rem`, `--radius-lg` to match
+the media canvas a listing renders in that position) with the client's face overlapping its lower
+edge at half height — a listing's prominence, not a profile's; it is `aria-hidden` because the seller
+line beneath it states the identity in words. Then title · one inline meta line (live stage ·
+classification · leading skills) · summary · the seller line carrying the client's role headline.
+The body is a two-column details ledger (type · current stage · stage count · open seats · posted
+by), the roles being hired as ONE inline meta line, and the stage run on the §D.8.1 timeline track
+with its seat facts and open roles shown. The conversion rail is `ProjectLane` in the END column,
+built from the same lane parts as `EntityLane` (`lane-parts.tsx`): identity band · the per-ticket
+price (the floor, "From", for a pipeline; the fixed amount for a one-off) · stage quick-jumps ·
+summary ledger · a pinned footer carrying ONE inverted primary **Apply to project** and ONE ghost
+**Message client** — no secondary, since a brief is applied to and never basketed. No cross-sell
+rails and no reviews (§8 Decision #44). Below the frame breakpoint `ProjectApplyBar` re-homes the
+price and the rig into the body (§D.7.4), and the header band is the same `EntityStickyHeader` a
+listing shows, labelled _Project_. Read as a Gutenberg diagram: primary optical area (top-left) =
+title + identifiers; strong follow (top-right) = the lane's identity and price; weak follow (body) =
+the ledgers and the stage run; terminal (bottom-right) = the pinned Apply.
+
 > **Merge gate.** An archetype PR is not mergeable if it boxes the stage ledger, scope list or spec
 > table; breaks the timeline track at an expansion or builds it from `Accordion`; renders session
 > times without naming the zone the grid is drawn in, or claims a zone the engine is not using;
 > confines the booking calendar to a hero column, or ships a second/one-way availability switcher;
-> encodes seat capacity in an animated property or omits the spoken count; or reduces licence terms
-> to a chip.
+> encodes seat capacity in an animated property or omits the spoken count; reduces licence terms
+> to a chip; or renders a project through a frame of its own — a boxed stage card, a pill for its
+> classification or roles, a profile-scale banner, or an Apply control anywhere but the lane footer
+> and the below-breakpoint apply bar.
 ## Part E — Contracts & merge gates (summary)
 
 A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):

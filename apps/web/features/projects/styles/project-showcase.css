@@ -1,8 +1,7 @@
 /*
- * Project Preview / Edit chrome (`/projects/[projectId]` + `/edit`). Pure CSS + BEM, token-only. The
- * showcase BODY reuses the view feature's `project-view.css` verbatim (imported alongside this by the
- * `ShowcaseStyleAnchor` island); this file adds only the projects-specific chrome: the client's
- * Preview↔Edit header band, the not-found body state, and the full-page project editor. Separation via
+ * Project Preview / Edit chrome (`/projects/[projectId]` + `/edit`). Pure CSS + BEM, token-only.
+ * Delivered by the `ShowcaseStyleAnchor` island. This file holds only the projects-specific chrome:
+ * the client's Preview↔Edit header band, the not-found body state, and the full-page project editor. Separation via
  * spacing + tonal tints + single hairlines (§B.4) — full borders only on interactive controls.
  * Responsive + reduced-motion (jump-to-final).
  */
