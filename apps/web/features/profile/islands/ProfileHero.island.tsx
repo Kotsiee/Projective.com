@@ -10,11 +10,17 @@ import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { profileHref } from "@features/explore/core/routing.ts";
+import SignInPrompt from "@features/auth/islands/SignInPrompt.island.tsx";
+import {
+	currentPath,
+	requestSignIn,
+	type SignInIntent,
+} from "@features/auth/core/sign-in-prompt.ts";
 import "../styles/profile.css";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
 import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
-import { ctaFor } from "../core/profile-model.ts";
+import { ctaFor, SERVICES_ANCHOR } from "../core/profile-model.ts";
 import {
 	editedAvatar,
 	editedShowcase,
@@ -29,15 +35,36 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
 
 /**
  * ProfileHero — the split hero of the `/[handle]` profile: the identity column (72px avatar · name +
- * trust crest · `@handle` and entity kind · the Message ⁄ Follow rig · the inline metrics strip)
- * beside the showcase frame, which is simply absent — no placeholder — when the profile has no
- * showreel or cover.
+ * trust crest · `@handle` and entity kind · the action rig · the inline metrics strip) beside the
+ * showcase frame, which is simply absent — no placeholder — when the profile has no showreel or
+ * cover.
  *
- * It is an island because it owns the visitor's Message ⁄ Follow state and the owner's image
- * pickers. An owner changes the avatar or the showcase in place through the Asset Picker (one key
- * for both targets, the target held locally — the picker is a modal, so only one can be open);
- * the edit lands in the shared `edited*` signals so any other island drawing the same image agrees.
- * Optimistic and session-local, pending the profile write path.
+ * # The rig has three shapes, decided by `ctaFor`
+ *
+ * A SELLER leads with **Hire** and folds Message + Follow into icon-only secondaries (each with the
+ * portal `Tooltip` + `aria-label` §B.6 requires of an icon-only control). Hire is a real anchor into
+ * the Services row when there is a listing to land on — it works with JavaScript off and for a guest,
+ * because looking at what somebody sells needs no account — and opens the conversation when there is
+ * nothing listed. A BUYER keeps Message as its text primary with Follow beside it. The OWNER sees
+ * Settings + Share and the two image pickers.
+ *
+ * # A guest is intercepted, not bounced
+ *
+ * Follow and Message are claims on the reader's own account. For a signed-out visitor they open the
+ * {@link SignInPrompt} — the standard `/login` ⁄ `/join` flow with a `redirectTo` back to this
+ * profile — rather than navigating away from the page they were reading. The controls keep their
+ * shape and position; only what pressing them does differs (the `CardActions` star precedent).
+ *
+ * # Following is acknowledged
+ *
+ * A successful follow plays a brief, purely decorative acknowledgement — a `scale(1.15) → 1` settle
+ * on the control and a six-dot burst behind it, on `transform` and `opacity` only (§B.12), removed by
+ * both reduced-motion channels. The pressed state itself carries the fact; the motion decorates it.
+ *
+ * An owner changes the avatar or the showcase in place through the Asset Picker (one key for both
+ * targets, the target held locally — the picker is a modal, so only one can be open); the edit lands
+ * in the shared `edited*` signals so any other island drawing the same image agrees. Optimistic and
+ * session-local, pending the profile write path.
  *
  * SSR renders a playing showreel. Under either reduced-motion channel — the OS media query or the
  * in-app `dsConfig.reducedMotion` — the island withdraws `autoplay` and pauses the element back to
@@ -47,10 +74,16 @@ export interface ProfileHeroProps {
 	profile: ProfileView;
 	/** Whether the viewer owns this profile (swaps the rig for Settings ⁄ Share + the image pickers). */
 	canEdit: boolean;
+	/** Whether the viewer is signed in — a guest's Follow ⁄ Message open the sign-in prompt. */
+	authed: boolean;
+	/** Whether the seller has active listings — where a Hire control lands. */
+	hasServices: boolean;
 }
 
 const PICKER_ID = "profile-image";
 const STATUS_TTL_MS = 2500;
+const CELEBRATE_MS = 700;
+const BURST_DOTS = 6;
 
 type ImageTarget = "avatar" | "showcase";
 
@@ -67,14 +100,18 @@ function isAbort(err: unknown): boolean {
 	return err instanceof DOMException && err.name === "AbortError";
 }
 
-export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX.Element {
+export default function ProfileHero(
+	{ profile, canEdit, authed, hasServices }: ProfileHeroProps,
+): JSX.Element {
 	const avatar = editedAvatar.value ?? profile.avatar;
 	const showcase = resolveShowcase(profile.showcase, editedShowcase.value, profile.name);
 	const target = useSignal<ImageTarget>("avatar");
 	const envReduced = useSignal(false);
 	const status = useSignal("");
+	const celebrating = useSignal(false);
 	const video = useRef<HTMLVideoElement>(null);
 	const statusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const celebrateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	const reduced = envReduced.value || dsConfig.value.reducedMotion;
 
@@ -96,7 +133,10 @@ export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX
 		el.load();
 	}, [reduced]);
 
-	useEffect(() => () => clearTimeout(statusTimer.current), []);
+	useEffect(() => () => {
+		clearTimeout(statusTimer.current);
+		clearTimeout(celebrateTimer.current);
+	}, []);
 
 	function announce(text: string): void {
 		status.value = text;
@@ -141,9 +181,48 @@ export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX
 		}
 	}
 
-	const cta = ctaFor(profile.kind);
+	/** A guest's account-bound press opens the prompt; `true` when it was intercepted. */
+	function gate(intent: SignInIntent): boolean {
+		if (authed) return false;
+		requestSignIn({ intent, returnTo: currentPath(), subject: profile.name });
+		return true;
+	}
+
+	function openMessage(): void {
+		if (gate("message")) return;
+		quickMessageOpen.value = true;
+	}
+
+	function toggleFollow(): void {
+		if (gate("follow")) return;
+		const next = !following.value;
+		following.value = next;
+		announce(next ? `Following ${profile.name}` : `Unfollowed ${profile.name}`);
+		clearTimeout(celebrateTimer.current);
+		celebrating.value = next;
+		if (next) {
+			celebrateTimer.current = setTimeout(() => {
+				celebrating.value = false;
+			}, CELEBRATE_MS);
+		}
+	}
+
+	const cta = ctaFor(profile.kind, hasServices);
 	const isFollowing = following.value;
 	const tier = TIER_META[profile.tier];
+	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
+	const followText = isFollowing ? "Following" : "Follow";
+
+	const burst = celebrating.value
+		? (
+			<span class="pf-burst" aria-hidden="true">
+				{Array.from(
+					{ length: BURST_DOTS },
+					(_, i) => <i class="pf-burst__dot" key={i} style={`--pf-burst-i:${i}`} />,
+				)}
+			</span>
+		)
+		: null;
 
 	return (
 		<>
@@ -194,7 +273,7 @@ export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX
 						<span>{ENTITY_META[profile.kind].label}</span>
 					</p>
 
-					<div class="pf-hero__actions">
+					<div class="pf-hero__actions" data-rig={canEdit ? "owner" : cta.layout}>
 						{canEdit
 							? (
 								<>
@@ -213,13 +292,61 @@ export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX
 									>
 										Share
 									</Button>
-									<p
-										class={status.value ? "pf-hero__status" : "pf-hero__status ui-visually-hidden"}
-										role="status"
-										aria-live="polite"
+								</>
+							)
+							: cta.layout === "hire"
+							? (
+								<>
+									{cta.target === "services"
+										? (
+											<a
+												class="ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded pf-hero__cta pf-hero__cta--primary pf-hero__cta--hire"
+												href={`#${SERVICES_ANCHOR}`}
+											>
+												<span class="ui-button__label">{cta.primary}</span>
+											</a>
+										)
+										: (
+											<Button
+												rounded
+												size="md"
+												class="pf-hero__cta pf-hero__cta--primary pf-hero__cta--hire"
+												onClick={openMessage}
+											>
+												{cta.primary}
+											</Button>
+										)}
+									<Tooltip content="Message" placement="bottom">
+										<Button
+											rounded
+											iconOnly
+											size="md"
+											variant="outlined"
+											class="pf-hero__cta pf-hero__cta--secondary pf-hero__cta--icon"
+											aria-label={`Message ${profile.name}`}
+											icon={<Icon name="message" size="sm" />}
+											onClick={openMessage}
+										/>
+									</Tooltip>
+									<span
+										class="pf-hero__follow"
+										data-celebrate={celebrating.value ? "true" : undefined}
 									>
-										{status.value}
-									</p>
+										<Tooltip content={followText} placement="bottom">
+											<Button
+												rounded
+												iconOnly
+												size="md"
+												variant="outlined"
+												class="pf-hero__cta pf-hero__cta--secondary pf-hero__cta--icon pf-hero__cta--follow"
+												aria-label={followLabel}
+												aria-pressed={isFollowing}
+												icon={<Icon name={isFollowing ? "check" : "user-plus"} size="sm" />}
+												onClick={toggleFollow}
+											/>
+										</Tooltip>
+										{burst}
+									</span>
 								</>
 							)
 							: (
@@ -228,26 +355,37 @@ export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX
 										rounded
 										size="md"
 										class="pf-hero__cta pf-hero__cta--primary"
-										onClick={() => {
-											quickMessageOpen.value = true;
-										}}
+										onClick={openMessage}
 									>
 										{cta.primary}
 									</Button>
-									<Button
-										rounded
-										size="md"
-										variant="outlined"
-										class="pf-hero__cta pf-hero__cta--secondary"
-										aria-pressed={isFollowing}
-										onClick={() => {
-											following.value = !isFollowing;
-										}}
+									<span
+										class="pf-hero__follow"
+										data-celebrate={celebrating.value ? "true" : undefined}
 									>
-										{isFollowing ? "Following" : cta.secondary}
-									</Button>
+										<Button
+											rounded
+											size="md"
+											variant="outlined"
+											class="pf-hero__cta pf-hero__cta--secondary pf-hero__cta--follow"
+											aria-pressed={isFollowing}
+											aria-label={followLabel}
+											icon={isFollowing ? <Icon name="check" size="sm" /> : undefined}
+											onClick={toggleFollow}
+										>
+											{followText}
+										</Button>
+										{burst}
+									</span>
 								</>
 							)}
+						<p
+							class={status.value ? "pf-hero__status" : "pf-hero__status ui-visually-hidden"}
+							role="status"
+							aria-live="polite"
+						>
+							{status.value}
+						</p>
 					</div>
 
 					<ProfileMetrics profile={profile} />
@@ -274,8 +412,9 @@ export default function ProfileHero({ profile, canEdit }: ProfileHeroProps): JSX
 				)}
 			</header>
 
-			{!canEdit && <ProfileMessagePopover profile={profile} />}
-			<AssetPicker requesterId={PICKER_ID} onPick={apply} />
+			{!canEdit && authed && <ProfileMessagePopover profile={profile} />}
+			{!canEdit && !authed && <SignInPrompt />}
+			{canEdit && <AssetPicker requesterId={PICKER_ID} onPick={apply} />}
 		</>
 	);
 }

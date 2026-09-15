@@ -1,9 +1,16 @@
 /*
- * profile-message.css — the profile "Message" quick-composer popover (task §3), a `DraggablePopover`
- * (`.pf-msgpop`) pre-addressed to the profile: a recipient header + the reused ChatComposer. Token-only,
- * strict BEM. The composer inside carries its own styling (projects `chat-composer.css`, bundled by the
- * composer island); this file lays out the popover body.
+ * profile-message.css — the profile "Message" quick-composer: a `DraggablePopover` (`.pf-msgpop`) on
+ * desktop and a bottom-sheet `Drawer` (`.pf-msgsheet`) below 768px, both pre-addressed to the
+ * profile: a recipient header + the reused ChatComposer. Token-only, strict BEM. The composer inside
+ * carries its own styling (projects `chat-composer.css`, bundled by the composer island); this file
+ * lays out the shared body.
  */
+.pf-msgsheet {
+	max-block-size: calc(100dvh - var(--space-8));
+	border-start-start-radius: var(--radius-container-lg);
+	border-start-end-radius: var(--radius-container-lg);
+	padding-block-end: env(safe-area-inset-bottom, 0px);
+}
 .pf-msgpop__body {
 	display: flex;
 	flex-direction: column;

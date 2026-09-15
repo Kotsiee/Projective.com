@@ -1,21 +1,24 @@
 import { z } from "zod";
 import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
+import { AvailabilityRuleSchema } from "../scheduling/scheduling.ts";
 
 /**
  * profile.profile — the Zod SSOT for a public profile's header + overview projection
  * (`/[handle]`, the `@handle` wildcard namespace).
  *
  * This is the chrome the profile page paints: the split hero (avatar + name + `@handle`, the
- * Message / Follow rig, the inline metrics strip, and the showcase media frame), the context bar
- * (headline + story beside the skills / languages cluster), the client-proof strip, and the counts
- * that drive the four-section tab bar. It currently backs deterministic fixtures; when the
- * `org.users_public` / profile tables land, the same schema validates the read (root CLAUDE.md §1,
- * the Zod SSOT rule — a read projection over the eventual tables, like projects `detail`).
+ * Hire ⁄ Message ⁄ Follow rig, the inline metrics strip, and the showcase media frame), the context
+ * bar (headline + story beside the availability ⁄ at-a-glance facts and the skills / languages
+ * cluster), the client-proof strip, and the counts that drive the four-section tab bar. It currently
+ * backs deterministic fixtures; when the `org.users_public` / profile tables land, the same schema
+ * validates the read (root CLAUDE.md §1, the Zod SSOT rule — a read projection over the eventual
+ * tables, like projects `detail`).
  *
- * Several fields are carried but NOT painted by the profile since the editorial redesign (root
- * CLAUDE.md §8 Decision #96): `online`, `location.timezone`, `availabilityLabel`, `hasAvailability`
- * and `responseTime` — availability, clocks and presence were stripped from the layout. They stay in
- * the projection because the shape is additive-only and the live path will read them regardless.
+ * Two fields are carried but NOT painted: `online` (presence — the availability badge derives from
+ * the published `hours` and the clock, never from a presence pip that can be wrong without anyone
+ * noticing) and `availabilityLabel` (superseded on the profile by the derived badge; still the
+ * subtitle of `/[handle]/availability`). They stay because the shape is additive-only and the live
+ * path reads them regardless.
  *
  * It reuses the discovery SSOT's {@link SkillRefSchema} and {@link DualRatingSchema} so a profile's
  * skill pills and reputation render through the SAME explore atoms the cards use — no shape drift.
@@ -134,6 +137,24 @@ export const ProfileStatsSchema = z.object({
 export type ProfileStats = z.infer<typeof ProfileStatsSchema>;
 
 /**
+ * The weekly working hours a seller publishes, in the seller's OWN timezone — the same
+ * `working_hours` bands the `/[handle]/availability` calendar paints (`scheduling.availability`),
+ * carried here so the context bar's schedule summary, its "Available now ⁄ Away" badge and the
+ * bookable calendar can never disagree about when this person is at their desk.
+ *
+ * Only the broad `working_hours` kind is carried; the narrower `call_window` bands are a booking
+ * concern and stay on the schedule page. `null` on the projection means no hours are configured —
+ * a buyer-only entity, or a seller who has not set any — and the bar then renders no availability
+ * block at all rather than a badge with nothing behind it.
+ */
+export const ProfileHoursSchema = z.object({
+	/** IANA timezone id the rules are expressed in (e.g. `Europe/London`). */
+	timezone: z.string().max(60),
+	rules: z.array(AvailabilityRuleSchema),
+});
+export type ProfileHours = z.infer<typeof ProfileHoursSchema>;
+
+/**
  * Per-tab item counts — feed the tab-bar count chips + the "empty tab" gate. All optional so a kind
  * that never has a given tab simply omits it.
  */
@@ -198,13 +219,33 @@ export const ProfileViewSchema = z.object({
 	/** Short availability label (e.g. "Available for work", "Booked till Aug"). */
 	availabilityLabel: z.string(),
 	/**
-	 * Whether this profile has a configured availability calendar. Gates the sidebar's Profile ⁄
-	 * Availability toggle (root CLAUDE.md — Part 4.3: the switch shows ONLY when availability is set up)
-	 * and the meta rail's availability sub-line.
+	 * Whether this profile has a configured availability calendar (the bookable
+	 * `/[handle]/availability` surface). Implied by a non-null `hours`; kept as its own flag because
+	 * a calendar can exist with no published weekly bands.
 	 */
 	hasAvailability: z.boolean(),
+	/**
+	 * The published weekly working hours (+ their timezone), or `null` when none are configured. The
+	 * context bar derives the schedule summary, the live "Available now ⁄ Away" badge and the local
+	 * clock from this — never from `online`.
+	 */
+	hours: ProfileHoursSchema.nullable(),
 	/** Average response-time label (e.g. "Usually responds within 2 hours"). */
 	responseTime: z.string(),
+	/**
+	 * Typical first-response time in MINUTES — the measured datum behind `responseTime`. Drives the
+	 * "Avg. response" line AND the "Fast responder" mark, which is gated on the same
+	 * `FAST_REPLY_MINUTES` threshold the discovery card's "Fast replies" chip uses, so a profile and
+	 * the card that linked to it cannot disagree about reply speed. `null` when unmeasured — the line
+	 * and the mark are then both absent rather than inferred from anything else.
+	 */
+	responseMinutes: z.number().int().min(0).nullable(),
+	/**
+	 * Whether the entity offers a FREE (courtesy) discovery call — the public `courtesyEnabled`
+	 * half of `scheduling.call_settings` (`PRODUCT_SPEC.md` §Discovery & Courtesy Calls). Surfaces
+	 * as the "Free consultation" mark; a paid-only consultation is not one.
+	 */
+	freeConsultation: z.boolean(),
 	/** DUAL-track reputation: `asHelper` (freelancer) AND `asClient` — both may be present. */
 	rating: DualRatingSchema,
 	/** Whether the identity itself is platform-verified. */

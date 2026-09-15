@@ -35,9 +35,9 @@
 .ex-results-head__q {
 	margin: 0;
 	font-size: clamp(2rem, 0.875rem + 3.75vw, 3.5rem);
-	font-weight: 300;
-	line-height: 1.05;
-	letter-spacing: -0.03em;
+	font-weight: var(--fw-light);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
 	color: var(--on-surface);
 }
 
@@ -51,9 +51,9 @@
 }
 
 .ex-results-head__related-label {
-	font-size: 0.72rem;
-	font-weight: 600;
-	letter-spacing: 0.14em;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--on-surface-variant);
 	margin-inline-end: var(--space-1);
@@ -72,7 +72,7 @@
 	background: none;
 	color: var(--on-surface-variant);
 	font: inherit;
-	font-size: 0.95rem;
+	font-size: var(--text-md);
 	cursor: pointer;
 	transition: color var(--dur-fast) var(--ease-standard);
 }
@@ -98,13 +98,13 @@
 
 .ex-dash__count {
 	margin: 0;
-	font-size: 1rem;
+	font-size: var(--text-base);
 	color: var(--on-surface-variant);
 }
 
 .ex-dash__count strong {
 	color: var(--on-surface);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
 .ex-dash__tools {
@@ -124,7 +124,7 @@
 	background: var(--surface-1);
 	color: var(--on-surface);
 	font: inherit;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	cursor: pointer;
 }
 
@@ -168,8 +168,8 @@
 
 .ex-filters__title {
 	margin: 0;
-	font-size: 1.05rem;
-	font-weight: 700;
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
 }
 
 .ex-filters__clear {
@@ -177,8 +177,8 @@
 	background: none;
 	color: var(--primary);
 	font: inherit;
-	font-size: 0.85rem;
-	font-weight: 500;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
 	cursor: pointer;
 }
 
@@ -196,8 +196,8 @@
 	justify-content: space-between;
 	gap: var(--space-2);
 	padding-block: var(--space-4);
-	font-weight: 600;
-	font-size: 0.92rem;
+	font-weight: var(--fw-semibold);
+	font-size: var(--text-md);
 	cursor: pointer;
 	list-style: none;
 }
@@ -211,18 +211,20 @@
 	border-radius: var(--radius-sm);
 }
 
+/* The disclosure caret is the registry glyph (§B.7), rotating rather than a border-drawn corner. */
 .ex-filters__chevron {
-	inline-size: 8px;
-	block-size: 8px;
-	border-right: 2px solid currentColor;
-	border-bottom: 2px solid currentColor;
-	transform: rotate(45deg);
-	opacity: 0.6;
+	color: var(--on-surface-variant);
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
 .ex-filters__group[open] .ex-filters__chevron {
-	transform: rotate(-135deg);
+	transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-filters__chevron {
+		transition: none;
+	}
 }
 
 .ex-filters__body {
@@ -252,7 +254,7 @@
 	background: var(--surface-1);
 	color: var(--on-surface);
 	font: inherit;
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 	cursor: pointer;
 	transition:
 		border-color var(--dur-fast) var(--ease-standard),
@@ -282,33 +284,25 @@
 	background: var(--ex-primary-tint);
 	border-color: var(--primary);
 	color: var(--primary);
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 }
 
+/* The box is a CONTROL part, so its border is legitimate; the tick inside it is the registry glyph. */
 .ex-filters__box {
-	inline-size: 1.05rem;
-	block-size: 1.05rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
 	border-radius: var(--radius-xs);
-	border: 1.5px solid var(--ex-hair-strong);
+	border: var(--fld-bw) solid var(--ex-hair-strong);
 	flex: 0 0 auto;
-	position: relative;
+	color: var(--on-primary);
 }
 
 .ex-filters__opt--checkbox[aria-pressed="true"] .ex-filters__box {
 	background: var(--primary);
 	border-color: var(--primary);
-}
-
-.ex-filters__opt--checkbox[aria-pressed="true"] .ex-filters__box::after {
-	content: "";
-	position: absolute;
-	inset-block-start: 1px;
-	inset-inline-start: 4px;
-	inline-size: 4px;
-	block-size: 8px;
-	border-inline-end: 2px solid var(--on-primary);
-	border-block-end: 2px solid var(--on-primary);
-	transform: rotate(45deg);
 }
 
 /* The facet selects are now packages/ui `Select` fields — just make them fill the sidebar column. */
@@ -328,7 +322,7 @@
 }
 
 .ex-filters__rangeval {
-	font-size: 0.82rem;
+	font-size: var(--text-sm);
 	color: var(--on-surface-variant);
 }
 /* #endregion */
@@ -371,9 +365,9 @@
 
 .ex-group__title {
 	margin: 0;
-	font-size: 1.4rem;
-	font-weight: 600;
-	letter-spacing: -0.015em;
+	font-size: var(--text-xl);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-tight);
 }
 
 /* Card sections present as an elegant horizontal rail — native scroll-snap, no enclosing boxes. */
@@ -504,11 +498,12 @@
 	gap: var(--space-3);
 }
 
+/* A title is never `--fw-bold` (§A.4). */
 .ex-detail__title {
 	margin: var(--space-1) 0 0;
 	font-size: clamp(1.4rem, 0.95rem + 1.5vw, 1.9rem);
-	font-weight: 700;
-	letter-spacing: -0.02em;
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-tight);
 }
 
 /*
@@ -526,16 +521,17 @@
 }
 
 .ex-detail__fact dt {
-	font-size: 0.78rem;
-	letter-spacing: 0.04em;
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--on-surface-variant);
 }
 
 .ex-detail__fact dd {
-	margin: 0.3rem 0 0;
-	font-size: 1rem;
-	font-weight: 600;
+	margin: var(--space-1) 0 0;
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
 }
 
 .ex-detail__section {
@@ -544,21 +540,44 @@
 	gap: var(--space-3);
 }
 
+/* The section-header register (§A.4): `--text-xs` · uppercase · `--tracking-wide`, never bold. */
 .ex-detail__label {
 	margin: 0;
-	font-size: 0.8rem;
-	font-weight: 700;
-	letter-spacing: 0.08em;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--on-surface-variant);
 }
 
 .ex-detail__summary {
 	margin: 0;
-	font-size: 1rem;
-	line-height: 1.6;
-	font-weight: 300;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	font-weight: var(--fw-normal);
 	color: var(--on-surface);
+}
+
+/* Non-actionable facts as one middot line (§B.11.2) — the roles a brief is hiring for. */
+.ex-detail__inline {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	margin: 0;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.ex-detail__inlineitem {
+	display: inline-flex;
+	align-items: baseline;
+}
+
+.ex-detail__dot {
+	padding-inline: var(--space-2);
+	color: var(--on-surface-variant);
 }
 
 .ex-detail__phases {
@@ -574,7 +593,7 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
-	font-size: 0.95rem;
+	font-size: var(--text-md);
 }
 
 .ex-detail__phase-idx {
@@ -583,8 +602,9 @@
 	justify-content: center;
 	inline-size: 1.5rem;
 	block-size: 1.5rem;
-	font-size: 0.78rem;
-	font-weight: 700;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
 	color: var(--primary);
 	background: var(--ex-primary-tint);
 	border-radius: 50%;
@@ -597,29 +617,10 @@
 }
 /* #endregion */
 
-/* #region Standalone viewer page */
-.ex-view {
-	max-inline-size: 56rem;
-	margin-inline: auto;
-	padding: clamp(2rem, 5vw, 4rem) var(--ex-pad-x);
-}
-
-.ex-view__back {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin-block-end: var(--space-5);
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--primary);
-	text-decoration: none;
-}
-
-.ex-view__back:focus-visible {
-	outline: none;
-	border-radius: var(--radius-xs);
-}
-/* #endregion */
+/*
+ * `.ex-view` / `.ex-view__back` — REMOVED. The standalone viewer is the `.evp` frame in
+ * `features/view` now; nothing rendered these, so they were a second page frame waiting to drift.
+ */
 
 /* #region iOS-style bottom sheet (mobile filters) */
 .ui-drawer.ex-sheet {
@@ -671,8 +672,8 @@
 }
 
 .ex-sheet__title {
-	font-size: 1.1rem;
-	font-weight: 600;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
 }
 
 .ex-sheet__done {
@@ -680,7 +681,7 @@
 	background: none;
 	color: var(--primary);
 	font: inherit;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	cursor: pointer;
 }
 

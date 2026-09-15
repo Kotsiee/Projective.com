@@ -1,8 +1,9 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isProfileBackendLive } from "../../core/supabase.ts";
-import { findProfile, findProfileTab } from "./profile-fixtures.ts";
+import { findProfile, findProfileServices, findProfileTab } from "./profile-fixtures.ts";
 import { isReservedHandle } from "@projective/types/profile";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
+import type { ServiceItem } from "@projective/types/explore";
 
 /**
  * ProfileBackendService — the FAT server-side service behind the `/[handle]` public profile.
@@ -65,5 +66,22 @@ export class ProfileBackendService {
 		const payload = findProfileTab(handle, tab);
 		if (!payload) return fail(404, { message: `No profile found for "${handle}".` });
 		return ok({ payload });
+	}
+
+	/**
+	 * The profile's ACTIVE service listings alone — the row the `/[handle]` layout paints above the
+	 * section tabs on every section, and the source of the context bar's "Est. project spend" floor
+	 * and the hero's Hire target. The same slice the Work payload carries, without the rest of Work.
+	 * An empty array for a buyer entity; `404` for a reserved or unresolved handle.
+	 */
+	static services(handle: string): ServiceResult<{ services: ServiceItem[] }> {
+		if (isReservedHandle(handle)) {
+			return fail(404, { message: `"${handle}" is a reserved route, not a profile.` });
+		}
+		// The live path (RLS-scoped catalogue listings) is not yet implemented; the fixture slice
+		// answers on both branches so behaviour is preserved until it lands.
+		const services = findProfileServices(handle);
+		if (!services) return fail(404, { message: `No profile found for "${handle}".` });
+		return ok({ services });
 	}
 }

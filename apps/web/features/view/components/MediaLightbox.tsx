@@ -3,8 +3,8 @@ import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
+import { Icon } from "@projective/ui/icons";
 import type { EntityMedia } from "@projective/types/explore";
-import { ViewIcon } from "./view-glyphs.tsx";
 
 /**
  * MediaLightbox — the ONE full-screen media modal on the Entity View surface.
@@ -98,7 +98,7 @@ export function MediaLightbox(
 						<span class="vw-lightbox__counter">{idx + 1} / {gallery.length}</span>
 						<div class="fx-modal__actions">
 							<a class="fx-modal__act" href={current.src} download aria-label="Download image">
-								<ViewIcon name="expand" size={17} />
+								<Icon name="download" size="sm" />
 							</a>
 							<button
 								type="button"
@@ -106,7 +106,7 @@ export function MediaLightbox(
 								aria-label="Close preview"
 								onClick={onClose}
 							>
-								<ViewIcon name="close" size={18} />
+								<Icon name="close" size="sm" />
 							</button>
 						</div>
 					</header>
@@ -120,7 +120,7 @@ export function MediaLightbox(
 									aria-label="Previous image"
 									onClick={() => step(-1)}
 								>
-									<ViewIcon name="chevron-left" size={26} />
+									<Icon name="chevron-left" size="md" optical="left" />
 								</button>
 							)
 							: null}
@@ -145,7 +145,7 @@ export function MediaLightbox(
 									aria-label="Next image"
 									onClick={() => step(1)}
 								>
-									<ViewIcon name="chevron-right" size={26} />
+									<Icon name="chevron-right" size="md" optical="right" />
 								</button>
 							)
 							: null}

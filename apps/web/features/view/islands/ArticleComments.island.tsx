@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { Avatar } from "@projective/ui/display";
 import "../styles/article-view.css";
 import { profileHref } from "@features/explore/core/routing.ts";
+import { Icon } from "@projective/ui/icons";
 import { ViewIcon } from "../components/view-glyphs.tsx";
 import type { ArticleComment } from "@projective/types/explore";
 
@@ -63,7 +64,7 @@ export default function ArticleComments(
 				aria-label={on ? "Remove like" : "Like"}
 				onClick={() => toggleLike(id)}
 			>
-				<ViewIcon name="like" size={15} />
+				<ViewIcon name="like" />
 				<span>{base + (on ? 1 : 0)}</span>
 			</button>
 		);
@@ -72,7 +73,7 @@ export default function ArticleComments(
 	return (
 		<section class="art-comments" aria-label="Comments">
 			<h2 class="vw-h2 art-comments__title">
-				<ViewIcon name="comment" size={20} />
+				<ViewIcon name="comment" size="md" />
 				<span>{total} comment{total === 1 ? "" : "s"}</span>
 			</h2>
 
@@ -95,7 +96,7 @@ export default function ArticleComments(
 							disabled={authed && draft.value.trim().length === 0}
 							onClick={post}
 						>
-							<ViewIcon name="send" size={16} />
+							<Icon name="send" />
 							<span>{authed ? "Post comment" : "Sign in to post"}</span>
 						</button>
 					</div>
@@ -123,7 +124,7 @@ export default function ArticleComments(
 							<div class="art-cmt__actions">
 								{likeBtn(c.id, c.likes)}
 								<button type="button" class="art-cmt__reply">
-									<ViewIcon name="reply" size={15} />
+									<ViewIcon name="reply" />
 									<span>Reply</span>
 								</button>
 							</div>

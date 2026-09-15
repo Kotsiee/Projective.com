@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Icon } from "@projective/ui/icons";
 import { ViewIcon } from "./view-glyphs.tsx";
 import { applyToProject, projectApplied } from "../core/view-state.ts";
 import type { ExploreItem } from "@projective/types/explore";
@@ -35,7 +36,9 @@ export function ProjectActions(
 				aria-pressed={applied}
 				onClick={() => applyToProject(item, authed, ctx)}
 			>
-				<ViewIcon name={applied ? "check" : "apply"} size={18} class="pf-btn__icon" />
+				{applied
+					? <Icon name="check" size="sm" class="pf-btn__icon" />
+					: <ViewIcon name="apply" size="sm" class="pf-btn__icon" />}
 				<span class="pf-btn__label">{applied ? "Applied" : "Apply to project"}</span>
 			</button>
 		</div>

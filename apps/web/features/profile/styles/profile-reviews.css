@@ -1,7 +1,8 @@
 /*
- * profile-reviews — the Reviews section: the dual-track summary line, then the reciprocal reviews as
- * hairline-separated rows (the star fill is neutralised surface-wide in profile-base). Token-only, logical
- * properties, no box anywhere.
+ * profile-reviews — the Reviews section: the dual-track summary line, the segmented stance filter
+ * (All · As freelancer · As client — the shared `SelectButton`, its selected ink neutralised in
+ * profile-base), then the reciprocal reviews as hairline-separated rows (the star fill is likewise
+ * neutralised surface-wide). Token-only, logical properties, no box anywhere.
  */
 
 /* #region Block */
@@ -10,6 +11,27 @@
 	flex-direction: column;
 	gap: var(--pf-block-gap);
 	min-inline-size: 0;
+}
+
+/* #endregion */
+
+/* #region Filter */
+.pf-reviews__filtered {
+	display: flex;
+	flex-direction: column;
+	gap: var(--pf-block-gap);
+	min-inline-size: 0;
+}
+
+.pf-reviews__filter {
+	display: flex;
+	min-inline-size: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.pf-reviews__filter::-webkit-scrollbar {
+	display: none;
 }
 
 /* #endregion */

@@ -8,6 +8,11 @@
 	--site-bar-h: calc(var(--space-7) + var(--space-2)); /* 3.5rem */
 	--site-header-gap: var(--space-4);
 	--site-header-h: calc(var(--site-bar-h) + var(--site-header-gap) * 2); /* reserved flow height */
+	/* The gap the SCROLLED pill keeps above itself, and the pill's bottom edge once scrolled. An
+	   in-page sticky element that must sit flush under the floating header pins to this, not to the
+	   reserved flow band above — that band is 1.25rem taller than the pill it reserves room for. */
+	--site-header-scrolled-gap: var(--space-3);
+	--site-header-pinned-h: calc(var(--site-bar-h) + var(--site-header-scrolled-gap));
 }
 
 /* #region Shell */
@@ -46,7 +51,7 @@
 }
 
 .site-header--scrolled {
-	padding-block-start: var(--space-3);
+	padding-block-start: var(--site-header-scrolled-gap);
 	padding-inline: clamp(0.75rem, 3vw, 2rem);
 }
 
@@ -59,7 +64,6 @@
 	align-items: center;
 	gap: var(--space-4);
 	padding-inline: var(--space-4);
-	/* Top-of-page state: completely transparent, no border, no shell. */
 	background: transparent;
 	border: 1px solid transparent;
 	border-radius: 0;
@@ -92,7 +96,7 @@
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	border-color: var(--hairline-color);
-	border-radius: calc(var(--radius-xl) * 1.5);
+	border-radius: calc(var(--radius-lg));
 	box-shadow: var(--elevation-medium);
 }
 

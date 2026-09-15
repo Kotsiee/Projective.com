@@ -1,8 +1,13 @@
 /*
- * profile-hero — the split hero: identity column (avatar · name · handle line · CTA rig · metrics)
+ * profile-hero — the split hero: identity column (avatar · name · handle line · action rig · metrics)
  * beside the 16:10 showcase frame, collapsing to one typography-first column when there is no
  * showcase. Monochrome chrome on the neutral ramp only; the only colour is the media. No box, no
  * border on anything static, one hairline nowhere — separation is whitespace alone.
+ *
+ * The action rig has three shapes (`data-rig`): a SELLER's `hire` (Hire primary + two icon-only
+ * secondaries), a BUYER's `message` (Message primary + a text Follow), and the `owner` pair. The
+ * follow acknowledgement — a settle on the control and a six-dot burst behind it — moves `transform`
+ * and `opacity` only (§B.12) and is removed by both reduced-motion channels.
  */
 
 /* #region Frame */
@@ -131,11 +136,83 @@
     border-color: var(--hairline-strong-color);
 }
 
+/* The seller rig's compact secondaries: a circle of the primary's height, glyph-only. */
+.ui-button.pf-hero__cta--icon {
+    flex: none;
+}
+
+.ui-button.pf-hero__cta--icon .ui-button__icon {
+    display: inline-flex;
+}
+
 .pf-hero__status {
     margin: 0;
     font-size: var(--text-xs);
     line-height: var(--leading-snug, 1.35);
     color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Follow acknowledgement */
+/* The wrapper is the burst's anchor; the control inside keeps its own box untouched. */
+.pf-hero__follow {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+}
+
+.pf-hero__follow[data-celebrate="true"] .ui-button.pf-hero__cta--follow {
+    animation: pf-follow-settle var(--dur-medium) var(--ease-standard) both;
+}
+
+.pf-burst {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pf-burst__dot {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    inline-size: var(--space-1);
+    block-size: var(--space-1);
+    margin: calc(-1 * var(--space-1) / 2);
+    border-radius: var(--radius-full);
+    background: var(--on-surface);
+    opacity: 0;
+    transform: rotate(calc(var(--pf-burst-i) * 60deg)) translateY(0) scale(0.4);
+    animation: pf-burst-fly var(--dur-slow) var(--ease-standard) both;
+}
+
+/* A settle, not a bounce: from the lifted size straight back to rest (§B.5 — no overshoot). */
+@keyframes pf-follow-settle {
+    from {
+        transform: scale(1.15);
+    }
+
+    to {
+        transform: scale(1);
+    }
+}
+
+/* Each dot flies outward along its own spoke and fades — the position it ends at is never shown. */
+@keyframes pf-burst-fly {
+    0% {
+        opacity: 0;
+        transform: rotate(calc(var(--pf-burst-i) * 60deg)) translateY(0) scale(0.4);
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(calc(var(--pf-burst-i) * 60deg)) translateY(calc(-1 * var(--space-7)))
+            scale(1);
+    }
 }
 
 /* #endregion */
@@ -206,18 +283,22 @@
 /* #endregion */
 
 /* #region Showcase */
+/* The frame takes one soft corner (`--radius-base`, 8px) and clips to it, so the media, the poster
+   and the owner's picker all respect the same edge; the inner `.pf-showcase` inherits it. */
 .pf-hero__showcase {
     position: relative;
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
+    border-radius: var(--radius-base);
+    overflow: clip;
 }
 
 .pf-showcase {
     aspect-ratio: 16 / 10;
     inline-size: 100%;
     overflow: clip;
-    border-radius: var(--radius-xs);
+    border-radius: inherit;
     background: var(--surface-1);
 }
 
@@ -286,12 +367,24 @@
         transform: none;
         transition: none;
     }
+
+    .pf-hero__follow[data-celebrate="true"] .ui-button.pf-hero__cta--follow,
+    .pf-burst__dot {
+        animation: none;
+        transform: none;
+    }
 }
 
 :root[data-motion="reduced"] .pf-hero__imgbtn,
 :root[data-motion="reduced"] .pf-hero__imgbtn:active {
     transform: none;
     transition: none;
+}
+
+:root[data-motion="reduced"] .pf-hero__follow[data-celebrate="true"] .ui-button.pf-hero__cta--follow,
+:root[data-motion="reduced"] .pf-burst__dot {
+    animation: none;
+    transform: none;
 }
 
 /* #endregion */

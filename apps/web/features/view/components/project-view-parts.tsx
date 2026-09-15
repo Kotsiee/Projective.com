@@ -76,6 +76,7 @@ export function ProjectHero(
 
 			<SellerLine
 				item={item}
+				seller={view.seller}
 				rating={rating}
 				responseMinutes={view.responseMinutes}
 				avatar={false}

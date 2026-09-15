@@ -1,8 +1,13 @@
 /*
  * profile-context — the context bar between the hero and the tab sections: headline + story on the
- * reading side (65), the Skills / Languages facets on the other (35). Monochrome, unboxed, separated
- * by whitespace alone; the facet labels are the shared `.pf-h` register and the tags the shared
- * `.pf-tag`. Every breakpoint keys off the `pf` container, never the viewport.
+ * reading side (65); on the other (35), the availability block, the at-a-glance facts, then the
+ * Skills / Languages facets. Monochrome, unboxed, separated by whitespace alone; the facet labels are
+ * the shared `.pf-h` register and the tags the shared `.pf-tag`. Every breakpoint keys off the `pf`
+ * container, never the viewport.
+ *
+ * The availability badge is the one CONTAINER on the bar that is a status (§B.11.3 — a state that
+ * changes): available draws a solid dot, away a hollow one, so the two states differ by shape as
+ * well as by word, and neither spends a colour the monochrome surface forbids.
  */
 
 /* #region Bar */
@@ -86,6 +91,174 @@
     gap: var(--space-1);
     font-weight: var(--fw-normal);
     color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Availability */
+.pf-avail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-inline-size: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+.pf-avail__now {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.pf-avail__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--pf-tag-bg);
+    color: var(--on-surface);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
+}
+
+.pf-avail__dot {
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--on-surface);
+    box-shadow: inset 0 0 0 1px var(--on-surface);
+}
+
+.pf-avail[data-state="away"] .pf-avail__dot {
+    background: transparent;
+}
+
+.pf-avail[data-state="away"] .pf-avail__badge {
+    color: var(--text-secondary);
+}
+
+.pf-avail__sep {
+    color: var(--on-surface-variant);
+}
+
+.pf-avail__clock {
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+}
+
+.pf-avail__next {
+    margin: 0;
+    font-size: var(--text-xs);
+}
+
+.pf-avail__lines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-avail__line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.pf-avail__days {
+    min-inline-size: 5rem;
+    color: var(--on-surface);
+}
+
+.pf-avail__zone {
+    margin: 0;
+    font-size: var(--text-xs);
+}
+
+.pf-avail__link {
+    color: var(--on-surface);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.pf-avail__link:hover {
+    color: var(--text-secondary);
+}
+
+.pf-avail__link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+    border-radius: var(--radius-xs);
+}
+
+/* #endregion */
+
+/* #region At a glance */
+.pf-glance {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-inline-size: 0;
+}
+
+.pf-glance__facts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+}
+
+.pf-glance__fact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug, 1.35);
+}
+
+.pf-glance__label {
+    color: var(--text-secondary);
+}
+
+.pf-glance__label::after {
+    content: ":";
+}
+
+.pf-glance__value {
+    margin: 0;
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+}
+
+.pf-glance__from,
+.pf-glance__unit {
+    color: var(--text-secondary);
+}
+
+.pf-glance__unit {
+    margin-inline-start: var(--space-1);
+}
+
+.pf-marks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-mark__icon {
+    color: var(--pf-tag-ink);
 }
 
 /* #endregion */

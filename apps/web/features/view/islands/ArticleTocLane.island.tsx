@@ -5,7 +5,7 @@ import "@features/profile/styles/profile-skeleton.css";
 import "../styles/article-view.css";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
-import { ViewIcon } from "../components/view-glyphs.tsx";
+import { Icon } from "@projective/ui/icons";
 import { activeTocId } from "../core/view-state.ts";
 import type { ArticleTocEntry } from "@projective/types/explore";
 
@@ -109,7 +109,7 @@ export default function ArticleTocLane({ toc, readLabel }: ArticleTocLaneProps):
 			<div class="pf-lane__full">
 				<div class="pf-lane__header vw-lane__header art-toclane__header">
 					<span class="art-toclane__title">
-						<ViewIcon name="list" size={18} />
+						<Icon name="list" />
 						<span>Contents</span>
 					</span>
 					<span class="art-toclane__read">{readLabel}</span>

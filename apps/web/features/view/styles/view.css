@@ -95,7 +95,8 @@
 }
 
 /* An SVG arrow does not mirror itself — the glyph is drawn, so flip it in the mirrored direction. */
-[dir="rtl"] .vw__back-arrow {
+[dir="rtl"] .vw__back-arrow,
+[dir="rtl"] .view-schedule__back .ui-icon {
     transform: scaleX(-1);
 }
 
@@ -363,15 +364,28 @@
     border-radius: var(--radius-full);
 }
 
+/* The section-header register over the title (§A.4): what this page IS, so the title can be the
+   listing's own name rather than "Name — Schedule". */
+.view-schedule__eyebrow {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
 /* A page title, sized like one. It measured 21.6px — below several body elements on the sibling route
-   it is reached from, so the schedule read as a fragment rather than a destination. */
+   it is reached from, so the schedule read as a fragment rather than a destination. `--fw-medium`,
+   never bold (§A.4): at `--text-2xl` the size carries the claim. */
 .view-schedule__title {
     margin: 0;
     font-size: var(--text-2xl);
-    font-weight: var(--fw-bold);
+    font-weight: var(--fw-medium);
     line-height: var(--leading-tight);
     letter-spacing: var(--tracking-tight);
     color: var(--on-surface);
+    text-wrap: balance;
 }
 
 .view-schedule__sub {
@@ -601,11 +615,13 @@
     gap: var(--space-1);
 }
 
+/* A figure, not a heading — strong emphasis is allowed here; it is `tabular-nums` because it changes. */
 .vw-revagg__avg {
     font-size: var(--text-3xl);
-    font-weight: var(--fw-bold);
+    font-weight: var(--fw-semibold);
     line-height: var(--leading-tight);
     letter-spacing: var(--tracking-tight);
+    font-variant-numeric: tabular-nums;
 }
 
 .vw-revagg__count {

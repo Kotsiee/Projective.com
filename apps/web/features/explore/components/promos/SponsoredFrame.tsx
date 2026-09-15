@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import { vars } from "@features/marketing/core/style.ts";
 import type { SponsoredSlot } from "../../types/explore-types.ts";
 
@@ -26,7 +27,10 @@ export function SponsoredFrame({ slot }: { slot: SponsoredSlot }): JSX.Element {
 						<Avatar image={slot.owner.avatar} alt="" size="sm" class="ex-owner__avatar" />
 						<span class="ex-owner__name">{slot.owner.name}</span>
 					</span>
-					<span class="ex-cta">{slot.cta} →</span>
+					<span class="ex-cta">
+						<span>{slot.cta}</span>
+						<Icon name="arrow-right" aria-hidden />
+					</span>
 				</div>
 			</div>
 		</a>

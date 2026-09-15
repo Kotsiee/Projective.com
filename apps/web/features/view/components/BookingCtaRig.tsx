@@ -137,8 +137,9 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				return onPrimaryPurchase ? await onPrimaryPurchase() : false;
 
 			case "open_project":
+			case "view_schedule":
 			case "unavailable":
-				// Neither writes: one is a link (rendered as `CtaLink` below) and the other is refused.
+				// None of these writes: two are links (rendered as `CtaLink` below) and one is refused.
 				return false;
 		}
 		return false;
@@ -195,7 +196,27 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				<p class="evp-cta__reason">{cta.primary.disabledReason}</p>
 			)}
 
-			{cta.secondary && onAddToBasket && (
+			{
+				/*
+			  The SECONDARY. Two shapes, dispatched on the kind the SSOT resolved:
+
+			  - a NAVIGATION (`view_schedule`) — the scheduled formats' Proactive Calendar entry, the
+			    full-page schedule leaf. A real anchor, `outlined`, and it runs no feedback cycle
+			    because the navigation IS the feedback.
+			  - the basket line — the write, with its own pending/settled cycle and its own handler.
+			*/
+			}
+			{cta.secondary?.kind === "view_schedule" && cta.secondary.href && (
+				<CtaLink
+					label={cta.secondary.label}
+					ariaLabel={cta.secondary.ariaLabel}
+					href={cta.secondary.href}
+					tone="brand"
+					variant="outlined"
+					icon={<Icon name="calendar" size="sm" aria-hidden />}
+				/>
+			)}
+			{cta.secondary?.kind === "add_to_basket" && onAddToBasket && (
 				<CtaButton
 					label={inBasket ? "In basket" : cta.secondary.label}
 					settledLabel="Added"

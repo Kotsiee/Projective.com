@@ -373,22 +373,34 @@ every `@handle` on the platform — a card's owner line, a message sender, a rev
 row — and its job is to make an entity's **work, standing and story** legible in one screen, not to
 list every table the entity has a row in.
 
-**One page, four sections.** The profile is a single column: a split hero, a context bar, and a
-four-section tab bar over the routed section body. **Work** (the index) shows the client proof, the
-packaged services, the completed projects, the portfolio, and — for a team, business or
-organisation — the roster. **Experience** shows a person's career history, education and verified
-certifications, and renders only for an individual (a company has no CV). **Reviews** is the
-dual-track reputation. **Posts** is what the entity has published. There is no fifth section; a
-fact that fits none of the four does not get a tab, it gets a line in the context bar or nothing.
+**One page, four sections — and a seller's listings above them.** The profile is a single column:
+a split hero, a context bar, a seller's **Services row**, and a four-section tab bar over the routed
+section body. The Services row is its own region because it is the thing a seller is hired
+through: it renders directly above the tabs on EVERY section — one row of listings at first, with a
+"Show all" disclosure when more exist — so it never depends on which section a visitor arrived at.
+**Work** (the index) shows the client proof, the completed projects, the portfolio, and — for a
+team, business or organisation — the roster. **Experience** shows a person's career history,
+education and verified certifications, and renders only for an individual (a company has no CV).
+**Reviews** is the dual-track reputation, filterable in place by the stance the profile held (all ·
+as freelancer · as client). **Posts** is what the entity has published. There is no fifth section;
+a fact that fits none of the four does not get a tab, it gets a line in the context bar or nothing.
 
 **The hero states identity, proof and one conversion.** Avatar · name · `@handle` and entity kind ·
-**Message** (primary) · **Follow** (secondary) · three inline metrics — the rating, completed
-stages, and the earned Standing rung (with delivered volume, when disclosed) — beside a showcase
-frame that holds a looping showreel or a high-resolution cover. When no showcase is uploaded the
-hero collapses to a single typography-first column; it never renders an empty frame, because an
-empty frame is a placeholder and a placeholder is an invitation nobody asked for. There is no
-"Hire" control on a profile: a seller is hired through a listing in Work, which names what is
-being bought, and a control that cannot name it would only route to that section anyway.
+the action rig · three inline metrics — the rating, completed stages, and the earned Standing rung
+(with delivered volume, when disclosed) — beside a showcase frame that holds a looping showreel or
+a high-resolution cover, on one soft corner. When no showcase is uploaded the hero collapses to a
+single typography-first column; it never renders an empty frame, because an empty frame is a
+placeholder and a placeholder is an invitation nobody asked for. The rig depends on what the entity
+IS: a **seller** (freelancer · team) leads with **Hire** — the prominent primary — with Message and
+Follow folded into compact icon-only secondaries beside it; a **buyer** (client · business ·
+organisation) cannot be hired, so **Message** stays its primary with Follow as its secondary. Hire
+is honest about what it can name: it lands on the seller's Services row when there is a listing to
+buy, and opens the conversation when there is none — the only way to hire somebody with nothing
+listed is to ask. A **guest** who presses Follow or Message is not bounced off the page: a sign-in
+prompt explains what the action needs and offers the standard sign-in ⁄ create-account flow with a
+return path back to this profile. Following is acknowledged with a brief, decorative
+micro-interaction (a settle on the control and a small burst) that reduced-motion removes. On a
+phone, Message opens a bottom sheet rather than a floating window.
 
 **Colour is reserved for what the entity uploaded.** The profile chrome is monochrome — the neutral
 ramp, the ink, one hairline — so the avatar, the showreel and the portfolio tiles are the only
@@ -396,11 +408,19 @@ colour on the page and therefore the first thing the eye lands on. Tags and clie
 grayscale for the same reason: a logo strip in six brand palettes competes with the work it is
 meant to vouch for.
 
-**Availability, presence and clocks are not part of a profile.** The availability calendar remains
-a bookable surface where a listing needs it (`/view/[id]/schedule`, and the `/[handle]/availability`
-route for anyone holding its address), but a profile no longer shows a local time, an "online"
-pip, or an availability label — they were the three facts on the old page that could be wrong
-without anyone noticing, and none of them tells a visitor anything Work and Reviews do not.
+**Availability and the at-a-glance facts live in the context bar — derived, never asserted.** A
+seller who has published working hours gets an availability block: the weekly schedule ("Mon–Fri ·
+9:00 AM – 5:30 PM"), a live **Available now ⁄ Away** badge with its next edge, and the seller's
+current local time — every one of them DERIVED from the same weekly bands the bookable
+`/[handle]/availability` calendar paints and from the clock, so the badge cannot say something the
+calendar contradicts. Presence (an "online" pip) is still not shown: it is the one of the old three
+facts that has no data behind it a visitor can check. Beside the block, the at-a-glance facts: the
+measured average response time, the **Fast responder** mark (earned against the SAME threshold the
+discovery card's "Fast replies" chip uses), the **Free consultation** mark (a disclosure of a
+courtesy discovery call the seller actually offers), and an estimated project spend — the cheapest
+starting rate across the seller's listings, resolved through the same rule the service cards print.
+A fact that is unmeasured or absent is omitted whole; nothing on the bar is inferred from a
+neighbouring signal.
 
 **Every retired address still resolves.** The eleven legacy tabs (`services` · `products` ·
 `projects` · `portfolio` · `education` · `articles` · `teams` · `businesses` · `members` ·

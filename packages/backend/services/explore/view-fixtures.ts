@@ -12,6 +12,7 @@ import type {
 	EntityMedia,
 	EntityPricing,
 	EntityReview,
+	EntitySeller,
 	EntityView,
 	ExploreItem,
 	ExploreOwner,
@@ -1459,10 +1460,29 @@ function productViewFor(product: ProductItem): ProductViewExtra {
 }
 // #endregion
 
+// #region Seller
+/**
+ * The seller facts the provider line prints beside the owner attribution — resolved from the SAME
+ * profile projection the project banner reads (`findProfile`), so a listing's provider line and the
+ * profile it links to agree about the seller's Standing and tier. A handle the profile corpus cannot
+ * resolve yields `null` facts, never a fabricated rung.
+ */
+function sellerFor(item: ExploreItem): EntitySeller {
+	const prof = findProfile(item.owner.handle);
+	if (!prof) return { headline: "", tier: null, standing: null };
+	return {
+		headline: prof.headline,
+		tier: prof.verified ? prof.tier : null,
+		standing: prof.stats.standing,
+	};
+}
+// #endregion
+
 /** Compose the full Entity View payload for a resolved discovery item. */
 export function buildViewPage(item: ExploreItem): EntityView {
 	return {
 		item,
+		seller: sellerFor(item),
 		gallery: galleryFor(item),
 		pricing: pricingFor(item),
 		trust: trustFor(item),

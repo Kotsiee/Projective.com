@@ -38,7 +38,7 @@ export default define.page<typeof handler>(function ProfileEntitySchedulePage({ 
 				<ViewStyleAnchor />
 				<div class="view-schedule__head">
 					<a class="view-schedule__back" href={backHref}>
-						<Icon name="arrow-left" size="sm" class="vw__back-arrow" />
+						<Icon name="arrow-left" size="sm" aria-hidden />
 						<span>Back to the listing</span>
 					</a>
 				</div>
@@ -58,14 +58,22 @@ export default define.page<typeof handler>(function ProfileEntitySchedulePage({ 
 		);
 	}
 
+	/*
+	 * `ViewStyleAnchor` is load-bearing on THIS branch too, not only the empty one: the calendar
+	 * island carries the engine's own sheets and nothing else, so without the anchor the leaf's back
+	 * link, title and gutters shipped with zero rules — a default blue underlined anchor flush against
+	 * the viewport edge above a fully styled calendar. Measured before the mount existed.
+	 */
 	return (
 		<section class="view-schedule" aria-label="Schedule">
+			<ViewStyleAnchor />
 			<div class="view-schedule__head">
 				<a class="view-schedule__back" href={backHref}>
-					<Icon name="arrow-left" size="sm" class="vw__back-arrow" />
+					<Icon name="arrow-left" size="sm" aria-hidden />
 					<span>Back to {schedule.title}</span>
 				</a>
-				<h1 class="view-schedule__title">{schedule.title} — Schedule</h1>
+				<p class="view-schedule__eyebrow">Schedule</p>
+				<h1 class="view-schedule__title">{schedule.title}</h1>
 				{schedule.subtitle ? <p class="view-schedule__sub">{schedule.subtitle}</p> : null}
 			</div>
 			<ScheduleView scope="schedule" entityId={data.item} initial={schedule} />

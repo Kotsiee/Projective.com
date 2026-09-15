@@ -1,0 +1,127 @@
+/*
+ * profile-services — a seller's listings as their own region between the context bar and the
+ * section tabs, on every section. The cards are the explore `ServicesGrid` verbatim (neutralised to
+ * monochrome by the `.pf .ex-*` overrides in profile-work.css); this sheet owns the ONE-ROW CLAMP and
+ * the disclosure beneath it.
+ *
+ * The clamp is pure CSS: collapsed, the grid keeps its first row and gives every later row a zero
+ * track (`grid-auto-rows: 0`, no row gap) under `overflow: hidden`, so the column count stays the
+ * grid's own and no script re-derives it. The island only decides WHICH cells fell below the first
+ * row and stamps them `data-hidden`, which takes them out of the tab order and the accessibility tree
+ * — a focusable link behind a clip is worse than no link.
+ */
+
+/* #region Region */
+.pf-services {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    /* The hero's Hire control lands here — clear the sticky header, not just the viewport top. */
+    scroll-margin-block-start: calc(var(--shell-topbar-h, 3rem) + var(--space-4));
+}
+
+.guest-shell .pf-services {
+    scroll-margin-block-start: calc(var(--site-header-pinned-h, 4.25rem) + var(--space-4));
+}
+
+.pf-services__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.pf-services__grid {
+    min-inline-size: 0;
+}
+
+/* #endregion */
+
+/* #region One-row clamp */
+.pf-services__row[data-expanded="false"] .ui-grid {
+    grid-template-rows: auto;
+    grid-auto-rows: 0;
+    row-gap: 0;
+    overflow: hidden;
+}
+
+.pf-services__row [data-hidden="true"] {
+    visibility: hidden;
+}
+
+/* #endregion */
+
+/* #region Disclosure */
+.pf-services__more {
+    display: flex;
+    justify-content: center;
+}
+
+.pf-services__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transform: scale(1);
+    transition: background-color var(--dur-fast) var(--ease-standard),
+        color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
+}
+
+.pf-services__toggle:hover {
+    background: var(--surface-1);
+}
+
+.pf-services__toggle:active {
+    transform: scale(var(--btn-press-scale));
+    transition-duration: var(--dur-press);
+}
+
+.pf-services__toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-services__toggle-icon {
+    color: var(--text-secondary);
+    transition: transform var(--dur-medium) var(--ease-standard);
+}
+
+.pf-services__toggle[aria-expanded="true"] .pf-services__toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-services__toggle,
+    .pf-services__toggle:active {
+        transform: none;
+        transition: none;
+    }
+
+    .pf-services__toggle-icon {
+        transition-duration: 0ms;
+    }
+}
+
+:root[data-motion="reduced"] .pf-services__toggle,
+:root[data-motion="reduced"] .pf-services__toggle:active {
+    transform: none;
+    transition: none;
+}
+
+:root[data-motion="reduced"] .pf-services__toggle-icon {
+    transition-duration: 0ms;
+}
+
+/* #endregion */

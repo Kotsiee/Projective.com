@@ -841,6 +841,18 @@
 				"--strictPort"
 			],
 			"port": 12073
+		},
+		{
+			"name": "web-pfcta",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"12173",
+				"--strictPort"
+			],
+			"port": 12173
 		}
 	]
 }

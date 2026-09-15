@@ -59,6 +59,32 @@ Deno.test("a session offers no basket secondary — a booking needs a time", () 
 	const rig = resolveCta({ ...base, format: "session" });
 	assertEquals(rig.primary.label, "Book session");
 	assertEquals(rig.secondary, null);
+	// With a schedule leaf on offer the secondary is a NAVIGATION to it, still never a basket line.
+	const withLeaf = resolveCta({ ...base, format: "session", scheduleHref: "/view/x/schedule" });
+	assertEquals(withLeaf.secondary?.kind, "view_schedule");
+	assertEquals(withLeaf.secondary?.href, "/view/x/schedule");
+	assertEquals(withLeaf.secondary?.disabled, false);
+});
+
+Deno.test("only the scheduled formats take the schedule leaf; the primary never does", () => {
+	const scheduleHref = "/view/x/schedule";
+	for (const format of ["session", "set_session", "cohort"] as const) {
+		const rig = resolveCta({ ...base, format, seatsRemaining: 3, scheduleHref });
+		assertEquals(rig.secondary?.kind, "view_schedule", `${format} secondary`);
+		// The in-page picker is the flow that reaches checkout; the leaf is the calendar, not the sale.
+		assertEquals(rig.primary.kind, "open_scheduler", `${format} primary`);
+		assertEquals(rig.primary.href, null, `${format} primary href`);
+	}
+	for (const format of ["pipeline", "one_off", "single_task", "product"] as const) {
+		const rig = resolveCta({ ...base, format, scheduleHref });
+		assertEquals(rig.secondary?.kind !== "view_schedule", true, `${format} takes no schedule link`);
+	}
+});
+
+Deno.test("a full cohort keeps the schedule link — the next cohort is the answer to 'full'", () => {
+	const rig = resolveCta({ ...base, format: "cohort", seatsRemaining: 0, scheduleHref: "/v/s" });
+	assertEquals(rig.primary.disabled, true);
+	assertEquals(rig.secondary?.kind, "view_schedule");
 });
 
 Deno.test("a set-session block names its size and pluralises correctly", () => {

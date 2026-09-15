@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { AudioVisualizer } from "@projective/ui/display";
 import "../styles/article-view.css";
+import { Icon } from "@projective/ui/icons";
 import { ViewIcon } from "../components/view-glyphs.tsx";
 import type { ArticleBlock } from "@projective/types/explore";
 
@@ -43,7 +44,7 @@ function YouTubeEmbed({ block }: { block: ArticleBlock }): JSX.Element {
 						>
 							<img class="art-embed__poster" src={poster} alt="" loading="lazy" />
 							<span class="art-embed__badge" aria-hidden="true">
-								<ViewIcon name="play" size={26} />
+								<Icon name="play" size="lg" />
 							</span>
 							{block.title ? <span class="art-embed__title">{block.title}</span> : null}
 						</button>
@@ -85,7 +86,7 @@ function renderBlock(block: ArticleBlock, i: number): JSX.Element | null {
 					{block.title
 						? (
 							<figcaption class="art-audio__title">
-								<ViewIcon name="audio" size={16} />
+								<ViewIcon name="audio" />
 								<span>{block.title}</span>
 							</figcaption>
 						)

@@ -1,5 +1,6 @@
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
+import type { ServiceItem } from "@projective/types/explore";
 
 /**
  * profile-ssr — the SERVER-ONLY bootstrap the `[handle]` middleware + sub-routes use to paint the
@@ -18,4 +19,13 @@ export function resolveProfile(handle: string): ProfileView | null {
 export function resolveProfileTab(handle: string, tab: ProfileTab): ProfileTabPayload | null {
 	const res = ProfileBackendService.tab(handle, tab);
 	return res.ok && res.data ? res.data.payload : null;
+}
+
+/**
+ * Resolve the profile's active service listings for SSR — the Services row above the section tabs
+ * and the context bar's spend floor. `[]` when the handle didn't resolve or the entity sells nothing.
+ */
+export function resolveProfileServices(handle: string): ServiceItem[] {
+	const res = ProfileBackendService.services(handle);
+	return res.ok && res.data ? res.data.services : [];
 }

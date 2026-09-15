@@ -1,10 +1,12 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
+import { Tooltip } from "@projective/ui/feedback";
 import { Avatar, RatingStars } from "@projective/ui/display";
 import { displayCurrency, displayLocale, formatMoney } from "@projective/ui/display/money";
-import type { EntityView } from "@projective/types/explore";
+import type { EntitySeller, EntityView } from "@projective/types/explore";
+import { TIER_META } from "@features/profile/components/profile-glyphs.tsx";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
-import { sellerBadges } from "../core/view-model.ts";
+import { OWNER_KIND_LABEL, sellerBadges } from "../core/view-model.ts";
 
 /**
  * Entity View — the unboxed composition primitives.
@@ -304,7 +306,11 @@ export function PriceOrigin(
 
 // #region Seller line
 /**
- * The seller line — avatar, name, one compact rating, then earned signals as TEXT LINKS (§B.11.4).
+ * The seller line — the provider's identity as the profile hero states it, at a listing's scale.
+ *
+ * Avatar · name · the verification crest (its attained TIER on hover, the same `TIER_META` copy the
+ * profile hero uses) · one aggregate score as ONE anchor to the reviews · then the earned signals as
+ * TEXT (§B.11.4). Beneath it, the profile hero's own meta register: `@handle · kind · Standing`.
  *
  * Shared by every archetype's hero, including a project's (where the "seller" is the client who
  * posted the brief). The signals carry an explanation rather than a fill: six earned badges beside
@@ -315,22 +321,53 @@ export function PriceOrigin(
  * Two thresholds for one badge is how a seller comes to read "Top rated" in the lane and unmarked
  * eighteen inches to its left, on the same screen.
  *
+ * The Standing rung is STATED, never badged (§B.11): it is earned and can never be bought, and a
+ * fill would make it compete with the one lifecycle status whose colour carries meaning. A seller
+ * with no rung and no tier simply gets a shorter line — absence, never "New" or "L0".
+ *
  * `avatar` is off where the hero already carries the owner's face (the project banner strip), so one
  * identity is never drawn twice in one block. `headline` is the owner's role line, Meta register.
  */
 export function SellerLine(
-	{ item, rating, responseMinutes, avatar = true, headline }: {
+	{ item, seller, rating, responseMinutes, avatar = true, headline, reviewsHref }: {
 		item: EntityView["item"];
+		/** The seller's Standing and tier, from the composed view. Optional for the article template. */
+		seller?: EntitySeller;
 		rating: { value: number; count: number } | null;
 		responseMinutes?: number;
 		avatar?: boolean;
 		headline?: string;
+		/** The reviews anchor the aggregate score jumps to. Omitted where the page renders none. */
+		reviewsHref?: string;
 	},
 ): JSX.Element {
 	const signals: TrustSignal[] = sellerBadges(item, responseMinutes).map((badge) => ({
 		label: badge.label,
 		explanation: explainBadge(badge.id, item, rating, responseMinutes),
 	}));
+	const tier = seller?.tier ? TIER_META[seller.tier] : null;
+	const handle = item.owner.handle.replace(/^@/, "");
+
+	/*
+	 * ONE count. The compact stars print `(45)` themselves; when the score is an anchor into the
+	 * reviews the count is spelled out as the link's own words instead, so the same number is never
+	 * printed twice on one line.
+	 */
+	const score = rating && (
+		<>
+			<RatingStars
+				value={rating.value}
+				count={reviewsHref ? undefined : rating.count}
+				compact
+				size="sm"
+			/>
+			{reviewsHref && (
+				<span class="evp-seller__ratingcount">
+					{rating.count} {rating.count === 1 ? "review" : "reviews"}
+				</span>
+			)}
+		</>
+	);
 
 	return (
 		<div class="evp-seller">
@@ -338,12 +375,69 @@ export function SellerLine(
 				{avatar && <Avatar image={item.owner.avatar} label={item.owner.name} size="sm" />}
 				<span class="evp-seller__name">{item.owner.name}</span>
 				{item.owner.verified && (
-					<Icon name="verified" size="sm" filled class="evp-seller__crest" aria-label="Verified" />
+					tier
+						? (
+							<Tooltip content={tier.title} placement="top">
+								<Icon
+									name="verified"
+									size="sm"
+									filled
+									class="evp-seller__crest"
+									title={tier.title}
+								/>
+							</Tooltip>
+						)
+						: (
+							<Icon
+								name="verified"
+								size="sm"
+								filled
+								class="evp-seller__crest"
+								title="Verified"
+							/>
+						)
 				)}
 			</a>
 			{headline && <span class="evp-seller__headline">{headline}</span>}
-			{rating && <RatingStars value={rating.value} count={rating.count} compact size="sm" />}
+			{score && (reviewsHref
+				? (
+					<a
+						class="evp-seller__rating"
+						href={reviewsHref}
+						aria-label={`Rated ${rating!.value.toFixed(1)} out of 5 from ${rating!.count} ${
+							rating!.count === 1 ? "review" : "reviews"
+						} — jump to the reviews`}
+					>
+						{score}
+					</a>
+				)
+				: <span class="evp-seller__rating">{score}</span>)}
 			<TrustSignals signals={signals} />
+
+			{
+				/*
+			  The explicit `{" "}` text nodes are for assistive tech, not for layout: a flex row ignores
+			  whitespace-only text between its items, but a screen reader reads the DOM, and three
+			  adjacent spans with no whitespace between them are read as ONE word ("@junoFreelancer").
+			*/
+			}
+			<p class="evp-seller__meta">
+				<span class="evp-seller__handle">@{handle}</span>
+				{" "}
+				<span class="evp-seller__dot" aria-hidden="true">·</span>
+				{" "}
+				<span>{OWNER_KIND_LABEL[item.owner.kind]}</span>
+				{seller?.standing && (
+					<>
+						{" "}
+						<span class="evp-seller__dot" aria-hidden="true">·</span>
+						{" "}
+						<span class="evp-seller__standing">{seller.standing.label}</span>
+						{" "}
+						<span class="evp-seller__standingnote">standing</span>
+					</>
+				)}
+			</p>
 		</div>
 	);
 }

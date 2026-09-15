@@ -1,5 +1,4 @@
 import type { ComponentChildren, JSX } from "preact";
-import { ServicesGrid } from "@features/explore/components/collections/ServicesGrid.tsx";
 import { ProjectsList } from "@features/explore/components/collections/ProjectsList.tsx";
 import { ClientProofStrip } from "../work/ClientProofStrip.tsx";
 import { WorkMasonry } from "../work/WorkMasonry.tsx";
@@ -9,11 +8,11 @@ import type { ProfileTabPayload, ProfileView } from "../../types/profile-types.t
 /**
  * WorkTab — the profile's index section, as a stack of sections each omitted when its data is
  * empty: the client-proof strip · Selected work (the portfolio masonry, first because it is the
- * thing a visitor came to look at) · Services (the seller's listings, through the SAME explore grid
- * `/explore` renders) · Hiring now (a buyer's open briefs) · Completed projects · People (the
- * roster of a team / business / organisation). Every collection is
- * a server component; the sheet is `profile-work.css`, which reaches the page through the profile
- * islands' barrel import.
+ * thing a visitor came to look at) · Hiring now (a buyer's open briefs) · Completed projects ·
+ * People (the roster of a team / business / organisation). The seller's Services are NOT here: the
+ * layout renders them as their own region above the section tabs (`ProfileServicesSection`), so
+ * they stay on screen whichever section is routed. Every collection is a server component; the
+ * sheet is `profile-work.css`, which reaches the page through the profile islands' barrel import.
  */
 export function WorkTab(
 	{ profile, payload, authed }: {
@@ -31,11 +30,6 @@ export function WorkTab(
 			{payload.pieces.length > 0 && (
 				<WorkSection title="Selected work">
 					<WorkMasonry pieces={payload.pieces} />
-				</WorkSection>
-			)}
-			{payload.services.length > 0 && (
-				<WorkSection title="Services" count={payload.services.length}>
-					<ServicesGrid items={payload.services} authed={authed} />
 				</WorkSection>
 			)}
 			{payload.openProjects.length > 0 && (
@@ -62,14 +56,11 @@ export function WorkTab(
 }
 
 function WorkSection(
-	{ title, count, children }: { title: string; count?: number; children: ComponentChildren },
+	{ title, children }: { title: string; children: ComponentChildren },
 ): JSX.Element {
 	return (
 		<section class="pf-work__section">
-			<h2 class="pf-h">
-				{title}
-				{count !== undefined && <span class="pf-h__count">{count}</span>}
-			</h2>
+			<h2 class="pf-h">{title}</h2>
 			{children}
 		</section>
 	);

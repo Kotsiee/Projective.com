@@ -107,9 +107,11 @@
 	* once in Decision #79 and routed around — so it ships as specified, with the cost recorded rather
 	* than quietly re-decided a second time.
 	*
-	* `#ffffff` is the one raw colour in this sheet, declared ONCE here so no rule downstream reaches
-	* for a hex of its own. "White in both themes" is not expressible as a token: every ink token in
-	* this system is defined to flip with the theme, which is exactly the behaviour being overridden.
+	* "White in both themes" IS expressible as a token now: the theme engine resolves `--on-primary`
+	* from the SAME near-white tone in both branches (`a1.tone(98)`, the mode-invariant brand pair of
+	* Decision #92), so the ink no longer needs a raw hex to stay put across the theme flip. The sheet
+	* carries zero literal colours; marks that sit over photography take `--on-scrim`, the ink the
+	* design system already pairs with `--scrim`.
 	*
 	* Consequence handled, not inherited: the primary now occupies the brand fill the SECONDARY used
 	* to hold, so the secondary steps down to `outlined`. Two identical teal fills, one of which buys
@@ -119,7 +121,7 @@
     --evp-cta-h: 2.25rem;
     --evp-cta-fs: var(--text-sm);
     --evp-cta-primary-fill: var(--primary);
-    --evp-cta-primary-ink: #ffffff;
+    --evp-cta-primary-ink: var(--on-primary);
     --evp-cta-brand-fill: var(--primary);
     --evp-cta-brand-ink: var(--primary);
 
@@ -212,6 +214,7 @@
     gap: var(--evp-gap-section);
     padding-block: var(--space-5) var(--space-7);
     padding-inline: var(--space-5);
+    font-family: var(--font-sans);
     /* No `max-inline-size`. The shell already insets the content region — the guest gutter or the
 	* L-shell's rail and frame — and capping it a second time strands width while the shell is still
 	* reserving its own inset outside that cap (the /explore finding, Decision #77). */
@@ -233,6 +236,12 @@
     /* The band is in-flow here and the hero starts one page-gutter below it — pin to the hero. */
     --evp-pin-top: var(--evp-frame-top);
     --evp-pin-lift: 0px;
+}
+
+/* An SVG arrow does not mirror itself under `dir="rtl"` — the glyph is drawn, so it is flipped. */
+[dir="rtl"] .evp__back .ui-icon,
+[dir="rtl"] .evp-navstrip__back .ui-icon {
+    transform: scaleX(-1);
 }
 
 .evp__back {
@@ -593,7 +602,12 @@
     padding: 0;
     border: none;
     overflow: clip;
-    border-radius: var(--radius-lg);
+    /*
+	* The primary canvas takes the CONTAINER curvature, not a card corner: it is the one boxed region
+	* the page has, and `--radius-container-xl` is the fluid ramp the nav shell already curves its
+	* panels on, so the artefact's frame and the frame the page sits in read as one geometry.
+	*/
+    border-radius: var(--radius-container-xl);
     background: var(--surface-1);
 }
 
@@ -626,7 +640,7 @@
     inline-size: 2rem;
     block-size: 2rem;
     border-radius: var(--radius-full);
-    color: #ffffff;
+    color: var(--on-scrim);
     background: color-mix(in srgb, var(--scrim) 62%, transparent);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -751,7 +765,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
+    color: var(--on-scrim);
     background: color-mix(in srgb, var(--scrim) 62%, transparent);
     font-size: var(--text-sm);
     font-weight: var(--fw-medium);
@@ -829,12 +843,72 @@
 .evp-seller__crest {
     color: var(--primary);
     flex: none;
+    --icon-knockout: var(--on-primary);
+}
+
+/* The aggregate score is one anchor to the reviews — stars, figure and count together, never a
+   count that navigates beside stars that do not. */
+.evp-seller__rating {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--on-surface);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp-seller__rating:hover .evp-seller__ratingcount {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.evp-seller__ratingcount {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
 }
 
 /* The owner's role line — Meta register, beside the name. A fact, so no container (§B.11.2). */
 .evp-seller__headline {
     font-size: var(--text-sm);
     color: var(--text-secondary);
+}
+
+/*
+ * The identity meta line under the seller's name — `@handle · kind · Standing` — the profile hero's
+ * own `.pf-hero__meta` register (`--text-sm`, `--text-secondary`, middots in `--on-surface-variant`).
+ * Every item is a fact and none is a control, so none of them takes a container (§B.11.2): the
+ * Standing rung in particular is EARNED and can never be bought, so it is stated, not badged.
+ */
+.evp-seller__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-basis: 100%;
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--text-secondary);
+}
+
+.evp-seller__handle {
+    font-variant-numeric: tabular-nums;
+}
+
+.evp-seller__dot {
+    color: var(--on-surface-variant);
+}
+
+.evp-seller__standing {
+    color: var(--on-surface);
+    font-weight: var(--fw-medium);
+}
+
+/* The word that says WHAT the rung is — the metric caption of the profile strip, inline. It sits
+   one sub-step closer to its value than the row gap, so the pair reads as one fact. */
+.evp-seller__standingnote {
+    margin-inline-start: calc(var(--space-px) - var(--space-2));
 }
 
 /* ============================================================================
@@ -948,7 +1022,7 @@
 
 .evp-meta__sep {
     padding-inline: var(--space-2);
-    color: var(--text-disabled);
+    color: var(--on-surface-variant);
 }
 
 /* ============================================================================
@@ -1104,7 +1178,7 @@
 }
 
 .evp-perms__row[data-allowed="no"] .evp-perms__mark {
-    color: var(--text-disabled);
+    color: var(--on-surface-variant);
 }
 
 .evp-perms__text {
@@ -1185,7 +1259,7 @@
 
 .evp-signals__sep {
     padding-inline: var(--space-2);
-    color: var(--text-disabled);
+    color: var(--on-surface-variant);
 }
 
 .evp-signals__text {
@@ -1338,7 +1412,7 @@
 }
 
 .evp-track__pricesep {
-    color: var(--text-disabled);
+    color: var(--on-surface-variant);
 }
 
 .evp-track__priceunit {
@@ -1440,7 +1514,7 @@
 
 .evp-track__revsep {
     padding-inline: var(--space-2);
-    color: var(--text-disabled);
+    color: var(--on-surface-variant);
 }
 
 .evp-track__revextra {
@@ -1680,7 +1754,7 @@
     font-size: var(--text-3xl);
     font-weight: var(--fw-light);
     line-height: var(--leading-tight);
-    letter-spacing: -0.02em;
+    letter-spacing: var(--tracking-tight);
 }
 
 .evp-price__unit {
@@ -1734,6 +1808,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: var(--space-2);
     inline-size: 100%;
     min-block-size: var(--evp-cta-h);
     padding-inline: var(--space-4);
@@ -1749,6 +1824,23 @@
 
 .evp-cta__link:hover {
     background: color-mix(in srgb, var(--evp-cta-primary-fill) 88%, var(--bg));
+}
+
+/*
+ * The OUTLINED link — the scheduled formats' "Full schedule" secondary. It mirrors
+ * `.ui-button--outlined` declaration for declaration (transparent ground, accent ink AND border, a
+ * soft accent tint on hover) so a navigating secondary and a writing one rank identically in the rig.
+ * `--fld-bw` is the same border width every field control draws, so the pill's box matches the
+ * button beside it to the pixel.
+ */
+.evp-cta__link--outlined {
+    border: var(--fld-bw) solid var(--evp-cta-brand-ink);
+    background: transparent;
+    color: var(--evp-cta-brand-ink);
+}
+
+.evp-cta__link--outlined:hover {
+    background: color-mix(in srgb, var(--evp-cta-brand-ink) var(--tint-soft), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2623,7 +2715,8 @@ a.evp-cta__btn--inverted {
     inline-size: 100%;
     min-inline-size: 0;
     min-block-size: var(--evp-sched-min-h);
-    border-radius: var(--radius-lg);
+    /* The scheduler stage stands where the media canvas stands, so it takes the same curvature. */
+    border-radius: var(--radius-container-xl);
     overflow: hidden;
     background: var(--surface-1);
 }

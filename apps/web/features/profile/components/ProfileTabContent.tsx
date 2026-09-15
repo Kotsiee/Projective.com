@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import TabCreateButton from "../islands/TabCreateButton.island.tsx";
-import { TAB_LABEL } from "../core/profile-model.ts";
+import { type ReviewStance, TAB_LABEL } from "../core/profile-model.ts";
 import { tabIcon } from "./profile-glyphs.tsx";
 import { ExperienceTab, PostsTab, ReviewsTab, WorkTab } from "./tabs/mod.ts";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "../types/profile-types.ts";
@@ -19,6 +19,8 @@ export interface ProfileTabContentProps {
 	payload: ProfileTabPayload;
 	canEdit: boolean;
 	authed: boolean;
+	/** Reviews only — the stance the URL asked for (`?as=`), so SSR paints the filtered list. */
+	reviewStance?: ReviewStance;
 }
 
 // #region Owner create triggers
@@ -40,13 +42,13 @@ function createFor(tab: ProfileTab): { label: string; noun: string } | null {
 // #region Empty state
 /**
  * How many rows the section actually holds. Work counts every collection the body can render — the
- * client-proof strip alone does not make a Work section, so it is deliberately left out.
+ * client-proof strip alone does not make a Work section, so it is deliberately left out, and so are
+ * the services, which the layout now renders as their own region above the tabs.
  */
 function countFor(tab: ProfileTab, payload: ProfileTabPayload): number {
 	switch (tab) {
 		case "work":
-			return payload.services.length +
-				payload.openProjects.length +
+			return payload.openProjects.length +
 				payload.pastProjects.length +
 				payload.pieces.length +
 				payload.members.length;
@@ -63,7 +65,7 @@ function countFor(tab: ProfileTab, payload: ProfileTabPayload): number {
 
 /** What the section is FOR, in the visitor's terms — the one sentence the empty state teaches. */
 const EMPTY_NOTE: Record<ProfileTab, string> = {
-	work: "Services, completed projects and selected work — what this profile can be hired for.",
+	work: "Completed projects and selected work — what this profile has shipped.",
 	experience: "Roles held, qualifications earned, and the certifications behind them.",
 	reviews: "Reviews arrive once an engagement completes — on both sides of it.",
 	posts: "Written pieces — process notes, case studies, guides.",
@@ -85,7 +87,7 @@ function EmptySection(
 
 // #region Body dispatch
 function sectionBody(
-	{ profile, tab, payload, canEdit, authed }: ProfileTabContentProps,
+	{ profile, tab, payload, canEdit, authed, reviewStance }: ProfileTabContentProps,
 ): JSX.Element {
 	switch (tab) {
 		case "work":
@@ -93,7 +95,7 @@ function sectionBody(
 		case "experience":
 			return <ExperienceTab payload={payload} />;
 		case "reviews":
-			return <ReviewsTab payload={payload} />;
+			return <ReviewsTab payload={payload} stance={reviewStance} />;
 		case "posts":
 			return <PostsTab payload={payload} authed={authed} />;
 	}

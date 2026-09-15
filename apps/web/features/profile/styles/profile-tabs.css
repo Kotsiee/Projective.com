@@ -1,31 +1,57 @@
 /*
- * profile-tabs — the four-section tab bar. Underlined text tabs on ONE shared hairline: the strip
- * draws the hairline, the active tab draws a 2px `--on-surface` underline that lands exactly on it
- * (`inset-block-end: -1px`), so the boundary is one device (§B.4 / §D.4). No pill, no box, no teal.
+ * profile-tabs — the four-section tab bar, the profile's one sticky element. Underlined text tabs on
+ * ONE shared hairline: the strip draws the hairline, the active tab draws a 2px `--on-surface`
+ * underline that lands exactly on it (`inset-block-end: -1px`), so the boundary is one device
+ * (§B.4 / §D.4). No pill, no box, no teal.
  *
- * The bar is sticky under the top chrome so a long masonry keeps its section switcher in reach. Its
- * ground is the SOLID page surface — never glass (§B.4.3) — so the tiles scroll cleanly beneath it.
+ * STICKY, FLUSH UNDER THE HEADER. The bar pins with a zero gap to the bottom edge of whichever shell's
+ * header is above it: the authenticated top bar (`--shell-topbar-h`, 48px), or the guest header's
+ * SCROLLED pill (`--site-header-pinned-h`) — not the guest header's reserved flow band, which is
+ * 1.25rem taller than the floating pill it reserves room for and left a visible seam the tiles
+ * scrolled through. The tabs only ever pin once the page has scrolled well past the pill's
+ * threshold, so the pinned height is the right one at every moment the bar is stuck.
+ *
+ * FULL-BLEED GROUND, CENTRED CONTENT. The bar sits inside the page gutter, so it bleeds back out by
+ * that gutter and pads inward again — its SOLID `--surface` ground (never glass, §B.4.3) then covers
+ * the whole column and the tiles scroll cleanly beneath it edge to edge. The list is centred on the
+ * OUTER row, never on the scroller: `justify-content: center` on an overflowing scroll container
+ * splits the overflow across both ends and strands the first tab, so the row centres and the list
+ * shrinks to content, degrading to a start-anchored scroller only when the tabs genuinely do not fit.
  */
 
 /* #region Strip */
 .pf-tabs {
+    --pf-tabs-inset: var(--space-6);
+
     position: sticky;
     inset-block-start: var(--shell-topbar-h, 3rem);
     z-index: var(--z-raised, 2);
+    display: flex;
+    justify-content: center;
+    margin-inline: calc(-1 * var(--pf-gutter));
+    padding-inline: var(--pf-tabs-inset);
     background: var(--surface);
     border-block-end: var(--hairline);
 }
 
 .guest-shell .pf-tabs {
-    inset-block-start: var(--site-header-h, 5.5rem);
+    inset-block-start: var(--site-header-pinned-h, 4.25rem);
+}
+
+@container pf (max-width: 44rem) {
+    .pf-tabs {
+        --pf-tabs-inset: var(--space-4);
+    }
 }
 
 .pf-tabs__list {
     display: flex;
+    flex: 0 1 auto;
     align-items: stretch;
     gap: var(--space-6);
     margin: 0;
     padding: 0;
+    min-inline-size: 0;
     list-style: none;
     overflow-x: auto;
     scrollbar-width: none;

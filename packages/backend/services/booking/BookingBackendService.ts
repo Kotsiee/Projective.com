@@ -24,12 +24,13 @@ import { findItem } from "../explore/query.ts";
 import { buildViewPage } from "../explore/view-fixtures.ts";
 import { ScheduleBackendService } from "../scheduling/ScheduleBackendService.ts";
 import type { SlotGridInput } from "../scheduling/slot-fixtures.ts";
-import { hash, NOW } from "../scheduling/derive.ts";
+import { NOW } from "../scheduling/derive.ts";
 import { findDraft } from "../projects/draft-store.ts";
 import { BasketBackendService } from "../finance/BasketBackendService.ts";
 import type { BasketQuery } from "../finance/basket-query.ts";
 import { recordQuote } from "./quote-store.ts";
 import { requestDiscoveryCall } from "./call-store.ts";
+import { callOfferKindFor, callOfferSeed, offersCourtesyCall } from "./call-offer.ts";
 
 /**
  * BookingBackendService — the FAT service behind every conversion CTA on a listing page.
@@ -196,21 +197,15 @@ function contactOfferFor(
 	sim?: ServiceSim,
 ): ContactOffer {
 	const handle = item.owner.handle.replace(/^@/, "");
-	const seed = hash(`calls:${handle}`);
+	const seed = callOfferSeed(handle);
 
-	// Which call flavours this owner offers. The dev axis overrides the derivation wholesale rather
-	// than nudging it, so `none` is genuinely reachable — it is the shape most likely to be wrong and
-	// least likely to be looked at.
+	// Which call flavours this owner offers — the ONE derivation the profile's "Free consultation"
+	// mark also reads (`call-offer.ts`). The dev axis overrides it wholesale rather than nudging it, so
+	// `none` is genuinely reachable — it is the shape most likely to be wrong and least likely to be
+	// looked at.
 	const forced = sim?.callOffer;
-	const derived = seed % 4 === 0
-		? "none"
-		: seed % 3 === 0
-		? "paid"
-		: seed % 2 === 0
-		? "both"
-		: "courtesy";
-	const offered = forced ?? derived;
-	const courtesyEnabled = offered === "courtesy" || offered === "both";
+	const offered = forced ?? callOfferKindFor(handle);
+	const courtesyEnabled = offersCourtesyCall(offered);
 	const paidEnabled = offered === "paid" || offered === "both";
 	const takesCalls = courtesyEnabled || paidEnabled;
 
@@ -355,6 +350,7 @@ export class BookingBackendService {
 				seatsRemaining: capacity?.remaining ?? null,
 				draftHref: draft?.boardHref ?? null,
 				bookingsOpen,
+				scheduleHref: scheduleHrefFor(item, opts.handle ?? null),
 			}),
 			contact: contactOfferFor(item, actor, signInHref, opts.sim),
 			capacity,
@@ -894,6 +890,14 @@ function basketQueryFor(actor: BookingActor, serviceId: string): BasketQuery {
 		viewerHandle: actor.handle,
 		viewerId: actor.userId,
 	};
+}
+
+/**
+ * The listing's full-page schedule leaf, in the namespace the viewer is reading it from — the same
+ * scoping rule as the sign-in bounce, so a profile-scoped reader stays under `/{handle}/view/…`.
+ */
+function scheduleHrefFor(item: ExploreItem, handle: string | null): string {
+	return handle ? `/${handle}/view/${item.id}/schedule` : `/view/${item.id}/schedule`;
 }
 
 /** The sign-in bounce that returns to the listing the viewer is on. */

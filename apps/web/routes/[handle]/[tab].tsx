@@ -6,6 +6,8 @@ import { ProfileTabContent } from "@features/profile/components/ProfileTabConten
 import {
 	isOwnProfile,
 	legacyTabTarget,
+	parseReviewStance,
+	type ReviewStance,
 	TAB_LABEL,
 	tabHref,
 	tabsFor,
@@ -56,13 +58,19 @@ export const handler = define.handlers({
 		}
 		const payload = resolveProfileTab(profile.handle, tab);
 		ctx.state.title = `${TAB_LABEL[tab]} · ${profile.name} · Projective`;
-		return page({ tab, payload });
+		// Reviews carries its stance filter in `?as=` so a filtered view is shareable; SSR honours it.
+		const reviewStance = parseReviewStance(ctx.url.searchParams.get("as"));
+		return page({ tab, payload, reviewStance });
 	},
 });
 
 export default define.page<typeof handler>(function ProfileTabPage(ctx) {
 	const profile = ctx.state.profile;
-	const { tab, payload } = ctx.data as { tab: ProfileTab | null; payload: ProfileTabPayload | null };
+	const { tab, payload, reviewStance } = ctx.data as {
+		tab: ProfileTab | null;
+		payload: ProfileTabPayload | null;
+		reviewStance?: ReviewStance;
+	};
 	if (!profile || !tab || !payload) {
 		return <p class="pf-empty__note">This section isn’t available for this profile.</p>;
 	}
@@ -73,6 +81,7 @@ export default define.page<typeof handler>(function ProfileTabPage(ctx) {
 			payload={payload}
 			canEdit={isOwnProfile(profile, ctx.state.userContext)}
 			authed={!!ctx.state.isAuthenticated}
+			reviewStance={reviewStance}
 		/>
 	);
 });

@@ -219,8 +219,10 @@ export function EntityViewPage(
 
 							<SellerLine
 								item={item}
+								seller={view.seller}
 								rating={rating}
 								responseMinutes={view.responseMinutes}
+								reviewsHref={showsCommercialRails(archetype) ? "#evp-reviews" : undefined}
 							/>
 
 							{capacity && archetype === "cohort" && <SeatMeter capacity={capacity} />}

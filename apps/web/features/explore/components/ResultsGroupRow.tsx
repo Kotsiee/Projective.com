@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Icon } from "@projective/ui/icons";
 import { EntityCard } from "./cards/EntityCard.tsx";
 import type { HrefContext } from "../core/routing.ts";
 import type { ResultGroup } from "../types/explore-types.ts";
@@ -30,7 +31,10 @@ export function ResultsGroupRow(
 		<section class="ex-group" aria-labelledby={titleId}>
 			<div class="ex-group__head">
 				<h2 class="ex-group__title" id={titleId}>{group.title}</h2>
-				<a class="ex-viewall" href={showAllHref}>Show all →</a>
+				<a class="ex-viewall" href={showAllHref}>
+					<span>Show all</span>
+					<Icon name="arrow-right" aria-hidden />
+				</a>
 			</div>
 			{isList
 				? (

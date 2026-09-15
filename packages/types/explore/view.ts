@@ -6,6 +6,7 @@ import {
 	RatingTrackSchema,
 	SkillRefSchema,
 } from "./items.ts";
+import { ProfileStandingSchema, VerificationTier } from "../profile/profile.ts";
 
 /**
  * explore.view — the Zod SSOT for the public Entity View page (`/view/[id]`).
@@ -47,6 +48,31 @@ export const EntityPricingSchema = z.object({
 	max: z.number().optional(),
 });
 export type EntityPricing = z.infer<typeof EntityPricingSchema>;
+// #endregion
+
+// #region Seller
+/**
+ * The seller's identity facts BEYOND the owner attribution the item already carries — the earned
+ * Standing rung and the attained verification tier, as the seller's own profile states them.
+ *
+ * Resolved from the profile projection rather than restated on the listing, so the provider line on
+ * a listing and the hero of the profile it links to cannot disagree about who this person is. The
+ * two enums are imported from the profile SSOT for the same reason: a second `VerificationTier` here
+ * would be a second place for the ladder to drift.
+ *
+ * Both facts are nullable and NULL means absence, never "L0" or "New": a buyer-only entity has no
+ * seller standing at all, and an unverified seller has no tier to disclose — the line then simply
+ * omits the fact rather than printing a rung nobody earned.
+ */
+export const EntitySellerSchema = z.object({
+	/** The seller's role line, from their profile (`ProfileView.headline`). */
+	headline: z.string().max(160),
+	/** The highest verification tier attained, or `null` for an unverified seller. */
+	tier: VerificationTier.nullable(),
+	/** The earned Standing rung, or `null` for an entity with no seller standing. */
+	standing: ProfileStandingSchema.nullable(),
+});
+export type EntitySeller = z.infer<typeof EntitySellerSchema>;
 // #endregion
 
 // #region Trust & operational meta
@@ -552,6 +578,12 @@ export type ProductViewExtra = z.infer<typeof ProductViewSchema>;
  */
 export const EntityViewSchema = z.object({
 	item: ExploreItemSchema,
+	/**
+	 * The seller's Standing and verification tier, resolved from their profile. Every listing has a
+	 * seller, so this is required — a live path that cannot resolve a profile states `null` facts
+	 * rather than omitting the object, which keeps "unknown" and "nobody looked" apart.
+	 */
+	seller: EntitySellerSchema,
 	gallery: z.array(EntityMediaSchema),
 	pricing: EntityPricingSchema,
 	trust: z.array(TrustFactSchema),

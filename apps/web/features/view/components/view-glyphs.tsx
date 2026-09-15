@@ -1,22 +1,19 @@
 import type { JSX } from "preact";
-import { IconShell } from "@projective/ui/icons";
+import { IconShell, type IconSize } from "@projective/ui/icons";
 
 /**
  * view-glyphs — the Entity View feature's remaining inline SVG glyph set (24×24 line icons,
  * `currentColor`, `aria-hidden`), matching the shell/profile glyph idiom. `@projective/ui` is
  * icon-library agnostic, so the app owns its glyphs (packages/ui/CLAUDE.md). Covers the article
- * template's body media / comments controls, the media lightbox, and the dashboard's Apply control.
- * The `.evp` frame draws from the shared `@projective/ui/icons` registry instead.
+ * template's body media / comments controls and the dashboard's Apply control — glyphs the shared
+ * registry has no member for. Everything the registry DOES carry (close, the chevrons, download,
+ * check, play, image, video, list, send, clock, calendar) renders through `<Icon>` instead: a second
+ * geometry for one concept is the §B.7.7 breach the lightbox used to ship.
  */
 
 export type ViewGlyph =
-	// Media lightbox + the dashboard's Apply control.
+	// The dashboard's Apply control.
 	| "calendar"
-	| "check"
-	| "expand"
-	| "close"
-	| "chevron-left"
-	| "chevron-right"
 	| "apply"
 	// Article view — body media, TOC, comments.
 	| "play"
@@ -34,11 +31,6 @@ const P: Record<ViewGlyph, JSX.Element> = {
 	calendar: (
 		<path d="M4 7a2 2 0 012-2h12a2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2zM4 10h16M8 3v4M16 3v4" />
 	),
-	check: <path d="M4 12l5 5L20 6" />,
-	expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
-	close: <path d="M6 6l12 12M18 6L6 18" />,
-	"chevron-left": <path d="M15 5l-7 7 7 7" />,
-	"chevron-right": <path d="M9 5l7 7-7 7" />,
 	apply: <path d="M12 20V8M6 12l6-6 6 6M5 4h14" />,
 	play: <path d="M8 5v14l11-7z" />,
 	image: <path d="M4 5h16v14H4zM8 11a2 2 0 100-4 2 2 0 000 4zM4 16l5-4 4 3 3-2 4 3" />,
@@ -53,8 +45,8 @@ const P: Record<ViewGlyph, JSX.Element> = {
 };
 
 export function ViewIcon(
-	{ name, size = 24, ...rest }:
-		& { name: ViewGlyph; size?: number }
+	{ name, size = "md", ...rest }:
+		& { name: ViewGlyph; size?: IconSize | number }
 		& JSX.SVGAttributes<SVGSVGElement>,
 ): JSX.Element {
 	return <IconShell size={size} {...rest}>{P[name]}</IconShell>;

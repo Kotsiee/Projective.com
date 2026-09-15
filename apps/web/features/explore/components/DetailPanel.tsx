@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Tag } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import { OwnerBadge } from "./OwnerBadge.tsx";
 import { RatingTracks } from "./RatingTracks.tsx";
 import { SkillPills } from "./SkillPill.tsx";
@@ -57,7 +57,8 @@ export function DetailPanel(
 
 			{showOpenFull && (
 				<a class="ex-btn ex-btn--solid ex-detail__open" href={itemHref(item, ctx)}>
-					Open full page →
+					<span>Open full page</span>
+					<Icon name="arrow-right" aria-hidden />
 				</a>
 			)}
 		</div>
@@ -142,9 +143,21 @@ function MetaBlock({ item }: { item: ExploreItem }): JSX.Element | null {
 					</div>
 					<div class="ex-detail__section">
 						<h3 class="ex-detail__label">Hiring for</h3>
-						<div class="ex-projrow__roles">
-							{item.roles.map((r) => <Tag key={r} value={r} variant="outlined" rounded />)}
-						</div>
+						{
+							/*
+							  The roles a brief is staffing are FACTS, not controls, so they are one
+							  middot-separated line rather than a row of outlined tags (§B.11.2 — a container
+							  asserts an interactivity a role name does not have).
+							*/
+						}
+						<p class="ex-detail__inline">
+							{item.roles.map((r, i) => (
+								<span class="ex-detail__inlineitem" key={`${i}:${r}`}>
+									{i > 0 && <span class="ex-detail__dot" aria-hidden="true">·</span>}
+									{r}
+								</span>
+							))}
+						</p>
 					</div>
 				</>
 			);

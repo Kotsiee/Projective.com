@@ -1,15 +1,20 @@
 import type { JSX } from "preact";
 import { filterHref } from "@features/explore/core/routing.ts";
 import ProfileStory from "../islands/ProfileStory.island.tsx";
-import type { LanguageLevel, ProfileView } from "../types/profile-types.ts";
+import ProfileAvailability from "../islands/ProfileAvailability.island.tsx";
+import { hasGlance, ProfileGlance } from "./ProfileGlance.tsx";
+import type { LanguageLevel, ProfileView, ServiceItem } from "../types/profile-types.ts";
 
 /**
  * ProfileContextBar — the editorial preamble between the hero and the tab sections: the headline and
- * the owner-editable story on the reading side, the Skills and Languages facets on the other.
+ * the owner-editable story on the reading side; on the other, the facts a visitor weighs before
+ * reading further — the live availability block (published hours only), the at-a-glance facts
+ * (reply speed · marks · spend floor), then the Skills and Languages facets.
  *
- * A SERVER component (no signals, no state): the only interactive part is the inline story editor,
- * which is its own island mounted here. Everything else is prose and links, and a hydration root for
- * a paragraph and two tag lists would ship JavaScript to do nothing.
+ * A SERVER component (no signals, no state): the two interactive parts — the inline story editor and
+ * the clock-driven availability block — are their own islands mounted here. Everything else is prose,
+ * facts and links, and a hydration root for a paragraph and two tag lists would ship JavaScript to do
+ * nothing.
  *
  * Both columns are optional. A facet with no entries is omitted, a facets column with nothing left is
  * omitted, and a story column with no headline, no story and no owner to write one is omitted — the
@@ -19,6 +24,8 @@ import type { LanguageLevel, ProfileView } from "../types/profile-types.ts";
  */
 export interface ProfileContextBarProps {
 	profile: ProfileView;
+	/** The seller's active listings — the source of the spend floor. */
+	services: ServiceItem[];
 	/** Whether the viewer owns this profile (unlocks the inline story editor). */
 	canEdit: boolean;
 }
@@ -32,17 +39,20 @@ const LEVEL_LABEL: Record<LanguageLevel, string> = {
 };
 
 export function ProfileContextBar(
-	{ profile, canEdit }: ProfileContextBarProps,
+	{ profile, services, canEdit }: ProfileContextBarProps,
 ): JSX.Element | null {
 	const headline = profile.headline.trim();
 	const hasStory = headline.length > 0 || profile.story.trim().length > 0 || canEdit;
 	const skills = profile.skills;
 	const languages = profile.languages;
-	const hasFacets = skills.length > 0 || languages.length > 0;
+	const hours = profile.hours && profile.hours.rules.length > 0 ? profile.hours : null;
+	const glance = hasGlance(profile, services);
+	const hasFacets = skills.length > 0 || languages.length > 0 || hours !== null || glance;
 
 	if (!hasStory && !hasFacets) return null;
 
 	const solo = !(hasStory && hasFacets);
+	const calendarHref = profile.hasAvailability ? `/${profile.handle}/availability` : null;
 
 	return (
 		<section class={`pf-context${solo ? " pf-context--solo" : ""}`} aria-label="About">
@@ -58,6 +68,18 @@ export function ProfileContextBar(
 			)}
 			{hasFacets && (
 				<div class="pf-context__facets">
+					{hours && (
+						<div class="pf-context__facet">
+							<h2 class="pf-h">Availability</h2>
+							<ProfileAvailability hours={hours} calendarHref={calendarHref} />
+						</div>
+					)}
+					{glance && (
+						<div class="pf-context__facet">
+							<h2 class="pf-h">At a glance</h2>
+							<ProfileGlance profile={profile} services={services} />
+						</div>
+					)}
 					{skills.length > 0 && (
 						<div class="pf-context__facet">
 							<h2 class="pf-h">Skills</h2>

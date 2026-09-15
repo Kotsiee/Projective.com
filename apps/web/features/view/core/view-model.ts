@@ -13,6 +13,18 @@ import {
  */
 
 // #region Labels
+/**
+ * Human label for an OWNER's kind — the seller line's meta register (`@handle · Freelancer`), the
+ * same vocabulary the profile hero prints beside the handle (`ENTITY_META`, minus the buyer-only
+ * organisation, which a discovery owner never is).
+ */
+export const OWNER_KIND_LABEL: Record<ExploreItem["owner"]["kind"], string> = {
+	user: "Individual",
+	freelancer: "Freelancer",
+	team: "Team",
+	business: "Business",
+};
+
 /** Human label for an entity format — the hero eyebrow + badge. */
 export const ENTITY_LABEL: Record<ExploreItem["type"], string> = {
 	users: "Individual",

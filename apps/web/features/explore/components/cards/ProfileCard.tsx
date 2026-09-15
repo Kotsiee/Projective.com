@@ -52,8 +52,10 @@ export function ProfileCard(
 	const metrics = profileMetrics(item);
 	const languages = languageSummary(item.languages);
 	// One line, two facts, one separator — and the separator only appears when both sides exist, so a
-	// profile missing a location never renders a leading bullet.
-	const meta = [item.location, languages].filter(Boolean).join(" • ");
+	// profile missing a location never renders a leading bullet. The separator is an `aria-hidden`
+	// middot span (the profile hero's own `@handle · kind` idiom), so a screen reader hears two facts
+	// rather than a bullet character read aloud between them.
+	const meta = [item.location, languages].filter((s): s is string => !!s);
 
 	return (
 		<article
@@ -105,7 +107,22 @@ export function ProfileCard(
 
 				<p class="ex-pcard__headline">{item.craft}</p>
 
-				{meta && <p class="ex-pcard__meta">{meta}</p>}
+				{meta.length > 0 && (
+					<p class="ex-pcard__meta">
+						{meta.map((fact, i) => (
+							<span class="ex-pcard__metaitem" key={`${i}:${fact}`}>
+								{i > 0 && (
+									<>
+										{" "}
+										<span class="ex-pcard__dot" aria-hidden="true">·</span>
+										{" "}
+									</>
+								)}
+								{fact}
+							</span>
+						))}
+					</p>
+				)}
 
 				<div class="ex-pcard__foot">
 					{helper

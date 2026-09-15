@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Select } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import { vars } from "@features/marketing/core/style.ts";
 import type { FilterGroup } from "../core/filter-config.ts";
 import type { ExploreCategory } from "../types/explore-types.ts";
@@ -40,7 +41,7 @@ export function FilterPanel(props: FilterPanelProps): JSX.Element {
 				<details class="ex-filters__group" key={g.id} open>
 					<summary class="ex-filters__summary">
 						<span>{g.label}</span>
-						<span class="ex-filters__chevron" aria-hidden="true" />
+						<Icon name="chevron-down" size="sm" class="ex-filters__chevron" aria-hidden />
 					</summary>
 					<div class="ex-filters__body">
 						{(g.control === "chips" || g.control === "checkbox") && (
@@ -56,7 +57,9 @@ export function FilterPanel(props: FilterPanelProps): JSX.Element {
 											onClick={() => onToggle(g.id, opt.value)}
 										>
 											{g.control === "checkbox" && (
-												<span class="ex-filters__box" aria-hidden="true" />
+												<span class="ex-filters__box" aria-hidden="true">
+													{active && <Icon name="check" size="2xs" />}
+												</span>
 											)}
 											{opt.label}
 										</button>

@@ -3,7 +3,7 @@
  * `/wallet` precedent, Decision #60). Pure CSS + strict BEM, token-only (root CLAUDE.md §3).
  *
  * The surface is editorial and MONOCHROME (root CLAUDE.md §8 Decision #96): the chrome — hero, context
- * bar, tab bar, section headers, tags, logos, CTAs — is drawn on the neutral ramp only (`--bg` ·
+ * bar, services row, tab bar, section headers, tags, logos, CTAs — is drawn on the neutral ramp only (`--bg` ·
  * `--surface` · `--surface-1` · `--on-surface` · `--text-secondary` · `--hairline`). The brand teal and
  * every semantic accent fill are suppressed from containers; the only colour on the page is the
  * colour a person uploaded — a showreel, a cover, a portfolio tile, an avatar.
@@ -22,6 +22,7 @@
 @import "./profile-base.css";
 @import "./profile-hero.css";
 @import "./profile-context.css";
+@import "./profile-services.css";
 @import "./profile-tabs.css";
 @import "./profile-work.css";
 @import "./profile-experience.css";

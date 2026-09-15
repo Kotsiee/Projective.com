@@ -64,7 +64,7 @@
 }
 
 .guest-shell .pf-sections {
-    scroll-margin-block-start: calc(var(--site-header-h, 5.5rem) + var(--space-3));
+    scroll-margin-block-start: calc(var(--site-header-pinned-h, 4.25rem) + var(--space-3));
 }
 
 .pf-tabpanel {
@@ -256,6 +256,12 @@ a.pf-tag:focus-visible {
 /* The shared rating stars paint their fill in the brand hue; on this surface every star is ink. */
 .pf .ui-ratingstars__row--fill,
 .pf .ui-ratingstars--compact .ui-ratingstars__meter {
+    color: var(--on-surface);
+}
+
+/* The shared segmented switch encodes its selection in brand ink; here it is the page's ink. */
+.pf .ui-select-button__option[aria-checked="true"],
+.pf .ui-select-button__option[aria-pressed="true"] {
     color: var(--on-surface);
 }
 

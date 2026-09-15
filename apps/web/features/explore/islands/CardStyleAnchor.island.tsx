@@ -1,4 +1,5 @@
 import "../styles/explore.css";
+import "../styles/explore-results.css";
 import { Avatar, RatingStars } from "@projective/ui/display";
 
 /**
@@ -17,6 +18,13 @@ import { Avatar, RatingStars } from "@projective/ui/display";
  * card on the surface the family was written for rendered as unstyled markup. `/@handle` and `/view`
  * were unaffected — `profile.css` `@import`s `explore.css` too, and profile islands carry it. Anchoring
  * the sheet HERE gives `/explore` the carrier it never had.
+ *
+ * `explore-results.css` rides the same anchor for the same reason. Its only other carriers are the
+ * profile islands (through `profile.css`), which never mount on `/explore` — so the Search Results
+ * state shipped its filter lane, results head and detail drawer with no rules at all: a native
+ * `<details>` marker on every facet group, unstyled option buttons, a bare range input. Measured on
+ * both dev servers before this import existed (`.ex-filters__summary` resolved `list-style:
+ * disclosure-open`).
  *
  * This island therefore imports `explore.css` plus the two library components purely so their
  * stylesheets are bundled once per Explore page. It renders a `hidden`, `aria-hidden` stub — never

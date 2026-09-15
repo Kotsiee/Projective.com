@@ -9,7 +9,6 @@ import ArticleContent from "../islands/ArticleContent.island.tsx";
 import ArticleMediaGallery from "../islands/ArticleMediaGallery.island.tsx";
 import ArticleComments from "../islands/ArticleComments.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
-import { ViewIcon } from "./view-glyphs.tsx";
 import { backHrefFor, backLabelFor, ENTITY_LABEL, signInHref } from "../core/view-model.ts";
 import type { ArticleViewExtra, EntityView } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
@@ -78,12 +77,12 @@ export function ArticleViewScreen(
 					</a>
 					<span class="art-header__sep" aria-hidden="true" />
 					<span class="art-meta">
-						<ViewIcon name="calendar" size={15} />
+						<Icon name="calendar" />
 						<span>{article.publishedLabel}</span>
 					</span>
 					<span class="art-header__sep" aria-hidden="true" />
 					<span class="art-meta">
-						<ViewIcon name="clock" size={15} />
+						<Icon name="clock" />
 						<span>{article.readMinutes} min read</span>
 					</span>
 				</div>

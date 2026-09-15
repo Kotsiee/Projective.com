@@ -7,6 +7,7 @@ import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHos
 import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
 import ProfileStyleAnchor from "@features/profile/islands/ProfileStyleAnchor.island.tsx";
 import { ProfileContextBar } from "@features/profile/components/ProfileContextBar.tsx";
+import { ProfileServicesSection } from "@features/profile/components/ProfileServicesSection.tsx";
 import { ProfileTabs } from "@features/profile/components/ProfileTabs.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
+import { resolveProfileServices } from "@features/profile/core/profile-ssr.ts";
 import {
 	activeTabOf,
 	defaultTabFor,
@@ -28,10 +30,15 @@ import {
  * team, business, organisation) resolved by `@handle`.
  *
  * The surface is ONE column in the native window scroll (root CLAUDE.md §8 Decision #96): the split
- * hero → the context bar → the four-section tab bar → the routed section body. There is no middle-nav
- * lane, no splitter and no migrating sticky header — the profile mounts nothing in the shell's lane
- * slot, so the authenticated {@link UserShell} renders a bare {@link PageCanvas} and the guest
- * {@link GuestShell} its lane-less header + body + footer flow.
+ * hero → the context bar → a seller's Services row → the four-section tab bar → the routed section
+ * body. There is no middle-nav lane, no splitter and no migrating sticky header — the profile mounts
+ * nothing in the shell's lane slot, so the authenticated {@link UserShell} renders a bare
+ * {@link PageCanvas} and the guest {@link GuestShell} its lane-less header + body + footer flow; the
+ * profile's own sticky element is the section tab bar, pinned flush under whichever shell's header.
+ *
+ * The services are resolved HERE, once, because they render on every section (above the tabs) and
+ * feed two other regions: the hero's Hire control (which lands on them) and the context bar's spend
+ * floor. A buyer entity resolves to an empty list and none of the three render anything for it.
  *
  * Two routes under the namespace keep their own chrome: the profile-scoped item viewer
  * (`/[handle]/view/[id]`, which resolves ITS lane from the URL like the public `/view/[id]`) and the
@@ -145,11 +152,18 @@ export default define.page(function ProfileLayout(ctx) {
 
 	// The active section highlighted in the tab bar — the URL segment, or Work on the bare index.
 	const active = activeTabOf(path) ?? defaultTabFor(profile.kind);
+	const services = resolveProfileServices(profile.handle);
 	return shell(
 		<div class="pf-scope">
 			<div class="pf">
-				<ProfileHero profile={profile} canEdit={canEdit} />
-				<ProfileContextBar profile={profile} canEdit={canEdit} />
+				<ProfileHero
+					profile={profile}
+					canEdit={canEdit}
+					authed={authed}
+					hasServices={services.length > 0}
+				/>
+				<ProfileContextBar profile={profile} services={services} canEdit={canEdit} />
+				<ProfileServicesSection services={services} authed={authed} />
 				<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">
 					<ProfileTabs profile={profile} active={active} />
 					{

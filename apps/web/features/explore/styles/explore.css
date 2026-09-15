@@ -1,9 +1,10 @@
 /*
  * Explore — State A (Home) + shared card/atom styling. Pure CSS + strict BEM, token-only
- * (root CLAUDE.md §3). The only literals are the `--ex-*` semantic tokens below, each COMPOSED from
- * design-system tokens so radius scale, theming, and a11y overlays keep flowing. Separation is
- * spacing → tonal tint → type weight → single hairline; full four-sided borders appear only on
- * interactive elements (card anchors, buttons, pills).
+ * (root CLAUDE.md §3). Every size, weight, tracking and leading is a step on the design-system ramp
+ * (`--text-*` · `--fw-*` · `--tracking-*` · `--leading-*`), every spacing a `--space-*` step, and the
+ * `--ex-*` semantic tokens below are each COMPOSED from design-system tokens so radius scale, theming,
+ * and a11y overlays keep flowing. Separation is spacing → tonal tint → type weight → single hairline;
+ * full four-sided borders appear only on interactive elements (card anchors, buttons, pills).
  *
  * The Explore HOME's own layout — the above-the-fold block and the rail sections — lives in
  * `explore-home.css` and is pulled in here. It is a separate sheet because it styles no item: the card
@@ -108,48 +109,35 @@
 /* #endregion */
 
 /* #region Shared atoms */
+/* The eyebrow IS the section-header register (§A.4): `--text-xs` · uppercase · `--tracking-wide`. */
 .ex-eyebrow {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
     color: var(--on-surface-variant);
 }
 
 .ex-muted {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--on-surface-variant);
 }
 
-/* Uniform, elegant thin-weight pricing everywhere (service floors, product chips, project budgets). */
-.ex-price {
-    font-weight: 300;
-    font-size: 1.05rem;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
-}
-
-.ex-price--lg {
-    font-size: 1.3rem;
-    font-weight: 300;
-    letter-spacing: -0.02em;
-}
-
-/* The billing unit after a service price (`/ ticket`, `/ session`) — muted, small, thin. */
-.ex-price__unit {
-    margin-inline-start: 0.3rem;
-    font-size: 0.8rem;
-    font-weight: 400;
-    color: var(--on-surface-variant);
-    letter-spacing: 0;
-}
+/*
+ * `.ex-price` / `.ex-price--lg` / `.ex-price__unit` — REMOVED. Nothing rendered them: every price in
+ * the family goes through `.ex-pricebadge` (the two-line figure-over-unit stack), and a second price
+ * vocabulary with its own thin weight was one more way for two cards to state one amount differently.
+ */
 
 .ex-cta {
-    font-size: 0.9rem;
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-md);
+    font-weight: var(--fw-semibold);
     color: var(--primary);
     white-space: nowrap;
 }
@@ -158,8 +146,8 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    font-weight: 600;
-    font-size: 0.95rem;
+    font-weight: var(--fw-semibold);
+    font-size: var(--text-md);
     color: var(--primary);
     text-decoration: none;
     white-space: nowrap;
@@ -180,10 +168,10 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
-    padding: 0.7rem 1.3rem;
+    padding: var(--space-3) var(--space-5);
     border-radius: var(--radius-xl);
-    font-size: 0.95rem;
-    font-weight: 600;
+    font-size: var(--text-md);
+    font-weight: var(--fw-semibold);
     line-height: 1;
     text-decoration: none;
     cursor: pointer;
@@ -266,15 +254,15 @@
 .ex-owner__name {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    font-weight: 600;
-    font-size: 0.92rem;
-    line-height: 1.15;
+    gap: var(--space-1);
+    font-weight: var(--fw-semibold);
+    font-size: var(--text-md);
+    line-height: var(--leading-tight);
     min-inline-size: 0;
 }
 
 .ex-owner--md .ex-owner__name {
-    font-size: 1.05rem;
+    font-size: var(--text-base);
 }
 
 .ex-owner__nametext {
@@ -285,7 +273,7 @@
 
 .ex-owner__handle {
     inline-size: fit-content;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     color: var(--on-surface-variant);
     text-decoration: none;
     transition: color var(--dur-fast) var(--ease-standard);
@@ -311,7 +299,7 @@
 }
 
 .ex-owner--mini .ex-owner__handle {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
 }
 
 /* #endregion */
@@ -381,21 +369,21 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
 }
 
 .ex-ratings__label {
     color: var(--on-surface-variant);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
 }
 
 .ex-ratings__value {
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
 }
 
 .ex-ratings__count {
-    margin-inline-start: 0.15rem;
-    font-weight: 400;
+    margin-inline-start: var(--space-1);
+    font-weight: var(--fw-normal);
     color: var(--on-surface-variant);
 }
 
@@ -408,12 +396,7 @@
 .ex-stars__track,
 .ex-stars__fill {
     display: inline-flex;
-    gap: 1px;
-}
-
-.ex-stars svg {
-    inline-size: var(--icon-xs);
-    block-size: var(--icon-xs);
+    gap: var(--space-px);
 }
 
 .ex-stars__fill {
@@ -468,15 +451,15 @@
     z-index: 2;
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--space-1);
     padding: var(--space-1) var(--space-2);
     border: 0;
     border-radius: var(--radius-sm);
     background: var(--ex-tag-bg);
     color: var(--ex-tag-ink);
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     font-weight: var(--fw-medium);
-    line-height: 1.25;
+    line-height: var(--leading-snug);
     text-decoration: none;
     transition:
         color var(--dur-fast) var(--ease-standard),
@@ -515,7 +498,7 @@
 }
 
 .ex-pills__more {
-    font-size: 0.76rem;
+    font-size: var(--text-xs);
     color: var(--on-surface-variant);
 }
 
@@ -548,9 +531,13 @@
  * grammar — which is exactly why the switch is an attribute selector rather than a fallback chain.
  */
 .ex-card {
-    /* 16px — the low end of the design's 16–20px band, and one step down from `--card-radius-media`
-	(24px), which now belongs to the media tile INSIDE the card rather than to the card. */
-    --ex-card-r: var(--radius-xl);
+    /*
+	* THE CARD CONTRACT (`styles/index.css`, §A.3): the shell takes `--card-radius-media` — the corner
+	* the design system gives an image-led card — and the media tile INSIDE it takes `--card-radius`.
+	* The two read from the same contract every other card family in the product reads, so a rail on
+	* /explore, the Work tab on /@handle and the landing page cannot round the same card three ways.
+	*/
+    --ex-card-r: var(--card-radius-media);
     /* Per-card accent — the deterministic stand-in for the thumbnail's dominant hue. */
     --ex-accent: var(--primary);
     --ex-wash: color-mix(in srgb, var(--ex-accent) 12%, transparent);
@@ -663,9 +650,9 @@
  */
 .ex-card__title {
     margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-size: var(--text-lg);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -679,7 +666,7 @@
 /* The one sanctioned title step-down: a masonry product tile and a list article are read at a smaller
    optical size than a service card in a 4-up grid. Same weight, same tracking — size only. */
 .ex-card__title--sm {
-    font-size: 1rem;
+    font-size: var(--text-base);
 }
 
 /*
@@ -727,11 +714,6 @@
     min-inline-size: 0;
 }
 
-.ex-card__foot>.ex-price {
-    flex: 0 1 auto;
-    min-inline-size: 0;
-}
-
 .ex-card__foot>.ex-muted {
     flex: 0 1 auto;
     min-inline-size: 0;
@@ -751,7 +733,7 @@
 .ex-media {
     position: relative;
     overflow: clip;
-    border-radius: var(--radius-lg);
+    border-radius: var(--card-radius);
     background: var(--surface-2);
 }
 
@@ -866,13 +848,13 @@
     max-inline-size: 100%;
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
-    font-size: 0.7rem;
+    font-size: var(--text-2xs);
     font-weight: var(--fw-semibold);
-    letter-spacing: 0.02em;
-    line-height: 1.25;
+    letter-spacing: var(--tracking-normal);
+    line-height: var(--leading-tight);
     color: var(--ex-status-ink);
     background: color-mix(in srgb, var(--ex-status-role) 72%, var(--on-surface));
-    box-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.28);
+    box-shadow: var(--elevation-low);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -915,35 +897,34 @@
     inline-size: 2rem;
     block-size: 2rem;
     border-radius: 50%;
-    border: 1px solid rgb(255 255 255 / 0.35);
+    border: 1px solid color-mix(in srgb, var(--on-scrim) 35%, transparent);
     /*
-	* 0.62, not the 0.38 this first shipped at. The token floats over arbitrary photography, so its
-	* worst case is a BLOWN-OUT WHITE image, and at 0.38 the glass flattened to ~rgb(158,158,158) and
+	* 62%, not the 38% this first shipped at. The token floats over arbitrary photography, so its
+	* worst case is a BLOWN-OUT WHITE image, and at 38% the glass flattened to ~rgb(158,158,158) and
 	* put its white text at a measured 2.68:1 — a failure a dark-thumbnail spot-check never sees. At
-	* 0.62 the same worst case measures 6.19:1 and the blur still reads as glass. A `text-shadow`
-	* cannot rescue this: it changes the impression of contrast without changing the contrast.
+	* 62% the same worst case measures 6.19:1 and the blur still reads as glass. A `text-shadow`
+	* cannot rescue this: it changes the impression of contrast without changing the contrast — which
+	* is why the one this used to carry is gone.
+	*
+	* The veil is `--scrim` and the ink `--on-scrim`: the fixed black/white pair every overlay in the
+	* product dims and labels its backdrop with, so this sheet declares no raw colour of its own.
 	*/
-    background: rgb(0 0 0 / 0.62);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    box-shadow:
-        0 2px 10px -2px rgb(0 0 0 / 0.45),
-        inset 0 1px 0 rgb(255 255 255 / 0.16);
+    background: color-mix(in srgb, var(--scrim) 62%, transparent);
+    backdrop-filter: blur(var(--scrim-blur));
+    -webkit-backdrop-filter: blur(var(--scrim-blur));
+    box-shadow: var(--elevation-medium);
 }
 
 /*
- * Fixed white, not `--on-surface`: this token sits on its own near-black glass, not on a theme
- * surface, so the theme's ink would invert straight into the fill in light mode. The pair here is
- * white on `rgb(0 0 0 / 0.38)` over arbitrary photography, and the drop shadow holds it apart from a
- * bright image underneath.
+ * `--on-scrim`, not `--on-surface`: this token sits on its own near-black glass, not on a theme
+ * surface, so the theme's ink would invert straight into the fill in light mode.
  */
 .ex-ad__text {
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-bold);
+    letter-spacing: var(--tracking-wide);
     line-height: 1;
-    color: rgb(255 255 255 / 0.95);
-    text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+    color: var(--on-scrim);
 }
 
 /*
@@ -987,7 +968,7 @@
 
     position: relative;
     aspect-ratio: 16 / 7;
-    border-radius: var(--radius-lg);
+    border-radius: var(--card-radius);
     overflow: clip;
     background: var(--surface-2);
     -webkit-mask-image: linear-gradient(to bottom,
@@ -1054,20 +1035,21 @@
  */
 .ex-pcard__avatar {
     margin-block-start: calc(var(--avatar-size, 4rem) / -2);
-    border: 3px solid var(--surface);
-    box-shadow: var(--elevation-low);
+    /* The ring is DRAWN, not a border: a border grows the box and breaks the half-height overlap the
+       margin above states, and the page-ground ring is the profile hero's own avatar idiom. */
+    box-shadow: 0 0 0 3px var(--surface), var(--elevation-low);
 }
 
 .ex-pcard__name {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
+    gap: var(--space-1);
     max-inline-size: 100%;
     min-inline-size: 0;
-    font-weight: 600;
-    font-size: 1.05rem;
-    letter-spacing: -0.01em;
+    font-weight: var(--fw-semibold);
+    font-size: var(--text-base);
+    letter-spacing: var(--tracking-tight);
     text-align: center;
 }
 
@@ -1079,7 +1061,7 @@
 }
 
 .ex-pcard__handle {
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     color: var(--on-surface-variant);
     max-inline-size: 100%;
     overflow: hidden;
@@ -1091,8 +1073,8 @@
    every sibling card in an equalised grid row. */
 .ex-pcard__headline {
     margin: var(--space-2) 0 0;
-    font-size: 0.9rem;
-    line-height: 1.45;
+    font-size: var(--text-md);
+    line-height: var(--leading-normal);
     color: var(--on-surface);
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -1105,14 +1087,20 @@
 /* Location and languages: one quiet line at the smallest register the card uses. */
 .ex-pcard__meta {
     margin: 0;
-    font-size: 0.78rem;
-    line-height: 1.4;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
     color: var(--on-surface-variant);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* The middot between the two facts — the profile hero's `@handle · kind` separator, at card scale.
+   The spaces around it are real text (a screen reader needs the word boundary), so no padding. */
+.ex-pcard__dot {
+    color: var(--on-surface-variant);
 }
 
 .ex-pcard__foot {
@@ -1135,14 +1123,14 @@
     padding: 0;
     list-style: none;
     flex: 0 0 auto;
-    font-size: 0.76rem;
-    line-height: 1.35;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
     color: var(--on-surface-variant);
     white-space: nowrap;
 }
 
 .ex-pcard__metric-value {
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     color: var(--on-surface);
 }
 
@@ -1173,8 +1161,8 @@
 }
 
 .ex-owner--creator .ex-owner__name {
-    font-size: 0.82rem;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
     color: var(--on-surface-variant);
     min-inline-size: 0;
     overflow: hidden;
@@ -1205,9 +1193,9 @@
 
 .ex-kind {
     min-inline-size: 0;
-    font-size: 0.66rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
     color: var(--on-surface-variant);
     overflow: hidden;
@@ -1226,7 +1214,7 @@
 .ex-card__aside {
     flex: 0 1 auto;
     min-inline-size: 0;
-    font-size: 0.74rem;
+    font-size: var(--text-xs);
     color: var(--on-surface-variant);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1260,16 +1248,17 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    line-height: 1.15;
+    line-height: var(--leading-tight);
     text-align: end;
     /*
 	* The figure's type lives on the BADGE, not on `__amount`, so a card that has only one line and
 	* prints its price as bare text (the product card, the marketing twins) still gets it. `__amount`
-	* is a line container, not a type carrier.
+	* is a line container, not a type carrier. A changing figure is `tabular-nums` (§A.4).
 	*/
-    font-size: 1.05rem;
+    font-size: var(--text-base);
     font-weight: var(--fw-semibold);
-    letter-spacing: -0.02em;
+    letter-spacing: var(--tracking-tight);
+    font-variant-numeric: tabular-nums;
     color: var(--on-surface);
 }
 
@@ -1292,9 +1281,10 @@
 
 /* Line 2 — the unit. Small and muted: it qualifies the figure, it is not a second figure. */
 .ex-pricebadge__unit {
-    margin-block-start: 0.1rem;
-    font-size: 0.72rem;
+    margin-block-start: var(--space-px);
+    font-size: var(--text-xs);
     font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
     color: var(--on-surface-variant);
     white-space: nowrap;
 }
@@ -1412,13 +1402,13 @@
     align-items: center;
     gap: var(--space-3);
     inline-size: 100%;
-    padding: 0.55rem 0.65rem;
+    padding: var(--space-2) var(--space-3);
     border: 0;
     border-radius: var(--radius-base);
     background: none;
     color: var(--on-surface);
     font: inherit;
-    font-size: 0.88rem;
+    font-size: var(--text-md);
     text-align: start;
     text-decoration: none;
     cursor: pointer;
@@ -1454,7 +1444,7 @@
     inset-block-start: calc(100% + var(--space-2));
     max-inline-size: 14rem;
     padding: var(--space-2) var(--space-3);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--on-surface);
     background: var(--surface-2);
     border-radius: var(--radius-base);
@@ -1572,7 +1562,7 @@
 .ex-proj__posted {
     flex: 0 1 auto;
     min-inline-size: 0;
-    font-size: 0.74rem;
+    font-size: var(--text-xs);
     color: var(--on-surface-variant);
     white-space: nowrap;
     overflow: hidden;
@@ -1595,23 +1585,24 @@
     }
 
     .ex-proj__title {
-        font-size: 1rem;
+        font-size: var(--text-base);
     }
 
     /* At this width the full stage chain is unreadable anyway; the pill keeps the first stages and the
 	card stays scannable rather than becoming a wall of wrapped chevrons. */
     .ex-proj__pipeline {
         padding: var(--space-1) var(--space-2);
-        font-size: 0.7rem;
+        font-size: var(--text-2xs);
     }
 }
 
+/* A title is never `--fw-bold` (§A.4): the size step and the tight tracking carry the claim. */
 .ex-proj__title {
     margin: 0;
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: -0.015em;
-    line-height: 1.3;
+    font-size: var(--text-lg);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-snug);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -1631,7 +1622,7 @@
     align-items: center;
     gap: var(--space-1) var(--space-2);
     padding: var(--space-2) 0;
-    font-size: 0.76rem;
+    font-size: var(--text-xs);
     min-inline-size: 0;
 }
 
@@ -1659,9 +1650,9 @@
    height of every sibling in an equalised grid row. */
 .ex-proj__desc {
     margin: 0;
-    font-size: 0.88rem;
-    font-weight: 300;
-    line-height: 1.55;
+    font-size: var(--text-md);
+    font-weight: var(--fw-normal);
+    line-height: var(--leading-normal);
     color: var(--on-surface-variant);
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -1689,9 +1680,9 @@
     border-radius: var(--radius-sm);
     border: 0;
     background: var(--ex-tag-bg);
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     font-weight: var(--fw-medium);
-    line-height: 1.25;
+    line-height: var(--leading-snug);
     color: var(--ex-tag-ink);
     white-space: nowrap;
     max-inline-size: 100%;
@@ -1826,9 +1817,9 @@
 
 /* "Promoted" reads as integrated native text — no tag frame. */
 .ex-sponsored__promoted {
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
     color: var(--on-surface-variant);
 }
@@ -1836,15 +1827,15 @@
 .ex-sponsored__title {
     margin: var(--space-2) 0 0;
     font-size: clamp(1.3rem, 0.934rem + 1.22vw, 1.9rem);
-    font-weight: 600;
-    letter-spacing: -0.015em;
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
 }
 
 .ex-sponsored__text {
     margin: 0;
-    font-size: 1rem;
-    line-height: 1.55;
-    font-weight: 300;
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    font-weight: var(--fw-normal);
     color: var(--on-surface-variant);
     max-inline-size: 44ch;
 }
@@ -1877,9 +1868,9 @@
 
 .ex-help__title {
     margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-size: var(--text-xl);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
 }
 
 .ex-help__list {
@@ -1912,8 +1903,8 @@
 
 .ex-help__glyph {
     display: inline-flex;
-    inline-size: 1.6rem;
-    block-size: 1.6rem;
+    inline-size: var(--icon-lg);
+    block-size: var(--icon-lg);
     color: var(--primary);
     flex: 0 0 auto;
 }
@@ -1925,12 +1916,12 @@
 
 .ex-help__text {
     flex: 1 1 auto;
-    font-size: 0.95rem;
-    font-weight: 500;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
 }
 
 .ex-help__meta {
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     color: var(--on-surface-variant);
     white-space: nowrap;
 }
@@ -1958,16 +1949,16 @@
 .ex-cta-banner__title {
     margin: var(--space-2) 0 0;
     font-size: clamp(1.4rem, 1.016rem + 1.279vw, 2rem);
-    font-weight: 600;
-    letter-spacing: -0.015em;
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
 }
 
 .ex-cta-banner__body {
     margin: var(--space-2) 0 0;
     max-inline-size: 48ch;
-    font-size: 1rem;
-    line-height: 1.55;
-    font-weight: 300;
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    font-weight: var(--fw-normal);
     color: var(--on-surface-variant);
 }
 
@@ -2067,8 +2058,8 @@
     margin: 0;
     font-size: clamp(1.6rem, 1.15rem + 1.5vw, 2.5rem);
     font-weight: var(--fw-semibold);
-    line-height: 1.1;
-    letter-spacing: -0.03em;
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
     color: var(--on-primary);
     text-wrap: balance;
 }
@@ -2150,7 +2141,7 @@
     color: var(--on-primary);
     font-size: var(--text-sm);
     font-weight: var(--fw-medium);
-    line-height: 1.3;
+    line-height: var(--leading-snug);
     text-decoration: none;
     white-space: nowrap;
     transition:

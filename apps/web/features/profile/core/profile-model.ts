@@ -6,12 +6,17 @@ import {
 	type ProfileKind,
 	ProfileTab,
 	type ProfileView,
+	type ReviewEntry,
 } from "@projective/types/profile";
+import { FAST_REPLY_MINUTES } from "@features/explore/core/card-signals.ts";
+import { type PriceAmount, serviceStartingPrice } from "@features/explore/core/pricing.ts";
+import type { ServiceItem } from "../types/profile-types.ts";
 
 /**
  * profile-model — the pure, JSX-free brains of the `/[handle]` profile: the four-section tab matrix,
- * labels + route segments, active-tab / legacy-redirect / own-profile resolution, and the CTA rule.
- * Imported freely by islands, components, and routes (no DOM, no server deps).
+ * labels + route segments, active-tab / legacy-redirect / own-profile resolution, the CTA rule, the
+ * review-stance filter, and the at-a-glance derivations (reply speed, estimated spend). Imported
+ * freely by islands, components, and routes (no DOM, no server deps).
  */
 
 // #region Tab labels + segments
@@ -57,6 +62,9 @@ export function defaultTabFor(_kind: ProfileKind): ProfileTab {
 // #region Active tab + paths
 /** DOM id of the tab-sections region — the hero's rating figure scroll-links here. */
 export const TABS_ANCHOR = "profile-sections";
+
+/** DOM id of the standalone Services row above the sections — the hero's Hire control lands here. */
+export const SERVICES_ANCHOR = "profile-services";
 
 /**
  * Parse the active section from a pathname. `null` when there is no sub-segment (the `/@handle`
@@ -116,16 +124,128 @@ export function isOwnProfile(
 }
 
 /**
- * The hero's two-control rig for a VISITOR. `Message` is the primary on every kind — it is the one
- * conversion every profile offers (a seller is hired through the Work section's listings, not from a
- * "Hire" control that has no listing to name); `Follow` is the secondary.
+ * The hero's action rig for a VISITOR.
+ *
+ * A SELLER (freelancer · team) leads with **Hire** — the prominent primary — and folds Message and
+ * Follow into compact icon-only secondaries beside it. Hire is honest about what it can name: it
+ * lands on the seller's Services row when there is a listing to buy (`target: "services"`), and
+ * opens the conversation when there is none (`target: "message"`) — the only way to hire somebody
+ * with nothing listed is to ask. A BUYER entity (client · business · organisation) cannot be hired,
+ * so Message stays its primary with Follow as a text secondary, exactly as before.
  */
 export interface ProfileCta {
-	primary: "Message";
-	secondary: "Follow";
+	/** Which rig the hero draws. */
+	layout: "hire" | "message";
+	/** The primary control's label. */
+	primary: "Hire" | "Message";
+	/** Where a `Hire` primary lands; `null` for the message rig. */
+	target: "services" | "message" | null;
 }
 
-export function ctaFor(_kind: ProfileKind): ProfileCta {
-	return { primary: "Message", secondary: "Follow" };
+/** Whether the kind is a seller — the only kind that can be hired. */
+export function isSellerKind(kind: ProfileKind): boolean {
+	return kind === "freelancer" || kind === "team";
+}
+
+export function ctaFor(kind: ProfileKind, hasServices: boolean): ProfileCta {
+	if (isSellerKind(kind)) {
+		return { layout: "hire", primary: "Hire", target: hasServices ? "services" : "message" };
+	}
+	return { layout: "message", primary: "Message", target: null };
+}
+// #endregion
+
+// #region Reviews — stance filter
+/**
+ * The Reviews segmented filter: every review, or only those received in ONE of the profile's two
+ * stances. `ReviewEntry.role` records the AUTHOR's side — a review whose author was the client is a
+ * review of this profile AS A FREELANCER, and vice versa — so the filter is the author's role
+ * inverted. Written once here rather than in the island, because inverting it in two places is how
+ * "As freelancer" comes to show a freelancer's reviews of their client.
+ */
+export type ReviewStance = "all" | "freelancer" | "client";
+
+/** The stance THIS profile held in the engagement a review is about. */
+export function reviewStanceOf(review: Pick<ReviewEntry, "role">): "freelancer" | "client" {
+	return review.role === "client" ? "freelancer" : "client";
+}
+
+/** The reviews matching a stance (`all` returns the input untouched). */
+export function reviewsForStance<T extends Pick<ReviewEntry, "role">>(
+	reviews: readonly T[],
+	stance: ReviewStance,
+): T[] {
+	if (stance === "all") return [...reviews];
+	return reviews.filter((review) => reviewStanceOf(review) === stance);
+}
+
+/** How many reviews each stance holds, for the segment labels. */
+export function reviewStanceCounts(
+	reviews: readonly Pick<ReviewEntry, "role">[],
+): Record<ReviewStance, number> {
+	let freelancer = 0;
+	let client = 0;
+	for (const review of reviews) {
+		if (reviewStanceOf(review) === "freelancer") freelancer++;
+		else client++;
+	}
+	return { all: reviews.length, freelancer, client };
+}
+
+/** Parse a `?as=` query value into a stance; anything else is `all`. */
+export function parseReviewStance(value: string | null | undefined): ReviewStance {
+	return value === "freelancer" || value === "client" ? value : "all";
+}
+// #endregion
+
+// #region At a glance — reply speed + estimated spend
+/**
+ * `~45 min` · `~2 hrs` · `~1 day` — the compact figure beside "Avg. response". Rounded to the unit a
+ * reader plans around; never more precise than the measurement deserves.
+ */
+export function responseLabel(minutes: number): string {
+	if (minutes < 60) return `~${Math.max(1, Math.round(minutes))} min`;
+	if (minutes < 24 * 60) {
+		const hours = Math.round(minutes / 60);
+		return `~${hours} ${hours === 1 ? "hr" : "hrs"}`;
+	}
+	const days = Math.round(minutes / (24 * 60));
+	return `~${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/**
+ * "Fast responder" is the discovery card's "Fast replies" gate applied to the profile: the SAME
+ * `FAST_REPLY_MINUTES` threshold, so the mark here and the chip on the card that linked here agree.
+ * An unmeasured profile (`null`) never earns it.
+ */
+export function isFastResponder(minutes: number | null | undefined): boolean {
+	return typeof minutes === "number" && minutes <= FAST_REPLY_MINUTES;
+}
+
+/** The "Est. project spend" floor — the cheapest starting rate across the seller's listings. */
+export interface EstimatedSpend {
+	amount: PriceAmount;
+	/** The per-unit noun of the listing that set the floor (`ticket` · `session` · `project`). */
+	unit: string | null;
+}
+
+/**
+ * The lowest starting rate across a seller's active listings, resolved through the SAME
+ * `serviceStartingPrice` the service cards print — so the figure in the context bar is one a reader
+ * can find on a card directly beneath it. Compared within the first listing's currency (a mixed-
+ * currency catalogue is compared in whichever currency leads), and `null` when no listing carries a
+ * structured price — a "Contact us" catalogue gets no invented floor.
+ */
+export function estimatedSpendFor(services: readonly ServiceItem[]): EstimatedSpend | null {
+	let best: EstimatedSpend | null = null;
+	for (const service of services) {
+		const price = serviceStartingPrice(service);
+		if (!price.amount) continue;
+		if (best && price.amount.currency !== best.amount.currency) continue;
+		if (!best || price.amount.minor < best.amount.minor) {
+			best = { amount: price.amount, unit: price.unit ?? null };
+		}
+	}
+	return best;
 }
 // #endregion

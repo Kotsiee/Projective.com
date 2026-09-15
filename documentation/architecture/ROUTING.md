@@ -75,7 +75,11 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `[tab]` route 308s each into its consolidated section via the SSOT `LEGACY_TAB_TARGET`
   (`@projective/types/profile`), and `/[handle]/work` 308s to the bare index so one section never has
   two addresses. Do not mint a link to a retired segment; the redirect exists for the links already in
-  the world (messages, bookmarks), not for new ones.
+  the world (messages, bookmarks), not for new ones. Two addressable states live INSIDE the sections:
+  a seller's Services row sits above the tabs at `#profile-services` (`SERVICES_ANCHOR` — the hero's
+  Hire control is a real anchor to it, so it works with JavaScript off), and the Reviews stance filter
+  mirrors into `/[handle]/reviews?as=freelancer|client` (`parseReviewStance`; SSR honours it, the
+  island keeps it in step with `replaceState`, and anything else reads as "all").
 - **The project workspace has two view modes, and each is a URL.** `/projects/:projectSlug` is
   **Details** (the owner's edit surface) and `/projects/:projectSlug/preview` is **Preview** (the
   live public/buyer view). The `Details ⇄ Preview` control in the middle-nav header band is a pair of

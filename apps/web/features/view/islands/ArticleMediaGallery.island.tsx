@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { Carousel } from "@projective/ui/display";
 import "../styles/article-view.css";
+import { Icon } from "@projective/ui/icons";
 import { type ViewGlyph, ViewIcon } from "../components/view-glyphs.tsx";
 import type { ArticleAsset } from "@projective/types/explore";
 
@@ -27,7 +28,7 @@ function MediaCard(asset: ArticleAsset): JSX.Element {
 				{asset.kind === "audio"
 					? (
 						<div class="art-mediacard__audio" aria-hidden="true">
-							<ViewIcon name="audio" size={30} />
+							<ViewIcon name="audio" size="xl" />
 						</div>
 					)
 					: (
@@ -41,14 +42,14 @@ function MediaCard(asset: ArticleAsset): JSX.Element {
 				{asset.kind === "video"
 					? (
 						<span class="art-mediacard__play" aria-hidden="true">
-							<ViewIcon name="play" size={22} />
+							<Icon name="play" size="md" />
 						</span>
 					)
 					: null}
 				{asset.durationLabel ? <span class="art-mediacard__dur">{asset.durationLabel}</span> : null}
 			</div>
 			<span class="art-mediacard__label">
-				<ViewIcon name={KIND_ICON[asset.kind]} size={13} />
+				<ViewIcon name={KIND_ICON[asset.kind]} size="xs" />
 				<span>{asset.label}</span>
 			</span>
 		</div>

@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Icon } from "@projective/ui/icons";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
@@ -23,6 +24,10 @@ import type { ExploreItem, ProjectItem } from "../../types/explore-types.ts";
  * It stopped being a full-width divider row because a row is a list and a list implies a ranking that
  * an open call does not have. Two columns of equal cards say these are alternatives, which is what
  * they are.
+ *
+ * The stage separator is the registry's `chevron-right` at the smallest ramp step, not a typed `›`
+ * (§B.7): a character glyph renders at whatever weight the font gives it, and the icon set is the
+ * one thing on the card that is supposed to be uniform.
  */
 export function ProjectCard(
 	{ item, ctx = { scope: "explore" }, onSelect, authed = false }: {
@@ -55,7 +60,9 @@ export function ProjectCard(
 				<div class="ex-proj__pipeline" role="list" aria-label="Project stages">
 					{item.phases.map((phase, i) => (
 						<span class="ex-proj__stage" role="listitem" key={phase}>
-							{i > 0 && <span class="ex-proj__chevron" aria-hidden="true">›</span>}
+							{i > 0 && (
+								<Icon name="chevron-right" size="2xs" class="ex-proj__chevron" aria-hidden />
+							)}
 							<span class="ex-proj__stagename">{phase}</span>
 						</span>
 					))}

@@ -12,7 +12,10 @@ export function HelpArticlesStrip({ articles }: { articles: HelpArticle[] }): JS
 		<section class="ex-help" aria-labelledby="ex-help-title">
 			<div class="ex-help__head">
 				<h3 class="ex-help__title" id="ex-help-title">New here? Start with these</h3>
-				<a class="ex-viewall" href="/help">All help articles →</a>
+				<a class="ex-viewall" href="/help">
+					<span>All help articles</span>
+					<Icon name="arrow-right" aria-hidden />
+				</a>
 			</div>
 			<ul class="ex-help__list" role="list">
 				{articles.map((a) => (

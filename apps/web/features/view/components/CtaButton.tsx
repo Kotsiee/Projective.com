@@ -124,13 +124,23 @@ export function CtaLink(
 		href: string;
 		icon?: JSX.Element;
 		tone?: "inverted" | "brand";
+		/**
+		 * `outlined` is the navigating SECONDARY (the schedule leaf beside "Book session") — the same
+		 * structural step-down `CtaButton` takes, so a link and a button rank identically in the rig.
+		 */
+		variant?: "filled" | "outlined";
 	},
 ): JSX.Element {
-	const { label, ariaLabel, href, icon, tone = "inverted" } = props;
+	const { label, ariaLabel, href, icon, tone = "inverted", variant = "filled" } = props;
 	return (
 		<Ripple class="evp-cta__ripple">
 			<a
-				class={cls("evp-cta__link", "evp-cta__btn", `evp-cta__btn--${tone}`)}
+				class={cls(
+					"evp-cta__link",
+					"evp-cta__btn",
+					`evp-cta__btn--${tone}`,
+					variant === "outlined" && "evp-cta__link--outlined",
+				)}
 				href={href}
 				aria-label={ariaLabel}
 			>

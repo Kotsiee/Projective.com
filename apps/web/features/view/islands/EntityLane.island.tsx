@@ -218,7 +218,9 @@ export default function EntityLane(
 			note: active.name,
 		});
 	}
-	if (view.service?.bookingSummary) {
+	// A session's delivery line and its booking summary are frequently the same sentence ("60-minute
+	// session"); one fact is printed once, under the label that reaches the row first.
+	if (view.service?.bookingSummary && !ledger.some((r) => r.value === view.service?.bookingSummary)) {
 		ledger.push({ label: "Format", value: view.service.bookingSummary });
 	}
 	if (archetype === "product" && view.product) {

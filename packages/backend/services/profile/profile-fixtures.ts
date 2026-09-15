@@ -15,7 +15,7 @@ import type {
 	VerificationTier,
 	WorkPiece,
 } from "@projective/types/profile";
-import type { ExploreOwner, ProductItem, ProfileItem } from "@projective/types/explore";
+import type { ExploreOwner, ProductItem, ProfileItem, ServiceItem } from "@projective/types/explore";
 import {
 	ARTICLES,
 	BUSINESSES,
@@ -28,6 +28,9 @@ import {
 } from "../explore/fixtures.ts";
 import { resolveSkills } from "../explore/skills.ts";
 import { mockAvatar, mockCover, mockShowreel } from "../../mocks/assets.ts";
+import { hash as scheduleHash } from "../scheduling/derive.ts";
+import { buildRules, workingHoursOf } from "../scheduling/hours.ts";
+import { callOfferKindFor, offersCourtesyCall } from "../booking/call-offer.ts";
 
 /**
  * profile fixtures — the fat {@link ProfileBackendService}'s in-memory answer for a public profile
@@ -94,12 +97,31 @@ const LOCATIONS: ReadonlyArray<ProfileView["location"]> = [
 	{ city: "Sydney", country: "Australia", timezone: "Australia/Sydney" },
 ];
 
-const RESPONSE_TIMES = [
-	"Usually responds within 1 hour",
-	"Usually responds within 2 hours",
-	"Usually responds within a few hours",
-	"Usually responds within a day",
-];
+/**
+ * Typical first-reply times, in MINUTES — the measured datum. The label a profile prints derives
+ * from the number through {@link responseTimeLabel}, so the "Avg. response" line, the legacy
+ * `responseTime` sentence and the "Fast responder" gate (`<= 60`, the discovery card's
+ * `FAST_REPLY_MINUTES`) can never describe three different reply speeds.
+ */
+const RESPONSE_MINUTES = [45, 120, 240, 1440];
+
+/** The sentence form of a reply time — "Usually responds within 2 hours". */
+function responseTimeLabel(minutes: number): string {
+	if (minutes <= 60) return "Usually responds within 1 hour";
+	if (minutes < 180) return `Usually responds within ${Math.round(minutes / 60)} hours`;
+	if (minutes < 720) return "Usually responds within a few hours";
+	return "Usually responds within a day";
+}
+
+/**
+ * The published weekly hours for a seller — the SAME bands `/[handle]/availability` paints, seeded
+ * exactly as `availability-fixtures.ts` seeds them (the derive hash of the `@handle`), narrowed to
+ * the `working_hours` kind. A buyer entity publishes none.
+ */
+function hoursFor(kind: ProfileKind, handle: string, timezone: string): ProfileView["hours"] {
+	if (kind !== "freelancer" && kind !== "team") return null;
+	return { timezone, rules: workingHoursOf(buildRules(scheduleHash(handle))) };
+}
 
 const BANNERS = [
 	"1618005182384-a83a8bd57fbe",
@@ -432,6 +454,7 @@ export function findProfile(handle: string): ProfileView | null {
 	const verified = owner.verified ?? false;
 	const tier = tierFor(kind, verified, seed);
 	const location = LOCATIONS[seed % LOCATIONS.length];
+	const responseMinutes = row?.responseMinutes ?? RESPONSE_MINUTES[seed % RESPONSE_MINUTES.length];
 	const rating = row?.rating ??
 		{
 			asHelper: { value: 4.8, count: 40 + (seed % 30) },
@@ -473,7 +496,13 @@ export function findProfile(handle: string): ProfileView | null {
 				: "Booked — waitlist open"),
 		// Sellers (freelancer/team) publish a bookable availability calendar; buyer entities don't.
 		hasAvailability: kind === "freelancer" || kind === "team",
-		responseTime: RESPONSE_TIMES[seed % RESPONSE_TIMES.length],
+		hours: hoursFor(kind, owner.handle, location.timezone),
+		responseTime: responseTimeLabel(responseMinutes),
+		responseMinutes,
+		// The free introductory call is a SELLER offer; it reads the one derivation the listing's
+		// Contact menu reads, so the profile mark and the menu row cannot disagree.
+		freeConsultation: (kind === "freelancer" || kind === "team") &&
+			offersCourtesyCall(callOfferKindFor(bare)),
 		rating,
 		verified,
 		tier,
@@ -654,6 +683,45 @@ function reviewsFor(seed: number, count: number): ReviewEntry[] {
 	}));
 }
 
+/** The seller's packaged offers, re-attributed to the profile. A buyer entity lists none. */
+function servicesFor(profile: ProfileView, owner: ExploreOwner): ServiceItem[] {
+	if (profile.kind !== "freelancer" && profile.kind !== "team") return [];
+	const bare = bareHandle(profile.handle);
+	return reown(pick(SERVICES, SERVICES.length, hash(bare + "services")), owner, "sv");
+}
+
+/** The discovery-owner attribution for the profile's OWN work (services, projects, posts). */
+function ownerOf(profile: ProfileView): ExploreOwner {
+	return {
+		handle: profile.handle,
+		name: profile.name,
+		avatar: profile.avatar,
+		// Map the profile kind onto the narrower discovery-owner kind (organisation reads as a business
+		// buyer for attribution; client reads as a plain user).
+		kind: profile.kind === "client"
+			? "user"
+			: profile.kind === "freelancer"
+			? "freelancer"
+			: profile.kind === "team"
+			? "team"
+			: "business",
+		verified: profile.verified,
+	};
+}
+
+/**
+ * The profile's active service listings on their own — what the `/[handle]` layout renders as the
+ * Services row above the section tabs, on every section. It is the SAME slice the Work payload
+ * carries (`findProfileTab(handle, "work").services`), extracted so a caller that wants only the
+ * listings does not build the masonry, the projects and the roster to get them. `null` when the
+ * handle does not resolve; an empty array for a buyer entity.
+ */
+export function findProfileServices(handle: string): ServiceItem[] | null {
+	const profile = findProfile(handle);
+	if (!profile) return null;
+	return servicesFor(profile, ownerOf(profile));
+}
+
 /**
  * Build the payload for one profile SECTION (Decision #96 — the four consolidated tabs). Only the
  * collections the section renders are populated; the renderer reads what it needs. Item grids reuse
@@ -669,22 +737,7 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 	const bare = bareHandle(handle);
 	const seed = hash(bare + tab);
 	const seller = profile.kind === "freelancer" || profile.kind === "team";
-	// The owner attribution for the profile's own work.
-	const owner: ExploreOwner = {
-		handle: profile.handle,
-		name: profile.name,
-		avatar: profile.avatar,
-		// Map the profile kind onto the narrower discovery-owner kind (organisation reads as a business
-		// buyer for attribution; client reads as a plain user).
-		kind: profile.kind === "client"
-			? "user"
-			: profile.kind === "freelancer"
-			? "freelancer"
-			: profile.kind === "team"
-			? "team"
-			: "business",
-		verified: profile.verified,
-	};
+	const owner = ownerOf(profile);
 
 	const base: ProfileTabPayload = {
 		handle: profile.handle,
@@ -718,9 +771,7 @@ export function findProfileTab(handle: string, tab: ProfileTab): ProfileTabPaylo
 				: { members: [] as MemberEntry[], departments: [] as DepartmentEntry[] };
 			return {
 				...base,
-				services: seller
-					? reown(pick(SERVICES, SERVICES.length, hash(bare + "services")), owner, "sv")
-					: [],
+				services: servicesFor(profile, owner),
 				// A buyer entity's Work leads with what it is hiring for; a seller's with what it shipped.
 				openProjects: seller ? [] : projects.filter((_, i) => i % 2 === 0),
 				pastProjects: projects.filter((_, i) => i % 2 === 1),

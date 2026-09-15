@@ -125,7 +125,11 @@ export function ServiceCard(
 					}
 					<span class="ex-pricebadge">
 						<span class="ex-pricebadge__amount">
-							{price.isFloor && <span class="ex-pricebadge__from">From&#32;</span>}
+							{price.isFloor && (
+								<>
+									<span class="ex-pricebadge__from">From</span>{" "}
+								</>
+							)}
 							{price.amount
 								? (
 									<MoneyView
