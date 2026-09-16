@@ -1,0 +1,179 @@
+/*
+ * auth-controls — the form controls the auth SCREENS (join · login · forgot-password · verify) share
+ * with the in-page sign-in prompt: links, field rows, banners, the OAuth / SSO buttons, the divider.
+ * Split out of `auth.css` so a page that mounts only the `SignInPrompt` dialog carries these and not
+ * the fixed full-screen frame that sheet also declares. Token-only, strict BEM.
+ */
+
+/* #region Links + rows */
+.auth-link {
+	color: var(--primary);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.auth-link:hover {
+	text-decoration: underline;
+}
+
+.auth-row-split {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin: var(--space-1) 0 var(--space-4);
+}
+
+.auth-field-row {
+	margin-bottom: var(--space-4);
+}
+
+.auth-field-row:last-child {
+	margin-bottom: 0;
+}
+
+/* Nav actions pinned under a step / a form. */
+.auth-actions {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	margin-top: var(--space-5);
+	flex: none;
+}
+
+/* #endregion */
+
+/* #region Banners */
+.auth-banner {
+	display: flex;
+	gap: var(--space-3);
+	align-items: flex-start;
+	margin-bottom: var(--space-4);
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-lg);
+	font-size: 0.9rem;
+	line-height: 1.45;
+}
+
+.auth-banner--error {
+	background: color-mix(in srgb, var(--danger) var(--tint), var(--surface));
+	color: var(--on-surface);
+}
+
+.auth-banner--success {
+	background: color-mix(in srgb, var(--success) var(--tint), var(--surface));
+	color: var(--on-surface);
+}
+
+.auth-banner--info {
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+	color: var(--on-surface);
+}
+
+.auth-banner__icon {
+	flex: none;
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
+	margin-top: 0.1rem;
+}
+
+.auth-banner__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+/* #endregion */
+
+/* #region OAuth / SSO */
+.auth-oauth {
+	display: grid;
+	gap: var(--space-3);
+	margin-bottom: var(--space-4);
+}
+
+.auth-oauth__btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-height: 2.9rem;
+	padding-inline: var(--space-4);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	border: 0;
+	border-radius: var(--radius-lg);
+	font-weight: 600;
+	font-size: 0.95rem;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.auth-oauth__btn:hover {
+	background: var(--surface-3);
+}
+
+.auth-oauth__btn:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.auth-oauth__glyph {
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
+	flex: none;
+}
+
+.auth-divider {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin: var(--space-4) 0;
+	color: var(--text-secondary);
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.auth-sso {
+	overflow: hidden;
+	transition:
+		max-height var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+.auth-sso__hint {
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	margin: 0 0 var(--space-3);
+	line-height: 1.4;
+}
+
+/* #endregion */
+
+/* #region Remember me */
+.auth-remember {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: 0.9rem;
+	color: var(--on-surface);
+	cursor: pointer;
+	margin-bottom: var(--space-2);
+}
+
+.auth-remember input {
+	inline-size: 1.05rem;
+	block-size: 1.05rem;
+	accent-color: var(--primary);
+}
+/* #endregion */

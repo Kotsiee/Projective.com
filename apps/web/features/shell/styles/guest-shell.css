@@ -64,11 +64,35 @@
 	flex-direction: column;
 }
 
-/* The Search filter lane carries no collapse toggle, so force the aside expanded regardless of the
-   cached guest-nav preference (a collapsed rail would crush the facet controls). The extra `:root`
+/* The Search filter lane carries no rail presentation, so the aside is either fully expanded or
+   HIDDEN — never the collapsed icon rail (which would crush the facet controls). The extra `:root`
    raises specificity above the collapsed-width rule. */
 :root .guest-shell:has(.ex-filters-lane) {
 	--guest-aside-cur-w: var(--guest-aside-w-expanded);
+}
+
+/*
+ * Hidden by the results bar's "Filters" toggle (`features/explore/core/filter-visibility.ts`), off the
+ * PRE-PAINTED `:root[data-explore-filters]` attribute so the choice survives a navigation with no
+ * flash. The aside keeps its box while its width, opacity and the region gap transition to nothing,
+ * then leaves the accessibility tree and the tab order (`visibility: hidden`) — a hidden sidebar
+ * whose controls were still focusable would be a keyboard trap into an invisible panel. The body
+ * reclaims the full inline size because `--guest-aside-cur-w` collapses with it.
+ */
+:root[data-explore-filters="hidden"] .guest-shell:has(.ex-filters-lane) {
+	--guest-aside-cur-w: 0px;
+}
+
+:root[data-explore-filters="hidden"] .guest-shell:has(.ex-filters-lane) .ui-guest-aside {
+	opacity: 0;
+	visibility: hidden;
+	margin-inline-end: calc(-1 * var(--guest-inset));
+	box-shadow: none;
+	transition:
+		inline-size var(--dur-medium) var(--spring-standard),
+		margin-inline-end var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard),
+		visibility 0s linear var(--dur-medium);
 }
 
 /* #region Floating side nav (the route lane) — no splitter handle; glass on a ::before underlay */
@@ -80,6 +104,7 @@
  */
 .ui-guest-aside {
 	position: sticky;
+	margin-inline-end: 0;
 	inset-block-start: calc(var(--site-header-h, 5.5rem) + var(--guest-inset));
 	align-self: flex-start;
 	flex: 0 0 var(--guest-aside-cur-w);
@@ -107,7 +132,10 @@
 	 */
 	border-radius: var(--radius-container-lg);
 	box-shadow: var(--elevation-medium);
-	transition: inline-size var(--dur-medium) var(--spring-standard);
+	transition:
+		inline-size var(--dur-medium) var(--spring-standard),
+		margin-inline-end var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard);
 }
 
 /*
@@ -276,6 +304,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.ui-guest-aside,
+	:root[data-explore-filters="hidden"] .guest-shell:has(.ex-filters-lane) .ui-guest-aside,
 	.guest-shell__subheader,
 	.guest-shell__subheader::before,
 	.guest-shell[data-has-aside="true"] .guest-shell__body {

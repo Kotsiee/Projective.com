@@ -1,5 +1,6 @@
 import { signal } from "@preact/signals";
 import type { ExploreParams } from "./explore-state.ts";
+import type { Facet } from "../types/explore-types.ts";
 
 /**
  * filter-bridge — the cross-island channel that connects the relocated Search filter lane (rendered in
@@ -25,3 +26,11 @@ export const bridgeParams = signal<ExploreParams | null>(null);
  * until the dashboard hydrates (a brief window in which facet clicks are inert by design).
  */
 export const bridgeCommit = signal<((next: ExploreParams) => void) | null>(null);
+
+/**
+ * The scope-specific facets the LAST search payload carried (`SearchPayload.facets`) — published by
+ * SearchDashboard beside the params so the lane renders the API's dynamic facets merged over the
+ * static per-category list. `null` until the dashboard hydrates (the lane then renders the static
+ * list alone, which is also what the SSR first paint shows).
+ */
+export const bridgeFacets = signal<Facet[] | null>(null);

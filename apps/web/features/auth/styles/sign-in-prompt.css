@@ -1,37 +1,36 @@
 /*
  * sign-in-prompt — the guest authentication prompt (`SignInPrompt`), a `@projective/ui` Dialog whose
- * chrome (surface, hairlines, radius, sheet-docking) is the package's; this sheet lays out its body
- * and its two-link footer only. Token-only, strict BEM, no colour of its own.
+ * chrome (surface, hairlines, radius, sheet-docking) is the package's, and whose controls (OAuth / SSO
+ * buttons, divider, banners, field rows) are `auth-controls.css`'s; this sheet lays out the body and
+ * the join footer only. Token-only, strict BEM, no colour of its own.
  */
 
 /* #region Body */
 .auth-prompt__body {
 	display: flex;
 	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--space-3);
-}
-
-.auth-prompt__mark {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--space-7);
-	block-size: var(--space-7);
-	border-radius: var(--radius-full);
-	background: var(--surface-1);
-	color: var(--on-surface);
+	align-items: stretch;
+	gap: var(--space-2);
 }
 
 .auth-prompt__lead {
-	margin: 0;
+	margin: 0 0 var(--space-2);
 	font-size: var(--text-base);
 	line-height: var(--leading-relaxed, 1.7);
 	color: var(--on-surface);
 }
 
+/* The prompt is a dialog, not a screen: the divider and the OAuth stack sit closer than on `/login`. */
+.auth-prompt .auth-oauth {
+	margin-bottom: 0;
+}
+
+.auth-prompt .auth-divider {
+	margin: var(--space-2) 0;
+}
+
 .auth-prompt__note {
-	margin: 0;
+	margin: var(--space-3) 0 0;
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal, 1.5);
 	color: var(--text-secondary);
@@ -39,27 +38,14 @@
 
 /* #endregion */
 
-/* #region Actions */
-.auth-prompt__actions {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-	gap: var(--space-2);
+/* #region Footer */
+.auth-prompt__join {
+	margin: 0;
 	inline-size: 100%;
-}
-
-.auth-prompt__cta {
-	text-decoration: none;
-}
-
-@media (max-width: 767px) {
-	.auth-prompt__actions {
-		flex-direction: column;
-	}
-
-	.auth-prompt__cta {
-		inline-size: 100%;
-	}
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal, 1.5);
+	color: var(--text-secondary);
+	text-align: center;
 }
 
 /* #endregion */

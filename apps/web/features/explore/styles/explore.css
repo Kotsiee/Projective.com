@@ -1966,21 +1966,18 @@
 
 /* #region Home compact hero */
 /*
- * A deep-primary band holding ONE headline, the shared search bar, and a row of quick-filter pills.
- *
- * It was 591px tall of a measured 720px viewport, which put the category bar and every recommendation
- * below the fold on an ordinary laptop. What came out was an uppercase kicker, a supporting lede and
- * about half the vertical padding — all of it copy the reader reads once. What stayed is what they act
- * on, plus the illustrative backdrop, which costs no height because it is absolutely positioned behind
- * the content.
+ * A deep-primary band holding ONE headline, the shared search bar, and a row of quick-filter pills,
+ * with the illustrative backdrop absolutely positioned behind the content.
  *
  * It is a BANNER rather than a full-bleed band: rounded corners and an outer margin, so it sits as an
- * object inside the page rather than as a stripe painted across it. A margin on a grid item is
- * accounted for by the track it occupies, so the fold's height arithmetic is unaffected — the row
- * simply measures the hero plus its margin, which is what it should measure.
+ * object inside the page rather than as a stripe painted across it.
  */
 .ex-hero {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-block-size: 500px;
     overflow: clip;
     isolation: isolate;
     background: var(--primary);
@@ -2026,6 +2023,7 @@
 
 .ex-hero__inner {
     position: relative;
+    inline-size: 100%;
     max-inline-size: var(--container-xl);
     margin-inline: auto;
     display: flex;

@@ -1,4 +1,5 @@
-import type { ExploreCategory, ExploreParams } from "../types/explore-types.ts";
+import type { ExploreCategory, ExploreParams, Facet } from "../types/explore-types.ts";
+import { facetIsDefault } from "../types/explore-types.ts";
 
 export type { ExploreParams };
 
@@ -84,9 +85,26 @@ export function withFilter(p: ExploreParams, id: string, values: string[]): Expl
 	return { ...p, filters };
 }
 
-/** Total number of active facet selections across all groups — the sidebar's "active count" badge. */
-export function activeFilterCount(p: ExploreParams): number {
-	return Object.values(p.filters).reduce((n, arr) => n + arr.length, 0);
+/**
+ * The number of active facet selections — the sidebar's "active count" badge. Given the facet list,
+ * a multi-choice facet counts each chosen option and a single-value facet (a range, a rating, a
+ * milestone) counts once and only when it is off its default; without the list every carried value
+ * counts, which is the URL's own view of the state.
+ */
+export function activeFilterCount(p: ExploreParams, facets?: readonly Facet[]): number {
+	if (!facets) return Object.values(p.filters).reduce((n, arr) => n + arr.length, 0);
+	const byId = new Map(facets.map((f) => [f.id, f] as const));
+	let n = 0;
+	for (const [id, values] of Object.entries(p.filters)) {
+		const facet = byId.get(id);
+		if (!facet) {
+			n += values.length;
+			continue;
+		}
+		if (facetIsDefault(facet, values)) continue;
+		n += "options" in facet ? values.length : 1;
+	}
+	return n;
 }
 
 /**

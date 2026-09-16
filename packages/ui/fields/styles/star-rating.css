@@ -1,0 +1,108 @@
+/*
+ * StarRatingInput — a half-precision star slider. Token-only (DESIGN_SYSTEM.md §A). The rest state
+ * is the neutral `--outline` stroke; the fill is `--ui-star-fill`, which defaults to the amber
+ * `--warning` ramp and may be re-toned by a host (`--primary` where the surface is monochrome). The
+ * fill is a CLIPPED copy of the same registry glyph laid over the outline, so a half is drawn by
+ * width, never by a second path. The group is one interactive control and owns one focus ring.
+ */
+
+.ui-star-rating {
+	--star-size: var(--icon-md);
+	--star-gap: var(--space-1);
+	--ui-star-fill: var(--warning);
+
+	display: inline-flex;
+	align-items: center;
+	gap: var(--star-gap);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	touch-action: manipulation;
+}
+
+.ui-star-rating--size-sm {
+	--star-size: var(--icon-sm);
+}
+
+.ui-star-rating--size-lg {
+	--star-size: var(--icon-lg);
+}
+
+.ui-star-rating:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+/* #region Star */
+.ui-star-rating__star {
+	position: relative;
+	display: inline-flex;
+	inline-size: var(--star-size);
+	block-size: var(--star-size);
+	color: var(--outline);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-star-rating__star .ui-icon {
+	--ui-icon-size: var(--star-size);
+	display: block;
+}
+
+/*
+ * The filled copy sits over the outline and is clipped to `--ui-star-fill-w` from the inline-start
+ * edge — 0%, 50% or 100%. Logical inset so the half is the READING-START half in RTL as well.
+ */
+.ui-star-rating__fill {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: var(--ui-star-fill-w, 0%);
+	overflow: hidden;
+	color: var(--ui-star-fill);
+	pointer-events: none;
+	transition: inline-size var(--dur-fast) var(--ease-standard);
+}
+
+.ui-star-rating__fill .ui-icon {
+	/* The clipped copy must keep the star's full width so the glyph is cut, not squeezed. */
+	inline-size: var(--star-size);
+	min-inline-size: var(--star-size);
+}
+
+/* A preview (hover) is drawn a step lighter than a committed value, so the two can be told apart. */
+.ui-star-rating__star--preview .ui-star-rating__fill {
+	color: color-mix(in srgb, var(--ui-star-fill) 80%, var(--surface));
+}
+/* #endregion */
+
+/* #region States */
+.ui-star-rating--invalid .ui-star-rating__fill,
+.ui-star-rating--required .ui-star-rating__fill {
+	color: var(--danger);
+}
+
+.ui-star-rating--readonly,
+.ui-star-rating--readonly .ui-star-rating__star {
+	cursor: default;
+}
+
+.ui-star-rating--disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: not-allowed;
+}
+
+.ui-star-rating--disabled .ui-star-rating__star {
+	cursor: not-allowed;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-star-rating__star,
+	.ui-star-rating__fill {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-star-rating__star,
+:root[data-motion="reduced"] .ui-star-rating__fill {
+	transition: none;
+}

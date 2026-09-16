@@ -1,6 +1,10 @@
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
+import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
 import type { ServiceItem } from "@projective/types/explore";
+import { DEFAULT_PROJECT_PARAMS } from "@features/projects/core/projects-state.ts";
+import { type HireProject, hireProjectsFrom } from "./profile-model.ts";
 
 /**
  * profile-ssr — the SERVER-ONLY bootstrap the `[handle]` middleware + sub-routes use to paint the
@@ -28,4 +32,26 @@ export function resolveProfileTab(handle: string, tab: ProfileTab): ProfileTabPa
 export function resolveProfileServices(handle: string): ServiceItem[] {
 	const res = ProfileBackendService.services(handle);
 	return res.ok && res.data ? res.data.services : [];
+}
+
+/**
+ * Resolve the VIEWER's open projects for the hero's Hire control — the engagements they own or
+ * administer, across every workspace they belong to, still open to new members. Resolved server-side
+ * so the first byte already knows which of the three Hire shapes to paint (§3 gate 11: a control that
+ * changes what it does after hydration is a control that was wrong for the first second).
+ *
+ * Reads the SAME feed the `/projects` lane renders (`ProjectBackendService.list`) under the actor's
+ * own JWT, so what the popover offers is exactly what the client would find in their own feed. A
+ * guest resolves to `[]` without a read — there is nothing to hire from.
+ */
+export async function resolveHireProjects(actor: ReadActor): Promise<HireProject[]> {
+	if (!actor.userId) return [];
+	const res = await ProjectBackendService.list({
+		...DEFAULT_PROJECT_PARAMS,
+		view: "projects",
+		involvement: "owner",
+		scope: "global",
+		statuses: ["draft", "active", "on_hold"],
+	}, actor);
+	return res.ok && res.data ? hireProjectsFrom(res.data.items) : [];
 }

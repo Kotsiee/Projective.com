@@ -1,6 +1,6 @@
 import type { CSSProperties, JSX } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/field.css";
 import "../styles/number-input.css";
 import { cx } from "../../core/cx.ts";
@@ -368,6 +368,17 @@ export function NumberInput(props: NumberInputProps): JSX.Element {
 		if (focused.value) draft.value = next === null ? "" : String(next);
 		return true;
 	};
+
+	// A CONTROLLED value that changes from outside while the field holds focus — a host re-ordering a
+	// range pair after this box was typed into, a reset elsewhere — must reach the draft too, or the
+	// box keeps showing the figure it no longer holds and re-commits it on blur. Only the signal is
+	// subscribed here; typing changes the draft, not the signal, so this never fights a keystroke.
+	useSignalEffect(() => {
+		const v = ctrl.signal.value;
+		if (!focused.peek()) return;
+		const held = parseNumericInput(draft.peek());
+		if (held !== v) draft.value = v === null || v === undefined ? "" : String(v);
+	});
 
 	const stepBy = (direction: 1 | -1, fine = false): boolean => {
 		if (locked) return false;

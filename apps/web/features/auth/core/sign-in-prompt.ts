@@ -17,7 +17,7 @@ import { signal } from "@preact/signals";
  */
 
 /** What the reader was trying to do — decides the sentence the prompt opens with. */
-export type SignInIntent = "follow" | "message" | "save" | "generic";
+export type SignInIntent = "hire" | "follow" | "message" | "save" | "generic";
 
 export interface SignInRequest {
 	intent: SignInIntent;

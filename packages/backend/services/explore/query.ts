@@ -147,6 +147,38 @@ function priceValue(item: ExploreItem): number {
 }
 
 /**
+ * A service's promised delivery window in DAYS, read off its display string (`"10-day delivery"`,
+ * `"2-week delivery"`) — the same string the card prints, so the facet and the card cannot disagree.
+ * `null` for anything that is not a service or does not name a window, and such an item is never
+ * excluded by the delivery facet: a filter that cannot apply must be inert, not destructive.
+ */
+export function deliveryDays(item: ExploreItem): number | null {
+	if (item.type !== "services") return null;
+	const m = /(\d+)\s*-?\s*(day|week|month)/i.exec(item.delivery);
+	if (!m) return null;
+	const n = Number(m[1]);
+	const unit = m[2].toLowerCase();
+	return unit === "week" ? n * 7 : unit === "month" ? n * 30 : n;
+}
+
+/**
+ * The `[lo, hi]` a range facet's URL values stand for. Two values are the pair; ONE value is the
+ * legacy "up to" form the old single-thumb slider wrote, and still resolves (a bookmarked
+ * `?price=500` keeps meaning "up to $500"). Anything unparseable is unbounded on that side.
+ */
+function rangeBounds(values: string[] | undefined): [number, number] | null {
+	if (!values?.length) return null;
+	const a = Number(values[0]);
+	const b = Number(values[1]);
+	if (values.length === 1) {
+		return Number.isFinite(a) ? [Number.NEGATIVE_INFINITY, a] : null;
+	}
+	const lo = Number.isFinite(a) ? a : Number.NEGATIVE_INFINITY;
+	const hi = Number.isFinite(b) ? b : Number.POSITIVE_INFINITY;
+	return lo <= hi ? [lo, hi] : [hi, lo];
+}
+
+/**
  * Sibling entity types folded into a merged scope. "Freelancers & Teams" and "People & Businesses"
  * are single split-talent scopes, so those tokens match both members (the narrower `teams` /
  * `businesses` tokens stay singular).
@@ -214,11 +246,18 @@ export function getResults(params: ExploreParams): ExploreItem[] {
 			stageFacet.some((s) => it.stage.toLowerCase().startsWith(s.replace("-", " ")))
 		);
 	}
-	const priceMax = Number(params.filters.price?.[0]);
-	if (Number.isFinite(priceMax)) {
+	const price = rangeBounds(params.filters.price);
+	if (price) {
 		items = items.filter((it) => {
 			const v = priceValue(it);
-			return !Number.isFinite(v) || v <= priceMax;
+			return !Number.isFinite(v) || (v >= price[0] && v <= price[1]);
+		});
+	}
+	const deliveryMax = Number(params.filters.delivery?.[0]);
+	if (Number.isFinite(deliveryMax)) {
+		items = items.filter((it) => {
+			const d = deliveryDays(it);
+			return d === null || d <= deliveryMax;
 		});
 	}
 	const ratingMin = Number(params.filters.rating?.[0]);

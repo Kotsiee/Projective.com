@@ -280,6 +280,13 @@
     font-variant-numeric: tabular-nums;
 }
 
+.pf-metric__from {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+    letter-spacing: var(--tracking-normal);
+    color: var(--text-secondary);
+}
+
 /* #endregion */
 
 /* #region Showcase */
@@ -385,6 +392,95 @@
 :root[data-motion="reduced"] .pf-burst__dot {
     animation: none;
     transform: none;
+}
+
+/* #endregion */
+
+/* #region Hire popover */
+/* Body-portalled (the Popover projects its panel into `document.body`), so nothing here may read a
+   `--pf-*` token — those are scoped to `.pf` and would silently fall back out here (the `--wlt-*`
+   lesson, Decision #60). Global tokens only. */
+.ui-popover.pf-hire .ui-popover__content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    inline-size: min(20rem, calc(100vw - var(--space-8)));
+    padding: var(--space-3);
+}
+
+.pf-hire__lead {
+    margin: 0;
+    padding-inline: var(--space-2);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.pf-hire__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-block-size: 18rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.pf-hire__item,
+.pf-hire__new {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border-radius: var(--radius-base);
+    color: var(--on-surface);
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-hire__item:hover,
+.pf-hire__new:hover {
+    background: var(--surface-1);
+}
+
+.pf-hire__item:focus-visible,
+.pf-hire__new:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-hire__title {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pf-hire__meta {
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+.pf-hire__new {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-start: var(--space-1);
+    padding-block-start: var(--space-3);
+    border-block-start: var(--hairline);
+    border-radius: 0 0 var(--radius-base) var(--radius-base);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.pf-hire__new:hover {
+    color: var(--on-surface);
 }
 
 /* #endregion */

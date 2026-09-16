@@ -136,6 +136,12 @@ export const LocalKeys = {
 	 */
 	GUEST_NAV_COLLAPSED: "pj.local.shell.guestNavCollapsed",
 	/**
+	 * Whether a GUEST has hidden the Explore Search-Results filter sidebar (`"1"` hidden | `"0"`
+	 * shown). Read pre-paint in `_app.tsx` to set `:root[data-explore-filters]` before first paint,
+	 * re-synced by the explore islands after hydration (`features/explore/core/filter-visibility.ts`).
+	 */
+	EXPLORE_FILTERS_HIDDEN: "pj.local.explore.filtersHidden",
+	/**
 	 * The `/projects` feed's applied filter state, partitioned BY context id. Stored as a single JSON
 	 * map (`Record<contextId, ProjectFeedParams>`) under this one key — the `StorageKey` union is
 	 * closed, so we can't synthesise a per-context key literal; the partition lives inside the value.

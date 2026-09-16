@@ -3,6 +3,7 @@ import type { ServiceItem } from "../types/profile-types.ts";
 import {
 	ctaFor,
 	estimatedSpendFor,
+	hireProjectsFrom,
 	isFastResponder,
 	parseReviewStance,
 	responseLabel,
@@ -12,13 +13,52 @@ import {
 } from "./profile-model.ts";
 
 Deno.test("ctaFor leads a seller with Hire and a buyer with Message", () => {
-	assertEquals(ctaFor("freelancer", true), { layout: "hire", primary: "Hire", target: "services" });
-	assertEquals(ctaFor("team", true), { layout: "hire", primary: "Hire", target: "services" });
-	// A seller with nothing listed can only be hired by asking.
-	assertEquals(ctaFor("freelancer", false), { layout: "hire", primary: "Hire", target: "message" });
+	const hire = (target: "projects" | "services" | "signin") => ({
+		layout: "hire" as const,
+		primary: "Hire" as const,
+		target,
+	});
+	const message = { layout: "message" as const, primary: "Message" as const, target: null };
+	const viewer = (authed: boolean, hasServices: boolean, openProjectCount: number) => ({
+		authed,
+		hasServices,
+		openProjectCount,
+	});
+
+	// A guest is intercepted whatever the seller has — the prompt decides what happens next.
+	assertEquals(ctaFor("freelancer", viewer(false, true, 0)), hire("signin"));
+	assertEquals(ctaFor("team", viewer(false, false, 0)), hire("signin"));
+	// Case A — open projects win over listings: the client picks where to bring the seller in.
+	assertEquals(ctaFor("freelancer", viewer(true, true, 2)), hire("projects"));
+	assertEquals(ctaFor("freelancer", viewer(true, false, 1)), hire("projects"));
+	// Case B — nothing to hire into, something to buy.
+	assertEquals(ctaFor("team", viewer(true, true, 0)), hire("services"));
+	// Case C — nothing to hire into and nothing to buy: no Hire, the text pair instead.
+	assertEquals(ctaFor("freelancer", viewer(true, false, 0)), message);
+	// A buyer entity cannot be hired, whatever the viewer holds.
 	for (const kind of ["client", "business", "organisation"] as const) {
-		assertEquals(ctaFor(kind, true), { layout: "message", primary: "Message", target: null });
+		assertEquals(ctaFor(kind, viewer(true, true, 3)), message);
+		assertEquals(ctaFor(kind, viewer(false, true, 0)), message);
 	}
+});
+
+Deno.test("hireProjectsFrom keeps only open engagements, as slim rows", () => {
+	const row = (slug: string, status: "draft" | "active" | "on_hold" | "completed" | "cancelled") =>
+		({ slug, title: `Project ${slug}`, scopeLabel: "Personal", status }) as never;
+	const rows = hireProjectsFrom([
+		row("prj-a", "active"),
+		row("prj-b", "completed"),
+		row("prj-c", "draft"),
+		row("prj-d", "cancelled"),
+		row("prj-e", "on_hold"),
+	]);
+	assertEquals(rows.map((r) => r.slug), ["prj-a", "prj-c", "prj-e"]);
+	assertEquals(rows[0], {
+		slug: "prj-a",
+		title: "Project prj-a",
+		scopeLabel: "Personal",
+		status: "active",
+	});
 });
 
 Deno.test("review stance is the author's role inverted", () => {

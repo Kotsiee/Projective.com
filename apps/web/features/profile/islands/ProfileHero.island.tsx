@@ -1,9 +1,10 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import type { RefObject } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
-import { Tooltip } from "@projective/ui/feedback";
+import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { dsConfig } from "@projective/ui/system";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
@@ -20,7 +21,13 @@ import "../styles/profile.css";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
 import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
-import { ctaFor, SERVICES_ANCHOR } from "../core/profile-model.ts";
+import {
+	ctaFor,
+	type EstimatedSpend,
+	type HireProject,
+	hireProjectHref,
+	SERVICES_ANCHOR,
+} from "../core/profile-model.ts";
 import {
 	editedAvatar,
 	editedShowcase,
@@ -42,11 +49,14 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  * # The rig has three shapes, decided by `ctaFor`
  *
  * A SELLER leads with **Hire** and folds Message + Follow into icon-only secondaries (each with the
- * portal `Tooltip` + `aria-label` §B.6 requires of an icon-only control). Hire is a real anchor into
- * the Services row when there is a listing to land on — it works with JavaScript off and for a guest,
- * because looking at what somebody sells needs no account — and opens the conversation when there is
- * nothing listed. A BUYER keeps Message as its text primary with Follow beside it. The OWNER sees
- * Settings + Share and the two image pickers.
+ * portal `Tooltip` + `aria-label` §B.6 requires of an icon-only control). What Hire does is the
+ * viewer's situation, resolved server-side so the first byte paints the right control: a guest gets
+ * the sign-in prompt; a client with open projects gets a popover listing them (each row lands on that
+ * project's roster, which owns the invite flow); a client with none but a listing to buy is scrolled
+ * to the Services row (a real anchor, so it works with JavaScript off); and a client with neither gets
+ * NO Hire — the rig falls back to the text Message + Follow pair, because a Hire that could only
+ * open the conversation would be a Message button wearing the wrong name. A BUYER keeps Message as its
+ * text primary with Follow beside it. The OWNER sees Settings + Share and the two image pickers.
  *
  * # A guest is intercepted, not bounced
  *
@@ -74,13 +84,26 @@ export interface ProfileHeroProps {
 	profile: ProfileView;
 	/** Whether the viewer owns this profile (swaps the rig for Settings ⁄ Share + the image pickers). */
 	canEdit: boolean;
-	/** Whether the viewer is signed in — a guest's Follow ⁄ Message open the sign-in prompt. */
+	/** Whether the viewer is signed in — a guest's Hire ⁄ Follow ⁄ Message open the sign-in prompt. */
 	authed: boolean;
-	/** Whether the seller has active listings — where a Hire control lands. */
+	/** Whether the seller has active listings — where a Hire control can land. */
 	hasServices: boolean;
+	/** The estimated spend floor across those listings, for the metrics strip. */
+	spend: EstimatedSpend | null;
+	/** The VIEWER's open projects — what a Hire control can bring the seller into. `[]` for a guest. */
+	hireProjects: HireProject[];
 }
 
 const PICKER_ID = "profile-image";
+
+/** The lifecycle word beside a project in the Hire list — a state, so it earns its place (§B.11). */
+const HIRE_STATUS: Record<HireProject["status"], string> = {
+	draft: "Draft",
+	active: "Active",
+	on_hold: "On hold",
+	completed: "Completed",
+	cancelled: "Cancelled",
+};
 const STATUS_TTL_MS = 2500;
 const CELEBRATE_MS = 700;
 const BURST_DOTS = 6;
@@ -101,7 +124,7 @@ function isAbort(err: unknown): boolean {
 }
 
 export default function ProfileHero(
-	{ profile, canEdit, authed, hasServices }: ProfileHeroProps,
+	{ profile, canEdit, authed, hasServices, spend, hireProjects }: ProfileHeroProps,
 ): JSX.Element {
 	const avatar = editedAvatar.value ?? profile.avatar;
 	const showcase = resolveShowcase(profile.showcase, editedShowcase.value, profile.name);
@@ -193,6 +216,19 @@ export default function ProfileHero(
 		quickMessageOpen.value = true;
 	}
 
+	/**
+	 * The Services anchor, scrolled smoothly. The `href` still carries the jump for a reader without
+	 * JavaScript; here the default is replaced so the landing is animated — or immediate under either
+	 * reduced-motion channel, because arriving is the function and the glide is decoration.
+	 */
+	function scrollToServices(e: Event): void {
+		const el = document.getElementById(SERVICES_ANCHOR);
+		if (!el) return;
+		e.preventDefault();
+		el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+		history.replaceState(history.state, "", `#${SERVICES_ANCHOR}`);
+	}
+
 	function toggleFollow(): void {
 		if (gate("follow")) return;
 		const next = !following.value;
@@ -207,7 +243,12 @@ export default function ProfileHero(
 		}
 	}
 
-	const cta = ctaFor(profile.kind, hasServices);
+	const cta = ctaFor(profile.kind, {
+		authed,
+		hasServices,
+		openProjectCount: hireProjects.length,
+	});
+	const hireClass = "pf-hero__cta pf-hero__cta--primary pf-hero__cta--hire";
 	const isFollowing = following.value;
 	const tier = TIER_META[profile.tier];
 	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
@@ -297,25 +338,67 @@ export default function ProfileHero(
 							: cta.layout === "hire"
 							? (
 								<>
-									{cta.target === "services"
-										? (
-											<a
-												class="ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded pf-hero__cta pf-hero__cta--primary pf-hero__cta--hire"
-												href={`#${SERVICES_ANCHOR}`}
-											>
-												<span class="ui-button__label">{cta.primary}</span>
+									{cta.target === "services" && (
+										<a
+											class={`ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded ${hireClass}`}
+											href={`#${SERVICES_ANCHOR}`}
+											onClick={scrollToServices}
+										>
+											<span class="ui-button__label">{cta.primary}</span>
+										</a>
+									)}
+									{cta.target === "signin" && (
+										<Button
+											rounded
+											size="md"
+											class={hireClass}
+											onClick={() => gate("hire")}
+										>
+											{cta.primary}
+										</Button>
+									)}
+									{cta.target === "projects" && (
+										<Popover
+											placement="bottom-start"
+											class="pf-hire"
+											label={`Hire ${profile.name}`}
+											trigger={(api) => (
+												// A native element: `Button` is a plain function component, so a `ref` on it
+												// never reaches the DOM node the popover has to measure.
+												<button
+													type="button"
+													ref={api.ref as RefObject<HTMLButtonElement>}
+													class={`ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded ${hireClass}`}
+													aria-haspopup="dialog"
+													aria-expanded={api.expanded ? "true" : "false"}
+													aria-controls={api.panelId}
+													onClick={api.toggle}
+												>
+													<span class="ui-button__label">{cta.primary}</span>
+												</button>
+											)}
+										>
+											<p class="pf-hire__lead">
+												Bring {profile.name} into one of your projects
+											</p>
+											<ul class="pf-hire__list" role="list">
+												{hireProjects.map((project) => (
+													<li key={project.slug}>
+														<a class="pf-hire__item" href={hireProjectHref(project)}>
+															<span class="pf-hire__title">{project.title}</span>
+															<span class="pf-hire__meta">
+																{project.scopeLabel} · {HIRE_STATUS[project.status]}
+															</span>
+														</a>
+													</li>
+												))}
+											</ul>
+											<a class="pf-hire__new" href="/projects?create=1">
+												<Icon name="plus" size="xs" />
+												Start a new project
 											</a>
-										)
-										: (
-											<Button
-												rounded
-												size="md"
-												class="pf-hero__cta pf-hero__cta--primary pf-hero__cta--hire"
-												onClick={openMessage}
-											>
-												{cta.primary}
-											</Button>
-										)}
+										</Popover>
+									)}
 									<Tooltip content="Message" placement="bottom">
 										<Button
 											rounded
@@ -388,7 +471,7 @@ export default function ProfileHero(
 						</p>
 					</div>
 
-					<ProfileMetrics profile={profile} />
+					<ProfileMetrics profile={profile} spend={spend} />
 				</div>
 
 				{showcase && (

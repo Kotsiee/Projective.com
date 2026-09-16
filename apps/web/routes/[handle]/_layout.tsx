@@ -17,11 +17,17 @@ import {
 } from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
-import { resolveProfileServices } from "@features/profile/core/profile-ssr.ts";
+import { readActor } from "@web/utils/api-session.ts";
+import {
+	resolveHireProjects,
+	resolveProfileServices,
+} from "@features/profile/core/profile-ssr.ts";
 import {
 	activeTabOf,
 	defaultTabFor,
+	estimatedSpendFor,
 	isOwnProfile,
+	isSellerKind,
 	TABS_ANCHOR,
 } from "@features/profile/core/profile-model.ts";
 
@@ -37,15 +43,18 @@ import {
  * profile's own sticky element is the section tab bar, pinned flush under whichever shell's header.
  *
  * The services are resolved HERE, once, because they render on every section (above the tabs) and
- * feed two other regions: the hero's Hire control (which lands on them) and the context bar's spend
- * floor. A buyer entity resolves to an empty list and none of the three render anything for it.
+ * feed two other regions: the hero's Hire control (which lands on them) and the hero's metrics strip
+ * (the spend floor). A buyer entity resolves to an empty list and none of the three render anything
+ * for it. The VIEWER's open projects are resolved here too, for the same control: a signed-in client
+ * looking at a seller gets a Hire that opens a pick-a-project list, and the first byte must already
+ * know whether there is one to open (§3 gate 11) — so it is a server read, not an island fetch.
  *
  * Two routes under the namespace keep their own chrome: the profile-scoped item viewer
  * (`/[handle]/view/[id]`, which resolves ITS lane from the URL like the public `/view/[id]`) and the
  * full-page availability calendar (`/[handle]/availability`, which fills the content region and gets
  * only a one-line identity strip with a way back).
  */
-export default define.page(function ProfileLayout(ctx) {
+export default define.page(async function ProfileLayout(ctx) {
 	const profile = ctx.state.profile;
 	const path = ctx.url.pathname;
 	const authed = !!ctx.state.isAuthenticated;
@@ -153,16 +162,22 @@ export default define.page(function ProfileLayout(ctx) {
 	// The active section highlighted in the tab bar — the URL segment, or Work on the bare index.
 	const active = activeTabOf(path) ?? defaultTabFor(profile.kind);
 	const services = resolveProfileServices(profile.handle);
+	// Only a signed-in VISITOR of a seller can hire, so only that viewer pays for the read.
+	const hireProjects = authed && !canEdit && isSellerKind(profile.kind)
+		? await resolveHireProjects(readActor(ctx))
+		: [];
 	return shell(
 		<div class="pf-scope">
 			<div class="pf">
 				<ProfileHero
 					profile={profile}
+					hasServices={services.length > 0}
+					spend={estimatedSpendFor(services)}
 					canEdit={canEdit}
 					authed={authed}
-					hasServices={services.length > 0}
+					hireProjects={hireProjects}
 				/>
-				<ProfileContextBar profile={profile} services={services} canEdit={canEdit} />
+				<ProfileContextBar profile={profile} canEdit={canEdit} />
 				<ProfileServicesSection services={services} authed={authed} />
 				<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">
 					<ProfileTabs profile={profile} active={active} />

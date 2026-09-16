@@ -1,0 +1,44 @@
+/*
+ * RangeSlider — a dual-thumb track over a pair of numeric boxes. Token-only (DESIGN_SYSTEM.md §A).
+ * The track and the boxes are each their own interactive control and carry their own focus rings;
+ * this sheet only lays the two rows out. No four-sided border on the group (§B.4).
+ */
+
+.ui-range-slider {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.ui-range-slider__track {
+	display: block;
+}
+
+/* #region Boxes */
+.ui-range-slider__inputs {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.ui-range-slider__input {
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.ui-range-slider__dash {
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1;
+	user-select: none;
+}
+/* #endregion */
+
+/* #region States */
+.ui-range-slider--disabled .ui-range-slider__dash {
+	opacity: var(--fld-disabled-alpha);
+}
+/* #endregion */

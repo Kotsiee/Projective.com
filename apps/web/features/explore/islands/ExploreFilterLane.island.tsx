@@ -1,12 +1,17 @@
+import { useEffect } from "preact/hooks";
 import { FilterPanel } from "../components/FilterPanel.tsx";
-import { FILTER_CONFIG } from "../core/filter-config.ts";
+import { activeFilterConfigs } from "../core/filter-config.ts";
 import { activeFilterCount, type ExploreParams, withFilter } from "../core/explore-state.ts";
-import { bridgeCommit, bridgeParams } from "../core/filter-bridge.ts";
+import { bridgeCommit, bridgeFacets, bridgeParams } from "../core/filter-bridge.ts";
+import { syncFiltersHidden } from "../core/filter-visibility.ts";
 
 export interface ExploreFilterLaneProps {
 	/** SSR seed — the params parsed from the URL by the shell, so the lane paints filters on first byte. */
 	initialParams: ExploreParams;
 }
+
+/** The locale the numeric boxes format in — fixed so SSR and the client print the same figure. */
+const FIGURE_LOCALE = "en-US";
 
 /**
  * ExploreFilterLane — the Search filters, RELOCATED out of the results body into the navigation sidebar
@@ -18,47 +23,41 @@ export interface ExploreFilterLaneProps {
  * State stays in real-time lockstep with the results through the {@link bridgeParams}/{@link bridgeCommit}
  * signal bridge: the lane reads the live params (falling back to its SSR `initialParams` before the
  * {@link SearchDashboard} hydrates) and, on any facet change, commits the next params through the
- * dashboard's own `commit` (which fetches + pushes the shareable URL). Dumb island — it owns no
+ * dashboard's own `commit` (which fetches + pushes the shareable URL). The facet LIST is the static
+ * per-category config merged with whatever facets the dashboard's payload carried ({@link bridgeFacets}),
+ * so a scope-specific facet from the API renders here with no change. Dumb island — it owns no
  * discovery logic and never touches an API directly.
  */
 export default function ExploreFilterLane({ initialParams }: ExploreFilterLaneProps) {
 	const params = bridgeParams.value ?? initialParams;
-	const groups = FILTER_CONFIG[params.category];
-	const activeCount = activeFilterCount(params);
+	const facets = activeFilterConfigs(params.category, bridgeFacets.value ?? undefined);
+	const activeCount = activeFilterCount(params, facets);
+
+	// Reconcile the pre-painted hidden/shown attribute with the cached preference (guest shell only;
+	// a no-op elsewhere since nothing but the guest aside reads the attribute).
+	useEffect(() => syncFiltersHidden(), []);
 
 	/** Apply a next params set through the dashboard (no-op until it has published its commit). */
 	function commit(next: ExploreParams) {
 		bridgeCommit.value?.(next);
 	}
 
-	function onToggle(id: string, value: string) {
-		const current = params.filters[id] ?? [];
-		const nextValues = current.includes(value)
-			? current.filter((v) => v !== value)
-			: [...current, value];
-		commit(withFilter(params, id, nextValues));
-	}
-	function onSetRange(id: string, value: number) {
-		commit(withFilter(params, id, [String(value)]));
-	}
-	function onSetSelect(id: string, value: string) {
-		commit(withFilter(params, id, value ? [value] : []));
+	function onChange(id: string, values: string[]) {
+		commit(withFilter(params, id, values));
 	}
 	function onClear() {
 		commit({ ...params, filters: {} });
 	}
 
 	return (
-		<div class="ex-filters-lane" data-explore-filter-lane>
+		<div id="explore-filter-lane" class="ex-filters-lane" data-explore-filter-lane>
 			<FilterPanel
-				category={params.category}
-				groups={groups}
+				facets={facets}
 				values={params.filters}
-				onToggle={onToggle}
-				onSetRange={onSetRange}
-				onSetSelect={onSetSelect}
+				onChange={onChange}
 				onClear={onClear}
 				activeCount={activeCount}
+				locale={FIGURE_LOCALE}
 			/>
 		</div>
 	);

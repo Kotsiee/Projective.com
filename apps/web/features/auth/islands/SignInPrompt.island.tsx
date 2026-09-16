@@ -1,8 +1,11 @@
 import type { JSX } from "preact";
 import { Dialog } from "@projective/ui/feedback";
-import { Icon } from "@projective/ui/icons";
+import "../styles/auth-controls.css";
 import "../styles/sign-in-prompt.css";
-import { withRedirect } from "../core/redirect.ts";
+import { OAuthButtons } from "../components/OAuthButtons.tsx";
+import { CredentialsForm } from "../components/CredentialsForm.tsx";
+import { SsoPanel } from "../components/SsoPanel.tsx";
+import { safeRedirect, withRedirect } from "../core/redirect.ts";
 import {
 	dismissSignIn,
 	type SignInIntent,
@@ -12,20 +15,30 @@ import {
 } from "../core/sign-in-prompt.ts";
 
 /**
- * SignInPrompt — the authentication prompt a guest meets when they press a control that is a claim on
- * their own account (Follow, Message, Save).
+ * SignInPrompt — the authentication dialog a guest meets when they press a control that is a claim on
+ * their own account (Hire, Follow, Message, Save). It signs them in IN PLACE — Google OAuth, Enterprise
+ * SSO or email + password — and lands them back on the page they pressed the control on.
  *
- * It is NOT a second login form. The two links it offers are the standard flow's own entry points —
- * `/login` and `/join`, each carrying the sanitised `redirectTo` that the auth routes, the OAuth
- * callback and the guard all already honour — so signing in from here behaves exactly like signing in
- * from the header, and lands the reader back on the page they pressed the control on. A form here
- * would be a third copy of the login screen to keep in step with the other two.
+ * It is NOT a second login form. Every part is the `/login` screen's own: {@link OAuthButtons} (the
+ * server OAuth entry, which sends a brand-new Google identity on to `/join` pre-filled and a returning
+ * one to its return path — the callback decides, not this dialog), {@link SsoPanel} and
+ * {@link CredentialsForm}, each carrying the sanitised `redirectTo` that the auth routes, the OAuth
+ * callback and the guard all already honour. The "Create an account" link is the same `/join` entry
+ * the login screen offers. A form of its own here would be a third copy of the login screen to keep in
+ * step with the other two.
  *
  * Mounted ONCE per page (a surface that has guest-gated controls renders it beside them); every
  * trigger reaches it through {@link requestSignIn}. Reuses the `@projective/ui` `Dialog` (portal,
  * backdrop, focus trap, Escape, bottom-sheet below `--bp-md`).
  */
 const INTENT_COPY: Record<SignInIntent, { title: string; lead: (subject?: string) => string }> = {
+	hire: {
+		title: "Sign in to hire",
+		lead: (subject) =>
+			subject
+				? `Hiring ${subject} starts a project on your account, so you need one to bring them in.`
+				: "Hiring starts a project on your account, so you need one to bring somebody in.",
+	},
 	follow: {
 		title: "Sign in to follow",
 		lead: (subject) =>
@@ -59,39 +72,37 @@ function copyFor(request: SignInRequest | null) {
 export default function SignInPrompt(): JSX.Element {
 	const request = signInRequest.value;
 	const { title, lead } = copyFor(request);
-	const returnTo = request?.returnTo ?? "/";
+	// Sanitised ONCE here; the three parts and the join link all receive the same destination.
+	const redirectTo = safeRedirect(request?.returnTo, "/");
 
 	return (
 		<Dialog
 			visible={signInPromptOpen}
 			header={title}
-			width="24rem"
+			width="28rem"
 			class="auth-prompt"
 			onVisibleChange={(open) => {
 				if (!open) dismissSignIn();
 			}}
 			footer={
-				<div class="auth-prompt__actions">
-					<a
-						class="ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded auth-prompt__cta"
-						href={withRedirect("/login", returnTo)}
-					>
-						<span class="ui-button__label">Sign in</span>
-					</a>
-					<a
-						class="ui-button ui-button--primary ui-button--outlined ui-button--size-md ui-button--rounded auth-prompt__cta"
-						href={withRedirect("/join", returnTo)}
-					>
-						<span class="ui-button__label">Create an account</span>
-					</a>
-				</div>
+				<p class="auth-prompt__join">
+					New to Projective?{" "}
+					<a class="auth-link" href={withRedirect("/join", redirectTo)}>Create an account</a>
+				</p>
 			}
 		>
 			<div class="auth-prompt__body">
-				<span class="auth-prompt__mark" aria-hidden="true">
-					<Icon name="lock" size="md" />
-				</span>
 				<p class="auth-prompt__lead">{lead}</p>
+
+				<OAuthButtons redirectTo={redirectTo} label="Sign in" mode="signin" />
+				<SsoPanel redirectTo={redirectTo} />
+
+				<div class="auth-divider">
+					<span>or</span>
+				</div>
+
+				<CredentialsForm redirectTo={redirectTo} />
+
 				<p class="auth-prompt__note">You'll come straight back here afterwards.</p>
 			</div>
 		</Dialog>

@@ -171,6 +171,35 @@ export {
 
 // #region Range & value controls
 export { Slider, type SliderProps, type SliderValue } from "./islands/Slider.tsx";
+/**
+ * The dual-thumb range with handle pass-through and two adorned numeric boxes, the half-precision
+ * star slider, and the discrete non-linear milestone track. All three fold their arithmetic onto
+ * `core/range.ts` — the one place a handle decides where it lands and which end it now speaks for.
+ */
+export {
+	DualSlider,
+	RangeSlider,
+	type RangeSliderProps,
+	type RangeValue,
+} from "./islands/RangeSlider.tsx";
+export {
+	type StarPrecision,
+	StarRatingInput,
+	type StarRatingInputProps,
+} from "./islands/StarRatingInput.tsx";
+export {
+	type Milestone,
+	MilestoneSlider,
+	type MilestoneSliderProps,
+} from "./islands/MilestoneSlider.tsx";
+export {
+	clampRange,
+	nearestMilestone,
+	nearestOfPair,
+	type PairMove,
+	resolvePairMove,
+	snapValue,
+} from "./core/range.ts";
 export { Knob, type KnobProps } from "./islands/Knob.tsx";
 export {
 	SortControl,

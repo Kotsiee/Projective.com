@@ -130,6 +130,15 @@ export default define.page(function App({ Component, state }) {
 							`(()=>{try{const c=localStorage.getItem("pj.local.shell.guestNavCollapsed");document.documentElement.dataset.guestNav=c==="1"?"collapsed":"expanded";}catch(_){/* noop */}})();`,
 					}}
 				/>
+				<script
+					dangerouslySetInnerHTML={{
+						// Set data-explore-filters before first paint so a GUEST who hid the Explore filter
+						// sidebar does not watch it paint and slide away. Literal key MUST match
+						// LocalKeys.EXPLORE_FILTERS_HIDDEN ("pj.local.explore.filtersHidden").
+						__html:
+							`(()=>{try{const c=localStorage.getItem("pj.local.explore.filtersHidden");document.documentElement.dataset.exploreFilters=c==="1"?"hidden":"shown";}catch(_){/* noop */}})();`,
+					}}
+				/>
 				{currency
 					? (
 						<script

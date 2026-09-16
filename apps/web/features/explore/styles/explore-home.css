@@ -14,49 +14,9 @@
 
 /* #region The above-the-fold block */
 /*
- * THE FOLD — hero, category chips, and the Recommended panel, sized to the first screen.
- *
- * It is sized by CONSTRUCTION rather than by adding up guesses: a definite `block-size` and a
- * `minmax(0, 1fr)` last row, so whatever is left after the hero and the chips is exactly what the
- * Recommended panel gets, and the cards inside it shrink into it. Summing paddings and hoping is how
- * a fold survives one viewport height and breaks at the next.
- *
- * ## DEVIATION from DESIGN_SYSTEM.md Part D, stated rather than hidden
- *
- * Part D says: "A surface that is meant to fit the screen fills its grid row; it does not re-derive
- * one… rather than computing `100dvh` minus a guess at the chrome above and below. Those guesses
- * cannot be made correct: a band's height is whatever the route mounts into it, and which bands exist
- * changes per route." It also forbids such a surface carrying a `min-block-size` floor. This block
- * does both, deliberately, for two reasons:
- *
- * 1. **The fill technique cannot express "the first screenful".** Its precedents (`.brd`, the calendar
- *    surface) are the ENTIRE page — `flex: 1 1 0` down the canvas column works because nothing follows
- *    them. This fold is followed by a long scrolling body, so a `1fr` basis would resolve to whatever
- *    is left after that body, which is nothing.
- * 2. **On this route the chrome is not a guess.** `/explore` mounts no middle-nav bands in either
- *    shell — no lane, no header band, no footer band — so the space above is exactly the top bar in
- *    the L-shell (whose content row IS `100dvh - --shell-topbar-h` by app-shell.css's own grid) and
- *    exactly the reserved header band in the guest shell. The page never has to know which it is in:
- *    the SHELL sets the token below, so the route contributes no guess at all. A route that later
- *    mounted a band here would break this, which is precisely why the value is a token and not a
- *    literal.
- *
- * The `min-block-size` floor is the escape valve, and the rule's stated objection to floors does not
- * bite here: it warns that a floor taller than the region grows a scrollbar on a fit-to-screen PAGE.
- * This page scrolls by design — there is a whole body beneath. The floor only decides whether a very
- * short window gets crushed cards or one extra scroll, and one extra scroll is the better answer.
- *
- * The chrome height is a token the SHELL sets, so `.ui-app-shell__content .ex` (0,2,0) wins over the
- * bare `.ex` (0,1,0) default without either selector knowing anything about the other's route.
+ * THE FOLD — hero, category chips, and the Recommended panel. Three stacked `auto` rows: each takes
+ * its content's height, and the page scrolls beneath. Nothing here reads the viewport.
  */
-.ex {
-	--ex-fold-chrome: var(--site-header-h);
-}
-
-.ui-app-shell__content .ex {
-	--ex-fold-chrome: var(--shell-topbar-h);
-}
-
 .ex-fold {
 	display: grid;
 	/*
@@ -67,12 +27,8 @@
 	* middle-nav frame had to fix on its own `1fr` content track.
 	*/
 	grid-template-columns: minmax(0, 1fr);
-	grid-template-rows: auto auto minmax(0, 1fr);
 	gap: var(--space-4);
-	block-size: calc(100dvh - var(--ex-fold-chrome));
-	min-block-size: 34rem;
 	padding-block-end: var(--space-4);
-	overflow: clip;
 }
 
 /*
@@ -289,26 +245,14 @@
 .ex-rec {
 	display: grid;
 	grid-template-columns: minmax(9rem, 20%) minmax(0, 1fr);
-	/*
-	* The head row is `auto`; the panel row takes everything else. Without this BOTH rows are auto, and
-	* because the grid has a definite height (`block-size: 100%` inside the fold's `minmax(0, 1fr)` row)
-	* `align-content: normal` stretches them EQUALLY — so half of every pixel saved anywhere else came
-	* straight back to the eyebrow. Measured: reducing the row gap alone made the head band 8px TALLER,
-	* not shorter, and left a 32px control row sitting inside a 102px band. With an explicit
-	* `minmax(0, 1fr)` on the panel the head collapses to its natural 32px and the cards take the ~70px
-	* that were being spent on air.
-	*/
-	grid-template-rows: auto minmax(0, 1fr);
+	grid-template-rows: auto auto;
 	/*
 	* Two gaps, not one. The column gap separates the toggles from the rail and wants room; the ROW gap
 	* only separates the "Recommended" eyebrow from the panel beneath it, and at `--space-5` it was
-	* spending 24px on a label that is already set apart by size, weight and colour — height the fold
-	* has to take out of the cards.
+	* spending 24px on a label that is already set apart by size, weight and colour.
 	*/
 	gap: var(--space-2) var(--space-5);
 	min-inline-size: 0;
-	min-block-size: 0;
-	block-size: 100%;
 }
 
 .ex-rec__head {
@@ -412,9 +356,10 @@
  * products where they left it rather than reset to the start.
  */
 .ex-rec__stage {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
 	min-inline-size: 0;
-	min-block-size: 0;
-	block-size: 100%;
 }
 
 /*
@@ -433,6 +378,17 @@
 .ex-rec[data-active="projects"] [data-rec-panel="projects"],
 .ex-rec[data-active="people"] [data-rec-panel="people"] {
 	display: flex;
+	align-items: stretch;
+}
+
+.ex-rec__stage .ex-rail__cell {
+	min-block-size: 380px;
+}
+
+.ex-rec__stage .ex-rail__cell > .ex-card {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
 }
 /* #endregion */
 
@@ -702,53 +658,19 @@
 }
 
 /*
- * INSIDE THE FOLD the rail's height is whatever the grid has left over, so the cards have to be able
- * to give way — otherwise a card at its natural height simply overflows and the fold clips it.
- *
- * The media keeps its aspect ratio as a PREFERRED size and is allowed to shrink below it
- * (`flex: 0 1 auto` + `min-block-size: 0`, which together let a flex item compress past its
- * aspect-derived basis); `object-fit: cover` on the image means compressing the frame crops rather
- * than distorts. The cells also run narrower here than in the body, because the fold's rail is
- * competing for height and a narrower card is a shorter one.
- *
- * Scoped to `.ex-fold` rather than to a rail modifier: the Recommended panel builds its own tracks
- * rather than composing `HomeRail`, so a modifier on the rail component would miss the one place in
- * the product where this is actually needed.
+ * The Recommended panel's cells run narrower than the body rails so more of a category is visible
+ * beside the 20% toggle column. Scoped to `.ex-fold` rather than to a rail modifier: the panel builds
+ * its own tracks rather than composing `HomeRail`.
  */
 .ex-fold .ex-rail__track {
 	--ex-cell-w: clamp(13rem, 18vw, 16rem);
 
-	flex: 1 1 auto;
-	block-size: 100%;
 	padding-block: var(--space-1) var(--space-3);
 }
 
 /*
- * The MEDIA is the flexible band and the body is fixed — not the other way round.
- *
- * Measured: with `.ex-card__body` left free to grow and the media the only shrinkable item, the media
- * resolved to **0px** on every card in the fold. Its `aspect-ratio` only ever supplies a PREFERRED
- * size, and a preferred size loses to a sibling that is growing into the same free space. So the media
- * takes the slack instead, with a floor so a tight viewport crops the picture rather than deleting it,
- * and `object-fit: cover` on the image means growing or shrinking the frame re-crops rather than
- * distorts.
- */
-.ex-fold .ex-card__body,
-.ex-fold .ex-pcard__body {
-	flex: 0 0 auto;
-}
-
-.ex-fold .ex-media,
-.ex-fold .ex-pcard__banner {
-	flex: 1 1 auto;
-	min-block-size: 4.5rem;
-}
-
-/*
- * COMPACT COPY FOR THE FOLD. Measured before this block existed: the card body's natural height
- * (224px) plus the media's 72px floor came to 296px inside a 256px card, so the body overflowed by up
- * to 48px and the fold's `overflow: clip` cut the PRICE off the bottom of every card. A compact card
- * is not a normal card in a smaller box; it has to give something up.
+ * COMPACT COPY FOR THE FOLD. A compact card is not a normal card in a smaller box; it has to give
+ * something up.
  *
  * What it gives up, and why each is safe to lose here:
  *  - One line of title. The full text is one click away and is printed whole in the card's accessible
@@ -876,18 +798,7 @@
 /* #endregion */
 
 /* #region Responsive */
-/*
- * Below the tablet cusp the fold gives up its guarantee. Three stacked regions cannot fit a phone
- * screen without each of them becoming too small to use, and the honest outcome is a page that
- * scrolls rather than a fold that technically fits and shows nothing.
- */
 @media (max-width: 900px) {
-	.ex-fold {
-		block-size: auto;
-		min-block-size: 0;
-		overflow: visible;
-	}
-
 	.ex-rec {
 		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-3);
@@ -907,15 +818,6 @@
 
 	.ex-rec__tab {
 		inline-size: auto;
-		flex: 0 0 auto;
-	}
-
-	.ex-fold .ex-rail__track {
-		block-size: auto;
-	}
-
-	.ex-fold .ex-media,
-	.ex-fold .ex-pcard__banner {
 		flex: 0 0 auto;
 	}
 

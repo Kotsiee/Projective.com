@@ -2,6 +2,9 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren, VNode } from "preact";
 import { Grid } from "@projective/ui/layout";
+import { Button } from "@projective/ui/fields";
+import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { Drawer } from "@projective/ui/feedback";
 import { EmptyState } from "@projective/ui/utils";
 import { useMediaQuery } from "@projective/ui/hooks";
@@ -11,9 +14,10 @@ import { ResultsHeader } from "../components/ResultsHeader.tsx";
 import { ResultsGroupRow } from "../components/ResultsGroupRow.tsx";
 import { EntityCard } from "../components/cards/EntityCard.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
-import { FILTER_CONFIG } from "../core/filter-config.ts";
+import { activeFilterConfigs } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
-import { bridgeCommit, bridgeParams } from "../core/filter-bridge.ts";
+import { bridgeCommit, bridgeFacets, bridgeParams } from "../core/filter-bridge.ts";
+import { filtersHidden, setFiltersHidden, syncFiltersHidden } from "../core/filter-visibility.ts";
 import {
 	activeFilterCount,
 	type ExploreParams,
@@ -73,6 +77,9 @@ const FEED_MIN_WIDTH: Partial<Record<ExploreEntity, string>> = {
 
 /** Upper bound on the isolated feed's grid columns — keeps cards comfortably wide on large viewports. */
 const FEED_MAX_COLS = 4;
+
+/** The locale the numeric filter boxes format in — fixed so SSR and the client print the same figure. */
+const FIGURE_LOCALE = "en-US";
 
 /** A safe empty payload when SSR data is unexpectedly absent (keeps the island renderable). */
 const EMPTY_PAYLOAD: SearchPayload = {
@@ -140,8 +147,12 @@ export default function SearchDashboard(
 	useSignalEffect(() => {
 		bridgeParams.value = params.value;
 	});
+	useSignalEffect(() => {
+		bridgeFacets.value = payload.value.facets ?? null;
+	});
 	useEffect(() => {
 		bridgeCommit.value = commit;
+		syncFiltersHidden();
 		return () => {
 			bridgeCommit.value = null;
 		};
@@ -149,18 +160,8 @@ export default function SearchDashboard(
 	// #endregion
 
 	// #region Filter/sort handlers
-	function toggleFilter(id: string, value: string) {
-		const current = params.value.filters[id] ?? [];
-		const nextValues = current.includes(value)
-			? current.filter((v) => v !== value)
-			: [...current, value];
-		commit(withFilter(params.value, id, nextValues));
-	}
-	function setRange(id: string, value: number) {
-		commit(withFilter(params.value, id, [String(value)]));
-	}
-	function setSelect(id: string, value: string) {
-		commit(withFilter(params.value, id, value ? [value] : []));
+	function setFacet(id: string, values: string[]) {
+		commit(withFilter(params.value, id, values));
 	}
 	function clearFilters() {
 		commit({ ...params.value, filters: {} });
@@ -202,23 +203,25 @@ export default function SearchDashboard(
 	// Derived (re-computed on any signal read below).
 	const p = params.value;
 	const pl = payload.value;
-	const filterGroups = FILTER_CONFIG[p.category];
-	const activeCount = activeFilterCount(p);
+	const facets = activeFilterConfigs(p.category, pl.facets);
+	const activeCount = activeFilterCount(p, facets);
 	const headTitle = p.q || CATEGORY_TITLE[p.category];
+	// The sidebar toggle is a GUEST desktop control: the guest aside is the only lane host whose
+	// hidden state this island owns (see filter-visibility.ts); the authed lane belongs to the shell.
+	const showSidebarToggle = !authed && !isMobile;
+	const sidebarHidden = filtersHidden.value;
 
 	// A fresh element per call — never share one VNode instance across render locations, or Preact skips
 	// the second render (the mobile drawer body would come up empty). Used by the mobile filter sheet;
 	// the desktop filters render in the navigation sidebar via the separate ExploreFilterLane island.
 	const renderFilters = () => (
 		<FilterPanel
-			category={p.category}
-			groups={filterGroups}
+			facets={facets}
 			values={p.filters}
-			onToggle={toggleFilter}
-			onSetRange={setRange}
-			onSetSelect={setSelect}
+			onChange={setFacet}
 			onClear={clearFilters}
 			activeCount={activeCount}
+			locale={FIGURE_LOCALE}
 		/>
 	);
 
@@ -226,7 +229,12 @@ export default function SearchDashboard(
 		<div class="ex-dash">
 			<ResultsHeader
 				title={headTitle}
+				query={p.q}
+				category={p.category}
 				related={pl.related}
+				onSearch={(q, category) =>
+					// A new scope has its own facet vocabulary, so the old scope's selections do not travel.
+					commit({ ...p, q, category, filters: category === p.category ? p.filters : {} })}
 				onRelated={(term) => commit({ ...p, q: term })}
 			/>
 
@@ -246,6 +254,23 @@ export default function SearchDashboard(
 						>
 							Filters{activeCount > 0 ? ` (${activeCount})` : ""}
 						</button>
+					)}
+					{showSidebarToggle && (
+						<Tooltip content={sidebarHidden ? "Show filters" : "Hide filters"}>
+							<Button
+								class="ex-dash__sidebar-toggle"
+								variant="text"
+								severity="secondary"
+								size="sm"
+								iconOnly
+								icon={<Icon name={sidebarHidden ? "filter-off" : "filter"} size="sm" />}
+								aria-label={sidebarHidden ? "Show filters" : "Hide filters"}
+								aria-pressed={!sidebarHidden}
+								aria-controls="explore-filter-lane"
+								badge={activeCount > 0 ? activeCount : undefined}
+								onClick={() => setFiltersHidden(!sidebarHidden)}
+							/>
+						</Tooltip>
 					)}
 					<SortControl value={p.sort} onChange={setSort} />
 				</div>

@@ -2,14 +2,14 @@ import type { JSX } from "preact";
 import { filterHref } from "@features/explore/core/routing.ts";
 import ProfileStory from "../islands/ProfileStory.island.tsx";
 import ProfileAvailability from "../islands/ProfileAvailability.island.tsx";
-import { hasGlance, ProfileGlance } from "./ProfileGlance.tsx";
-import type { LanguageLevel, ProfileView, ServiceItem } from "../types/profile-types.ts";
+import type { LanguageLevel, ProfileView } from "../types/profile-types.ts";
 
 /**
  * ProfileContextBar — the editorial preamble between the hero and the tab sections: the headline and
  * the owner-editable story on the reading side; on the other, the facts a visitor weighs before
- * reading further — the live availability block (published hours only), the at-a-glance facts
- * (reply speed · marks · spend floor), then the Skills and Languages facets.
+ * reading further — the live availability block (published hours only), then the Skills and
+ * Languages facets. (Reply speed, the spend floor and the consultation offer live in the hero's
+ * metrics strip.)
  *
  * A SERVER component (no signals, no state): the two interactive parts — the inline story editor and
  * the clock-driven availability block — are their own islands mounted here. Everything else is prose,
@@ -24,8 +24,6 @@ import type { LanguageLevel, ProfileView, ServiceItem } from "../types/profile-t
  */
 export interface ProfileContextBarProps {
 	profile: ProfileView;
-	/** The seller's active listings — the source of the spend floor. */
-	services: ServiceItem[];
 	/** Whether the viewer owns this profile (unlocks the inline story editor). */
 	canEdit: boolean;
 }
@@ -39,15 +37,14 @@ const LEVEL_LABEL: Record<LanguageLevel, string> = {
 };
 
 export function ProfileContextBar(
-	{ profile, services, canEdit }: ProfileContextBarProps,
+	{ profile, canEdit }: ProfileContextBarProps,
 ): JSX.Element | null {
 	const headline = profile.headline.trim();
 	const hasStory = headline.length > 0 || profile.story.trim().length > 0 || canEdit;
 	const skills = profile.skills;
 	const languages = profile.languages;
 	const hours = profile.hours && profile.hours.rules.length > 0 ? profile.hours : null;
-	const glance = hasGlance(profile, services);
-	const hasFacets = skills.length > 0 || languages.length > 0 || hours !== null || glance;
+	const hasFacets = skills.length > 0 || languages.length > 0 || hours !== null;
 
 	if (!hasStory && !hasFacets) return null;
 
@@ -72,12 +69,6 @@ export function ProfileContextBar(
 						<div class="pf-context__facet">
 							<h2 class="pf-h">Availability</h2>
 							<ProfileAvailability hours={hours} calendarHref={calendarHref} />
-						</div>
-					)}
-					{glance && (
-						<div class="pf-context__facet">
-							<h2 class="pf-h">At a glance</h2>
-							<ProfileGlance profile={profile} services={services} />
 						</div>
 					)}
 					{skills.length > 0 && (

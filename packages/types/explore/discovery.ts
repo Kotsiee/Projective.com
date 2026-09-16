@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Facet } from "./facets.ts";
 import { ExploreCategory, ExploreEntity, ExploreItemSchema } from "./items.ts";
 import type {
 	ArticleItem,
@@ -67,6 +68,13 @@ export interface SearchPayload {
 	related: string[];
 	/** Whether more pages remain in an isolated feed. */
 	hasMore: boolean;
+	/**
+	 * Scope-specific facets the discovery service attaches for THIS query — a voice actor's accent, a
+	 * translator's rate per word — merged over the app's static per-category list by `mergeFacets`
+	 * (a same-`id` facet here replaces the static one). Optional and empty today: the fixture corpus
+	 * carries no dynamic facets, so the seam exists without the service yet using it.
+	 */
+	facets?: Facet[];
 }
 
 /** The composed Home discovery feed (State A first paint): sections keyed by format + reserved promos. */

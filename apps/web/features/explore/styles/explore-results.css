@@ -41,6 +41,168 @@
 	color: var(--on-surface);
 }
 
+/*
+ * The results search bar mirrors `site-header__search` (site-shell.css) part for part — a fused
+ * scope selector → the field → a submit glyph on one hairline-ringed pill — so the two bars read as
+ * the same control at two sizes. This one is taller and wider (it sits in the page's hero band, not
+ * a 40px chrome strip) and adds a clear control once something is typed; the glyphs are the
+ * registry's (§B.7) rather than the header's hand-authored ones.
+ */
+.ex-results-head__search {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	inline-size: min(100%, 44rem);
+	margin-block-start: var(--space-5);
+	margin-inline: auto;
+	padding-inline-end: var(--space-1);
+	block-size: 2.75rem;
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+	border: 1px solid var(--hairline-color);
+	text-align: start;
+}
+
+.ex-results-head__entity {
+	position: relative;
+	flex: 0 0 auto;
+	block-size: 100%;
+}
+
+.ex-results-head__entity-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	block-size: 100%;
+	padding-inline: var(--space-4);
+	border: 0;
+	border-inline-end: 1px solid var(--hairline-color);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	white-space: nowrap;
+	cursor: pointer;
+	border-start-start-radius: var(--radius-lg);
+	border-end-start-radius: var(--radius-lg);
+}
+
+.ex-results-head__entity-btn:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.ex-results-head__entity-btn:focus-visible {
+	outline: none;
+}
+
+.ex-results-head__entity-caret {
+	color: var(--on-surface-variant);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ex-results-head__entity-btn[aria-expanded="true"] .ex-results-head__entity-caret {
+	transform: rotate(180deg);
+}
+
+.ex-results-head__entity-menu {
+	position: absolute;
+	inset-block-start: calc(100% + var(--space-2));
+	inset-inline-start: 0;
+	min-inline-size: 13rem;
+	margin: 0;
+	padding: var(--space-1);
+	list-style: none;
+	z-index: var(--z-popover);
+	background: var(--surface-2);
+	border: 1px solid var(--hairline-color);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+}
+
+.ex-results-head__entity-option {
+	padding: 0.65rem 0.9rem;
+	border-radius: var(--radius-base);
+	cursor: pointer;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+/* Subtle highlight — a neutral surface tint, never a heavy primary fill (as in the header). */
+.ex-results-head__entity-option:hover,
+.ex-results-head__entity-option:focus-visible,
+.ex-results-head__entity-option[aria-selected="true"] {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
+	outline: none;
+}
+
+.ex-results-head__input {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: var(--text-base);
+	outline: none;
+	padding-inline-start: var(--space-3);
+}
+
+.ex-results-head__input::placeholder {
+	color: var(--on-surface-variant);
+}
+
+.ex-results-head__go {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-results-head__go:hover {
+	color: var(--primary);
+}
+
+.ex-results-head__go:focus-visible {
+	outline: none;
+}
+
+.ex-results-head__clear {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: none;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-results-head__clear:hover {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+}
+
+.ex-results-head__clear:focus-visible {
+	outline: none;
+}
+
 .ex-results-head__related {
 	display: flex;
 	align-items: center;
@@ -132,6 +294,16 @@
 	outline: none;
 }
 
+/* The guest desktop sidebar toggle — a ghost icon-only control; the glyph (funnel vs struck funnel)
+   carries the state, the Button's own corner badge carries the active count (§B.11.3). */
+.ex-dash__sidebar-toggle {
+	color: var(--on-surface-variant);
+}
+
+.ex-dash__sidebar-toggle[aria-pressed="true"] {
+	color: var(--on-surface);
+}
+
 /* The facet sidebar moved to the navigation rail (guest aside / middle-nav lane), so the results grid is
    now a single full-width column — the main reclaims the whole content pane. */
 .ex-dash__grid {
@@ -166,10 +338,25 @@
 	border-block-end: 1px solid var(--ex-hair);
 }
 
+.ex-filters__heading {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
 .ex-filters__title {
 	margin: 0;
 	font-size: var(--text-base);
 	font-weight: var(--fw-semibold);
+}
+
+/* The applied count is meta text (§A.4), never a badge — a figure that changes is tabular. */
+.ex-filters__applied {
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 .ex-filters__clear {
@@ -190,25 +377,52 @@
 	border-block-end: 1px solid var(--ex-hair);
 }
 
+/*
+ * The section header standard: the label is the collapse control (a real button carrying
+ * `aria-expanded`), and a ghost icon-only Reset sits at the trailing edge OUTSIDE it — a button
+ * nested in a button is invalid and would toggle the section on every reset.
+ */
+.ex-filters__head-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
 .ex-filters__summary {
+	flex: 1 1 auto;
+	min-inline-size: 0;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--space-2);
-	padding-block: var(--space-4);
+	padding: var(--space-4) 0;
+	border: 0;
+	background: none;
+	color: var(--on-surface);
+	font: inherit;
 	font-weight: var(--fw-semibold);
 	font-size: var(--text-md);
+	text-align: start;
 	cursor: pointer;
-	list-style: none;
-}
-
-.ex-filters__summary::-webkit-details-marker {
-	display: none;
 }
 
 .ex-filters__summary:focus-visible {
 	outline: none;
 	border-radius: var(--radius-sm);
+}
+
+.ex-filters__label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/* A set facet carries a dot beside its label so a collapsed section still says so (§D.1). */
+.ex-filters__dot {
+	inline-size: 0.375rem;
+	block-size: 0.375rem;
+	border-radius: 50%;
+	background: var(--primary);
 }
 
 /* The disclosure caret is the registry glyph (§B.7), rotating rather than a border-drawn corner. */
@@ -217,8 +431,32 @@
 	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-.ex-filters__group[open] .ex-filters__chevron {
+.ex-filters__group[data-open="true"] .ex-filters__chevron {
 	transform: rotate(180deg);
+}
+
+/* The ghost reset — rendered only once the facet is off its default (absence, not a disabled control,
+   when there is nothing to reset). The row reserves the control's slot so the chevron does not
+   shift when it appears. */
+.ex-filters__head-row::after {
+	content: "";
+	flex: 0 0 var(--fld-h-sm, 2rem);
+	order: 2;
+}
+
+.ex-filters__head-row:has(.ex-filters__reset)::after {
+	display: none;
+}
+
+.ex-filters__reset {
+	flex: 0 0 auto;
+	color: var(--on-surface-variant);
+}
+
+.ex-filters__hint {
+	margin: 0 0 var(--space-1);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -232,6 +470,10 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-2);
+}
+
+.ex-filters__body[hidden] {
+	display: none;
 }
 
 .ex-filters__chips {
@@ -310,20 +552,23 @@
 	inline-size: 100%;
 }
 
-.ex-filters__range {
+/* The range, rating and milestone facets are packages/ui controls; give the track a little air so
+   its handles do not brush the section head. */
+.ex-filters__range,
+.ex-filters__milestones {
+	padding-inline: var(--space-1);
+}
+
+.ex-filters__rating {
 	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
+	align-items: center;
+	gap: var(--space-3);
 }
 
-.ex-filters__slider {
-	inline-size: 100%;
-	accent-color: var(--primary);
-}
-
-.ex-filters__rangeval {
+.ex-filters__ratingval {
 	font-size: var(--text-sm);
 	color: var(--on-surface-variant);
+	font-variant-numeric: tabular-nums;
 }
 /* #endregion */
 

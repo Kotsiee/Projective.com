@@ -201,68 +201,6 @@
 
 /* #endregion */
 
-/* #region At a glance */
-.pf-glance {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    min-inline-size: 0;
-}
-
-.pf-glance__facts {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    margin: 0;
-}
-
-.pf-glance__fact {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    line-height: var(--leading-snug, 1.35);
-}
-
-.pf-glance__label {
-    color: var(--text-secondary);
-}
-
-.pf-glance__label::after {
-    content: ":";
-}
-
-.pf-glance__value {
-    margin: 0;
-    color: var(--on-surface);
-    font-variant-numeric: tabular-nums;
-}
-
-.pf-glance__from,
-.pf-glance__unit {
-    color: var(--text-secondary);
-}
-
-.pf-glance__unit {
-    margin-inline-start: var(--space-1);
-}
-
-.pf-marks {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.pf-mark__icon {
-    color: var(--pf-tag-ink);
-}
-
-/* #endregion */
-
 /* #region Story */
 .pf-story {
     min-inline-size: 0;

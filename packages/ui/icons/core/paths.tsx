@@ -152,6 +152,13 @@ const CONTROLS = {
 	),
 	/** Filter — a funnel. Supersedes the parallel `sliders` drawing of the same concept. */
 	"filter": () => <path d="M3.5 5.5h17l-6.5 7.5v6l-4 2v-8z" />,
+	/** The funnel struck through — filters hidden/off. Same slash as `eye-off` / `bell-off`. */
+	"filter-off": () => (
+		<>
+			<path d="M3.5 5.5h17l-6.5 7.5v6l-4 2v-8z" />
+			<path d="M3 3l18 18" />
+		</>
+	),
 	/** Overflow menu, vertical. The set has ONE overflow mark; `more` is not a second one. */
 	"kebab": () => (
 		<>

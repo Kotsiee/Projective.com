@@ -1,0 +1,113 @@
+/*
+ * MilestoneSlider — a discrete, non-linear track: the Slider beneath, ticks under it, the selected
+ * stop's label above the handle. Token-only (DESIGN_SYSTEM.md §A). Every positioned part reads the
+ * same `--ui-milestone-pos` percentage the handle does, so a label, its tick and the handle cannot
+ * disagree about where a stop is. Positions are logical, so the track mirrors under RTL.
+ */
+
+.ui-milestone-slider {
+	--milestone-tick: 0.375rem;
+
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+/* #region Selected label (rides the handle) */
+.ui-milestone-slider__labels {
+	position: relative;
+	block-size: calc(var(--text-xs) * var(--leading-normal));
+	margin-block-end: var(--space-1);
+}
+
+.ui-milestone-slider__label {
+	position: absolute;
+	inset-inline-start: var(--ui-milestone-pos, 0%);
+	transform: translateX(-50%);
+	white-space: nowrap;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+	transition: inset-inline-start var(--dur-fast) var(--ease-standard);
+}
+
+/* A label centred on an end stop would hang past the track; pin it to the edge it belongs to. */
+.ui-milestone-slider__label[data-edge="start"] {
+	transform: none;
+}
+
+.ui-milestone-slider__label[data-edge="end"] {
+	transform: translateX(-100%);
+}
+
+[dir="rtl"] .ui-milestone-slider__label {
+	transform: translateX(50%);
+}
+
+[dir="rtl"] .ui-milestone-slider__label[data-edge="start"] {
+	transform: none;
+}
+
+[dir="rtl"] .ui-milestone-slider__label[data-edge="end"] {
+	transform: translateX(100%);
+}
+/* #endregion */
+
+/* #region Ticks */
+.ui-milestone-slider__ticks {
+	position: relative;
+	block-size: var(--milestone-tick);
+	/* The Slider pads itself by half a handle; the ticks sit inside that inset so they align with the
+	   handle's centre at each end rather than with the padded box. */
+	margin-block-start: calc(-1 * var(--space-1));
+}
+
+.ui-milestone-slider__tick {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: var(--ui-milestone-pos, 0%);
+	inline-size: 1px;
+	block-size: var(--milestone-tick);
+	background: var(--outline);
+	transform: translateX(-50%);
+}
+
+[dir="rtl"] .ui-milestone-slider__tick {
+	transform: translateX(50%);
+}
+
+.ui-milestone-slider__tick--passed {
+	background: var(--primary);
+}
+/* #endregion */
+
+/* #region End labels */
+.ui-milestone-slider__ends {
+	display: flex;
+	justify-content: space-between;
+	margin-block-start: var(--space-1);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region States */
+.ui-milestone-slider--disabled .ui-milestone-slider__label,
+.ui-milestone-slider--disabled .ui-milestone-slider__ticks,
+.ui-milestone-slider--disabled .ui-milestone-slider__ends {
+	opacity: var(--fld-disabled-alpha);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-milestone-slider__label {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-milestone-slider__label {
+	transition: none;
+}

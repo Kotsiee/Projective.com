@@ -1,4 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
+import type { ProjectSummary } from "@projective/types/projects";
 import {
 	LEGACY_TAB_TARGET,
 	LegacyProfileTab,
@@ -127,11 +128,19 @@ export function isOwnProfile(
  * The hero's action rig for a VISITOR.
  *
  * A SELLER (freelancer · team) leads with **Hire** — the prominent primary — and folds Message and
- * Follow into compact icon-only secondaries beside it. Hire is honest about what it can name: it
- * lands on the seller's Services row when there is a listing to buy (`target: "services"`), and
- * opens the conversation when there is none (`target: "message"`) — the only way to hire somebody
- * with nothing listed is to ask. A BUYER entity (client · business · organisation) cannot be hired,
- * so Message stays its primary with Follow as a text secondary, exactly as before.
+ * Follow into compact icon-only secondaries beside it. What Hire DOES is decided by what the viewer
+ * can actually do with it, in this order:
+ *
+ *  - a GUEST has no projects and no account to hire from, so Hire opens the sign-in prompt
+ *    (`target: "signin"`);
+ *  - a signed-in client with OPEN projects picks one to bring the seller into (`target: "projects"`);
+ *  - with no open project but a listing to buy, Hire lands on the Services row (`target: "services"`);
+ *  - with neither, there is nothing to hire INTO and nothing to hire FROM, so Hire is withheld and the
+ *    rig falls back to the text Message + Follow pair (`layout: "message"`) — a Hire that could only
+ *    open the conversation would be a Message button wearing the wrong name.
+ *
+ * A BUYER entity (client · business · organisation) cannot be hired, so Message stays its primary with
+ * Follow as a text secondary.
  */
 export interface ProfileCta {
 	/** Which rig the hero draws. */
@@ -139,7 +148,17 @@ export interface ProfileCta {
 	/** The primary control's label. */
 	primary: "Hire" | "Message";
 	/** Where a `Hire` primary lands; `null` for the message rig. */
-	target: "services" | "message" | null;
+	target: "projects" | "services" | "signin" | null;
+}
+
+/** The facts about the VIEWER that {@link ctaFor} branches on. */
+export interface CtaViewer {
+	/** Whether the viewer is signed in. */
+	authed: boolean;
+	/** Whether the seller has active listings — where a Hire control can land. */
+	hasServices: boolean;
+	/** How many open projects the viewer owns — what a Hire control can bring the seller into. */
+	openProjectCount: number;
 }
 
 /** Whether the kind is a seller — the only kind that can be hired. */
@@ -147,11 +166,47 @@ export function isSellerKind(kind: ProfileKind): boolean {
 	return kind === "freelancer" || kind === "team";
 }
 
-export function ctaFor(kind: ProfileKind, hasServices: boolean): ProfileCta {
-	if (isSellerKind(kind)) {
-		return { layout: "hire", primary: "Hire", target: hasServices ? "services" : "message" };
-	}
+export function ctaFor(kind: ProfileKind, viewer: CtaViewer): ProfileCta {
+	if (!isSellerKind(kind)) return { layout: "message", primary: "Message", target: null };
+	if (!viewer.authed) return { layout: "hire", primary: "Hire", target: "signin" };
+	if (viewer.openProjectCount > 0) return { layout: "hire", primary: "Hire", target: "projects" };
+	if (viewer.hasServices) return { layout: "hire", primary: "Hire", target: "services" };
 	return { layout: "message", primary: "Message", target: null };
+}
+
+/**
+ * One open project a signed-in client can bring a seller into — the row the Hire popover draws. A
+ * slim, serialisable slice of {@link ProjectSummary}, because it crosses the island boundary.
+ */
+export interface HireProject {
+	slug: string;
+	title: string;
+	/** The owning workspace ("Personal" · "Northwind Studio"), so two workspaces' projects read apart. */
+	scopeLabel: string;
+	status: ProjectSummary["status"];
+}
+
+/** The lifecycle states a project can still be hired into. */
+const OPEN_PROJECT_STATUSES: readonly ProjectSummary["status"][] = ["draft", "active", "on_hold"];
+
+/** Whether a project is still open to new members. */
+export function isOpenProject(project: Pick<ProjectSummary, "status">): boolean {
+	return OPEN_PROJECT_STATUSES.includes(project.status);
+}
+
+/** Project the viewer's feed rows onto the Hire popover's rows — open engagements only. */
+export function hireProjectsFrom(items: readonly ProjectSummary[]): HireProject[] {
+	return items.filter(isOpenProject).map((p) => ({
+		slug: p.slug,
+		title: p.title,
+		scopeLabel: p.scopeLabel,
+		status: p.status,
+	}));
+}
+
+/** Where a Hire popover row lands — the project's roster, which owns the invite flow. */
+export function hireProjectHref(project: Pick<HireProject, "slug">): string {
+	return `/projects/${project.slug}/members`;
 }
 // #endregion
 

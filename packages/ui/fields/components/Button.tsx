@@ -88,10 +88,9 @@ export function Button(props: ButtonProps): JSX.Element {
 			data-icon-pos={iconPos}
 			{...rest}
 		>
-			{iconPos === "left" && showIcon}
+			{(iconOnly || iconPos === "left") && showIcon}
 			{!iconOnly && content !== undefined && <span class="ui-button__label">{content}</span>}
-			{iconOnly && showIcon}
-			{iconPos === "right" && !iconOnly && showIcon}
+			{!iconOnly && iconPos === "right" && showIcon}
 			{badge !== undefined && <span class="ui-button__badge">{badge}</span>}
 		</button>
 	);

@@ -66,6 +66,15 @@
 		inset-inline-start var(--dur-fast) var(--ease-standard),
 		box-shadow var(--dur-fast) var(--ease-standard);
 }
+/*
+ * The handle is placed by a LOGICAL inset and centred by a PHYSICAL transform, so under RTL the
+ * inset measures from the right while the translate still pulls left — the handle sat one full
+ * width outside the track at either end. The centring must follow the inset's direction.
+ */
+[dir="rtl"] .ui-slider:not(.ui-slider--vertical) .ui-slider__handle {
+	transform: translate(50%, -50%);
+}
+
 .ui-slider__handle:focus-visible {
 	outline: none;
 	box-shadow: none;
