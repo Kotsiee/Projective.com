@@ -194,3 +194,34 @@ Deno.test("componentsFor spends its budget on the axis with the detail in it", (
 	assertEquals(componentsFor(0, 0), [4, 4]);
 });
 // #endregion
+
+// #region Round trip through the package decoder
+/**
+ * The one place the two halves meet. `@projective/ui/display`'s decoder is written from the
+ * published format with no code shared with this encoder, so a hash that survives the trip proves
+ * both read the format the same way — a self-round-trip beside the encoder could not.
+ */
+Deno.test("a hash this encoder writes decodes, through the package decoder, to the image it saw", async () => {
+	const { decodeBlurHash, blurHashAverage } = await import("@projective/ui/display/blurhash");
+	const size = 32;
+	// A horizontal red→blue ramp over a vertical green ramp: every channel varies on one axis.
+	const image = paint(size, (x, y) => [
+		Math.round((255 * x) / (size - 1)),
+		Math.round((255 * y) / (size - 1)),
+		Math.round(255 - (255 * x) / (size - 1)),
+	]);
+	const hash = encodeBlurHash(image, size, size, 4, 3);
+	const back = decodeBlurHash(hash, size, size);
+	assert(back, "the package decoder refused a hash this encoder produced");
+
+	// The DC survives exactly: the mean the encoder packed is the mean the decoder unpacks.
+	const dc = blurHashAverage(hash);
+	assert(dc && /^#[0-9a-f]{6}$/.test(dc), `average ${dc}`);
+
+	// And the field keeps the image's gradients: left is redder than right, top greener than bottom.
+	const at = (x: number, y: number, c: number) => back[(y * size + x) * 4 + c];
+	assert(at(2, size / 2, 0) < at(size - 3, size / 2, 0), "red should rise left→right");
+	assert(at(2, size / 2, 2) > at(size - 3, size / 2, 2), "blue should fall left→right");
+	assert(at(size / 2, 2, 1) < at(size / 2, size - 3, 1), "green should rise top→bottom");
+});
+// #endregion

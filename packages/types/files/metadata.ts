@@ -51,6 +51,26 @@ export const ColorSummarySchema = z.object({
 	dominant: z.array(HexColorSchema).max(3),
 });
 export type ColorSummary = z.infer<typeof ColorSummarySchema>;
+
+/**
+ * What a surface may know about a picture BEFORE its bytes arrive — the two facts a placeholder
+ * pipeline paints while the image loads and keeps if it fails.
+ *
+ * A projection of {@link ImageMetadataSchema} narrow enough to travel on any row that carries an
+ * image URL (a discovery item's `media`, a profile's `cover`, an owner's `avatar`) without dragging
+ * the whole metadata union along. Both fields are nullable for the same reason they are on the
+ * metadata: an absence is a fact, never a fabricated default. `color` is optional on top of that
+ * because the hash's DC term IS the average colour — a producer that has a hash need not carry a
+ * second value, and a consumer derives it.
+ *
+ * Structurally identical to `@projective/ui/display`'s `ImagePlaceholder`, which that package may
+ * not import from here; a Zod value passes straight through to the component.
+ */
+export const ImagePlaceholderSchema = z.object({
+	blurhash: BlurHashSchema.nullable(),
+	color: HexColorSchema.nullable().optional(),
+});
+export type ImagePlaceholder = z.infer<typeof ImagePlaceholderSchema>;
 // #endregion
 
 // #region Per-kind media metadata
@@ -215,5 +235,20 @@ export function durationLabelOf(ms: number): string {
 	const ss = String(seconds).padStart(2, "0");
 	if (hours === 0) return `${minutes}:${ss}`;
 	return `${hours}:${String(minutes).padStart(2, "0")}:${ss}`;
+}
+
+/**
+ * The placeholder an asset's metadata can offer its thumbnail: the hash and average tone of an
+ * image, or of a video's poster frame. `undefined` for any other kind, for a row with no metadata,
+ * and for an image whose extraction read neither — so a card never paints a ground it was not
+ * given. The one derivation, so a card, a table row and a preview tray cannot disagree.
+ */
+export function imagePlaceholderOf(
+	metadata: AssetMetadata | null | undefined,
+): ImagePlaceholder | undefined {
+	const media = metadata?.media;
+	if (!media || (media.kind !== "image" && media.kind !== "video")) return undefined;
+	if (!media.blurhash && !media.colors) return undefined;
+	return { blurhash: media.blurhash, color: media.colors?.average ?? null };
 }
 // #endregion

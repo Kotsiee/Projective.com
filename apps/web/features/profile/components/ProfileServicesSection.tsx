@@ -26,10 +26,7 @@ export function ProfileServicesSection(
 	const headingId = `${SERVICES_ANCHOR}-heading`;
 	return (
 		<section id={SERVICES_ANCHOR} class="pf-services ex" aria-labelledby={headingId}>
-			<h2 id={headingId} class="pf-h">
-				Services
-				<span class="pf-h__count">{services.length}</span>
-			</h2>
+			<h2 id={headingId} class="pf-h">Services</h2>
 			<ServicesRow count={services.length}>
 				<ServicesGrid items={services} authed={authed} />
 			</ServicesRow>

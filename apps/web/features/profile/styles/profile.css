@@ -1,6 +1,8 @@
 /*
  * profile — the `/[handle]` public profile, as an `@import` barrel over its per-region sheets (the
- * `/wallet` precedent, Decision #60). Pure CSS + strict BEM, token-only (root CLAUDE.md §3).
+ * `/wallet` precedent, Decision #60). Pure CSS + strict BEM, token-only (root CLAUDE.md §3). Two
+ * sheets here serve the hero's interactive parts — the showcase carousel and the body-portalled
+ * avatar editor (which may read no `--pf-*` token, being outside `.pf`).
  *
  * The surface is editorial and MONOCHROME (root CLAUDE.md §8 Decision #96): the chrome — hero, context
  * bar, services row, tab bar, section headers, tags, logos, CTAs — is drawn on the neutral ramp only (`--bg` ·
@@ -21,6 +23,8 @@
 @import "../../explore/styles/explore-results.css";
 @import "./profile-base.css";
 @import "./profile-hero.css";
+@import "./profile-showcase.css";
+@import "./profile-avatar-editor.css";
 @import "./profile-context.css";
 @import "./profile-services.css";
 @import "./profile-tabs.css";

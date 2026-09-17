@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { AudioVisualizer } from "@projective/ui/display";
+import { AudioVisualizer, ProgressiveImage } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import "../styles/entity-view.css";
 import type { EntityMedia, ProductPreview } from "@projective/types/explore";
@@ -110,12 +110,13 @@ export default function EntityCanvas(
 
 	const display = showPreview ? renderPreview(preview!, title) : current
 		? (
-			<img
-				class="evp-canvas__img"
+			<ProgressiveImage
+				imgClass="evp-canvas__img"
 				src={current.src}
+				placeholder={current.placeholder}
 				alt={current.alt || title}
+				fit="contain"
 				loading="eager"
-				decoding="async"
 			/>
 		)
 		: null;
@@ -161,12 +162,11 @@ export default function EntityCanvas(
 							aria-label={media.alt || `Show image ${i + 1} of ${gallery.length}`}
 							onClick={() => (active.value = i)}
 						>
-							<img
-								class="evp-canvas__thumbimg"
+							<ProgressiveImage
+								imgClass="evp-canvas__thumbimg"
 								src={media.thumb}
-								alt=""
+								placeholder={media.thumbPlaceholder}
 								loading="lazy"
-								decoding="async"
 							/>
 						</button>
 					))}
@@ -177,12 +177,11 @@ export default function EntityCanvas(
 							aria-label={`View all ${gallery.length} images`}
 							onClick={() => openLightbox(rail.realCount)}
 						>
-							<img
-								class="evp-canvas__thumbimg"
+							<ProgressiveImage
+								imgClass="evp-canvas__thumbimg"
 								src={gallery[rail.realCount].thumb}
-								alt=""
+								placeholder={gallery[rail.realCount].thumbPlaceholder}
 								loading="lazy"
-								decoding="async"
 							/>
 							<span class="evp-canvas__more" aria-hidden="true">+{rail.overflow}</span>
 						</button>

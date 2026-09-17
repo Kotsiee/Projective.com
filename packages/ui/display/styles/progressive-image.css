@@ -1,0 +1,114 @@
+/*
+ * ProgressiveImage — picture → BlurHash → neutral placeholder. Token-only BEM.
+ *
+ * The frame is a block that fills its box; the ground is its `::before`, the picture sits on top and
+ * paints over it, and the fallback slot is a centred overlay that only an `error` frame without a
+ * hash reveals. State is an attribute the watcher writes (`core/progressive-image.ts`); with no
+ * script at all the frame is still correct — ground beneath, picture on top, and a broken picture
+ * with an empty `alt` paints nothing in every engine, so the ground shows through.
+ *
+ * Motion is confined to `opacity`. Geometry never depends on a frame having played: a frozen
+ * animation clock (a backgrounded tab) leaves the picture where it is, not half-way.
+ */
+.ui-pimg {
+	--pimg-ground: var(--surface-2);
+
+	position: relative;
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	overflow: hidden;
+	/* A picture is a rectangle with nothing beneath it to see; the frame owns the box. */
+	line-height: 0;
+}
+
+/*
+ * THE GROUND. `--pimg-color` is the hash's average tone, written by the server so the first byte is
+ * already the right colour; `--pimg-hash` is the decoded preview, written by the watcher once it
+ * has run. `background-size: cover` stretches the 32px decode to the frame — a BlurHash is a
+ * smooth field by construction, so bilinear scaling is the blur.
+ */
+.ui-pimg::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background-color: var(--pimg-color, var(--pimg-ground));
+	background-image: var(--pimg-hash, none);
+	background-size: cover;
+	background-position: center;
+	background-repeat: no-repeat;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+
+.ui-pimg__img {
+	position: relative;
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+}
+
+.ui-pimg--contain .ui-pimg__img {
+	object-fit: contain;
+}
+
+/* #region States */
+/* Observed before it finished: held clear so the ground carries the frame until `load`. */
+.ui-pimg[data-state="loading"] .ui-pimg__img {
+	opacity: 0;
+}
+
+/* Landed: the picture takes over and the ground steps back behind a possibly-transparent image. */
+.ui-pimg[data-state="loaded"] .ui-pimg__img {
+	opacity: 1;
+	transition: opacity var(--dur-medium) var(--ease-standard);
+}
+
+.ui-pimg[data-state="loaded"]::before {
+	opacity: 0;
+}
+
+/* Failed: the picture leaves the tree (its alt travels to the frame — see the watcher). */
+.ui-pimg[data-state="error"] .ui-pimg__img {
+	visibility: hidden;
+}
+
+/*
+ * THE FALLBACK SLOT — the third stage. Shown only when the frame has failed AND has no hash to show
+ * instead; an `error` frame with a painted hash keeps the blurred impression, which says more about
+ * the picture than a glyph could. Muted ink on the neutral ground; a caller's own content (an
+ * avatar's initials) inherits the same slot.
+ */
+.ui-pimg__fallback {
+	position: absolute;
+	inset: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	color: var(--on-surface-variant);
+	line-height: 1;
+	pointer-events: none;
+}
+
+.ui-pimg[data-state="error"]:not([data-hash]) .ui-pimg__fallback {
+	display: flex;
+}
+
+.ui-pimg[data-state="error"]:not([data-hash])::before {
+	background-image: none;
+	background-color: var(--pimg-ground);
+}
+/* #endregion */
+
+/* Both reduced-motion channels: the picture appears, it does not arrive. */
+@media (prefers-reduced-motion: reduce) {
+	.ui-pimg::before,
+	.ui-pimg[data-state="loaded"] .ui-pimg__img {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-pimg::before,
+:root[data-motion="reduced"] .ui-pimg[data-state="loaded"] .ui-pimg__img {
+	transition: none;
+}

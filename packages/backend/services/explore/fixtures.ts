@@ -11,7 +11,7 @@ import type {
 	ServiceType,
 	SponsoredSlot,
 } from "@projective/types/explore";
-import { mockCover } from "../../mocks/assets.ts";
+import { mockCover, mockCoverPlaceholder } from "../../mocks/assets.ts";
 
 /**
  * Explore — static discovery fixtures (server side).
@@ -30,6 +30,15 @@ function unsplash(id: string, w = 900, h = 1100): string {
 	return mockCover(id, w, h, 72);
 }
 
+/**
+ * What is known about the picture `unsplash(id, w, h)` builds before it loads — its BlurHash, at
+ * that crop — so a card paints a correctly-toned ground while the bytes travel. `undefined` for a
+ * photograph the host no longer serves, which is exactly the card that will need its fallback.
+ */
+function placeholder(id: string, w = 900, h = 1100) {
+	return mockCoverPlaceholder(id, w, h);
+}
+
 // #region Rating helpers
 const dual = (helper: [number, number], client: [number, number]): DualRating => ({
 	asHelper: { value: helper[0], count: helper[1] },
@@ -45,6 +54,7 @@ const OWNERS = {
 		handle: "@ateliernova",
 		name: "Atelier Nova",
 		avatar: unsplash("1600880292203-757bb62b4baf", 160, 160),
+		avatarPlaceholder: placeholder("1600880292203-757bb62b4baf", 160, 160),
 		kind: "team",
 		verified: true,
 	},
@@ -52,6 +62,7 @@ const OWNERS = {
 		handle: "@marisdelacroix",
 		name: "Maris Delacroix",
 		avatar: unsplash("1494790108377-be9c29b29330", 160, 160),
+		avatarPlaceholder: placeholder("1494790108377-be9c29b29330", 160, 160),
 		kind: "freelancer",
 		verified: true,
 	},
@@ -59,12 +70,14 @@ const OWNERS = {
 		handle: "@northloop",
 		name: "North Loop",
 		avatar: unsplash("1633356122544-f134324a6cee", 160, 160),
+		avatarPlaceholder: placeholder("1633356122544-f134324a6cee", 160, 160),
 		kind: "team",
 	},
 	ren: {
 		handle: "@renkoda",
 		name: "Ren Koda",
 		avatar: unsplash("1507003211169-0a1dd7228f2d", 160, 160),
+		avatarPlaceholder: placeholder("1507003211169-0a1dd7228f2d", 160, 160),
 		kind: "freelancer",
 		verified: true,
 	},
@@ -72,18 +85,21 @@ const OWNERS = {
 		handle: "@studiofern",
 		name: "Studio Fern",
 		avatar: unsplash("1573496359142-b8d87734a5a2", 160, 160),
+		avatarPlaceholder: placeholder("1573496359142-b8d87734a5a2", 160, 160),
 		kind: "team",
 	},
 	juno: {
 		handle: "@juno",
 		name: "Juno Park",
 		avatar: unsplash("1519085360753-af0119f7cbe7", 160, 160),
+		avatarPlaceholder: placeholder("1519085360753-af0119f7cbe7", 160, 160),
 		kind: "freelancer",
 	},
 	helia: {
 		handle: "@heliafinance",
 		name: "Helia Finance",
 		avatar: unsplash("1611974789855-9c2a0a7236a3", 160, 160),
+		avatarPlaceholder: placeholder("1611974789855-9c2a0a7236a3", 160, 160),
 		kind: "business",
 		verified: true,
 	},
@@ -91,6 +107,7 @@ const OWNERS = {
 		handle: "@atlaslabs",
 		name: "Atlas Labs",
 		avatar: unsplash("1451187580459-43490279c0fa", 160, 160),
+		avatarPlaceholder: placeholder("1451187580459-43490279c0fa", 160, 160),
 		kind: "business",
 	},
 } as const satisfies Record<string, ProfileItem["owner"]>;
@@ -105,6 +122,7 @@ export const FREELANCERS: ProfileItem[] = [
 		craft: "Product design lead",
 		owner: OWNERS.maris,
 		cover: unsplash("1558655146-9f40138edfeb", 900, 500),
+		coverPlaceholder: placeholder("1558655146-9f40138edfeb", 900, 500),
 		delivered: 68,
 		summary: "Senior product designer shaping design systems and end-to-end product work.",
 		skills: resolveSkills(["UX", "Design systems", "Figma"]),
@@ -132,6 +150,7 @@ export const FREELANCERS: ProfileItem[] = [
 		craft: "3D & spatial interfaces",
 		owner: OWNERS.ren,
 		cover: unsplash("1633356122544-f134324a6cee", 900, 500),
+		coverPlaceholder: placeholder("1633356122544-f134324a6cee", 900, 500),
 		delivered: 51,
 		summary: "3D artist and creative technologist building spatial, WebGL-driven experiences.",
 		skills: resolveSkills(["WebGL", "Blender", "Three.js"]),
@@ -156,6 +175,7 @@ export const FREELANCERS: ProfileItem[] = [
 		craft: "Frontend engineering",
 		owner: OWNERS.juno,
 		cover: unsplash("1487014679447-9f8336841d58", 900, 500),
+		coverPlaceholder: placeholder("1487014679447-9f8336841d58", 900, 500),
 		delivered: 77,
 		summary: "Frontend engineer specialising in Preact, signals, and accessible interfaces.",
 		skills: resolveSkills(["Preact", "Signals", "A11y"]),
@@ -185,9 +205,11 @@ export const USERS: ProfileItem[] = [
 			handle: "@noor",
 			name: "Noor Haddad",
 			avatar: unsplash("1544005313-94ddf0286df2", 160, 160),
+			avatarPlaceholder: placeholder("1544005313-94ddf0286df2", 160, 160),
 			kind: "user",
 		},
 		cover: unsplash("1499750310107-5fef28a66643", 1200, 500),
+		coverPlaceholder: placeholder("1499750310107-5fef28a66643", 1200, 500),
 		delivered: 34,
 		summary: "Creative director hiring teams and occasionally taking on advisory work.",
 		skills: resolveSkills(["Brand", "Strategy"]),
@@ -205,9 +227,11 @@ export const USERS: ProfileItem[] = [
 			handle: "@theo",
 			name: "Theo Almeida",
 			avatar: unsplash("1500648767791-00dcc994a43e", 160, 160),
+			avatarPlaceholder: placeholder("1500648767791-00dcc994a43e", 160, 160),
 			kind: "user",
 		},
 		cover: unsplash("1521737604893-d14cc237f11d", 1200, 500),
+		coverPlaceholder: placeholder("1521737604893-d14cc237f11d", 1200, 500),
 		delivered: 12,
 		summary: "Founder assembling teams for early-stage product bets.",
 		skills: resolveSkills(["Product", "Growth"]),
@@ -226,6 +250,7 @@ export const TEAMS: ProfileItem[] = [
 		craft: "Brand systems & motion",
 		owner: OWNERS.nova,
 		cover: unsplash("1618005182384-a83a8bd57fbe", 1200, 500),
+		coverPlaceholder: placeholder("1618005182384-a83a8bd57fbe", 1200, 500),
 		delivered: 142,
 		members: 5,
 		summary: "A five-person studio delivering brand systems, motion, and Webflow builds.",
@@ -248,6 +273,7 @@ export const TEAMS: ProfileItem[] = [
 		craft: "Full-stack product studio",
 		owner: OWNERS.north,
 		cover: unsplash("1461749280684-dccba630e2f6", 1200, 500),
+		coverPlaceholder: placeholder("1461749280684-dccba630e2f6", 1200, 500),
 		delivered: 203,
 		members: 8,
 		summary: "Full-stack product studio shipping realtime apps on Deno and Postgres.",
@@ -270,6 +296,7 @@ export const TEAMS: ProfileItem[] = [
 		craft: "Editorial & content ops",
 		owner: OWNERS.fern,
 		cover: unsplash("1499750310107-5fef28a66643", 1200, 500),
+		coverPlaceholder: placeholder("1499750310107-5fef28a66643", 1200, 500),
 		delivered: 96,
 		members: 4,
 		summary: "Editorial studio running content strategy, copy, and SEO operations.",
@@ -295,6 +322,7 @@ export const BUSINESSES: ProfileItem[] = [
 		craft: "Fintech · Series B",
 		owner: OWNERS.helia,
 		cover: unsplash("1551288049-bebda4e38f71", 1200, 500),
+		coverPlaceholder: placeholder("1551288049-bebda4e38f71", 1200, 500),
 		delivered: 0,
 		summary: "Fintech scale-up hiring design and engineering teams for its wallet product.",
 		skills: resolveSkills(["Fintech", "Product"]),
@@ -310,6 +338,7 @@ export const BUSINESSES: ProfileItem[] = [
 		craft: "Data platform",
 		owner: OWNERS.atlas,
 		cover: unsplash("1551288259-cd19f3a1534e", 1200, 500),
+		coverPlaceholder: placeholder("1551288259-cd19f3a1534e", 1200, 500),
 		delivered: 0,
 		summary: "Data platform company commissioning analytics and visualisation work.",
 		skills: resolveSkills(["Data", "Analytics"]),
@@ -511,6 +540,7 @@ export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 		skills: resolveSkills([category, "design"]),
 		rating: OWNERS[owner].kind === "team" ? helperOnly(4.8, 40 + i) : dual([4.9, 30 + i], [4.7, 8]),
 		media: unsplash(photo, 800, 600),
+		mediaPlaceholder: placeholder(photo, 800, 600),
 		// The first service is a promoted placement — surfaced as a subtle "Promoted" card badge.
 		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
@@ -693,6 +723,7 @@ export const PRODUCTS: ProductItem[] = PRODUCT_SEED.map(
 		skills: resolveSkills([category === "3d" ? "3D" : "design"]),
 		rating: helperOnly(4.8, 25 + i),
 		media: unsplash(photo, 800, span === 1 ? 600 : span === 2 ? 800 : 1000),
+		mediaPlaceholder: placeholder(photo, 800, span === 1 ? 600 : span === 2 ? 800 : 1000),
 		// The first product is a promoted placement — surfaced as a subtle "Promoted" card badge.
 		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,
@@ -753,6 +784,7 @@ export const ARTICLES: ArticleItem[] = ARTICLE_SEED.map(
 		summary: `${title} — a practical guide from the Projective team.`,
 		skills: resolveSkills([topic]),
 		media: unsplash(photo, 800, 500),
+		mediaPlaceholder: placeholder(photo, 800, 500),
 		createdAt: `2026-06-2${(i % 9) + 0}`,
 	}),
 );
@@ -766,6 +798,7 @@ export const SPONSORED: SponsoredSlot[] = [
 		title: "Book Atelier Nova's brand sprint",
 		body: "A ten-day identity system with motion and a Webflow handoff. Two slots left this month.",
 		media: unsplash("1626785774573-4b799315345d", 900, 600),
+		mediaPlaceholder: placeholder("1626785774573-4b799315345d", 900, 600),
 		owner: OWNERS.nova,
 		href: "/view/sv-brand-identity-sprint?type=services",
 		cta: "View the sprint",

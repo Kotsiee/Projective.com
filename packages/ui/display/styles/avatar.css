@@ -44,10 +44,40 @@
 }
 /* #endregion */
 
+/*
+ * The image is a ProgressiveImage frame. Its ground while loading is the hash's tone (or the avatar
+ * fill when there is none), and when the photo fails its fallback slot shows the SAME initials/icon
+ * a photo-less avatar would, on the same tonal fill in the same ink.
+ */
 .ui-avatar__image {
 	inline-size: 100%;
 	block-size: 100%;
 	object-fit: cover;
+}
+
+/* Two classes, deliberately: the frame's own sheet sets `--pimg-ground` on `.ui-pimg` at (0,1,0) and
+   is imported AFTER this one, so a single-class override here would lose on order alone. */
+.ui-avatar .ui-avatar__image {
+	--pimg-ground: var(--avatar-bg);
+}
+
+.ui-avatar .ui-avatar__image .ui-pimg__fallback {
+	color: var(--avatar-fg);
+}
+
+/*
+ * A dead photo shows the initials, hash or no hash. The frame's own rule keeps a hash on failure
+ * because a blurred impression of a landscape says more than a glyph; a blurred impression of a
+ * face says less than the person's initials, which are the identity mark this component has always
+ * fallen back to. Measured: a forced failure painted the old photo's blur behind a hidden "MD".
+ */
+.ui-avatar .ui-avatar__image[data-state="error"] .ui-pimg__fallback {
+	display: flex;
+}
+
+.ui-avatar .ui-avatar__image[data-state="error"]::before {
+	background-image: none;
+	background-color: var(--avatar-bg);
 }
 .ui-avatar__initials {
 	line-height: 1;

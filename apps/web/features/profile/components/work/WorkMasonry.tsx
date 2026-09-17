@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { ProgressiveImage } from "@projective/ui/display";
 import type { WorkPiece, WorkPieceMedia } from "../../types/profile-types.ts";
 
 /**
@@ -60,14 +61,14 @@ function TileMedia({ media }: { media: WorkPieceMedia }): JSX.Element {
 		);
 	}
 	return (
-		<img
-			class="pf-tile__media"
+		<ProgressiveImage
+			imgClass="pf-tile__media"
 			src={media.src}
+			placeholder={media.placeholder}
 			alt={media.alt}
 			width={width}
 			height={height}
 			loading="lazy"
-			decoding="async"
 		/>
 	);
 }

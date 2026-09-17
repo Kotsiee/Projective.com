@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { ProgressiveImage } from "@projective/ui/display";
 import { OwnerBadge } from "@features/explore/components/OwnerBadge.tsx";
 import { ownerForHandle } from "../core/showcase-owner.ts";
 import { type ServiceShowcase } from "../core/landing-data.ts";
@@ -34,7 +35,7 @@ export function ServiceCard({ service }: { service: ServiceShowcase }): JSX.Elem
 				aria-label={`${service.title} by ${service.provider} — ${service.price}`}
 			/>
 			<div class="ex-media ex-media--16x10">
-				<img src={service.thumb} alt="" loading="lazy" decoding="async" />
+				<ProgressiveImage src={service.thumb} loading="lazy" />
 			</div>
 			<div class="ex-card__body">
 				<OwnerBadge owner={ownerForHandle(service.providerHandle)} variant="creator" />

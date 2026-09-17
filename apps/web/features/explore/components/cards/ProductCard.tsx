@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { RatingStars } from "@projective/ui/display";
+import { ProgressiveImage, RatingStars } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
@@ -55,7 +55,7 @@ export function ProductCard(
 			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
 
 			<div class="ex-media ex-media--free">
-				<img src={item.media} alt="" loading="lazy" decoding="async" />
+				<ProgressiveImage src={item.media} placeholder={item.mediaPlaceholder} loading="lazy" />
 				{signals.length > 0 && (
 					<span class="ex-signals">
 						{signals.map((s) => <StatusChip signal={s} key={s.id} />)}

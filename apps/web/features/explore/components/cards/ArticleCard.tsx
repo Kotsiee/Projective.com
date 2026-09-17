@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { ProgressiveImage } from "@projective/ui/display";
 import { CardLink } from "../CardLink.tsx";
 import { OwnerBadge } from "../OwnerBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
@@ -38,7 +39,7 @@ export function ArticleCard(
 			<CardLink item={item} ctx={ctx} label={item.title} />
 			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
 			<div class="ex-media">
-				<img src={item.media} alt="" loading="lazy" decoding="async" />
+				<ProgressiveImage src={item.media} placeholder={item.mediaPlaceholder} loading="lazy" />
 			</div>
 			<div class="ex-card__body">
 				<span class="ex-eyebrow">{item.topic}</span>

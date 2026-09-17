@@ -1,0 +1,287 @@
+/*
+ * profile-showcase — the hero's media carousel: one 16:10 stage, a flex track of slides moved on
+ * `transform` alone, and a centred pagination rail along the bottom edge (‹ · dots that swell into a
+ * pill for the active slide · ›) on a glass pill over the photograph.
+ *
+ * The track's offset is written in container-query units of the viewport (`100cqi`), so no script
+ * measures a width to place a slide, and the writing direction flips its sign through `--pf-dir`:
+ * the flex track already lays slides right-to-left under `dir="rtl"`, so the same index sits on the
+ * other side. A pointer drag adds its physical travel through `--pf-drag` with the transition
+ * suppressed, so the slides track the finger 1:1 and animate only on release.
+ *
+ * Glass is licensed here because the rail sits on arbitrary photography (§B.4.3) and it sits on a
+ * `::before` underlay, so the pill's `position: fixed` tooltips are not re-based by the blur.
+ * The dots grow into a pill on selection — a state change, not press feedback; reduced motion lands
+ * it instantly. Every control on the rail is on the scrim's ink (`--on-scrim`), never a theme role,
+ * because the ground behind it is a photograph and not a surface.
+ */
+
+/* #region Stage */
+.pf-showcase {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    inline-size: 100%;
+    overflow: clip;
+    border-radius: inherit;
+    background: var(--surface-1);
+}
+
+.pf-showcase__viewport {
+    position: absolute;
+    inset: 0;
+    container-type: inline-size;
+    overflow: clip;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Same specificity, declared in this order, so a drag in progress outranks the resting grab. */
+.pf-showcase__viewport[data-swipeable="true"] {
+    cursor: grab;
+}
+
+.pf-showcase__viewport[data-dragging="true"] {
+    cursor: grabbing;
+}
+
+.pf-showcase__track {
+    --pf-dir: -1;
+    display: flex;
+    block-size: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    transform: translateX(
+        calc(var(--pf-slide-i, 0) * 100cqi * var(--pf-dir) + var(--pf-drag, 0px))
+    );
+    transition: transform var(--dur-medium) var(--ease-standard);
+    will-change: transform;
+}
+
+:root[dir="rtl"] .pf-showcase__track {
+    --pf-dir: 1;
+}
+
+.pf-showcase__track[data-dragging="true"] {
+    transition: none;
+}
+
+.pf-showcase__slide {
+    position: relative;
+    flex: none;
+    inline-size: 100%;
+    block-size: 100%;
+    min-inline-size: 0;
+}
+
+.pf-showcase__media {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+    background: var(--surface-1);
+}
+
+/* #endregion */
+
+/* #region Video controls */
+/* The play / replay control sits at the stage centre; the wrapper carries the geometry because the
+   tooltip anchor is an inline span between it and the button. */
+/* Centring is direction-agnostic, so the offsets are physical on purpose — a logical start edge
+   would pair with the physical translate to push the control OFF centre under `dir="rtl"`. */
+.pf-showcase__playslot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: flex;
+    transform: translate(-50%, -50%);
+}
+
+.pf-showcase__play {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--space-7);
+    block-size: var(--space-7);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--on-scrim);
+    cursor: pointer;
+    isolation: isolate;
+    transform: scale(1);
+    transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.pf-showcase__play::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--scrim) 58%, transparent);
+    backdrop-filter: blur(var(--scrim-blur));
+    -webkit-backdrop-filter: blur(var(--scrim-blur));
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-showcase__play:hover::before {
+    background: color-mix(in srgb, var(--scrim) 70%, transparent);
+}
+
+.pf-showcase__play:active {
+    transform: scale(var(--btn-press-scale-icon));
+    transition-duration: var(--dur-press);
+}
+
+.pf-showcase__play:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* #endregion */
+
+/* #region Pagination rail */
+.pf-showcase__rail {
+    position: absolute;
+    bottom: var(--space-3);
+    left: 50%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-full);
+    color: var(--on-scrim);
+    transform: translateX(-50%);
+    isolation: isolate;
+}
+
+/* 58% scrim: measured, the ink clears 3:1 over a blown-out white photograph with headroom (a
+   45% scrim measured 3.35:1, which passes and leaves nothing spare). */
+.pf-showcase__rail::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--scrim) 58%, transparent);
+    backdrop-filter: blur(var(--scrim-blur));
+    -webkit-backdrop-filter: blur(var(--scrim-blur));
+}
+
+.pf-showcase__nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--space-5);
+    block-size: var(--space-5);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transform: scale(1);
+    transition: background-color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
+}
+
+.pf-showcase__nav:hover {
+    background: color-mix(in srgb, var(--on-scrim) 18%, transparent);
+}
+
+.pf-showcase__nav:active {
+    transform: scale(var(--btn-press-scale-icon));
+    transition-duration: var(--dur-press);
+}
+
+.pf-showcase__nav:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.pf-showcase__dots {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-inline: var(--space-1);
+}
+
+/* A muted dot; the selected one swells into a pill in the full ink. 72% is measured, not chosen: a
+   55% dot sat at 2.82:1 against its own glass over a white photograph, under the 3:1 floor a
+   graphical control owes (WCAG 1.4.11); 72% clears it with the pill still plainly brighter. */
+.pf-showcase__dot {
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--on-scrim) 72%, transparent);
+    cursor: pointer;
+    transition: inline-size var(--dur-medium) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-showcase__dot:hover {
+    background: color-mix(in srgb, var(--on-scrim) 90%, transparent);
+}
+
+.pf-showcase__dot[aria-selected="true"] {
+    inline-size: calc(var(--space-2) * 3);
+    background: var(--on-scrim);
+}
+
+/* The rail is a roving-focus tablist: the arrows move focus WITHOUT selecting, so the focused dot
+   must be tellable from the rest or the model is invisible. No ring (the product draws none); the
+   dot brightens to its hover ink instead, which is a colour the row already uses. */
+.pf-showcase__dot:focus-visible {
+    outline: none;
+    box-shadow: none;
+    background: color-mix(in srgb, var(--on-scrim) 90%, transparent);
+}
+
+.pf-showcase__dot[aria-selected="true"]:focus-visible {
+    background: var(--on-scrim);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-showcase__track {
+        transition: none;
+    }
+
+    .pf-showcase__dot {
+        transition: background-color var(--dur-fast) var(--ease-standard);
+    }
+
+    .pf-showcase__nav,
+    .pf-showcase__nav:active,
+    .pf-showcase__play,
+    .pf-showcase__play:active {
+        transform: none;
+        transition: none;
+    }
+}
+
+:root[data-motion="reduced"] .pf-showcase__track {
+    transition: none;
+}
+
+:root[data-motion="reduced"] .pf-showcase__dot {
+    transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+:root[data-motion="reduced"] .pf-showcase__nav,
+:root[data-motion="reduced"] .pf-showcase__nav:active,
+:root[data-motion="reduced"] .pf-showcase__play,
+:root[data-motion="reduced"] .pf-showcase__play:active {
+    transform: none;
+    transition: none;
+}
+
+/* #endregion */

@@ -387,10 +387,21 @@ a fact that fits none of the four does not get a tab, it gets a line in the cont
 
 **The hero states identity, proof and one conversion.** Avatar · name · `@handle` and entity kind ·
 the action rig · three inline metrics — the rating, completed stages, and the earned Standing rung
-(with delivered volume, when disclosed) — beside a showcase frame that holds a looping showreel or
-a high-resolution cover, on one soft corner. When no showcase is uploaded the hero collapses to a
-single typography-first column; it never renders an empty frame, because an empty frame is a
-placeholder and a placeholder is an invitation nobody asked for. The rig depends on what the entity
+(with delivered volume, when disclosed) — beside the **showcase**: a raised 16:10 frame carrying
+ONE primary still (the thumbnail every card and preview of the profile leads with, so it is never a
+video) and up to four further slides, each a still or a full-length video. The showcase advances
+on its own — a still dwells, a video plays through and then holds its last frame for the same
+dwell so it can be replayed before it moves on — and it holds while the visitor's pointer or focus
+is on it; a viewer who asked for reduced motion sees nothing move by itself. A centred rail along
+the bottom edge (‹ · one dot per slide, the active one a pill · ›) pages it by pointer, keyboard
+(the arrows move between the dots, Enter selects) or a swipe. When no showcase is uploaded the hero
+collapses to a single typography-first column; it never renders an empty frame, because an empty
+frame is a placeholder and a placeholder is an invitation nobody asked for. **The owner edits the
+photo where it is:** the avatar itself is the control — an "Edit profile photo" overlay on hover
+or focus — and it opens a two-column editor: a circular crop over the picture (drag to pan,
+Ctrl + scroll to zoom, plus a zoom slider, a rotation dial and X ⁄ Y offsets) that can never show
+empty space inside the circle, beside the two places a new picture comes from — this device, or
+the person's own file library. The rig depends on what the entity
 IS: a **seller** (freelancer · team) leads with **Hire** — the prominent primary — with Message and
 Follow folded into compact icon-only secondaries beside it; a **buyer** (client · business ·
 organisation) cannot be hired, so **Message** stays its primary with Follow as its secondary. Hire
@@ -407,6 +418,11 @@ ramp, the ink, one hairline — so the avatar, the showreel and the portfolio ti
 colour on the page and therefore the first thing the eye lands on. Tags and client logos are
 grayscale for the same reason: a logo strip in six brand palettes competes with the work it is
 meant to vouch for.
+
+**The context bar opens with the entity's own words.** A one-line headline over the story, both
+written by the owner and edited in place on the same click-to-edit idiom — and never filled in
+by the platform: a profile with no headline yet shows the owner a prompt to write one and shows a
+visitor nothing, because a sentence the platform wrote reads as one the person wrote.
 
 **Availability and the at-a-glance facts live in the context bar — derived, never asserted.** A
 seller who has published working hours gets an availability block: the weekly schedule ("Mon–Fri ·

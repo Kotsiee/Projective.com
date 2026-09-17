@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { ProgressiveImage } from "@projective/ui/display";
 import { OwnerBadge } from "@features/explore/components/OwnerBadge.tsx";
 import { ownerForHandle } from "../core/showcase-owner.ts";
 import { type ProductShowcase } from "../core/landing-data.ts";
@@ -29,7 +30,7 @@ export function ProductCard({ product }: { product: ProductShowcase }): JSX.Elem
 				aria-label={`${product.title} by ${product.maker} — ${product.price}`}
 			/>
 			<div class="ex-media ex-media--free">
-				<img src={product.thumb} alt="" loading="lazy" decoding="async" />
+				<ProgressiveImage src={product.thumb} loading="lazy" />
 			</div>
 			<div class="ex-card__body">
 				<OwnerBadge owner={ownerForHandle(product.makerHandle)} variant="creator" />

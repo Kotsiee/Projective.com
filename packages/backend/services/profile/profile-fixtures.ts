@@ -7,6 +7,7 @@ import type {
 	ProfileKind,
 	ProfileLanguage,
 	ProfileShowcase,
+	ProfileShowcaseItem,
 	ProfileStats,
 	ProfileTab,
 	ProfileTabPayload,
@@ -15,7 +16,12 @@ import type {
 	VerificationTier,
 	WorkPiece,
 } from "@projective/types/profile";
-import type { ExploreOwner, ProductItem, ProfileItem, ServiceItem } from "@projective/types/explore";
+import type {
+	ExploreOwner,
+	ProductItem,
+	ProfileItem,
+	ServiceItem,
+} from "@projective/types/explore";
 import {
 	ARTICLES,
 	BUSINESSES,
@@ -27,7 +33,7 @@ import {
 	USERS,
 } from "../explore/fixtures.ts";
 import { resolveSkills } from "../explore/skills.ts";
-import { mockAvatar, mockCover, mockShowreel } from "../../mocks/assets.ts";
+import { mockAvatar, mockCover, mockCoverPlaceholder, mockShowreel } from "../../mocks/assets.ts";
 import { hash as scheduleHash } from "../scheduling/derive.ts";
 import { buildRules, workingHoursOf } from "../scheduling/hours.ts";
 import { callOfferKindFor, offersCourtesyCall } from "../booking/call-offer.ts";
@@ -339,15 +345,26 @@ function tierFor(kind: ProfileKind, verified: boolean, seed: number): Verificati
 	return "L1";
 }
 
-/** A fuller multi-sentence story derived from a one-line summary + headline. */
+/**
+ * A fuller multi-sentence story derived from a one-line summary + headline. A profile with no
+ * headline yet gets an intro that does not mention one — "I'm Ivy, ." is what interpolating an empty
+ * string produces, and it would ship as the person's own words.
+ */
 function storyOf(name: string, headline: string, summary: string, kind: ProfileKind): string {
+	const craft = headline.trim().toLowerCase();
 	const intro = kind === "team"
-		? `${name} is a collaborative studio focused on ${headline.toLowerCase()}.`
+		? craft
+			? `${name} is a collaborative studio focused on ${craft}.`
+			: `${name} is a collaborative studio.`
 		: kind === "organisation"
 		? `${name} is a multi-department organisation commissioning work across its teams.`
 		: kind === "business"
-		? `${name} works with independent talent and teams across ${headline.toLowerCase()}.`
-		: `I'm ${name}, ${headline.toLowerCase()}.`;
+		? craft
+			? `${name} works with independent talent and teams across ${craft}.`
+			: `${name} works with independent talent and teams.`
+		: craft
+		? `I'm ${name}, ${craft}.`
+		: `I'm ${name}.`;
 	return [
 		intro,
 		summary,
@@ -359,28 +376,59 @@ function storyOf(name: string, headline: string, summary: string, kind: ProfileK
 /** The five rungs of the earned Standing ladder (finance-model.md §16.3), by level. */
 const STANDING_LABELS = ["New", "Established", "Trusted", "Expert", "Elite"] as const;
 
+/** A showcase still at the hero's 16:10 crop, with what is known of it before it loads. */
+function showcaseStill(id: string, alt: string): ProfileShowcaseItem {
+	return {
+		kind: "image",
+		src: unsplash(id, 1600, 1000),
+		alt,
+		placeholder: mockCoverPlaceholder(id, 1600, 1000),
+	};
+}
+
 /**
- * The hero showcase. Three states, spread deterministically so the corpus exercises every branch of
- * the hero: a looping showreel, a high-resolution cover, and NONE — the collapse case, which must be
- * reachable from the stub or the single-column hero would only ever be seen the day a real profile
- * has nothing uploaded. Buyer entities (business / organisation) always carry a brand cover: a
- * company has a mark, not a reel.
+ * The hero showcase: a PRIMARY still plus up to four extra slides. Three states, spread
+ * deterministically so the corpus exercises every branch of the carousel: a set that carries a
+ * full-length showreel among its stills, a set of stills only, and NONE — the collapse case, which
+ * must be reachable from the stub or the single-column hero would only ever be seen the day a real
+ * profile has nothing uploaded. The primary is always the cover; the extras are drawn from the
+ * banner pool after it, so no two slides of one profile show the same picture. Buyer entities
+ * (business / organisation) carry a brand cover and one more still: a company has a mark, not a reel.
  */
 function showcaseFor(
 	kind: ProfileKind,
 	bare: string,
 	seed: number,
-	cover: string,
+	coverId: string,
 	name: string,
 ): ProfileShowcase | null {
+	const primary = {
+		...showcaseStill(coverId, `${name} — cover`),
+		kind: "image" as const,
+	};
+	const others = BANNERS.filter((id) => id !== coverId);
+	const still = (i: number) => showcaseStill(others[(seed + i) % others.length], `${name} — work`);
 	if (kind === "business" || kind === "organisation") {
-		return { kind: "image", src: cover, alt: `${name} — cover` };
+		return { primary, extras: [still(0)] };
 	}
 	switch (seed % 3) {
 		case 0:
-			return { kind: "video", src: mockShowreel(bare), poster: cover, alt: `${name} — showreel` };
+			return {
+				primary,
+				extras: [
+					{
+						kind: "video",
+						src: mockShowreel(bare),
+						poster: primary.src,
+						alt: `${name} — showreel`,
+						placeholder: primary.placeholder,
+					},
+					still(0),
+					still(1),
+				],
+			};
 		case 1:
-			return { kind: "image", src: cover, alt: `${name} — selected work` };
+			return { primary, extras: [still(0), still(1), still(2)] };
 		default:
 			return null;
 	}
@@ -448,7 +496,9 @@ export function findProfile(handle: string): ProfileView | null {
 		});
 	const kind: ProfileKind = org ? "organisation" : row ? kindOf(row.type) : "freelancer";
 	const name = org?.name ?? row?.title ?? owner.name;
-	const headline = org?.headline ?? row?.craft ?? "Independent maker on Projective";
+	// A synthesised handle has written no headline yet — an EMPTY one, never a platform default
+	// (the owner is prompted to write theirs; a visitor sees nothing).
+	const headline = org?.headline ?? row?.craft ?? "";
 	const summary = org?.summary ?? row?.summary ??
 		`${name} builds considered, high-craft work with clients worldwide.`;
 	const verified = owner.verified ?? false;
@@ -476,8 +526,9 @@ export function findProfile(handle: string): ProfileView | null {
 		name,
 		kind,
 		avatar: owner.avatar,
+		avatarPlaceholder: owner.avatarPlaceholder,
 		banner: unsplash(coverId, 1600, 460),
-		showcase: showcaseFor(kind, bare, seed, unsplash(coverId, 1600, 1000), name),
+		showcase: showcaseFor(kind, bare, seed, coverId, name),
 		stats: statsFor(kind, seed),
 		headline,
 		story: storyOf(name, headline, summary, kind),
@@ -610,9 +661,17 @@ function experienceFor(_name: string, seed: number): ExperienceEntry[] {
  */
 function certificationsFor(seed: number): CertificationEntry[] {
 	const pool = [
-		{ name: "Professional Scrum Product Owner", issuer: "Scrum.org", logo: "1523050854058-8df90110c9f1" },
+		{
+			name: "Professional Scrum Product Owner",
+			issuer: "Scrum.org",
+			logo: "1523050854058-8df90110c9f1",
+		},
 		{ name: "Google UX Design Certificate", issuer: "Google", logo: "1592280771190-3e2e4d571952" },
-		{ name: "AWS Certified Developer – Associate", issuer: "Amazon Web Services", logo: "1461749280684-dccba630e2f6" },
+		{
+			name: "AWS Certified Developer – Associate",
+			issuer: "Amazon Web Services",
+			logo: "1461749280684-dccba630e2f6",
+		},
 		{ name: "Adobe Certified Professional", issuer: "Adobe", logo: "1550684848-fac1c5b4e853" },
 	];
 	return pick(pool, 3, seed).map((c, i) => ({
@@ -645,7 +704,13 @@ function piecesFor(
 		// Roughly one tile in three is undisclosed work — the caption then carries no client line.
 		client: (seed + i) % 3 === 2 ? undefined : clients[(seed + i) % Math.max(1, clients.length)],
 		category: p.category,
-		media: { kind: "image", src: p.media ?? "", aspect: aspectOf(p.span), alt: p.title },
+		media: {
+			kind: "image",
+			src: p.media ?? "",
+			placeholder: p.mediaPlaceholder,
+			aspect: aspectOf(p.span),
+			alt: p.title,
+		},
 		href: `/${handle}/view/${p.id}?type=products`,
 	}));
 }

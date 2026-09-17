@@ -1,6 +1,7 @@
 import "../styles/hero-search.css";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
+import { Icon } from "@projective/ui/icons";
 import {
 	DEFAULT_SEARCH_SCOPE,
 	SEARCH_SCOPES,
@@ -12,10 +13,13 @@ import {
  * SearchBar — the single discovery search used across the app.
  *
  * Both surfaces render this one island (Confirmed Decision — one shared search): the marketing hero
- * (`variant="hero"`, a prominent glass bar) and the `/explore` header (`variant="bar"`, a compact
- * full-width bar). An entity/category selector is fused to a large input whose placeholder types
- * itself out phrase-by-phrase with a blinking caret, cycling every few seconds; a row of trending
- * queries sits below. The action is an **icon-only** magnifier button (no text label). Submitting or
+ * (`variant="hero"`, centred and capped at 44rem) and the `/explore` header (`variant="bar"`, a
+ * compact full-width bar). Both wear the site header's search anatomy and tokens — one hairline pill
+ * on a `--surface-2` tint, a fused scope selector whose trailing edge is the divider, a plain field,
+ * and a quiet icon-only magnifier in the pill's own ink (see `hero-search.css`). The placeholder
+ * types itself out phrase-by-phrase with a blinking caret, cycling every few seconds; a row of
+ * trending queries sits below. The glyphs are the registry's (§B.7), as on the results bar, rather
+ * than the header's hand-authored ones. Submitting or
  * choosing a category/trending tag navigates to `/explore` with `?category=` + `?q=` — a real
  * navigation, so the server re-renders the correct layout (Home ↔ Search Results). Reduced-motion
  * shows a static placeholder.
@@ -162,7 +166,7 @@ export default function SearchBar({
 						onClick={() => (menuOpen.value = !menuOpen.value)}
 					>
 						{searchScopeLabel(category.value)}
-						<span class="hero-search__chevron" aria-hidden="true" />
+						<Icon name="chevron-down" size="2xs" class="hero-search__chevron" />
 					</button>
 					{menuOpen.value && (
 						<ul class="hero-search__menu" role="listbox" aria-label="Search category">
@@ -208,19 +212,8 @@ export default function SearchBar({
 					)}
 				</div>
 
-				<button
-					type="submit"
-					class="hero-search__submit"
-					data-magnetic
-					data-magnetic-strength="0.25"
-					aria-label="Search"
-				>
-					<svg viewBox="0 0 20 20" aria-hidden="true">
-						<path
-							d="M8.5 3a5.5 5.5 0 1 0 3.4 9.8l3.6 3.7 1.4-1.4-3.7-3.6A5.5 5.5 0 0 0 8.5 3Zm0 2a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z"
-							fill="currentColor"
-						/>
-					</svg>
+				<button type="submit" class="hero-search__submit" aria-label="Search">
+					<Icon name="search" size="sm" />
 				</button>
 			</form>
 

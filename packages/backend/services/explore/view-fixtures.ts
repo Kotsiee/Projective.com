@@ -47,7 +47,7 @@ import type {
 	ProjectItem,
 	ServiceItem,
 } from "@projective/types/explore";
-import { mockCover } from "../../mocks/assets.ts";
+import { mockCover, mockPlaceholder } from "../../mocks/assets.ts";
 
 /**
  * Explore — the Entity View page derivation (server side).
@@ -75,6 +75,16 @@ function unsplash(id: string, w: number, h: number): string {
 /** Rewrite an existing Unsplash URL's crop dimensions (reused for a large `src` + a small `thumb`). */
 function reshape(url: string, w: number, h: number): string {
 	return url.replace(/([?&]w=)\d+/, `$1${w}`).replace(/([?&]h=)\d+/, `$1${h}`);
+}
+
+/**
+ * The placeholder for a mock URL, at the crop the gallery takes of it. Reads the photograph's slug
+ * back out of the URL: the gallery reshapes URLs it did not build, so the slug is the one identity
+ * both a 1400×1050 frame and its 240×240 thumbnail share.
+ */
+function placeholderOf(url: string, crop: "cover" | "square") {
+	const slug = /photo-(\d{10,13}-[0-9a-f]{12})/.exec(url)?.[1];
+	return slug ? mockPlaceholder(slug, crop) : undefined;
 }
 
 /** Format a whole-dollar amount (`240` → `"$240"`). Mirrors the app's `pricing.money`. */
@@ -144,7 +154,9 @@ function galleryFor(item: ExploreItem): EntityMedia[] {
 		seen.add(key);
 		media.push({
 			src: reshape(src, 1400, 1050),
+			placeholder: placeholderOf(src, "cover"),
 			thumb: reshape(src, 240, 240),
+			thumbPlaceholder: placeholderOf(src, "square"),
 			alt: `${item.title} — view ${media.length + 1}`,
 			kind: "image",
 		});

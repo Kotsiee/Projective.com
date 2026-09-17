@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
+import { Avatar, ProgressiveImage } from "@projective/ui/display";
 import type { EntityView, ProjectViewExtra } from "@projective/types/explore";
 import { MetaLine, Section, SellerLine, SpecLedger } from "./entity-view-parts.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
@@ -50,9 +50,10 @@ export function ProjectHero(
 	return (
 		<div class="evp-overview evp-overview--project">
 			<div class="evp-banner" aria-hidden="true">
-				<img class="evp-banner__img" src={project.banner} alt="" loading="eager" decoding="async" />
+				<ProgressiveImage imgClass="evp-banner__img" src={project.banner} loading="eager" />
 				<Avatar
 					image={item.owner.avatar}
+					placeholder={item.owner.avatarPlaceholder}
 					label={item.owner.name}
 					size={64}
 					shape={item.owner.kind === "business" ? "square" : "circle"}

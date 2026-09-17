@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
+import { Avatar, ProgressiveImage } from "@projective/ui/display";
+import { imagePlaceholderOf } from "@projective/types/files";
 import { type AssetItem, sourceLabel } from "../types/projects-types.ts";
 import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
 
@@ -35,12 +36,13 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 			<span class="fx-card__thumb" data-kind={file.kind}>
 				{hasThumb
 					? (
-						<img
-							class="fx-card__img"
+						<ProgressiveImage
+							imgClass="fx-card__img"
 							src={file.thumbnailUrl ?? file.url}
-							alt=""
+							placeholder={imagePlaceholderOf(file.metadata)}
 							loading="lazy"
 							draggable={false}
+							fallback={<FileKindIcon kind={file.kind} size={30} />}
 						/>
 					)
 					: (

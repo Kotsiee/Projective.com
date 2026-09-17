@@ -32,6 +32,8 @@ export function OwnerBadge(
 				<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
 					<Avatar
 						image={owner.avatar}
+						placeholder={owner.avatarPlaceholder}
+						label={owner.name}
 						alt=""
 						size="sm"
 						shape={owner.kind === "business" ? "square" : "circle"}
@@ -48,6 +50,8 @@ export function OwnerBadge(
 				<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
 					<Avatar
 						image={owner.avatar}
+						placeholder={owner.avatarPlaceholder}
+						label={owner.name}
 						alt=""
 						size="sm"
 						shape={owner.kind === "business" ? "square" : "circle"}
@@ -66,6 +70,8 @@ export function OwnerBadge(
 			<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
 				<Avatar
 					image={owner.avatar}
+					placeholder={owner.avatarPlaceholder}
+					label={owner.name}
 					alt=""
 					size={size === "md" ? "md" : "sm"}
 					shape={owner.kind === "business" ? "square" : "circle"}

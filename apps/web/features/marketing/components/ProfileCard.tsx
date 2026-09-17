@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Avatar, RatingStars } from "@projective/ui/display";
+import { Avatar, ProgressiveImage, RatingStars } from "@projective/ui/display";
 import { type ProfileShowcase, routes } from "../core/landing-data.ts";
 
 /**
@@ -28,18 +28,13 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 				aria-label={`${profile.name} — ${profile.craft}`}
 			/>
 			<div class="ex-pcard__banner">
-				<img
-					class="ex-pcard__cover"
-					src={profile.cover}
-					alt=""
-					loading="lazy"
-					decoding="async"
-				/>
+				<ProgressiveImage class="ex-pcard__cover" src={profile.cover} loading="lazy" />
 			</div>
 			<div class="ex-pcard__body">
 				<div class="ex-pcard__identity">
 					<Avatar
 						image={profile.avatar}
+						label={profile.name}
 						alt=""
 						size="xl"
 						shape="circle"

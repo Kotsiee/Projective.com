@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { ProgressiveImage } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { OwnerBadge } from "./OwnerBadge.tsx";
 import { RatingTracks } from "./RatingTracks.tsx";
@@ -25,7 +26,7 @@ export function DetailPanel(
 		<div class="ex-detail">
 			{item.media && (
 				<div class="ex-detail__media">
-					<img src={item.media} alt="" loading="lazy" decoding="async" />
+					<ProgressiveImage src={item.media} placeholder={item.mediaPlaceholder} loading="lazy" />
 				</div>
 			)}
 

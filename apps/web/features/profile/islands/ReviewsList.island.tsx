@@ -23,9 +23,10 @@ import type { ReviewEntry } from "../types/profile-types.ts";
  *
  * The stance rule itself lives in `profile-model.ts` (`reviewsForStance`) — a review's stored `role`
  * is the AUTHOR's side, and the profile's stance is its inverse; that inversion is written once and
- * unit-tested there rather than here. Each segment carries its count, so a stance with nothing in it
- * is stated rather than discovered, and each row names the AUTHOR's side of the engagement ("as
- * their client") so a row under "As freelancer" reads as a client's review of a freelancer.
+ * unit-tested there rather than here. The segments carry the stance alone — no counts on the
+ * control — while the status line beneath speaks how many are shown and the empty note states a
+ * stance with nothing in it; each row names the AUTHOR's side of the engagement ("as their
+ * client") so a row under "As freelancer" reads as a client's review of a freelancer.
  *
  * An island because the filter is interactive; the summary tracks above it stay a server component.
  */
@@ -106,9 +107,11 @@ export default function ReviewsList(
 		} catch { /* SSR / no window — non-fatal */ }
 	}, [stance.value]);
 
+	// The segments carry the stance only; the counts are spoken by the status line beneath and
+	// stated by the empty note, never printed on the control.
 	const options: Option[] = (["all", "freelancer", "client"] as const).map((value) => ({
 		value,
-		label: `${STANCE_LABEL[value]} · ${counts[value]}`,
+		label: STANCE_LABEL[value],
 	}));
 
 	const current = stance.value;

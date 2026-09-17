@@ -7,6 +7,7 @@ import {
 	SkillRefSchema,
 } from "./items.ts";
 import { ProfileStandingSchema, VerificationTier } from "../profile/profile.ts";
+import { ImagePlaceholderSchema } from "../files/metadata.ts";
 
 /**
  * explore.view — the Zod SSOT for the public Entity View page (`/view/[id]`).
@@ -24,8 +25,12 @@ import { ProfileStandingSchema, VerificationTier } from "../profile/profile.ts";
 export const EntityMediaSchema = z.object({
 	/** Full-resolution source (opened in the lightbox). */
 	src: z.string(),
+	/** What is known about `src` before it loads — see `files/metadata.ts` `ImagePlaceholder`. */
+	placeholder: ImagePlaceholderSchema.optional(),
 	/** A smaller thumbnail crop of the same asset (the vertical strip + lightbox tray). */
 	thumb: z.string(),
+	/** The thumbnail's own placeholder — a different crop, so a different hash. */
+	thumbPlaceholder: ImagePlaceholderSchema.optional(),
 	/** Alt text — empty for purely decorative crops. */
 	alt: z.string(),
 	kind: z.enum(["image", "video"]),

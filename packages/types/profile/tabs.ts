@@ -5,6 +5,7 @@ import {
 	ProjectItemSchema,
 	ServiceItemSchema,
 } from "../explore/items.ts";
+import { ImagePlaceholderSchema } from "../files/metadata.ts";
 
 /**
  * profile.tabs — the Zod SSOT for the consolidated profile tab system.
@@ -186,6 +187,8 @@ export const WorkPieceMediaSchema = z.object({
 	src: z.string(),
 	/** A still for a video tile (the frame drawn before playback, and the print fallback). */
 	poster: z.string().optional(),
+	/** What is known about the picture before it loads — see `files/metadata.ts` `ImagePlaceholder`. */
+	placeholder: ImagePlaceholderSchema.optional(),
 	/**
 	 * Intrinsic width ÷ height. The masonry reserves the tile's box from this BEFORE the bytes arrive,
 	 * so a column never reflows as images land — a tile that changes height under the pointer is the

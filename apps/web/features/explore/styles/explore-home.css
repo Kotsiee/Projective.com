@@ -19,13 +19,6 @@
  */
 .ex-fold {
 	display: grid;
-	/*
-	* `minmax(0, 1fr)`, not the implicit `auto` column. An `auto` track's automatic minimum is its
-	* content's MIN-content, so one wide child sets the width of the whole fold — measured at a 375px
-	* viewport, the hero's search bar (a fixed 44rem) pushed `.ex-fold` to 936px and `.site`'s
-	* `overflow-x: clip` then hid two thirds of it with no scrollbar to say so. Same failure the
-	* middle-nav frame had to fix on its own `1fr` content track.
-	*/
 	grid-template-columns: minmax(0, 1fr);
 	gap: var(--space-4);
 	padding-block-end: var(--space-4);
@@ -373,22 +366,21 @@
 	display: none;
 }
 
+/*
+ * The active panel is a plain rail track: its height is the height of its tallest card, exactly as a
+ * body section's is. There is deliberately NO height floor on the cells. One was here (380px) and it
+ * was the whole cause of the dead band the fold's cards carried: every card fills its cell on the
+ * block axis and pins its foot to the bottom with `margin-block-start: auto`, so a cell taller than
+ * the card's content opens a gap between the title and the foot — measured ~90px on a 256px service
+ * card — that no amount of tuning inside the card can close. Same-type cards are within a line of
+ * each other, so the row equalises on its own.
+ */
 .ex-rec[data-active="services"] [data-rec-panel="services"],
 .ex-rec[data-active="products"] [data-rec-panel="products"],
 .ex-rec[data-active="projects"] [data-rec-panel="projects"],
 .ex-rec[data-active="people"] [data-rec-panel="people"] {
 	display: flex;
 	align-items: stretch;
-}
-
-.ex-rec__stage .ex-rail__cell {
-	min-block-size: 380px;
-}
-
-.ex-rec__stage .ex-rail__cell > .ex-card {
-	display: flex;
-	flex-direction: column;
-	block-size: 100%;
 }
 /* #endregion */
 
@@ -625,6 +617,30 @@
 }
 
 /*
+ * A PRODUCT in a rail takes the service card's 16:10 frame.
+ *
+ * The product media is content-height by design (`.ex-media--free`, bounded 8–18rem) because that
+ * variability is what makes the products MASONRY interlock. A rail is the opposite contract: every
+ * cell is the same width and stretches to the same height, so a variable frame does not interlock
+ * with anything — it opens a hole. Measured on the Recommended Products panel: eight cards equalised
+ * to 436px, with 8px, 56px, 116px and 168px between the category row and the foot depending on
+ * which photograph each seller had uploaded. The frame's height was the only thing that differed.
+ *
+ * 16:10 rather than a square: it is the ratio the services beside it already use, so a mixed rail
+ * ("Continue where you left off") lines its media up too.
+ */
+.ex-rail__track .ex-media--free {
+	aspect-ratio: 16 / 10;
+	min-block-size: 0;
+	max-block-size: none;
+}
+
+.ex-rail__track .ex-media--free img {
+	block-size: 100%;
+	max-block-size: none;
+}
+
+/*
  * THE GRID VARIANT — a section laid out as a fixed 2×2 block instead of a scrolling track.
  *
  * It shares the rail's heading and its section rhythm and nothing else: no track, no snap, no
@@ -669,18 +685,24 @@
 }
 
 /*
- * COMPACT COPY FOR THE FOLD. A compact card is not a normal card in a smaller box; it has to give
- * something up.
+ * COMPACT COPY FOR THE FOLD. The fold's cards are the body's cards at a narrower width, and they
+ * carry the SAME bands: the seller, the title, the classification row (delivery model + turnaround
+ * for a service, category for a product), the rating and the price. Nothing is dropped — a reader
+ * comparing a recommendation against the services rail two screens down is comparing two cards that
+ * disclose the same facts, and a card missing its middle row does not read as compact, it reads as a
+ * card with a hole in it.
  *
- * What it gives up, and why each is safe to lose here:
+ * What IS scaled, and why each is safe to scale:
  *  - One line of title. The full text is one click away and is printed whole in the card's accessible
- *    name either way.
- *  - The classification chip. The panel's own toggle already says which category the reader is
- *    looking at, and for a service the delivery model survives in the price's unit — `/ ticket`,
- *    `/ session`, `/ seat` say it more precisely than the chip did.
- *  - The foot's generous top padding, which exists to separate the price from a long body it no
- *    longer has.
- * What it does NOT give up: the seller, the title, the rating and the price.
+ *    name either way, and a one-line title is what keeps eight narrow cards on one flat baseline.
+ *  - The classification row's trailing fact steps down one size to the same `--text-2xs` the chip
+ *    already uses, so the two halves of the row read as one register in a cell too narrow for two.
+ *  - The body padding and the foot's top padding tighten, because the foot no longer has a long body
+ *    to separate itself from.
+ *
+ * The cuts this block used to make — hiding the classification row outright, and the profile card's
+ * metadata line — date from when the fold was sized to the viewport and had to buy height wherever
+ * it could. The fold is auto-height now, so there is nothing to buy and the rows are back.
  */
 .ex-fold .ex-card__body {
 	padding: var(--space-2);
@@ -692,8 +714,8 @@
 	line-clamp: 1;
 }
 
-.ex-fold .ex-card__kindrow {
-	display: none;
+.ex-fold .ex-card__aside {
+	font-size: var(--text-2xs);
 }
 
 .ex-fold .ex-card__foot {
@@ -701,13 +723,9 @@
 }
 
 /*
- * The profile card needs the same treatment and one more cut. It is the tallest card in the family —
- * a banner, an overlapping avatar, a centred identity block, a two-line headline, a metadata line and
- * a foot — and it was the one member still overflowing its compact box by a measured 17px.
- *
- * The metadata line goes. `location • languages` is the card's most qualifying fact and its least
- * scannable: it is the reason a reader opens a profile, not the reason they pick it out of a row of
- * eight, and it is the only band here that says nothing when both of its halves are missing.
+ * The profile card takes the same scaling: a one-line headline (the body's is two) and a tighter
+ * body rhythm. Its `location · languages` metadata line stays — it is the card's most qualifying fact
+ * and the one the body's card prints, so it is the one a reader would miss.
  */
 .ex-fold .ex-pcard__body {
 	padding: 0 var(--space-2) var(--space-2);
@@ -721,7 +739,8 @@
 }
 
 .ex-fold .ex-pcard__meta {
-	display: none;
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
 }
 
 .ex-fold .ex-pcard__foot {
@@ -783,6 +802,16 @@
 	padding-inline: var(--ex-pad-x);
 	box-sizing: border-box;
 	min-inline-size: 0;
+}
+
+/*
+ * A section whose island rendered nothing — "Continue where you left off" for a reader with no
+ * history — must not spend the column's gap on an empty box. The island's markers are comments, which
+ * `:empty` ignores, so the wrapper collapses until the rail actually mounts. Measured: 52px of air
+ * between the fold and the first heading, on every first visit.
+ */
+.ex-home__section:empty {
+	display: none;
 }
 
 /*

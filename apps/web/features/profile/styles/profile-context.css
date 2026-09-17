@@ -1,7 +1,8 @@
 /*
  * profile-context — the context bar between the hero and the tab sections: headline + story on the
- * reading side (65); on the other (35), the availability block, the at-a-glance facts, then the
- * Skills / Languages facets. Monochrome, unboxed, separated by whitespace alone; the facet labels are
+ * reading side (65) — the entity's own statement, both lines owner-editable in place on one idiom;
+ * on the other (35), the availability block, the at-a-glance facts, then the Skills / Languages
+ * facets. Monochrome, unboxed, separated by whitespace alone; the facet labels are
  * the shared `.pf-h` register and the tags the shared `.pf-tag`. Every breakpoint keys off the `pf`
  * container, never the viewport.
  *
@@ -56,6 +57,36 @@
     font-size: var(--text-base);
     line-height: var(--leading-relaxed, 1.7);
     color: var(--on-surface);
+}
+
+/* The statement: the headline over the story, one column, the bar's own gap between them. */
+.pf-statement {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.pf-headline {
+    min-inline-size: 0;
+}
+
+/* The owner's empty headline slot: the prompt, in the headline's own register but the muted ink. */
+.pf-context__headline--placeholder {
+    color: var(--text-secondary);
+}
+
+/* The headline field keeps the headline's metrics, so the words do not move when the mode does. */
+.pf-headline--editing {
+    --fld-focus-bd: var(--on-surface);
+    display: flex;
+    flex-direction: column;
+}
+
+.pf-headline--editing .ui-field__input {
+    font-size: var(--text-xl);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-tight);
 }
 
 /* #endregion */

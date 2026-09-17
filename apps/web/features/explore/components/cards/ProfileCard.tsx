@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Avatar, RatingStars } from "@projective/ui/display";
+import { Avatar, ProgressiveImage, RatingStars } from "@projective/ui/display";
 import { vars } from "@features/marketing/core/style.ts";
 import { CardLink } from "../CardLink.tsx";
 import { PromotedBadge } from "../PromotedBadge.tsx";
@@ -74,12 +74,11 @@ export function ProfileCard(
 			/>
 
 			<div class="ex-pcard__banner">
-				<img
+				<ProgressiveImage
 					class="ex-pcard__cover"
 					src={item.cover}
-					alt=""
+					placeholder={item.coverPlaceholder}
 					loading="lazy"
-					decoding="async"
 				/>
 				{signals.length > 0 && (
 					<span class="ex-signals">
@@ -93,6 +92,8 @@ export function ProfileCard(
 				<div class="ex-pcard__identity">
 					<Avatar
 						image={item.owner.avatar}
+						placeholder={item.owner.avatarPlaceholder}
+						label={item.title}
 						alt=""
 						size="xl"
 						shape={item.type === "businesses" ? "square" : "circle"}

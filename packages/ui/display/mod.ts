@@ -74,6 +74,16 @@ export { AudioVisualizer } from "./islands/AudioVisualizer.tsx";
 export type { AudioVisualizerProps } from "./islands/AudioVisualizer.tsx";
 export { drawWaveform, formatClock, resamplePeaks } from "./core/audio.ts";
 export type { DrawWaveformOptions } from "./core/audio.ts";
+export { ProgressiveImage } from "./components/ProgressiveImage.tsx";
+export type { ImagePlaceholder, ProgressiveImageProps } from "./components/ProgressiveImage.tsx";
+export {
+	PIMG_ATTR,
+	settleProgressiveImage,
+	settleProgressiveImages,
+	watchProgressiveImages,
+} from "./core/progressive-image.ts";
+export type { ProgressiveImageState } from "./core/progressive-image.ts";
+export { blurHashAverage, decodeBlurHash, isBlurHash } from "./core/blurhash.ts";
 // #endregion
 
 // #region Content atoms

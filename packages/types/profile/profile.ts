@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
+import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { AvailabilityRuleSchema } from "../scheduling/scheduling.ts";
 
 /**
@@ -97,18 +98,44 @@ export const ProfileLocationSchema = z.object({
 export type ProfileLocation = z.infer<typeof ProfileLocationSchema>;
 
 /**
- * The hero's showcase media — an auto-looping showreel or a high-resolution cover, filling the hero's
- * second column. `null` is a real state, not an absence to paper over: the hero then collapses to a
- * single typography-first column rather than drawing an empty frame (root CLAUDE.md §8 Decision #96).
+ * One slide of the hero's showcase — a still, or a full-length (not looping) video with the still it
+ * shows before playback.
  */
-export const ProfileShowcaseSchema = z.object({
+export const ProfileShowcaseItemSchema = z.object({
 	kind: z.enum(["video", "image"]),
 	src: z.string(),
 	/** The still a video draws before playback (and the only frame a reduced-motion viewer sees). */
 	poster: z.string().optional(),
 	alt: z.string(),
+	/** What is known about the still before it loads — see `files/metadata.ts` `ImagePlaceholder`. */
+	placeholder: ImagePlaceholderSchema.optional(),
+});
+export type ProfileShowcaseItem = z.infer<typeof ProfileShowcaseItemSchema>;
+
+/** The most extra slides a showcase may carry beyond its primary image. */
+export const SHOWCASE_EXTRA_MAX = 4;
+
+/**
+ * The hero's showcase — the carousel that fills the hero's second column: ONE primary image (the
+ * thumbnail every card and preview of this profile leads with, so it is never a video) plus up to
+ * {@link SHOWCASE_EXTRA_MAX} extra slides, each a still or a full-length video. The set is ordered:
+ * the primary is always slide one.
+ *
+ * `null` is a real state, not an absence to paper over: the hero then collapses to a single
+ * typography-first column rather than drawing an empty frame (root CLAUDE.md §8 Decision #96).
+ */
+export const ProfileShowcaseSchema = z.object({
+	/** The lead slide — an image, never a video. */
+	primary: ProfileShowcaseItemSchema.extend({ kind: z.literal("image") }),
+	/** The slides after it, in order. Images or videos; at most {@link SHOWCASE_EXTRA_MAX}. */
+	extras: z.array(ProfileShowcaseItemSchema).max(SHOWCASE_EXTRA_MAX),
 });
 export type ProfileShowcase = z.infer<typeof ProfileShowcaseSchema>;
+
+/** Every slide of a showcase, in display order — the primary first. */
+export function showcaseSlides(showcase: ProfileShowcase): ProfileShowcaseItem[] {
+	return [showcase.primary, ...showcase.extras];
+}
 
 /**
  * The hero's inline metrics strip — the three facts a visitor weighs before reading anything else.
@@ -192,17 +219,24 @@ export const ProfileViewSchema = z.object({
 	kind: ProfileKind,
 	/** Circular avatar (1:1) URL — the 72px disc that leads the hero. */
 	avatar: z.string(),
+	/** What is known about `avatar` before it loads — see `files/metadata.ts` `ImagePlaceholder`. */
+	avatarPlaceholder: ImagePlaceholderSchema.optional(),
 	/**
 	 * Wide cover (7:2) URL. The profile hero no longer paints a banner (Decision #96 — the showcase
 	 * frame took its column); the field survives because the Projects view (`/view/[id]?type=projects`)
 	 * still borrows a profile's cover for header parity (Decision #43).
 	 */
 	banner: z.string(),
-	/** The hero showcase (showreel / cover); `null` collapses the hero to one column. */
+	/** The hero showcase carousel (a primary image + up to four slides); `null` collapses the hero to one column. */
 	showcase: ProfileShowcaseSchema.nullable(),
 	/** The hero's inline metrics strip. */
 	stats: ProfileStatsSchema,
-	/** One-line LinkedIn-style headline (craft / value proposition). */
+	/**
+	 * The entity's own one-line headline (craft / value proposition) — inline-editable by the owner,
+	 * beside the story. Empty means none has been written yet: the owner sees the prompt to write one
+	 * in its slot and a visitor sees nothing; it is never filled with a platform default, because a
+	 * sentence the platform wrote reads as one the person wrote.
+	 */
 	headline: z.string(),
 	/** The long-form story/description — inline-editable by the owner (auto-resizing textarea). */
 	story: z.string(),

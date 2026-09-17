@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ImagePlaceholderSchema } from "../files/metadata.ts";
 
 /**
  * explore.items — the Zod SSOT for the discovery domain shapes (freelancers, teams, users,
@@ -94,6 +95,8 @@ export const ExploreOwnerSchema = z.object({
 	handle: z.string(),
 	name: z.string(),
 	avatar: z.string(),
+	/** What is known about `avatar` before it loads — see `ImagePlaceholderSchema`. */
+	avatarPlaceholder: ImagePlaceholderSchema.optional(),
 	kind: z.enum(["user", "freelancer", "team", "business"]),
 	verified: z.boolean().optional(),
 });
@@ -111,6 +114,12 @@ const itemBase = {
 	summary: z.string(),
 	/** Thumbnail/media URL. ABSENT on projects (projects never carry item media). */
 	media: z.string().optional(),
+	/**
+	 * What is known about `media` before it loads: its BlurHash and average colour, painted beneath
+	 * the picture while it travels and kept if it fails. Absent when the producer has not read the
+	 * image's bytes — never a plausible default (`files/metadata.ts`).
+	 */
+	mediaPlaceholder: ImagePlaceholderSchema.optional(),
 	/** Promoted/sponsored placement flag. */
 	sponsored: z.boolean().optional(),
 	/** ISO date — feeds the "Newest" sort. */
@@ -123,6 +132,8 @@ export const ProfileItemSchema = z.object({
 	type: ProfileEntity,
 	craft: z.string(),
 	cover: z.string(),
+	/** What is known about `cover` before it loads — see `mediaPlaceholder`. */
+	coverPlaceholder: ImagePlaceholderSchema.optional(),
 	delivered: z.number(),
 	members: z.number().optional(),
 	/**
@@ -301,6 +312,8 @@ export const SponsoredSlotSchema = z.object({
 	title: z.string(),
 	body: z.string(),
 	media: z.string(),
+	/** What is known about `media` before it loads — see the item base's `mediaPlaceholder`. */
+	mediaPlaceholder: ImagePlaceholderSchema.optional(),
 	owner: ExploreOwnerSchema,
 	href: z.string(),
 	cta: z.string(),

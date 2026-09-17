@@ -5,16 +5,16 @@ import ProfileAvailability from "../islands/ProfileAvailability.island.tsx";
 import type { LanguageLevel, ProfileView } from "../types/profile-types.ts";
 
 /**
- * ProfileContextBar — the editorial preamble between the hero and the tab sections: the headline and
- * the owner-editable story on the reading side; on the other, the facts a visitor weighs before
- * reading further — the live availability block (published hours only), then the Skills and
- * Languages facets. (Reply speed, the spend floor and the consultation offer live in the hero's
- * metrics strip.)
+ * ProfileContextBar — the editorial preamble between the hero and the tab sections: the entity's
+ * own headline and story — both owner-editable in place — on the reading side; on the other, the
+ * facts a visitor weighs before reading further — the live availability block (published hours
+ * only), then the Skills and Languages facets. (Reply speed, the spend floor and the consultation
+ * offer live in the hero's metrics strip.)
  *
- * A SERVER component (no signals, no state): the two interactive parts — the inline story editor and
- * the clock-driven availability block — are their own islands mounted here. Everything else is prose,
- * facts and links, and a hydration root for a paragraph and two tag lists would ship JavaScript to do
- * nothing.
+ * A SERVER component (no signals, no state): the two interactive parts — the inline headline ⁄
+ * story editor and the clock-driven availability block — are their own islands mounted here.
+ * Everything else is prose, facts and links, and a hydration root for a paragraph and two tag lists
+ * would ship JavaScript to do nothing.
  *
  * Both columns are optional. A facet with no entries is omitted, a facets column with nothing left is
  * omitted, and a story column with no headline, no story and no owner to write one is omitted — the
@@ -55,12 +55,9 @@ export function ProfileContextBar(
 		<section class={`pf-context${solo ? " pf-context--solo" : ""}`} aria-label="About">
 			{hasStory && (
 				<div class="pf-context__story">
-					{headline && <p class="pf-context__headline">{headline}</p>}
-					{(profile.story.trim().length > 0 || canEdit) && (
-						<div class="pf-context__body">
-							<ProfileStory story={profile.story} canEdit={canEdit} />
-						</div>
-					)}
+					<div class="pf-context__body">
+						<ProfileStory headline={headline} story={profile.story} canEdit={canEdit} />
+					</div>
 				</div>
 			)}
 			{hasFacets && (

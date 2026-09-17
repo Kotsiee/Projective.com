@@ -18,6 +18,7 @@ import {
 	type SignInIntent,
 } from "@features/auth/core/sign-in-prompt.ts";
 import "../styles/profile.css";
+import { AvatarEditor } from "../components/AvatarEditor.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
 import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
@@ -34,10 +35,8 @@ import {
 	following,
 	quickMessageOpen,
 } from "../core/profile-state.ts";
-import type {
-	ProfileShowcase as ProfileShowcaseMedia,
-	ProfileView,
-} from "../types/profile-types.ts";
+import { withPrimaryImage } from "../core/showcase-model.ts";
+import type { ProfileView } from "../types/profile-types.ts";
 import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
 
 /**
@@ -71,14 +70,15 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  * on the control and a six-dot burst behind it, on `transform` and `opacity` only (§B.12), removed by
  * both reduced-motion channels. The pressed state itself carries the fact; the motion decorates it.
  *
- * An owner changes the avatar or the showcase in place through the Asset Picker (one key for both
- * targets, the target held locally — the picker is a modal, so only one can be open); the edit lands
- * in the shared `edited*` signals so any other island drawing the same image agrees. Optimistic and
- * session-local, pending the profile write path.
+ * An owner changes the profile photo through the {@link AvatarEditor} — the avatar itself is the
+ * trigger, with an "Edit profile photo" overlay on hover and focus — and the showcase's primary
+ * still through the Asset Picker; each edit lands in a shared `edited*` signal so any other island
+ * drawing the same image agrees. Optimistic and session-local, pending the profile write path.
  *
- * SSR renders a playing showreel. Under either reduced-motion channel — the OS media query or the
- * in-app `dsConfig.reducedMotion` — the island withdraws `autoplay` and pauses the element back to
- * its poster, so a viewer who asked for no motion never sees a frame move after hydration.
+ * The showcase is a carousel ({@link ProfileShowcase}): the primary still and up to four slides,
+ * auto-advancing, with a video slide playing through before it moves on. The reduced-motion decision
+ * is made HERE — the OS media query or the in-app `dsConfig.reducedMotion` — and passed down, so
+ * a viewer who asked for no motion sees nothing move on its own after hydration.
  */
 export interface ProfileHeroProps {
 	profile: ProfileView;
@@ -105,19 +105,10 @@ const HIRE_STATUS: Record<HireProject["status"], string> = {
 	cancelled: "Cancelled",
 };
 const STATUS_TTL_MS = 2500;
+/** A note about a saved photo needs longer than a two-word acknowledgement. */
+const NOTE_TTL_MS = 8000;
 const CELEBRATE_MS = 700;
 const BURST_DOTS = 6;
-
-type ImageTarget = "avatar" | "showcase";
-
-function resolveShowcase(
-	base: ProfileShowcaseMedia | null,
-	edited: string | null,
-	name: string,
-): ProfileShowcaseMedia | null {
-	if (edited) return { kind: "image", src: edited, alt: base?.alt ?? `${name} — showcase` };
-	return base;
-}
 
 function isAbort(err: unknown): boolean {
 	return err instanceof DOMException && err.name === "AbortError";
@@ -127,12 +118,15 @@ export default function ProfileHero(
 	{ profile, canEdit, authed, hasServices, spend, hireProjects }: ProfileHeroProps,
 ): JSX.Element {
 	const avatar = editedAvatar.value ?? profile.avatar;
-	const showcase = resolveShowcase(profile.showcase, editedShowcase.value, profile.name);
-	const target = useSignal<ImageTarget>("avatar");
+	const showcase = withPrimaryImage(
+		profile.showcase,
+		editedShowcase.value,
+		`${profile.name} — showcase`,
+	);
+	const editorOpen = useSignal(false);
 	const envReduced = useSignal(false);
 	const status = useSignal("");
 	const celebrating = useSignal(false);
-	const video = useRef<HTMLVideoElement>(null);
 	const statusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const celebrateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -149,41 +143,37 @@ export default function ProfileHero(
 		return () => mql?.removeEventListener("change", sync);
 	}, []);
 
-	useEffect(() => {
-		const el = video.current;
-		if (!el || !reduced) return;
-		el.pause();
-		el.load();
-	}, [reduced]);
-
 	useEffect(() => () => {
 		clearTimeout(statusTimer.current);
 		clearTimeout(celebrateTimer.current);
 	}, []);
 
-	function announce(text: string): void {
+	function announce(text: string, ttl = STATUS_TTL_MS): void {
 		status.value = text;
 		clearTimeout(statusTimer.current);
 		statusTimer.current = setTimeout(() => {
 			status.value = "";
-		}, STATUS_TTL_MS);
+		}, ttl);
 	}
 
-	function choose(which: ImageTarget): void {
-		target.value = which;
+	function chooseShowcase(): void {
 		openPicker({
 			requesterId: PICKER_ID,
-			title: which === "showcase" ? "Choose a showcase image" : "Choose a profile picture",
+			title: "Choose a showcase image",
 			kinds: ["image"],
 			multiple: false,
 		});
 	}
 
-	function apply(assets: AssetItem[]): void {
+	function applyShowcase(assets: AssetItem[]): void {
 		const picked = assets[0];
-		if (!picked) return;
-		if (target.value === "showcase") editedShowcase.value = picked.url;
-		else editedAvatar.value = picked.thumbnailUrl ?? picked.url;
+		if (picked) editedShowcase.value = picked.url;
+	}
+
+	function applyAvatar(url: string, note: string | null): void {
+		editedAvatar.value = url;
+		if (note) announce(note, NOTE_TTL_MS);
+		else announce("Profile photo updated");
 	}
 
 	async function share(): Promise<void> {
@@ -270,27 +260,42 @@ export default function ProfileHero(
 			<header class="pf-hero" data-showcase={showcase ? "true" : "false"}>
 				<div class="pf-hero__id">
 					<div class="pf-hero__avatarwrap">
-						<Avatar
-							image={avatar}
-							label={profile.name}
-							size={72}
-							shape="circle"
-							class="pf-hero__avatar"
-						/>
-						{canEdit && (
-							<span class="pf-hero__imgslot">
-								<Tooltip content="Change profile picture" placement="bottom">
-									<button
-										type="button"
-										class="pf-hero__imgbtn"
-										aria-label="Change profile picture"
-										onClick={() => choose("avatar")}
-									>
-										<Icon name="image" size="xs" />
-									</button>
-								</Tooltip>
-							</span>
-						)}
+						{canEdit
+							? (
+								// The avatar IS the control: the overlay names what pressing it does, and it
+								// is shown on hover and on focus so a keyboard user sees the same promise.
+								<button
+									type="button"
+									class="pf-hero__avatarbtn"
+									aria-label="Edit profile photo"
+									aria-haspopup="dialog"
+									aria-expanded={editorOpen.value ? "true" : "false"}
+									onClick={() => (editorOpen.value = true)}
+								>
+									<Avatar
+										image={avatar}
+										placeholder={avatar === profile.avatar ? profile.avatarPlaceholder : undefined}
+										label={profile.name}
+										size={72}
+										shape="circle"
+										class="pf-hero__avatar"
+									/>
+									<span class="pf-hero__avataredit" aria-hidden="true">
+										<Icon name="edit" size="sm" />
+										<span class="pf-hero__avataredit-label">Edit photo</span>
+									</span>
+								</button>
+							)
+							: (
+								<Avatar
+									image={avatar}
+									placeholder={avatar === profile.avatar ? profile.avatarPlaceholder : undefined}
+									label={profile.name}
+									size={72}
+									shape="circle"
+									class="pf-hero__avatar"
+								/>
+							)}
 					</div>
 
 					<h1 class="pf-hero__name">
@@ -476,7 +481,7 @@ export default function ProfileHero(
 
 				{showcase && (
 					<div class="pf-hero__showcase">
-						<ProfileShowcase showcase={showcase} autoplay={!reduced} mediaRef={video} />
+						<ProfileShowcase showcase={showcase} name={profile.name} reduced={reduced} />
 						{canEdit && (
 							<span class="pf-hero__imgslot pf-hero__imgslot--showcase">
 								<Tooltip content="Change showcase image" placement="left">
@@ -484,7 +489,7 @@ export default function ProfileHero(
 										type="button"
 										class="pf-hero__imgbtn"
 										aria-label="Change showcase image"
-										onClick={() => choose("showcase")}
+										onClick={chooseShowcase}
 									>
 										<Icon name="image" size="xs" />
 									</button>
@@ -497,7 +502,15 @@ export default function ProfileHero(
 
 			{!canEdit && authed && <ProfileMessagePopover profile={profile} />}
 			{!canEdit && !authed && <SignInPrompt />}
-			{canEdit && <AssetPicker requesterId={PICKER_ID} onPick={apply} />}
+			{canEdit && <AssetPicker requesterId={PICKER_ID} onPick={applyShowcase} />}
+			{canEdit && (
+				<AvatarEditor
+					open={editorOpen}
+					source={avatar}
+					name={profile.name}
+					onSave={applyAvatar}
+				/>
+			)}
 		</>
 	);
 }

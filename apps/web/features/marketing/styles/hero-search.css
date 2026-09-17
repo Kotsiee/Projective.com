@@ -1,8 +1,27 @@
 /*
- * SearchBar — the shared discovery search. Token-only BEM. Inherits the `--lp-*` semantic tokens when
- * rendered inside `.lp` (with base-token fallbacks for safety). Glass/acrylic surface, a category
- * segment fused to the input, a typewriter ghost placeholder, an icon-only magnifier submit, and
- * trending tags. Two variants: `--hero` (prominent, centred) and `--bar` (compact, full-width).
+ * SearchBar — the shared discovery search. Token-only BEM.
+ *
+ * THE BAR IS THE HEADER'S BAR AT A LARGER SIZE. Its anatomy and every token it reads are the site
+ * header's (`site-header__search`, site-shell.css): one hairline-ringed pill on a 55% `--surface-2`
+ * tint, a fused scope selector whose trailing edge IS the divider, a plain field, and a quiet
+ * icon-only submit that lives INSIDE the pill rather than beside it. The results-page bar
+ * (`ex-results-head__search`) already mirrors the header this way; this sheet closes the last gap so
+ * the three bars read as one control at three sizes.
+ *
+ * What it used to be, and why each part changed:
+ *  - A 74% glass slab with its own backdrop blur and `--elevation-high`. The header bar has no blur
+ *    of its own (the header it sits in is the glass), and §B.4.3 licenses `backdrop-filter` only on
+ *    pinned chrome, floating sheets and marks over photography — a search field on a hero band is
+ *    none of those. The tint alone carries the ground now.
+ *  - A `--primary`-filled 52px square submit with its own shadow, inset from the pill by 8px of
+ *    padding on every side. Beside a 44px field that read as a second control bolted onto the first;
+ *    the header's submit is a bare 16px glyph in the pill's own ink, and now so is this one.
+ *  - A divider drawn on the FIELD's leading edge, where the header draws it on the selector's
+ *    trailing edge. Same pixel, but the header's placement is the one the results bar also uses.
+ *  - A typewriter placeholder set in `--on-surface` at medium weight, which read as typed text
+ *    rather than a hint. It keeps its typing but wears a placeholder's colour and weight.
+ *
+ * Two variants remain: `--hero` (centred, capped at 44rem) and `--bar` (wider, under a page header).
  */
 .hero-search {
 	position: relative;
@@ -16,47 +35,66 @@
 	max-inline-size: min(56rem, 100%);
 }
 
-/* The entity dropdown must sit cleanly ABOVE the trending row: the bar (which contains the menu)
-   gets a higher stacking level than the trending tags, so the open menu overlays them (z-index fix). */
+/*
+ * The pill. A definite height, like the header's, so the selector and the field fill it edge to
+ * edge and the divider runs the full height of the bar rather than the height of the text.
+ *
+ * The entity dropdown must sit cleanly ABOVE the trending row: the bar (which contains the menu)
+ * gets a higher stacking level than the trending tags, so the open menu overlays them.
+ */
 .hero-search__bar {
 	position: relative;
 	z-index: 20;
 	display: flex;
 	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2);
-	border-radius: var(--lp-r-lg, 24px);
-	background: color-mix(in srgb, var(--surface) 74%, transparent);
-	backdrop-filter: blur(calc(var(--glass-blur) * 1.2)) saturate(1.3);
-	-webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.2)) saturate(1.3);
-	border: 1px solid var(--lp-hair-strong, rgba(128, 128, 128, 0.4));
-	box-shadow: var(--elevation-high);
+	gap: var(--space-1);
+	block-size: 3rem;
+	padding-inline-end: var(--space-1);
+	border-radius: var(--radius-lg);
+	background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+	border: 1px solid var(--hairline-color);
+	transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * Focus is on the PILL, not on the control inside it — the header has no per-control ring (the
+ * product removed focus rings site-wide), so the whole bar steps its hairline up one grade while
+ * anything inside it has focus. One device, no second outline.
+ */
+.hero-search__bar:focus-within {
+	border-color: var(--hairline-strong-color);
 }
 
 /* #region Entity selector */
 .hero-search__entity {
 	position: relative;
 	flex: 0 0 auto;
+	block-size: 100%;
 }
 
+/* The selector's trailing edge is the divider between it and the field — the header's placement. */
 .hero-search__entity-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-2);
-	block-size: 3rem;
-	padding-inline: var(--space-4);
+	gap: var(--space-1);
+	block-size: 100%;
+	padding-inline: var(--space-3);
 	border: 0;
+	border-inline-end: 1px solid var(--hairline-color);
 	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
-	font-weight: 600;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	white-space: nowrap;
 	cursor: pointer;
-	border-radius: var(--radius-lg);
+	border-start-start-radius: var(--radius-lg);
+	border-end-start-radius: var(--radius-lg);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .hero-search__entity-btn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 }
 
 .hero-search__entity-btn:focus-visible {
@@ -64,12 +102,12 @@
 }
 
 .hero-search__chevron {
-	inline-size: 8px;
-	block-size: 8px;
-	border-right: 2px solid currentColor;
-	border-bottom: 2px solid currentColor;
-	transform: translateY(-2px) rotate(45deg);
-	opacity: 0.7;
+	color: var(--on-surface-variant);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.hero-search__entity-btn[aria-expanded="true"] .hero-search__chevron {
+	transform: rotate(180deg);
 }
 
 .hero-search__menu {
@@ -80,29 +118,28 @@
 	margin: 0;
 	padding: var(--space-1);
 	list-style: none;
-	z-index: 50;
+	z-index: var(--z-popover);
 	background: var(--surface-2);
-	border: 1px solid var(--lp-hair, rgba(128, 128, 128, 0.2));
-	border-radius: var(--lp-r-sm, 12px);
+	border: 1px solid var(--hairline-color);
+	border-radius: var(--radius-lg);
 	box-shadow: var(--elevation-high);
 }
 
 .hero-search__option {
-	padding: 0.7rem 0.95rem;
+	padding: 0.65rem 0.9rem;
 	border-radius: var(--radius-base);
 	cursor: pointer;
-	font-weight: 400;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
-/* Subtle highlight — a neutral surface tint, never a heavy primary fill. */
+/* Subtle highlight — a neutral surface tint, never a heavy primary fill (as in the header). */
 .hero-search__option:hover,
+.hero-search__option:focus-visible,
 .hero-search__option[aria-selected="true"] {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);
-}
-
-.hero-search__option:focus-visible {
 	outline: none;
 }
 
@@ -115,42 +152,45 @@
 	min-inline-size: 0;
 	display: flex;
 	align-items: center;
-	padding-inline-start: var(--space-4);
-	border-inline-start: 1px solid var(--lp-hair, rgba(128, 128, 128, 0.2));
+	block-size: 100%;
 }
 
 .hero-search__input {
 	inline-size: 100%;
-	block-size: 3rem;
+	block-size: 100%;
+	padding-inline-start: var(--space-2);
 	border: 0;
 	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
-	font-size: 1.1rem;
+	font-size: var(--text-base);
 	outline: none;
 }
 
+/*
+ * The typewriter ghost is a PLACEHOLDER and is coloured like one: the header input's placeholder
+ * ink (`--on-surface-variant`) at the input's own weight, for the lead and the typed phrase alike.
+ * Only the caret keeps a colour of its own.
+ */
 .hero-search__ghost {
 	position: absolute;
-	inset-inline-start: var(--space-4);
+	inset-inline-start: var(--space-2);
 	inset-block: 0;
 	display: flex;
 	align-items: center;
 	gap: 0.4ch;
 	pointer-events: none;
-	font-size: 1.1rem;
+	font-size: var(--text-base);
 	color: var(--on-surface-variant);
 	white-space: nowrap;
 	overflow: hidden;
 }
 
-.hero-search__ghost-lead {
-	opacity: 0.65;
-}
-
+/* The lead ("Find") and the typed phrase are one placeholder, not a label and a value. */
+.hero-search__ghost-lead,
 .hero-search__typed {
-	color: var(--on-surface);
-	font-weight: 500;
+	color: inherit;
+	font-weight: inherit;
 }
 
 .hero-search__caret {
@@ -168,31 +208,25 @@
 
 /* #endregion */
 
-/* #region Submit — icon-only magnifier, square and slightly larger than the field. */
+/* #region Submit — the header's quiet magnifier: a bare glyph in the pill's ink, primary on hover. */
 .hero-search__submit {
 	flex: 0 0 auto;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 3.25rem;
-	block-size: 3.25rem;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
 	border: 0;
-	border-radius: var(--radius-lg);
-	background: var(--primary);
-	color: var(--on-primary);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface-variant);
 	cursor: pointer;
-	will-change: transform;
-	box-shadow: var(--elevation-low);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .hero-search__submit:hover {
-	background: color-mix(in srgb, var(--primary) 88%, var(--on-surface));
-}
-
-.hero-search__submit svg {
-	inline-size: 22px;
-	block-size: 22px;
+	color: var(--primary);
 }
 
 .hero-search__submit:focus-visible {
@@ -214,8 +248,8 @@
 }
 
 .hero-search__trending-label {
-	font-size: 0.78rem;
-	letter-spacing: 0.16em;
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
 	color: var(--on-surface-variant);
 	margin-inline-end: var(--space-2);
@@ -224,13 +258,13 @@
 .hero-search__tag {
 	padding: 0.45rem 0.95rem;
 	border-radius: var(--radius-xl);
-	border: 1px solid var(--lp-hair-strong, rgba(128, 128, 128, 0.4));
+	border: 1px solid var(--lp-hair-strong, var(--hairline-strong-color));
 	background: color-mix(in srgb, var(--surface) 55%, transparent);
 	backdrop-filter: blur(8px);
 	-webkit-backdrop-filter: blur(8px);
 	color: var(--on-surface);
 	font: inherit;
-	font-size: 0.85rem;
+	font-size: var(--text-sm);
 	cursor: pointer;
 	will-change: transform;
 	transition:
@@ -252,12 +286,12 @@
 /* #region Responsive */
 @media (max-width: 560px) {
 	.hero-search__entity-btn {
-		padding-inline: var(--space-3);
+		padding-inline: var(--space-2);
 	}
 
 	.hero-search__input,
 	.hero-search__ghost {
-		font-size: 1rem;
+		font-size: var(--text-sm);
 	}
 }
 

@@ -26,6 +26,9 @@
  * Asset provenance is unchanged: Unsplash's open registry, per `DESIGN_SYSTEM.md` §C.4.
  */
 
+import type { ImagePlaceholder } from "@projective/types/files";
+import { PLACEHOLDERS, type PlaceholderCrop } from "./placeholders.ts";
+
 /** The mock asset host. Repointing the whole corpus is a one-line change here. */
 const UNSPLASH_HOST = "https://images.unsplash.com";
 
@@ -115,3 +118,40 @@ export function mockShowreel(id: string): string {
 	for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
 	return `https://interactive-examples.mdn.mozilla.net/media/cc0-videos/${clips[h % clips.length]}`;
 }
+
+// #region Placeholders
+/**
+ * What is known about a mock photograph before it loads: its BlurHash, at the crop being built.
+ *
+ * The live path reads the hash upload-time extraction wrote to the row; the corpus has no upload,
+ * so its hashes were computed from the real pictures once by `scripts/gen-mock-placeholders.ts` and
+ * committed (`./placeholders.ts`). A photograph the host no longer serves has no entry and returns
+ * `undefined` — the SSOT's rule that an absence is a fact and never a plausible default.
+ *
+ * `crop` names which of the three crops the URL beside it takes: `mockCover` is a landscape
+ * `cover` unless it was asked for a square (`w === h`), and `mockAvatar` is always a `face`.
+ * {@link mockCoverPlaceholder} and {@link mockAvatarPlaceholder} make that pairing by construction.
+ */
+export function mockPlaceholder(
+	id: string,
+	crop: PlaceholderCrop = "cover",
+): ImagePlaceholder | undefined {
+	const bare = id.startsWith("photo-") ? id.slice("photo-".length) : id;
+	const blurhash = PLACEHOLDERS[bare]?.[crop];
+	return blurhash ? { blurhash } : undefined;
+}
+
+/** The placeholder for the picture `mockCover(id, w, h)` builds. */
+export function mockCoverPlaceholder(
+	id: string,
+	w?: number,
+	h?: number,
+): ImagePlaceholder | undefined {
+	return mockPlaceholder(id, w !== undefined && w === h ? "square" : "cover");
+}
+
+/** The placeholder for the picture `mockAvatar(id)` builds. */
+export function mockAvatarPlaceholder(id: string): ImagePlaceholder | undefined {
+	return mockPlaceholder(id, "face");
+}
+// #endregion

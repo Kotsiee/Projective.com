@@ -2,7 +2,14 @@
  * profile-hero — the split hero: identity column (avatar · name · handle line · action rig · metrics)
  * beside the 16:10 showcase frame, collapsing to one typography-first column when there is no
  * showcase. Monochrome chrome on the neutral ramp only; the only colour is the media. No box, no
- * border on anything static, one hairline nowhere — separation is whitespace alone.
+ * border on anything static, one hairline nowhere — separation is whitespace alone. The showcase
+ * frame is the ONE raised surface: it is interactive (a carousel), so the soft corner and the light
+ * shadow §B.4 reserves for an elevated control are its due; the carousel itself lives in
+ * profile-showcase.css.
+ *
+ * For the owner the avatar IS the photo control: a scrim overlay naming the action appears on hover
+ * and on focus, and a small edit badge stands in for it where there is no hover to reveal it. The
+ * old satellite picker button beside the avatar is gone; the showcase keeps its own.
  *
  * The action rig has three shapes (`data-rig`): a SELLER's `hire` (Hire primary + two icon-only
  * secondaries), a BUYER's `message` (Message primary + a text Follow), and the `owner` pair. The
@@ -52,6 +59,83 @@
 
 .pf-hero__avatar {
     display: block;
+}
+
+/* The owner's control: the avatar wrapped in a circular button, nothing added at rest. */
+.pf-hero__avatarbtn {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    overflow: clip;
+    transform: scale(1);
+    transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.pf-hero__avatarbtn:active {
+    transform: scale(var(--btn-press-scale-icon));
+    transition-duration: var(--dur-press);
+}
+
+.pf-hero__avatarbtn:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* The overlay: a scrim over the photograph naming what a press does. Hidden until hover/focus. */
+.pf-hero__avataredit {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--scrim) 58%, transparent);
+    color: var(--on-scrim);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+    pointer-events: none;
+}
+
+.pf-hero__avataredit-label {
+    font-size: var(--text-2xs);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    letter-spacing: var(--tracking-normal);
+    text-align: center;
+}
+
+.pf-hero__avatarbtn:hover .pf-hero__avataredit,
+.pf-hero__avatarbtn:focus-visible .pf-hero__avataredit,
+.pf-hero__avatarbtn[aria-expanded="true"] .pf-hero__avataredit {
+    opacity: 1;
+}
+
+/* No hover to reveal the overlay on a touch surface: a permanent small edit badge says the same. */
+@media (hover: none) {
+    .pf-hero__avataredit {
+        inset: auto 0 0 auto;
+        inline-size: 1.5rem;
+        block-size: 1.5rem;
+        border-radius: var(--radius-full);
+        opacity: 1;
+    }
+
+    .pf-hero__avataredit-label {
+        display: none;
+    }
+
+    .pf-hero__avataredit .ui-icon {
+        inline-size: var(--icon-2xs);
+        block-size: var(--icon-2xs);
+    }
 }
 
 .pf-hero__name {
@@ -289,47 +373,31 @@
 
 /* #endregion */
 
-/* #region Showcase */
-/* The frame takes one soft corner (`--radius-base`, 8px) and clips to it, so the media, the poster
-   and the owner's picker all respect the same edge; the inner `.pf-showcase` inherits it. */
+/* #region Showcase frame */
+/*
+ * The frame is the page's one raised surface — a carousel is a control, so it earns the soft corner
+ * and the light shadow (§B.4) — and it clips to its corner so the slides, the rail and the owner's
+ * picker all respect the same edge; the inner `.pf-showcase` (profile-showcase.css) inherits it.
+ */
 .pf-hero__showcase {
     position: relative;
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
-    border-radius: var(--radius-base);
-    overflow: clip;
-}
-
-.pf-showcase {
-    aspect-ratio: 16 / 10;
-    inline-size: 100%;
-    overflow: clip;
-    border-radius: inherit;
+    border-radius: var(--radius-lg);
     background: var(--surface-1);
-}
-
-.pf-showcase__media {
-    display: block;
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
+    box-shadow: var(--elevation-low);
+    overflow: clip;
 }
 
 /* #endregion */
 
-/* #region Owner image pickers */
+/* #region Owner showcase picker */
 .pf-hero__imgslot {
     position: absolute;
-    inset-block-end: calc(-1 * var(--space-1));
-    inset-inline-end: calc(-1 * var(--space-1));
-    display: flex;
-}
-
-.pf-hero__imgslot--showcase {
-    inset-block-end: auto;
     inset-block-start: var(--space-3);
     inset-inline-end: var(--space-3);
+    display: flex;
 }
 
 .pf-hero__imgbtn {
@@ -370,8 +438,14 @@
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
     .pf-hero__imgbtn,
-    .pf-hero__imgbtn:active {
+    .pf-hero__imgbtn:active,
+    .pf-hero__avatarbtn,
+    .pf-hero__avatarbtn:active {
         transform: none;
+        transition: none;
+    }
+
+    .pf-hero__avataredit {
         transition: none;
     }
 
@@ -383,8 +457,14 @@
 }
 
 :root[data-motion="reduced"] .pf-hero__imgbtn,
-:root[data-motion="reduced"] .pf-hero__imgbtn:active {
+:root[data-motion="reduced"] .pf-hero__imgbtn:active,
+:root[data-motion="reduced"] .pf-hero__avatarbtn,
+:root[data-motion="reduced"] .pf-hero__avatarbtn:active {
     transform: none;
+    transition: none;
+}
+
+:root[data-motion="reduced"] .pf-hero__avataredit {
     transition: none;
 }
 

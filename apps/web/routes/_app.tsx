@@ -4,6 +4,7 @@ import { CurrencyContext } from "@projective/ui/display/money";
 import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.island.tsx";
 import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.tsx";
 import ServiceWorkerBridge from "@web/features/shell/islands/ServiceWorkerBridge.island.tsx";
+import ImageFallbackBridge from "@web/features/shell/islands/ImageFallbackBridge.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
@@ -173,6 +174,12 @@ export default define.page(function App({ Component, state }) {
 				    needs it would only ever help somebody who had already been there online. */
 				}
 				<ServiceWorkerBridge />
+				{
+					/* The progressive-image pipeline: settles every picture on the page to itself, its
+				    BlurHash, or a neutral fallback. Renders nothing. Mounted globally for the same reason
+				    the currency bridge is — a guest's card thumbnails need it as much as an owner's. */
+				}
+				<ImageFallbackBridge />
 				{
 					/* The per-request currency for SERVER-rendered money. Context, not the module-level
 				    signal store: a server process renders many viewers concurrently, and a shared signal
