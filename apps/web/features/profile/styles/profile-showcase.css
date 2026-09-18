@@ -14,6 +14,10 @@
  * The dots grow into a pill on selection — a state change, not press feedback; reduced motion lands
  * it instantly. Every control on the rail is on the scrim's ink (`--on-scrim`), never a theme role,
  * because the ground behind it is a photograph and not a surface.
+ *
+ * A video slide's controls are the shared `@projective/ui` VideoPlayer's (`.ui-video--full`), on
+ * the same scrim pair and the same 58% glass — the only thing this sheet says about them is WHERE
+ * the bar sits: above the pagination rail, so the two never overlap.
  */
 
 /* #region Stage */
@@ -85,61 +89,13 @@
 
 /* #endregion */
 
-/* #region Video controls */
-/* The play / replay control sits at the stage centre; the wrapper carries the geometry because the
-   tooltip anchor is an inline span between it and the button. */
-/* Centring is direction-agnostic, so the offsets are physical on purpose — a logical start edge
-   would pair with the physical translate to push the control OFF centre under `dir="rtl"`. */
-.pf-showcase__playslot {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    display: flex;
-    transform: translate(-50%, -50%);
-}
-
-.pf-showcase__play {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--space-7);
-    block-size: var(--space-7);
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--on-scrim);
-    cursor: pointer;
-    isolation: isolate;
-    transform: scale(1);
-    transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.pf-showcase__play::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    background: color-mix(in srgb, var(--scrim) 58%, transparent);
-    backdrop-filter: blur(var(--scrim-blur));
-    -webkit-backdrop-filter: blur(var(--scrim-blur));
-    transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.pf-showcase__play:hover::before {
-    background: color-mix(in srgb, var(--scrim) 70%, transparent);
-}
-
-.pf-showcase__play:active {
-    transform: scale(var(--btn-press-scale-icon));
-    transition-duration: var(--dur-press);
-}
-
-.pf-showcase__play:focus-visible {
-    outline: none;
-    box-shadow: none;
+/* #region Video slide */
+/* The player fills the slide; the picture's own rule above already gives it the box. The transport
+   bar clears the pagination rail beneath it — the rail's bottom inset (--space-3) + its height
+   (--space-1 padding × 2 + a --space-5 button = --space-6) + one --space-2 breath — so a reader can
+   scrub without covering the dots. A one-slide showcase draws no rail and the bar takes the default. */
+.pf-showcase:not([data-count="1"]) .pf-showcase__player {
+    --video-bar-inset-block-end: calc(var(--space-3) + var(--space-6) + var(--space-2));
 }
 
 /* #endregion */
@@ -260,9 +216,7 @@
     }
 
     .pf-showcase__nav,
-    .pf-showcase__nav:active,
-    .pf-showcase__play,
-    .pf-showcase__play:active {
+    .pf-showcase__nav:active {
         transform: none;
         transition: none;
     }
@@ -277,9 +231,7 @@
 }
 
 :root[data-motion="reduced"] .pf-showcase__nav,
-:root[data-motion="reduced"] .pf-showcase__nav:active,
-:root[data-motion="reduced"] .pf-showcase__play,
-:root[data-motion="reduced"] .pf-showcase__play:active {
+:root[data-motion="reduced"] .pf-showcase__nav:active {
     transform: none;
     transition: none;
 }

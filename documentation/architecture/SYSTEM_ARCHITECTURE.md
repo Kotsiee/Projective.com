@@ -1364,7 +1364,15 @@ Projective utilizes Supabase Auth as the primary identity provider, deeply integ
 PostgreSQL RLS.
 
 - **MVP Authentication:** The initial release strictly supports **Google OAuth** and standard
-  Email/Password authentication.
+  Email/Password authentication. The password sign-in takes ONE identifier field that accepts an
+  email **or** a `@handle` username: the thin route validates the shape (`LoginSchema.identifier`,
+  the same `isIdentifier` predicate the form's instant check runs), and the fat
+  `AuthBackendService.authenticate` tells the two apart and resolves a username to the account's
+  email with a service-role read of `org.users_public` + the GoTrue identity before the password
+  grant — the caller has no session yet, so an RLS-scoped read would show them nothing. An unknown
+  username answers the SAME generic refusal as a wrong password (the form must not be a
+  handle-enumeration oracle), and the `requiresVerification` branch returns the resolved `email` so
+  a username sign-in can still reach `/verify`.
 - **Extensibility:** The architecture must be built to support a unified integration model later. As
   traction builds, the platform will expand to include Microsoft (Azure AD), GitHub, and Apple SSO.
 - **Database Sync:** A Supabase trigger automatically creates a corresponding public `users` profile

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
+import { MediaDimensionsSchema, showcaseAspectOf } from "../files/aspect.ts";
+import type { ShowcaseAspect } from "../files/aspect.ts";
 
 /**
  * explore.items — the Zod SSOT for the discovery domain shapes (freelancers, teams, users,
@@ -268,6 +270,14 @@ export const ProductItemSchema = z.object({
 	/** Masonry cell weight — drives the staggered column rhythm (1 = short, 3 = tall). */
 	span: z.union([z.literal(1), z.literal(2), z.literal(3)]),
 	/**
+	 * What the cover picture MEASURED — `width` · `height` · `aspectRatio` as the upload extractor
+	 * stored them on `files.items.metadata` (`MediaDimensionsSchema`, the flat triple every showcase
+	 * tile reads). The product tile is sized from it, clamped to the showcase band; see
+	 * {@link productMediaAspect}. Optional so a legacy row degrades to the `span`-derived ratio
+	 * rather than to a fabricated size.
+	 */
+	mediaMeta: MediaDimensionsSchema.optional(),
+	/**
 	 * The headline price as STRUCTURED money — integer minor units plus its ISO-4217 currency.
 	 *
 	 * Additive alongside the pre-formatted `price` string, not a replacement: `price` is what a
@@ -283,6 +293,28 @@ export const ProductItemSchema = z.object({
 	currency: z.string().min(3).max(3).optional(),
 });
 export type ProductItem = z.infer<typeof ProductItemSchema>;
+
+/**
+ * The ratio a product's masonry cell derives from its `span` — the crop each seed is fetched at
+ * (1 = 4:3 landscape · 2 = square · 3 = 4:5 portrait), so a row that predates `mediaMeta` still
+ * interlocks. Read only as the fallback; a measured picture always wins.
+ */
+export function productSpanAspect(span: ProductItem["span"]): number {
+	return span === 1 ? 4 / 3 : span === 2 ? 1 : 4 / 5;
+}
+
+/**
+ * The tile a product's cover gets — the ONE derivation the masonry card, the fixed-height rail card,
+ * the profile's work tile and the entity viewer all call, so a picture cannot be drawn at two ratios
+ * on two surfaces. Measured dimensions first, the span-derived ratio when none were measured, and
+ * always clamped into the showcase band (`files/aspect.ts`) — a picture outside it reports
+ * `fit: "cover"` so the surface can say the crop out loud.
+ */
+export function productMediaAspect(
+	item: Pick<ProductItem, "span" | "mediaMeta">,
+): ShowcaseAspect {
+	return showcaseAspectOf(item.mediaMeta ?? productSpanAspect(item.span));
+}
 
 /** A help/editorial article (grid/list combo, with a descriptive thumbnail). */
 export const ArticleItemSchema = z.object({

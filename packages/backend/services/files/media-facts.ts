@@ -1,4 +1,5 @@
 import type { AssetItem, AssetMetadata } from "@projective/types/files";
+import { mediaDimensionsOf, showcaseAspectNote } from "@projective/types/files";
 
 /**
  * media-facts — the projection from a stored {@link AssetMetadata} envelope onto the flat fields
@@ -25,6 +26,14 @@ import type { AssetItem, AssetMetadata } from "@projective/types/files";
  * whichever boundary happens to re-parse it — a silent over-long field is exactly the class of defect
  * a declared bound exists to catch. So a poster is adopted as a thumbnail only when it genuinely fits,
  * and otherwise stays where it belongs: in `files.items.metadata`, which is sized for it.
+ *
+ * ## The showcase band is FLAGGED here, never enforced
+ *
+ * A picture whose ratio falls outside the band a product tile may occupy (`files/aspect.ts`, 4:5 to
+ * 16:9) is recorded as such in the envelope's `notes` and stored anyway. An upload has no idea what it
+ * will become — a chat attachment, a reference brief and a product cover are all shapes the hub must
+ * accept — so refusing here would refuse the wrong thing. The note is what lets a showcase surface say
+ * "this will be cropped" without re-deciding the rule, and the tile itself applies the cover crop.
  *
  * Pure, synchronous and dependency-free, so the live path and the fixture path derive the same fields
  * from the same envelope. Two implementations would be two chances for the grid to disagree with the
@@ -57,6 +66,22 @@ export interface MediaFacts {
 
 /** Nothing was answered. The shape a `generic` envelope, or no envelope at all, produces. */
 const NOTHING: MediaFacts = { width: null, height: null, durationLabel: null, thumbnailUrl: null };
+
+/** `AssetMetadataSchema` caps the notes array here; a flag must not push the row past its own schema. */
+const MAX_NOTES = 8;
+
+/**
+ * The envelope with the showcase-band flag appended when its picture needs one — the same envelope
+ * otherwise. Idempotent: a note already present is not written twice, and a full notes array keeps
+ * what it has rather than being pushed past the bound the SSOT enforces.
+ */
+export function flagShowcaseAspect(metadata: AssetMetadata): AssetMetadata {
+	const note = showcaseAspectNote(mediaDimensionsOf(metadata));
+	if (note === null || metadata.notes.includes(note) || metadata.notes.length >= MAX_NOTES) {
+		return metadata;
+	}
+	return { ...metadata, notes: [...metadata.notes, note] };
+}
 
 /**
  * A poster, if it is short enough to live in a URL column. See the module note.
@@ -146,7 +171,7 @@ export function applyMediaFacts(
 	// recorded answer. An explicit `null` means a client reached for the bytes and could not read
 	// them, which is worth storing: it is what stops the pipeline retrying a file that will never
 	// decode.
-	if (metadata !== undefined) next.metadata = metadata;
+	if (metadata !== undefined) next.metadata = metadata === null ? null : flagShowcaseAspect(metadata);
 	return next;
 }
 // #endregion

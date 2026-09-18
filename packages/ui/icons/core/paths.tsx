@@ -579,6 +579,20 @@ const OBJECTS = {
 	),
 	"play": () => <path d="M8 5.4l10 6.6-10 6.6z" />,
 	"pause": () => <path d="M9.5 5v14M14.5 5v14" />,
+	/** Sound on — a speaker horn with two waves. The video player's unmuted state. */
+	"volume": () => (
+		<>
+			<path d="M4 9.5h3.5l4.5-3.7v12.4L7.5 14.5H4z" />
+			<path d="M15.5 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />
+		</>
+	),
+	/** The speaker struck through — muted. Same slash as `eye-off` / `bell-off` / `filter-off`. */
+	"volume-off": () => (
+		<>
+			<path d="M4 9.5h3.5l4.5-3.7v12.4L7.5 14.5H4z" />
+			<path d="M3 3l18 18" />
+		</>
+	),
 	/** A video call — a camera body with a lens spout. A video FILE is a file-kind glyph, not this. */
 	"video-camera": () => (
 		<>

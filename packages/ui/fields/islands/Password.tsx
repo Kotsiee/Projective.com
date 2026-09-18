@@ -25,6 +25,8 @@ export interface PasswordProps extends BaseFieldProps {
 	autoComplete?: string;
 	/** Surface treatment (§ FieldVariant). */
 	variant?: FieldVariant;
+	/** Key handler on the secret input (see `InputTextProps.onKeyDown`). */
+	onKeyDown?: JSX.KeyboardEventHandler<HTMLInputElement>;
 	class?: string;
 	style?: CSSProperties;
 }
@@ -83,8 +85,11 @@ const TIER_LABEL: Record<StrengthTier, string> = {
 };
 
 /**
- * Password — a masked secret field. An optional real `<button>` toggles visibility (swapping the
- * input type, reflecting state via `aria-pressed` and a descriptive `aria-label`). With `feedback`, a
+ * Password — a masked secret field. An optional real `<button type="button">` toggles visibility
+ * (swapping the input type, reflecting state via `aria-pressed` and a descriptive `aria-label`) — the
+ * explicit type is load-bearing: a button inside a `<form>` defaults to `submit`, and Enter in the
+ * secret input performs implicit submission by clicking the form's FIRST submit button, so an
+ * untyped toggle placed before the real submit would be what Enter pressed. With `feedback`, a
  * strength meter scores the value 0..4 from length and character-class coverage and renders a tonal
  * bar (weak → `--danger`, medium → `--warning`, strong → `--success`) plus an `aria-live` label.
  * Composes the shared `.ui-field` geometry with validation status and the standard field semantics.

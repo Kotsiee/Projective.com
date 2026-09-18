@@ -10,7 +10,9 @@ import type { ExploreItem } from "@projective/types/explore";
  * drag-swipeable, paged tracks with Previous/Next controls + pagination dots instead of a hand-rolled
  * scroll container. The library owns every interaction (pointer drag, keyboard, autoplay-off, reduced
  * motion, ARIA); this island only maps each {@link ExploreItem} to its native discovery
- * {@link EntityCard}. Products are handled separately (masonry) — this renders the card formats.
+ * {@link EntityCard}. A product rides the carousel in its FIXED layout (the 16:10 frame the services
+ * beside it use, the cover cropped into it) rather than its masonry height — a carousel is a
+ * uniform-height track, and a variable frame does not interlock with anything there; it opens a hole.
  *
  * `numScroll` tracks `numVisible` so pages are discrete (indicators = real page count, no phantom dots
  * when a short group already fits), and both cap to the item count so a lone card fills the viewport.
@@ -62,7 +64,7 @@ export default function RelatedCarousel(
 			showNavigators={len > 1}
 			itemTemplate={(item) => (
 				<div class={isProjects ? "vw-slide vw-slide--projects" : "vw-slide"}>
-					<EntityCard item={item} ctx={ctx} authed={authed} />
+					<EntityCard item={item} ctx={ctx} authed={authed} productLayout="fixed" />
 				</div>
 			)}
 		/>

@@ -70,7 +70,7 @@ export function ExploreHome(
 						<Panel id="products" label="Recommended products">
 							{feed.recommended.products.map((p) => (
 								<Cell key={p.id}>
-									<ProductCard item={p} authed={authed} />
+									<ProductCard item={p} authed={authed} layout="fixed" />
 								</Cell>
 							))}
 						</Panel>
@@ -148,7 +148,7 @@ export function ExploreHome(
 				<Section def={HOME_SECTIONS.products}>
 					{feed.products.map((p) => (
 						<Cell key={p.id}>
-							<ProductCard item={p} authed={authed} />
+							<ProductCard item={p} authed={authed} layout="fixed" />
 						</Cell>
 					))}
 				</Section>

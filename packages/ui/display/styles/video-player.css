@@ -1,0 +1,363 @@
+/*
+ * VideoPlayer (ui-video) — the one video surface, in two sizes: `compact` (Play ⁄ Pause + Mute as
+ * two ghost buttons in a corner) and `full` (a glass transport bar: play · mute + an expanding
+ * volume slider · the clock · a seekable scrubber · a speed cycle). Token-only BEM; every colour on
+ * the controls is the scrim pair (`--scrim` ⁄ `--on-scrim`), never a theme role, because the ground
+ * behind them is a video frame — arbitrary photography — and not a surface.
+ *
+ * Glass is licensed here (§B.4.3: a mark on arbitrary photography) and it sits on a `::before`
+ * underlay, never the element itself, so the portal tooltips are not re-based by the blur. 58% is
+ * the profile rail's measured value: the `--on-scrim` ink clears 3:1 over a blown-out white frame
+ * with headroom; hover deepens it to 70%.
+ *
+ * Reveal is an ATTRIBUTE the island writes (`data-controls`), never `:hover` — a sticky `:hover` on a
+ * touch device would make a tap-to-hide impossible — so with no script the controls stay hidden and
+ * the picture is all that renders, which is also what the server paints. A host may pin them visible
+ * where hover does not exist (a tile whose surface is a link, under `(hover: none)`).
+ *
+ * Motion is `opacity` and `transform` only. The two fills (`--video-ratio`) are geometry that ENCODES
+ * a fact and are never transitioned: a fill arriving through a transition in a backgrounded tab
+ * would draw a position the video is not at.
+ */
+
+/* #region Box */
+.ui-video {
+	position: relative;
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	overflow: hidden;
+	background: var(--surface-1);
+	container-type: inline-size;
+	isolation: isolate;
+}
+
+.ui-video__media {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: var(--video-fit, cover);
+	background: inherit;
+}
+
+/* #endregion */
+
+/* #region Reveal */
+.ui-video__controls {
+	position: absolute;
+	z-index: 2;
+	color: var(--on-scrim);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+	/* Hidden controls neither catch a pointer nor cover the surface's own click target. */
+	pointer-events: none;
+}
+
+.ui-video[data-controls="visible"] .ui-video__controls {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+/* #endregion */
+
+/* #region Compact cluster */
+.ui-video__cluster {
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.ui-video__cluster[data-corner="bottom-end"] {
+	inset-block-start: auto;
+	inset-block-end: var(--space-2);
+}
+
+/* Each corner button carries its own glass — there is no bar to sit on. */
+.ui-video--compact .ui-video__btn {
+	isolation: isolate;
+}
+
+.ui-video--compact .ui-video__btn::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--scrim) 58%, transparent);
+	backdrop-filter: blur(var(--scrim-blur));
+	-webkit-backdrop-filter: blur(var(--scrim-blur));
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-video--compact .ui-video__btn:hover::before,
+.ui-video--compact .ui-video__btn:focus-visible::before {
+	background: color-mix(in srgb, var(--scrim) 70%, transparent);
+}
+
+/* #endregion */
+
+/* #region Full bar */
+.ui-video__bar {
+	inset-inline: var(--video-bar-inset-inline, var(--space-3));
+	inset-block-end: var(--video-bar-inset-block-end, var(--space-3));
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-full);
+	isolation: isolate;
+}
+
+.ui-video__bar::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--scrim) 58%, transparent);
+	backdrop-filter: blur(var(--scrim-blur));
+	-webkit-backdrop-filter: blur(var(--scrim-blur));
+}
+
+/* #endregion */
+
+/* #region Buttons */
+.ui-video__btn,
+.ui-video__rate {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	block-size: 2rem;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-video__btn {
+	inline-size: 2rem;
+}
+
+.ui-video__rate {
+	min-inline-size: 2.25rem;
+	padding-inline: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+
+/* On the bar the tonal step is the ink over the glass; focus takes the same fill, since the product
+   draws no rings and a focused control must still be tellable from its neighbours. */
+.ui-video--full .ui-video__btn:hover,
+.ui-video--full .ui-video__btn:focus-visible,
+.ui-video__rate:hover,
+.ui-video__rate:focus-visible {
+	background: color-mix(in srgb, var(--on-scrim) 18%, transparent);
+}
+
+.ui-video__btn:active,
+.ui-video__rate:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.ui-video__btn:focus-visible,
+.ui-video__rate:focus-visible,
+.ui-video__slider:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+/* #endregion */
+
+/* #region Sliders */
+.ui-video__slider {
+	position: relative;
+	display: flex;
+	align-items: center;
+	/* The hit target is the row, not the 4px track. */
+	block-size: 2rem;
+	cursor: pointer;
+	touch-action: none;
+}
+
+.ui-video__slider--seek {
+	flex: 1 1 auto;
+	min-inline-size: 4rem;
+}
+
+/*
+ * 60% is measured, not chosen: the track is the slider's extent (WCAG 1.4.11 owes it 3:1 against
+ * the bar) and the bar is 58% scrim over whatever frame is behind it. Over a blown-out WHITE frame
+ * the glass resolves to ~rgb(107) and a 32% ink measured 1.89:1; 60% measures 3.07:1 there, and
+ * over a black frame 7.6:1 with the full-ink fill still 2.85:1 brighter than the rest — and the
+ * handle marks the position besides.
+ */
+.ui-video__track {
+	position: relative;
+	flex: 1 1 auto;
+	block-size: 4px;
+	margin-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-scrim) 60%, transparent);
+	overflow: hidden;
+}
+
+/* Logical start, so the fill grows from the reading edge in either direction. Never transitioned. */
+.ui-video__fill {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: calc(var(--video-ratio, 0) * 100%);
+	background: var(--on-scrim);
+}
+
+.ui-video__handle {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: calc(var(--space-2) + (100% - var(--space-2) * 2) * var(--video-ratio, 0));
+	inline-size: 0.75rem;
+	block-size: 0.75rem;
+	margin-inline-start: -0.375rem;
+	border-radius: var(--radius-full);
+	background: var(--on-scrim);
+	transform: translateY(-50%);
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+	pointer-events: none;
+}
+
+.ui-video__slider:hover .ui-video__handle,
+.ui-video__slider:focus-visible .ui-video__handle,
+.ui-video[data-dragging] .ui-video__slider .ui-video__handle {
+	opacity: 1;
+}
+
+/* Focus without a ring: the track brightens, which is a colour the row already uses. */
+.ui-video__slider:focus-visible .ui-video__track {
+	background: color-mix(in srgb, var(--on-scrim) 78%, transparent);
+}
+
+/* #endregion */
+
+/* #region Volume — expands beside the mute control on hover or focus, and stays while held */
+.ui-video__vol {
+	display: flex;
+	align-items: center;
+	flex: none;
+}
+
+.ui-video__slider--volume {
+	inline-size: 0;
+	overflow: hidden;
+	opacity: 0;
+	transition:
+		inline-size var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-video__vol:hover .ui-video__slider--volume,
+.ui-video__vol:focus-within .ui-video__slider--volume,
+.ui-video[data-dragging="volume"] .ui-video__slider--volume {
+	inline-size: 5rem;
+	opacity: 1;
+}
+
+/* #endregion */
+
+/* #region Clock */
+.ui-video__time {
+	flex: none;
+	padding-inline: var(--space-1);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+/* A narrow player keeps the four things a reader touches and drops the two it reads. */
+@container (max-width: 22rem) {
+	.ui-video__time,
+	.ui-video__rate {
+		display: none;
+	}
+}
+
+/* #endregion */
+
+/* #region Centre mark — an indicator of the paused state, not a control (the bar holds that) */
+.ui-video__centre {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--space-7);
+	block-size: var(--space-7);
+	border-radius: var(--radius-full);
+	color: var(--on-scrim);
+	transform: translate(-50%, -50%);
+	isolation: isolate;
+	pointer-events: none;
+}
+
+.ui-video__centre::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--scrim) 58%, transparent);
+	backdrop-filter: blur(var(--scrim-blur));
+	-webkit-backdrop-filter: blur(var(--scrim-blur));
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+	.ui-video__controls,
+	.ui-video__handle,
+	.ui-video__slider--volume,
+	.ui-video--compact .ui-video__btn::before {
+		transition: none;
+	}
+
+	.ui-video__btn,
+	.ui-video__btn:active,
+	.ui-video__rate,
+	.ui-video__rate:active {
+		transform: none;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-video__controls,
+:root[data-motion="reduced"] .ui-video__handle,
+:root[data-motion="reduced"] .ui-video__slider--volume,
+:root[data-motion="reduced"] .ui-video--compact .ui-video__btn::before {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .ui-video__btn,
+:root[data-motion="reduced"] .ui-video__btn:active,
+:root[data-motion="reduced"] .ui-video__rate,
+:root[data-motion="reduced"] .ui-video__rate:active {
+	transform: none;
+	transition: none;
+}
+
+/* #endregion */

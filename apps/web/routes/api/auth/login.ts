@@ -6,8 +6,9 @@ import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts"
 
 /**
  * `POST /api/auth/login` — thin route: validate credentials, then delegate to the fat
- * {@link AuthBackendService}, which (live) runs the GoTrue password grant, sets the HTTP-only
- * session cookie, and flags `requiresVerification` for an unconfirmed email.
+ * {@link AuthBackendService}, which (live) resolves a username identifier to its account email,
+ * runs the GoTrue password grant, sets the HTTP-only session cookie, and flags
+ * `requiresVerification` for an unconfirmed email.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -23,7 +24,7 @@ export const handler = define.handlers({
 
 		return toAuthResponse(
 			await AuthBackendService.authenticate({
-				email: parsed.data.email,
+				identifier: parsed.data.identifier,
 				password: parsed.data.password,
 				remember: parsed.data.remember,
 				redirectTo: safeRedirect(parsed.data.redirectTo),

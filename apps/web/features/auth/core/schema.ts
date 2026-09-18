@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EMAIL_RE, PHONE_RE, USERNAME_RE } from "./validate.ts";
+import { EMAIL_RE, isIdentifier, PHONE_RE, USERNAME_RE } from "./validate.ts";
 import { EMPLOYEE_TIERS, INDUSTRIES } from "./options.ts";
 
 /**
@@ -75,8 +75,17 @@ export const JoinSchema = z.discriminatedUnion("type", [
 	OrganizationJoinSchema,
 ]);
 
+/**
+ * Password sign-in. `identifier` is an email OR a username in one field — the predicate is
+ * {@link isIdentifier}, the same one the form's instant check runs, so a value the form accepts is a
+ * value the route accepts. Which of the two it is, and the username → email resolution, belong to the
+ * fat service; the route never inspects it.
+ */
 export const LoginSchema = z.object({
-	email,
+	identifier: z.string().trim().min(1, "Email or username is required.").max(254).refine(
+		isIdentifier,
+		"Enter a valid email address or username.",
+	),
 	password: z.string().min(1, "Password is required."),
 	remember: z.boolean().default(false),
 	redirectTo,

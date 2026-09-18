@@ -30,6 +30,37 @@ export function emailError(value: string): string | null {
 	return EMAIL_RE.test(value.trim()) ? null : "Enter a valid email address.";
 }
 
+/**
+ * A sign-in identifier is EITHER an email address OR a username. One predicate, read by the login
+ * form's instant check and by `LoginSchema`'s refinement, so the two cannot disagree about which
+ * strings reach the server. Reserved handles are deliberately NOT refused here: the sign-in path
+ * only ever answers "does an account match", and an identifier that could never be registered is
+ * just an identifier that does not match.
+ */
+export function isIdentifier(value: string): boolean {
+	const v = value.trim();
+	return EMAIL_RE.test(v) || USERNAME_RE.test(v);
+}
+
+/** Whether a sign-in identifier should be treated as an email (contains `@`) or a username. */
+export function isEmailIdentifier(value: string): boolean {
+	return value.includes("@");
+}
+
+/**
+ * Validation for the single "Email or username" sign-in field. An `@` in the value means the reader
+ * was typing an email, so a malformed one is told so rather than being measured against the
+ * username rules it was never meant to satisfy.
+ */
+export function identifierError(value: string): string | null {
+	const v = value.trim();
+	if (v.length === 0) return "Email or username is required.";
+	if (isIdentifier(v)) return null;
+	return isEmailIdentifier(v)
+		? "Enter a valid email address."
+		: "Enter a valid username: 3–30 characters, starting with a letter.";
+}
+
 export function usernameError(value: string): string | null {
 	const v = value.trim();
 	if (v.length === 0) return "Username is required.";

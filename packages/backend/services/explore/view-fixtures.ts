@@ -47,7 +47,7 @@ import type {
 	ProjectItem,
 	ServiceItem,
 } from "@projective/types/explore";
-import { mockCover, mockPlaceholder } from "../../mocks/assets.ts";
+import { mockCover, mockPlaceholder, mockShowreel } from "../../mocks/assets.ts";
 
 /**
  * Explore — the Entity View page derivation (server side).
@@ -1434,7 +1434,9 @@ function previewFor(product: ProductItem, format: ProductFormat, seed: number): 
 			].join("\n"),
 		};
 	}
-	if (format === "video-preset") return { kind: "video", src: "#", poster: src };
+	// A real (CC0) clip rather than the "#" stub, so the canvas's full video transport is reachable
+	// from the stub corpus; the still stays its poster.
+	if (format === "video-preset") return { kind: "video", src: mockShowreel(product.id), poster: src };
 	if (format === "asset-3d") return { kind: "model", src, poster: src };
 	return { kind: "image", src };
 }

@@ -4,7 +4,8 @@
  * Roster (DESIGN_SYSTEM.md §C.1, expanded for PrimeNG parity): high-performance collections
  * (Table, TreeTable, Tree, DataView, VirtualScroller, Scroller) that virtualize rows via
  * `@projective/ui/hooks/useVirtualScroll` and scroll within their own container OR the window;
- * hierarchical + temporal views (OrgChart, Timeline); media (Image, Galleria, Carousel, GMap); and
+ * hierarchical + temporal views (OrgChart, Timeline); media (Image, Galleria, Carousel, GMap,
+ * AudioVisualizer, VideoPlayer, ProgressiveImage); and
  * content atoms (Card, Badge, Tag, Avatar, AvatarGroup, Chip, List, ListItem, Accordion).
  *
  * Styling contract: Pure CSS + strict BEM, token-only. Interactive pieces are islands; atoms are
@@ -84,6 +85,20 @@ export {
 } from "./core/progressive-image.ts";
 export type { ProgressiveImageState } from "./core/progressive-image.ts";
 export { blurHashAverage, decodeBlurHash, isBlurHash } from "./core/blurhash.ts";
+export { VideoPlayer } from "./islands/VideoPlayer.tsx";
+export type {
+	VideoPlayerCorner,
+	VideoPlayerProps,
+	VideoPlayerVariant,
+} from "./islands/VideoPlayer.tsx";
+export {
+	clockLabel,
+	controlsVisible,
+	isPlayableSource,
+	progressRatio,
+	seekValueText,
+} from "./core/video.ts";
+export type { ControlsVisibilityInput } from "./core/video.ts";
 // #endregion
 
 // #region Content atoms

@@ -11,6 +11,7 @@ import type {
 	ServiceType,
 	SponsoredSlot,
 } from "@projective/types/explore";
+import { aspectRatioOf } from "@projective/types/files";
 import { mockCover, mockCoverPlaceholder } from "../../mocks/assets.ts";
 
 /**
@@ -708,6 +709,15 @@ const PRODUCT_SEED: Array<
 	],
 ];
 
+/**
+ * The measured size of a product cover, from the crop its seed is fetched at — 800 wide, at the
+ * 4:3 / 1:1 / 4:5 height the span names. What `files.items.metadata` would hold for the same picture.
+ */
+function productDimensions(span: 1 | 2 | 3): ProductItem["mediaMeta"] {
+	const height = span === 1 ? 600 : span === 2 ? 800 : 1000;
+	return { width: 800, height, aspectRatio: aspectRatioOf(800, height) };
+}
+
 export const PRODUCTS: ProductItem[] = PRODUCT_SEED.map(
 	([id, title, owner, price, category, span, photo], i) => ({
 		id: `pr-${id}`,
@@ -724,6 +734,9 @@ export const PRODUCTS: ProductItem[] = PRODUCT_SEED.map(
 		rating: helperOnly(4.8, 25 + i),
 		media: unsplash(photo, 800, span === 1 ? 600 : span === 2 ? 800 : 1000),
 		mediaPlaceholder: placeholder(photo, 800, span === 1 ? 600 : span === 2 ? 800 : 1000),
+		// The crop IS the measurement here: the corpus fetches each cover at exactly this size, so the
+		// dimensions a real upload would have extracted are known without reading the bytes.
+		mediaMeta: productDimensions(span),
 		// The first product is a promoted placement — surfaced as a subtle "Promoted" card badge.
 		sponsored: i === 0,
 		createdAt: `2026-07-0${(i % 6) + 1}`,

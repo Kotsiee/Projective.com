@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { AudioVisualizer, ProgressiveImage } from "@projective/ui/display";
+import { AudioVisualizer, ProgressiveImage, VideoPlayer } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import "../styles/entity-view.css";
 import type { EntityMedia, ProductPreview } from "@projective/types/explore";
@@ -30,10 +30,17 @@ import { railSlots, visibleRail } from "../core/media-rail.ts";
  *
  * # The box is the layout contract; the artefact is what fills it
  *
- * An image, an `AudioVisualizer`, a video player and a code excerpt all render inside the same
- * display box, so switching product format causes no reflow. The display is the FLEXIBLE child and
- * the rail is fixed, because `aspect-ratio` supplies only a PREFERRED size and loses to a sibling
- * growing into the same space (the `/explore` fold defect, Decision #76).
+ * An image, an `AudioVisualizer`, the shared `VideoPlayer` and a code excerpt all render inside
+ * the same display box, so switching product format causes no reflow. The display is the FLEXIBLE
+ * child and the rail is fixed, because `aspect-ratio` supplies only a PREFERRED size and loses to a
+ * sibling growing into the same space (the `/explore` fold defect, Decision #76).
+ *
+ * A video preview is the platform's one video surface in its `full` variant — the same transport
+ * the profile hero's showreel carries — rather than the browser's own `controls`, which was the one
+ * default-styled control set on the page. It sits absolutely in the stage so it fills the 4:3 box
+ * and letterboxes the artefact (`contain`, like the still) instead of cropping what is being sold.
+ * A preview whose source is the stub `#` renders its poster and NO controls: the player refuses to
+ * draw a control that could reach nothing.
  *
  * # The rail is a `group`, not a `tablist`
  *
@@ -256,15 +263,15 @@ function renderPreview(preview: ProductPreview, title: string): JSX.Element {
 			);
 		case "video":
 			return (
-				<video
-					class="evp-canvas__img"
-					controls
-					preload="none"
+				<VideoPlayer
+					variant="full"
+					class="evp-canvas__video"
+					src={preview.src}
 					poster={preview.poster}
-					aria-label={`Preview of ${title}`}
-				>
-					<source src={preview.src} />
-				</video>
+					label={`Preview of ${title}`}
+					fit="contain"
+					preload="none"
+				/>
 			);
 		case "code":
 			return (

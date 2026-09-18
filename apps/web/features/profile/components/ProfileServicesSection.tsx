@@ -1,15 +1,15 @@
 import type { JSX } from "preact";
 import { ServicesGrid } from "@features/explore/components/collections/ServicesGrid.tsx";
-import ServicesRow from "../islands/ServicesRow.island.tsx";
+import RowClamp from "../islands/RowClamp.island.tsx";
 import { SERVICES_ANCHOR } from "../core/profile-model.ts";
 import type { ServiceItem } from "../types/profile-types.ts";
 
 /**
  * ProfileServicesSection — a seller's active listings as their own region, rendered by the layout
  * directly ABOVE the section tabs so it is on screen whichever section is routed. The cards are the
- * SAME `ServicesGrid` `/explore` renders; the island around them clamps the grid to one row and
- * offers "Show all" when more exist. Renders nothing for a buyer entity or an empty catalogue — a
- * region with a name and no rows is a placeholder, and the hero's Hire control (which lands here)
+ * SAME `ServicesGrid` `/explore` renders; the `RowClamp` island around them clamps the grid to one
+ * row and offers "Show all" when more exist. Renders nothing for a buyer entity or an empty catalogue
+ * — a region with a name and no rows is a placeholder, and the hero's Hire control (which lands here)
  * already falls back to the conversation when there is nothing to land on.
  *
  * A SERVER component: the listing markup never crosses the hydration boundary as data.
@@ -27,9 +27,9 @@ export function ProfileServicesSection(
 	return (
 		<section id={SERVICES_ANCHOR} class="pf-services ex" aria-labelledby={headingId}>
 			<h2 id={headingId} class="pf-h">Services</h2>
-			<ServicesRow count={services.length}>
+			<RowClamp count={services.length} id="profile-services-grid" selector=".ui-grid">
 				<ServicesGrid items={services} authed={authed} />
-			</ServicesRow>
+			</RowClamp>
 		</section>
 	);
 }

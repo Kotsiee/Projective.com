@@ -11,8 +11,11 @@ export interface FloatLabelProps {
 	for: string;
 	/**
 	 * Float behaviour (PrimeNG parity):
-	 *  - `over` — label rests over the input, floats up on focus/fill (default).
-	 *  - `in`   — label sits inside the field, shrinks to the top on focus/fill.
+	 *  - `over` — label rests over the input, floats up ABOVE the box on focus/fill (default).
+	 *  - `in`   — label sits inside the field and shrinks to its top edge on focus/fill; the control
+	 *    grows to the in-field geometry `IftaLabel` uses, so the value sits beneath the label. The
+	 *    only variant whose label never leaves the control's box — the one to pair with a
+	 *    `FormControl` hint row.
 	 *  - `on`   — label rides on the top border when floated.
 	 */
 	variant?: FloatLabelVariant;
@@ -21,10 +24,14 @@ export interface FloatLabelProps {
 }
 
 /**
- * FloatLabel — floating-label mechanics via pure CSS. Wrap a control and its label floats from the
- * placeholder position to the top when the control is focused or non-empty. Uses the `:focus-within`
- * + `:placeholder-shown` sibling trick so no client JS is required; the control must render a
- * placeholder of `" "` for the empty-state detection (its own placeholder should be omitted).
+ * FloatLabel — floating-label mechanics via pure CSS. Wrap exactly ONE control and its label floats
+ * from the placeholder position to the top when the control is focused or non-empty. Uses the
+ * `:focus-within` + `:placeholder-shown` sibling trick so no client JS is required; the control must
+ * render a placeholder of `" "` for the empty-state detection (its own placeholder should be omitted).
+ *
+ * With `FormControl`, omit its `label` and render this inside the render child with the threaded
+ * `id` — the `<label for>` association is then this component's, and the hint/error wiring stays
+ * `FormControl`'s.
  */
 export function FloatLabel(props: FloatLabelProps): JSX.Element {
 	const { label, for: htmlFor, variant = "over", class: className, children } = props;

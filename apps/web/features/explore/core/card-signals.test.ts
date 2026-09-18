@@ -4,6 +4,7 @@ import {
 	languageSummary,
 	postedLabel,
 	profileMetrics,
+	publishedLabel,
 	profileSignals,
 	relativeAge,
 	serviceTypeLabel,
@@ -136,6 +137,14 @@ Deno.test("relativeAge refuses a future or unparseable date rather than inventin
 	assertEquals(relativeAge("not-a-date", now), "");
 	assertEquals(postedLabel("not-a-date", now), "");
 	assertEquals(postedLabel("2026-08-18T12:00:00Z", now), "Posted 3 days ago");
+});
+
+Deno.test("publishedLabel prints a stable UTC calendar date and drops an unusable one", () => {
+	// UTC, fixed locale: the server and a hydrated island must print the same characters, and a
+	// row stamped a minute before midnight must not slip a day in a westward browser.
+	assertEquals(publishedLabel("2026-05-12T23:59:00Z"), "12 May 2026");
+	assertEquals(publishedLabel("2025-12-31T00:00:00Z"), "31 Dec 2025");
+	assertEquals(publishedLabel("not-a-date"), "");
 });
 // #endregion
 

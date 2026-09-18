@@ -50,7 +50,13 @@ export function ResultsGroupRow(
 					<div class={`ex-group__rail ex-group__rail--${group.key}`} role="list">
 						{shown.map((it) => (
 							<div class="ex-group__rail-cell" role="listitem" key={it.id}>
-								<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
+								<EntityCard
+									item={it}
+									ctx={ctx}
+									onSelect={onSelect}
+									authed={authed}
+									productLayout="fixed"
+								/>
 							</div>
 						))}
 					</div>

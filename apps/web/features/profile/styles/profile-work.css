@@ -168,14 +168,60 @@
 }
 
 .pf-tile:hover .pf-tile__scrim,
-.pf-tile:focus-visible .pf-tile__scrim {
+.pf-tile:focus-visible .pf-tile__scrim,
+.pf-tile:focus-within .pf-tile__scrim {
     opacity: 1;
 }
 
 .pf-tile:hover .pf-tile__caption,
-.pf-tile:focus-visible .pf-tile__caption {
+.pf-tile:focus-visible .pf-tile__caption,
+.pf-tile:focus-within .pf-tile__caption {
     opacity: 1;
     transform: translateY(0);
+}
+
+/*
+ * A VIDEO tile (WorkVideoTile island). The image tile is an anchor and nothing else; a control
+ * inside an anchor is two interactive elements in one, so the video tile is a block holding the
+ * shared player, and the piece's link is the player's CHILD — stretched over the picture and under
+ * the controls, carrying the same scrim and caption. The box is reserved from the piece's aspect,
+ * the fact the image tile derives its width/height attributes from, so the column never reflows.
+ */
+.pf-tile--video {
+    aspect-ratio: var(--pf-tile-ratio, 16 / 9);
+}
+
+.pf-tile__player {
+    position: absolute;
+    inset: 0;
+}
+
+.pf-tile__link {
+    position: absolute;
+    inset: 0;
+    display: block;
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-tile__link:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* The ring the image tile draws on itself, drawn on the tile when its inner link takes focus (the
+   link fills a clipped box, so a ring on the link itself would be cut off). */
+.pf-tile:has(.pf-tile__link:focus-visible) {
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* Where hover does not exist the player cannot be revealed by a tap — the tile's surface IS its
+   link and a tap follows it — so the Play ⁄ Mute pair is pinned visible, as the caption already is. */
+@media (hover: none) {
+    .pf-tile--video .ui-video__controls {
+        opacity: 1;
+        pointer-events: auto;
+    }
 }
 
 @container pf (max-width: 72rem) {

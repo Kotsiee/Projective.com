@@ -674,6 +674,17 @@
     --fld-hint-fg: var(--text-secondary);
     /* Reserved, always: an error that appears must not shove the rest of the form down. */
     --fld-hint-min-h: 1.25rem;
+    /*
+	* In-field label geometry — ONE two-line control for both patterns that put the label INSIDE the
+	* box (IftaLabel, pinned; FloatLabel `in`, animated to the same resting place). The control grows
+	* to `--fld-h-infield`, reserves `--fld-infield-pt` above the value, and the compact label sits at
+	* `--fld-infield-label-top` in `--fld-infield-label-fs`. Two sheets reading one set is what keeps
+	* a form that mixes the two from showing two field heights.
+	*/
+    --fld-h-infield: 3.25rem;
+    --fld-infield-pt: 1.2rem;
+    --fld-infield-label-top: 0.4rem;
+    --fld-infield-label-fs: var(--text-xs);
 
     /* Panel + option. One dropdown geometry for Select/MultiSelect/AutoComplete/Cascade/Tree/Sort. */
     --fld-panel-maxh: 18rem;
@@ -693,6 +704,14 @@
     --fld-rest-fg: var(--on-surface);
     --fld-hover-bd: var(--on-surface-variant);
     --fld-focus-bd: var(--primary);
+    /*
+	* The accent as TEXT beside a focused control — a floated / in-field label. `--primary` is a
+	* border and fill colour, not an ink: as a 12px label it measured 4.59:1 in dark and 4.87:1 in
+	* light against the focused fill — AA, with under half a ratio point to spare. Pulling it toward
+	* `--on-surface`, which sits on the opposite side of the brand in both themes, raises the ratio
+	* in both by construction: 6.25:1 dark, 6.93:1 light, measured on the composited fill.
+	*/
+    --fld-focus-fg: color-mix(in srgb, var(--primary) 70%, var(--on-surface));
     --fld-placeholder-fg: var(--text-secondary);
 
     /*

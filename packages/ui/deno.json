@@ -12,6 +12,7 @@
 		"./display/money": "./display/money.ts",
 		"./display/image": "./display/image.ts",
 		"./display/blurhash": "./display/blurhash.ts",
+		"./display/video": "./display/video.ts",
 		"./icons": "./icons/mod.ts",
 		"./feedback": "./feedback/mod.ts",
 		"./overlay": "./overlay/mod.ts",

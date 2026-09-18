@@ -243,7 +243,7 @@ function emptyBuffers(): Record<DateSegmentKind, string> {
  * | :------------- | :------------------------ | :----------------------- |
  * | Left / Right   | previous / next segment   | previous / next day      |
  * | Up / Down      | step this segment's value | previous / next week     |
- * | Enter          | open the calendar / close | select the focused day   |
+ * | Enter          | open the calendar while the date is INCOMPLETE; a complete date leaves Enter to the form (implicit submission, a wizard's next-field rule); close while open | select the focused day   |
  * | Space          | open the calendar         | select the focused day   |
  * | Backspace      | clear THIS segment only   | —                        |
  * | Tab            | ordinary focus traversal, in and out of the control       |

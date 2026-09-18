@@ -1,7 +1,8 @@
 /*
  * IftaLabel — static in-field top-aligned label. The label pins to the top of the field; the wrapped
  * input reserves top padding so value + label stack without overlap. No animation (denser than
- * FloatLabel).
+ * FloatLabel). The geometry is the shared `--fld-*infield*` set, which FloatLabel's `in` variant
+ * animates TO — the two patterns land on one field height.
  */
 
 .ui-ifta-label {
@@ -12,19 +13,19 @@
 .ui-ifta-label > .ui-field,
 .ui-ifta-label > .ui-input {
 	inline-size: 100%;
-	--field-height: 3.25rem;
+	--field-height: var(--fld-h-infield);
 	align-items: flex-end;
-	padding-block: 1.1rem var(--space-2);
+	padding-block: var(--fld-infield-pt) var(--space-2);
 }
 .ui-ifta-label__label {
 	position: absolute;
-	inset-block-start: 0.4rem;
-	inset-inline-start: var(--space-3);
+	inset-block-start: var(--fld-infield-label-top);
+	inset-inline-start: var(--fld-px-md);
 	pointer-events: none;
-	font-size: 0.75rem;
-	font-weight: 600;
-	color: var(--text-secondary);
+	font-size: var(--fld-infield-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-placeholder-fg);
 }
 .ui-ifta-label:focus-within .ui-ifta-label__label {
-	color: var(--primary);
+	color: var(--fld-focus-fg);
 }

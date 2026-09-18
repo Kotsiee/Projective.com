@@ -617,28 +617,13 @@
 }
 
 /*
- * A PRODUCT in a rail takes the service card's 16:10 frame.
- *
- * The product media is content-height by design (`.ex-media--free`, bounded 8–18rem) because that
- * variability is what makes the products MASONRY interlock. A rail is the opposite contract: every
- * cell is the same width and stretches to the same height, so a variable frame does not interlock
- * with anything — it opens a hole. Measured on the Recommended Products panel: eight cards equalised
- * to 436px, with 8px, 56px, 116px and 168px between the category row and the foot depending on
- * which photograph each seller had uploaded. The frame's height was the only thing that differed.
- *
- * 16:10 rather than a square: it is the ratio the services beside it already use, so a mixed rail
- * ("Continue where you left off") lines its media up too.
+ * A PRODUCT in a rail takes the service card's 16:10 frame — the card's `layout="fixed"` and the
+ * track rule in `explore.css` (`.ex-rail__track .ex-media--product`) both say so. The masonry
+ * frame follows the cover's own ratio because that variability is what makes columns interlock; a
+ * rail is the opposite contract, where every cell stretches to one height and a variable frame opens
+ * a hole (measured once at 8–168px between the category row and the foot, by photograph). The rule
+ * lives beside the frame it overrides so the two cannot drift; nothing rail-specific remains here.
  */
-.ex-rail__track .ex-media--free {
-	aspect-ratio: 16 / 10;
-	min-block-size: 0;
-	max-block-size: none;
-}
-
-.ex-rail__track .ex-media--free img {
-	block-size: 100%;
-	max-block-size: none;
-}
 
 /*
  * THE GRID VARIANT — a section laid out as a fixed 2×2 block instead of a scrolling track.

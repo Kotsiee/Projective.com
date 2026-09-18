@@ -727,33 +727,32 @@
 }
 
 /*
- * The product frame is the ONE media box whose height is content-driven — that variability is what
- * makes the masonry interlock, so it takes no `aspect-ratio`. It is bounded instead: a floor so a
- * still-decoding or 404'd image cannot collapse the tile to 0px and reflow the column, and a ceiling
- * so a tall portrait asset cannot run away with it. Between those, a portrait and a landscape asset
- * both keep their own proportions.
+ * THE PRODUCT FRAME — the one media box whose ratio is the PICTURE'S, inside a band.
+ *
+ * The card writes its cover's measured ratio, clamped into the showcase band (4:5 to 16:9, the SSOT
+ * in `files/aspect.ts`), as `--ex-prod-ratio`; the frame draws exactly that box. Two things follow.
+ * The box is reserved from the first byte — an `aspect-ratio` on the frame, not the picture's
+ * intrinsic size, so a still-decoding or 404'd cover cannot collapse a masonry column and reflow it
+ * — and a picture OUTSIDE the band is cropped into the nearer bound by the base `object-fit: cover`
+ * rather than the tile growing around it. The old content-height frame (bounded 8–18rem, then
+ * clipped) is gone: a bound expressed as a height is a bound that changes with the column width,
+ * where a bound expressed as a ratio is the same crop at every width.
+ *
+ * The FIXED layout (a rail, a carousel, a uniform grid) overrides the ratio with the family's 16:10
+ * — the frame the services beside it use — so a mixed row lines its media up and no cell opens a
+ * hole. Declared by BOTH the card's own `data-layout` and the rail track around it: the prop is the
+ * explicit contract, the track selector is the structural guarantee for a product that reaches a rail
+ * through a generic switch that did not pass one.
  */
-.ex-media--free {
-	min-block-size: 8rem;
-	max-block-size: 18rem;
+.ex-media--product {
+	aspect-ratio: var(--ex-prod-ratio, 4 / 3);
+	min-block-size: 0;
 }
 
-.ex-media--free img {
-	/* `block-size: auto` inside the bounded box: the intrinsic ratio drives the height until it hits
-	the ceiling, at which point `object-fit` crops rather than letterboxes. */
-	block-size: auto;
-	max-block-size: 18rem;
-}
-
-/*
- * The progressive frame inside the content-height tile takes the tile's floor. Its `block-size:
- * 100%` resolves to `auto` in an auto-height parent — the image's own height, which is ZERO until
- * the bytes arrive — so the placeholder ground it paints was a 0px strip and the tile's floor showed
- * bare (measured: eight 250×0 frames inside 250×128 tiles on the landing masonry). Inheriting the
- * floor gives the ground the box; once the image lands the frame grows with it as before.
- */
-.ex-media--free .ui-pimg {
-	min-block-size: inherit;
+.ex-card--product[data-layout="fixed"] .ex-media--product,
+.ex-rail__track .ex-media--product,
+.ex-group__rail .ex-media--product {
+	aspect-ratio: 16 / 10;
 }
 
 .ex-media img {
@@ -1683,15 +1682,33 @@
 	text-overflow: ellipsis;
 }
 
+/* #endregion */
+
+/* #region Pair grid — projects and articles */
 /*
- * THE PROJECT GRID: two equal columns, always. Never auto-fit, never a single gapless column.
+ * THE PAIR GRID: two equal columns where the content region can hold two readable cards, one column
+ * where it cannot. Never auto-fit.
  *
- * A project card is a bounded brief (header, title, pipeline, three clamped lines, skills), so its
- * height is predictable and two equal columns pack it without the ragged bottom edge an auto-fit track
- * leaves when the last row is short. It is also what stops projects reading as a RANKED list: a
- * full-width row implies an order that an open call does not have.
+ * A project card is a bounded brief (header, title, pipeline, three clamped lines, skills) and a
+ * horizontal article card is a bounded excerpt (title, one meta line, two clamped lines, a byline),
+ * so their heights are predictable and two equal columns pack them without the ragged bottom edge an
+ * auto-fit track leaves when the last row is short. Two columns is also what stops these reading as
+ * a RANKED list: a full-width row implies an order that an open call does not have.
+ *
+ * The collapse is a CONTAINER query, never a viewport one. The same grid renders in a full-width
+ * results feed, beside a 280px filter lane, and inside a profile column — at 1024px the authed feed
+ * is ~600px wide while the viewport says 1024 — so only the grid's own width can say whether two
+ * cards fit. The outer element is the size container and the inner list takes the columns (an
+ * element cannot query its own inline size). Below 40rem each column would fall under ~300px, which
+ * is where the project header has to stack and the article split has to fold; one whole card beats
+ * two crushed ones.
  */
-.ex-projgrid {
+.ex-pairgrid {
+	container-type: inline-size;
+	min-inline-size: 0;
+}
+
+.ex-pairgrid__cols {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: var(--space-5);
@@ -1700,39 +1717,290 @@
 	list-style: none;
 }
 
-.ex-projgrid__cell {
+.ex-pairgrid__cell {
 	display: flex;
 	min-inline-size: 0;
 }
 
+@container (max-width: 40rem) {
+	.ex-pairgrid__cols {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+	}
+}
+
+/*
+ * The WIDE variant hosts a card that is itself a horizontal split (the list article: a 7.5rem-floor
+ * thumbnail beside a text pane, folding to media-on-top under 22rem of card width). Two columns are
+ * only worth having while each clears that fold — 2 × 22rem + the 1.5rem gap — otherwise the grid
+ * would hand out two columns of cards that have each stacked, which is the tile the rail already
+ * renders and not the row this feed is for.
+ */
+@container (max-width: 46rem) {
+	.ex-pairgrid--wide .ex-pairgrid__cols {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+	}
+}
+
 /* #endregion */
 
-/* #region Product / article modifiers */
-.ex-card--article .ex-eyebrow {
-	color: var(--on-surface-variant);
+/* #region Product card — the work-tile register */
+/*
+ * A product is scanned as a PICTURE first and read second, and a masonry column holds four of them
+ * where a services grid holds one — so the body beneath the frame is the profile work tile's caption
+ * brought below the image: a two-line title at `--text-sm`, one muted `Owner · Category` line at
+ * `--text-xs`, and a foot with the compact rating and a one-line price. Tighter padding than the
+ * service card (`--space-1` on the shell, `--space-2` inside) because the card's whole job is to
+ * step out of the picture's way.
+ *
+ * The owner is a REAL anchor stacked above the stretched card link (`z-index: 2`, the OwnerBadge
+ * rule), so the name routes to the profile while the rest of the card routes to the product. The
+ * category is inert text — metadata, never a chip (§B.11).
+ */
+.ex-card--product {
+	padding: var(--space-1);
 }
 
-/* The product frame's bounds moved onto `.ex-media--free` in the Media region, where the reasoning
-   for the floor (a still-decoding image must not collapse the tile) sits with the ceiling. */
-
-.ex-card--article-list {
-	display: grid;
-	grid-template-columns: 9rem 1fr;
+.ex-prod {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	gap: var(--space-1);
+	padding: var(--space-2) var(--space-1) var(--space-1);
+	min-inline-size: 0;
 }
 
-.ex-card--article-list .ex-media {
-	aspect-ratio: auto;
+.ex-prod__title {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.ex-prod__meta {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-1);
+	margin: 0;
+	min-inline-size: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.ex-prod__owner {
+	position: relative;
+	z-index: 2;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: inherit;
+	text-decoration: none;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-prod__owner:hover {
+	color: var(--on-surface);
+}
+
+.ex-prod__owner:focus-visible {
+	outline: none;
+}
+
+.ex-prod__sep {
+	flex: none;
+}
+
+.ex-prod__kind {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.ex-prod__foot {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	margin-block-start: auto;
+	padding-block-start: var(--space-1);
+	min-inline-size: 0;
+}
+
+/* The compact price: one line, one figure, one step down from the service card's badge. */
+.ex-pricebadge--compact {
+	font-size: var(--text-sm);
+}
+
+/*
+ * The FIXED layout pins its foot to the cell's bottom edge like every other rail card, so a mixed row
+ * keeps one flat base; the masonry layout lets the card be exactly as tall as its content, because a
+ * masonry cell has no siblings to line up with.
+ */
+.ex-card--product[data-layout="fixed"] {
 	block-size: 100%;
 }
 
-.ex-card--article-grid .ex-media {
+.ex-card--product[data-layout="masonry"] {
+	block-size: auto;
+}
+
+/* #endregion */
+
+/* #region Article modifiers */
+/*
+ * Two orientations, one markup tree. `grid` is the family's media-on-top tile; `list` puts the
+ * thumbnail BESIDE the text pane in a 35/65 split. The card reflows on ITS OWN width (the same
+ * `container-type` reasoning as the project card, and safe for the same reason — its only overlay is
+ * the body-portalled kebab): a list card is ~640px in a full-width feed and ~300px in the pair grid's
+ * narrow column at the same viewport, and only the card knows which.
+ *
+ * The card is the CONTAINER and `.ex-art__frame` — a child — is what the fold changes. A container
+ * query never matches the container itself, so a rule that re-tracked the card from inside its own
+ * query would be dead on arrival (measured: it was, the first time).
+ */
+.ex-card--article {
+	container-type: inline-size;
+	container-name: exart;
+}
+
+/* The frame fills the card; in `grid` orientation it is the same flex column the card was. */
+.ex-art__frame {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+/* The text pane keeps a tight rhythm: a title, one meta line, two lines of summary, a byline. */
+.ex-art__body {
+	gap: var(--space-2);
+}
+
+/* Topic · read time · date — inline meta text, middot-joined, never a chip row (§B.11). */
+.ex-art__meta {
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--on-surface-variant);
+	min-inline-size: 0;
+}
+
+.ex-art__fact {
+	display: inline;
+}
+
+.ex-art__dot {
+	margin-inline: var(--space-1);
+}
+
+/*
+ * Two lines, hard. The summary is the card's one variable-length field; unclamped, a long standfirst
+ * would set the height of every sibling in an equalised row. `line-clamp` sits beside the prefixed
+ * form so the clamp holds outside Blink/WebKit too.
+ */
+.ex-art__desc {
+	margin: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-normal);
+	line-height: var(--leading-normal);
+	color: var(--on-surface-variant);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+/* The byline is pinned to the pane's foot so a short summary leaves the author on the same baseline
+   as the card beside it. */
+.ex-card--article .ex-card__byline {
+	margin-block-start: auto;
+}
+
+/* GRID: the family's tile — media above, at the shared card ratio. */
+.ex-card--article-grid .ex-art__media {
 	aspect-ratio: var(--card-media-ratio);
+}
+
+/*
+ * LIST: thumbnail beside the text. The media column is a 35% share with a 7.5rem floor, so it never
+ * shrinks into a sliver on a narrow card and never swallows the text on a wide one. The row's height
+ * is set by the TEXT — the fact a reader came for — and the thumbnail fills whatever box that leaves.
+ */
+.ex-card--article-list .ex-art__frame {
+	display: grid;
+	grid-template-columns: minmax(7.5rem, 35%) minmax(0, 1fr);
+	gap: var(--space-4);
+	align-items: stretch;
+}
+
+/*
+ * The picture frame is taken OUT of flow inside the media box. A stretched grid cell hands the
+ * `<img>` a definite height, and an image with a definite height and an intrinsic ratio reports a
+ * min-content WIDTH of `height × ratio` — which the cell's automatic minimum then honours, so the
+ * thumbnail measured 349px inside a 120px track and ran under the text. Absolutely positioned, the
+ * frame contributes nothing to sizing and `object-fit: cover` crops every photo ratio into the box.
+ */
+.ex-card--article-list .ex-art__media {
+	aspect-ratio: auto;
+	block-size: 100%;
+	min-block-size: 6rem;
+	min-inline-size: 0;
+}
+
+.ex-card--article-list .ex-art__media .ui-pimg {
+	position: absolute;
+	inset: 0;
+}
+
+.ex-card--article-list .ex-art__body {
+	padding-block: var(--space-2);
+	padding-inline: 0 var(--space-2);
+}
+
+/*
+ * Below ~22rem of CARD width the split has no room for a readable text pane beside a 7.5rem
+ * thumbnail, so the card folds back to media-on-top rather than squeezing both halves. The pair grid
+ * has usually already collapsed to one column by here; this is the guard for the hosts it does not
+ * govern (a narrow profile column, a phone with tight gutters).
+ */
+@container exart (max-width: 22rem) {
+	.ex-card--article-list .ex-art__frame {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+	}
+
+	.ex-card--article-list .ex-art__media {
+		aspect-ratio: var(--card-media-ratio);
+		block-size: auto;
+		min-block-size: 0;
+	}
+
+	.ex-card--article-list .ex-art__body {
+		padding: var(--card-pad-media);
+	}
 }
 
 /* #endregion */
 
 /* #region Collections: list / masonry / article combo */
-/* The generic hairline list. Projects no longer use it — they render as `.ex-projgrid` cards. */
+/* The generic hairline list. Projects no longer use it — they render in the `.ex-pairgrid`. */
 .ex-list {
 	list-style: none;
 	margin: 0;
@@ -1741,14 +2009,56 @@
 	flex-direction: column;
 }
 
-.ex-masonry {
-	columns: 4 15rem;
-	column-gap: var(--space-5);
+/*
+ * THE PRODUCT MASONRY. The outer element is the size container and the inner list takes the columns
+ * — two elements, because an element cannot query its own inline size. The column count is ONE
+ * custom property so the profile's one-row clamp (which swaps the list to a grid of exactly that many
+ * cells) and the masonry itself cannot disagree about what "one row" holds. Container-queried rather
+ * than viewport-queried: the same list renders inside a full-width results feed, beside a 328px lane,
+ * and in a profile column, and the viewport says nothing about any of those widths.
+ */
+.ex-pmasonry {
+	container-type: inline-size;
+	min-inline-size: 0;
 }
 
-.ex-masonry__item {
+/* The count and the gap live on the LIST, not the container: a container query never matches the
+   container itself, only what is inside it, so a declaration on `.ex-pmasonry` would never change. */
+.ex-pmasonry__cols {
+	--ex-pmasonry-cols: 2;
+	--ex-pmasonry-gap: var(--space-4);
+
+	column-count: var(--ex-pmasonry-cols);
+	column-gap: var(--ex-pmasonry-gap);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ex-pmasonry__cell {
+	display: block;
 	break-inside: avoid;
-	margin-block-end: var(--space-5);
+	margin-block-end: var(--ex-pmasonry-gap);
+	min-inline-size: 0;
+}
+
+@container (min-width: 40rem) {
+	.ex-pmasonry__cols {
+		--ex-pmasonry-cols: 3;
+	}
+}
+
+@container (min-width: 60rem) {
+	.ex-pmasonry__cols {
+		--ex-pmasonry-cols: 4;
+		--ex-pmasonry-gap: var(--space-5);
+	}
+}
+
+@container (max-width: 20rem) {
+	.ex-pmasonry__cols {
+		--ex-pmasonry-cols: 1;
+	}
 }
 
 .ex-artcombo {
@@ -2160,12 +2470,6 @@
 /* #endregion */
 
 /* #region Responsive */
-@media (max-width: 1100px) {
-	.ex-masonry {
-		columns: 3 14rem;
-	}
-}
-
 @media (max-width: 900px) {
 	.ex-sponsored {
 		grid-template-columns: 1fr;
@@ -2178,21 +2482,11 @@
 	.ex-help__list {
 		grid-template-columns: 1fr;
 	}
-
-	.ex-masonry {
-		columns: 2 12rem;
-	}
 }
 
+/* The pair grid (projects, articles) collapses on its OWN width — see `.ex-pairgrid` — so it needs
+   no viewport rule here. */
 @media (max-width: 900px) {
-	/*
-	* The two-column project grid is a layout RULE, not a breakpoint preference, so it holds here and
-	* only relaxes its gap. See the phone rule below for the one place it cannot hold.
-	*/
-	.ex-projgrid {
-		gap: var(--space-4);
-	}
-
 	.ex-card--project {
 		padding: var(--space-4);
 	}
@@ -2211,11 +2505,6 @@
 
 	.ex-cta-banner--neutral {
 		border-block: 1px solid var(--ex-hair);
-	}
-
-	.ex-masonry {
-		columns: 2 8rem;
-		column-gap: var(--space-3);
 	}
 }
 

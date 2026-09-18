@@ -87,7 +87,7 @@ export default function ContinueRail({ authed = false }: { authed?: boolean }): 
 						 * the login page, which is both a false statement about their state and a dead end.
 						 */
 					}
-					<EntityCard item={it} authed={authed} />
+					<EntityCard item={it} authed={authed} productLayout="fixed" />
 				</div>
 			))}
 		</HomeRail>

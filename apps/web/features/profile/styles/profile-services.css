@@ -1,18 +1,22 @@
 /*
- * profile-services — a seller's listings as their own region between the context bar and the
- * section tabs, on every section. The cards are the explore `ServicesGrid` verbatim (neutralised to
- * monochrome by the `.pf .ex-*` overrides in profile-work.css); this sheet owns the ONE-ROW CLAMP and
- * the disclosure beneath it.
+ * profile-services — a seller's listings and products as their own two regions between the context
+ * bar and the section tabs, on every section. The cards are the explore `ServicesGrid` and
+ * `ProductMasonryGrid` verbatim (neutralised to monochrome by the `.pf .ex-*` overrides in
+ * profile-work.css); this sheet owns the ONE-ROW CLAMP the two share and the disclosure beneath it.
  *
- * The clamp is pure CSS: collapsed, the grid keeps its first row and gives every later row a zero
- * track (`grid-auto-rows: 0`, no row gap) under `overflow: hidden`, so the column count stays the
- * grid's own and no script re-derives it. The island only decides WHICH cells fell below the first
- * row and stamps them `data-hidden`, which takes them out of the tab order and the accessibility tree
- * — a focusable link behind a clip is worse than no link.
+ * The clamp is pure CSS. Collapsed, the services GRID keeps its first row and gives every later row a
+ * zero track (`grid-auto-rows: 0`, no row gap) under `overflow: hidden`. The products MASONRY has no
+ * rows to zero — CSS columns fill top to bottom — so collapsed it is swapped to a grid of exactly its
+ * own column count (`--ex-pmasonry-cols`, the one property the masonry reads too) and clamped the
+ * same way; expanded, it is the interlocking columns again. In both the column count stays the
+ * collection's own and no script re-derives it. The island only decides WHICH cells fell below the
+ * first row and stamps them `data-hidden`, which takes them out of the tab order and the
+ * accessibility tree — a focusable link behind a clip is worse than no link.
  */
 
 /* #region Region */
-.pf-services {
+.pf-services,
+.pf-products {
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
@@ -20,44 +24,68 @@
     scroll-margin-block-start: calc(var(--shell-topbar-h, 3rem) + var(--space-4));
 }
 
-.guest-shell .pf-services {
+.guest-shell .pf-services,
+.guest-shell .pf-products {
     scroll-margin-block-start: calc(var(--site-header-pinned-h, 4.25rem) + var(--space-4));
 }
 
-.pf-services__row {
+.pf-rowclamp {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
     min-inline-size: 0;
 }
 
-.pf-services__grid {
+.pf-rowclamp__body {
     min-inline-size: 0;
 }
 
 /* #endregion */
 
 /* #region One-row clamp */
-.pf-services__row[data-expanded="false"] .ui-grid {
+.pf-rowclamp[data-expanded="false"] .ui-grid {
     grid-template-rows: auto;
     grid-auto-rows: 0;
     row-gap: 0;
     overflow: hidden;
 }
 
-.pf-services__row [data-hidden="true"] {
+/*
+ * The masonry's first row. `column-count: auto` releases the columns, and the list becomes a grid of
+ * exactly as many cells as the masonry would have columns at this width — the same custom property,
+ * read on the same element, so the two presentations cannot disagree. `align-items: start` keeps each
+ * tile at its own clamped height, which is what the top of a masonry looks like; every cell past the
+ * first row lands in a zero track behind the clip.
+ */
+.pf-rowclamp[data-expanded="false"] .ex-pmasonry__cols {
+    display: grid;
+    grid-template-columns: repeat(var(--ex-pmasonry-cols), minmax(0, 1fr));
+    grid-template-rows: auto;
+    grid-auto-rows: 0;
+    align-items: start;
+    column-gap: var(--ex-pmasonry-gap);
+    row-gap: 0;
+    column-count: auto;
+    overflow: hidden;
+}
+
+.pf-rowclamp[data-expanded="false"] .ex-pmasonry__cell {
+    margin-block-end: 0;
+}
+
+.pf-rowclamp [data-hidden="true"] {
     visibility: hidden;
 }
 
 /* #endregion */
 
 /* #region Disclosure */
-.pf-services__more {
+.pf-rowclamp__more {
     display: flex;
     justify-content: center;
 }
 
-.pf-services__toggle {
+.pf-rowclamp__toggle {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
@@ -76,26 +104,26 @@
         transform var(--dur-fast) var(--ease-standard);
 }
 
-.pf-services__toggle:hover {
+.pf-rowclamp__toggle:hover {
     background: var(--surface-1);
 }
 
-.pf-services__toggle:active {
+.pf-rowclamp__toggle:active {
     transform: scale(var(--btn-press-scale));
     transition-duration: var(--dur-press);
 }
 
-.pf-services__toggle:focus-visible {
+.pf-rowclamp__toggle:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring-shadow);
 }
 
-.pf-services__toggle-icon {
+.pf-rowclamp__toggle-icon {
     color: var(--text-secondary);
     transition: transform var(--dur-medium) var(--ease-standard);
 }
 
-.pf-services__toggle[aria-expanded="true"] .pf-services__toggle-icon {
+.pf-rowclamp__toggle[aria-expanded="true"] .pf-rowclamp__toggle-icon {
     transform: rotate(180deg);
 }
 
@@ -103,24 +131,24 @@
 
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
-    .pf-services__toggle,
-    .pf-services__toggle:active {
+    .pf-rowclamp__toggle,
+    .pf-rowclamp__toggle:active {
         transform: none;
         transition: none;
     }
 
-    .pf-services__toggle-icon {
+    .pf-rowclamp__toggle-icon {
         transition-duration: 0ms;
     }
 }
 
-:root[data-motion="reduced"] .pf-services__toggle,
-:root[data-motion="reduced"] .pf-services__toggle:active {
+:root[data-motion="reduced"] .pf-rowclamp__toggle,
+:root[data-motion="reduced"] .pf-rowclamp__toggle:active {
     transform: none;
     transition: none;
 }
 
-:root[data-motion="reduced"] .pf-services__toggle-icon {
+:root[data-motion="reduced"] .pf-rowclamp__toggle-icon {
     transition-duration: 0ms;
 }
 

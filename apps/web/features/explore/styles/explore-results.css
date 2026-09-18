@@ -663,12 +663,8 @@
 	display: flex;
 }
 
-/* Products: a CSS multi-column masonry so variable-height cards interlock with zero overlap. Widths
-   are uniform per column; heights flow naturally. */
-.ex-masonry--feed {
-	columns: 4 18rem;
-	column-gap: var(--space-5);
-}
+/* Products: the shared `.ex-pmasonry` (explore.css) — a CSS multi-column masonry whose column count
+   is container-queried, so it answers to the feed's real width beside the lane, not the viewport. */
 
 /* The infinite-scroll trip wire — an invisible tail element the IntersectionObserver watches. */
 .ex-uni__sentinel {
@@ -702,18 +698,6 @@
 	}
 }
 
-@media (max-width: 1100px) {
-	.ex-masonry--feed {
-		columns: 3 16rem;
-	}
-}
-
-@media (max-width: 767.98px) {
-	.ex-masonry--feed {
-		columns: 2 8rem;
-		column-gap: var(--space-3);
-	}
-}
 /* #endregion */
 
 /* #region Detail panel (drawer + standalone) */

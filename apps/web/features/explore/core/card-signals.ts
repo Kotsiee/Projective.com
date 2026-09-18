@@ -144,6 +144,25 @@ export function postedLabel(iso: string, now: number = Date.now()): string {
 	const age = relativeAge(iso, now);
 	return age ? `Posted ${age} ago` : "";
 }
+
+/**
+ * An article's publication date as a stable UTC `D MMM YYYY` — `12 May 2026`.
+ *
+ * Absolute rather than relative: a brief's AGE is what a freelancer weighs (a month-old call is
+ * probably filled), while an article is dated the way its own page dates it. Fixed locale and UTC so
+ * the server and a hydrated island print the same characters. An unparseable date returns `""` — the
+ * card drops the fact rather than printing "Invalid Date".
+ */
+export function publishedLabel(iso: string): string {
+	const then = Date.parse(iso);
+	if (Number.isNaN(then)) return "";
+	return new Intl.DateTimeFormat("en-GB", {
+		timeZone: "UTC",
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+	}).format(then);
+}
 // #endregion
 
 // #region Metric stack

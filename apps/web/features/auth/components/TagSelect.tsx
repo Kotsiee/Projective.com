@@ -101,6 +101,10 @@ export function TagSelect(
 			e.preventDefault();
 			active.value = Math.max(active.value - 1, 0);
 		} else if (e.key === "Enter") {
+			// Enter only ever commits a DRAFT. With nothing typed the event is left alone so the wizard
+			// can advance on it — the old form committed `suggestions[0]` here, i.e. the first unselected
+			// preset the reader had not asked for, and swallowed the key even when it added nothing.
+			if (query.value.trim() === "") return;
 			e.preventDefault();
 			const pick = active.value >= 0 ? suggestions[active.value] : suggestions[0];
 			if (pick) commit(pick.value);

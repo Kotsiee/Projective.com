@@ -67,6 +67,9 @@ export const TABS_ANCHOR = "profile-sections";
 /** DOM id of the standalone Services row above the sections — the hero's Hire control lands here. */
 export const SERVICES_ANCHOR = "profile-services";
 
+/** DOM id of the standalone Products masonry directly beneath the Services row. */
+export const PRODUCTS_ANCHOR = "profile-products";
+
 /**
  * Parse the active section from a pathname. `null` when there is no sub-segment (the `/@handle`
  * index, which the caller resolves to {@link defaultTabFor}) or the segment is not a section.

@@ -1,5 +1,11 @@
+/// <reference lib="dom" />
 /**
  * @projective/ui/display — audio-waveform helpers (DOM-free math + one canvas paint routine).
+ *
+ * The `dom` lib reference is explicit for the reason `calendar/core/grid-paint.ts` carries one: this
+ * module imports nothing, so it never receives the DOM globals transitively through Preact's types,
+ * and `HTMLCanvasElement` would be unresolved the moment it is type-checked on its own — which is
+ * what `deno test` does to reach `core/video.test.ts` through `formatClock`.
  *
  * Shared by {@link ../islands/AudioVisualizer.tsx | AudioVisualizer}. Kept package-local (this library
  * is copy-paste-portable and must never import app code), these mirror the bar geometry the projects

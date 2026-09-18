@@ -96,6 +96,11 @@ export interface AuthResult {
 	/** Whether the next step is email verification (`/verify`). */
 	requiresVerification?: boolean;
 	/**
+	 * The account email `/verify` should address, returned with `requiresVerification` — the client
+	 * cannot know it when the reader signed in by username.
+	 */
+	email?: string;
+	/**
 	 * Email-confirmation state, polled by `/verify`. `true` once the account's `email_verified`
 	 * (app-owned `org.user_emails.verified_at`) has flipped — the page then auto-logs the user in.
 	 */

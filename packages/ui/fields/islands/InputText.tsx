@@ -38,6 +38,18 @@ export interface InputTextProps extends BaseFieldProps {
 	onBlur?: JSX.FocusEventHandler<HTMLInputElement>;
 	/** Focus handler (see {@link InputTextProps.onBlur}). */
 	onFocus?: JSX.FocusEventHandler<HTMLInputElement>;
+	/**
+	 * Key handler. Declared for the same reason as `onBlur`: a form that moves focus on Enter
+	 * (identifier → password) rather than submitting is a contract the field has to honour by name.
+	 */
+	onKeyDown?: JSX.KeyboardEventHandler<HTMLInputElement>;
+	/**
+	 * Mobile keyboard capitalisation hint. `none` for anything the reader types verbatim — a
+	 * username, a code, a handle — because iOS capitalises the first letter of a plain text field.
+	 */
+	autoCapitalize?: "none" | "off" | "sentences" | "words" | "characters";
+	/** Spell-check hint; `false` for identifiers and codes, which are not prose. */
+	spellcheck?: boolean;
 	class?: string;
 	style?: CSSProperties;
 }

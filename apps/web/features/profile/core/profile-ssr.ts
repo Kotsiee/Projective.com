@@ -2,7 +2,7 @@ import { ProfileBackendService } from "@server/services/profile/ProfileBackendSe
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
-import type { ServiceItem } from "@projective/types/explore";
+import type { ProductItem, ServiceItem } from "@projective/types/explore";
 import { DEFAULT_PROJECT_PARAMS } from "@features/projects/core/projects-state.ts";
 import { type HireProject, hireProjectsFrom } from "./profile-model.ts";
 
@@ -32,6 +32,16 @@ export function resolveProfileTab(handle: string, tab: ProfileTab): ProfileTabPa
 export function resolveProfileServices(handle: string): ServiceItem[] {
 	const res = ProfileBackendService.services(handle);
 	return res.ok && res.data ? res.data.services : [];
+}
+
+/**
+ * Resolve a profile's digital products for the layout's Products masonry — the region directly
+ * beneath Services, on every section. Empty for a buyer entity or an unresolved handle (the layout
+ * already 404s the latter through the overview read).
+ */
+export function resolveProfileProducts(handle: string): ProductItem[] {
+	const res = ProfileBackendService.products(handle);
+	return res.ok && res.data ? res.data.products : [];
 }
 
 /**

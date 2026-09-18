@@ -13,6 +13,9 @@ import { SortControl } from "../components/SortControl.tsx";
 import { ResultsHeader } from "../components/ResultsHeader.tsx";
 import { ResultsGroupRow } from "../components/ResultsGroupRow.tsx";
 import { EntityCard } from "../components/cards/EntityCard.tsx";
+import { ProductMasonryGrid } from "../components/collections/ProductMasonryGrid.tsx";
+import { ProjectsList } from "../components/collections/ProjectsList.tsx";
+import { ArticlesGrid } from "../components/collections/ArticlesGrid.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
 import { activeFilterConfigs } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
@@ -27,9 +30,12 @@ import {
 } from "../core/explore-state.ts";
 import type { HrefContext } from "../core/routing.ts";
 import type {
+	ArticleItem,
 	ExploreCategory,
 	ExploreEntity,
 	ExploreItem,
+	ProductItem,
+	ProjectItem,
 	SearchPayload,
 } from "../types/explore-types.ts";
 
@@ -64,7 +70,7 @@ const FEED_PAGE = 18;
  * Minimum card track width per entity for the isolated feed's fill grid (library {@link Grid} auto-fit,
  * capped by {@link FEED_MAX_COLS}). The wide banner/talent entities want a roomier floor than the media
  * cards so they never squeeze; below each floor the grid stays fully responsive. Products render as a
- * masonry and projects as a list, so they are absent here.
+ * masonry and projects and articles as the two-column pair grid, so they are absent here.
  */
 const FEED_MIN_WIDTH: Partial<Record<ExploreEntity, string>> = {
 	users: "20rem",
@@ -72,7 +78,6 @@ const FEED_MIN_WIDTH: Partial<Record<ExploreEntity, string>> = {
 	teams: "20rem",
 	businesses: "20rem",
 	services: "18rem",
-	articles: "18rem",
 };
 
 /** Upper bound on the isolated feed's grid columns — keeps cards comfortably wide on large viewports. */
@@ -349,10 +354,11 @@ export default function SearchDashboard(
 /**
  * The isolated single-category feed. Renders the accumulated `items` (SSR first page + fetched pages)
  * with a NATIVE, entity-appropriate layout — a responsive fill grid for card entities, a CSS masonry
- * for products (variable-height cards interlock with no overlap), and a hairline-divided list for
- * projects. Native layout means every card computes its own height, so rows never overlap or strand
- * whitespace (the failure mode of a fixed-row virtual grid). Infinite loading is driven by an
- * IntersectionObserver on a tail sentinel that calls `onReachEnd` (the parent guards + pages).
+ * for products (variable-height cards interlock with no overlap), and the container-queried two-to-
+ * one-column pair grid for projects and articles. Native layout means every card computes its own
+ * height, so rows never overlap or strand whitespace (the failure mode of a fixed-row virtual grid).
+ * Infinite loading is driven by an IntersectionObserver on a tail sentinel that calls `onReachEnd`
+ * (the parent guards + pages).
  */
 function UnifiedFeed(
 	{ items, type, loading, onReachEnd, onSelect, ctx, authed }: {
@@ -386,25 +392,35 @@ function UnifiedFeed(
 	let body: VNode;
 	if (type === "products") {
 		body = (
-			<div class="ex-masonry ex-masonry--feed" role="list" aria-label="Search results">
-				{items.map((it) => (
-					<div class="ex-masonry__item" role="listitem" key={it.id}>
-						<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
-					</div>
-				))}
-			</div>
+			<ProductMasonryGrid
+				items={items.filter((it): it is ProductItem => it.type === "products")}
+				ctx={ctx}
+				onSelect={onSelect}
+				authed={authed}
+				label="Search results"
+			/>
 		);
 	} else if (type === "projects") {
-		// Projects hold a fixed two-column grid rather than joining the auto-fit track above: a project
-		// card is a bounded brief, so its height is predictable and two equal columns pack it cleanly.
+		// Projects and articles hold the two-column pair grid rather than joining the auto-fit track
+		// below: both cards are bounded blocks of text, so their heights are predictable and two equal
+		// columns pack them cleanly — and the grid collapses to one on its own width, not the viewport's.
 		body = (
-			<ul class="ex-projgrid" role="list" aria-label="Search results">
-				{items.map((it) => (
-					<li class="ex-projgrid__cell" key={it.id}>
-						<EntityCard item={it} ctx={ctx} onSelect={onSelect} authed={authed} />
-					</li>
-				))}
-			</ul>
+			<ProjectsList
+				items={items.filter((it): it is ProjectItem => it.type === "projects")}
+				ctx={ctx}
+				onSelect={onSelect}
+				authed={authed}
+				label="Search results"
+			/>
+		);
+	} else if (type === "articles") {
+		body = (
+			<ArticlesGrid
+				items={items.filter((it): it is ArticleItem => it.type === "articles")}
+				ctx={ctx}
+				authed={authed}
+				label="Search results"
+			/>
 		);
 	} else {
 		body = (

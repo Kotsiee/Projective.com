@@ -9,6 +9,7 @@ import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
 import ProfileStyleAnchor from "@features/profile/islands/ProfileStyleAnchor.island.tsx";
 import { ProfileContextBar } from "@features/profile/components/ProfileContextBar.tsx";
 import { ProfileServicesSection } from "@features/profile/components/ProfileServicesSection.tsx";
+import { ProfileProductsSection } from "@features/profile/components/ProfileProductsSection.tsx";
 import { ProfileTabs } from "@features/profile/components/ProfileTabs.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
 import {
@@ -21,6 +22,7 @@ import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
 import { readActor } from "@web/utils/api-session.ts";
 import {
 	resolveHireProjects,
+	resolveProfileProducts,
 	resolveProfileServices,
 } from "@features/profile/core/profile-ssr.ts";
 import {
@@ -169,6 +171,8 @@ export default define.page(async function ProfileLayout(ctx) {
 	// The active section highlighted in the tab bar — the URL segment, or Work on the bare index.
 	const active = activeTabOf(path) ?? defaultTabFor(profile.kind);
 	const services = resolveProfileServices(profile.handle);
+	// The products render beneath the services on every section, so they are resolved here too.
+	const products = resolveProfileProducts(profile.handle);
 	// Only a signed-in VISITOR of a seller can hire, so only that viewer pays for the read.
 	const hireProjects = authed && !canEdit && isSellerKind(profile.kind)
 		? await resolveHireProjects(readActor(ctx))
@@ -186,6 +190,7 @@ export default define.page(async function ProfileLayout(ctx) {
 				/>
 				<ProfileContextBar profile={profile} canEdit={canEdit} />
 				<ProfileServicesSection services={services} authed={authed} />
+				<ProfileProductsSection products={products} authed={authed} />
 				<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">
 					<ProfileTabs profile={profile} active={active} />
 					{

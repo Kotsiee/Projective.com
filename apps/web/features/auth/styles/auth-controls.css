@@ -32,6 +32,22 @@
 	margin-bottom: 0;
 }
 
+/*
+ * The identifier + password pair. One tight stack: the in-field labels leave nothing above a control
+ * to separate, so the reserved hint row under each field is the whole gap — and because that row is
+ * reserved, an error appearing in it never shoves the password field down.
+ */
+.auth-credentials {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+/* The hint row is a <p>; its UA bottom margin (1em, measured 13px) is not part of this rhythm. */
+.auth-credentials .ui-field-hint {
+	margin-block-end: 0;
+}
+
 /* Nav actions pinned under a step / a form. */
 .auth-actions {
 	display: flex;
@@ -158,22 +174,4 @@
 	line-height: 1.4;
 }
 
-/* #endregion */
-
-/* #region Remember me */
-.auth-remember {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: 0.9rem;
-	color: var(--on-surface);
-	cursor: pointer;
-	margin-bottom: var(--space-2);
-}
-
-.auth-remember input {
-	inline-size: 1.05rem;
-	block-size: 1.05rem;
-	accent-color: var(--primary);
-}
 /* #endregion */

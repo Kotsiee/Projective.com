@@ -64,6 +64,44 @@ function domainMatches(emailDom: string, orgDom: string): boolean {
 }
 // #endregion
 
+// #region Sign-in identifier helpers
+/** The one refusal every failed password sign-in gets, whichever half was wrong. */
+const INVALID_CREDENTIALS = "Invalid credentials — check your email or username and your password.";
+
+/** Whether a sign-in identifier is an email address (carries `@`) rather than a username. */
+function isEmailIdentifier(identifier: string): boolean {
+	return identifier.includes("@");
+}
+
+/** A candidate row from the username lookup. */
+export interface UsernameRow {
+	user_id: string;
+	username: string;
+}
+
+/**
+ * Pick the account a typed username names from the rows the lookup returned. The lookup asks for the
+ * value as typed AND lowercased — `org.users_public.username` is `UNIQUE` but not case-insensitively
+ * so, while every handle the join wizard writes is lowercased — and an exact match wins over the
+ * canonical one, so a mixed-case row can never be shadowed by its lowercase twin. Pure, and exported
+ * for its test.
+ */
+export function pickUsernameMatch(
+	typed: string,
+	rows: readonly UsernameRow[],
+): UsernameRow | null {
+	const exact = rows.find((row) => row.username === typed);
+	if (exact) return exact;
+	const lower = typed.toLowerCase();
+	return rows.find((row) => row.username.toLowerCase() === lower) ?? null;
+}
+
+/** The distinct spellings the username lookup queries for. */
+export function usernameCandidates(typed: string): string[] {
+	return [...new Set([typed, typed.toLowerCase()])];
+}
+// #endregion
+
 /**
  * AuthBackendService — the FAT server-side auth service.
  *
@@ -128,7 +166,8 @@ export type ProvisionAccountInput = ProvisionIndividualInput | ProvisionOrganisa
 
 /** Credentials for a password sign-in. */
 export interface AuthenticateInput {
-	email: string;
+	/** An email address OR a username — the service tells them apart and resolves the latter. */
+	identifier: string;
 	password: string;
 	remember?: boolean;
 	redirectTo: string;
@@ -162,6 +201,14 @@ export interface AuthPayload {
 	redirectTo?: string;
 	requiresVerification?: boolean;
 	verified?: boolean;
+	/**
+	 * The account email a verification code was sent to. Returned ONLY on the
+	 * `requiresVerification` branch of a password sign-in, so a reader who signed in by USERNAME can
+	 * still be routed to `/verify` with the address it needs. Safe to disclose there: GoTrue checks
+	 * the password before it reports an unconfirmed email, so the branch is reachable only by
+	 * somebody who already holds the account's credentials.
+	 */
+	email?: string;
 }
 // #endregion
 
@@ -326,27 +373,37 @@ export class AuthBackendService {
 	}
 
 	/**
-	 * Authenticate with email + password. Live: GoTrue password grant → return the session (the route
-	 * mints the cookie); flag `requiresVerification` when the identity's email is unconfirmed. Stub:
-	 * succeeds without a session.
+	 * Authenticate with an email OR username plus password. Live: a username is resolved to the
+	 * account's email first ({@link resolveUsernameEmail}), then the GoTrue password grant → return
+	 * the session (the route mints the cookie); flag `requiresVerification` when the identity's email
+	 * is unconfirmed. Stub: succeeds without a session.
+	 *
+	 * Every failure — unknown username, unknown email, wrong password — answers with ONE generic
+	 * refusal. A distinct "no such username" would turn the sign-in form into a handle-enumeration
+	 * oracle, and the discovery surfaces already decide which handles are public.
 	 */
 	static async authenticate(input: AuthenticateInput): Promise<ServiceResult<AuthPayload>> {
 		if (!isAuthBackendLive()) {
 			return ok({ requiresVerification: false, redirectTo: input.redirectTo });
 		}
 		try {
+			const email = isEmailIdentifier(input.identifier)
+				? input.identifier
+				: await AuthBackendService.resolveUsernameEmail(input.identifier);
+			if (!email) return fail(401, { message: INVALID_CREDENTIALS });
+
 			const anon = getAnonClient();
 			const { data, error } = await anon.auth.signInWithPassword({
-				email: input.email,
+				email,
 				password: input.password,
 			});
 			if (error) {
-				// GoTrue reports an unconfirmed email distinctly; everything else is a credential failure
-				// (kept generic to avoid leaking which half was wrong).
+				// GoTrue reports an unconfirmed email distinctly (and only AFTER the password checks
+				// out); everything else is a credential failure, kept generic.
 				if (/confirm/i.test(error.message)) {
-					return ok({ requiresVerification: true, redirectTo: input.redirectTo });
+					return ok({ requiresVerification: true, redirectTo: input.redirectTo, email });
 				}
-				return fail(401, { message: "Invalid email or password." });
+				return fail(401, { message: INVALID_CREDENTIALS });
 			}
 			return ok(
 				{ requiresVerification: false, redirectTo: input.redirectTo },
@@ -355,6 +412,28 @@ export class AuthBackendService {
 		} catch (e) {
 			return fail(500, { message: e instanceof Error ? e.message : "Sign-in failed." });
 		}
+	}
+
+	/**
+	 * Resolve a username to the email GoTrue authenticates. An administrative read on purpose: the
+	 * caller holds no session yet, so an RLS-scoped read would (correctly) show them nothing. The
+	 * email comes from the GoTrue identity rather than `org.user_emails`, because it is the identity's
+	 * address the password grant is checked against. `null` for an unknown username; the caller owes
+	 * that the same refusal as a wrong password.
+	 */
+	private static async resolveUsernameEmail(username: string): Promise<string | null> {
+		const db = getServiceClient();
+		const { data, error } = await db
+			.schema("org")
+			.from("users_public")
+			.select("user_id, username")
+			.in("username", usernameCandidates(username))
+			.limit(2);
+		if (error || !data) return null;
+		const match = pickUsernameMatch(username, data as UsernameRow[]);
+		if (!match) return null;
+		const { data: found } = await db.auth.admin.getUserById(match.user_id);
+		return str(found?.user?.email) ?? null;
 	}
 
 	/**

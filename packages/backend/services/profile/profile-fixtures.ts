@@ -15,6 +15,7 @@ import type {
 	ReviewEntry,
 	VerificationTier,
 	WorkPiece,
+	WorkPieceMedia,
 } from "@projective/types/profile";
 import type {
 	ExploreOwner,
@@ -22,6 +23,7 @@ import type {
 	ProfileItem,
 	ServiceItem,
 } from "@projective/types/explore";
+import { productMediaAspect } from "@projective/types/explore";
 import {
 	ARTICLES,
 	BUSINESSES,
@@ -687,9 +689,14 @@ function certificationsFor(seed: number): CertificationEntry[] {
 
 /**
  * The portfolio masonry. Derived from the discovery products (so a tile opens the SAME item the
- * profile-scoped viewer resolves) with the aspect ratio taken from the masonry span the product
- * already carries — 1 = short (landscape) · 2 = square · 3 = tall (portrait) — so the tiles interlock
- * the way the explore masonry already does. `client` is a stable slice of the notable-client pool.
+ * profile-scoped viewer resolves) with the aspect ratio taken from the product's measured cover
+ * through the ONE derivation the product card uses (`productMediaAspect`) — so a work tile and the
+ * product tile for the same picture cannot disagree about its shape. `client` is a stable slice of
+ * the notable-client pool.
+ *
+ * Roughly one tile in four is a VIDEO piece — the showreel clip at 16:9 with the product's cover as
+ * its poster — so the masonry's video tile (its compact Play ⁄ Pause + Mute pair) is reachable from
+ * the stub; the schema has always allowed it and nothing in the corpus ever exercised the branch.
  */
 function piecesFor(
 	handle: string,
@@ -697,22 +704,37 @@ function piecesFor(
 	clients: readonly string[],
 	seed: number,
 ): WorkPiece[] {
-	const aspectOf = (span: 1 | 2 | 3): number => span === 1 ? 4 / 3 : span === 2 ? 1 : 3 / 4;
 	return products.map((p, i) => ({
 		id: p.id,
 		title: p.title,
 		// Roughly one tile in three is undisclosed work — the caption then carries no client line.
 		client: (seed + i) % 3 === 2 ? undefined : clients[(seed + i) % Math.max(1, clients.length)],
 		category: p.category,
-		media: {
-			kind: "image",
-			src: p.media ?? "",
-			placeholder: p.mediaPlaceholder,
-			aspect: aspectOf(p.span),
-			alt: p.title,
-		},
+		media: pieceMediaFor(handle, p, (seed + i) % 4 === 1),
 		href: `/${handle}/view/${p.id}?type=products`,
 	}));
+}
+
+/** A tile's media: the product's cover, or — for a video piece — a clip with that cover as its poster. */
+function pieceMediaFor(handle: string, p: ProductItem, video: boolean): WorkPieceMedia {
+	const cover = p.media ?? "";
+	if (video) {
+		return {
+			kind: "video",
+			src: mockShowreel(`${bareHandle(handle)}-${p.id}`),
+			poster: cover || undefined,
+			placeholder: p.mediaPlaceholder,
+			aspect: 16 / 9,
+			alt: `${p.title} — clip`,
+		};
+	}
+	return {
+		kind: "image",
+		src: cover,
+		placeholder: p.mediaPlaceholder,
+		aspect: productMediaAspect(p).ratio,
+		alt: p.title,
+	};
 }
 
 function membersFor(seed: number, count: number): MemberEntry[] {
@@ -755,6 +777,17 @@ function servicesFor(profile: ProfileView, owner: ExploreOwner): ServiceItem[] {
 	return reown(pick(SERVICES, SERVICES.length, hash(bare + "services")), owner, "sv");
 }
 
+/**
+ * The seller's ready-to-buy digital products, re-attributed to the profile. A buyer entity lists
+ * none. Its own hash key, so the slice is stable across renders and independent of the Selected-work
+ * slice that draws from the same corpus.
+ */
+function productsFor(profile: ProfileView, owner: ExploreOwner): ProductItem[] {
+	if (profile.kind !== "freelancer" && profile.kind !== "team") return [];
+	const bare = bareHandle(profile.handle);
+	return reown(pick(PRODUCTS, PRODUCTS.length, hash(bare + "products")), owner, "pr");
+}
+
 /** The discovery-owner attribution for the profile's OWN work (services, projects, posts). */
 function ownerOf(profile: ProfileView): ExploreOwner {
 	return {
@@ -785,6 +818,17 @@ export function findProfileServices(handle: string): ServiceItem[] | null {
 	const profile = findProfile(handle);
 	if (!profile) return null;
 	return servicesFor(profile, ownerOf(profile));
+}
+
+/**
+ * The profile's digital products on their own — what the `/[handle]` layout renders as the Products
+ * masonry directly beneath the Services row, on every section. `null` when the handle does not
+ * resolve; an empty array for a buyer entity.
+ */
+export function findProfileProducts(handle: string): ProductItem[] | null {
+	const profile = findProfile(handle);
+	if (!profile) return null;
+	return productsFor(profile, ownerOf(profile));
 }
 
 /**

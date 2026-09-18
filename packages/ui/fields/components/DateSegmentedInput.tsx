@@ -5,6 +5,7 @@ import {
 	type DateParts,
 	type DateSegmentKind,
 	type DateSegmentPart,
+	isComplete,
 	normalizeYear,
 	parsePastedDate,
 	reconcile,
@@ -213,9 +214,18 @@ export function DateSegmentedInput(props: DateSegmentedInputProps): JSX.Element 
 				if (editable) clearSegment(kind);
 				return;
 			case "Enter":
+				if (open) {
+					e.preventDefault();
+					onRequestClose();
+					return;
+				}
+				// A COMPLETE date is a finished answer: Enter is left to the form around this control —
+				// implicit submission, a wizard's next-field rule — rather than spent opening a calendar
+				// the reader has no use for. An incomplete date has nothing to hand on, so Enter opens
+				// the grid; Space opens it at any time.
+				if (isComplete(parts)) return;
 				e.preventDefault();
-				if (open) onRequestClose();
-				else onRequestOpen("grid");
+				onRequestOpen("grid");
 				return;
 			case " ":
 				e.preventDefault();

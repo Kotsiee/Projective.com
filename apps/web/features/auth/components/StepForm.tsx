@@ -1,5 +1,6 @@
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import type { ComponentChildren, JSX } from "preact";
+import { useEffect, useRef } from "preact/hooks";
 import {
 	Button,
 	DatePicker,
@@ -15,6 +16,7 @@ import { TagSelect } from "./TagSelect.tsx";
 import { GoogleGlyph, InfoIcon, WarnIcon } from "./icons.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { buildPayload, hasErrors, validateStep } from "../core/wizardValidation.ts";
+import { chainUnitOf, ENTER_CHAIN_SELECTOR, resolveEnterMove } from "../core/enter-chain.ts";
 import { AGE_MESSAGES, bracketFromDob } from "../core/age.ts";
 import { sanitizeHandle, suggestHandle } from "../core/validate.ts";
 import { COUNTRIES, EMPLOYEE_TIERS, INDUSTRIES } from "../core/options.ts";
@@ -29,6 +31,13 @@ import { safeRedirect, withRedirect } from "../core/redirect.ts";
  * slide/fade on change (keyed remount + `data-dir`), and choice-only steps **auto-advance** the
  * instant a card is picked. Individual and Organization render different field sets into the same
  * step slots (organizations follow a client-only path — no "intent" branch, no skills step).
+ *
+ * Keyboard: the steps are not a `<form>`, so Enter is given one rule here (`core/enter-chain.ts`) —
+ * on a field it moves to the step's next field, on the last field it does what Continue does, and
+ * on a choice card it picks the card (which auto-advances) or, once picked, advances. A control
+ * that claims Enter for itself (a select trigger, an open combobox, a tag draft, an incomplete
+ * date) keeps it, because the chain only acts on an event nothing else default-prevented. Focus
+ * follows: the first field of a newly-entered step, or the first invalid field when a step refuses.
  */
 type Err = Record<string, string | null>;
 
@@ -43,6 +52,17 @@ function toISO(d: Date): string {
 	const m = String(d.getMonth() + 1).padStart(2, "0");
 	const day = String(d.getDate()).padStart(2, "0");
 	return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/**
+ * Focus a freshly-entered step's first field. On a choice step that is the PICKED card when there
+ * is one (a reader who stepped Back and presses Enter means "go on", not "pick the first card"),
+ * else the first card; elsewhere the first control of the Enter chain.
+ */
+function focusFirstField(root: HTMLElement): void {
+	const first = root.querySelector<HTMLElement>('input[type="radio"]:checked') ??
+		root.querySelector<HTMLElement>(`${ENTER_CHAIN_SELECTOR}, input[type="radio"]`);
+	first?.focus();
 }
 
 // #region Small field wrappers (FormControl + @projective/ui control)
@@ -597,6 +617,10 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 	const advancing = useSignal(false);
 	/** The last handle we auto-derived from the name — lets us stop once the user customises it. */
 	const autoHandle = useSignal("");
+	/** The mounted step's root — the Enter chain and the focus rules are scoped to it. */
+	const stepRef = useRef<HTMLDivElement>(null);
+	/** The step id the focus effect last saw; `null` until the first render has settled. */
+	const seenStep = useRef<string | null>(null);
 
 	// Intelligent handle autofill (individuals): derive the username from First + Last name, and keep
 	// it in sync until the user edits the handle directly. `peek()` reads the current handle WITHOUT
@@ -627,6 +651,25 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 	const step = store.current.value;
 	const last = store.stepIndex.value === store.stepCount.value - 1;
 	const submitting = store.submitting.value;
+	const errors = store.errors.value;
+
+	// Focus follows the wizard: a step the reader has just ENTERED gets its first field (the picked
+	// card on a choice step, so Enter there advances rather than re-picks), and a step that has just
+	// REFUSED gets its first invalid field, wherever the reader was. An effect rather than a call in
+	// `goNext`, so it runs after the commit and the `aria-invalid` the controls write is already in
+	// the DOM. The initial render is left alone — nobody asked for focus by loading the page.
+	useEffect(() => {
+		const root = stepRef.current;
+		const arrived = seenStep.current !== null && seenStep.current !== step.id;
+		seenStep.current = step.id;
+		if (!root) return;
+		const invalid = root.querySelector<HTMLElement>('[aria-invalid="true"]');
+		if (invalid) {
+			invalid.focus();
+			return;
+		}
+		if (arrived) focusFirstField(root);
+	}, [step.id, errors]);
 
 	function commitStep(index: number, dir: 1 | -1) {
 		store.direction.value = dir;
@@ -696,6 +739,41 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		}, AUTO_ADVANCE_MS);
 	}
 
+	/** Whether a step change may be started right now (not mid auto-advance, not mid submit). */
+	function mayAdvance(): boolean {
+		return !advancing.value && !store.submitting.value;
+	}
+
+	/**
+	 * The Enter chain (`core/enter-chain.ts`), delegated from the step root so every field the step
+	 * mounts is covered by one handler. It acts only on an Enter nothing else claimed — a select
+	 * trigger is a button and never reaches the `<input>` test; a tag draft and an incomplete date
+	 * arrive `defaultPrevented`; an open combobox is choosing, not moving on.
+	 */
+	function onStepKeyDown(e: JSX.TargetedKeyboardEvent<HTMLDivElement>) {
+		if (e.key !== "Enter" || e.defaultPrevented || e.isComposing) return;
+		if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+		const target = e.target;
+		if (!(target instanceof HTMLInputElement)) return;
+
+		if (target.type === "radio") {
+			e.preventDefault();
+			if (!target.checked) target.click();
+			else if (mayAdvance()) goNext();
+			return;
+		}
+		if (target.getAttribute("aria-expanded") === "true") return;
+
+		const root = stepRef.current;
+		if (!root) return;
+		const fields = [...root.querySelectorAll<HTMLElement>(ENTER_CHAIN_SELECTOR)];
+		const move = resolveEnterMove(fields.map(chainUnitOf), chainUnitOf(target));
+		if (move.kind === "outside") return;
+		e.preventDefault();
+		if (move.kind === "next") fields[move.index].focus();
+		else if (mayAdvance()) goNext();
+	}
+
 	const continueLabel = last
 		? (store.isOrg.value ? "Create organisation" : "Create account")
 		: "Continue";
@@ -727,7 +805,13 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 				{step.optional ? <span class="auth-crumbs__optional">Optional</span> : null}
 			</div>
 
-			<div class="auth-step" data-dir={store.direction.value} key={step.id}>
+			<div
+				class="auth-step"
+				data-dir={store.direction.value}
+				key={step.id}
+				ref={stepRef}
+				onKeyDown={onStepKeyDown}
+			>
 				<StepFields store={store} dobDate={dobDate} onChoose={autoAdvance} />
 			</div>
 

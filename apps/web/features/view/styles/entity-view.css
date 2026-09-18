@@ -685,6 +685,15 @@
     padding: var(--space-5);
 }
 
+/* The video preview fills the stage absolutely — the stage's height comes from its aspect ratio,
+   and an in-flow child asking for 100% of it is the one place that percentage can fail to resolve —
+   and inherits the stage's ground so a letterboxed frame sits on the same tone as a still. */
+.evp-canvas__video {
+    position: absolute;
+    inset: 0;
+    background: transparent;
+}
+
 .evp-canvas__code {
     inline-size: 100%;
     block-size: 100%;

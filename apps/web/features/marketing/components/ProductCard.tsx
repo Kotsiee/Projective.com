@@ -1,46 +1,63 @@
 import type { JSX } from "preact";
 import { ProgressiveImage } from "@projective/ui/display";
-import { OwnerBadge } from "@features/explore/components/OwnerBadge.tsx";
+import { productMediaAspect } from "@projective/types/explore";
+import { profileHref } from "@features/explore/core/routing.ts";
+import { vars } from "../core/style.ts";
 import { ownerForHandle } from "../core/showcase-owner.ts";
 import { type ProductShowcase } from "../core/landing-data.ts";
+
+/** The synthetic geometry the image attributes reserve before its bytes arrive (the work-tile rule). */
+const GEOMETRY_WIDTH = 1000;
 
 /**
  * ProductCard — a ready-to-buy digital product in the landing masonry.
  *
- * Renders the CANONICAL discovery card contract (`.ex-card--product`, defined once in
+ * Renders the CANONICAL discovery card contract (`.ex-card--product` + `.ex-prod`, defined once in
  * `features/explore/styles/explore.css` and `@import`ed by `landing.css`) rather than a parallel
- * `.lp-product` block, so the landing masonry and the search masonry are the same object. Media-forward:
- * the image's own intrinsic ratio drives the tile height within a bounded frame, which is what makes
- * the masonry interlock.
+ * `.lp-product` block, so the landing masonry and the search masonry are the same object: a prominent
+ * picture with a compact, muted title · owner · category · price beneath it.
  *
- * The price moved off the image and into the foot with the rest of the family: it was the only price
- * whose legibility depended on the photograph a seller uploaded (the overlay chip measured 3.75:1
- * against a light image in dark theme). The card also carried a `--lp-span` custom property for its
- * supposed masonry weight that no stylesheet has ever read; the staggering has always come from the
- * intrinsic image ratio, so the dead plumbing is gone rather than left as a false claim.
+ * The landing corpus carries no measured cover, so the tile's ratio is the `span`-derived one through
+ * the SAME `productMediaAspect` the discovery card calls — the fallback branch of one rule, never a
+ * second rule — and it is clamped into the same showcase band.
  *
  * Zero client JS.
  */
 export function ProductCard({ product }: { product: ProductShowcase }): JSX.Element {
+	const owner = ownerForHandle(product.makerHandle);
+	const aspect = productMediaAspect({ span: product.span, mediaMeta: undefined });
+	const height = Math.max(1, Math.round(GEOMETRY_WIDTH / aspect.ratio));
 	return (
-		<article class="ex-card ex-card--product">
+		<article
+			class="ex-card ex-card--product"
+			data-layout="masonry"
+			data-fit={aspect.fit}
+			style={vars({ "--ex-prod-ratio": aspect.ratio })}
+		>
 			<a
 				class="ex-card__link"
 				href={`/view/${product.slug}?type=products`}
 				aria-label={`${product.title} by ${product.maker} — ${product.price}`}
 			/>
-			<div class="ex-media ex-media--free">
-				<ProgressiveImage src={product.thumb} loading="lazy" />
+			<div class="ex-media ex-media--product">
+				<ProgressiveImage
+					src={product.thumb}
+					alt=""
+					width={GEOMETRY_WIDTH}
+					height={height}
+					loading="lazy"
+				/>
 			</div>
-			<div class="ex-card__body">
-				<OwnerBadge owner={ownerForHandle(product.makerHandle)} variant="creator" />
-				<h3 class="ex-card__title ex-card__title--sm">{product.title}</h3>
-				<div class="ex-card__kindrow">
-					<span class="ex-kind">{product.category}</span>
-				</div>
-				<div class="ex-card__foot">
+			<div class="ex-prod">
+				<h3 class="ex-prod__title">{product.title}</h3>
+				<p class="ex-prod__meta">
+					<a class="ex-prod__owner" href={profileHref(owner.handle)}>{product.maker}</a>
+					<span class="ex-prod__sep" aria-hidden="true">·</span>
+					<span class="ex-prod__kind">{product.category}</span>
+				</p>
+				<div class="ex-prod__foot">
 					<span />
-					<span class="ex-pricebadge">
+					<span class="ex-pricebadge ex-pricebadge--compact">
 						<span class="ex-pricebadge__amount">{product.price}</span>
 					</span>
 				</div>

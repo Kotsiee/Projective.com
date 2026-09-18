@@ -1,9 +1,14 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isProfileBackendLive } from "../../core/supabase.ts";
-import { findProfile, findProfileServices, findProfileTab } from "./profile-fixtures.ts";
+import {
+	findProfile,
+	findProfileProducts,
+	findProfileServices,
+	findProfileTab,
+} from "./profile-fixtures.ts";
 import { isReservedHandle } from "@projective/types/profile";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
-import type { ServiceItem } from "@projective/types/explore";
+import type { ProductItem, ServiceItem } from "@projective/types/explore";
 
 /**
  * ProfileBackendService — the FAT server-side service behind the `/[handle]` public profile.
@@ -83,5 +88,22 @@ export class ProfileBackendService {
 		const services = findProfileServices(handle);
 		if (!services) return fail(404, { message: `No profile found for "${handle}".` });
 		return ok({ services });
+	}
+
+	/**
+	 * The profile's digital PRODUCTS alone — the masonry the `/[handle]` layout paints directly beneath
+	 * the Services row, on every section. Its own read rather than a field on the services one so a
+	 * caller that wants only the listings does not build the products, and vice versa. An empty array
+	 * for a buyer entity; `404` for a reserved or unresolved handle.
+	 */
+	static products(handle: string): ServiceResult<{ products: ProductItem[] }> {
+		if (isReservedHandle(handle)) {
+			return fail(404, { message: `"${handle}" is a reserved route, not a profile.` });
+		}
+		// The live path (RLS-scoped catalogue listings) is not yet implemented; the fixture slice
+		// answers on both branches so behaviour is preserved until it lands.
+		const products = findProfileProducts(handle);
+		if (!products) return fail(404, { message: `No profile found for "${handle}".` });
+		return ok({ products });
 	}
 }

@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { ProgressiveImage } from "@projective/ui/display/image";
+import { VideoPlayer } from "@projective/ui/display/video";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import {
@@ -30,9 +31,18 @@ import type {
  * `showcase-model.ts`, so the four cases are pinned by test rather than by watching a timer. Two
  * things hold it: the viewer's pointer over the frame or focus inside it (a slide being read is not
  * taken away — the WCAG 2.2.2 pause, reached by hovering or by tabbing to the rail), and either
- * reduced-motion channel, under which nothing moves on its own — the video slide then offers a Play
- * control instead of starting itself. Only the ACTIVE video ever plays; leaving a video slide pauses
- * and rewinds it, so returning starts it fresh.
+ * reduced-motion channel, under which nothing moves on its own — the video slide then shows its
+ * transport instead of starting itself. Only the ACTIVE video ever plays; leaving a video slide
+ * pauses, rewinds AND re-mutes it, so returning starts it fresh and silent — a viewer who unmuted
+ * one slide has not asked the next lap of the carousel to play sound at them.
+ *
+ * A video slide is the shared `@projective/ui` {@link VideoPlayer} in its `full` variant: the
+ * transport bar (play ⁄ pause · mute + an expanding volume slider · the clock · a seekable scrubber ·
+ * a speed cycle) revealed on hover, on focus, or by a tap, and standing while the video is not
+ * playing. The carousel still OWNS playback — it plays, pauses and rewinds the element through the
+ * player's `videoRef` — and the player's controls mirror the element, so a pause pressed on the bar
+ * holds the slide exactly as the pointer resting on it does (a paused video is `await-video` to
+ * `advancePlan`, and nothing arms). The bar sits above the pagination rail, which keeps its place.
  *
  * # Navigation
  *
@@ -41,7 +51,9 @@ import type {
  * selects. The chevrons step. On a pointer, a horizontal drag on the frame follows the finger and
  * commits on distance or a flick (`resolveSwipe`), damped past either end; `touch-action: pan-y`
  * leaves vertical scrolling to the browser. Inactive slides are `inert` so their controls cannot
- * be reached behind the clip.
+ * be reached behind the clip. A swipe takes pointer capture only once the pointer has TRAVELLED:
+ * capturing on the press itself would retarget the release to the viewport, and the click a still
+ * pointer produces would never reach the video surface whose click toggles playback.
  *
  * The track moves on `transform` only, in container-query units (`100cqi` of the viewport), so no
  * script measures a width to place a slide; the writing direction flips the sign through
@@ -60,6 +72,8 @@ export interface ProfileShowcaseProps {
 const FLICK_WINDOW_MS = 300;
 /** Vertical travel beyond which a touch is a scroll, not a swipe. */
 const SCROLL_LOCK_PX = 10;
+/** Horizontal travel before a press becomes a swipe and takes the pointer. */
+const SWIPE_START_PX = 6;
 
 interface DragStart {
 	x: number;
@@ -86,6 +100,13 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 	const videos = useRef<(HTMLVideoElement | null)[]>([]);
 	const start = useRef<DragStart | null>(null);
 	const lastActive = useRef(0);
+	/**
+	 * Slides whose video has FAILED. The element is server-rendered with its source, so an
+	 * undecodable or unreachable clip raises `error` at hydration — while slide one is active — and
+	 * never again; arriving on such a slide later must treat it as finished at once, or the carousel
+	 * would await a video that can never end.
+	 */
+	const failed = useRef(new Set<number>());
 
 	const index = wrapIndex(active.value, count);
 	const slide = slides[index];
@@ -96,11 +117,11 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 		if (target === index) return;
 		active.value = target;
 		focused.value = target;
-		videoEnded.value = false;
+		videoEnded.value = failed.current.has(target);
 		if (announce) status.value = `Slide ${target + 1} of ${count}`;
 	}
 
-	// #region Video lifecycle — only the active video plays, and it starts fresh each time
+	// #region Video lifecycle — only the active video plays, and it starts fresh and silent each time
 	useEffect(() => {
 		const changed = lastActive.current !== index;
 		lastActive.current = index;
@@ -109,6 +130,7 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 			if (i !== index) {
 				video.pause();
 				if (video.currentTime !== 0) video.currentTime = 0;
+				if (!video.muted) video.muted = true;
 				return;
 			}
 			if (reduced) {
@@ -143,7 +165,8 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 	// #region Swipe
 	function onPointerDown(e: JSX.TargetedPointerEvent<HTMLDivElement>): void {
 		if (count <= 1 || e.button !== 0) return;
-		if ((e.target as HTMLElement).closest("button")) return;
+		// A control (a button, a slider) owns its own press; a swipe never starts on one.
+		if ((e.target as HTMLElement).closest("button, [role=slider]")) return;
 		const el = viewport.current;
 		if (!el) return;
 		start.current = {
@@ -154,11 +177,6 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 			rtl: getComputedStyle(el).direction === "rtl",
 			pointerId: e.pointerId,
 		};
-		try {
-			el.setPointerCapture(e.pointerId);
-		} catch {
-			start.current = null;
-		}
 	}
 
 	function onPointerMove(e: JSX.TargetedPointerEvent<HTMLDivElement>): void {
@@ -166,10 +184,20 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 		if (!s || s.pointerId !== e.pointerId) return;
 		const dx = e.clientX - s.x;
 		const dy = e.clientY - s.y;
-		// A mostly-vertical touch is a scroll; hand it back untouched.
-		if (drag.value === null && Math.abs(dy) > SCROLL_LOCK_PX && Math.abs(dy) > Math.abs(dx)) {
-			endDrag(e.currentTarget, e.pointerId);
-			return;
+		if (drag.value === null) {
+			// A mostly-vertical touch is a scroll; hand it back untouched.
+			if (Math.abs(dy) > SCROLL_LOCK_PX && Math.abs(dy) > Math.abs(dx)) {
+				endDrag(e.currentTarget, e.pointerId);
+				return;
+			}
+			// Not yet a swipe: a still press stays a click for whatever sits under it.
+			if (Math.abs(dx) < SWIPE_START_PX) return;
+			try {
+				e.currentTarget.setPointerCapture(e.pointerId);
+			} catch {
+				start.current = null;
+				return;
+			}
 		}
 		drag.value = dampedDrag(dx, index, count, s.rtl);
 	}
@@ -206,14 +234,6 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 		dots.current[next]?.focus();
 	}
 	// #endregion
-
-	function replay(i: number): void {
-		const video = videos.current[i];
-		if (!video) return;
-		video.currentTime = 0;
-		videoEnded.value = false;
-		video.play().catch(() => {});
-	}
 
 	function onFocusIn(): void {
 		focusWithin.value = true;
@@ -265,14 +285,13 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 							index={i}
 							count={count}
 							active={i === index}
-							ended={i === index && videoEnded.value}
-							playing={i === index && videoPlaying.value}
-							reduced={reduced}
 							videoRef={(el) => {
 								videos.current[i] = el;
 							}}
 							onPlay={() => {
 								videoPlaying.value = true;
+								// A replay from the bar restarts a finished video; the hold is over.
+								if (i === index) videoEnded.value = false;
 							}}
 							onPause={() => {
 								videoPlaying.value = false;
@@ -283,11 +302,12 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 							}}
 							onError={() => {
 								// A video whose media never arrives must not hold the carousel hostage: it is
-								// treated as finished, so the slide dwells on its poster and moves on.
+								// treated as finished, so the slide dwells on its poster and moves on — now, if
+								// it is the active slide, and whenever the carousel next arrives on it if not.
+								failed.current.add(i);
 								videoPlaying.value = false;
 								if (i === index) videoEnded.value = true;
 							}}
-							onReplay={() => replay(i)}
 						/>
 					))}
 				</ul>
@@ -349,26 +369,15 @@ interface SlideProps {
 	index: number;
 	count: number;
 	active: boolean;
-	/** The active video has finished and is holding its last frame. */
-	ended: boolean;
-	/** The active video is playing. */
-	playing: boolean;
-	reduced: boolean;
 	videoRef: (el: HTMLVideoElement | null) => void;
 	onPlay: () => void;
 	onPause: () => void;
 	onEnded: () => void;
 	onError: () => void;
-	onReplay: () => void;
 }
 
 function Slide(props: SlideProps): JSX.Element {
-	const { item, index, count, active, ended, playing, reduced, videoRef } = props;
-	const isVideo = item.kind === "video";
-	// A finished video offers Replay; a video that is not playing under reduced motion offers Play.
-	const control = isVideo && active
-		? ended ? "replay" : (!playing && reduced) ? "play" : null
-		: null;
+	const { item, index, count, active, videoRef } = props;
 	return (
 		<li
 			id={`pf-showcase-slide-${index}`}
@@ -380,17 +389,17 @@ function Slide(props: SlideProps): JSX.Element {
 			inert={active ? undefined : true}
 			data-kind={item.kind}
 		>
-			{isVideo
+			{item.kind === "video"
 				? (
-					<video
-						ref={videoRef}
-						class="pf-showcase__media pf-showcase__video"
+					<VideoPlayer
+						variant="full"
+						class="pf-showcase__media pf-showcase__player"
 						src={item.src}
 						poster={item.poster}
+						label={item.alt}
 						muted
-						playsInline
 						preload="metadata"
-						aria-label={item.alt}
+						videoRef={videoRef}
 						onPlay={props.onPlay}
 						onPause={props.onPause}
 						onEnded={props.onEnded}
@@ -408,20 +417,6 @@ function Slide(props: SlideProps): JSX.Element {
 						draggable={false}
 					/>
 				)}
-			{control && (
-				<span class="pf-showcase__playslot">
-					<Tooltip content={control === "replay" ? "Replay" : "Play"} placement="top">
-						<button
-							type="button"
-							class="pf-showcase__play"
-							aria-label={control === "replay" ? "Replay video" : "Play video"}
-							onClick={props.onReplay}
-						>
-							<Icon name={control === "replay" ? "refresh" : "play"} size="md" />
-						</button>
-					</Tooltip>
-				</span>
-			)}
 		</li>
 	);
 }

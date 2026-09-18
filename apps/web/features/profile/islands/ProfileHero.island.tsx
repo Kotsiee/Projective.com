@@ -6,7 +6,6 @@ import { Avatar } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { dsConfig } from "@projective/ui/system";
 import { formatMoney } from "@projective/types/finance";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
@@ -39,6 +38,7 @@ import {
 	quickMessageOpen,
 } from "../core/profile-state.ts";
 import { withPrimaryImage } from "../core/showcase-model.ts";
+import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
 
@@ -81,8 +81,8 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  *
  * The showcase is a carousel ({@link ProfileShowcase}): the primary still and up to four slides,
  * auto-advancing, with a video slide playing through before it moves on. The reduced-motion decision
- * is made HERE — the OS media query or the in-app `dsConfig.reducedMotion` — and passed down, so
- * a viewer who asked for no motion sees nothing move on its own after hydration.
+ * is made HERE ({@link useReducedMotion} — the OS media query or the in-app `dsConfig.reducedMotion`)
+ * and passed down, so a viewer who asked for no motion sees nothing move on its own after hydration.
  */
 export interface ProfileHeroProps {
 	profile: ProfileView;
@@ -128,24 +128,12 @@ export default function ProfileHero(
 	const hireOpen = useSignal(false);
 	/** The project picked in the Hire popover; non-null opens the invitation modal. */
 	const hireProject = useSignal<HireProject | null>(null);
-	const envReduced = useSignal(false);
 	const status = useSignal("");
 	const celebrating = useSignal(false);
 	const statusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const celebrateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-	const reduced = envReduced.value || dsConfig.value.reducedMotion;
-
-	useEffect(() => {
-		const mql = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
-		const sync = () => {
-			envReduced.value = (mql?.matches ?? false) ||
-				document.documentElement.dataset.motion === "reduced";
-		};
-		sync();
-		mql?.addEventListener("change", sync);
-		return () => mql?.removeEventListener("change", sync);
-	}, []);
+	const reduced = useReducedMotion();
 
 	useEffect(() => () => {
 		clearTimeout(statusTimer.current);

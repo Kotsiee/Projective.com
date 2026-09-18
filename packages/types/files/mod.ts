@@ -30,6 +30,7 @@ export * from "./storage.ts";
 export * from "./categories.ts";
 export * from "./assets.ts";
 export * from "./metadata.ts";
+export * from "./aspect.ts";
 export * from "./folders.ts";
 export * from "./listing.ts";
 export * from "./quota.ts";

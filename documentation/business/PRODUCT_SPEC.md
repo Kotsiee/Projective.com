@@ -374,12 +374,20 @@ row — and its job is to make an entity's **work, standing and story** legible 
 list every table the entity has a row in.
 
 **One page, four sections — and a seller's listings above them.** The profile is a single column:
-a split hero, a context bar, a seller's **Services row**, and a four-section tab bar over the routed
-section body. The Services row is its own region because it is the thing a seller is hired
-through: it renders directly above the tabs on EVERY section — one row of listings at first, with a
-"Show all" disclosure when more exist — so it never depends on which section a visitor arrived at.
+a split hero, a context bar, a seller's **Services row**, a seller's **Products masonry** directly
+beneath it, and a four-section tab bar over the routed section body. The Services row is its own
+region because it is the thing a seller is hired through: it renders directly above the tabs on
+EVERY section — one row of listings at first, with a "Show all" disclosure when more exist — so it
+never depends on which section a visitor arrived at. The Products region follows the same clamp:
+the masonry's first row (exactly its column count of tiles) at first, the full interlocking columns
+on "Show all". A product tile is the work tile's register — a prominent picture with compact, muted
+metadata beneath it — and is sized from the picture's own measured ratio inside the showcase band
+(§Assets & Attachments), so the same picture is the same shape on the profile, on Explore and in an
+entity view's rails.
 **Work** (the index) shows the client proof, the completed projects, the portfolio, and — for a
-team, business or organisation — the roster. **Experience** shows a person's career history,
+team, business or organisation — the roster. A portfolio tile whose piece is a video carries the
+same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the
+caption; it never starts on its own, and pressing a control never opens the piece. **Experience** shows a person's career history,
 education and verified certifications, and renders only for an individual (a company has no CV).
 **Reviews** is the dual-track reputation, filterable in place by the stance the profile held (all ·
 as freelancer · as client). **Posts** is what the entity has published. There is no fifth section;
@@ -392,7 +400,11 @@ ONE primary still (the thumbnail every card and preview of the profile leads wit
 video) and up to four further slides, each a still or a full-length video. The showcase advances
 on its own — a still dwells, a video plays through and then holds its last frame for the same
 dwell so it can be replayed before it moves on — and it holds while the visitor's pointer or focus
-is on it; a viewer who asked for reduced motion sees nothing move by itself. A centred rail along
+is on it; a viewer who asked for reduced motion sees nothing move by itself. A video slide carries
+the platform's one video control set, revealed on hover or by a tap (and standing while the video
+is paused): play ⁄ pause, mute with an expanding volume slider, a seekable scrubber with the current
+time against the duration, and a playback-speed cycle. It starts silent — sound is the visitor's to
+turn on, and a slide the carousel returns to starts silent again. A centred rail along
 the bottom edge (‹ · one dot per slide, the active one a pill · ›) pages it by pointer, keyboard
 (the arrows move between the dots, Enter selects) or a swipe. When no showcase is uploaded the hero
 collapses to a single typography-first column; it never renders an empty frame, because an empty
@@ -1738,8 +1750,10 @@ _Added 2026-07-13 (see root `CLAUDE.md` §8, decisions 5–7). Governs `/join`, 
 
 ### Authentication surfaces
 
-MVP auth is **Google OAuth + email/password** (per `SYSTEM_ARCHITECTURE.md` §Authentication).
-Canonical routes: **`/join`** (account creation), `/login`, `/forgot-password`, `/verify` (6-digit
+MVP auth is **Google OAuth + email/password** (per `SYSTEM_ARCHITECTURE.md` §Authentication). The
+password sign-in asks for **one identifier — an email or a `@handle` username** — plus the
+password, and never says which half was wrong. Canonical routes: **`/join`** (account creation),
+`/login`, `/forgot-password`, `/verify` (6-digit
 email code — the `CodeField` OTP pattern). Email confirmation still ultimately rides on GoTrue's
 single-use token; the 6-digit entry is the in-app confirmation surface.
 
@@ -1878,6 +1892,19 @@ connected drive counts against that provider, and a web link stores no bytes at 
 Consistent with every other footprint cap, the quota **meters and warns before it refuses**:
 enforcement is gated by a platform parameter that ships off, so exceeding a quota is visible long
 before it is obstructive. Turning refusal on is a deliberate decision, never a side effect.
+
+### The showcase band
+
+An image is measured once, at upload, and its width, height and aspect ratio are stored with the
+asset. Every **showcase tile** — a product's cover in a masonry, a rail or a cross-sell carousel — is
+sized from that measured ratio, **clamped into one band: 4:5 (portrait) to 16:9 (landscape)**. A
+picture inside the band is drawn whole at its own shape, which is what lets a masonry interlock; a
+picture outside it is drawn in the nearer bound and cropped to fit (`object-fit: cover`), so a tower
+or a panorama can never run away with a column. The upload itself is never refused for its shape —
+an attachment, a reference brief and a product cover are all legitimate at any ratio — but an image
+outside the band is **flagged** on its stored metadata, so a showcase surface can say "this will be
+cropped" before the seller publishes. In a uniform-height context (a horizontal rail, a carousel, a
+fixed grid) the tile takes the family's 16:10 frame instead, with the same crop.
 
 ### Links as assets
 

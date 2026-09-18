@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { AssetItem, AssetMetadata, MediaMetadata } from "@projective/types/files";
 import { AssetItemSchema } from "@projective/types/files";
-import { applyMediaFacts, mediaFactsFrom } from "./media-facts.ts";
+import { applyMediaFacts, flagShowcaseAspect, mediaFactsFrom } from "./media-facts.ts";
 
 /**
  * The metadata → asset-row projection, pinned on the two rules that are silent when they break.
@@ -223,4 +223,50 @@ Deno.test("a document with nothing rendered answers nothing, and keeps its row i
 	assertEquals(merged.thumbnailUrl, null);
 	assert(AssetItemSchema.safeParse(merged).success);
 });
+// #endregion
+
+// #region The showcase-band flag
+
+const image = (width: number, height: number): AssetMetadata => ({
+	version: 1,
+	source: "client",
+	extractedAt: "2026-09-18T09:00:00.000Z",
+	media: {
+		kind: "image",
+		width,
+		height,
+		aspectRatio: Math.round((width / height) * 10_000) / 10_000,
+		blurhash: null,
+		colors: null,
+		animated: false,
+		vector: false,
+		hasAlpha: null,
+	},
+	notes: [],
+});
+
+Deno.test("a picture inside the showcase band is stored with no flag", () => {
+	assertEquals(flagShowcaseAspect(image(800, 600)).notes, []);
+});
+
+Deno.test("a picture outside the band is flagged in its notes and still stored", () => {
+	const flagged = flagShowcaseAspect(image(2350, 1000));
+	assertEquals(flagged.notes.length, 1);
+	assert(flagged.notes[0].includes("wider"));
+	// Idempotent: a second pass does not stack a second copy of the same sentence.
+	assertEquals(flagShowcaseAspect(flagged).notes.length, 1);
+});
+
+Deno.test("the flag never pushes a full notes array past the schema's bound", () => {
+	const full = { ...image(500, 1000), notes: Array.from({ length: 8 }, (_, i) => `note ${i}`) };
+	assertEquals(flagShowcaseAspect(full).notes.length, 8);
+});
+
+Deno.test("applyMediaFacts writes the flagged envelope onto the row", () => {
+	const next = applyMediaFacts(row({ width: null, height: null }), image(500, 1000));
+	assertEquals(next.width, 500);
+	assertEquals(next.metadata?.notes.length, 1);
+	assert(next.metadata?.notes[0].includes("taller"));
+});
+
 // #endregion

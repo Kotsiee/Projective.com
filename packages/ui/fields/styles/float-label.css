@@ -1,6 +1,15 @@
 /*
  * FloatLabel — CSS-only floating label. The wrapped control must expose a placeholder of " " so the
  * `:placeholder-shown` state distinguishes empty from filled. Floats on focus-within OR when filled.
+ *
+ * Three variants, one label element:
+ *  - `over` — the label rests over the input and floats ABOVE the box. It leaves the control's own
+ *    box, so it can collide with whatever sits above it (the previous field's hint row).
+ *  - `on`   — floats onto the top border, backed by the surface so it punches through the hairline.
+ *  - `in`   — the label lives INSIDE the box and shrinks to its top edge; the control grows to the
+ *    in-field geometry IftaLabel uses (`--fld-h-infield` and friends), so the value sits BENEATH the
+ *    floated label rather than under it. Nothing leaves the box, which is what lets this variant
+ *    compose with a `FormControl` hint row.
  */
 
 .ui-float-label {
@@ -9,32 +18,41 @@
 	inline-size: 100%;
 }
 .ui-float-label > .ui-field,
-.ui-float-label > .ui-input {
+.ui-float-label > .ui-input,
+.ui-float-label > .ui-password {
 	inline-size: 100%;
 }
 
 .ui-float-label__label {
 	position: absolute;
 	inset-block-start: 50%;
-	inset-inline-start: var(--space-3);
+	inset-inline-start: var(--fld-px-md);
 	transform: translateY(-50%);
-	transform-origin: left center;
+	transform-origin: 0 50%;
 	pointer-events: none;
-	color: var(--text-secondary);
-	font-size: 0.9375rem;
+	color: var(--fld-placeholder-fg);
+	font-size: var(--fld-fs-md);
+	line-height: 1.4;
 	background: transparent;
 	padding-inline: 0.15rem;
 	transition:
 		transform var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard),
-		font-size var(--dur-fast) var(--ease-standard);
+		inset-block-start var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+/* A percentage origin is physical; the scale must shrink toward the START edge in both directions. */
+[dir="rtl"] .ui-float-label__label {
+	transform-origin: 100% 50%;
 }
 
 /* Floated state: focused OR the inner input is not showing its placeholder. */
 .ui-float-label:focus-within .ui-float-label__label,
 .ui-float-label:has(.ui-field__input:not(:placeholder-shown)) .ui-float-label__label {
 	transform: translateY(-160%) scale(0.82);
-	color: var(--primary);
+}
+/* Focus owns the accent; a label floated only by its value stays in the hint ink. */
+.ui-float-label:focus-within .ui-float-label__label {
+	color: var(--fld-focus-fg);
 }
 
 /* `on` variant floats onto the top border with a surface backing to punch through it. */
@@ -42,12 +60,31 @@
 	background: var(--surface);
 }
 
-/* `in` variant keeps the label inside, shrinking to the top of the padding box. */
+/*
+ * `in` variant — the two-line in-field geometry. Descendant rather than child on purpose: the one
+ * text control whose root is not `.ui-field` (Password, a column holding the control and its meter)
+ * still has to take the height, and FloatLabel wraps exactly one control, so the descendant reaches
+ * exactly one field. `flex-end` pushes the value into the lower band the reserved top padding leaves.
+ */
+.ui-float-label--in .ui-field {
+	--field-height: var(--fld-h-infield);
+	align-items: flex-end;
+	padding-block: var(--fld-infield-pt) var(--space-2);
+}
 .ui-float-label--in .ui-float-label__label {
-	inset-block-start: 0.7rem;
-	transform: none;
+	transform-origin: 0 0;
+}
+[dir="rtl"] .ui-float-label--in .ui-float-label__label {
+	transform-origin: 100% 0;
 }
 .ui-float-label--in:focus-within .ui-float-label__label,
 .ui-float-label--in:has(.ui-field__input:not(:placeholder-shown)) .ui-float-label__label {
-	transform: translateY(-0.35rem) scale(0.78);
+	inset-block-start: var(--fld-infield-label-top);
+	transform: translateY(0) scale(0.8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-float-label__label {
+		transition-duration: 0ms;
+	}
 }
