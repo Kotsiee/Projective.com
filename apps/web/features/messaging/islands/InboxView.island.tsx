@@ -339,7 +339,7 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 								<Button
 									label="New message"
 									icon={<MessagingIcon name="compose" />}
-									onClick={openNewConversation}
+									onClick={() => openNewConversation()}
 								/>
 							)}
 					</div>

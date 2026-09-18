@@ -1,14 +1,15 @@
-import type { JSX, RefObject } from "preact";
+import { cloneElement, type JSX, type RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/chat-composer.css";
-import { Message, Popover, Tooltip } from "@projective/ui/feedback";
+import { Message, Popover, Tooltip, useToast } from "@projective/ui/feedback";
 import { useId } from "@projective/ui/hooks";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
 import { extractMetadata } from "@web/features/files/core/media/extract.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
+import { MessagingService } from "@web/features/messaging/core/MessagingService.ts";
 import { MessagesService } from "../core/MessagesService.ts";
 import { MESSAGE_SENT_EVENT, type MessageSentDetail } from "@web/utils/lane-events.ts";
 import { uploadForProject } from "../core/upload.ts";
@@ -94,17 +95,29 @@ export interface ChatComposerProps {
 	/**
 	 * Which surface this composer is posting into.
 	 *
-	 * `project` posts to `/api/projects/messages/send`. `conversation` is the standalone inbox, which
-	 * has no send endpoint of its own yet — so it composes, hands the payload to {@link onSend} and
-	 * clears, exactly as this composer did everywhere before the projects write path landed. Naming
-	 * the scope here rather than inferring it is what lets the messaging endpoint be wired later
-	 * without a second composer.
+	 * `project` posts to `/api/projects/messages/send`; `conversation` posts to
+	 * `/api/messaging/messages/send`, the inbox's own door. Both announce the SERVER's row on
+	 * `MESSAGE_SENT_EVENT` so whatever feed shares the page appends it. Naming the scope here rather
+	 * than inferring it from the id pair is what lets one composer serve a stage room, the standalone
+	 * inbox, the pop-out chat and the profile's floating messenger without a second implementation.
 	 *
 	 * A STRING and not a callback on purpose: island props must be serialisable, and a function prop
 	 * fails the whole render ("Serializing functions is not supported"), which is why the server slot
 	 * resolvers that mount this composer pass no handlers at all.
 	 */
 	scope?: "project" | "conversation";
+	/**
+	 * Where a capture or send failure is reported.
+	 *
+	 * `inline` (the default) keeps Decision #66's rule for the in-frame composer: the notice renders
+	 * beside the control that failed, because a blocked microphone needs instructions read while
+	 * looking at the button that refused. `toast` is for a FLOATING host — the pop-out chat and the
+	 * profile messenger — where the composer sits in a 24rem window with no room for a paragraph of
+	 * recovery steps under it: the same structured failure goes to the shared toast stack at
+	 * `bottom-center`, which the host mounts. The wording is identical either way; only the surface
+	 * that carries it differs.
+	 */
+	notices?: "inline" | "toast";
 	/**
 	 * Fired once after mount with an imperative {@link ComposerHandle}, so an external surface — the
 	 * floating "Pop Out Chat" popover's whole-panel drop zone (task §1) — can push dropped files into
@@ -179,7 +192,8 @@ function voiceStatus(phase: RecorderPhase, durationMs: number): string {
 }
 
 export default function ChatComposer(
-	{ projectId, channelId, scope = "project", onReady, onSend }: ChatComposerProps,
+	{ projectId, channelId, scope = "project", notices = "inline", onReady, onSend }:
+		ChatComposerProps,
 ): JSX.Element {
 	// #region State
 	const text = useSignal("");
@@ -234,15 +248,15 @@ export default function ChatComposer(
 	const atCapacity = attachments.value.length >= MAX_ATTACHMENTS;
 	const micBlocked = rec.permission.value === "denied" || rec.permission.value === "unsupported";
 	/**
-	 * Whether this composer has a project channel to post into.
+	 * Whether this composer has somewhere to post.
 	 *
-	 * The scope prop names it, and the id pair confirms it: a conversation mount passes the same
-	 * conversation id as both `projectId` and `channelId`, which no project channel ever does. Both
-	 * checks are here because the two hosts that mount this composer over a conversation — the pop-out
-	 * chat panel and the profile quick-message popover — do not pass a scope yet, and posting a DM to
-	 * the projects endpoint would spend a request only to be told the project does not exist.
+	 * A conversation always does — its own id is the address. A project channel does only when the
+	 * id pair actually names one: a mount that passes the same string as both `projectId` and
+	 * `channelId` is a conversation that forgot to say so, and posting it to the projects endpoint
+	 * would spend a request only to be told the project does not exist.
 	 */
-	const dispatches = scope === "project" && projectId !== channelId;
+	const dispatches = scope === "conversation" || projectId !== channelId;
+	const toast = useToast();
 	// #endregion
 
 	// #region Attachments + paste
@@ -542,26 +556,37 @@ export default function ChatComposer(
 			return;
 		}
 		const memoId = memo ? uploaded.ids[uploaded.ids.length - 1] ?? null : null;
-		const res = await MessagesService.send({
-			projectId,
-			channelId,
-			text: draft.text,
-			attachmentIds: [
-				...(memo ? uploaded.ids.slice(0, draft.files.length) : uploaded.ids),
-				...draft.libraryAssetIds,
-				...(memoId ? [memoId] : []),
-			],
-			audio: memo && memoId
-				? {
-					// The server resolves the playable address from the asset the memo was uploaded as;
-					// a URL minted here would be an object URL that dies with this page.
-					url: "",
-					durationMs: memo.durationMs,
-					durationLabel: memo.durationLabel,
-					peaks: memo.peaks,
-				}
-				: null,
-		});
+		const attachmentIds = [
+			...(memo ? uploaded.ids.slice(0, draft.files.length) : uploaded.ids),
+			...draft.libraryAssetIds,
+			...(memoId ? [memoId] : []),
+		];
+		const audio = memo && memoId
+			? {
+				// The server resolves the playable address from the asset the memo was uploaded as;
+				// a URL minted here would be an object URL that dies with this page.
+				url: "",
+				durationMs: memo.durationMs,
+				durationLabel: memo.durationLabel,
+				peaks: memo.peaks,
+			}
+			: null;
+		// One payload, two doors. The conversation door is addressed by the conversation's own id (the
+		// `channelId` slot — a conversation mount passes it in both), the project door by the pair.
+		const res = scope === "conversation"
+			? await MessagingService.send({
+				conversationId: channelId,
+				text: draft.text,
+				attachmentIds,
+				audio,
+			})
+			: await MessagesService.send({
+				projectId,
+				channelId,
+				text: draft.text,
+				attachmentIds,
+				audio,
+			});
 		sending.value = false;
 		if (res.ok) {
 			clearSent(sent);
@@ -627,6 +652,42 @@ export default function ChatComposer(
 	useEffect(() => {
 		onReady?.({ addFiles });
 	}, []);
+	// #endregion
+
+	// #region Toast-mode notices
+	/**
+	 * In `toast` mode every failure is handed to the shared stack and then cleared here, so the
+	 * inline notice never renders for it. The recorder's structured error is passed on whole — title,
+	 * cause and the browser-specific recovery steps — and a permission-class failure carries the same
+	 * struck-mic mark the inline notice would. Cleared AFTER it is shown, not instead: the hook keeps
+	 * the mic control's `data-blocked` state from `permission`, which this does not touch.
+	 */
+	const capture = rec.error.value;
+	useEffect(() => {
+		if (notices !== "toast" || !capture) return;
+		toast.show({
+			severity: capture.kind === "too_large" || capture.kind === "failed" ? "danger" : "warning",
+			summary: capture.title,
+			detail: [capture.detail, capture.help].filter(Boolean).join(" "),
+			// A CLONE, never the module constant: the mic button may be drawing the same struck-mic
+			// VNode at this moment, and one VNode mounted in two trees is the Preact reuse hazard.
+			icon: PERMISSION_KINDS.has(capture.kind) ? cloneElement(MicOffIcon) : undefined,
+			life: capture.help ? 9000 : 5000,
+		});
+		rec.clearError();
+	}, [capture]);
+
+	const failed = sendError.value;
+	useEffect(() => {
+		if (notices !== "toast" || !failed) return;
+		toast.show({
+			severity: "danger",
+			summary: failed.title,
+			detail: failed.detail,
+			life: 6000,
+		});
+		sendError.value = null;
+	}, [failed]);
 	// #endregion
 
 	// #region Plus menu actions
@@ -947,7 +1008,7 @@ export default function ChatComposer(
 					/* Capture failures, inline beside the control that produced them. Recovery steps appear
 				    only for a persisted block, where pressing the mic again would do nothing at all. */
 				}
-				{err && (
+				{err && notices === "inline" && (
 					<div class="chat-composer__notice">
 						<Message
 							severity={err.kind === "too_large" || err.kind === "failed" ? "danger" : "warning"}
@@ -970,7 +1031,7 @@ export default function ChatComposer(
 					/* A send that did not land, stated where the Send button is rather than in a corner
 				    toast — and never a silent drop, because the message still looks written. */
 				}
-				{sendError.value && (
+				{sendError.value && notices === "inline" && (
 					<div class="chat-composer__notice">
 						<Message
 							severity="danger"

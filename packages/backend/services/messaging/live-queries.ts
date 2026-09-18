@@ -113,7 +113,7 @@ interface RosterRow {
 }
 
 /** One `comms.dm_messages` row. */
-interface DmMessageRow {
+export interface DmMessageRow {
 	id: string;
 	thread_id: string;
 	sender_user_id: string;
@@ -132,7 +132,7 @@ interface ReactionRow {
 }
 
 /** An `org.users_public` row. Column names verified against `00000011_tables_org.sql`. */
-interface PartyRow {
+export interface PartyRow {
 	user_id: string;
 	username: string;
 	first_name: string | null;
@@ -228,17 +228,17 @@ export function partyName(row: PartyRow | undefined): string {
 // #region Clients
 
 /** An RLS-scoped client on the `comms` schema profile. */
-function commsClient(actor: ReadActor & { accessToken: string }): SupabaseClient {
+export function commsClient(actor: ReadActor & { accessToken: string }): SupabaseClient {
 	return getUserClient(actor.accessToken).schema("comms") as unknown as SupabaseClient;
 }
 
 /** An RLS-scoped client on the `org` schema profile. */
-function orgClient(actor: ReadActor & { accessToken: string }): SupabaseClient {
+export function orgClient(actor: ReadActor & { accessToken: string }): SupabaseClient {
 	return getUserClient(actor.accessToken).schema("org") as unknown as SupabaseClient;
 }
 
 /** Resolve display parties for a set of user ids; a miss degrades to the "Unknown" placeholder. */
-async function fetchParties(
+export async function fetchParties(
 	actor: ReadActor & { accessToken: string },
 	userIds: readonly string[],
 ): Promise<Map<string, PartyRow>> {

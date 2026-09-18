@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
+import { requestShare } from "@web/features/share/core/share-request.ts";
 import { useEffect } from "preact/hooks";
 import { RatingStars } from "@projective/ui/display";
 // The lane reuses the profile lane's `pf-lane*` skeleton (header + scroll + footer geometry), so
@@ -116,19 +117,9 @@ export default function EntityLane(
 		status.value = msg;
 	}
 
-	/** Share via the Web Share sheet where the platform offers one, else copy to the clipboard. */
+	/** Open the unified share modal (people on Projective · external apps · copy · the device sheet). */
 	function share(): void {
-		try {
-			const url = globalThis.location?.href ?? "";
-			const nav = globalThis.navigator as Navigator & {
-				share?: (d: { title: string; url: string }) => Promise<void>;
-			};
-			if (nav?.share) nav.share({ title: item.title, url }).catch(() => {});
-			else {
-				nav?.clipboard?.writeText(url).catch(() => {});
-				announce("Link copied to clipboard");
-			}
-		} catch { /* non-fatal */ }
+		requestShare({ href: globalThis.location?.href ?? "", title: item.title, noun: "listing" });
 	}
 
 	const menu: LaneMenuItem[] = [

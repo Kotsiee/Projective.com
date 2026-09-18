@@ -1,9 +1,16 @@
 /*
- * profile-message.css — the profile "Message" quick-composer: a `DraggablePopover` (`.pf-msgpop`) on
- * desktop and a bottom-sheet `Drawer` (`.pf-msgsheet`) below 768px, both pre-addressed to the
- * profile: a recipient header + the reused ChatComposer. Token-only, strict BEM. The composer inside
- * carries its own styling (projects `chat-composer.css`, bundled by the composer island); this file
- * lays out the shared body.
+ * profile-message.css — the profile "Message" quick-composer's MOBILE surface: a bottom-sheet
+ * `Drawer` (`.pf-msgsheet`) below 768px hosting the same conversation body the global floating
+ * messenger renders on desktop (`.pop-chat`: message list + the reused ChatComposer). On desktop the
+ * profile hands the conversation to the global `ChatPopoutHost` window and renders nothing here, so
+ * there is no `.pf-msgpop` panel any more — the window's own sheet (`chat-popout.css`) styles it.
+ * Token-only, strict BEM.
+ *
+ * `.pf-msgpop__composer` is the sheet's conversation region. The composer inside is pinned to the
+ * sheet's foot by the same flex column the floating window uses (the list scrolls, the input does
+ * not), sized to a slightly shorter default than the in-frame composer, and capped to a measure a
+ * single input reads well at — the three properties the window's composer carries, restated here
+ * because the sheet is a different ancestor and inherits none of the window's rules.
  */
 .pf-msgsheet {
 	max-block-size: calc(100dvh - var(--space-8));
@@ -15,33 +22,25 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
+	min-block-size: 0;
 }
-.pf-msgpop__recipient {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-}
-.pf-msgpop__recipient-text {
-	display: flex;
-	flex-direction: column;
-	min-inline-size: 0;
-}
-.pf-msgpop__recipient-name {
-	font-family: var(--font-sans);
-	font-size: var(--text-base);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-}
-.pf-msgpop__recipient-handle {
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-}
-.pf-msgpop__hint {
-	margin: 0;
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-}
+/* The sheet is `size="auto"`, so the conversation region has to name its own height for the list
+   to scroll inside it: a bounded band, never the whole viewport. */
 .pf-msgpop__composer {
 	position: relative;
-	min-block-size: 4rem;
+	block-size: min(70dvh, 34rem);
+	--pop-chat-measure: 40rem;
+}
+.pf-msgpop__composer .pop-chat {
+	block-size: 100%;
+}
+.pf-msgpop__composer .chat-composer {
+	padding-block: var(--space-2);
+	padding-inline: var(--space-2);
+}
+.pf-msgpop__composer .chat-composer__inner {
+	max-inline-size: min(100%, var(--pop-chat-measure));
+}
+.pf-msgpop__composer .chat-composer__input {
+	max-block-size: 120px;
 }

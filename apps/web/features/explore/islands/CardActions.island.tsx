@@ -5,6 +5,7 @@ import { Tooltip } from "@projective/ui/feedback";
 import { BodyPortal } from "@projective/ui/overlay";
 import { useEdgeDetection } from "@projective/ui/hooks";
 import { Button } from "@ui/fields/components/Button.tsx";
+import { requestShare } from "@web/features/share/core/share-request.ts";
 
 /**
  * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Star · kebab**,
@@ -22,7 +23,7 @@ import { Button } from "@ui/fields/components/Button.tsx";
  *
  * The cluster is revealed on card hover/focus via CSS and pinned open once the menu is engaged. Dumb
  * island: it owns only local interaction state and, for the stub, optimistic client feedback (the
- * clipboard for Share, a local toggle for Star). Star and Add-to-project are auth-gated — a signed-out
+ * share modal for Share, a local toggle for Star). Star and Add-to-project are auth-gated — a signed-out
  * reader gets a sign-in link rather than a control that silently does nothing. Swap the optimistic
  * handlers for internal API-route calls (`/api/explore/bookmark`, `/report`, `/projects/add`) when
  * those land; islands fetch routes only.
@@ -98,19 +99,10 @@ export default function CardActions(
 		open.value = false;
 	}
 
-	async function share() {
-		const url = globalThis.location?.origin ? `${globalThis.location.origin}${href}` : href;
-		try {
-			if (navigator.share) {
-				await navigator.share({ title, url });
-				announce("Shared");
-				return;
-			}
-			await navigator.clipboard.writeText(url);
-			announce("Link copied");
-		} catch {
-			announce("");
-		}
+	/** Open the unified share modal (people on Projective · external apps · copy · the device sheet). */
+	function share() {
+		requestShare({ href, title });
+		announce("");
 	}
 
 	function star() {

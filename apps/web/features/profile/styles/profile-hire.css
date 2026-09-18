@@ -1,0 +1,367 @@
+/*
+ * profile-hire.css — the invitation modal a client's Hire control opens on a seller's `/[handle]`
+ * page (`.pf-hiremodal`, a `Dialog`). Token-only, strict BEM.
+ *
+ * Separation hierarchy (§B.4): the four regions — overview · team · message · stages — are separated
+ * by spacing and ONE hairline each, never boxed. The overview is prose on the dialog surface; the
+ * member list is rows of avatar + text with no container; the only rows that carry a fill are the
+ * stage rows, which are interactive (a checkbox and a price box), and the selected state is a single
+ * tonal step (`--surface-1`), never a border. Metadata (role, stage names, format, stage count) is
+ * inline middot-separated text (§B.11); the only container on a non-control is the project's
+ * lifecycle STATUS word, which is a state and earns it.
+ */
+
+/* #region Frame */
+.pf-hiremodal .ui-dialog__footer {
+	padding-block: var(--space-3);
+}
+
+.pf-hiremodal__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
+
+.pf-hiremodal__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.pf-hiremodal__section + .pf-hiremodal__section {
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
+}
+
+.pf-hiremodal__hint {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__failed {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+}
+/* #endregion */
+
+/* #region Registers (§A.4) */
+.pf-hiremodal__eyebrow {
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug, 1.35);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__title {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-2) var(--space-3);
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--on-surface);
+}
+
+.pf-hiremodal__title-text {
+	min-inline-size: 0;
+}
+
+/* A lifecycle state — the one containered non-control this modal carries (§B.11.3). */
+.pf-hiremodal__status {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.1rem var(--space-2);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border-radius: var(--radius-full);
+}
+
+.pf-hiremodal__status[data-status="active"] {
+	color: color-mix(in srgb, var(--success) 72%, var(--on-surface));
+	background: color-mix(in srgb, var(--success) var(--tint), var(--surface-2));
+}
+
+.pf-hiremodal__meta,
+.pf-hiremodal__member-meta,
+.pf-hiremodal__stage-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1);
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__dot {
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__summary {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal, 1.5);
+	color: var(--on-surface);
+}
+
+.pf-hiremodal__summary--empty {
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__label {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Members */
+.pf-hiremodal__members {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pf-hiremodal__member {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.pf-hiremodal__member-text {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.pf-hiremodal__member-name {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Message + task price */
+.pf-hiremodal__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.pf-hiremodal__field:focus {
+	outline: none;
+}
+
+.pf-hiremodal__field--task {
+	max-inline-size: 16rem;
+}
+/* #endregion */
+
+/* #region Stages */
+/* Its own container, so the row reflows on the LIST's width — a dialog resized narrow, or a phone —
+   rather than on a viewport the dialog may be much narrower than. */
+.pf-hiremodal__stages {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	container-type: inline-size;
+}
+
+/* An interactive row: a checkbox and a price box. The fill is the row's own affordance; the selected
+   state is one tonal step up, so the two devices never stack. */
+.pf-hiremodal__stage {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(9rem, 12rem);
+	gap: var(--space-3) var(--space-4);
+	align-items: start;
+	padding: var(--space-3);
+	border-radius: var(--radius-lg);
+	background: transparent;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.pf-hiremodal__stage:hover {
+	background: var(--surface-1);
+}
+
+.pf-hiremodal__stage[data-selected="true"] {
+	background: var(--surface-1);
+}
+
+.pf-hiremodal__stage-pick {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.pf-hiremodal__stage-pick .ui-checkbox__label {
+	font-weight: var(--fw-medium);
+}
+
+.pf-hiremodal__stage-summary {
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--text-secondary);
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.pf-hiremodal__stage-price {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.pf-hiremodal__stage-price .pf-hiremodal__label {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+@container (max-width: 420px) {
+	.pf-hiremodal__stage {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Refusal + disclosure */
+.pf-hiremodal__refusal {
+	margin-block-start: calc(var(--space-2) * -1);
+}
+
+.pf-hiremodal__disclosure {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__disclosure .ui-icon {
+	flex: none;
+	margin-block-start: 0.15em;
+}
+/* #endregion */
+
+/* #region Footer */
+.pf-hiremodal__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	inline-size: 100%;
+}
+
+.pf-hiremodal__foot--sent {
+	justify-content: flex-end;
+}
+
+.pf-hiremodal__total {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.pf-hiremodal__total-label {
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__total-figure {
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.pf-hiremodal__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+/* #endregion */
+
+/* #region Success state */
+.pf-hiremodal__sent {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding-block: var(--space-4);
+}
+
+.pf-hiremodal__sent-mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	color: color-mix(in srgb, var(--success) 72%, var(--on-surface));
+	background: color-mix(in srgb, var(--success) var(--tint), var(--surface-1));
+	border-radius: var(--radius-full);
+}
+
+.pf-hiremodal__sent-title {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug, 1.35);
+	color: var(--on-surface);
+}
+
+.pf-hiremodal__sent-body {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal, 1.5);
+	color: var(--text-secondary);
+}
+
+.pf-hiremodal__sent-link {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.pf-hiremodal__sent-link:hover {
+	color: var(--primary);
+}
+/* #endregion */

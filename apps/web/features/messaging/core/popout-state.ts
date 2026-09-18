@@ -32,9 +32,24 @@ export interface PopoutState {
 	title: string;
 	/** The route to return to / maximize (the channel or conversation page). */
 	href: string;
+	/**
+	 * Where the pop-out was opened FROM.
+	 *
+	 * `page` (the default) is a chat popped out of its own channel or conversation page — the header
+	 * offers "Return" once the viewer has navigated away. `profile` is a conversation started from a
+	 * person's `/[handle]` page: the viewer was never on the conversation page, so the same action
+	 * reads "Open in inbox" and the window docks into the bottom-end corner rather than opening at the
+	 * default spot below the top bar.
+	 */
+	source?: "page" | "profile";
+	/** The counterparty's avatar for the window's title glyph; null → the generic chat mark. */
+	avatar?: string | null;
 	/** Last window position (viewport px). */
 	x?: number;
 	y?: number;
+	/** Last user-resized size (viewport px), so a reload reopens the window at the size it was left. */
+	w?: number;
+	h?: number;
 }
 
 /** The active pop-out, or `null`. Seeded null (SSR-safe); {@link hydratePopout} loads the stored blob. */
@@ -59,10 +74,19 @@ export function hydratePopout(): void {
 	}
 }
 
-/** Open (or replace) the pop-out with the given channel/conversation. */
+/**
+ * Open (or replace) the pop-out with the given channel/conversation.
+ *
+ * Re-opening the conversation that is ALREADY popped out keeps its remembered position and size: a
+ * second press of a profile's Message control is "bring me back to that window", not "put a fresh
+ * window in the corner", and the geometry is the one thing the caller cannot know.
+ */
 export function openPopout(state: PopoutState): void {
-	popout.value = state;
-	persist(state);
+	const cur = popout.value;
+	const same = cur && cur.scope === state.scope && cur.channelId === state.channelId;
+	const next: PopoutState = same ? { ...state, x: cur.x, y: cur.y, w: cur.w, h: cur.h } : state;
+	popout.value = next;
+	persist(next);
 }
 
 /** Close the pop-out and clear the store. */
@@ -76,6 +100,15 @@ export function movePopout(x: number, y: number): void {
 	const cur = popout.value;
 	if (!cur) return;
 	const next = { ...cur, x, y };
+	popout.value = next;
+	persist(next);
+}
+
+/** Persist the window's last user-resized size. */
+export function resizePopout(w: number, h: number): void {
+	const cur = popout.value;
+	if (!cur) return;
+	const next = { ...cur, w, h };
 	popout.value = next;
 	persist(next);
 }

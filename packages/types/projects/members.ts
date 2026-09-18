@@ -100,6 +100,14 @@ export const MemberInviteSchema = z.object({
 	id: z.string().min(1).max(120),
 	/** The invited email address. */
 	email: z.string().max(160),
+	/**
+	 * The invited `@handle`, when the invitation addressed a PLATFORM identity rather than an email —
+	 * a client hiring a seller from their profile names a person, not an inbox. Absent on an
+	 * email-addressed invitation; `email` then still carries the line the queue prints, so nothing
+	 * that renders the queue has to branch. OPTIONAL (not defaulted) so every existing literal that
+	 * builds an invite keeps compiling — a `.default()` is required on the OUTPUT side.
+	 */
+	handle: z.string().max(41).nullable().optional(),
 	/** The role the invitee will hold once they accept. */
 	role: MemberRole,
 	/** The stage the invitee is being assigned to on acceptance, or null for a whole-project invite. */

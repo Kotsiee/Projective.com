@@ -1,0 +1,72 @@
+/*
+ * messages-root.css — the `/messages` ROOT body: no conversation is open.
+ *
+ * Two presentations, CSS-switched by width, and only one is ever visible:
+ *
+ *  - ≥ 768px — the conversation list lives in the middle-nav LANE (the same `MessagesSidebar` an
+ *    open conversation shows beside itself), so the body is an EMPTY STATE: a centred glyph, one
+ *    sentence pointing at the list, and the New message / New group actions.
+ *  - ≤ 767px — the shell removes `.ui-middle-nav__lane` (`middle-nav.css`), so the list would be
+ *    gone with it. The duty TRANSFERS to the body: the inbox list, its search and its actions
+ *    render here instead. Transferred, never duplicated — the desktop block is `display: none`
+ *    at the same width, so exactly one list exists on screen at any width (the `/wallet` header
+ *    switcher precedent, Decision #63).
+ *
+ * Token-only; the empty state is unboxed (§B.4 — spacing and a tonal glyph disc, no card).
+ */
+
+.msg-root {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 100%;
+}
+
+/* Desktop: the empty state fills the region and centres its stack. */
+.msg-root__desktop {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Phone: the transferred inbox — hidden until the lane is gone. */
+.msg-root__mobile {
+	display: none;
+}
+
+.msg-root__cta {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+}
+
+@media (max-width: 767px) {
+	.msg-root__desktop {
+		display: none;
+	}
+	.msg-root__mobile {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+	/*
+	 * `.inbox` carries `min-block-size: 100%` for the lane, where it is the only child; as a flex sibling
+	 * of the two strips that percentage resolves against the whole column and shrinks BOTH strips to
+	 * their minimum — measured: a 69px header squeezed to 48px, its title clipped under the top bar.
+	 * The strips are fixed content; the list takes the remainder.
+	 */
+	.msg-root__mobile .inbox-head,
+	.msg-root__mobile .inbox-foot {
+		flex: none;
+	}
+	.msg-root__mobile .inbox {
+		flex: 1;
+		min-block-size: 0;
+	}
+	/* The actions row sits directly under the search, where a thumb reaches first. */
+	.msg-root__mobile .inbox-foot {
+		border-block-end: 1px solid var(--hairline-color);
+	}
+}

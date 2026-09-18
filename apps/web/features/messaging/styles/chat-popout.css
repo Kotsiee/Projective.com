@@ -94,9 +94,33 @@
 	opacity: var(--fld-disabled-alpha);
 	cursor: default;
 }
+/*
+ * The composer is PINNED to the window's bottom edge by the flex column above it — it is a sibling
+ * of the scroller, never a child, so a resize drag shrinks the message list and leaves the input
+ * exactly where the hand expects it. `margin-block-start: auto` makes the pin explicit for the case
+ * where the list is shorter than the window (a new conversation): the input still sits at the foot.
+ *
+ * Inside a floating window the in-frame composer's dimensions are wrong in both directions. Its
+ * top padding (`--space-5`) exists to clear the feed's scrim in the middle-nav footer band, which
+ * this window has none of; and its `--chat-measure` (56rem) is the width of a message COLUMN, so a
+ * window resized wide would stretch the bar edge to edge. The measure here caps it at a width a
+ * single input reads well at, centred by the composer's own `margin-inline: auto`.
+ */
 .pop-chat__composer {
 	flex: none;
+	margin-block-start: auto;
 	border-block-start: var(--hairline);
+	--pop-chat-measure: 40rem;
+}
+.pop-chat__composer .chat-composer {
+	padding-block: var(--space-2);
+	padding-inline: var(--space-2);
+}
+.pop-chat__composer .chat-composer__inner {
+	max-inline-size: min(100%, var(--pop-chat-measure));
+}
+.pop-chat__composer .chat-composer__input {
+	max-block-size: 120px;
 }
 
 /* Whole-panel drop-zone overlay (task §1) — hidden until a file is dragged over. */

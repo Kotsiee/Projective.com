@@ -26,6 +26,7 @@ export type { HoverCardProps } from "./islands/HoverCard.tsx";
 export { DraggablePopover } from "./islands/DraggablePopover.tsx";
 export type {
 	DraggablePopoverProps,
+	PopoverAnchor,
 	PopoverPosition,
 	PopoverSize,
 } from "./islands/DraggablePopover.tsx";

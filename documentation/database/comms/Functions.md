@@ -189,4 +189,39 @@ block or roll back the transaction that emitted the notification.
 | `comms.has_channel_access(uuid)`           | 0311      | Channel membership predicate used by RLS. |
 | `comms.get_stage_channels(uuid)`           | 0311      | Channels visible for a stage.             |
 | `comms.get_or_create_project_channel(...)` | 0112      | Idempotent project-channel provisioning.  |
-| `comms.get_or_create_dm_thread(...)`       | 0113      | Idempotent DM-thread provisioning.        |
+| `comms.get_or_create_dm_thread(...)`       | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. |
+
+## Group conversations (`00001300`, Decision #102)
+
+Both are `SECURITY DEFINER` with `search_path = public, comms, org, auth`, `EXECUTE` granted to
+`authenticated` only (`REVOKE … FROM public, anon` in `00002510`), and both refuse a `NULL`
+`auth.uid()` explicitly. They exist because `comms.dm_threads` / `comms.dm_participants` carry no
+client `INSERT` policy on purpose (`00002012`): who may open a thread and who may be put into one is
+decided **here**, once, exactly as `comms.get_or_create_dm_thread` already decides it for a DM. A
+client `INSERT` policy on `dm_participants` would have to admit "a participant may add a row for
+somebody else", which is the shape that lets anyone be added to anything.
+
+### `comms.create_group_thread(p_title text, p_member_ids uuid[]) → uuid`
+
+Mints a `kind = 'group'` thread containing the caller plus the given people in one transaction.
+Members are de-duplicated, the caller is never listed twice, and an id naming no `org.users_public`
+row is **dropped** rather than left to fail the FK — the picker offers only real people, so a
+phantom id is a stale client, not a request. A blank/whitespace title is stored as `NULL` (a group
+may be unnamed; the inbox titles it after its members). Raises `22023` when fewer than one other
+person survives resolution.
+
+### `comms.add_dm_thread_members(p_thread_id uuid, p_member_ids uuid[]) → integer`
+
+Adds people to a thread the caller is an **undeleted participant** of (`comms.is_dm_participant`),
+returning how many were actually added. Already-present members are skipped; a member who had
+soft-deleted the conversation for themselves is **restored** (`deleted_at = NULL`) and counted —
+being added back by somebody is the one event that should bring a conversation back into a person's
+inbox. A plain `dm` thread that ends up with more than two participants is flipped to `group`; a
+`service_inquiry` keeps its kind. Raises `42501` ("Not a participant of this conversation") for a
+stranger.
+
+**Verified by execution** against the local Postgres (inside `BEGIN … ROLLBACK`, then applied): a
+named group with three participants; a blank title → `NULL`; the DM lookup no longer returning the
+group that holds both people, and idempotent; a third person converting a DM to a group with a
+repeat adding nobody; a self-deletion restored; a phantom uuid dropped; a stranger refused; `anon`
+holding no `EXECUTE` on either.

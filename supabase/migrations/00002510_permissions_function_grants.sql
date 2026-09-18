@@ -378,3 +378,17 @@ GRANT EXECUTE ON FUNCTION files.fn_mint_share_slug() TO service_role;
 -- a slug is exactly the case it exists for; it takes the slug as INPUT, so holding EXECUTE grants
 -- nothing without already holding a credential.
 GRANT EXECUTE ON FUNCTION files.fn_resolve_share(text) TO anon, authenticated, service_role;
+
+
+-- --- group conversations (00001300: create_group_thread / add_dm_thread_members) ---
+
+-- Both are SECURITY DEFINER and write comms.dm_threads / dm_participants, which carry no client
+-- INSERT policy — so the EXECUTE grant IS the access decision, and it is scoped to signed-in
+-- callers only. Each function additionally refuses a NULL auth.uid() itself.
+REVOKE ALL ON FUNCTION comms.create_group_thread(text, uuid[]) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.create_group_thread(text, uuid[]) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) TO authenticated;

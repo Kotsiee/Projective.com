@@ -1,5 +1,6 @@
 import type { JSX, RefObject, VNode } from "preact";
 import { useSignal } from "@preact/signals";
+import { requestShare } from "@web/features/share/core/share-request.ts";
 import { Avatar } from "@projective/ui/display";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { StatusIcon } from "./StatusIcon.tsx";
@@ -126,10 +127,7 @@ export function ProjectCard(
 			return;
 		}
 		if (action === "share") {
-			try {
-				const url = new URL(href, globalThis.location?.origin ?? "").href;
-				void globalThis.navigator?.clipboard?.writeText(url);
-			} catch { /* clipboard unavailable — non-fatal */ }
+			requestShare({ href, title: item.title, noun: "project" });
 			return;
 		}
 		onMenuAction?.(item.id, action);

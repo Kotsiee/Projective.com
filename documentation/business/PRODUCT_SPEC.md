@@ -405,13 +405,23 @@ the person's own file library. The rig depends on what the entity
 IS: a **seller** (freelancer · team) leads with **Hire** — the prominent primary — with Message and
 Follow folded into compact icon-only secondaries beside it; a **buyer** (client · business ·
 organisation) cannot be hired, so **Message** stays its primary with Follow as its secondary. Hire
-is honest about what it can name: it lands on the seller's Services row when there is a listing to
-buy, and opens the conversation when there is none — the only way to hire somebody with nothing
-listed is to ask. A **guest** who presses Follow or Message is not bounced off the page: a sign-in
-prompt explains what the action needs and offers the standard sign-in ⁄ create-account flow with a
-return path back to this profile. Following is acknowledged with a brief, decorative
-micro-interaction (a settle on the control and a small burst) that reduced-motion removes. On a
-phone, Message opens a bottom sheet rather than a floating window.
+is honest about what it can name: a signed-in client with open projects picks one from a list and
+composes an **invitation in place** — the project's overview and existing members (each with the
+stages they contribute to), an intro message, which stage(s) the seller is invited onto, and the
+compensation offered for each, where the compensation field follows the engagement's shape rather
+than a control: a pipeline offers a per-ticket rate on each selected stage, a multi-stage one-off a
+whole fee per selected stage, and a single-stage one-off one task price — each seeded from the price
+the project already states, so an untouched invitation offers the configured terms. A client with no
+open project lands on the seller's Services row when there is a listing to buy, and opens the
+conversation when there is none — the only way to hire somebody with nothing listed is to ask. A
+**guest** who presses Follow or Message is not bounced off the page: a sign-in prompt explains what
+the action needs and offers the standard sign-in ⁄ create-account flow with a return path back to
+this profile. Following is acknowledged with a brief, decorative micro-interaction (a settle on the
+control and a small burst) that reduced-motion removes. **Message opens the conversation in place,
+never the inbox page**: on desktop a floating, draggable messenger docked in the bottom-end corner
+that persists across every navigation and sends through the inbox's own door — the thread it types
+into IS the one `/messages` opens — with the same attachment menu, drop zone and voice memo the
+inbox composer has; on a phone, the same conversation in a bottom sheet.
 
 **Colour is reserved for what the entity uploaded.** The profile chrome is monochrome — the neutral
 ramp, the ink, one hairline — so the avatar, the showreel and the portfolio tiles are the only
@@ -601,6 +611,37 @@ context without "ping fatigue."
   `business_private` scope in the comms RLS policies.)
 - **Purpose:** Budget discussions, internal stakeholder alignment, and freelancer performance
   reviews.
+
+##### E. Direct & Group Conversations (the global inbox)
+
+- **Scope:** Person-to-person, outside any project. A DM is **one thread per pair** — the same
+  record a project DM opens (unified messaging; `dm-{handle}`) — and a **group** is any thread
+  with three or more people, or one created with a name.
+- **Creating one:** from the `/messages` root (the empty state's _New message_ / _New group_), the
+  inbox lane, or a listing/profile. One pick starts (or reopens) the pair's DM; several picks —
+  or a named pick — start a group. An optional opening message is posted **in the same act**, so
+  a first message to somebody never leaves an empty thread behind a question that failed to
+  land. Adding people to a DM converts it into a group; a member who had deleted the conversation
+  for themselves is restored by being added back.
+- **Who is offered (the ranked picker):** before the viewer types, the picker suggests people
+  ranked by how the viewer knows them, then by the most recent interaction, newest first —
+  (1) a **shared team / business / organisation**, (2) a **mutual follow**, (3) somebody the
+  viewer **follows**, (4) a **prior collaboration** (a project both were on; a completed one is
+  named first), and, below the brief's four, (5) an existing **conversation**. Being followed
+  WITHOUT following back earns no tier — that is the other person's choice, not the viewer's.
+  A brand-new account with no relationships sees an honest empty state and a search box: the
+  picker never fabricates a relationship. Typing searches **globally by name or `@handle`**; known
+  people keep their rank and directory hits follow.
+- **The inbox root:** the conversation list is the middle-nav LANE on every `/messages` route
+  (the same list beside an open conversation), and the body with no conversation open is an
+  empty state pointing at it. Below the shell's phone breakpoint, where the lane is removed, the
+  list transfers into the body — moved, never duplicated.
+- **Sharing:** every _Share_ control on the platform (a discovery card, a listing, a project)
+  opens ONE share surface: the same ranked people first (a share is a message with a link — it
+  lands in the pair's DM), then the external quick actions (Snapchat · WhatsApp · Facebook ·
+  Instagram · X · Telegram · Copy link) and, where the device offers one, its own share sheet
+  (`•••`). Instagram has no web share intent; the control is honest about it (the device sheet
+  where one exists, otherwise copy-and-open).
 
 #### 3. Technical Implementation: The "Handover" State
 

@@ -1,0 +1,218 @@
+/*
+ * share.css — the unified share modal (`.share*`): the ranked "Send to people on Projective" tier
+ * over the external quick actions (Snapchat · WhatsApp · Facebook · Instagram · X · Telegram ·
+ * Copy link · More) and the link field.
+ *
+ * Token-only, strict BEM, logical properties (root CLAUDE.md §3). The two tiers are separated by
+ * spacing and a section-header register, never a box (§B.4); the app buttons are CONTROLS, so they
+ * may carry a tonal fill and a hover step, and each acknowledges a press with `transform: scale()`
+ * and nothing else (§B.12). The people list reuses `contact-picker.css` verbatim.
+ */
+
+/* #region Frame + sections */
+.share {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+}
+.share-dialog {
+	--dialog-body-gap: var(--space-4);
+}
+.share__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+/* The §A.4 section-header register: small, uppercase, tracked, secondary ink. */
+.share__heading {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.share__loading {
+	margin: 0;
+	padding: var(--space-4) 0;
+	font-size: var(--text-md);
+	color: var(--text-secondary);
+}
+.share__fallback-url {
+	font-family: var(--font-mono);
+	font-size: var(--text-sm);
+	overflow-wrap: anywhere;
+}
+/* #endregion */
+
+/* #region Internal tier — note + send + outcome */
+.share__compose {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+.share__note {
+	flex: 1;
+	min-inline-size: 0;
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	resize: vertical;
+}
+.share__note:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+}
+.share__outcome {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.share__outcome-failed {
+	margin-inline-start: 0.25em;
+	color: var(--danger);
+}
+.share__guest {
+	margin: 0;
+	font-size: var(--text-md);
+	color: var(--text-secondary);
+}
+.share__signin {
+	color: var(--primary);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+}
+.share__signin:hover {
+	text-decoration: underline;
+}
+/* #endregion */
+
+/* #region External tier — the app row */
+.share__apps {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+/*
+ * One app = a vertical stack (mark over a short label) on a tonal disc. Fixed 4rem cells so the
+ * row reads as one set whatever each label's length; the label is meta-register text.
+ */
+.share__app {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	inline-size: 4rem;
+	padding: var(--space-2) var(--space-1);
+	border: none;
+	border-radius: var(--radius-lg);
+	background: transparent;
+	color: var(--on-surface);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+.share__app:hover {
+	background: var(--surface-2);
+}
+.share__app:active {
+	transform: scale(var(--btn-press-scale));
+}
+.share__app:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.share__app-mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.share__app:hover .share__app-mark {
+	background: var(--surface-3, var(--surface-1));
+}
+.share__app-mark svg {
+	inline-size: var(--icon-lg);
+	block-size: var(--icon-lg);
+}
+.share__app-mark--glyph svg {
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
+}
+.share__app-label {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+/* #endregion */
+
+/* #region The link field */
+.share__link {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.share__link-field {
+	flex: 1;
+	min-inline-size: 0;
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	text-overflow: ellipsis;
+}
+.share__link-field:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	color: var(--on-surface);
+}
+.share__status {
+	margin: 0;
+	min-block-size: 1.25em;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+@media (max-width: 767px) {
+	.share__compose {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.share__app {
+		inline-size: 4rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.share__app,
+	.share__app-mark {
+		transition: none;
+	}
+	.share__app:active {
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .share__app:active {
+	transform: none;
+}

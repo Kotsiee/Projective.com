@@ -1,0 +1,283 @@
+/*
+ * contact-picker.css — the ranked people picker (`.msg-picker*`): the search field, the tiered
+ * suggestion groups, the rows, the selected chips, the group-name field and the confirm actions.
+ *
+ * Its own sheet, and reachable two ways on purpose: `messages.css` `@import`s it (so every `/messages`
+ * island that carries that sheet has it), and `ContactList.tsx` imports it directly (so the share
+ * modal — a different feature, carried by a different island — gets it without dragging the whole
+ * inbox sheet along). Vite dedupes the two.
+ *
+ * Token-only (root CLAUDE.md §3). Rows are interactive `option`s, so they may carry a fill on hover
+ * and selection; the tier heading is meta-register text and never a box (§B.4 / §B.11).
+ */
+
+/* #region Picker frame */
+.msg-picker {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.msg-picker__people {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+/* #endregion */
+
+/* #region Selected chips */
+.msg-picker__chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.msg-picker__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 2px var(--space-1) 2px 2px;
+	background: var(--surface-2);
+	border-radius: var(--radius-full);
+}
+.msg-picker__chip-name {
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+/* Was 18x18 — the smallest control on the surface, under the 24px target floor. The GLYPH stays
+   14px; the button grows around it, which is what `--fld-hit` is for. */
+.msg-picker__chip-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.msg-picker__chip-remove:hover {
+	background: var(--surface-3, var(--surface-1));
+	color: var(--on-surface);
+}
+.msg-picker__chip-remove:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.msg-picker__chip-remove svg {
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
+}
+/* #endregion */
+
+/* #region Search + group name */
+.msg-picker__search {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+.msg-picker__search-icon {
+	position: absolute;
+	inset-inline-start: var(--space-3);
+	color: var(--text-secondary);
+	pointer-events: none;
+}
+.msg-picker__search-icon svg {
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+}
+.msg-picker__search-input,
+.msg-picker__group-name {
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-md);
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+}
+.msg-picker__search-input {
+	padding-inline-start: calc(var(--space-5) + var(--space-2));
+}
+.msg-picker__search-input:focus-visible,
+.msg-picker__group-name:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+}
+.msg-picker__search-input {
+	padding-inline-end: calc(var(--fld-hit) + var(--space-1));
+}
+/* The clear control sits inside the field on its trailing edge — a real button, 24px+ target. */
+.msg-picker__clear {
+	position: absolute;
+	inset-inline-end: var(--space-1);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--fld-hit);
+	block-size: var(--fld-hit);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+.msg-picker__clear:hover {
+	background: var(--surface-3, var(--surface-1));
+	color: var(--on-surface);
+}
+.msg-picker__clear:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.msg-picker__clear svg {
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
+}
+/* #endregion */
+
+/* #region List, tiers and rows */
+.msg-picker__list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-block-size: 20rem;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+/*
+ * A tier group: the heading is the §A.4 meta register (small · uppercase · tracked · secondary
+ * ink) with an asymmetric gap — more above than below (§B.4.1) — so it reads as belonging to the
+ * rows beneath it. No rule, no box: the spacing and the register are the whole separation.
+ */
+.msg-picker__group {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.msg-picker__group + .msg-picker__group {
+	margin-block-start: var(--space-3);
+}
+.msg-picker__group-label {
+	margin: 0;
+	padding: var(--space-1) var(--space-2) 2px;
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.msg-picker__empty {
+	padding: var(--space-4);
+	text-align: center;
+	color: var(--text-secondary);
+	font-size: var(--text-md);
+}
+.msg-picker__row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2);
+	border: none;
+	border-radius: var(--radius-lg);
+	background: transparent;
+	cursor: pointer;
+	text-align: start;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+.msg-picker__row:hover {
+	background: var(--surface-2);
+}
+.msg-picker__row:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+.msg-picker__row[data-on="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
+}
+.msg-picker__row-text {
+	flex: 1;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+}
+.msg-picker__row-name {
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+.msg-picker__row-context {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.msg-picker__row-head {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.msg-picker__row-name {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.msg-picker__row-handle {
+	flex: none;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.msg-picker__row-context {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+/* Recency — a changing figure, so tabular; secondary ink, trailing edge. */
+.msg-picker__row-when {
+	flex: none;
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+.msg-picker__row-check {
+	display: inline-flex;
+	color: var(--primary);
+}
+.msg-picker__row-check svg {
+	inline-size: var(--icon-md);
+	block-size: var(--icon-md);
+}
+/* #endregion */
+
+/* #region Actions + failure copy */
+.msg-picker__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+.msg-picker__failed {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding: var(--space-4);
+}
+.msg-picker__failed-title {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.msg-picker__row {
+		transition: none;
+	}
+}

@@ -1,12 +1,23 @@
 import type {
+	AddConversationMembers,
 	ContactList,
+	ContactSuggestionParams,
 	ConversationDetail,
 	ConversationListPage,
 	ConversationListParams,
+	ConversationMembersAdded,
+	ConversationSummary,
+	CreateConversation,
+	CreatedConversation,
+	MessagingContact,
 	MessagingRole,
 	MessagingSettings,
+	RankedContactList,
+	SendConversationMessage,
 } from "@projective/types/messaging";
+import { dmHandleOf, uniqueContactIds } from "@projective/types/messaging";
 import type {
+	ChatMessage,
 	FileListPage,
 	FileListParams,
 	MemberRosterPage,
@@ -14,12 +25,21 @@ import type {
 } from "@projective/types/projects";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { isMessagingBackendLive } from "../../core/supabase.ts";
-import { cachedRead, cacheKey, messagingReadCache } from "../../core/cache.ts";
+import {
+	cachedRead,
+	cacheKey,
+	invalidatePrefix,
+	messagingReadCache,
+	tenantPrefix,
+} from "../../core/cache.ts";
 import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
 import {
+	findContact,
 	findContacts,
 	findConversationDetail,
 	findConversations,
+	findConversationSummary,
+	isCorpusConversation,
 } from "./conversation-fixtures.ts";
 import {
 	type ConversationMessageParams,
@@ -37,6 +57,24 @@ import {
 import { fetchContacts } from "./live-contacts.ts";
 import { fetchMessagingSettings } from "./live-settings.ts";
 import { fetchConversationFilePage, fetchConversationRoster } from "./live-workspace.ts";
+import { insertDmMessage } from "./live-writes.ts";
+import { addLiveMembers, createLiveConversation } from "./live-conversation-writes.ts";
+import { fetchRankedContacts } from "./live-suggestions.ts";
+import { findRankedContacts } from "./suggestion-fixtures.ts";
+import {
+	addCreatedMembers,
+	overlayCreatedConversations,
+	rememberCreatedDm,
+	rememberCreatedGroup,
+} from "./conversation-store.ts";
+import {
+	appendConversationMessage,
+	buildStubConversationMessage,
+	overlayConversationPage,
+	sentConversationCount,
+	stubViewerSender,
+	writeOwnerOf,
+} from "./write-store.ts";
 
 /**
  * MessagingBackendService — the FAT half of the global inbox (`/messages`) read layer
@@ -145,7 +183,8 @@ export class MessagingBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<{ page: ConversationListPage }>> {
 		if (!isMessagingBackendLive() || !canReadLive(actor)) {
-			return ok({ page: findConversations(params) });
+			// Created-this-process conversations join the corpus page once they carry a message.
+			return ok({ page: overlayCreatedConversations(findConversations(params), params, actor) });
 		}
 		try {
 			const key = cacheKey(tenantOf(actor), "messaging.conversations", params);
@@ -156,7 +195,8 @@ export class MessagingBackendService {
 			return ok({ page });
 		} catch (error) {
 			liveFailed("conversations", error);
-			return ok({ page: findConversations(params) });
+			// Created-this-process conversations join the corpus page once they carry a message.
+			return ok({ page: overlayCreatedConversations(findConversations(params), params, actor) });
 		}
 	}
 
@@ -223,7 +263,234 @@ export class MessagingBackendService {
 		}
 		const page = findConversationMessagePage(params);
 		if (!page) return fail(404, { message: "No such conversation." });
-		return ok({ page });
+		// The stub store folds this viewer's sent messages onto the latest page — the fixture pool is
+		// never mutated, so without this a message sent a moment ago would vanish on reload.
+		return ok({ page: overlayConversationPage(page, !params.before, actor) });
+	}
+
+	/**
+	 * Post one message into a conversation — the inbox's first WRITE, and the send the profile's
+	 * floating messenger, the pop-out chat and `/messages/[conversationId]` all share.
+	 *
+	 * The live branch resolves the thread (a uuid as-is, a unified `dm-{handle}` through the schema's
+	 * own `get_or_create_dm_thread`), so a first message to somebody creates the conversation in the
+	 * same act as sending it. A live write that THROWS surfaces as a 502 rather than falling back to
+	 * the stub: falling back would store the message in memory and answer `ok` for a row Postgres
+	 * never accepted, which is the one outcome worse than reporting a failure.
+	 *
+	 * The stub branch appends to the per-process store, which {@link messages} folds back onto the
+	 * latest page, so the message survives a reload exactly as a live one would.
+	 */
+	static async sendMessage(
+		input: SendConversationMessage,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ message: ChatMessage }>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to send a message." });
+		}
+
+		if (isMessagingBackendLive() && canReadLive(actor)) {
+			try {
+				const outcome = await insertDmMessage(actor, input);
+				if (outcome === null) {
+					return fail(404, { message: `No conversation found for "${input.conversationId}".` });
+				}
+				if ("refusal" in outcome) {
+					return fail(outcome.refusal.status, {
+						message: outcome.refusal.message,
+						errors: outcome.refusal.errors,
+					});
+				}
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				return ok({ message: outcome.data }, { message: "Message sent." });
+			} catch (error) {
+				liveFailed("sendMessage", error);
+				return fail(502, { message: "That message could not be sent — please try again." });
+			}
+		}
+
+		const page = findConversationMessagePage({ conversationId: input.conversationId });
+		if (!page) return fail(404, { message: "No such conversation." });
+		const owner = writeOwnerOf(actor);
+		const message = buildStubConversationMessage(
+			input,
+			stubViewerSender(),
+			sentConversationCount(owner, input.conversationId),
+			Date.now(),
+		);
+		appendConversationMessage(owner, input.conversationId, message);
+		// A first message to somebody the corpus has no thread for (a profile's Message control) is
+		// what CREATES the conversation, so it is remembered here — or it would post fine and never
+		// join the inbox list. Only a synthesised DM: a corpus thread already lists, and remembering it
+		// would replace its row with a poorer summary. Idempotent, so a second message is free.
+		const handle = dmHandleOf(input.conversationId);
+		if (handle && !isCorpusConversation(input.conversationId)) {
+			const contact = findContact(handle);
+			if (contact) rememberCreatedDm(actor, contact);
+		}
+		return ok({ message }, { message: "Message sent." });
+	}
+
+	/**
+	 * The RANKED people picker (New message · New group · Add members · Share with…): the viewer's
+	 * relationships ordered shared-workspace → mutual follow → follow → collaboration → conversation,
+	 * each by recency, or — with a query — the same people narrowed plus directory hits.
+	 *
+	 * The ranking rule lives in the Zod SSOT (`deriveContactRank`) and both branches feed it
+	 * EVIDENCE: the live path from `org.*_members`, `org.profile_follows`, `projects.*` and the
+	 * viewer's threads; the stub from the same casts the rest of the app renders. A brand-new
+	 * account with no relationships gets an EMPTY suggestion list, which is the true answer and is
+	 * why a `[]` here never falls through to the fixtures.
+	 */
+	static async suggestions(
+		params: ContactSuggestionParams,
+		actor?: ReadActor,
+	): Promise<ServiceResult<{ contacts: RankedContactList }>> {
+		const live = await liveRead(
+			"suggestions",
+			actor,
+			"messaging.suggestions",
+			params,
+			(a) => fetchRankedContacts(a, params, clock()),
+		);
+		if (live !== undefined && live !== null) return ok({ contacts: live });
+		return ok({ contacts: findRankedContacts(params) });
+	}
+
+	/**
+	 * START a conversation from picked contacts — one → the pair's DM (reopened if it exists),
+	 * several or a named group → a new group — posting an optional opening message in the same act.
+	 *
+	 * On the live path the threads are minted by definer RPCs (`get_or_create_dm_thread`,
+	 * `create_group_thread`) and the answer is the thread's uuid, which every `/messages` route
+	 * addresses it by. A live write that THROWS is a 502, never a fall-through to the stub — a
+	 * conversation stored in memory and reported `ok` for rows Postgres never accepted is the one
+	 * outcome worse than a failure. The stub mints into the per-process conversation store, which
+	 * `findConversationSummary` consults first, so the new group resolves through detail, messages
+	 * and send exactly as a live one would.
+	 */
+	static async createConversation(
+		input: CreateConversation,
+		actor: ReadActor,
+	): Promise<ServiceResult<CreatedConversation>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to start a conversation." });
+		}
+
+		if (isMessagingBackendLive() && canReadLive(actor)) {
+			try {
+				const outcome = await createLiveConversation(actor, input, clock());
+				if (outcome === null) {
+					return fail(404, {
+						message: "Nobody by that name could be found.",
+						errors: { contactIds: "not_found" },
+					});
+				}
+				if ("refusal" in outcome) {
+					return fail(outcome.refusal.status, {
+						message: outcome.refusal.message,
+						errors: outcome.refusal.errors,
+					});
+				}
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				return ok(outcome.data, { message: "Conversation started." });
+			} catch (error) {
+				liveFailed("createConversation", error);
+				return fail(502, { message: "That conversation could not be started — please try again." });
+			}
+		}
+
+		const ids = uniqueContactIds(input.contactIds);
+		const members = ids
+			.map((id) => findContact(id))
+			.filter((c): c is MessagingContact => c !== null);
+		if (members.length === 0) {
+			return fail(404, {
+				message: "Nobody by that name could be found.",
+				errors: { contactIds: "not_found" },
+			});
+		}
+
+		const wantsGroup = members.length > 1 || (input.groupName ?? "").trim().length > 0;
+		let summary: ConversationSummary;
+		let created: boolean;
+		if (wantsGroup) {
+			summary = rememberCreatedGroup(actor, input.groupName, members);
+			created = true;
+		} else {
+			const existing = findConversationSummary(`dm-${members[0].handle ?? members[0].id}`);
+			// A thread the corpus does not hold, or holds EMPTY (a profile-corpus person the viewer has never
+			// messaged, synthesised on the fly), is remembered in the store so it can join the inbox list the
+			// moment the first message lands. A corpus thread with messages is reopened as-is.
+			summary = existing && existing.messageCount > 0
+				? existing
+				: rememberCreatedDm(actor, members[0]);
+			created = existing === null || existing.messageCount === 0;
+		}
+
+		let messageAccepted = false;
+		const text = (input.message ?? "").trim();
+		if (text.length > 0) {
+			const sent = await MessagingBackendService.sendMessage(
+				{ conversationId: summary.id, text, attachmentIds: [], audio: null },
+				actor,
+			);
+			messageAccepted = sent.ok;
+		}
+
+		return ok(
+			{ id: summary.id, kind: summary.kind, created, messageAccepted },
+			{ message: "Conversation started." },
+		);
+	}
+
+	/**
+	 * ADD people to a conversation the viewer is in. A DM with a third person becomes a group; the
+	 * answer carries the conversation's (possibly changed) kind so the caller can re-render it.
+	 */
+	static async addMembers(
+		input: AddConversationMembers,
+		actor: ReadActor,
+	): Promise<ServiceResult<ConversationMembersAdded>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to add people to a conversation." });
+		}
+
+		if (isMessagingBackendLive() && canReadLive(actor)) {
+			try {
+				const outcome = await addLiveMembers(actor, input);
+				if (outcome === null) {
+					return fail(404, { message: `No conversation found for "${input.conversationId}".` });
+				}
+				if ("refusal" in outcome) {
+					return fail(outcome.refusal.status, {
+						message: outcome.refusal.message,
+						errors: outcome.refusal.errors,
+					});
+				}
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				return ok(outcome.data, { message: "Members added." });
+			} catch (error) {
+				liveFailed("addMembers", error);
+				return fail(502, { message: "Those people could not be added — please try again." });
+			}
+		}
+
+		const base = findConversationSummary(input.conversationId);
+		if (!base) {
+			return fail(404, { message: `No conversation found for "${input.conversationId}".` });
+		}
+		const members = uniqueContactIds(input.contactIds)
+			.map((id) => findContact(id))
+			.filter((c): c is MessagingContact => c !== null);
+		if (members.length === 0) {
+			return fail(422, {
+				message: "Pick at least one other person.",
+				errors: { contactIds: "required" },
+			});
+		}
+		const { summary, added } = addCreatedMembers(actor, base, members);
+		return ok({ id: summary.id, kind: summary.kind, added }, { message: "Members added." });
 	}
 
 	/**

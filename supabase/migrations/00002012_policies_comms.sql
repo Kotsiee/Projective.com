@@ -167,11 +167,12 @@ SELECT TO authenticated USING (user_id = auth.uid () OR security.is_admin ());
 -- was unreadable the moment MESSAGING_BACKEND_LIVE was switched on. The fixture
 -- corpus masked it, because with the gate off nothing reached Postgres at all.
 --
--- SELECT ONLY, deliberately. The write path (who may post into a thread, who may
--- join one, who may mark a message read) is a larger surface with its own
--- consequences, and adding INSERT/UPDATE policies here would be granting rights
--- the read API does not need. A missing write policy fails closed and visibly;
--- a wrong one does not.
+-- SELECT, plus exactly ONE write: posting into a thread one is a member of
+-- (`send_dm_messages_if_participant`, below). The rest of the write surface (who
+-- may join a thread, who may mark a message read, who may star or archive) is
+-- still deliberately absent — adding it here would be granting rights nothing
+-- yet exercises. A missing write policy fails closed and visibly; a wrong one
+-- does not.
 --
 -- Membership is expressed as "the caller has an undeleted participant row in
 -- this thread". `deleted_at` is a SOFT DELETE of the participation, not of the
@@ -202,6 +203,25 @@ SELECT TO authenticated USING (comms.is_dm_participant (id));
 
 CREATE POLICY "view_dm_messages_if_participant" ON comms.dm_messages FOR
 SELECT TO authenticated USING (comms.is_dm_participant (thread_id));
+
+-- The inbox's one write: a participant may post into their own thread. The
+-- `sender_user_id = auth.uid()` arm is not redundant with membership, for the
+-- same reason it is not on `comms.project_messages` above — membership answers
+-- "may this person post here" and says nothing about WHOSE name goes on the row.
+-- Without it either party to a DM could insert a message attributed to the other,
+-- and the feed renders the claimed sender verbatim.
+--
+-- The thread itself is minted by `comms.get_or_create_dm_thread` (00001300),
+-- which is SECURITY DEFINER and writes both participant rows, so this policy
+-- never has to admit an insert into a thread the caller is not yet a member of:
+-- by the time a message is posted, the membership row exists.
+CREATE POLICY "send_dm_messages_if_participant" ON comms.dm_messages FOR
+INSERT TO authenticated
+WITH
+    CHECK (
+        sender_user_id = auth.uid ()
+        AND comms.is_dm_participant (thread_id)
+    );
 
 CREATE POLICY "view_channel_files_if_member" ON comms.channel_files FOR
 SELECT TO authenticated USING (

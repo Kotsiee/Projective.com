@@ -9,6 +9,8 @@ import type {
 	MessagingContact,
 } from "@projective/types/messaging";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
+import { findProfile } from "../profile/profile-fixtures.ts";
+import { findCreatedConversation } from "./conversation-store.ts";
 
 /**
  * messaging conversation fixtures — the fat {@link MessagingBackendService}'s in-memory answer for the
@@ -453,6 +455,11 @@ export function findConversations(params: ConversationListParams): ConversationL
  * 404-ing before its first message lands (task §2B / §3).
  */
 export function findConversationSummary(id: string): ConversationSummary | null {
+	// A conversation CREATED this process (a new group, a DM extended into one) takes precedence over
+	// the corpus row of the same id — an overlay, so members added to `dm-mara` resolve as the group
+	// they made it, not the DM the corpus still remembers.
+	const created = findCreatedConversation(id);
+	if (created) return created;
 	const existing = ALL.find((c) => c.id === id);
 	if (existing) return existing;
 	if (id.startsWith("dm-")) {
@@ -463,10 +470,43 @@ export function findConversationSummary(id: string): ConversationSummary | null 
 	return null;
 }
 
-/** Find a known person by handle/id across the corpus participants + the extra connections. */
-function findContact(handleOrId: string): MessagingContact | null {
+/**
+ * Find a known person by handle/id across the corpus participants + the extra connections, falling
+ * back to the PROFILE corpus for any handle the messaging cast does not carry.
+ *
+ * The fallback is what lets a profile's "Message" control open a conversation with EVERY profile
+ * the site renders rather than only the dozen people in the inbox's own cast: `/@handle` resolves any
+ * non-reserved handle to a coherent profile (Decision #96), and a messenger that answered "no such
+ * conversation" for the very person whose page it was opened from would be a control reaching
+ * nothing (§3 gate 11). The profile fixtures are a one-way dependency — nothing under `profile/`
+ * imports messaging — so this cannot become the import cycle the fixture corpora are prone to.
+ */
+export function findContact(handleOrId: string): MessagingContact | null {
 	const all = findContacts().contacts;
-	return all.find((c) => c.handle === handleOrId || c.id === handleOrId) ?? null;
+	const known = all.find((c) => c.handle === handleOrId || c.id === handleOrId);
+	if (known) return known;
+	const profile = findProfile(handleOrId);
+	if (!profile) return null;
+	return {
+		id: profile.userId,
+		name: profile.name,
+		avatar: profile.avatar || null,
+		handle: profile.handle.replace(/^@/, ""),
+		context: null,
+		relation: "dm",
+		online: profile.online,
+	};
+}
+
+/**
+ * Whether the corpus itself carries a thread under this id — as opposed to a row SYNTHESISED for a
+ * `dm-{handle}` the cast does not include, or one created this process. The stub send path asks
+ * this before remembering a first message's conversation: a synthesised DM has to be remembered or
+ * it never joins the inbox list, while a corpus DM must NOT be, because a remembered row replaces
+ * the corpus row in the list overlay with a poorer summary (no preview, a fresh timestamp).
+ */
+export function isCorpusConversation(id: string): boolean {
+	return ALL.some((c) => c.id === id);
 }
 
 /** Build a fresh, empty DM summary for a just-started conversation with a known contact. */

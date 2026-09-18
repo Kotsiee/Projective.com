@@ -221,6 +221,40 @@ unaffected by RLS.
 
 ---
 
+## 👥 `org.profile_follows` — a public, counted edge
+
+```sql
+CREATE POLICY "Follows are public"
+ON org.profile_follows FOR SELECT TO authenticated, anon
+USING (true);
+
+CREATE POLICY "Users follow as themselves"
+ON org.profile_follows FOR INSERT TO authenticated
+WITH CHECK (follower_user_id = auth.uid());
+
+CREATE POLICY "Users unfollow their own follows"
+ON org.profile_follows FOR DELETE TO authenticated
+USING (follower_user_id = auth.uid());
+```
+
+⚠️ **This table was created (`00000011`) with RLS OFF and never named in `00002001`**, while
+`00002500` grants `ALL ON ALL TABLES IN SCHEMA org TO anon, authenticated`. RLS off plus a blanket
+grant is not weak protection, it is none: any caller — signed in or not — could `INSERT` a row
+naming somebody else as `follower_user_id`, delete anybody's follows, or rewrite the graph. The
+follower count on every profile was forgeable by anyone with the URL. Found and closed by the
+ranked contact picker (Decision #102), which is the first reader of this table.
+
+**`SELECT` is public on purpose.** The table's own comment calls a follow "a public, counted
+edge", the profile prints the count to guests, and the picker needs BOTH directions (who I
+follow, who follows me) to rank a mutual follow — an own-rows-only policy would hide exactly the
+incoming half. Nothing on the row is private: two ids and an instant.
+
+**Writes are the caller's own edges and nothing else.** There is no `UPDATE` policy because a
+follow has no mutable column — you follow or you do not — and an `UPDATE` that could rewrite
+`follower_user_id` is the forgery the `INSERT` check exists to stop.
+
+---
+
 ## ⚠️ Security Notes
 
 - **Recursive Triggers**: The `is_active_team_member` helper must be used carefully to avoid

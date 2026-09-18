@@ -813,7 +813,7 @@ export interface WriteRefusal {
  * sentence, because an unexpected SQL error is not something to show a user and may describe
  * internals.
  */
-function refusalFrom(message: string, field?: string): WriteRefusal {
+export function refusalFrom(message: string, field?: string): WriteRefusal {
 	// `permission denied` is deliberately NOT in this list. It is Postgres's GRANT-level wording and
 	// it names the table it failed on — `permission denied for table projects_index` is a real,
 	// reachable example — so passing it through would hand the caller an internal table name. A

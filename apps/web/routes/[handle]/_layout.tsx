@@ -4,6 +4,7 @@ import { asAuthenticatedContext } from "@projective/types/auth";
 import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
+import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
 import ProfileStyleAnchor from "@features/profile/islands/ProfileStyleAnchor.island.tsx";
 import { ProfileContextBar } from "@features/profile/components/ProfileContextBar.tsx";
@@ -87,6 +88,12 @@ export default define.page(async function ProfileLayout(ctx) {
 				>
 					{/* The `?tkv=` ticket deep link — same host as the dashboard, same rules. */}
 					<TicketDeepLinkHost authed />
+					{
+						/* The global floating chat window. The hero's Message control opens a conversation
+					    into it on desktop, and it survives every navigation because each authenticated
+					    layout mounts this same host. */
+					}
+					<ChatPopoutHost path={path} />
 					{children}
 				</UserShell>
 			);

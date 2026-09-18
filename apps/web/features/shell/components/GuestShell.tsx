@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from "preact";
 import SiteHeader from "@features/marketing/islands/SiteHeader.island.tsx";
 import { PublicFooter } from "@features/marketing/components/PublicFooter.tsx";
 import GuestAside from "@web/features/shell/islands/GuestAside.island.tsx";
+import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
 
 export interface GuestShellProps {
 	/**
@@ -58,6 +59,8 @@ export function GuestShell(
 			data-has-subheader={header ? "true" : "false"}
 		>
 			<SiteHeader authenticated={false} returnTo={returnTo} />
+			{/* The one share modal every Share control on the page opens; a guest gets the sign-in route inside it. */}
+			<ShareHost authed={false} returnTo={returnTo ?? "/"} />
 			{header ? <div class="guest-shell__subheader">{header}</div> : null}
 			{hasAside
 				? (

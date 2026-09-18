@@ -360,7 +360,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 			<MessagesRail
 				recent={displayed.value.slice(0, 8)}
 				activeId={activeId}
-				onNew={openNewConversation}
+				onNew={() => openNewConversation()}
 				onSettings={() => (settingsModalOpen.value = true)}
 				onExpand={() => setLaneCollapsed(false)}
 			/>
@@ -494,14 +494,14 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 							label="New message"
 							tooltipPlacement="top"
 							accent
-							onClick={openNewConversation}
+							onClick={() => openNewConversation()}
 						/>
 					</LaneFooterActions>
 				</LaneFooter>
 			</div>
 
 			{/* Modals (driven by the shared messaging-state signals). */}
-			<NewConversationModal role={role.value} />
+			<NewConversationModal />
 			<MessageSettingsModal initial={props.settings} />
 		</div>
 	);

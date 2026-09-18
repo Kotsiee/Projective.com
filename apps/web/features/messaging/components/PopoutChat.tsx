@@ -11,6 +11,8 @@ import ChatComposer, {
 	type ComposerHandle,
 } from "@web/features/projects/islands/ChatComposer.island.tsx";
 import { MessagesService as ProjectMessagesService } from "@web/features/projects/core/MessagesService.ts";
+import { MESSAGE_SENT_EVENT, type MessageSentDetail } from "@web/utils/lane-events.ts";
+import { ChatMessageSchema } from "@projective/types/projects";
 import { MessagingService } from "../core/MessagingService.ts";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ChatMessage, MessagePage } from "../types/messaging-types.ts";
@@ -25,7 +27,16 @@ import type { PopoutState } from "../core/popout-state.ts";
  *   - fetches the latest page for the popped-out channel (project scope) or conversation (inbox scope);
  *   - bottom-anchors on load and offers a "Load earlier" affordance (position-preserving prepend);
  *   - overlays a WHOLE-PANEL drag-and-drop drop zone that forwards dropped files into the composer's
- *     upload queue via its {@link ComposerHandle} (task §1's drag-and-drop file overlay).
+ *     upload queue via its {@link ComposerHandle} (task §1's drag-and-drop file overlay);
+ *   - appends the SERVER's row when the composer announces a send on `MESSAGE_SENT_EVENT`, so a
+ *     message posted from the window appears in the window — the composer and the list are one
+ *     component tree here, but the announcement is what the in-frame feed listens to as well, and
+ *     one channel for "a row now exists" beats a second, private one.
+ *
+ * The composer is mounted in the popout's own SCOPE (a conversation posts to the inbox's send door,
+ * a project channel to the projects one) and in `toast` notice mode — a 24rem window has no room for
+ * a paragraph of recovery steps under the input, so a capture or send failure goes to the shared
+ * stack at `bottom-center` instead.
  */
 
 // #region Props
@@ -123,6 +134,26 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 			settleTimers.current = [];
 		};
 	}, [state.projectId, state.channelId, state.conversationId]);
+
+	/**
+	 * Append a row the composer has just had persisted. Guarded exactly as the in-frame feed guards
+	 * it: the channel must match (another feed on the page may be announcing), the payload must parse
+	 * as a message (it crosses an untyped `CustomEvent` boundary), and an id already present is
+	 * ignored so a second listener cannot double the row.
+	 */
+	useEffect(() => {
+		function onSent(event: Event): void {
+			const detail = (event as CustomEvent<MessageSentDetail>).detail;
+			if (!detail || detail.channelId !== state.channelId) return;
+			const parsed = ChatMessageSchema.safeParse(detail.message);
+			if (!parsed.success) return;
+			if (messages.value.some((m) => m.id === parsed.data.id)) return;
+			messages.value = [...messages.value, parsed.data];
+			scrollToBottom();
+		}
+		globalThis.addEventListener(MESSAGE_SENT_EVENT, onSent);
+		return () => globalThis.removeEventListener(MESSAGE_SENT_EVENT, onSent);
+	}, [state.channelId]);
 	// #endregion
 
 	// #region Optimistic message actions (mirrors ChatFeed)
@@ -248,8 +279,10 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 
 			<div class="pop-chat__composer">
 				<ChatComposer
+					scope={state.scope}
 					projectId={state.projectId}
 					channelId={state.channelId}
+					notices="toast"
 					onReady={(api) => (composerApi.current = api)}
 				/>
 			</div>

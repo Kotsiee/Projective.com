@@ -1,5 +1,6 @@
 import type { JSX, RefObject, VNode } from "preact";
 import { useSignal } from "@preact/signals";
+import { requestShare } from "@web/features/share/core/share-request.ts";
 import { Popover } from "@projective/ui/feedback";
 import { BackIcon } from "./detail-glyphs.tsx";
 import {
@@ -63,10 +64,7 @@ export function SidebarHeader(
 			return;
 		}
 		if (action === "share") {
-			try {
-				const url = new URL(href, globalThis.location?.origin ?? "").href;
-				void globalThis.navigator?.clipboard?.writeText(url);
-			} catch { /* clipboard unavailable — non-fatal */ }
+			requestShare({ href, title, noun: "project" });
 			return;
 		}
 		onMenuAction?.(action);

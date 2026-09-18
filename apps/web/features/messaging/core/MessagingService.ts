@@ -1,5 +1,6 @@
 import { getMessaging, postMessaging } from "./api.ts";
 import type {
+	ChatMessage,
 	ContactList,
 	ConversationDetail,
 	ConversationListPage,
@@ -7,6 +8,7 @@ import type {
 	MessagePage,
 	MessagingRole,
 	MessagingSettings,
+	SendConversationMessage,
 } from "../types/messaging-types.ts";
 import type { MessagingResult } from "../types/results.ts";
 
@@ -109,5 +111,18 @@ export const MessagingService = {
 	/** Persist the Message Settings (stub — persistence lands with the backend). */
 	saveSettings(settings: MessagingSettings): Promise<MessagingResult<{ ok: true }>> {
 		return postMessaging<{ ok: true }>("/api/messaging/settings", settings);
+	},
+
+	/**
+	 * Post one message into a conversation and receive the persisted row.
+	 *
+	 * The messaging twin of the projects `MessagesService.send`, and the endpoint the shared
+	 * `ChatComposer` posts to in its `conversation` scope — the profile's floating messenger, the
+	 * pop-out chat and `/messages/[conversationId]` all send through it. The row that comes back is
+	 * the SERVER's message (its real id and timestamp), which the caller announces on
+	 * `MESSAGE_SENT_EVENT` so every feed on the page appends what was actually stored.
+	 */
+	send(payload: SendConversationMessage): Promise<MessagingResult<{ message: ChatMessage }>> {
+		return postMessaging<{ message: ChatMessage }>("/api/messaging/messages/send", payload);
 	},
 };

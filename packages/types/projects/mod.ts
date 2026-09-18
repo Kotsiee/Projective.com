@@ -21,3 +21,4 @@ export * from "./board.ts";
 export * from "./setup.ts";
 export * from "./overview.ts";
 export * from "./timeline.ts";
+export * from "./hire.ts";

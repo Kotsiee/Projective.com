@@ -3,6 +3,7 @@ import { asAuthenticatedContext } from "@projective/types/auth";
 import { GuestShell } from "@web/features/shell/components/GuestShell.tsx";
 import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
+import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 import { exploreFilterLaneFor } from "@features/explore/core/explore-lane-slot.tsx";
 import { viewLaneFor, viewLaneOptionsFor } from "@features/view/core/view-lane-slot.tsx";
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
@@ -50,6 +51,11 @@ export default define.page(function PublicLayout(ctx) {
 			>
 				{/* The `?tkv=` ticket deep link — honoured on the authed public surfaces (Explore, View). */}
 				<TicketDeepLinkHost authed />
+				{
+					/* The global floating chat window — the same host the dashboard mounts, so a conversation
+				    opened on a profile is still open on Explore and the landing page. */
+				}
+				<ChatPopoutHost path={ctx.url.pathname} />
 				<ctx.Component />
 			</UserShell>
 		);

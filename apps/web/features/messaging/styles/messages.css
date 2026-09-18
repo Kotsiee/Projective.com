@@ -6,6 +6,9 @@
  * tonal tints (§B.4) — full borders only on interactive controls.
  */
 
+/* The ranked people picker (New message · New group · Add members), shared with the share modal. */
+@import "./contact-picker.css";
+
 /* #region Density switch (expanded stack ⇄ collapsed rail) */
 .msg-sidebar {
 	display: flex;
@@ -504,158 +507,6 @@
 }
 /* #endregion */
 
-/* #region Contact picker */
-.msg-picker {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-.msg-picker__chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-.msg-picker__chip {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	padding: 2px var(--space-1) 2px 2px;
-	background: var(--surface-2);
-	border-radius: var(--radius-full);
-}
-.msg-picker__chip-name {
-	font-size: var(--text-sm);
-	color: var(--on-surface);
-}
-/* Was 18x18 — the smallest control on the surface, under the 24px target floor. The GLYPH stays
-   14px; the button grows around it, which is what `--fld-hit` is for. */
-.msg-picker__chip-remove {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--fld-hit);
-	block-size: var(--fld-hit);
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-full);
-	background: transparent;
-	color: var(--text-secondary);
-	cursor: pointer;
-}
-.msg-picker__chip-remove:hover {
-	background: var(--surface-3, var(--surface-1));
-	color: var(--on-surface);
-}
-.msg-picker__chip-remove:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-.msg-picker__chip-remove svg {
-	inline-size: var(--icon-xs);
-	block-size: var(--icon-xs);
-}
-.msg-picker__search {
-	position: relative;
-	display: flex;
-	align-items: center;
-}
-.msg-picker__search-icon {
-	position: absolute;
-	inset-inline-start: var(--space-3);
-	color: var(--text-secondary);
-	pointer-events: none;
-}
-.msg-picker__search-icon svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-}
-.msg-picker__search-input,
-.msg-picker__group-name {
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	font-family: var(--font-sans);
-	font-size: var(--text-md);
-	color: var(--on-surface);
-	background: var(--surface-2);
-	border: 1px solid transparent;
-	border-radius: var(--radius-lg);
-}
-.msg-picker__search-input {
-	padding-inline-start: calc(var(--space-5) + var(--space-2));
-}
-.msg-picker__search-input:focus-visible,
-.msg-picker__group-name:focus-visible {
-	outline: none;
-	border-color: var(--primary);
-}
-.msg-picker__list {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	max-block-size: 18rem;
-	overflow-y: auto;
-}
-.msg-picker__empty {
-	padding: var(--space-4);
-	text-align: center;
-	color: var(--text-secondary);
-	font-size: var(--text-md);
-}
-.msg-picker__row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2);
-	border: none;
-	border-radius: var(--radius-lg);
-	background: transparent;
-	cursor: pointer;
-	text-align: start;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-.msg-picker__row:hover {
-	background: var(--surface-2);
-}
-.msg-picker__row:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-.msg-picker__row[data-on="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-}
-.msg-picker__row-text {
-	flex: 1;
-	min-inline-size: 0;
-	display: flex;
-	flex-direction: column;
-}
-.msg-picker__row-name {
-	font-size: var(--text-md);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-}
-.msg-picker__row-context {
-	font-size: var(--text-xs);
-	color: var(--text-secondary);
-}
-.msg-picker__row-check {
-	display: inline-flex;
-	color: var(--primary);
-}
-.msg-picker__row-check svg {
-	inline-size: var(--icon-md);
-	block-size: var(--icon-md);
-}
-.msg-picker__actions {
-	display: flex;
-	justify-content: flex-end;
-	gap: var(--space-2);
-}
-/* #endregion */
-
 /* #region Message settings modal */
 .msg-set__body {
 	display: flex;
@@ -958,7 +809,7 @@
 	margin: 0;
 	font-family: var(--font-sans);
 	font-size: var(--text-xl);
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-medium);
 	color: var(--on-surface);
 }
 .msg-empty__note {
@@ -1006,20 +857,10 @@
 }
 
 /* #region Failure copy (the states that used to be silent) */
-.msg-picker__failed {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: var(--space-2);
-	padding: var(--space-4);
-}
-.msg-picker__failed-title,
 .msg-set__error {
 	margin: 0;
 	font-size: var(--text-sm);
 	color: var(--danger);
-}
-.msg-set__error {
 	margin-block-start: var(--space-3);
 	text-align: end;
 }

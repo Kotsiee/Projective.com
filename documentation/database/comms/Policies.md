@@ -156,7 +156,7 @@ Added by Decisions #82/#83; summarised here so this file is not read as the whol
 | :------------------------------- | :----------------------------------- | :-------------------------------------------------------- |
 | `comms.dm_participants`          | **Own row only.**                    | —                                                         |
 | `comms.dm_threads`               | `comms.is_dm_participant(id)`        | —                                                         |
-| `comms.dm_messages`              | `comms.is_dm_participant(thread_id)` | —                                                         |
+| `comms.dm_messages`              | `comms.is_dm_participant(thread_id)` | `INSERT` as self into a thread one is a member of.        |
 | `comms.message_reactions`        | `comms.can_read_message(...)`        | `INSERT` as self on a readable message; `DELETE` own row. |
 | `comms.message_pins`             | `comms.can_read_message(...)`        | `INSERT` as self; `DELETE` by anyone who can read it.     |
 | `comms.message_favorites`        | Own row only.                        | `INSERT` as self on a readable message; `DELETE` own row. |
@@ -168,6 +168,13 @@ field (`last_read_at`, `is_starred`, `is_archived`, `is_muted`, `deleted_at`) li
 returning a co-participant's row discloses whether they muted, archived or deleted the conversation
 and exactly when they last read it. The roster the inbox actually needs is identity, not state, and
 is served by `comms.dm_thread_roster()` — three columns, none of them state.
+
+`comms.dm_messages` carries the inbox's one write (`send_dm_messages_if_participant`): a participant
+may post into their own thread, with `sender_user_id` pinned to `auth.uid()` for the same reason the
+`comms.project_messages` INSERT pins it — membership says who may post, not whose name goes on the
+row. The thread and both participant rows are minted by `comms.get_or_create_dm_thread` (SECURITY
+DEFINER), so a first message never has to insert into a thread the caller is not yet a member of.
+Joining, marking read, starring and archiving remain policy-less on purpose — nothing exercises them.
 
 `comms.message_pins` `DELETE` is deliberately **not** restricted to the pinner: the UNIQUE carries
 no `user_id`, so a pin is channel-wide, and in a two-person DM the counterparty must be able to

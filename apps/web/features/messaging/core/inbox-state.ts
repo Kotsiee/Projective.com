@@ -111,29 +111,6 @@ export const inboxMerged = computed<ConversationSummary[]>(() => {
 });
 // #endregion
 
-// #region Derived counts (the lane's scope nav renders these)
-/** Live counts per partition — what makes the lane a scope map rather than five unlabelled icons. */
-export const inboxCounts = computed(() => {
-	const all = inboxMerged.value;
-	const active = all.filter((c) => !c.archived);
-	return {
-		inbox: active.length,
-		unread: active.filter((c) => c.unread).length,
-		starred: active.filter((c) => c.starred).length,
-		archived: all.filter((c) => c.archived).length,
-	};
-});
-
-/** Live counts per relation, within the current partition — the lane's second scope axis. */
-export const relationCounts = computed<Record<string, number>>(() => {
-	const out: Record<string, number> = {};
-	for (const c of partitionOf(inboxMerged.value, inboxView.value)) {
-		out[c.relation] = (out[c.relation] ?? 0) + 1;
-	}
-	return out;
-});
-// #endregion
-
 // #region Pure partition / narrowing (shared by the body and the counts)
 /** Slice the merged set by partition. Archived is its own space; the others exclude archived. */
 export function partitionOf(

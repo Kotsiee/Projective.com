@@ -1,14 +1,15 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { defineReadRoute } from "@web/utils/read-endpoint.ts";
-import { toMessagingBody } from "@features/messaging/core/respond.ts";
+import { toMessagingBody, toMessagingResponse } from "@features/messaging/core/respond.ts";
 import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
-import type {
-	ConversationListPage,
-	ConversationListParams,
-	ConversationRelation,
-	ConversationView,
-	MessagingRole,
+import {
+	type ConversationListPage,
+	type ConversationListParams,
+	type ConversationRelation,
+	type ConversationView,
+	CreateConversationSchema,
+	type MessagingRole,
 } from "@projective/types/messaging";
 
 /**
@@ -21,10 +22,17 @@ import type {
  * the responses from it — so `HEAD` cannot drift from `GET`, and the `ETag`/`If-None-Match`
  * revalidation is identical on both. See that module for the caching and CORS decisions.
  *
- * `POST /api/messaging/conversations` — start a conversation from the picked contacts (a stub that
- * returns the deterministic conversation id; persistence lands with the backend behind
- * `MESSAGING_BACKEND_LIVE`). It is a mutation and so is hand-written alongside the generated read
+ * `POST /api/messaging/conversations` — START a conversation from the picked contacts: one contact
+ * (or reopens) a DM, several — or a named group — a group. An optional opening `message` is posted
+ * in the same act. Zod-validated against {@link CreateConversationSchema} and delegated to the fat
+ * {@link MessagingBackendService.createConversation}, which mints the thread (a definer RPC on the
+ * live path, the per-process store on the stub path) and answers with the id every `/messages`
+ * route addresses it by. It is a mutation and so is hand-written alongside the generated read
  * handlers rather than produced by the factory.
+ *
+ * **No capability guard.** Who may open a thread with whom is decided inside the RPCs, which run as
+ * definer and check the caller themselves. The 401 is an identity check: a conversation with no
+ * first party is not a conversation.
  */
 function parseParams(url: URL): ConversationListParams {
 	const p = url.searchParams;
@@ -61,28 +69,30 @@ const read = defineReadRoute<{ page: ConversationListPage }>({
 export const handler = define.handlers({
 	...read,
 	async POST(ctx) {
-		const body = await ctx.req.json().catch(() => null);
-		const contactIds: string[] = Array.isArray(body?.contactIds)
-			? body.contactIds.filter((v: unknown): v is string => typeof v === "string")
-			: [];
-		if (contactIds.length === 0) {
-			return Response.json({ ok: false, message: "Pick at least one contact." }, { status: 400 });
+		const actor = readActor(ctx);
+		if (!actor.userId) {
+			return Response.json(
+				{ ok: false, message: "Sign in to start a conversation." },
+				{ status: 401 },
+			);
 		}
-		// Single contact → a unified DM id (`dm-{handle}`, shared with the project DM); several → a group.
-		const id = contactIds.length === 1
-			? `dm-${contactIds[0]}`
-			: `grp-new-${[...contactIds].sort().join("-")}`;
-		/*
-		 * The optional opening message (a listing inquiry, where the buyer typed their question before
-		 * any thread existed). Bounded here rather than trusted: free text arrives from a public,
-		 * guest-reachable surface, and the eventual `messages.body` column will have a limit the route
-		 * has to honour or the insert 500s. Persistence lands with `MESSAGING_BACKEND_LIVE`; accepting
-		 * and echoing it now is what makes the client's send a real send rather than a discard.
-		 */
-		const message = typeof body?.message === "string" ? body.message.trim().slice(0, 4000) : "";
-		return Response.json({
-			ok: true,
-			data: { id, ...(message ? { messageAccepted: true } : {}) },
-		}, { status: 200 });
+
+		const raw = await ctx.req.json().catch(() => null);
+		const parsed = CreateConversationSchema.safeParse(raw);
+		if (!parsed.success) {
+			const errors: Record<string, string> = {};
+			for (const issue of parsed.error.issues) {
+				const key = issue.path.map(String).join(".") || "form";
+				if (!errors[key]) errors[key] = issue.message;
+			}
+			return Response.json(
+				{ ok: false, message: "Pick at least one contact.", errors },
+				{ status: 422 },
+			);
+		}
+
+		return toMessagingResponse(
+			await MessagingBackendService.createConversation(parsed.data, actor),
+		);
 	},
 });

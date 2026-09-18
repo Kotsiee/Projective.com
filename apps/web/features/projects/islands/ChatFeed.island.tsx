@@ -72,7 +72,6 @@ export default function ChatFeed(
 	const skeleton = useSkeletonDelay();
 	const highlightId = useSignal<string | null>(null);
 	const canPin = initial?.permissions.canPin ?? false;
-	const total = initial?.total ?? 0;
 
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const sentinelRef = useRef<HTMLDivElement>(null);
@@ -231,7 +230,13 @@ export default function ChatFeed(
 	// #endregion
 
 	// #region Empty state
-	if (total === 0 || (messages.value.length === 0 && !hasMore.value)) {
+	/*
+	 * Decided by the LIVE list, never by the page's `total`. The SSR page of a brand-new conversation
+	 * reports `total: 0`, and a check on that constant kept the empty state on screen after the first
+	 * message had been sent and announced — the row was in the list and the feed still said "quiet".
+	 * The first message in a fresh thread is exactly the send a person watches for.
+	 */
+	if (messages.value.length === 0 && !hasMore.value) {
 		return (
 			<div class="chat-feed chat-feed--empty">
 				<ChatEmptyState />

@@ -125,6 +125,14 @@
 	opacity: 0;
 	transform: translateY(-10px) scale(0.97);
 }
+/* A bottom-anchored stack rises INTO view from the edge it is pinned to. The top-anchored enter
+   drops down from above the stack, which for a toast at the foot of the viewport reads as arriving
+   from the wrong direction — the motion should come from the edge the toast belongs to. */
+.ui-toast--bottom-left .ui-toast__item--enter,
+.ui-toast--bottom-center .ui-toast__item--enter,
+.ui-toast--bottom-right .ui-toast__item--enter {
+	transform: translateY(10px) scale(0.97);
+}
 .ui-toast__item--exit {
 	transform: translateX(var(--toast-drag, 0px)) scale(0.96);
 }

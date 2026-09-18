@@ -211,7 +211,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 								role="menuitem"
 								class="chan-menu__item"
 								onClick={() => {
-									openAddMembers(detail.id);
+									openAddMembers(detail.id, detail.participants.map((p) => p.id));
 									menuOpen.value = false;
 								}}
 							>

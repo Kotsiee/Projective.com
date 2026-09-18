@@ -7,18 +7,22 @@ import { Button } from "@projective/ui/fields";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { dsConfig } from "@projective/ui/system";
+import { formatMoney } from "@projective/types/finance";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { profileHref } from "@features/explore/core/routing.ts";
 import SignInPrompt from "@features/auth/islands/SignInPrompt.island.tsx";
+import { requestShare } from "@web/features/share/core/share-request.ts";
 import {
 	currentPath,
 	requestSignIn,
 	type SignInIntent,
 } from "@features/auth/core/sign-in-prompt.ts";
 import "../styles/profile.css";
+import "../styles/profile-hire.css";
 import { AvatarEditor } from "../components/AvatarEditor.tsx";
+import { HireInviteModal } from "../components/HireInviteModal.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
 import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
@@ -26,7 +30,6 @@ import {
 	ctaFor,
 	type EstimatedSpend,
 	type HireProject,
-	hireProjectHref,
 	SERVICES_ANCHOR,
 } from "../core/profile-model.ts";
 import {
@@ -50,8 +53,9 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  * A SELLER leads with **Hire** and folds Message + Follow into icon-only secondaries (each with the
  * portal `Tooltip` + `aria-label` §B.6 requires of an icon-only control). What Hire does is the
  * viewer's situation, resolved server-side so the first byte paints the right control: a guest gets
- * the sign-in prompt; a client with open projects gets a popover listing them (each row lands on that
- * project's roster, which owns the invite flow); a client with none but a listing to buy is scrolled
+ * the sign-in prompt; a client with open projects gets a popover listing them (picking one closes the
+ * popover and opens the {@link HireInviteModal} — overview, roster, an intro message, the stages to
+ * join and the compensation for each); a client with none but a listing to buy is scrolled
  * to the Services row (a real anchor, so it works with JavaScript off); and a client with neither gets
  * NO Hire — the rig falls back to the text Message + Follow pair, because a Hire that could only
  * open the conversation would be a Message button wearing the wrong name. A BUYER keeps Message as its
@@ -110,10 +114,6 @@ const NOTE_TTL_MS = 8000;
 const CELEBRATE_MS = 700;
 const BURST_DOTS = 6;
 
-function isAbort(err: unknown): boolean {
-	return err instanceof DOMException && err.name === "AbortError";
-}
-
 export default function ProfileHero(
 	{ profile, canEdit, authed, hasServices, spend, hireProjects }: ProfileHeroProps,
 ): JSX.Element {
@@ -124,6 +124,10 @@ export default function ProfileHero(
 		`${profile.name} — showcase`,
 	);
 	const editorOpen = useSignal(false);
+	/** The Hire popover's open state — controlled, so picking a project can close it. */
+	const hireOpen = useSignal(false);
+	/** The project picked in the Hire popover; non-null opens the invitation modal. */
+	const hireProject = useSignal<HireProject | null>(null);
 	const envReduced = useSignal(false);
 	const status = useSignal("");
 	const celebrating = useSignal(false);
@@ -176,22 +180,13 @@ export default function ProfileHero(
 		else announce("Profile photo updated");
 	}
 
-	async function share(): Promise<void> {
-		const url = new URL(profileHref(profile.handle), globalThis.location.origin).href;
-		if (typeof navigator.share === "function") {
-			try {
-				await navigator.share({ title: profile.name, url });
-				return;
-			} catch (err) {
-				if (isAbort(err)) return;
-			}
-		}
-		try {
-			await navigator.clipboard.writeText(url);
-			announce("Link copied");
-		} catch {
-			announce("Couldn't copy the link — copy it from the address bar");
-		}
+	/**
+	 * Share opens the platform-wide share modal (the `ShareHost` every shell mounts): the ranked people
+	 * picker, the external intents and Copy link in one place — the same sheet a listing or a project
+	 * card opens, so a profile is not the one thing on the site with a private share vocabulary.
+	 */
+	function share(): void {
+		requestShare({ href: profileHref(profile.handle), title: profile.name, noun: "profile" });
 	}
 
 	/** A guest's account-bound press opens the prompt; `true` when it was intercepted. */
@@ -204,6 +199,21 @@ export default function ProfileHero(
 	function openMessage(): void {
 		if (gate("message")) return;
 		quickMessageOpen.value = true;
+	}
+
+	/** A project row in the Hire popover: close the popover, open the invitation for that project. */
+	function pickHireProject(project: HireProject): void {
+		hireOpen.value = false;
+		hireProject.value = project;
+	}
+
+	function onInvitationSent(project: HireProject, totalCents: number, currency: string): void {
+		announce(
+			`Invitation to ${project.title} sent to ${profile.name} — ${
+				formatMoney(totalCents, currency)
+			} offered`,
+			NOTE_TTL_MS,
+		);
 	}
 
 	/**
@@ -334,7 +344,7 @@ export default function ProfileHero(
 										size="md"
 										variant="outlined"
 										class="pf-hero__cta pf-hero__cta--secondary"
-										onClick={() => void share()}
+										onClick={share}
 									>
 										Share
 									</Button>
@@ -364,6 +374,7 @@ export default function ProfileHero(
 									)}
 									{cta.target === "projects" && (
 										<Popover
+											open={hireOpen}
 											placement="bottom-start"
 											class="pf-hire"
 											label={`Hire ${profile.name}`}
@@ -389,12 +400,18 @@ export default function ProfileHero(
 											<ul class="pf-hire__list" role="list">
 												{hireProjects.map((project) => (
 													<li key={project.slug}>
-														<a class="pf-hire__item" href={hireProjectHref(project)}>
+														{/* A button, not a link: picking a project opens the invitation here. */}
+														<button
+															type="button"
+															class="pf-hire__item"
+															aria-haspopup="dialog"
+															onClick={() => pickHireProject(project)}
+														>
 															<span class="pf-hire__title">{project.title}</span>
 															<span class="pf-hire__meta">
 																{project.scopeLabel} · {HIRE_STATUS[project.status]}
 															</span>
-														</a>
+														</button>
 													</li>
 												))}
 											</ul>
@@ -501,6 +518,13 @@ export default function ProfileHero(
 			</header>
 
 			{!canEdit && authed && <ProfileMessagePopover profile={profile} />}
+			{!canEdit && authed && cta.target === "projects" && (
+				<HireInviteModal
+					project={hireProject}
+					seller={{ name: profile.name, handle: profile.handle, avatar: profile.avatar || null }}
+					onSent={onInvitationSent}
+				/>
+			)}
 			{!canEdit && !authed && <SignInPrompt />}
 			{canEdit && <AssetPicker requesterId={PICKER_ID} onPick={applyShowcase} />}
 			{canEdit && (

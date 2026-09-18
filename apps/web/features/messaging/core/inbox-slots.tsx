@@ -1,85 +1,46 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
-import InboxHeader from "../islands/InboxHeader.island.tsx";
-import InboxFooter from "../islands/InboxFooter.island.tsx";
-import InboxScopeLane from "../islands/InboxScopeLane.island.tsx";
 import MessagesSidebar from "../islands/MessagesSidebar.island.tsx";
 import { resolveConversationList, resolveMessagingSettings } from "./conversations-ssr.ts";
 import { DEFAULT_MESSAGING_SETTINGS } from "./messaging-defaults.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
- * inbox-slots — the SSR-idiomatic resolvers for the `/messages` ROOT's three shell regions, mirroring
- * `walletHeaderFor` / `walletFooterFor` / `walletLaneFor`.
+ * inbox-slots — the SSR-idiomatic lane resolver for every `/messages` route, mirroring
+ * `walletLaneFor` / `laneFor`.
  *
- * The root previously owned **no** header band and **no** footer band (both resolvers returned `null`
- * off a specific conversation), which is why every global control had collected in the lane. These
- * restore the contract:
+ * ONE lane for the whole hierarchy. The `/messages` root and `/messages/[conversationId]` both
+ * resolve the same {@link MessagesSidebar} — the conversation list with its search, partitions,
+ * filters, per-row actions and the New message / Settings controls — so the lane is one component
+ * with one persisted state (`LocalKeys.MESSAGES_FILTERS` · `CONVERSATION_PREFS`) wherever the
+ * viewer is in the inbox, and the active-row highlight follows the pathname. The root's body is
+ * then an empty state (desktop) or the transferred list (phone) — see `MessagesRoot`.
  *
- *  - **lane** → {@link InboxScopeLane}: scope and navigation (partitions + relation facets, counted).
- *  - **header band** → {@link InboxHeader}: identity, live count, search, id-based refinements.
- *  - **footer band** → {@link InboxFooter}: New message · Settings · row density.
+ * The root carries NO header band and NO footer band: the lane already owns search, filters and
+ * the two global actions, and the body's empty state carries the primary CTA; a second search or
+ * a second New-message on the same screen is a control that can disagree with its twin. On an
+ * open conversation the conversation's own header/footer resolvers take over.
  *
- * Each returns `null` on a specific conversation, where the conversation's own header/footer/lane
- * resolvers take over — the detail route keeps the conversation list in the lane, which is genuine
- * sibling navigation.
- *
- * Server-only (they reach `@server/services` via `conversations-ssr`); never imported by an island.
+ * Server-only (it reaches `@server/services` via `conversations-ssr`); never imported by an island.
  */
 
-/** True only on the bare `/messages` root (a conversation id makes it a detail route). */
-function isInboxRoot(url: URL): boolean {
-	const segs = url.pathname.split("/").filter(Boolean);
-	return segs[0] === "messages" && segs.length === 1;
-}
-
-/**
- * The `/messages` root header band — identity + global controls.
- *
- * `initialCount` counts the DEFAULT PARTITION, not the raw page: the body opens on the inbox slice,
- * which excludes archived conversations, so counting the whole page made the header's first paint
- * disagree with the list beneath it by however many were archived.
- */
-export async function inboxHeaderFor(
-	url: URL,
-	context: UserContext,
-	actor: ReadActor,
-): Promise<ComponentChildren> {
-	if (!isInboxRoot(url)) return null;
-	const { page, role } = await resolveConversationList(context, actor);
-	const initialCount = page.conversations.filter((c) => !c.archived).length;
-	return <InboxHeader role={role} initialCount={initialCount} />;
-}
-
-/**
- * The `/messages` root footer band — actions + density.
- *
- * Synchronous, unlike its two siblings: it renders a static control rig and reads nothing. It keeps
- * the actor in its signature so the layout can call all three slots uniformly, and so the day it
- * needs a capability-filtered action set it does not have to change shape at every call site.
- */
-export function inboxFooterFor(
-	url: URL,
-	_context: UserContext,
-	_actor: ReadActor,
-): ComponentChildren {
-	if (!isInboxRoot(url)) return null;
-	return <InboxFooter />;
-}
-
-/**
- * The `/messages` lane. On the root it is the scope map; beside an open conversation it is the
- * conversation list ({@link MessagesSidebar}) — navigation among siblings.
- */
+/** The `/messages` lane — the conversation list, on the root and beside an open conversation alike. */
 export async function messagesLaneFor(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
 ): Promise<ComponentChildren> {
 	if (!url.pathname.startsWith("/messages")) return null;
-	const { page, role } = await resolveConversationList(context, actor);
-	const settings = (await resolveMessagingSettings(context, actor)) ?? DEFAULT_MESSAGING_SETTINGS;
-
-	if (isInboxRoot(url)) return <InboxScopeLane role={role} settings={settings} />;
-	return <MessagesSidebar initial={page} role={role} path={url.pathname} settings={settings} />;
+	const [{ page, role }, settings] = await Promise.all([
+		resolveConversationList(context, actor),
+		resolveMessagingSettings(context, actor),
+	]);
+	return (
+		<MessagesSidebar
+			initial={page}
+			role={role}
+			path={url.pathname}
+			settings={settings ?? DEFAULT_MESSAGING_SETTINGS}
+		/>
+	);
 }

@@ -8,6 +8,8 @@ import {
 	type CommitTicket,
 	type CreateSubmission,
 	formatTicketMoney,
+	type MemberInvite,
+	type MemberRosterPage,
 	type MessageAttachment,
 	type MessagePage,
 	type MessageSender,
@@ -154,6 +156,16 @@ interface OwnerBucket {
 	messages: Map<string, ChatMessage[]>;
 	/** Created submission units, keyed by project id, newest first. */
 	submissions: Map<string, StoredSubmission[]>;
+	/**
+	 * Invitations sent from a seller's profile (the Hire flow), keyed by the project's ROUTE SLUG,
+	 * newest first. They fold onto the roster's pending-invitation queue, which is where an owner
+	 * goes to see who they have asked and to resend or withdraw.
+	 *
+	 * Keyed by slug rather than uuid because the roster read is addressed by the slug (`projectId`
+	 * on `MemberRosterParams` IS the route segment) and its page echoes it back; the hire brief is
+	 * built from the same slug. On the stub path the two are one string.
+	 */
+	hires: Map<string, MemberInvite[]>;
 }
 
 /**
@@ -183,6 +195,7 @@ function bucketFor(owner: string): OwnerBucket {
 		cards: new Map(),
 		messages: new Map(),
 		submissions: new Map(),
+		hires: new Map(),
 	};
 	buckets.set(owner, fresh);
 	return fresh;
@@ -434,6 +447,22 @@ export function appendChannelMessage(
 /** How many messages this viewer has sent into a channel — the id suffix a fresh one takes. */
 export function sentMessageCount(owner: string, projectId: string, channelId: string): number {
 	return peekBucket(owner)?.messages.get(channelKey(projectId, channelId))?.length ?? 0;
+}
+// #endregion
+
+// #region Hire writes
+/** Record the pending invitations a profile-side Hire produced, newest first. */
+export function appendHireInvites(owner: string, projectId: string, invites: MemberInvite[]): void {
+	if (invites.length === 0) return;
+	const bucket = bucketFor(owner);
+	const existing = bucket.hires.get(projectId) ?? [];
+	existing.unshift(...invites);
+	bucket.hires.set(projectId, existing);
+}
+
+/** How many invitations this viewer has sent from profiles into a project — the id a fresh one takes. */
+export function hireInviteCount(owner: string, projectId: string): number {
+	return peekBucket(owner)?.hires.get(projectId)?.length ?? 0;
 }
 // #endregion
 
@@ -957,6 +986,23 @@ export function overlayMessagePage(
  * `activeUnit` is filled when the requested path resolves to one of these units, so the review
  * workspace opens on a submission that was just created rather than reporting nothing there.
  */
+/**
+ * Fold this viewer's profile-side invitations onto a derived {@link MemberRosterPage}.
+ *
+ * Prepended to the pending queue, newest first, only on the fixture branch (the live roster reads
+ * the real `projects.project_invitations` rows). Only a MANAGING viewer sees the queue at all, which
+ * the fixtures decide by emitting or withholding it — a row is added here only where the page
+ * already carries one, so a member who cannot see invitations is not shown their own.
+ */
+export function overlayMemberRoster(page: MemberRosterPage, actor?: ReadActor): MemberRosterPage {
+	if (!page.viewerCaps.canInvite) return page;
+	const sent = peekBucket(writeOwnerOf(actor))?.hires.get(page.projectId);
+	if (!sent?.length) return page;
+	const fresh = sent.filter((invite) => !page.invites.some((i) => i.id === invite.id));
+	if (fresh.length === 0) return page;
+	return { ...page, invites: [...fresh, ...page.invites] };
+}
+
 export function overlaySubmissionPage(
 	page: SubmissionListPage,
 	actor?: ReadActor,

@@ -14,6 +14,7 @@ import ShellSidebar from "@web/features/shell/islands/ShellSidebar.island.tsx";
 import MiddleNavSplitter from "@web/features/shell/islands/MiddleNavSplitter.island.tsx";
 import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
 import UserActions from "@web/features/shell/islands/UserActions.island.tsx";
+import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
 import { bottomNavItems } from "@web/features/shell/core/bottom-nav-model.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 
@@ -206,6 +207,8 @@ export function UserShell(
 				   rules in `middle-nav.css` / `page-canvas.css` drop the reservation too. */
 			}
 			{focus ? null : <BottomNav items={bottomNavItems(path)} label="Primary" />}
+			{/* The one share modal every Share control on the page opens (share-request bridge). */}
+			<ShareHost authed returnTo={path} />
 		</>
 	);
 }

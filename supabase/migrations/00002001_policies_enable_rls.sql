@@ -71,6 +71,11 @@ ALTER TABLE org.org_invitations ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.portfolios ENABLE ROW LEVEL SECURITY;
 
+-- Added with the ranked contact picker (which reads follows in both directions). The table had RLS
+-- OFF under 00002500's blanket `GRANT ALL … TO anon, authenticated`, so any caller — signed in or
+-- not — could read, forge (`follower_user_id` = anyone) or delete any follow row. See 00002010.
+ALTER TABLE org.profile_follows ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.profile_links ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.skills ENABLE ROW LEVEL SECURITY;

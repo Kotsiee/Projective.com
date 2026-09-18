@@ -15,10 +15,16 @@ DECLARE
     v_thread_id uuid;
 BEGIN
     
+    -- A GROUP that happens to contain both people is not their DM: the join alone would return
+    -- it (nothing requires the thread to hold ONLY these two), so a "message this person" from a
+    -- profile would land in a group chat everyone else can read. A service inquiry IS the pair's
+    -- thread (unified messaging, one record per pair), so only `group` is excluded.
     SELECT t.id INTO v_thread_id
     FROM comms.dm_threads t
     JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_current_user_id
     JOIN comms.dm_participants p2 ON p2.thread_id = t.id AND p2.user_id = target_user_id
+    WHERE t.kind <> 'group'
+    ORDER BY t.created_at
     LIMIT 1;
 
     IF v_thread_id IS NOT NULL THEN
@@ -461,3 +467,128 @@ $$;
 
 COMMENT ON FUNCTION comms.can_read_message(text, uuid) IS
 'True when the calling user may read the message identified by the polymorphic (message_table, message_id) pair — channel access for a project message, thread participation for a DM. SECURITY DEFINER so the policies on the interaction tables do not re-enter the policies on the message tables.';
+
+-- =============================================================================
+-- Group conversations — minting one, and adding people to an existing thread.
+--
+-- The write policies on comms.dm_threads / dm_participants are deliberately
+-- ABSENT (00002012): who may open a thread and who may join one is decided
+-- here, once, as SECURITY DEFINER, exactly as comms.get_or_create_dm_thread
+-- already decides it for a DM. A client INSERT policy on dm_participants would
+-- have to admit "a participant may add a row for somebody else", which is the
+-- shape that lets anyone be added to anything; a definer function can check
+-- the caller's membership first and then write the rows the policy could not.
+--
+-- Both refuse an anonymous caller explicitly. auth.uid() is NULL for anon, and
+-- without the guard the NOT NULL on created_by_user_id would refuse the insert
+-- anyway — but by constraint violation, which is the wrong sentence and, for
+-- add_dm_thread_members, no refusal at all (nothing is NOT NULL there).
+-- =============================================================================
+
+-- A new group thread with the caller plus the given people. Members are
+-- de-duplicated, the caller is never listed twice, and an id that names no
+-- org.users_public row is dropped rather than left to fail the FK — the picker
+-- offers only real people, so a phantom id is a stale client, not a request.
+CREATE OR REPLACE FUNCTION comms.create_group_thread(
+    p_title text,
+    p_member_ids uuid[]
+) RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, org, auth
+AS $$
+DECLARE
+    v_me      uuid := auth.uid();
+    v_thread  uuid;
+    v_members uuid[];
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'create_group_thread: no acting user' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT array_agg(DISTINCT m) INTO v_members
+    FROM unnest(p_member_ids) AS m
+    WHERE m IS NOT NULL
+      AND m <> v_me
+      AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = m);
+
+    IF v_members IS NULL OR array_length(v_members, 1) < 1 THEN
+        RAISE EXCEPTION 'A group needs at least one other person' USING ERRCODE = '22023';
+    END IF;
+
+    INSERT INTO comms.dm_threads (kind, title, created_by_user_id)
+    VALUES ('group', NULLIF(btrim(p_title), ''), v_me)
+    RETURNING id INTO v_thread;
+
+    INSERT INTO comms.dm_participants (thread_id, user_id)
+    SELECT v_thread, m FROM unnest(v_members || v_me) AS m;
+
+    RETURN v_thread;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.create_group_thread(text, uuid[]) IS
+'Mint a group thread (kind = group) containing the caller and the given users, in one transaction. SECURITY DEFINER because dm_threads/dm_participants carry no client INSERT policy on purpose; the membership decision is made here. A NULL/blank title is stored as NULL (a group may be unnamed).';
+
+-- Add people to a thread the caller is an undeleted participant of. Returns
+-- how many were actually added: already-present members are skipped, and a
+-- member who had deleted the conversation for themselves is RESTORED rather
+-- than duplicated — being added back by somebody is the one event that should
+-- bring a conversation back into a person's inbox. A plain DM that gains a
+-- third person becomes a group, because that is what the kind column exists to
+-- record; a service inquiry keeps its kind.
+CREATE OR REPLACE FUNCTION comms.add_dm_thread_members(
+    p_thread_id uuid,
+    p_member_ids uuid[]
+) RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, org, auth
+AS $$
+DECLARE
+    v_me       uuid := auth.uid();
+    v_added    integer := 0;
+    v_restored integer := 0;
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'add_dm_thread_members: no acting user' USING ERRCODE = '42501';
+    END IF;
+
+    IF NOT comms.is_dm_participant(p_thread_id) THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE comms.dm_participants p
+    SET deleted_at = NULL
+    WHERE p.thread_id = p_thread_id
+      AND p.user_id = ANY (p_member_ids)
+      AND p.user_id <> v_me
+      AND p.deleted_at IS NOT NULL;
+    GET DIAGNOSTICS v_restored = ROW_COUNT;
+
+    INSERT INTO comms.dm_participants (thread_id, user_id)
+    SELECT DISTINCT p_thread_id, m
+    FROM unnest(p_member_ids) AS m
+    WHERE m IS NOT NULL
+      AND m <> v_me
+      AND EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = m)
+      AND NOT EXISTS (
+          SELECT 1 FROM comms.dm_participants p
+          WHERE p.thread_id = p_thread_id AND p.user_id = m
+      );
+    GET DIAGNOSTICS v_added = ROW_COUNT;
+
+    IF v_added + v_restored > 0 THEN
+        UPDATE comms.dm_threads t
+        SET kind = 'group'
+        WHERE t.id = p_thread_id
+          AND t.kind = 'dm'
+          AND (SELECT count(*) FROM comms.dm_participants p WHERE p.thread_id = p_thread_id) > 2;
+    END IF;
+
+    RETURN v_added + v_restored;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) IS
+'Add users to a thread the caller participates in; returns the number added (restored self-deletions included). Converts a plain DM with a third participant into a group. SECURITY DEFINER for the same reason as create_group_thread.';

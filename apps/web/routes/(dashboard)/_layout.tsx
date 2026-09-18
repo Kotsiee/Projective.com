@@ -21,11 +21,7 @@ import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.ts
 import { timelineFooterFor } from "@web/features/projects/core/timeline-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
 import { conversationFooterFor } from "@web/features/messaging/core/conversation-footer-slot.tsx";
-import {
-	inboxFooterFor,
-	inboxHeaderFor,
-	messagesLaneFor,
-} from "@web/features/messaging/core/inbox-slots.tsx";
+import { messagesLaneFor } from "@web/features/messaging/core/inbox-slots.tsx";
 import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-slot.tsx";
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
 import { catalogueHeaderFor } from "@web/features/catalogue/core/catalogue-header-slot.tsx";
@@ -128,7 +124,6 @@ async function middleNavFooterFor(
 		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
 		timelineFooterFor(url, context) ??
 		(await projectFooterFor(url, context, actor)) ??
-		(await inboxFooterFor(url, context, actor)) ??
 		(await conversationFooterFor(url, context, actor)) ??
 		catalogueFooterFor(url, context) ??
 		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
@@ -148,7 +143,6 @@ async function middleNavHeaderFor(
 ): Promise<ComponentChildren> {
 	return await channelHeaderFor(url, context, actor) ??
 		(await projectHeaderFor(url, context, actor)) ??
-		(await inboxHeaderFor(url, context, actor)) ??
 		(await conversationHeaderFor(url, context, actor)) ??
 		catalogueHeaderFor(url, context) ??
 		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
@@ -182,7 +176,7 @@ async function laneFor(
 		return calendarLaneFor(url, context);
 	}
 
-	// The global inbox: the scope map on the `/messages` root, the conversation list beside an open one.
+	// The global inbox: ONE conversation-list lane on the `/messages` root and beside an open one alike.
 	if (url.pathname.startsWith("/messages")) return await messagesLaneFor(url, context, actor);
 
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).

@@ -1,93 +1,76 @@
 import type { JSX } from "preact";
+import { useEffect } from "preact/hooks";
 import "../styles/profile.css";
 import "../styles/profile-message.css";
-import { DraggablePopover } from "@projective/ui/overlay";
 import { Drawer } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
 import { useIsMobile } from "@projective/ui/hooks";
-import ChatComposer from "@web/features/projects/islands/ChatComposer.island.tsx";
+import { dmConversationId } from "@projective/types/messaging";
+import { PopoutChat } from "@web/features/messaging/components/PopoutChat.tsx";
+import { openPopout, type PopoutState } from "@web/features/messaging/core/popout-state.ts";
+import { conversationHref } from "@web/features/messaging/core/conversation-model.ts";
 import { quickMessageOpen } from "../core/profile-state.ts";
 import type { ProfileView } from "../types/profile-types.ts";
 
 /**
- * ProfileMessagePopover — the quick-message composer a profile's "Message" control opens, INSTEAD of
- * navigating to the inbox. Mounted once beside the hero; every Message trigger flips the shared
- * {@link quickMessageOpen} signal.
+ * ProfileMessagePopover — what a profile's "Message" control opens, INSTEAD of navigating to the
+ * inbox. Mounted once beside the hero; every Message trigger flips the shared {@link quickMessageOpen}
+ * signal, and this island decides which of two surfaces answers it:
  *
- * Two surfaces, one body, decided by the viewport (`useIsMobile`, the `--bp-md` gate every
- * `@projective/ui` overlay docks on): a floating, draggable, non-modal window on desktop
- * (`DraggablePopover`, so the reader can keep reading the profile while they type), and a
- * bottom-sheet `Drawer` below 768px — a 22rem floating window has nowhere to float on a phone, and
- * the sheet is the sanctioned floating mobile surface (DESIGN_SYSTEM.md Part D.3). The composer inside
- * is the project {@link ChatComposer} verbatim, pre-addressed to this profile. On the FIRST send it
- * creates the conversation record (a stub — the deterministic unified `dm-{handle}` id) and navigates
- * into `/messages/[conversationId]`, where the conversation continues. A guest never reaches this
- * surface: the hero routes them to the sign-in prompt instead.
+ *  - **Desktop** hands the conversation to the GLOBAL floating messenger (`ChatPopoutHost`, mounted by
+ *    every authenticated layout) through {@link openPopout}: a draggable, resizable window docked in
+ *    the bottom-end corner that persists across page navigations, because its state lives in
+ *    `sessionStorage` and the host on the next page rebuilds it. This island renders nothing itself
+ *    on desktop — a second window here would be a second place the same conversation could be typed
+ *    into.
+ *  - **Below 768px** a 24rem window has nowhere to float, so the same conversation body
+ *    ({@link PopoutChat}: the message list, the composer with its attachment menu and drop zone)
+ *    opens in a bottom-sheet `Drawer` — the sanctioned floating mobile surface (DESIGN_SYSTEM.md
+ *    Part D.3).
+ *
+ * Either way the conversation is the unified `dm-{handle}` thread (PRODUCT_SPEC §Unified Messaging),
+ * so what is typed here IS the thread the inbox opens at `/messages/dm-{handle}` — sending posts in
+ * place through the inbox's own send door and never navigates. A guest never reaches this surface:
+ * the hero routes them to the sign-in prompt instead.
  */
-export default function ProfileMessagePopover({ profile }: { profile: ProfileView }): JSX.Element {
-	// The canonical unified DM id shares the project DM convention (`dm-{handle}`), sans the leading `@`.
+export default function ProfileMessagePopover(
+	{ profile }: { profile: ProfileView },
+): JSX.Element | null {
 	const handle = profile.handle.replace(/^@/, "");
-	const conversationId = `dm-${handle}`;
+	const conversationId = dmConversationId(handle);
 	const mobile = useIsMobile();
 
-	function goToConversation(): void {
-		try {
-			globalThis.location.href = `/messages/${conversationId}`;
-		} catch { /* SSR / no window — non-fatal */ }
-	}
+	const state: PopoutState = {
+		scope: "conversation",
+		projectId: conversationId,
+		channelId: conversationId,
+		conversationId,
+		title: profile.name,
+		href: conversationHref(conversationId),
+		source: "profile",
+		avatar: profile.avatar || null,
+	};
 
-	const body = (
-		<div class="pf-msgpop__body">
-			<div class="pf-msgpop__recipient">
-				<Avatar
-					image={profile.avatar ?? undefined}
-					label={profile.name}
-					size={40}
-					shape="circle"
-				/>
-				<div class="pf-msgpop__recipient-text">
-					<span class="pf-msgpop__recipient-name">{profile.name}</span>
-					<span class="pf-msgpop__recipient-handle">@{handle}</span>
-				</div>
-			</div>
-			<p class="pf-msgpop__hint">
-				Start the conversation — your first message opens the full thread in your inbox.
-			</p>
-			<div class="pf-msgpop__composer">
-				<ChatComposer
-					projectId={conversationId}
-					channelId={conversationId}
-					onSend={goToConversation}
-				/>
-			</div>
-		</div>
-	);
+	// Desktop: the request is forwarded to the global host and consumed, so the next press opens (or
+	// re-affirms) the window rather than finding a flag that is already true.
+	useEffect(() => {
+		if (mobile || !quickMessageOpen.value) return;
+		openPopout(state);
+		quickMessageOpen.value = false;
+	}, [quickMessageOpen.value, mobile]);
 
-	if (mobile) {
-		return (
-			<Drawer
-				visible={quickMessageOpen}
-				position="bottom"
-				header={`Message ${profile.name}`}
-				size="auto"
-				class="pf-msgsheet"
-			>
-				{body}
-			</Drawer>
-		);
-	}
+	if (!mobile) return null;
 
 	return (
-		<DraggablePopover
-			open={quickMessageOpen}
-			title={`Message ${profile.name}`}
-			icon={
-				<Avatar image={profile.avatar ?? undefined} label={profile.name} size={20} shape="circle" />
-			}
-			width="22rem"
-			class="pf-msgpop"
+		<Drawer
+			visible={quickMessageOpen}
+			position="bottom"
+			header={`Message ${profile.name}`}
+			size="auto"
+			class="pf-msgsheet"
 		>
-			{body}
-		</DraggablePopover>
+			<div class="pf-msgpop__body pf-msgpop__composer">
+				<PopoutChat state={state} />
+			</div>
+		</Drawer>
 	);
 }

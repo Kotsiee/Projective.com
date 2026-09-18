@@ -1,5 +1,5 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import "../styles/draggable-popover.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
@@ -22,6 +22,16 @@ export interface PopoverSize {
 	h: number;
 }
 
+/**
+ * A viewport corner a window docks into when it opens without a remembered position.
+ *
+ * LOGICAL, so `bottom-end` is the bottom-right corner under `dir="ltr"` and the bottom-left one
+ * under `dir="rtl"` — the corner a messenger belongs in is "the end of the reading direction",
+ * not a physical side. Only the bottom pair exists because only the bottom pair has a use: a top
+ * anchor would sit under the sticky top bar, which the default position already clears.
+ */
+export type PopoverAnchor = "bottom-end" | "bottom-start";
+
 /** Props for {@link DraggablePopover}. */
 export interface DraggablePopoverProps {
 	/** Controlled/uncontrolled open state. */
@@ -34,6 +44,14 @@ export interface DraggablePopoverProps {
 	icon?: VNode;
 	/** Initial top-left position (px). Defaults to a spot below the top bar. */
 	defaultPosition?: PopoverPosition;
+	/**
+	 * Dock the window into a viewport corner when it opens WITHOUT a `defaultPosition`.
+	 *
+	 * Resolved from the panel's measured size in a layout effect — before the first paint, so the
+	 * window never flashes at the default spot and then jumps. A remembered position always wins:
+	 * the anchor is where a window goes the first time, not where it is kept.
+	 */
+	anchor?: PopoverAnchor;
 	/** Fired when a drag or keyboard move finishes, so the caller can persist the position. */
 	onPositionChange?: (position: PopoverPosition) => void;
 	/** Panel width (CSS length, default `22rem`). Used until the user resizes via the corner handle. */
@@ -65,6 +83,8 @@ const MIN_W = 256;
 const MIN_H = 128;
 /** Gap kept between a resized edge and the viewport edge so the panel never spills off-screen. */
 const RESIZE_MARGIN = 12;
+/** Gap a docked window keeps from the two viewport edges it is anchored to. */
+const DOCK_MARGIN = 16;
 /**
  * Highest offset currently claimed by an open window, so the most-recently-touched one floats above
  * its siblings. Bounded on purpose: an unreleased running counter climbs one step per interaction, and
@@ -109,6 +129,7 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 		title,
 		icon,
 		defaultPosition,
+		anchor,
 		onPositionChange,
 		width = "22rem",
 		height,
@@ -181,6 +202,39 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	zRef.current = z;
 	useEffect(() => () => releaseZ(zRef.current), []);
 	const close = () => ctrl.set(false);
+
+	// #region Docking + viewport changes
+	/**
+	 * Dock into the anchored corner on mount, from the panel's REAL size.
+	 *
+	 * A layout effect, so it lands before the browser paints the freshly mounted panel — the
+	 * alternative (an effect after paint) shows one frame at the default position and then a jump,
+	 * which reads as a window that opened in the wrong place and corrected itself. Runs once per
+	 * mount and only when nothing remembered where the window was.
+	 */
+	useLayoutEffect(() => {
+		if (!mounted || !anchor || defaultPosition) return;
+		const el = panelRef.current;
+		if (!el) return;
+		const rtl = getComputedStyle(el).direction === "rtl";
+		const atEnd = anchor === "bottom-end";
+		// The inline-END edge is the physical right in LTR and the physical left in RTL.
+		const right = atEnd !== rtl;
+		const x = right ? globalThis.innerWidth - el.offsetWidth - DOCK_MARGIN : DOCK_MARGIN;
+		const y = globalThis.innerHeight - el.offsetHeight - DOCK_MARGIN;
+		setPos(clamp(x, y));
+	}, [mounted]);
+
+	// A window parked near an edge is carried off-screen when the viewport shrinks; re-clamp so the
+	// drag handle stays reachable. Nothing is persisted here — the caller learns the position only
+	// from a deliberate move.
+	useEffect(() => {
+		if (!mounted) return;
+		const onResize = () => setPos(clamp(posRef.current.x, posRef.current.y));
+		globalThis.addEventListener("resize", onResize);
+		return () => globalThis.removeEventListener("resize", onResize);
+	}, [mounted]);
+	// #endregion
 
 	// #region Drag (Pointer Events on the handle)
 	const onHandlePointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {

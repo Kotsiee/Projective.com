@@ -40,12 +40,14 @@ import {
 import { findProjectOverview } from "./overview-fixtures.ts";
 import {
 	appendChannelMessage,
+	appendHireInvites,
 	appendSubmission,
 	buildStubCard,
 	buildStubMessage,
 	buildStubSubmissionUnit,
 	createdDetail,
 	createdSummary,
+	hireInviteCount,
 	isStoredArchived,
 	mergeSetupPatch,
 	mintTicketId,
@@ -53,6 +55,7 @@ import {
 	overlayBoardPage,
 	overlayDetail,
 	overlayFeed,
+	overlayMemberRoster,
 	overlayMessagePage,
 	overlayOverview,
 	overlaySetup,
@@ -99,10 +102,13 @@ import type {
 } from "@projective/types/services";
 import {
 	blankStage,
+	buildHireBrief,
 	buildProjectTimeline,
 	CREATED_PUBLISH_VISIBILITY,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
+	hireInvitationRefusal,
+	hireInvitationTotalCents,
 	providerScopedPage,
 	reconcileSetup,
 } from "@projective/types/projects";
@@ -112,14 +118,15 @@ import type {
 	BoardListParams,
 	BoardPage,
 	ChatMessage,
-	TimelineListParams,
-	TimelinePage,
 	CommitTicket,
 	CreatedProject,
 	CreateProject,
 	CreateSubmission,
 	FileListPage,
 	FileListParams,
+	HireBrief,
+	HireInvitation,
+	MemberInvite,
 	MemberRosterPage,
 	MemberRosterParams,
 	MessagePage,
@@ -136,6 +143,8 @@ import type {
 	SubmissionListPage,
 	SubmissionListParams,
 	SubmissionUnit,
+	TimelineListParams,
+	TimelinePage,
 	UpdateProject,
 } from "@projective/types/projects";
 
@@ -755,7 +764,10 @@ export class ProjectBackendService {
 		}
 		if (!projectSlug) return notFound();
 
-		const board = await ProjectBackendService.board({ projectId: projectSlug, view: "stages" }, actor);
+		const board = await ProjectBackendService.board(
+			{ projectId: projectSlug, view: "stages" },
+			actor,
+		);
 		if (!board.ok || !board.data) return notFound();
 		const card = board.data.page.cards.find((c) => c.slug === slug);
 		if (!card) return notFound();
@@ -847,7 +859,103 @@ export class ProjectBackendService {
 		if (!page) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
-		return ok({ page });
+		// Invitations sent from a seller's profile fold onto the pending queue (fixture branch only).
+		return ok({ page: overlayMemberRoster(page, actor) });
+	}
+
+	/**
+	 * The brief a client's profile-side "Hire" invitation modal opens on — a COMPOSITION of the two
+	 * reads the owner already has ({@link setup} for the stages and their prices, {@link members} for
+	 * the roster), assembled by the SSOT's `buildHireBrief` so the modal cannot disagree with either
+	 * surface about what a stage costs or who is on it. No fourth read of the project exists for it.
+	 *
+	 * A viewer who is not the client of the engagement gets a 404 from the setup read (it is the
+	 * owner's projection), which is the right answer: there is nothing here for them to hire into.
+	 */
+	static async hireBrief(
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ brief: HireBrief }>> {
+		const denied = requireIdentity<{ brief: HireBrief }>(actor, "invite someone to a project");
+		if (denied) return denied;
+		const [setupRead, rosterRead] = await Promise.all([
+			this.setup(slug, actor),
+			this.members({ projectId: slug }, actor),
+		]);
+		if (!setupRead.ok || !setupRead.data) {
+			return fail(setupRead.status, { message: setupRead.message });
+		}
+		if (!rosterRead.ok || !rosterRead.data) {
+			return fail(rosterRead.status, { message: rosterRead.message });
+		}
+		const setup = setupRead.data.setup;
+		if (setup.archivedAt) {
+			return fail(409, { message: "This project is archived — nobody can be invited to it." });
+		}
+		return ok({ brief: buildHireBrief(setup, rosterRead.data.page) });
+	}
+
+	/**
+	 * Invite a seller into a project from their profile — the Hire flow's WRITE.
+	 *
+	 * Validated against the brief the modal rendered from, through the SAME `hireInvitationRefusal`
+	 * the modal used to gate its Send control, so nothing the form let through is refused for a rule
+	 * it did not know. One pending invitation is recorded PER SELECTED STAGE (or one whole-project
+	 * invitation for a task-priced engagement), because that is the grain `projects.project_invitations`
+	 * stores — one row, one stage.
+	 *
+	 * **Persistence is the per-process store on BOTH sides of the gate, deliberately.** The live table
+	 * addresses an invitee by `target_email`, which the inviter cannot resolve for another user under
+	 * RLS (`org.user_emails` is own-rows-only), and it carries neither the offered compensation nor the
+	 * intro message. Inserting a row that drops two of the three things the client just typed would be
+	 * reporting a success the database did not record; the honest path is to keep the whole offer here
+	 * until the table can hold it. The invitation still reaches the seller as a message: the intro text
+	 * and the offer are what the conversation the two already share is for, and the modal opens it.
+	 */
+	static async hire(
+		input: HireInvitation,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ invites: MemberInvite[]; total: number }>> {
+		const denied = requireIdentity<{ invites: MemberInvite[]; total: number }>(
+			actor,
+			"invite someone to a project",
+		);
+		if (denied) return denied;
+		const briefRead = await this.hireBrief(input.projectId, actor);
+		if (!briefRead.ok || !briefRead.data) {
+			return fail(briefRead.status, { message: briefRead.message });
+		}
+		const brief = briefRead.data.brief;
+		const refusal = hireInvitationRefusal(brief, input);
+		if (refusal) return fail(422, { message: refusal.message, errors: refusal.errors });
+
+		const handle = input.handle.replace(/^@/, "");
+		const owner = writeOwnerOf(actor);
+		const now = Date.now();
+		const at = new Date(now).toISOString();
+		const base = hireInviteCount(owner, brief.projectId);
+		const stageOf = new Map(brief.stages.map((s) => [s.id, s]));
+		const targets = brief.pricingModel === "task"
+			? [{ stage: null as HireBrief["stages"][number] | null }]
+			: input.stages.map((offer) => ({ stage: stageOf.get(offer.stageId) ?? null }));
+		const invites: MemberInvite[] = targets.map(({ stage }, i) => ({
+			id: `${brief.projectId}-hire-${base + i + 1}`,
+			email: `@${handle}`,
+			handle: `@${handle}`,
+			role: "freelancer",
+			stageId: stage?.id ?? null,
+			stageName: stage?.name ?? null,
+			invitedBy: "You",
+			invitedAt: at,
+			invitedLabel: "Just now",
+			status: "pending",
+		}));
+		appendHireInvites(owner, brief.projectId, invites);
+		invalidateProjects(actor);
+		return ok(
+			{ invites, total: hireInvitationTotalCents(input) },
+			{ message: "Invitation sent.", status: 201 },
+		);
 	}
 
 	/**

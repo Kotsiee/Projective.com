@@ -204,7 +204,11 @@ export function hireProjectsFrom(items: readonly ProjectSummary[]): HireProject[
 	}));
 }
 
-/** Where a Hire popover row lands — the project's roster, which owns the invite flow. */
+/**
+ * Where the invitations a Hire sends can be managed afterwards — the project's roster, whose pending
+ * queue lists them. The popover row itself no longer navigates here: picking a project opens the
+ * invitation modal in place, and this is the address the modal's success note points at.
+ */
 export function hireProjectHref(project: Pick<HireProject, "slug">): string {
 	return `/projects/${project.slug}/members`;
 }

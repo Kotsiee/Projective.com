@@ -776,6 +776,53 @@ slots in behind that guard with zero shape churn. Full feature detail (the float
 with navigation memory, the role-specific advanced filters, the profile quick-message popover, the
 `messagingRole` dev-context axis) is logged in the root `CLAUDE.md` §8 Decision #49.
 
+**Conversation writes and the ranked picker (Decision #102).** The inbox's two writes — starting a
+conversation (`POST /api/messaging/conversations`, one pick → the pair's DM, several or a named
+pick → a group, with an optional opening message posted in the same act) and adding members
+(`POST /api/messaging/conversations/members`, a DM with a third person becomes a group) — go
+through `ContactsService` (client) → the thin routes → `MessagingBackendService.{createConversation,
+addMembers}` (fat). On the live path every write is a `SECURITY DEFINER` RPC
+(`comms.get_or_create_dm_thread` · `comms.create_group_thread` · `comms.add_dm_thread_members`):
+`comms.dm_threads`/`dm_participants` carry NO client `INSERT` policy on purpose, so the membership
+decision is made in one place and the thread's uuid is the id every `/messages` route addresses. On
+the stub path a per-process **conversation store** (`services/messaging/conversation-store.ts`, the
+sibling of the message write store) holds created rows, which the fixture summary lookup consults
+FIRST so a created group resolves through detail, messages and send exactly as a live one. The
+people picker (`GET /api/messaging/suggestions`) is **ranked by relationship, then recency** — the
+rule lives ONCE in the SSOT (`@projective/types/messaging` `deriveContactRank`) and both branches
+feed it EVIDENCE: the live path from `org.*_members`, `org.profile_follows` (both directions),
+`projects.projects`/`project_participants` and the viewer's threads; the stub from the same casts
+the rest of the app renders. The picker component (`ContactList` + `useContactSearch`) is shared
+with the platform-wide **share modal** (`apps/web/features/share/`, one `ShareHost` island per
+shell driven by the `share-request` bridge), so "send this to somebody" and "start a
+conversation" cannot disagree about who comes first.
+
+**Sending a message, and the profile-side Hire (Decision #103).** The inbox's send is
+`SendConversationMessageSchema` (`@projective/types/messaging/send.ts`, one field apart from the
+project send: a conversation is addressed by its own id) → `POST /api/messaging/messages/send` (thin)
+→ `MessagingBackendService.sendMessage` (fat) → `{ message: ChatMessage }`. The shared `ChatComposer`
+posts here in its `conversation` scope and announces the SERVER's row on `MESSAGE_SENT_EVENT`, so the
+profile's floating messenger, the pop-out chat and `/messages/[conversationId]` all send through one
+door and every feed on the page appends what was actually stored. Live, the thread is resolved (a
+`comms.dm_threads` uuid verbatim; a unified `dm-{handle}` through `org.users_public` +
+`comms.get_or_create_dm_thread`, so a first message CREATES the conversation in the same act) and the
+row is inserted under the new `send_dm_messages_if_participant` policy (`00002012`, `sender_user_id`
+pinned to `auth.uid()`); on the stub path a per-process **message write store**
+(`services/messaging/write-store.ts`) folds sent rows onto the latest page, and a first message to a
+synthesised `dm-{handle}` is remembered in the conversation store so it joins the inbox list. The
+global messenger itself is the existing `ChatPopoutHost` (sessionStorage-persisted), now mounted by
+EVERY authenticated layout and docked into the bottom-end corner for a profile-started conversation.
+The profile-side **Hire** is a projects read+write: `GET /api/projects/hire?projectId=` composes
+`HireBrief` (`@projective/types/projects/hire.ts`, built by the pure `buildHireBrief` from the owner's
+`ProjectSetup` + the `MemberRosterPage`, with the pricing model DERIVED from the engagement's shape:
+pipeline → per-ticket per stage, multi-stage one-off → per stage, single-stage one-off → one task
+price) and `POST /api/projects/hire` validates a `HireInvitation` against that brief through the SAME
+`hireInvitationRefusal` the modal gates its Send with. Persistence is the per-process store on both
+sides of the gate, deliberately: `projects.project_invitations` addresses an invitee by email (which
+the inviter cannot resolve for another user under RLS) and carries neither the compensation nor the
+message, so a live insert would record a success the row does not describe — flagged for a schema
+decision rather than papered over.
+
 ### Catalogue services (the first WRITE surface)
 
 The seller-side Catalogue (`/catalogue` + the per-item manage page `/catalogue/[id]`) is the **first
