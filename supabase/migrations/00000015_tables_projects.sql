@@ -840,10 +840,31 @@ CREATE TABLE projects.project_invitations (
 -- why there is no separate scope column that could disagree with it.
 project_stage_id uuid,
 
--- The invitee is addressed by email because at invite time they may have no account at all — this
--- is the one participant reference in the schema that cannot be a user_id, and turning it into one
--- is what ACCEPTANCE does.
-target_email text NOT NULL,
+-- The invitee is addressed ONE of two ways, and a CHECK below makes it exactly one. By email, because
+-- at invite time they may have no account at all — turning that into a user is what ACCEPTANCE does.
+-- Or by identity: a client hiring a seller FROM THEIR PROFILE names a person the platform already
+-- knows (Decision #108), and addressing them by email would require the inviter to resolve an
+-- address `org.user_emails` deliberately withholds from everyone but its owner.
+target_email text,
+target_user_id uuid,
+
+-- What the invitation OFFERS — the hire terms the accept path binds the parties to. `message` is the
+-- client's intro; `offer_price_cents` is the compensation for the stage this row names, in the
+-- PROJECT's currency (a task-priced engagement carries it on its whole-project row, where
+-- `project_stage_id` is NULL); `answers` is the client's response to the seller's own `hire_intake`,
+-- keyed by field id and validated against it by the fat service (`intakeRefusal`). NULL means the
+-- stage's configured rate applies — a caller-stated figure and an absent one are different claims.
+message text NOT NULL DEFAULT ''::text,
+offer_price_cents bigint,
+answers jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+-- A PLACEHOLDER assignment: the seller is attached to an UNPUBLISHED project now and the terms are
+-- settled when the client prices and publishes. An attribute of the invitation, never a status —
+-- the row stays `pending` and expires like any other (PRODUCT_MANAGEMENT.md §3.5). The fat service
+-- derives it (`resolveHireOffer`: any draft, or any unpriced selected stage); it is never trusted
+-- from a caller, because a caller who could mark a live project's invitation "placeholder" could
+-- invite somebody onto a priced stage while stating no price.
+placeholder boolean NOT NULL DEFAULT false,
 
 -- The role held once the invite is accepted. Constrained to the roles the acceptance path can
 -- actually grant, so an invitation cannot promise a seat that does not exist.
@@ -871,6 +892,11 @@ accepted_at timestamp with time zone,
   CONSTRAINT project_invitations_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE CASCADE,
   CONSTRAINT project_invitations_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id) ON DELETE CASCADE,
   CONSTRAINT project_invitations_inviter_user_id_fkey FOREIGN KEY (inviter_user_id) REFERENCES org.users_public(user_id),
+  CONSTRAINT project_invitations_target_user_id_fkey FOREIGN KEY (target_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
+  -- Exactly one addressee. Both would be two claims about who may accept; neither is nobody.
+  CONSTRAINT ck_project_invitations_addressee CHECK ((target_email IS NOT NULL) <> (target_user_id IS NOT NULL)),
+  CONSTRAINT ck_project_invitations_offer_price CHECK (offer_price_cents IS NULL OR offer_price_cents >= 0),
+  CONSTRAINT ck_project_invitations_answers_shape CHECK (jsonb_typeof(answers) = 'object'),
   CONSTRAINT project_invitations_role_check CHECK (role IN ('client', 'owner', 'admin', 'manager', 'freelancer', 'member', 'guest')),
   CONSTRAINT project_invitations_status_check CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
   -- An accepted invitation carries its timestamp and an outstanding one does not. Without this the

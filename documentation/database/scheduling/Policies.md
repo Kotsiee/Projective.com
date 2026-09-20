@@ -87,6 +87,7 @@ same schedule stays private. Project-anchored rows simply reuse the pre-existing
 | Table             | SELECT                                                 | Write                                                                                              |
 | :---------------- | :----------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
 | `call_settings`   | `anon` when the schedule is published, else owner side | `fn_can_manage_schedule` (ALL)                                                                     |
+| `call_platforms`  | Same as `call_settings` — a booker picks a platform BEFORE signing in | `fn_can_manage_schedule` (ALL). Discloses only which providers are offered; never a connection, token or account id |
 | `discovery_calls` | Host **or** requester **or** admin — never `anon`      | `INSERT` as self (`requester_user_id = auth.uid()`, `status='proposed'`); `UPDATE` by either party |
 | `call_attendance` | `fn_is_call_party`                                     | None — webhooks write as service-role                                                              |
 | `call_audit`      | `fn_is_call_party`                                     | None — the audit trigger writes it                                                                 |

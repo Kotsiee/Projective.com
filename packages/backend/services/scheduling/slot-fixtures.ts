@@ -1,11 +1,13 @@
 import type {
 	BookableSlot,
+	OpenBand,
 	PublicCallOffer,
 	RailDay,
 	SchedulePage,
 	SlotGrid,
 	SlotPurpose,
 	SlotQuery,
+	SlotUnavailableReason,
 } from "@projective/types/scheduling";
 import {
 	addDaysInZone,
@@ -150,6 +152,7 @@ export function buildSlotGrid(query: SlotQuery, input: SlotGridInput): SlotGrid 
 	// Build viewer-local days first: they are the rail, and they define the buckets everything lands in.
 	const days: RailDay[] = [];
 	const slots: Record<string, BookableSlot[]> = {};
+	const bands: Record<string, OpenBand[]> = {};
 	const todayKey = dayKeyInZone(now, viewerTz);
 
 	// `addDaysInZone`, never `railFrom + i * DAY`. A calendar day is not always 24 hours: on a fall-back
@@ -192,6 +195,28 @@ export function buildSlotGrid(query: SlotQuery, input: SlotGridInput): SlotGrid 
 			if (density === "sparse" && weekday !== 3) continue;
 
 			for (const [openMin, closeMin] of callWindows(page, weekday)) {
+				/*
+				 * The window as an open BAND, for the custom-start control — cut around the blackouts, split
+				 * across the viewer's midnight if it straddles one, and bucketed into the viewer's day like
+				 * the slots. Only the shape is published (the same shape the public schedule already draws);
+				 * which minutes of it are held stays on the slots.
+				 */
+				const { start: bandStart } = localSlot(
+					providerDay,
+					openMin,
+					closeMin - openMin,
+					providerTz,
+				);
+				const bandEnd = bandStart + (closeMin - openMin) * MIN;
+				for (const band of openBands(page, bandStart, bandEnd)) {
+					for (const piece of splitAtViewerMidnight(band, viewerTz)) {
+						if (piece.startsAt >= horizon) continue;
+						const key = dayKeyInZone(piece.startsAt, viewerTz);
+						if (!days.some((d) => d.key === key)) continue;
+						(bands[key] ??= []).push(piece);
+					}
+				}
+
 				const step = durationMinutes + rules.bufferBeforeMinutes + rules.bufferAfterMinutes;
 				for (let m = openMin; m + durationMinutes <= closeMin; m += step) {
 					const { start, end } = localSlot(providerDay, m, durationMinutes, providerTz);
@@ -222,6 +247,7 @@ export function buildSlotGrid(query: SlotQuery, input: SlotGridInput): SlotGrid 
 			}
 		}
 		for (const key of Object.keys(slots)) slots[key].sort((a, b) => a.startsAt - b.startsAt);
+		for (const key of Object.keys(bands)) bands[key].sort((a, b) => a.startsAt - b.startsAt);
 	}
 
 	return {
@@ -233,10 +259,109 @@ export function buildSlotGrid(query: SlotQuery, input: SlotGridInput): SlotGrid 
 		sessionCount,
 		days,
 		slots,
+		bands,
+		bookableFrom: noticeFloor,
 		windowStart: zonedMidnight(noticeFloor, viewerTz),
 		windowEnd: horizon,
 		closed,
 		closedReason,
+	};
+}
+
+/**
+ * A call window as open bands — the window minus every blackout that intersects it.
+ *
+ * A blackout in the middle of a window leaves TWO bands, one either side, and a blackout covering
+ * the window leaves none: what remains is exactly the time a custom start may fall in, which is
+ * what the picker's pre-flight check and the write's re-walk both measure against.
+ */
+function openBands(page: SchedulePage, start: number, end: number): OpenBand[] {
+	let pieces: OpenBand[] = [{ startsAt: start, endsAt: end }];
+	for (const b of page.availability.blackouts) {
+		const next: OpenBand[] = [];
+		for (const piece of pieces) {
+			if (b.end <= piece.startsAt || b.start >= piece.endsAt) {
+				next.push(piece);
+				continue;
+			}
+			if (b.start > piece.startsAt) next.push({ startsAt: piece.startsAt, endsAt: b.start });
+			if (b.end < piece.endsAt) next.push({ startsAt: b.end, endsAt: piece.endsAt });
+		}
+		pieces = next;
+	}
+	return pieces.filter((p) => p.endsAt > p.startsAt);
+}
+
+/**
+ * Split a band at the viewer's local midnight, so each piece sits in exactly one rail day.
+ *
+ * A provider's evening window in Tokyo is a viewer's morning in Los Angeles and may cross the
+ * viewer's midnight in between; a band bucketed by its START alone would then belong to a day it
+ * mostly is not in, and the custom-start check for the day it spills into would find nothing.
+ */
+function splitAtViewerMidnight(band: OpenBand, viewerTz: string): OpenBand[] {
+	const pieces: OpenBand[] = [];
+	let cursor = band.startsAt;
+	// Bounded: a band is at most a day long, so this runs at most twice.
+	for (let guard = 0; guard < 3 && cursor < band.endsAt; guard++) {
+		const nextMidnight = addDaysInZone(cursor, 1, viewerTz);
+		const end = Math.min(band.endsAt, nextMidnight);
+		pieces.push({ startsAt: cursor, endsAt: end });
+		cursor = end;
+	}
+	return pieces;
+}
+
+/**
+ * Resolve a CUSTOM start — a time the cadence did not land on — against the same rules the grid was
+ * drawn with, and answer the slot it would occupy or why it cannot.
+ *
+ * It re-walks the day rather than trusting the caller: the start plus the duration must fit an open
+ * band, clear the notice floor and the horizon, and — with the provider's PRIVATE buffers either side
+ * of it — not overlap a slot somebody already holds. The client's pre-flight (`customStartRefusal`
+ * in the SSOT) checks the public half of that; this is the whole of it, and it is the only thing that
+ * can say "yes".
+ */
+export function resolveCustomStart(
+	query: SlotQuery,
+	input: SlotGridInput,
+	startsAt: number,
+): { slot: BookableSlot } | { reason: SlotUnavailableReason } {
+	const grid = buildSlotGrid(query, input);
+	if (grid.closed) return { reason: "calls_not_offered" };
+	const now = input.now ?? NOW;
+	const rules = rulesFor(input.subjectId, input.durationMinutes);
+	const endsAt = startsAt + input.durationMinutes * MIN;
+
+	if (startsAt < now) return { reason: "past" };
+	if (grid.bookableFrom !== undefined && startsAt < grid.bookableFrom) {
+		return { reason: "inside_minimum_notice" };
+	}
+	if (startsAt >= grid.windowEnd) return { reason: "beyond_booking_horizon" };
+
+	const key = dayKeyInZone(startsAt, grid.viewerTimezone);
+	const inBand = (grid.bands[key] ?? []).some((b) => startsAt >= b.startsAt && endsAt <= b.endsAt);
+	if (!inBand) return { reason: "outside_call_window" };
+	if (inBlackout(input.page, startsAt, endsAt)) return { reason: "blackout" };
+
+	// The buffers are applied to the REQUEST, so a custom start cannot be wedged into the dead time the
+	// provider reserved either side of a booking somebody else holds.
+	const guardedStart = startsAt - rules.bufferBeforeMinutes * MIN;
+	const guardedEnd = endsAt + rules.bufferAfterMinutes * MIN;
+	for (const held of grid.slots[key] ?? []) {
+		if (held.available || held.reason !== "taken") continue;
+		if (guardedStart < held.endsAt && guardedEnd > held.startsAt) return { reason: "taken" };
+	}
+
+	return {
+		slot: {
+			id: `custom-${startsAt}`,
+			startsAt,
+			endsAt,
+			available: true,
+			reason: null,
+			seatsRemaining: null,
+		},
 	};
 }
 

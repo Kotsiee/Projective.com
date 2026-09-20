@@ -18,6 +18,7 @@ import {
 	type MoveTicket,
 	normaliseSeats,
 	pricedStages,
+	createFormatToColumns,
 	PROJECT_PRICE_LOCK_REASON,
 	type ProjectAttachment,
 	type ProjectCreateFormat,
@@ -44,7 +45,7 @@ import {
 	type UpdateProject,
 	workloadIntensity,
 } from "@projective/types/projects";
-import { flattenRichText } from "@projective/types/richtext";
+import { flattenRichText, plainTextToHtml } from "@projective/types/richtext";
 import type { SupabaseClient } from "supabaseClient";
 import type { FieldErrors } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -1873,6 +1874,12 @@ export async function insertProject(
 ): Promise<WriteOutcome<CreatedProject>> {
 	const db = projectsDb(actor);
 	const title = clamp(input.title.trim(), TITLE_MAX);
+	// The wizard's choice onto the stored pair, through the ONE mapping the setup form reads back
+	// with — a "Task" card mints `single_task`, an ordinary one-off `one_off`.
+	const columns = createFormatToColumns(input.format, input.hasStages);
+	// The one-line brief as the escaped paragraph the rich-text column stores; `""` stays a NULL
+	// body so an unwritten brief does not tick the description step off.
+	const descriptionHtml = plainTextToHtml(input.description);
 
 	const { data, error } = await insertWithSlugRetry("project", "projects_slug_key", (slug) =>
 		db
@@ -1883,7 +1890,11 @@ export async function insertProject(
 				slug,
 				// The identity map. `ProjectCreateFormat` was narrowed to the two members `project_format`
 				// also carries, so there is no bridge here to go stale.
-				format: input.format,
+				format: columns.format,
+				structure_variation: columns.structure,
+				...(descriptionHtml
+					? { description: { html: descriptionHtml }, description_text: flattenRichText(descriptionHtml) }
+					: {}),
 				currency: input.currency,
 				// A draft that nobody can discover, deliberately: the cost of getting this default wrong is
 				// a half-written engagement on Explore, and the Rules section is where an owner opens it up.

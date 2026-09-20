@@ -39,6 +39,7 @@ import { mockAvatar, mockCover, mockCoverPlaceholder, mockShowreel } from "../..
 import { hash as scheduleHash } from "../scheduling/derive.ts";
 import { buildRules, workingHoursOf } from "../scheduling/hours.ts";
 import { callOfferKindFor, offersCourtesyCall } from "../booking/call-offer.ts";
+import { hireIntakeFor } from "../booking/intake-fixtures.ts";
 
 /**
  * profile fixtures — the fat {@link ProfileBackendService}'s in-memory answer for a public profile
@@ -556,6 +557,9 @@ export function findProfile(handle: string): ProfileView | null {
 		// Contact menu reads, so the profile mark and the menu row cannot disagree.
 		freeConsultation: (kind === "freelancer" || kind === "team") &&
 			offersCourtesyCall(callOfferKindFor(bare)),
+		// The seller's own questions for the "Add to project" assignment modal — a seller offer,
+		// like the call above, so a buyer entity asks nothing.
+		hireIntake: hireIntakeFor(bare, kind === "freelancer" || kind === "team"),
 		rating,
 		verified,
 		tier,
@@ -829,6 +833,30 @@ export function findProfileProducts(handle: string): ProductItem[] | null {
 	const profile = findProfile(handle);
 	if (!profile) return null;
 	return productsFor(profile, ownerOf(profile));
+}
+
+/** The shape `reown` mints: `sv-{handle}-{i}` for a service, `pr-{handle}-{i}` for a product. */
+const REOWNED_ID = /^(sv|pr)-([a-z0-9._-]+)-(\d+)$/;
+
+/**
+ * Resolve a PROFILE-SCOPED listing id back to the item the profile renders under it.
+ *
+ * `reown` copies a corpus listing onto a profile with a fresh id (`sv-{handle}-{i}`) and the
+ * profile's owner, so the Services row and the Products masonry show the seller who is actually
+ * being looked at. Those ids never existed in the discovery corpus, which is why a click through to
+ * `/[handle]/view/[item]`, the service modal's read and a basket line all landed on "not found"
+ * (root CLAUDE.md §8 Decision #106(b)). The id is re-derived here from the same deterministic list
+ * the profile drew, so the item that comes back is byte-identical to the one the card showed —
+ * owner included — rather than the corpus original under a different seller.
+ *
+ * `undefined` for any other id, so a caller can fall through to its own corpus first.
+ */
+export function findReownedListing(id: string): ServiceItem | ProductItem | undefined {
+	const m = REOWNED_ID.exec(id);
+	if (!m) return undefined;
+	const index = Number(m[3]);
+	const list = m[1] === "sv" ? findProfileServices(m[2]) : findProfileProducts(m[2]);
+	return list?.[index];
 }
 
 /**

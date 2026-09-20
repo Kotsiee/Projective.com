@@ -46,6 +46,7 @@ import {
 	buildStubMessage,
 	buildStubSubmissionUnit,
 	createdDetail,
+	createdMemberRoster,
 	createdSummary,
 	hireInviteCount,
 	isStoredArchived,
@@ -105,13 +106,19 @@ import {
 	buildHireBrief,
 	buildProjectTimeline,
 	CREATED_PUBLISH_VISIBILITY,
+	createFormatToColumns,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
 	hireInvitationRefusal,
-	hireInvitationTotalCents,
 	providerScopedPage,
 	reconcileSetup,
+	resolveHireOffer,
 } from "@projective/types/projects";
+import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
+import { plainTextToHtml } from "@projective/types/richtext";
+import { toMinorUnits } from "@projective/types/finance";
+import type { EntityView, ServiceItem } from "@projective/types/explore";
+import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import type {
 	ArchiveProject,
 	BoardCard,
@@ -386,16 +393,21 @@ function mintProjectSlug(taken: (slug: string) => boolean): string {
 function buildCreatedSetup(input: CreateProject, slug: string): ProjectSetup {
 	const id = crypto.randomUUID();
 	const stageName = input.format === "one_off" ? "Delivery" : "Stage 1";
+	// The one mapping from the wizard's choice onto the stored pair — the same function the setup
+	// form and the live insert use, so "Task" is minted as the structure they both read back.
+	const columns = createFormatToColumns(input.format, input.hasStages);
 	return reconcileSetup({
 		id,
 		slug,
 		title: input.title.trim(),
-		format: input.format,
-		structure: input.format === "one_off" ? "one_off" : "standard",
+		format: columns.format,
+		structure: columns.structure,
 		sessionKind: "none",
 		status: "draft",
 		archivedAt: null,
-		description: "",
+		// The wizard's one-line brief, as the escaped paragraph the rich-text column stores; empty
+		// stays empty so an unwritten brief does not tick the description step off.
+		description: plainTextToHtml(input.description),
 		attachments: [],
 		budget: {
 			...DEFAULT_PROJECT_BUDGET,
@@ -417,6 +429,62 @@ function buildCreatedSetup(input: CreateProject, slug: string): ProjectSetup {
 		roles: [],
 		// The creator is the client. Nothing else could be true of a project one statement old.
 		viewerIsClient: true,
+	});
+}
+
+/**
+ * The setup projection of a pipeline instantiated from a listing — what "Add to projects" mints.
+ *
+ * The draft store remembers the DRAFT (its slug, its source listing, whether it has been funded);
+ * this is the same project as every other read sees it, so the feed lists it, the lane resolves it,
+ * the setup page opens it and the profile's Add-to-project menu offers it — the reads a Quick-Init
+ * draft already gets. Without it the board the buyer is sent to renders beside a lane reading
+ * "Project not found", which is a project that exists for one read and not the next.
+ *
+ * Stages copy the blueprint's: name, brief, required skills, and the seat-pool ticket price in the
+ * listing's own currency (a `TicketPrice` is MAJOR units, so it goes through the finance SSOT's
+ * exponent-aware converter). A range prices at its floor — the figure the card and the lane print.
+ */
+function buildInstantiatedSetup(
+	item: ServiceItem,
+	view: EntityView,
+	draft: { slug: string; title: string },
+): ProjectSetup {
+	const id = crypto.randomUUID();
+	const currency = item.currency ?? "USD";
+	const columns = createFormatToColumns("pipeline", true);
+	const blueprint = view.service?.stages ?? [];
+	const stages = blueprint.map((stage, index) => ({
+		...blankStage(`${id}-stage-${index + 1}`, stage.name, index),
+		description: plainTextToHtml(stage.description),
+		unitPriceCents: toMinorUnits(stage.price.min, currency),
+		skills: stage.skills.map((skill) => skill.label),
+	}));
+	return reconcileSetup({
+		id,
+		slug: draft.slug,
+		title: draft.title,
+		format: columns.format,
+		structure: columns.structure,
+		sessionKind: "none",
+		status: "draft",
+		archivedAt: null,
+		description: plainTextToHtml(item.summary),
+		attachments: [],
+		budget: { ...DEFAULT_PROJECT_BUDGET, currency, amountCents: null },
+		rules: { ...DEFAULT_PROJECT_RULES, visibility: CREATED_PUBLISH_VISIBILITY },
+		stages: stages.length > 0 ? stages : [blankStage(`${id}-stage-1`, "Stage 1", 0)],
+		roles: [],
+		viewerIsClient: true,
+	});
+}
+
+/** The write-store owner an instantiation belongs to — the draft store's own `(user, workspace)` scope. */
+function draftWriteOwner(actor: { userId: string | null }, workspaceId: string | null): string {
+	return writeOwnerOf({
+		userId: actor.userId ?? "",
+		contextId: workspaceId ?? actor.userId ?? "",
+		contextType: workspaceId ? "team" : "personal",
 	});
 }
 // #endregion
@@ -855,7 +923,10 @@ export class ProjectBackendService {
 			}
 			return ok({ page: live });
 		}
-		const page = findMemberRoster(params);
+		// A project this viewer drafted in the stub store has no fixture roster; it answers with its
+		// creator as the sole member, so the profile's assignment modal can open on it.
+		const page = findMemberRoster(params) ??
+			(params.channelId ? null : createdMemberRoster(params.projectId, actor));
 		if (!page) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
@@ -915,8 +986,10 @@ export class ProjectBackendService {
 	static async hire(
 		input: HireInvitation,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ invites: MemberInvite[]; total: number }>> {
-		const denied = requireIdentity<{ invites: MemberInvite[]; total: number }>(
+	): Promise<ServiceResult<{ invites: MemberInvite[]; total: number; placeholder: boolean }>> {
+		const denied = requireIdentity<
+			{ invites: MemberInvite[]; total: number; placeholder: boolean }
+		>(
 			actor,
 			"invite someone to a project",
 		);
@@ -930,6 +1003,32 @@ export class ProjectBackendService {
 		if (refusal) return fail(422, { message: refusal.message, errors: refusal.errors });
 
 		const handle = input.handle.replace(/^@/, "");
+
+		/*
+		 * The SELLER's own intake, held by the same rule the modal ran.
+		 *
+		 * A seller who asks three questions before joining a project is owed three answers whether or
+		 * not the client's page honoured the marks; the profile read is what the modal rendered from, so
+		 * the list checked here is the list the client saw. An unresolvable seller is a 404 rather than
+		 * an unchecked invitation — there is nobody to invite.
+		 */
+		const sellerRead = ProfileBackendService.overview(`@${handle}`);
+		if (!sellerRead.ok || !sellerRead.data) {
+			return fail(404, { message: `No profile found for "@${handle}".` });
+		}
+		const intake = sellerRead.data.profile.hireIntake ?? [];
+		const answers = normaliseIntakeAnswers(intake, input.answers);
+		const intakeBlock = intakeRefusal(intake, answers);
+		if (intakeBlock) {
+			return fail(422, {
+				message: intakeBlock.message,
+				errors: { [`answers.${intakeBlock.fieldId}`]: intakeBlock.code },
+			});
+		}
+
+		// The terms as they will be RECORDED — the project's configured rates, or a placeholder on a
+		// draft that has none yet. Resolved by the SSOT, never summed here.
+		const offer = resolveHireOffer(brief, input);
 		const owner = writeOwnerOf(actor);
 		const now = Date.now();
 		const at = new Date(now).toISOString();
@@ -937,7 +1036,7 @@ export class ProjectBackendService {
 		const stageOf = new Map(brief.stages.map((s) => [s.id, s]));
 		const targets = brief.pricingModel === "task"
 			? [{ stage: null as HireBrief["stages"][number] | null }]
-			: input.stages.map((offer) => ({ stage: stageOf.get(offer.stageId) ?? null }));
+			: offer.stages.map((line) => ({ stage: stageOf.get(line.stageId) ?? null }));
 		const invites: MemberInvite[] = targets.map(({ stage }, i) => ({
 			id: `${brief.projectId}-hire-${base + i + 1}`,
 			email: `@${handle}`,
@@ -949,12 +1048,17 @@ export class ProjectBackendService {
 			invitedAt: at,
 			invitedLabel: "Just now",
 			status: "pending",
+			// A staged assignment on an unpublished project: attached now, priced at publish.
+			placeholder: offer.placeholder || undefined,
 		}));
 		appendHireInvites(owner, brief.projectId, invites);
 		invalidateProjects(actor);
 		return ok(
-			{ invites, total: hireInvitationTotalCents(input) },
-			{ message: "Invitation sent.", status: 201 },
+			{ invites, total: offer.totalCents ?? 0, placeholder: offer.placeholder },
+			{
+				message: offer.placeholder ? "Assignment staged." : "Invitation sent.",
+				status: 201,
+			},
 		);
 	}
 
@@ -1486,6 +1590,15 @@ export class ProjectBackendService {
 			userId: actor.userId,
 			workspaceId: input.workspaceId,
 		});
+		if (result.created) {
+			const owner = draftWriteOwner(actor, input.workspaceId);
+			recordCreatedProject(owner, buildInstantiatedSetup(item, view, result.draft));
+			invalidateProjects({
+				userId: actor.userId ?? "",
+				contextId: input.workspaceId ?? actor.userId ?? "",
+				contextType: input.workspaceId ? "team" : "personal",
+			});
+		}
 
 		if (!isProjectsBackendLive()) {
 			return ok(result, {
@@ -1530,6 +1643,13 @@ export class ProjectBackendService {
 		}
 		const draft = archiveDraft(input.projectId, actor.userId);
 		if (!draft) return fail(404, { message: "That draft is no longer in your projects." });
+		// The project the instantiation minted for the ordinary reads archives with its draft, so the
+		// feed and the Add-to-project menu stop offering an engagement the listing no longer claims.
+		const owner = draftWriteOwner(actor, null);
+		const created = storedCreatedProject(owner, draft.slug);
+		if (created) {
+			recordProjectArchive(owner, { id: created.id, slug: created.slug }, new Date().toISOString());
+		}
 		return ok({ draft }, { message: "Draft archived." });
 	}
 

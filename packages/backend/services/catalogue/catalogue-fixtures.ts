@@ -14,6 +14,7 @@ import type {
 import { money, publishReadiness, resolveListingPricing } from "@projective/types/catalogue";
 import type { ExploreOwner, ProductItem, ServiceItem } from "@projective/types/explore";
 import { PRODUCTS, SERVICES } from "../explore/fixtures.ts";
+import { serviceIntakeFor } from "../booking/intake-fixtures.ts";
 import { mockAvatar } from "../../mocks/assets.ts";
 
 /**
@@ -188,6 +189,9 @@ function serviceToDetail(item: ServiceItem, index: number): ListingDetail {
 			? defaultAvailability()
 			: null,
 		collections: [],
+		// The SAME derivation the /view listing and the profile's Service Detail modal read, so the
+		// console edits the questions a buyer is actually asked rather than a second copy of them.
+		intake: serviceIntakeFor(item),
 	};
 	detail.needsAttention = needsAttentionFor(detail);
 	summary.needsAttention = detail.needsAttention;
@@ -234,6 +238,7 @@ function productToDetail(item: ProductItem, index: number): ListingDetail {
 		delivery: "Instant download",
 		availability: null,
 		collections: [],
+		intake: [],
 	};
 	detail.needsAttention = needsAttentionFor(detail);
 	summary.needsAttention = detail.needsAttention;
@@ -484,6 +489,7 @@ export function createListing(input: CreateListingInput): ListingDetail {
 			? defaultAvailability()
 			: null,
 		collections: [],
+		intake: [],
 	};
 	STORE.set(id, detail);
 	ORDER.unshift(id);
@@ -513,6 +519,7 @@ export function updateListing(patch: UpdateListingInput): ListingDetail | null {
 		delivery: patch.delivery ?? current.delivery,
 		availability: patch.availability !== undefined ? patch.availability : current.availability,
 		collections: patch.collections ?? current.collections,
+		intake: patch.intake ?? current.intake,
 		cover: media[0] ?? null,
 		price: resolveListingPricing({ kind: current.kind, serviceType, pricing }),
 		updatedAt: new Date(NOW).toISOString(),

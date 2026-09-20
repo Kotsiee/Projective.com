@@ -59,6 +59,8 @@ function sample() {
 
 const BASE_CREATE = {
 	format: "pipeline" as const,
+	hasStages: true,
+	description: "",
 	currency: "GBP",
 	baselineAmountCents: null,
 	scopeType: "personal" as const,

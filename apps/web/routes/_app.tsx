@@ -5,6 +5,7 @@ import DesignSystemRoot from "@web/features/theme/islands/DesignSystemRoot.islan
 import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.tsx";
 import ServiceWorkerBridge from "@web/features/shell/islands/ServiceWorkerBridge.island.tsx";
 import ImageFallbackBridge from "@web/features/shell/islands/ImageFallbackBridge.island.tsx";
+import OfflineBridge from "@web/features/shell/islands/OfflineBridge.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
@@ -140,6 +141,17 @@ export default define.page(function App({ Component, state }) {
 							`(()=>{try{const c=localStorage.getItem("pj.local.explore.filtersHidden");document.documentElement.dataset.exploreFilters=c==="1"?"hidden":"shown";}catch(_){/* noop */}})();`,
 					}}
 				/>
+				<script
+					dangerouslySetInnerHTML={{
+						// Reserve the offline Ribbon's room before first paint when the page is opened while
+						// already offline (a shell-cached document), so the footer band and the page tail do
+						// not shift up under the reader when the OfflineBridge island hydrates and opens the
+						// strip. The island owns the attribute from then on; this only pre-paints it. The
+						// `false` direction alone is trusted, exactly as `utils/network.ts` treats it.
+						__html:
+							`(()=>{try{if(navigator.onLine===false)document.documentElement.dataset.ribbon="open";}catch(_){/* noop */}})();`,
+					}}
+				/>
 				{currency
 					? (
 						<script
@@ -180,6 +192,13 @@ export default define.page(function App({ Component, state }) {
 				    the currency bridge is — a guest's card thumbnails need it as much as an owner's. */
 				}
 				<ImageFallbackBridge />
+				{
+					/* Connectivity: keeps the shared `isOnline` signal in step, installs the navigation + write
+				    guards, and hosts the offline Ribbon, the interstitial and the refused-write notice.
+				    Renders nothing while online. Global for the same reason the service worker is — a
+				    dropped connection is a property of the session, not of a route. */
+				}
+				<OfflineBridge />
 				{
 					/* The per-request currency for SERVER-rendered money. Context, not the module-level
 				    signal store: a server process renders many viewers concurrently, and a shared signal

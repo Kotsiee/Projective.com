@@ -7,6 +7,14 @@ against `supabase/migrations/` and the fat service layer.
 **This file is documentation. Nothing in it has been implemented** — Phase 5 of the task that
 produced it was explicitly documentation-only.
 
+> **Seller-side write contract (2026-09-19).** The schema now carries every column the profile
+> Hire / Add-to-project / Consultation flows (Decision #108) read — `service_blueprints.intake_fields`,
+> `freelancer_profiles.hire_intake` / `teams.hire_intake`, the identity-addressed
+> `project_invitations` columns, `scheduling.call_platforms`, `discovery_calls.service_blueprint_id`.
+> What the **service-creation / catalogue-editor pages** must write to fill them is specified in
+> [`documentation/flows/ServiceCreation.md`](documentation/flows/ServiceCreation.md); rows 16–18
+> below (catalogue create/status/update) are where those writes land.
+
 ## The headline finding
 
 The platform has **119 API route files** under `apps/web/routes/api/`, so at a glance the backend

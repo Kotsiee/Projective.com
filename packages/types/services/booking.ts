@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ServiceBookingFormat } from "./common.ts";
+import { IntakeAnswersSchema } from "./intake.ts";
 
 /**
  * services.booking — the **write payloads** for the four booking flows, and the outcome shape all of
@@ -47,6 +48,12 @@ export const SessionBookingInputSchema = z.object({
 	 * guard rather than a limit anyone should hit.
 	 */
 	seats: z.number().int().min(1).max(20).default(1),
+	/**
+	 * The buyer's answers to the listing's own intake fields (`ServiceView.intake`), keyed by field
+	 * id. Validated server-side against the listing through the same `intakeRefusal` the modal ran,
+	 * and carried on the basket line so the provider reads them wherever the booking is opened.
+	 */
+	answers: IntakeAnswersSchema.default({}),
 });
 export type SessionBookingInput = z.infer<typeof SessionBookingInputSchema>;
 // #endregion
@@ -97,6 +104,14 @@ export const ServiceBriefInputSchema = z.object({
 	 */
 	stageIds: z.array(z.string().min(1).max(120)).max(24).default([]),
 	attachments: z.array(BriefAttachmentSchema).max(10).default([]),
+	/**
+	 * The buyer's answers to the listing's own intake fields, keyed by field id — the STRUCTURED half
+	 * of the brief. `requirements` stays the prose the engagement is delivered against (the modal
+	 * folds the answers into it as `Label: value` lines, so a provider reading only the text still
+	 * sees every answer); this carries them as data so the server can hold them to the seller's own
+	 * rule and a later surface can render them as fields rather than re-parsing prose.
+	 */
+	answers: IntakeAnswersSchema.default({}),
 });
 export type ServiceBriefInput = z.infer<typeof ServiceBriefInputSchema>;
 // #endregion

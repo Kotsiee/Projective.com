@@ -3,6 +3,9 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import "../styles/chat-feed.css";
 import { useIntersectionObserver, useVirtualScroll } from "@projective/ui/hooks";
+import { InlineNotice } from "@projective/ui/feedback";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import type { ChatMessage, MessagePage } from "../types/projects-types.ts";
 import {
 	buildRows,
@@ -100,11 +103,14 @@ export default function ChatFeed(
 	}).visible;
 
 	async function loadOlder(): Promise<void> {
-		if (loadingOlder.value || !hasMore.value || !cursor.value) return;
+		// A stalled feed waits for Retry (or the reconnection): the top sentinel stays in view after a
+		// failed page, and without this guard every intersection change would re-fire the request.
+		if (loadingOlder.value || stall.blocked.value || !hasMore.value || !cursor.value) return;
 		loadingOlder.value = true;
 		skeleton.begin();
 		const doc = document.scrollingElement ?? document.documentElement;
 		anchorRef.current = doc.scrollHeight;
+		let landed = false;
 		try {
 			const page = customLoadOlder
 				? await customLoadOlder(cursor.value)
@@ -112,6 +118,7 @@ export default function ChatFeed(
 					res.ok && res.data ? res.data.page : null
 				);
 			if (page) {
+				landed = true;
 				messages.value = [...page.messages, ...messages.value];
 				hasMore.value = page.hasMore;
 				cursor.value = page.nextCursor;
@@ -123,8 +130,11 @@ export default function ChatFeed(
 		} finally {
 			loadingOlder.value = false;
 			skeleton.end();
+			stall.settle(landed);
 		}
 	}
+	/** The offline stall for the OLDER edge — this feed loads upward, so its notice sits at the top. */
+	const stall = useOfflineStall(loadOlder);
 
 	useSignalEffect(() => {
 		if (topVisible.value) void loadOlder();
@@ -273,6 +283,20 @@ export default function ChatFeed(
 
 			<div class="chat-feed__viewport" ref={viewportRef}>
 				<div class="chat-feed__sentinel" ref={sentinelRef} aria-hidden="true" />
+				{
+					/* The loading edge of this list is its TOP, so the offline notice lands there rather
+					   than at the foot beside the composer. In flow, not an overlay: its Retry must be
+					   clickable, which the pointer-transparent skeleton beneath deliberately is not. */
+				}
+				{stall.stalled.value && (
+					<InlineNotice
+						class="chat-feed__stall"
+						text={OFFLINE_NOTICE_TEXT}
+						actionLabel="Retry"
+						onAction={stall.retry}
+						busy={stall.retrying.value}
+					/>
+				)}
 				{
 					/*
 					 * `.chat-feed__older` is an absolutely-positioned, pointer-transparent overlay, so the

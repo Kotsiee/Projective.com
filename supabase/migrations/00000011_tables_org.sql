@@ -112,8 +112,16 @@ CREATE TABLE org.freelancer_profiles (
     kyc_verified_at timestamptz,
     payout_ready boolean NOT NULL DEFAULT false,
     identity_provider_ref text,   -- Stripe Identity session id (placeholder; no PII)
+    -- The seller's HIRE intake (Decision #108): what a client answers when adding this freelancer to
+    -- a project from the profile, as opposed to buying a listing. Same document shape and the same
+    -- SSOT validator as `marketplace.service_blueprints.intake_fields`; `ProfileView.hireIntake` is
+    -- the projection. Answers land on `projects.project_invitations.answers`.
+    hire_intake jsonb NOT NULL DEFAULT '[]'::jsonb,
 
     CONSTRAINT freelancer_profiles_pkey PRIMARY KEY (user_id),
+    CONSTRAINT ck_freelancer_profiles_hire_intake_shape CHECK (
+        jsonb_typeof(hire_intake) = 'array' AND jsonb_array_length(hire_intake) <= 12
+    ),
     CONSTRAINT freelancer_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
@@ -190,8 +198,14 @@ CREATE TABLE org.teams (
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     -- Folded (20260709120000): draft lifecycle status.
     status text NOT NULL DEFAULT 'draft',
+    -- A team is a seller too (Decision #61), so it carries the same hire intake as a freelancer
+    -- profile; see `org.freelancer_profiles.hire_intake`.
+    hire_intake jsonb NOT NULL DEFAULT '[]'::jsonb,
 
     CONSTRAINT teams_pkey PRIMARY KEY (id),
+    CONSTRAINT ck_teams_hire_intake_shape CHECK (
+        jsonb_typeof(hire_intake) = 'array' AND jsonb_array_length(hire_intake) <= 12
+    ),
     CONSTRAINT teams_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES auth.users(id),
     CONSTRAINT teams_status_check CHECK (status IN ('draft', 'active', 'archived'))
 );

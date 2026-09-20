@@ -220,6 +220,15 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Stage assignment**       | `pending_funding` (parked, nobody committed) → `assigned` → `accepted` → `completed`; `released` / `cancelled` / `declined` end it. **Free text, not an enum** — `projects.stage_assignments.status` carries no CHECK and no default, so every consumer reads it through a named guard rather than matching a literal, and an unrecognised value must fall to the SAFE side of whatever it gates | `projects.stage_assignments.status` · `packages/types/projects/setup.ts` (`countsAsOnboarded`) · `PRODUCT_SPEC.md` §Stage Management #4 |
 | **Ticket funding scope**   | `unpaid` · `per_stage` (a set of paid stage ids) · `full` — an ATTRIBUTE the client's purchase sets, not a state machine: it never transitions on a move. What moves is the ticket, and "paid here" is RE-DERIVED from the stage it sits in (`ticketPaidHere`), so a per-stage ticket dragged into an unpaid stage reads Unpaid and leaves every freelancer's board with no write, and reads Paid again on the way back. Freelancers see a ticket only when it is paid where it sits AND they are onboarded to that stage (`providerCanSeeCard`, applied on the READ). The client's drag is locked while a claimed ticket is `claimed` / `in_progress` (`ticketWorkLocked`) — a gate over the §3.1 ticket states, not a new state | `TicketPaymentScope` · `packages/types/projects/board.ts` · `PRODUCT_SPEC.md` §Ticket Movement · root CLAUDE.md §8 Decision #94 |
 
+> **A placeholder assignment is an ATTRIBUTE of a pending project invitation, not a state** — so
+> it has no row either. A seller added to an UNPUBLISHED project from their profile is attached to
+> the chosen stage(s) — at whatever those stages are priced at today, or at no stated price
+> (`MemberInvite.placeholder`, `HireOffer.placeholder`);
+> the invitation stays `pending` and expires like any other, and the terms are settled when the
+> client prices and publishes. It is derived from the brief by `resolveHireOffer`
+> (`packages/types/projects/hire.ts`) — never chosen by the caller — and a PUBLISHED project with
+> an unpriced stage is refused rather than staged (root CLAUDE.md §8 Decision #108).
+>
 > **Post-onboarding immutability is a CONSTRAINT over the stage-assignment row above, not a
 > lifecycle of its own** — which is why it has no row. Once a seat has genuinely been taken, the
 > engagement's **project type** freezes project-wide and each stage's **ticket price** freezes with

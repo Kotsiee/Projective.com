@@ -318,6 +318,16 @@ GRANT SELECT ON TABLE scheduling.call_audit TO authenticated;
 
 GRANT ALL ON TABLE scheduling.call_settings TO service_role;
 
+GRANT SELECT ON TABLE scheduling.call_platforms TO anon,
+authenticated;
+
+GRANT
+INSERT,
+UPDATE,
+DELETE ON TABLE scheduling.call_platforms TO authenticated;
+
+GRANT ALL ON TABLE scheduling.call_platforms TO service_role;
+
 GRANT ALL ON TABLE scheduling.discovery_calls TO service_role;
 
 GRANT ALL ON TABLE scheduling.call_attendance TO service_role;

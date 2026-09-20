@@ -312,6 +312,15 @@
     --scrim: #000;
     --scrim-tint: 42%;
     --on-scrim: #fff;
+    /*
+	* The second — and only other — scrim tier (§B.10.2). Standard is "a modal is open"; heavy is "the
+	* page beneath cannot be used right now" (the offline interstitial). A tier, not a knob: a caller
+	* picks by what the modal MEANS, never by taste, which is what keeps this from re-opening the
+	* per-surface drift the single recipe closed. The tint is overwritten per theme by the engine like
+	* `--scrim-tint`; the blur is a CSS-only constant, deliberately the glass-chrome strength.
+	*/
+    --scrim-blur-heavy: 18px;
+    --scrim-tint-heavy: 64%;
 
     /*
 	* --- The glass veil scale ---
@@ -488,6 +497,21 @@
 	*/
     --shell-bottomnav-h: 56px;
     /* mobile thumb-nav bar height (Part D.3) */
+
+    /*
+	* --- Viewport-pinned status ribbon (`Ribbon`, @projective/ui/feedback) ---
+	*
+	* `--ribbon-h` is the strip's MINIMUM height; `--ribbon-inset` is the room CURRENTLY reserved for
+	* it, and is what every bottom-pinned surface (the middle-nav footer band, bottom-anchored toast
+	* stacks, the page body's tail padding) adds to its own offset. It is 0 until a mounted Ribbon
+	* opens and reflects that onto `:root[data-ribbon="open"]` — so the pinned chrome moves WITH the
+	* strip rather than being covered by it, and moves back the moment it withdraws. The attribute
+	* rule below reserves the minimum; the island then writes the strip's MEASURED height as an inline
+	* `--ribbon-inset` on the root, because a sentence that wraps on a phone draws taller than the
+	* minimum and a reservation that differs from what is drawn is a gap or an overlap.
+	*/
+    --ribbon-h: 2.5rem;
+    --ribbon-inset: 0px;
 
     /*
 	* --- Surface structure (§A.3) ---
@@ -780,6 +804,11 @@
 
     /* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
+}
+
+/* The open Ribbon reserves its own height for every bottom-pinned surface (see `--ribbon-inset`). */
+:root[data-ribbon="open"] {
+    --ribbon-inset: var(--ribbon-h);
 }
 
 /*

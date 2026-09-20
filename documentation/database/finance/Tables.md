@@ -376,7 +376,7 @@ graph.
 | `is_selected_for_checkout` | boolean                         | NOT NULL `DEFAULT true`.                                                                    |
 | `saved_for_later`          | boolean                         | NOT NULL `DEFAULT false`. The soft "keep but do not buy" path.                              |
 | `destination_email`        | text                            | NULL, structural `CHECK ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'`. Gifting.      |
-| `metadata`                 | jsonb                           | NOT NULL `DEFAULT '{}'`.                                                                    |
+| `metadata`                 | jsonb                           | NOT NULL `DEFAULT '{}'`. Carries `answers` — the buyer's responses to the listing's `intake_fields`, keyed by field id (Decision #108). |
 | `created_at`/`updated_at`  | timestamptz                     | NOT NULL `DEFAULT now()`.                                                                   |
 | CHECK                      | —                               | `basket_item_discount_within_line`: `discount_amount_minor <= unit_price_minor * quantity`. |
 

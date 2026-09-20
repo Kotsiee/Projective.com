@@ -143,6 +143,26 @@ The provider's booking configuration, one row per schedule (PK is `schedule_id`)
 | `preferred_provider_slug`                          | text             | → `integrations.providers` (SET NULL); null falls back to the active connection. |
 | CHECK `ck_paid_call_priced`                        | —                | `paid_enabled` ⇒ a positive fee **and** a currency.                              |
 
+### `scheduling.call_platforms`
+
+The conferencing platforms a host OFFERS for a call, in their preferred order (Decision #108).
+
+| Column          | Type        | Notes                                                                |
+| :-------------- | :---------- | :------------------------------------------------------------------- |
+| `schedule_id`   | uuid        | FK → `scheduling.schedules` (CASCADE). PK with `provider_slug`.       |
+| `provider_slug` | text        | FK → `integrations.providers` (CASCADE). A slug naming no provider is |
+|                 |             | unrepresentable, which is why this is a table and not a `text[]`.    |
+| `position`      | smallint    | NOT NULL `DEFAULT 0`, `CHECK >= 0`. The host's preference order.      |
+
+An **allow-list, not the truth about what can be minted**: a row offers nothing unless the host also
+holds an ACTIVE `integrations.user_connections` row for that provider carrying the `conferencing`
+capability, and the public offer (`PublicCallOffer.platforms`) is the INTERSECTION of the two. No
+rows at all means "every connected conferencing provider" — what a host who never visited the
+setting gets. `call_settings.preferred_provider_slug` stays the default pick within the offered set.
+The Consultation modal's platform selector is bound to that resolved list and the booking write
+refuses anything outside it (`platform_not_offered`). Zod: `CallPlatformSchema` /
+`UpdateCallPlatformsSchema`.
+
 ### `scheduling.discovery_calls`
 
 The booking record.
@@ -152,7 +172,7 @@ The booking record.
 | Parties      | `host_schedule_id` · `host_user_id` · `requester_user_id` (`CHECK` host ≠ requester)                                                                                                 |
 | Kind/state   | `call_type` (`courtesy`/`paid`) · `status` (see [the lifecycle](#the-discovery-call-lifecycle))                                                                                      |
 | Slots        | `proposed_start`/`_end` (kept after a reschedule) · `confirmed_start`/`_end` (null until confirmed) · `requester_timezone`                                                           |
-| Intent       | `agenda`                                                                                                                                                                             |
+| Intent       | `agenda` · `service_blueprint_id` → `marketplace.service_blueprints` (SET NULL) — the listing the call was booked ABOUT, or NULL for a call booked from the seller's profile      |
 | Conferencing | `provider_slug` · `connection_id` · `meeting_url` · `meeting_external_id`                                                                                                            |
 | Calendar     | `event_id` → `scheduling.events` (SET NULL)                                                                                                                                          |
 | Money        | `fee_amount_minor` · `fee_currency` · `payment_ref` · `escrow_id` · `refund_amount_minor` · `penalty_amount_minor`                                                                   |

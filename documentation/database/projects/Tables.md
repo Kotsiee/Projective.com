@@ -343,12 +343,33 @@ Project-scoped invitations, deliberately **not** `org.org_invitations` (which is
 | :----------------- | :---------- | :-------------------------------------------------------------------- |
 | `project_id`       | uuid        | FK → `projects.projects.id`, `ON DELETE CASCADE`.                     |
 | `project_stage_id` | uuid        | `NULL` = whole-project invite; set = stage-targeted.                  |
-| `target_email`     | text        | The invitee may have no account yet — the one participant reference   |
-|                    |             | that cannot be a `user_id`. Acceptance is what turns it into one.     |
+| `target_email`     | text        | The invitee may have no account yet — a participant reference that    |
+|                    |             | cannot be a `user_id`. Acceptance is what turns it into one.          |
+| `target_user_id`   | uuid        | FK → `org.users_public.user_id` (CASCADE). A hire FROM A PROFILE names |
+|                    |             | a person the platform already knows (Decision #108).                  |
+| `message`          | text        | NOT NULL `DEFAULT ''`. The client's intro.                            |
+| `offer_price_cents`| bigint      | The compensation for the stage this row names, in the project's       |
+|                    |             | currency; NULL = the stage's configured rate applies. `CHECK >= 0`.   |
+| `answers`          | jsonb       | NOT NULL `DEFAULT '{}'`, `CHECK` object. The client's answers to the  |
+|                    |             | seller's `hire_intake`, keyed by field id.                            |
+| `placeholder`      | boolean     | NOT NULL `DEFAULT false`. A seat on an UNPUBLISHED project whose terms |
+|                    |             | are settled at publish. An attribute, never a status.                 |
 | `role`             | text        | CHECK-constrained to the roles the accept path can actually grant.    |
 | `token`            | text UNIQUE | **The capability.** Whoever holds it can accept.                      |
 | `status`           | text        | `pending`, `accepted`, `expired`, `revoked`.                          |
 | `accepted_at`      | timestamptz | Set iff `status = 'accepted'` (`ck_project_invitations_accepted_at`). |
+
+**Exactly one addressee** — `ck_project_invitations_addressee` requires `target_email` XOR
+`target_user_id`. Email-addressed rows are the pre-existing "invite someone who may have no
+account" path; identity-addressed rows are the profile Hire / Add-to-project flow, which cannot
+address by email because `org.user_emails` is own-rows-only and the inviter may not read the
+invitee's address. `placeholder` is DERIVED by the fat service (`resolveHireOffer`: any draft
+project, or any unpriced selected stage) and never trusted from a caller — a caller who could mark a
+live project's invitation "placeholder" could invite somebody onto a priced stage while stating no
+price. One OPEN offer per seat: `uq_project_invitations_open_seat` is a partial unique index on
+`(project_id, project_stage_id, target_user_id) NULLS NOT DISTINCT WHERE status = 'pending'`, so a
+double-press cannot stack a second pending offer under the first, and two whole-project offers
+(`project_stage_id` NULL) collide too.
 
 ⚠️ Because `token` is the capability and RLS is row-level, **any policy that admits a row admits its
 token**. The SELECT policy is therefore limited to the project owner and to the invited identity —

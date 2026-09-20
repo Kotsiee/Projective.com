@@ -643,6 +643,61 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 }
 
 /**
+ * The ROSTER for an engagement that exists only in the store: the creator as its one member — the
+ * client, since they commissioned it — with every management capability, no invitations (the hire
+ * overlay folds those on), and the setup's own stages for the picker.
+ *
+ * Needed because the profile's assignment modal opens on a brief COMPOSED from the setup and the
+ * roster, and a project drafted through the profile's own create wizard had a setup and no roster —
+ * so the flow the wizard exists for ("create, then bring the seller in") answered "No project found"
+ * on the very project it had just made. Same restraint as {@link createdDetail}: no fabricated
+ * members, the viewer named "You".
+ */
+export function createdMemberRoster(ref: string, actor?: ReadActor): MemberRosterPage | null {
+	const record = findCreated(peekBucket(writeOwnerOf(actor)), ref);
+	if (!record) return null;
+	const setup = createdSetup(ref, actor) ?? record.setup;
+	const joinedAt = new Date().toISOString();
+	return {
+		scope: "project",
+		projectId: setup.slug,
+		channelId: null,
+		channelName: null,
+		channelKind: null,
+		projectTitle: setup.title,
+		format: setup.format,
+		members: [{
+			id: "viewer",
+			party: { name: "You", avatar: null, handle: null },
+			email: "",
+			role: "client",
+			assignment: null,
+			presence: "online",
+			assignedStages: [],
+			openTickets: 0,
+			ticketsLabel: "—",
+			joinedAt,
+			joinedLabel: "Just now",
+			isViewer: true,
+		}],
+		invites: [],
+		stages: [...setup.stages]
+			.sort((a, b) => a.order - b.order)
+			.map((stage) => ({ id: stage.id, name: stage.name })),
+		viewerId: "viewer",
+		viewerRole: "client",
+		viewerCaps: {
+			canManage: true,
+			canInvite: true,
+			canAssign: true,
+			canEditRoles: true,
+			canRemove: true,
+		},
+		total: 1,
+	};
+}
+
+/**
  * The FEED row for an engagement that exists only in the store.
  *
  * Same restraint as {@link createdDetail}: counts that nothing has produced are zero rather than

@@ -11,8 +11,10 @@ import "../styles/file-table.css";
 import "../styles/submission-card.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
-import { Message } from "@projective/ui/feedback";
+import { InlineNotice, Message } from "@projective/ui/feedback";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import type {
 	AssetItem,
 	FileItem,
@@ -431,7 +433,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	}
 
 	async function loadMore(): Promise<void> {
-		if (loadingMore.value || loading.value || !hasMore.value || !cursor.value) return;
+		if (
+			loadingMore.value || stall.blocked.value || loading.value || !hasMore.value || !cursor.value
+		) {
+			return;
+		}
 		const my = reqId.current;
 		loadingMore.value = true;
 		const res = await SubmissionsService.list(baseParams(path.value, cursor.value));
@@ -442,7 +448,9 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			cursor.value = res.data.page.nextCursor;
 			hasMore.value = res.data.page.hasMore;
 		}
+		stall.settle(res.ok);
 	}
+	const stall = useOfflineStall(loadMore);
 	// #endregion
 
 	// #region Navigation (tree + breadcrumbs → refetch + pushState)
@@ -867,7 +875,17 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 							</Message>
 						)}
 					</div>
-					<div class="fx-workspace" ref={workspaceRef}>{workspaceView}</div>
+					<div class="fx-workspace" ref={workspaceRef}>
+						{workspaceView}
+						{stall.stalled.value && (
+							<InlineNotice
+								text={OFFLINE_NOTICE_TEXT}
+								actionLabel="Retry"
+								onAction={stall.retry}
+								busy={stall.retrying.value}
+							/>
+						)}
+					</div>
 				</div>
 				{tasksPanelOpen.value
 					? (

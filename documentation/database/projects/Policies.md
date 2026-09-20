@@ -201,7 +201,7 @@ a project on another account.
 
 | Policy                                 | Command  | Rule                                                                                                            |
 | :------------------------------------- | :------- | :-------------------------------------------------------------------------------------------------------------- |
-| _View invitations as owner or invitee_ | `SELECT` | Project owner, **or** `target_email` matches one of the caller's own `org.user_emails` rows (case-insensitive). |
+| _View invitations as owner or invitee_ | `SELECT` | Project owner, **or** `target_user_id = auth.uid()`, **or** `target_email` matches one of the caller's own `org.user_emails` rows (case-insensitive). |
 | _Owner manages invitations_            | `ALL`    | Project owner on both arms, and `inviter_user_id = auth.uid()` on the check.                                    |
 
 🚨 **Never a blanket read.** `token` is the capability: whoever holds the value can accept and be
@@ -210,10 +210,14 @@ and there is no column-level fallback while `00002500` grants the whole table to
 permissive `SELECT` here is not a disclosure of who was invited, it is a grant of project access to
 everyone with an account.
 
-Two readers, and only two. The invitee is addressed by email precisely because at invite time they
-may have no account, so the identity join goes through `org.user_emails` — which carries its own
-own-rows-only policy, making the `user_id = auth.uid()` filter belt and braces rather than the only
-guard. Compared case-insensitively, because an email address is: an invitation that silently fails
+Two readers, and only two. An EMAIL-addressed invitee may have had no account at invite time, so
+that identity join goes through `org.user_emails` — which carries its own own-rows-only policy,
+making the `user_id = auth.uid()` filter belt and braces rather than the only guard. An
+IDENTITY-addressed invitee (a hire from a profile, Decision #108) reads their own row through
+`target_user_id = auth.uid()` with no join at all — and only their own, because that column is a
+FK the owner wrote, not a value the reader can assert. Verified by execution: the invitee sees
+exactly their identity-addressed rows and not the project's email-addressed ones; a stranger sees
+zero. Compared case-insensitively, because an email address is: an invitation that silently fails
 to match its own recipient is indistinguishable from one that was never sent.
 
 ---

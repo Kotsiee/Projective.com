@@ -36,6 +36,7 @@ The "Seller" persona. A user has exactly one freelancer profile.
 | `kyc_verified_at`                   | timestamptz          | **Additive.** When KYC was granted.                                                                                                  |
 | `payout_ready`                      | boolean              | **Additive.** The onboarding gate — `true` only when KYC-verified AND a payout method exists (`finance.fn_freelancer_payout_ready`). |
 | `identity_provider_ref`             | text                 | **Additive.** Stripe Identity session id (placeholder; **no PII**).                                                                  |
+| `hire_intake`                       | jsonb                | NOT NULL `DEFAULT '[]'`. The seller's HIRE intake — an ordered `IntakeField[]`, `CHECK` array ≤ 12 (`ck_freelancer_profiles_hire_intake_shape`). |
 
 > ⚠️ `kyc_*` is **identity/KYC** verification — distinct from **email** verification
 > (`org.user_emails.verified_at`, migration 0312). Gating rule in `finance-model.md` §KYC/KYB
@@ -77,6 +78,15 @@ Micro-agencies or collaborative units.
 | `owner_user_id` | uuid | FK → `auth.users.id` (Ultimate controller). |
 | `slug`          | text | UNIQUE, used for team URLs.                 |
 | `payout_model`  | text | Internal distribution logic.                |
+| `hire_intake`   | jsonb | NOT NULL `DEFAULT '[]'`. Same shape and CHECK as `org.freelancer_profiles.hire_intake` (`ck_teams_hire_intake_shape`). |
+
+> **`hire_intake`** (Decision #108) is what a client answers when adding this seller to a project
+> FROM THE PROFILE — the Project Assignment modal — as opposed to buying one of its listings, whose
+> questions live on `marketplace.service_blueprints.intake_fields`. Same `IntakeFieldSchema`, same
+> validator (`intakeRefusal`), same cap; the projection is `ProfileView.hireIntake` and the answers
+> land on `projects.project_invitations.answers`. A team carries its own because a team is a seller
+> too (Decision #61). The seller-side editor is a settings surface that does not exist yet — see
+> [`../../flows/ServiceCreation.md`](../../flows/ServiceCreation.md).
 
 ### `org.team_members`
 

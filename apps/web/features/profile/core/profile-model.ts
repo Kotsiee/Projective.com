@@ -1,5 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import type { ProjectSummary } from "@projective/types/projects";
+import type { PublicCallOffer } from "@projective/types/scheduling";
+import { formatMoney } from "@projective/types/finance";
 import {
 	LEGACY_TAB_TARGET,
 	LegacyProfileTab,
@@ -15,7 +17,7 @@ import type { ServiceItem } from "../types/profile-types.ts";
 
 /**
  * profile-model — the pure, JSX-free brains of the `/[handle]` profile: the four-section tab matrix,
- * labels + route segments, active-tab / legacy-redirect / own-profile resolution, the CTA rule, the
+ * labels + route segments, active-tab / legacy-redirect / own-profile resolution, the action-rig rule, the
  * review-stance filter, and the at-a-glance derivations (reply speed, estimated spend). Imported
  * freely by islands, components, and routes (no DOM, no server deps).
  */
@@ -109,7 +111,7 @@ export function reviewsHref(handle: string): string {
 }
 // #endregion
 
-// #region Ownership + CTA
+// #region Ownership + the action rig
 /**
  * Whether the acting user owns this profile — unlocks the owner chrome (inline story editing, the
  * image pickers, the Settings CTA). Matches on the hydrated `userId` OR the acting `@handle` (skeleton
@@ -127,59 +129,74 @@ export function isOwnProfile(
 	return false;
 }
 
-/**
- * The hero's action rig for a VISITOR.
- *
- * A SELLER (freelancer · team) leads with **Hire** — the prominent primary — and folds Message and
- * Follow into compact icon-only secondaries beside it. What Hire DOES is decided by what the viewer
- * can actually do with it, in this order:
- *
- *  - a GUEST has no projects and no account to hire from, so Hire opens the sign-in prompt
- *    (`target: "signin"`);
- *  - a signed-in client with OPEN projects picks one to bring the seller into (`target: "projects"`);
- *  - with no open project but a listing to buy, Hire lands on the Services row (`target: "services"`);
- *  - with neither, there is nothing to hire INTO and nothing to hire FROM, so Hire is withheld and the
- *    rig falls back to the text Message + Follow pair (`layout: "message"`) — a Hire that could only
- *    open the conversation would be a Message button wearing the wrong name.
- *
- * A BUYER entity (client · business · organisation) cannot be hired, so Message stays its primary with
- * Follow as a text secondary.
- */
-export interface ProfileCta {
-	/** Which rig the hero draws. */
-	layout: "hire" | "message";
-	/** The primary control's label. */
-	primary: "Hire" | "Message";
-	/** Where a `Hire` primary lands; `null` for the message rig. */
-	target: "projects" | "services" | "signin" | null;
-}
-
-/** The facts about the VIEWER that {@link ctaFor} branches on. */
-export interface CtaViewer {
-	/** Whether the viewer is signed in. */
-	authed: boolean;
-	/** Whether the seller has active listings — where a Hire control can land. */
-	hasServices: boolean;
-	/** How many open projects the viewer owns — what a Hire control can bring the seller into. */
-	openProjectCount: number;
-}
-
-/** Whether the kind is a seller — the only kind that can be hired. */
+/** Whether the kind is a seller — the only kind that can be hired or brought into a project. */
 export function isSellerKind(kind: ProfileKind): boolean {
 	return kind === "freelancer" || kind === "team";
 }
 
-export function ctaFor(kind: ProfileKind, viewer: CtaViewer): ProfileCta {
-	if (!isSellerKind(kind)) return { layout: "message", primary: "Message", target: null };
-	if (!viewer.authed) return { layout: "hire", primary: "Hire", target: "signin" };
-	if (viewer.openProjectCount > 0) return { layout: "hire", primary: "Hire", target: "projects" };
-	if (viewer.hasServices) return { layout: "hire", primary: "Hire", target: "services" };
-	return { layout: "message", primary: "Message", target: null };
+/**
+ * The hero's action rig for a VISITOR (root CLAUDE.md §8 Decision #108).
+ *
+ * A SELLER (freelancer · team) gets up to two conversion controls and the compact icon-only
+ * Message + Follow pair beside them:
+ *
+ *  - **Hire** — the primary — opens a popover of the seller's listings (and a "Book consultation"
+ *    row when they take calls). It renders when there is something to hire FOR: a listing or a
+ *    consultation. A seller with neither has nothing for the popover to show, so the control is
+ *    withheld rather than opened onto an empty menu.
+ *  - **Add to project** — present on a seller for a SIGNED-IN viewer, because its menu always has
+ *    at least one row for them: the "Create new project" item. With no Hire beside it, it takes
+ *    the primary treatment (§B.8.2 — one `filled` control per decision region, and it is then the
+ *    only conversion control). A GUEST does not get it: its rows are the viewer's OWN projects, of
+ *    which a guest has none, and its create row would mint a project for nobody — every path
+ *    through it ends at the sign-in prompt, so the control is withheld rather than offered and then
+ *    refused (product owner, 2026-09-20).
+ *
+ * A BUYER entity (client · business · organisation) cannot be hired or assigned, so Message stays
+ * its text primary with Follow as a text secondary.
+ *
+ * Hire renders for a guest exactly as it does for a member — a listing's preview and a provider's
+ * availability are public information, and a control that appears only after signing in is one a
+ * guest never learns exists — but a guest's PRESS on it opens the sign-in prompt in place of the
+ * popover (the hero owns that gate; `rigFor` only decides what renders).
+ */
+export interface ProfileRig {
+	/** `seller` draws Hire ⁄ Add-to-project + the icon pair; `buyer` the Message + Follow text pair. */
+	layout: "seller" | "buyer";
+	/** Whether the Hire control renders. */
+	hire: boolean;
+	/** Whether the Add-to-project control renders. */
+	addToProject: boolean;
+	/** Which control carries the filled primary treatment. */
+	primary: "hire" | "add" | "message";
+}
+
+/** The facts about the SELLER that {@link rigFor} branches on. */
+export interface RigInput {
+	/** Whether the seller has active listings — rows for the Hire popover. */
+	hasServices: boolean;
+	/** Whether the seller takes discovery calls — the popover's consultation row. */
+	offersConsultation: boolean;
+	/** Whether the viewer is signed in — Add-to-project lists THEIR projects, so a guest has none. */
+	authed: boolean;
+}
+
+export function rigFor(kind: ProfileKind, input: RigInput): ProfileRig {
+	if (!isSellerKind(kind)) {
+		return { layout: "buyer", hire: false, addToProject: false, primary: "message" };
+	}
+	const hire = input.hasServices || input.offersConsultation;
+	const addToProject = input.authed;
+	// With neither control (a guest on a seller with nothing to hire for) the row holds only the
+	// icon pair; `primary` then names a control that does not render, and the hero draws nothing
+	// filled — an honest absence, not a promoted secondary.
+	return { layout: "seller", hire, addToProject, primary: hire ? "hire" : "add" };
 }
 
 /**
- * One open project a signed-in client can bring a seller into — the row the Hire popover draws. A
- * slim, serialisable slice of {@link ProjectSummary}, because it crosses the island boundary.
+ * One project a signed-in client can bring a seller into — the row the Add-to-project popover
+ * draws. A slim, serialisable slice of {@link ProjectSummary}, because it crosses the island
+ * boundary.
  */
 export interface HireProject {
 	slug: string;
@@ -187,6 +204,12 @@ export interface HireProject {
 	/** The owning workspace ("Personal" · "Northwind Studio"), so two workspaces' projects read apart. */
 	scopeLabel: string;
 	status: ProjectSummary["status"];
+	/**
+	 * Whether the project is PUBLISHED — anything past `draft`. A published project's assignment is
+	 * an invitation at the project's stated terms; an unpublished one takes a placeholder
+	 * assignment that is priced when the project is published.
+	 */
+	published: boolean;
 }
 
 /** The lifecycle states a project can still be hired into. */
@@ -197,23 +220,49 @@ export function isOpenProject(project: Pick<ProjectSummary, "status">): boolean 
 	return OPEN_PROJECT_STATUSES.includes(project.status);
 }
 
-/** Project the viewer's feed rows onto the Hire popover's rows — open engagements only. */
+/**
+ * Project the viewer's feed rows onto the popover's rows — open engagements only, PUBLISHED FIRST.
+ *
+ * Published before draft, and stable within each group (the feed's own order), because a client
+ * hiring somebody almost always means into a project that is already live; the drafts follow so
+ * they are never lost, but they never push the live work down the list.
+ */
 export function hireProjectsFrom(items: readonly ProjectSummary[]): HireProject[] {
-	return items.filter(isOpenProject).map((p) => ({
+	const rows = items.filter(isOpenProject).map((p) => ({
 		slug: p.slug,
 		title: p.title,
 		scopeLabel: p.scopeLabel,
 		status: p.status,
+		published: p.status !== "draft",
 	}));
+	return [...rows.filter((r) => r.published), ...rows.filter((r) => !r.published)];
 }
 
 /**
- * Where the invitations a Hire sends can be managed afterwards — the project's roster, whose pending
- * queue lists them. The popover row itself no longer navigates here: picking a project opens the
- * invitation modal in place, and this is the address the modal's success note points at.
+ * Where the invitations an assignment sends can be managed afterwards — the project's roster, whose
+ * pending queue lists them. The popover row itself never navigates here: picking a project opens
+ * the assignment modal in place, and this is the address the modal's success note points at.
  */
 export function hireProjectHref(project: Pick<HireProject, "slug">): string {
 	return `/projects/${project.slug}/members`;
+}
+
+/**
+ * The consultation row's price word. "Free" whenever a courtesy call is offered — even beside a
+ * paid option, because the free intro is the one a visitor is being invited to — else the paid
+ * fee in the provider's own currency; `null` when the provider takes no calls (no row).
+ */
+export function consultationPriceLabel(
+	offer:
+		| Pick<PublicCallOffer, "courtesyEnabled" | "paidEnabled" | "feeAmountMinor" | "feeCurrency">
+		| null,
+): string | null {
+	if (!offer) return null;
+	if (offer.courtesyEnabled) return "Free";
+	if (offer.paidEnabled && offer.feeAmountMinor !== null && offer.feeCurrency) {
+		return formatMoney(offer.feeAmountMinor, offer.feeCurrency);
+	}
+	return null;
 }
 // #endregion
 

@@ -6,6 +6,7 @@ import {
 	hireInvitationRefusal,
 	hireInvitationTotalCents,
 	hirePricingModelFor,
+	resolveHireOffer,
 } from "./hire.ts";
 import type { MemberRosterPage } from "./members.ts";
 import { blankStage, reconcileSetup } from "./setup.ts";
@@ -33,6 +34,7 @@ function setupFor(
 		priced("stg-a", 0, 40_000, "<p>Discovery and <b>research</b></p>"),
 		priced("stg-b", 1, null),
 	],
+	status: "draft" | "active" = "active",
 ) {
 	return reconcileSetup({
 		id: "11111111-1111-4111-8111-111111111111",
@@ -40,7 +42,7 @@ function setupFor(
 		title: "Helia wallet redesign",
 		format,
 		structure,
-		status: "active",
+		status,
 		description: "<p>A wallet <em>redesign</em>.</p>",
 		budget: { budgetType: "fixed_price", amountCents: 250_000, currency: "GBP" },
 		stages,
@@ -159,6 +161,7 @@ Deno.test("buildHireBrief: a viewer without the invite capability cannot send", 
 		message: "",
 		stages: [{ stageId: "stg-a", priceCents: 1 }],
 		taskPriceCents: null,
+		answers: {},
 	});
 	assertEquals(refusal?.errors.projectId, "not_invitable");
 });
@@ -170,6 +173,7 @@ const offer = (stages: HireInvitation["stages"], taskPriceCents: number | null =
 	message: "Hello",
 	stages,
 	taskPriceCents,
+	answers: {},
 });
 
 Deno.test("hireInvitationRefusal: a stage model needs at least one known, unique stage", () => {
@@ -201,8 +205,13 @@ Deno.test("hireInvitationRefusal: a task model needs its one price and no stages
 		setupFor("one_off", "single_stage", [priced("stg-root", 0, 90_000)]),
 		roster,
 	);
+	// A null task price on a PRICED project resolves to the configured figure, so it is accepted.
+	assertEquals(hireInvitationRefusal(task, { ...offer([]), taskPriceCents: null }), null);
+	// An UNPRICED live project has nothing to offer and must be priced first. (A single-stage
+	// one-off falls back to the project budget, so the brief itself is unpriced here, not the stage.)
+	const unpriced: HireBrief = { ...task, taskPriceCents: null };
 	assertEquals(
-		hireInvitationRefusal(task, { ...offer([]), taskPriceCents: null })?.errors.taskPriceCents,
+		hireInvitationRefusal(unpriced, { ...offer([]), taskPriceCents: null })?.errors.taskPriceCents,
 		"required",
 	);
 	assertEquals(
@@ -222,4 +231,49 @@ Deno.test("hireInvitationTotalCents: one ticket per selected stage, or the task 
 	);
 	assertEquals(hireInvitationTotalCents(offer([], 90_000)), 90_000);
 	assertEquals(hireInvitationTotalCents(offer([])), 0);
+});
+
+Deno.test("hireInvitationRefusal: a live project refuses an unpriced stage; a draft takes a placeholder", () => {
+	// `stg-b` carries no configured rate. On the LIVE pipeline that is a gap the client must close.
+	const live = hireInvitationRefusal(pipeline, offer([{ stageId: "stg-b", priceCents: null }]));
+	assertEquals(live?.errors.stages, "unpriced");
+	// The same stage on a DRAFT is a placeholder assignment — attached now, priced at publish.
+	const draft = buildHireBrief(setupFor("pipeline", "standard", undefined, "draft"), roster);
+	assertEquals(hireInvitationRefusal(draft, offer([{ stageId: "stg-b", priceCents: null }])), null);
+	const resolved = resolveHireOffer(
+		draft,
+		offer([{ stageId: "stg-a", priceCents: null }, { stageId: "stg-b", priceCents: null }]),
+	);
+	assertEquals(resolved.placeholder, true);
+	assertEquals(resolved.totalCents, null);
+	assertEquals(resolved.stages[0].priceCents, 40_000);
+	assertEquals(resolved.stages[1].priceCents, null);
+	// A fully PRICED draft is still a placeholder — nothing is live to invite anybody into — but its
+	// total is known and is carried, because the modal prints the figures it has.
+	const pricedDraft = resolveHireOffer(draft, offer([{ stageId: "stg-a", priceCents: null }]));
+	assertEquals(pricedDraft.placeholder, true);
+	assertEquals(pricedDraft.totalCents, 40_000);
+});
+
+Deno.test("resolveHireOffer: a caller's figure wins over the configured rate, else the rate applies", () => {
+	const resolved = resolveHireOffer(
+		pipeline,
+		offer([{ stageId: "stg-a", priceCents: 55_000 }]),
+	);
+	assertEquals(resolved.stages, [{ stageId: "stg-a", priceCents: 55_000 }]);
+	assertEquals(resolved.totalCents, 55_000);
+	assertEquals(resolved.placeholder, false);
+	const configured = resolveHireOffer(pipeline, offer([{ stageId: "stg-a", priceCents: null }]));
+	assertEquals(configured.totalCents, 40_000);
+	// A task model resolves to its one figure and no stages.
+	const task = buildHireBrief(
+		setupFor("one_off", "single_stage", [priced("stg-root", 0, 90_000)]),
+		roster,
+	);
+	assertEquals(resolveHireOffer(task, offer([])), {
+		stages: [],
+		taskPriceCents: 90_000,
+		placeholder: false,
+		totalCents: 90_000,
+	});
 });

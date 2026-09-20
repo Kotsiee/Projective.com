@@ -112,7 +112,7 @@ const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at";
  * docblock, point 2). A column not selected is a column that cannot be serialised by accident.
  */
 const INVITATION_COLUMNS =
-	"id, project_stage_id, target_email, role, inviter_user_id, status, created_at, expires_at";
+	"id, project_stage_id, target_email, target_user_id, role, inviter_user_id, status, created_at, expires_at, placeholder";
 
 /**
  * The `projects.stage_assignments.status` values that mean the seat is HELD.
@@ -241,7 +241,10 @@ interface AssignmentRow {
 interface InvitationRow {
 	id: string;
 	project_stage_id: string | null;
-	target_email: string;
+	/** Exactly one of the two is set (`ck_project_invitations_addressee`). */
+	target_email: string | null;
+	target_user_id: string | null;
+	placeholder: boolean;
 	role: string;
 	inviter_user_id: string;
 	status: string;
@@ -546,23 +549,35 @@ async function fetchInvitations(
 	const open = rows.filter((row) => toInviteStatus(row.status) !== null);
 	if (open.length === 0) return [];
 
-	const inviters = await fetchParties(actor, open.map((row) => row.inviter_user_id));
+	// One lookup covers both the inviters and the identity-addressed invitees: an invitation from a
+	// profile names a person, and the queue prints that person's handle where an email-addressed row
+	// prints its address.
+	const parties = await fetchParties(actor, [
+		...open.map((row) => row.inviter_user_id),
+		...open.map((row) => row.target_user_id),
+	]);
 
 	return open.map((row) => {
 		const declared = toInviteStatus(row.status) ?? "pending";
 		const lapsed = row.expires_at ? Date.parse(row.expires_at) <= nowMs : false;
 		const invitedAt = toIso(row.created_at);
 		const stageId = row.project_stage_id;
+		const invitee = row.target_user_id ? parties.get(row.target_user_id) : undefined;
+		const handle = invitee?.username ? `@${invitee.username}` : null;
 		return {
 			id: clampOr(row.id, 120, "invitation"),
-			email: clamp(row.target_email, 160),
+			// The line the queue prints: the address for an email-addressed row, the handle for an
+			// identity-addressed one — an invitee's email is theirs alone (`org.user_emails` RLS).
+			email: clamp(row.target_email ?? handle ?? "", 160),
+			handle: handle ? clamp(handle, 41) : null,
+			placeholder: row.placeholder === true,
 			// The CHECK on this column allows exactly the seven `MemberRole` members, so the round trip
 			// is lossless — but it is still routed through the shared mapping rather than cast, because
 			// a CHECK is not an enum and nothing stops a future migration widening it.
 			role: toMemberRole(row.role),
 			stageId: stageId ? clamp(stageId, 120) : null,
 			stageName: stageId ? (stageNames.get(stageId) ?? null) : null,
-			invitedBy: clamp(partyName(inviters.get(row.inviter_user_id)), 120),
+			invitedBy: clamp(partyName(parties.get(row.inviter_user_id)), 120),
 			invitedAt,
 			invitedLabel: clamp(agoLabel(invitedAt, nowMs), 28),
 			status: declared === "expired" || lapsed ? "expired" : "pending",

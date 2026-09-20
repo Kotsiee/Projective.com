@@ -17,6 +17,7 @@ import { MessagingService } from "../core/MessagingService.ts";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ChatMessage, MessagePage } from "../types/messaging-types.ts";
 import type { PopoutState } from "../core/popout-state.ts";
+import { offlineOr } from "@web/utils/use-offline-stall.ts";
 
 /**
  * PopoutChat — the message stream + composer inside the floating "Pop Out Chat" popover (task §1).
@@ -116,7 +117,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		const page = await fetchPage(cursor.value);
 		loadingOlder.value = false;
 		if (!page) {
-			error.value = "Couldn't load earlier messages.";
+			error.value = offlineOr("Couldn't load earlier messages.");
 			return;
 		}
 		messages.value = [...page.messages, ...messages.value];

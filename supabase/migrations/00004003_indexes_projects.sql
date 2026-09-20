@@ -58,3 +58,22 @@ CREATE INDEX IF NOT EXISTS idx_projects_source_blueprint
 CREATE INDEX IF NOT EXISTS idx_projects_stale_drafts
     ON projects.projects (last_activity_at)
     WHERE status = 'draft' AND source_blueprint_id IS NOT NULL;
+
+-- Identity-addressed invitations (Decision #108).
+--
+-- The invitee's own SELECT policy arm is `target_user_id = auth.uid()`, and "what am I invited to"
+-- is a read every signed-in seller's inbox will make; PARTIAL on the column being set, because the
+-- email-addressed rows are never in that query's scope.
+CREATE INDEX IF NOT EXISTS idx_project_invitations_target_user
+    ON projects.project_invitations (target_user_id, status)
+    WHERE target_user_id IS NOT NULL;
+
+-- One OPEN invitation per (project, stage, person). A hire from a profile writes one row per
+-- selected stage, and a double-press or a retry must not stack a second pending offer for the same
+-- seat under the first. NULLS NOT DISTINCT so two whole-project invitations (`project_stage_id`
+-- NULL) collide too — without it Postgres would treat every NULL stage as unique and the guard would
+-- hold for exactly the rows a task-priced engagement never writes.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_project_invitations_open_seat
+    ON projects.project_invitations (project_id, project_stage_id, target_user_id)
+    NULLS NOT DISTINCT
+    WHERE status = 'pending' AND target_user_id IS NOT NULL;

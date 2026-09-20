@@ -222,6 +222,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 			timezone: viewerZone(),
 			note: note.value.trim() || undefined,
 			seats: offer.value.format === "cohort" ? seats.value : 1,
+			answers: {},
 		}, bookingSim());
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not hold that time.";

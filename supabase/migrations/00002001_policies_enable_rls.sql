@@ -398,6 +398,8 @@ ALTER TABLE scheduling.events ENABLE ROW LEVEL SECURITY;
 -- #region 7. RLS
 ALTER TABLE scheduling.call_settings ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE scheduling.call_platforms ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE scheduling.discovery_calls ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.call_attendance ENABLE ROW LEVEL SECURITY;

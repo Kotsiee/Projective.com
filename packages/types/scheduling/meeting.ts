@@ -30,6 +30,13 @@ export const CONFERENCING_PROVIDERS = [
 ] as const;
 export type ConferencingProvider = (typeof CONFERENCING_PROVIDERS)[number];
 
+/**
+ * The same vocabulary as a Zod enum, for a payload that names a room-minting provider — the platform
+ * a buyer picks for a discovery call. Built FROM the array rather than restated beside it, so the
+ * two cannot drift by one member.
+ */
+export const ConferencingProviderSchema = z.enum(CONFERENCING_PROVIDERS);
+
 /** Human labels for the conferencing providers. */
 export const CONFERENCING_LABEL: Record<ConferencingProvider, string> = {
 	google: "Google Meet",

@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
-import { deliveryDays, getResults } from "./query.ts";
+import { deliveryDays, findItem, getResults } from "./query.ts";
+import { findProfileServices } from "../profile/profile-fixtures.ts";
 import { SERVICES } from "./fixtures.ts";
 import type { ExploreParams } from "@projective/types/explore";
 
@@ -39,4 +40,26 @@ Deno.test("a price pair bounds both ends and the legacy single value still means
 	assert(pair.length <= upTo.length);
 	assert(upTo.length <= all.length);
 	assertEquals(getResults(params({ price: ["3000", "1000"] })).length, pair.length);
+});
+
+/*
+ * A profile-scoped listing id resolves to the item the profile's own card showed — owner included.
+ * Pinned because the failure is silent: every listing opened FROM a profile used to 404 through
+ * this exact lookup, and a corpus that answers "not found" looks exactly like an unknown id.
+ */
+Deno.test("findItem resolves a profile-scoped `sv-{handle}-{i}` id to the profile's own copy", () => {
+	const services = findProfileServices("@juno") ?? [];
+	assert(
+		services.length > 0,
+		"the fixture profile sells nothing, so nothing below can be addressed",
+	);
+	const first = services[0];
+	const found = findItem(first.id);
+	assertEquals(found?.id, first.id);
+	assertEquals(found?.owner.handle, "@juno");
+	assertEquals(found?.title, first.title);
+	// The corpus original still resolves under its own id, and an unknown id still resolves to nothing.
+	assertEquals(findItem(SERVICES[0].id)?.id, SERVICES[0].id);
+	assertEquals(findItem("sv-nobody-here-99"), undefined);
+	assertEquals(findItem("sv-juno-999"), undefined);
 });

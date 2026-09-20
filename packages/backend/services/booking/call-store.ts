@@ -1,4 +1,4 @@
-import type { CallStatus, CallType } from "@projective/types/scheduling";
+import type { CallStatus, CallType, ConferencingProvider } from "@projective/types/scheduling";
 import { hash, NOW } from "../scheduling/derive.ts";
 
 /**
@@ -24,8 +24,12 @@ export interface DiscoveryCallRow {
 	id: string;
 	hostHandle: string;
 	requesterId: string;
-	/** The listing the call was requested from — context for the host, never a commitment. */
-	subjectId: string;
+	/**
+	 * The listing the call was requested from — context for the host, never a commitment. `null`
+	 * when it was requested from the host's profile, where there is no listing. The live column is
+	 * `scheduling.discovery_calls.service_blueprint_id` (`DiscoveryCall.serviceBlueprintId`).
+	 */
+	subjectId: string | null;
 	callType: CallType;
 	status: CallStatus;
 	proposedStart: number;
@@ -36,6 +40,8 @@ export interface DiscoveryCallRow {
 	agenda: string | null;
 	/** The conferencing room, minted only once a call is actually confirmed. */
 	meetingUrl: string | null;
+	/** The platform the room is minted on — `scheduling.discovery_calls.provider_slug`. */
+	providerSlug: ConferencingProvider | null;
 	createdAt: number;
 }
 
@@ -47,12 +53,14 @@ const calls = new Map<string, DiscoveryCallRow>();
 export interface DiscoveryCallSeed {
 	handle: string;
 	requesterId: string;
-	subjectId: string;
+	subjectId: string | null;
 	callType: CallType;
 	startsAt: number;
 	endsAt: number;
 	timezone: string;
 	agenda: string | null;
+	/** The chosen platform, or `null` when the host arranges the room themselves. */
+	platform: ConferencingProvider | null;
 	now?: number;
 }
 
@@ -98,6 +106,7 @@ export function requestDiscoveryCall(seed: DiscoveryCallSeed): DiscoveryCallRow 
 		 * never happen — and, worse, one the buyer will put in their calendar and turn up to.
 		 */
 		meetingUrl: autoConfirm ? `https://meet.projective.example/${id}` : null,
+		providerSlug: seed.platform,
 		createdAt: now,
 	};
 	calls.set(id, row);

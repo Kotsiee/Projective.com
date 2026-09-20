@@ -4,7 +4,7 @@ import "../styles/dialog.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { Portal } from "../../overlay/components/Portal.tsx";
-import { Backdrop } from "../../overlay/islands/Backdrop.tsx";
+import { Backdrop, type BackdropProps } from "../../overlay/islands/Backdrop.tsx";
 import { usePresence } from "../../overlay/core/usePresence.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
@@ -48,6 +48,11 @@ export interface DialogProps {
 	role?: "dialog" | "alertdialog";
 	/** Clicking the backdrop closes the dialog (default `true` when modal). */
 	dismissableMask?: boolean;
+	/**
+	 * Which scrim tier the modal backdrop draws (default `standard`). `heavy` is reserved for a dialog
+	 * whose subject is that the page beneath cannot be used right now — see {@link BackdropProps}.
+	 */
+	backdropIntensity?: BackdropProps["intensity"];
 	/** Show the header close (×) button (default `true`). */
 	closable?: boolean;
 	/** Allow dragging the dialog by its header. */
@@ -98,6 +103,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 		modal = true,
 		role = "dialog",
 		dismissableMask = true,
+		backdropIntensity = "standard",
 		closable = true,
 		draggable = false,
 		resizable = false,
@@ -209,7 +215,11 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 	return (
 		<Portal zIndex={stack.zIndex}>
 			{modal && (
-				<Backdrop visible={state === "open"} onClick={dismissableMask ? close : undefined} />
+				<Backdrop
+					visible={state === "open"}
+					intensity={backdropIntensity}
+					onClick={dismissableMask ? close : undefined}
+				/>
 			)}
 			<div
 				class={cx(

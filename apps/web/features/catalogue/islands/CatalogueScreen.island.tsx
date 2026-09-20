@@ -3,6 +3,9 @@ import { type Signal, useComputed, useSignal, useSignalEffect } from "@preact/si
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/catalogue.css";
 import { VirtualGrid } from "@projective/ui/display";
+import { InlineNotice } from "@projective/ui/feedback";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { AnalyticsStrip } from "../components/AnalyticsStrip.tsx";
 import { type ListingAction, ListingCard } from "../components/ListingCard.tsx";
 import { ListingTable } from "../components/ListingTable.tsx";
@@ -121,12 +124,18 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 	}
 
 	async function loadMore(): Promise<void> {
-		if (loadingMore.value || consoleBusy.value || !hasMore.value || !cursor.value) return;
+		if (
+			loadingMore.value || stall.blocked.value || consoleBusy.value || !hasMore.value ||
+			!cursor.value
+		) return;
 		const my = reqId.current;
 		loadingMore.value = true;
 		const res = await CatalogueService.list(baseParams(cursor.value));
 		loadingMore.value = false;
 		if (my !== reqId.current) return;
+		// A next page that failed OFFLINE stalls the tail with its own notice and Retry; it does not
+		// mark the rows already on screen stale — they still answer the query, the network does not.
+		if (stall.settle(res.ok && !!res.data)) return;
 		if (!res.ok || !res.data) {
 			consoleError.value = res.message ?? "Couldn't load more listings.";
 			return;
@@ -136,6 +145,7 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 		cursor.value = res.data.page.nextCursor;
 		hasMore.value = res.data.page.hasMore;
 	}
+	const stall = useOfflineStall(loadMore);
 	// #endregion
 
 	// #region Cross-island: header band search, footer band sort
@@ -286,6 +296,14 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 							onReachEnd={loadMore}
 						/>
 					)}
+				{stall.stalled.value && (
+					<InlineNotice
+						text={OFFLINE_NOTICE_TEXT}
+						actionLabel="Retry"
+						onAction={stall.retry}
+						busy={stall.retrying.value}
+					/>
+				)}
 			</div>
 		</div>
 	);

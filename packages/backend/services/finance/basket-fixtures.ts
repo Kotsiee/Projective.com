@@ -27,6 +27,7 @@ import {
 } from "@projective/types/finance";
 import type { ExploreItem, ProjectItem } from "@projective/types/explore";
 import { PRODUCTS, PROJECTS, SERVICES } from "../explore/fixtures.ts";
+import { findReownedListing } from "../profile/profile-fixtures.ts";
 import { allProjects } from "../projects/fixtures.ts";
 import { parsePriceMajor, PIPELINE_LOW, unitPriceMajor } from "../explore/pricing.ts";
 import { switcher, toMoney } from "./wallet-fixtures.ts";
@@ -379,9 +380,15 @@ export function simWalletMinor(base: number, totalMinor: number, sim?: BasketSim
 const CORPUS = new Map<string, ExploreItem>();
 for (const item of [...SERVICES, ...PRODUCTS, ...PROJECTS]) CORPUS.set(item.id, item);
 
-/** The discovery record a basket line points at, or `undefined` when the id is unknown. */
+/**
+ * The discovery record a basket line points at, or `undefined` when the id is unknown.
+ *
+ * A profile-scoped listing (`sv-{handle}-{i}`, what a seller's own Services row mints) resolves
+ * through the profile's derivation, so a line added from a profile prices exactly as the card the
+ * buyer clicked — the same fallback `findItem` carries, for the same reason.
+ */
 export function corpusItem(id: string): ExploreItem | undefined {
-	return CORPUS.get(id);
+	return CORPUS.get(id) ?? findReownedListing(id);
 }
 
 /**
@@ -797,7 +804,7 @@ let seq = 0;
 
 /** Which group a line's kind rolls up to, and the parent it groups under. */
 function parentOf(itemId: string): { group: PurchasableItemGroup; parentId: string } | null {
-	const item = CORPUS.get(itemId);
+	const item = corpusItem(itemId);
 	if (!item) return null;
 	if (item.type === "products") return { group: "product", parentId: item.id };
 	if (item.type === "projects") return { group: "project", parentId: item.id };
@@ -806,7 +813,7 @@ function parentOf(itemId: string): { group: PurchasableItemGroup; parentId: stri
 
 /** Build the stored line for a seed, resolving its price + display facts from the discovery corpus. */
 function storedFromSeed(seed: LineSeed, basketId: string): StoredLine {
-	const item = CORPUS.get(seed.itemId);
+	const item = corpusItem(seed.itemId);
 	const unitMajor = seed.unitMajor ?? (item ? unitMajorFor(seed.itemType, item) : 0);
 	const meta = itemKindMeta(seed.itemType);
 	const parent = parentOf(seed.itemId);
@@ -924,7 +931,7 @@ function findLine(owner: ResolvedOwner, lineId: string): StoredLine | undefined 
 // #region Projection
 /** Project one stored line into the SSOT's {@link BasketItem}, in the read's display currency. */
 function toItem(line: StoredLine, display: string): BasketItem {
-	const item = CORPUS.get(line.itemId);
+	const item = corpusItem(line.itemId);
 	const unit = price(line.unitMajor, display);
 	const discount = line.discountMajor > 0
 		? price(line.discountMajor, display)
@@ -1010,7 +1017,7 @@ export function buildGroups(items: readonly BasketItem[], display: string): Bask
 		const rows = buckets.get(key)!;
 		const group = itemKindMeta(rows[0].itemType).group;
 		const parentId = key === "product" ? null : key.slice(key.indexOf(":") + 1);
-		const parent = parentId ? CORPUS.get(parentId) : undefined;
+		const parent = parentId ? corpusItem(parentId) : undefined;
 		const label = key === "product" ? "Digital downloads" : (parent?.title ?? rows[0].title);
 		const seller = parent?.owner.name ?? rows[0].sellerName;
 		return {
@@ -1168,7 +1175,7 @@ function derivedLists(
 
 	return order.slice(0, 40).map((parentId) => {
 		const rows = buckets.get(parentId)!;
-		const parent = CORPUS.get(parentId);
+		const parent = corpusItem(parentId);
 		const seller = parent?.owner.name ?? rows[0].sellerName;
 		const noun = countNoun(rows.length, kind === "ticket" ? "ticket" : "booking");
 		const id = `${kind}:${parentId}`;
@@ -1264,7 +1271,7 @@ export function derivedBasketOf(owner: ResolvedOwner, listId: string): Basket {
 		// A view has no shelf; see the doc above.
 		.map((item) => (item.savedForLater ? { ...item, savedForLater: false } : item));
 
-	const parent = CORPUS.get(parentId);
+	const parent = corpusItem(parentId);
 	const discounts = applyDiscounts(items, 0);
 	const now = iso(NOW);
 
@@ -1374,7 +1381,7 @@ function checkoutHrefFor(
 	// `service_ticket` groups under Tickets but is addressed by `service_id`, and using the section to
 	// pick the param would hand the checkout a project id that matches nothing.
 	const parentId = active.id.slice(active.id.indexOf(":") + 1);
-	const param = CORPUS.get(parentId)?.type === "projects" ? "project_id" : "service_id";
+	const param = corpusItem(parentId)?.type === "projects" ? "project_id" : "service_id";
 	return listHref("/checkout/details", owner, { basket: basketId, [param]: parentId });
 }
 // #endregion
@@ -1529,7 +1536,7 @@ export function addItem(input: AddBasketItem, query: BasketQuery): MutationOutco
 	const refusal = memberGate(owner);
 	if (refusal) return refusal;
 
-	const item = CORPUS.get(input.itemId);
+	const item = corpusItem(input.itemId);
 	if (!item) {
 		return {
 			ok: false,

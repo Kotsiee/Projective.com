@@ -192,11 +192,19 @@
     grid-column: 2;
     grid-row: 3;
     position: sticky;
-    inset-block-end: 0;
+    /* Clears an open status Ribbon (`--ribbon-inset`, 0 otherwise) so the band's actions — the
+       composer, the money rig — are never under the strip that says the network is gone. */
+    inset-block-end: var(--ribbon-inset, 0px);
     z-index: var(--z-sticky);
+    transition: inset-block-end var(--dur-medium) var(--spring-standard);
     min-block-size: var(--shell-midnav-footer-h);
     display: flex;
     align-items: center;
+}
+
+/* The move is decoration; both reduced-motion channels jump the band to its final offset. */
+:root[data-motion="reduced"] .ui-middle-nav__footer {
+    transition-duration: 0ms;
 }
 
 /*
@@ -285,7 +293,9 @@
 	* offset for the scrolling content, so this only aligns the pinned band with that reservation.
 	*/
     .ui-middle-nav__footer {
-        inset-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
+        inset-block-end: calc(
+            var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px) + var(--ribbon-inset, 0px)
+        );
     }
 
     /*
@@ -295,6 +305,6 @@
 	 * band floats 56px off the viewport bottom and the buyer's thumb lands on empty canvas.
 	 */
     .ui-app-shell[data-chrome="focus"] .ui-middle-nav__footer {
-        inset-block-end: env(safe-area-inset-bottom, 0px);
+        inset-block-end: calc(env(safe-area-inset-bottom, 0px) + var(--ribbon-inset, 0px));
     }
 }

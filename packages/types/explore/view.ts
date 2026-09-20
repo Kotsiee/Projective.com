@@ -8,6 +8,7 @@ import {
 } from "./items.ts";
 import { ProfileStandingSchema, VerificationTier } from "../profile/profile.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
+import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
 
 /**
  * explore.view — the Zod SSOT for the public Entity View page (`/view/[id]`).
@@ -475,6 +476,13 @@ export const ServiceViewSchema = z.object({
 	 * offering a duration control that would imply otherwise.
 	 */
 	sessionMinutes: z.number().int().min(5).max(600).optional(),
+	/**
+	 * The seller's own intake — the questions a buyer answers in the service modal before the
+	 * purchase is staged (`@projective/types/services` `IntakeField`). Seller-authored DATA, so the
+	 * modal renders whatever is here rather than a form somebody wrote by hand, and the fat service
+	 * holds the answers to the same list. Empty means the seller asks nothing beyond a message.
+	 */
+	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).default([]),
 });
 export type ServiceViewExtra = z.infer<typeof ServiceViewSchema>;
 // #endregion

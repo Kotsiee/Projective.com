@@ -81,6 +81,7 @@ import { AssetTree, ROOT_KEY } from "../components/AssetTree.tsx";
 import { InspectPanel } from "../components/InspectPanel.tsx";
 import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { SourceMark } from "../components/file-hub-glyphs.tsx";
+import { offlineOr } from "@web/utils/use-offline-stall.ts";
 
 /**
  * AssetPicker — the one modal every surface on the platform uses to attach something the person
@@ -830,7 +831,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			hasMore.value = res.data.hasMore;
 			cursor.value = res.data.nextCursor;
 		} else {
-			error.value = res.message ?? "The next page could not be loaded.";
+			error.value = offlineOr(res.message ?? "The next page could not be loaded.");
 		}
 	}
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PublicCallOfferSchema } from "../scheduling/calls.ts";
+import { ConferencingProviderSchema } from "../scheduling/meeting.ts";
 
 /**
  * services.contact — the **Contact Me** popover: what it may offer, and what each of its three
@@ -87,14 +88,37 @@ export type ContactOffer = z.infer<typeof ContactOfferSchema>;
 export const DiscoveryCallRequestSchema = z.object({
 	kind: z.literal("discovery_call"),
 	handle: z.string().min(1).max(64),
-	subjectId: z.string().min(1).max(160),
-	slotId: z.string().min(1).max(80),
+	/**
+	 * The listing the call is about, or `null` when it was requested from the provider's PROFILE —
+	 * where there is no listing, only the person. The server resolves the call offer from the handle
+	 * in that case rather than from a listing it would otherwise 404 on.
+	 */
+	subjectId: z.string().min(1).max(160).nullable().default(null),
+	/** A slot from the grid the picker was drawn from. Exactly one of this or `startsAt` is sent. */
+	slotId: z.string().min(1).max(80).optional(),
+	/**
+	 * A CUSTOM start, epoch ms — a time the picker's cadence did not land on. The server re-walks
+	 * the day it falls in through the same reader that drew the grid (bands, notice, horizon,
+	 * blackouts, held slots AND the provider's private buffers), so a caller cannot address a minute
+	 * the reader would never have offered. The end is the start plus the flavour's configured
+	 * duration; it is never sent, because a buyer does not choose it.
+	 */
+	startsAt: z.number().int().optional(),
 	/** `courtesy` (free) or `paid`. The server re-checks it against the provider's real settings. */
 	callType: z.enum(["courtesy", "paid"]),
+	/**
+	 * Which of the provider's connected platforms should mint the room. Must be one of the offer's
+	 * `platforms`; the server refuses any other. Optional, because a provider with a single platform
+	 * has nothing to choose and one with none arranges the room themselves.
+	 */
+	platform: ConferencingProviderSchema.optional(),
 	/** The IANA zone the requester was looking at, recorded on the booking so the trail stays legible. */
 	timezone: z.string().max(60).optional(),
 	/** The purpose. Required when the provider set `agendaRequired`; the server enforces that. */
 	agenda: z.string().max(2000).optional(),
+}).refine((r) => (r.slotId !== undefined) !== (r.startsAt !== undefined), {
+	message: "Pick a time.",
+	path: ["slotId"],
 });
 export type DiscoveryCallRequest = z.infer<typeof DiscoveryCallRequestSchema>;
 

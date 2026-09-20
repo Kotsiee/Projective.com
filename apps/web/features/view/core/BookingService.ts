@@ -1,6 +1,11 @@
 import { getBooking, postBooking } from "./api.ts";
 import type { BookingResult } from "./respond.ts";
-import type { SlotGrid, SlotPurpose } from "@projective/types/scheduling";
+import type {
+	CallType,
+	PublicCallOffer,
+	SlotGrid,
+	SlotPurpose,
+} from "@projective/types/scheduling";
 import type {
 	ArchiveDraftInput,
 	BookingOutcome,
@@ -48,6 +53,21 @@ export const BookingService = {
 	},
 
 	/**
+	 * A provider's public call offer, by handle — what the profile's Hire popover renders its "Book
+	 * consultation" row from, and the consultation modal its durations, fee, agenda rule and
+	 * platforms. `null` data when the provider takes no calls.
+	 */
+	callOffer(
+		handle: string,
+		sim?: ServiceSim,
+	): Promise<BookingResult<{ callOffer: PublicCallOffer | null }>> {
+		const qs = new URLSearchParams({ handle });
+		return getBooking<{ callOffer: PublicCallOffer | null }>(
+			`/api/services/call-offer?${qs.toString()}${serviceSimToQuery(sim)}`,
+		);
+	},
+
+	/**
 	 * A window of the bookable slot grid.
 	 *
 	 * `timezone` is the viewer's own IANA id, read from `Intl` at the call site rather than guessed
@@ -61,6 +81,8 @@ export const BookingService = {
 			timezone?: string;
 			from?: number;
 			days?: number;
+			/** A discovery call's flavour — decides the grid's slot length. */
+			callType?: CallType;
 		},
 		sim?: ServiceSim,
 	): Promise<BookingResult<{ grid: SlotGrid }>> {
@@ -68,6 +90,7 @@ export const BookingService = {
 		if (params.timezone) qs.set("timezone", params.timezone);
 		if (params.from !== undefined) qs.set("from", String(params.from));
 		if (params.days !== undefined) qs.set("days", String(params.days));
+		if (params.callType) qs.set("callType", params.callType);
 		return getBooking<{ grid: SlotGrid }>(
 			`/api/services/slots?${qs.toString()}${serviceSimToQuery(sim)}`,
 		);

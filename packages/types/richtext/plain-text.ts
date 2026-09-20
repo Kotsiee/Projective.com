@@ -222,4 +222,28 @@ export function flattenRichText(value: RichTextInput): string {
 export function hasRichTextProse(value: RichTextInput): boolean {
 	return flattenRichText(value).length > 0;
 }
+
+/**
+ * Plain text as the rich-text HTML a column stores — the inverse of {@link flattenRichText} for
+ * the one case a surface collects PROSE without an editor (a one-line brief in a create wizard).
+ *
+ * Every character with a meaning in markup is escaped and each blank-line-separated block becomes
+ * one `<p>`, so the text a person typed is exactly the text the editor later shows, and a typed `<`
+ * can never become a tag. `""` for text with nothing in it — the same emptiness an untouched editor
+ * reports, so a blank brief does not tick a "described" step off with an empty paragraph.
+ */
+export function plainTextToHtml(text: string): string {
+	const escape = (s: string) =>
+		s
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;");
+	const blocks = text
+		.replace(/\r\n?/g, "\n")
+		.split(/\n{2,}/)
+		.map((block) => block.trim())
+		.filter((block) => block.length > 0);
+	return blocks.map((block) => `<p>${escape(block).replace(/\n/g, "<br>")}</p>`).join("");
+}
 // #endregion

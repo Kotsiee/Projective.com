@@ -7,7 +7,10 @@ import "../styles/file-card.css";
 import "../styles/file-table.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
+import { InlineNotice } from "@projective/ui/feedback";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import type {
 	AssetItem,
 	FileChannelRef,
@@ -241,7 +244,11 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	}
 
 	async function loadMore(): Promise<void> {
-		if (loadingMore.value || loading.value || !hasMore.value || !cursor.value) return;
+		if (
+			loadingMore.value || stall.blocked.value || loading.value || !hasMore.value || !cursor.value
+		) {
+			return;
+		}
 		const my = reqId.current;
 		loadingMore.value = true;
 		const res = await FilesService.list(baseParams(cursor.value));
@@ -252,7 +259,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 			cursor.value = res.data.page.nextCursor;
 			hasMore.value = res.data.page.hasMore;
 		}
+		stall.settle(res.ok);
 	}
+	const stall = useOfflineStall(loadMore);
 	// #endregion
 
 	// #region Toolbar handlers
@@ -322,6 +331,17 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 			skeletonCount={Math.min(Math.max(items.value.length, SKELETON_MIN), SKELETON_MAX)}
 		/>
 	);
+	// The offline stall, appended under the viewport in either scope's layout.
+	const stallNotice = stall.stalled.value
+		? (
+			<InlineNotice
+				text={OFFLINE_NOTICE_TEXT}
+				actionLabel="Retry"
+				onAction={stall.retry}
+				busy={stall.retrying.value}
+			/>
+		)
+		: null;
 
 	function toolbar(): JSX.Element {
 		return (
@@ -381,14 +401,20 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 						</aside>
 						<div class="fx-main">
 							{toolbar()}
-							<div class="fx-workspace" ref={workspaceRef}>{workspaceView}</div>
+							<div class="fx-workspace" ref={workspaceRef}>
+								{workspaceView}
+								{stallNotice}
+							</div>
 						</div>
 					</div>
 				)
 				: (
 					<>
 						{toolbar()}
-						<div class="fx-workspace" ref={workspaceRef}>{workspaceView}</div>
+						<div class="fx-workspace" ref={workspaceRef}>
+							{workspaceView}
+							{stallNotice}
+						</div>
 					</>
 				)}
 

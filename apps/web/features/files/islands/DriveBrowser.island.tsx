@@ -26,6 +26,7 @@ import {
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
 import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
+import { offlineOr } from "@web/utils/use-offline-stall.ts";
 import {
 	type AssetFolder,
 	type AssetItem,
@@ -286,7 +287,7 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 			cursor.value = res.data.nextCursor;
 			return;
 		}
-		error.value = res.message ?? "The next page could not be loaded.";
+		error.value = offlineOr(res.message ?? "The next page could not be loaded.");
 	}
 	// #endregion
 

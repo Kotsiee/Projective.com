@@ -3,6 +3,7 @@ import { lowestActivePrice } from "./query.ts";
 import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { resolveSkills } from "./skills.ts";
 import { findProfile } from "../profile/profile-fixtures.ts";
+import { serviceIntakeFor } from "../booking/intake-fixtures.ts";
 import type {
 	ArticleAsset,
 	ArticleBlock,
@@ -1015,6 +1016,9 @@ function serviceViewFor(service: ServiceItem): ServiceViewExtra {
 		bookingSummary,
 		sessionCount,
 		sessionMinutes,
+		// The seller's own questions for the service modal — derived, like everything above, so the
+		// listing asks the same things on every load.
+		intake: serviceIntakeFor(service),
 	};
 }
 // #endregion

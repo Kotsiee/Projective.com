@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ExploreOwnerSchema, ServiceType, SkillRefSchema } from "../explore/items.ts";
 import { EntityPricingSchema } from "../explore/view.ts";
+import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
 
 // Re-export the reused delivery-model enum so `@projective/types/catalogue` is self-sufficient for the
 // service delivery model (the catalogue reuses `ServiceType` verbatim — never forked).
@@ -197,6 +198,13 @@ export const ListingDetailSchema = ListingSummarySchema.extend({
 	availability: ListingAvailabilitySchema.nullable(),
 	/** Collections/bundles this listing belongs to (names). */
 	collections: z.array(z.string().max(80)).max(24),
+	/**
+	 * The seller's own intake — the questions a buyer answers in the Service Detail modal on the way
+	 * to purchase (`marketplace.service_blueprints.intake_fields`, Decision #108). Edited here, read
+	 * on `/view/[id]` as `ServiceView.intake` through the SAME `IntakeFieldSchema`, and enforced on
+	 * every booking write by `intakeRefusal`. A product carries none.
+	 */
+	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).default([]),
 });
 export type ListingDetail = z.infer<typeof ListingDetailSchema>;
 // #endregion
@@ -295,6 +303,8 @@ export const UpdateListingInputSchema = z.object({
 	delivery: z.string().max(120).optional(),
 	availability: ListingAvailabilitySchema.nullable().optional(),
 	collections: z.array(z.string().max(80)).max(24).optional(),
+	/** The intake field list, replaced wholesale (order is meaning). */
+	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).optional(),
 });
 export type UpdateListingInput = z.infer<typeof UpdateListingInputSchema>;
 

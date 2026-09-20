@@ -50,7 +50,7 @@ import { findPersonalCalendarPage } from "./personal-fixtures.ts";
 import { availabilitySurfaceKey, findAvailabilityPage } from "./availability-fixtures.ts";
 import { findSchedulePage, scheduleSurfaceKey } from "./schedule-fixtures.ts";
 import { overlayKey, writeRescheduleOverlay, writeRsvpOverlay } from "./coordination-fixtures.ts";
-import { buildSlotGrid, type SlotGridInput } from "./slot-fixtures.ts";
+import { buildSlotGrid, resolveCustomStart, type SlotGridInput } from "./slot-fixtures.ts";
 import { NOW } from "./derive.ts";
 
 /**
@@ -615,6 +615,51 @@ export class ScheduleBackendService {
 			});
 		}
 		return ok({ slot, grid });
+	}
+
+	/**
+	 * Resolve a CUSTOM start — a time the grid's cadence did not land on — through the same reader
+	 * that drew the grid, and answer the slot it would occupy or why it cannot.
+	 *
+	 * The custom-start control exists because a buyer's "2:20 works for me" is a legitimate answer
+	 * the enumerated slots cannot express; what makes it safe is that this is the ONLY thing that can
+	 * say yes to it. The start plus the flavour's duration must fit an open band, clear the notice
+	 * floor and the horizon, avoid every blackout, and — with the provider's private buffers either
+	 * side — not overlap a slot somebody already holds. The client's pre-flight checks the public
+	 * half; a start it lets through can still be refused here, and never the other way round.
+	 *
+	 * The refusal is field-keyed to `startsAt` rather than `slotId`, so a modal pins it to the time
+	 * control the buyer typed into rather than to a slot list they did not use.
+	 */
+	static resolveCustomStart(
+		query: SlotQuery,
+		input: Omit<SlotGridInput, "page" | "purpose" | "subjectId">,
+		startsAt: number,
+		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+	): ServiceResult<{ slot: BookableSlot }> {
+		const page = query.purpose === "discovery_call"
+			? findAvailabilityPage(query.subjectId, viewer)
+			: findSchedulePage(query.subjectId, viewer);
+		if (!page) {
+			return fail(404, {
+				message: query.purpose === "discovery_call"
+					? `No profile found for "${query.subjectId}".`
+					: `No item found for id "${query.subjectId}".`,
+			});
+		}
+		const resolved = resolveCustomStart(query, {
+			...input,
+			page,
+			purpose: query.purpose,
+			subjectId: query.subjectId,
+		}, startsAt);
+		if ("reason" in resolved) {
+			return fail(409, {
+				message: SLOT_REFUSAL_COPY[resolved.reason] ?? "That time is not available.",
+				errors: { startsAt: resolved.reason },
+			});
+		}
+		return ok({ slot: resolved.slot });
 	}
 }
 

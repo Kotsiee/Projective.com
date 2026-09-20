@@ -288,6 +288,10 @@ export function QuickInitModal(props: QuickInitModalProps): JSX.Element | null {
 	const buildPayload = (): CreateProject => ({
 		title: title.value.trim(),
 		format: fmt,
+		// Quick-Init offers the two staged formats only; the stage-less variants and the one-line brief
+		// belong to the profile's create wizard, which collects them.
+		hasStages: true,
+		description: "",
 		currency: code,
 		baselineAmountCents: toMinorUnits(price.value, code),
 		scopeType: "personal",

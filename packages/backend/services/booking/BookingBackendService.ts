@@ -16,8 +16,19 @@ import type {
 	ServiceSim,
 	SessionBookingInput,
 } from "@projective/types/services";
-import { plural, resolveCta } from "@projective/types/services";
-import type { SlotGrid, SlotQuery } from "@projective/types/scheduling";
+import {
+	intakeRefusal,
+	normaliseIntakeAnswers,
+	plural,
+	resolveCta,
+} from "@projective/types/services";
+import type {
+	ConferencingProvider,
+	PublicCallOffer,
+	SlotGrid,
+	SlotQuery,
+} from "@projective/types/scheduling";
+import { CONFERENCING_PROVIDERS } from "@projective/types/scheduling";
 import type { AddBasketItem, PurchasableItemKind } from "@projective/types/finance";
 import type { EntityView, ExploreItem } from "@projective/types/explore";
 import { findItem } from "../explore/query.ts";
@@ -31,6 +42,7 @@ import type { BasketQuery } from "../finance/basket-query.ts";
 import { recordQuote } from "./quote-store.ts";
 import { requestDiscoveryCall } from "./call-store.ts";
 import { callOfferKindFor, callOfferSeed, offersCourtesyCall } from "./call-offer.ts";
+import { hash } from "../scheduling/derive.ts";
 
 /**
  * BookingBackendService — the FAT service behind every conversion CTA on a listing page.
@@ -180,6 +192,65 @@ function gridInputFor(
 }
 // #endregion
 
+// #region Call offer
+/**
+ * The conferencing platforms a provider can mint a room on, derived per handle.
+ *
+ * The fixture stand-in for the provider's connected `integrations.user_connections` carrying the
+ * `conferencing` capability, in the order their `preferredProviderSlug` puts first. The set is
+ * deliberately uneven across the corpus — one platform, two, three, and occasionally none — so the
+ * consultation modal's three shapes (a single implied platform, a choice, and "the host arranges the
+ * room") are all reachable without editing a fixture. The live path replaces this with one read of
+ * the connections table; the shape is identical.
+ */
+function platformsFor(handle: string): ConferencingProvider[] {
+	const seed = hash(`platforms:${handle}`);
+	const pool: ConferencingProvider[] = ["google", "zoom", "microsoft_teams", "discord"];
+	const count = [1, 2, 2, 3, 0, 1, 2, 3][seed % 8];
+	const picked: ConferencingProvider[] = [];
+	for (let i = 0; picked.length < count && i < pool.length; i++) {
+		const candidate = pool[(seed + i * 3) % pool.length];
+		if (!picked.includes(candidate)) picked.push(candidate);
+	}
+	// Ordered as the SSOT lists them, so two sellers offering the same pair print it the same way.
+	return CONFERENCING_PROVIDERS.filter((p) => picked.includes(p));
+}
+
+/**
+ * The public slice of a provider's call settings, or `undefined` when they take no calls at all.
+ *
+ * ONE derivation for two readers: the listing's Contact menu ({@link contactOfferFor}) and the
+ * seller's profile ({@link BookingBackendService.callOffer}), which is what the profile's "Book
+ * consultation" row and the listing's "Book a discovery call" row render from. Two derivations is
+ * how a profile came to advertise a free call beside a listing whose menu offered only a paid one.
+ * The dev axis overrides the flavour wholesale rather than nudging it, so `none` is reachable.
+ */
+function callOfferFor(handle: string, sim?: ServiceSim): PublicCallOffer | undefined {
+	const bare = handle.replace(/^@+/, "");
+	const seed = callOfferSeed(bare);
+	const offered = sim?.callOffer ?? callOfferKindFor(bare);
+	const courtesyEnabled = offersCourtesyCall(offered);
+	const paidEnabled = offered === "paid" || offered === "both";
+	if (!courtesyEnabled && !paidEnabled) return undefined;
+	return {
+		acceptsCalls: true,
+		courtesyEnabled,
+		courtesyDurationMinutes: 20,
+		paidEnabled,
+		paidDurationMinutes: 45,
+		feeAmountMinor: paidEnabled ? 7500 : null,
+		feeCurrency: paidEnabled ? "GBP" : null,
+		agendaRequired: seed % 5 === 0,
+		platforms: platformsFor(bare),
+	};
+}
+
+/** The length of a call of the given flavour, from the provider's own settings. */
+function callDurationFor(offer: PublicCallOffer, callType: "courtesy" | "paid"): number {
+	return callType === "paid" ? offer.paidDurationMinutes : offer.courtesyDurationMinutes;
+}
+// #endregion
+
 // #region Contact offer
 /**
  * What this seller offers by way of pre-purchase contact.
@@ -197,17 +268,13 @@ function contactOfferFor(
 	sim?: ServiceSim,
 ): ContactOffer {
 	const handle = item.owner.handle.replace(/^@/, "");
-	const seed = callOfferSeed(handle);
 
-	// Which call flavours this owner offers — the ONE derivation the profile's "Free consultation"
-	// mark also reads (`call-offer.ts`). The dev axis overrides it wholesale rather than nudging it, so
-	// `none` is genuinely reachable — it is the shape most likely to be wrong and least likely to be
-	// looked at.
-	const forced = sim?.callOffer;
-	const offered = forced ?? callOfferKindFor(handle);
-	const courtesyEnabled = offersCourtesyCall(offered);
-	const paidEnabled = offered === "paid" || offered === "both";
-	const takesCalls = courtesyEnabled || paidEnabled;
+	// Which call flavours this owner offers — the ONE derivation the profile's consultation row and
+	// its "Free consultation" mark also read. Absent means the seller takes no calls at all, and the
+	// row is then absent too (never disabled).
+	const callOffer = callOfferFor(handle, sim);
+	const courtesyEnabled = !!callOffer?.courtesyEnabled;
+	const takesCalls = callOffer !== undefined;
 
 	const actions: ContactAction[] = [];
 	if (takesCalls) {
@@ -242,18 +309,7 @@ function contactOfferFor(
 		subjectId: item.id,
 		subjectTitle: item.title,
 		actions,
-		callOffer: takesCalls
-			? {
-				acceptsCalls: true,
-				courtesyEnabled,
-				courtesyDurationMinutes: 20,
-				paidEnabled,
-				paidDurationMinutes: 45,
-				feeAmountMinor: paidEnabled ? 7500 : null,
-				feeCurrency: paidEnabled ? "GBP" : null,
-				agendaRequired: seed % 5 === 0,
-			}
-			: undefined,
+		callOffer,
 		requiresSignIn: actor.userId === null,
 		signInHref: actor.userId === null ? signInHref : null,
 	};
@@ -375,6 +431,27 @@ export class BookingBackendService {
 	}
 
 	/**
+	 * A provider's public call offer, for the seller's PROFILE — the Hire popover's "Book
+	 * consultation" row and the consultation modal it opens. `null` when the provider takes no calls,
+	 * which the profile renders as absence (the row is never disabled: the capability does not exist).
+	 *
+	 * The same derivation the listing's Contact menu reads, so a profile cannot advertise a free call
+	 * beside a listing whose menu offers only a paid one. Guest-reachable and side-effect free.
+	 */
+	static callOffer(
+		handle: string,
+		sim?: ServiceSim,
+	): ServiceResult<{ callOffer: PublicCallOffer | null }> {
+		const bare = handle.replace(/^@+/, "");
+		if (!bare) return fail(404, { message: "That provider could not be resolved." });
+		const offer = callOfferFor(bare, sim) ?? null;
+		if (!isExploreBackendLive()) return ok({ callOffer: offer });
+		// LIVE: read `scheduling.call_settings` + the provider's conferencing connections (not yet
+		// implemented) — fall through so behaviour is preserved.
+		return ok({ callOffer: offer });
+	}
+
+	/**
 	 * The bookable slot grid for a listing's Book modal, or for a discovery-call handshake.
 	 *
 	 * A thin pass-through to {@link ScheduleBackendService.slots} that supplies the LISTING's own
@@ -384,11 +461,19 @@ export class BookingBackendService {
 	 */
 	static slots(query: SlotQuery, sim?: ServiceSim): ServiceResult<{ grid: SlotGrid }> {
 		if (query.purpose === "discovery_call") {
+			// The provider's OWN duration for the flavour being booked, read from the same offer the
+			// popover and the profile publish — so the grid and the row agree on what is being booked. A
+			// provider who takes no calls has no grid; the picker renders the closed reason.
+			const offer = callOfferFor(query.subjectId, sim);
+			if (!offer) {
+				return fail(422, {
+					message: "This provider is not taking calls.",
+					errors: { subjectId: "calls_not_offered" },
+				});
+			}
 			return ScheduleBackendService.slots(query, {
 				sessionCount: 1,
-				// The provider's own courtesy duration. 20 minutes is the platform default and the number
-				// `contactOfferFor` publishes, so the grid and the popover agree on what is being booked.
-				durationMinutes: 20,
+				durationMinutes: callDurationFor(offer, query.callType ?? "courtesy"),
 				seatsPerSession: null,
 				density: sim?.availability,
 			});
@@ -451,6 +536,16 @@ export class BookingBackendService {
 			days: 60,
 		};
 
+		// The buyer's answers, held to the listing's own intake by the SAME rule the modal ran.
+		const answers = normaliseIntakeAnswers(view.service?.intake ?? [], input.answers);
+		const intakeBlock = intakeRefusal(view.service?.intake ?? [], answers);
+		if (intakeBlock) {
+			return fail(422, {
+				message: intakeBlock.message,
+				errors: { [`answers.${intakeBlock.fieldId}`]: intakeBlock.code },
+			});
+		}
+
 		const wanted = [...new Set(input.slotIds)];
 		if (format !== "set_session" && wanted.length !== 1) {
 			return fail(422, {
@@ -509,6 +604,7 @@ export class BookingBackendService {
 				sessionsBooked: resolved.length,
 				sessionsTotal: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
 				note: input.note ?? null,
+				answers,
 			},
 		};
 
@@ -567,6 +663,16 @@ export class BookingBackendService {
 			});
 		}
 
+		// The buyer's answers, held to the listing's own intake by the SAME rule the modal ran.
+		const answers = normaliseIntakeAnswers(view.service?.intake ?? [], input.answers);
+		const intakeBlock = intakeRefusal(view.service?.intake ?? [], answers);
+		if (intakeBlock) {
+			return fail(422, {
+				message: intakeBlock.message,
+				errors: { [`answers.${intakeBlock.fieldId}`]: intakeBlock.code },
+			});
+		}
+
 		const stages = view.service?.stages ?? [];
 		/*
 		 * Resolve which stages are being funded.
@@ -609,6 +715,7 @@ export class BookingBackendService {
 				fundingScope: input.fundingScope,
 				stageIds: funded,
 				requirements: input.requirements,
+				answers,
 				attachments: input.attachments.map((a) => ({
 					name: a.name,
 					sizeBytes: a.sizeBytes,
@@ -707,14 +814,31 @@ function bookDiscoveryCall(
 	actor: BookingActor,
 	sim?: ServiceSim,
 ): ServiceResult<{ result: ContactActionResult }> {
-	const item = findItem(input.subjectId);
-	if (!item) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+	const handle = input.handle.replace(/^@+/, "");
+	if (!handle) return fail(422, { message: "That provider could not be resolved." });
 
-	const offerRead = BookingBackendService.offer(input.subjectId, actor, { sim });
-	if (!offerRead.ok || !offerRead.data) {
-		return fail(offerRead.status, { message: offerRead.message });
+	/*
+	 * The call offer, from whichever surface asked.
+	 *
+	 * A listing carries the offer on its Contact menu; a PROFILE has no listing, so the offer is
+	 * resolved from the handle directly — the same derivation, one level down. Both end at the same
+	 * `PublicCallOffer`, so the checks below do not branch again.
+	 */
+	let call: PublicCallOffer | undefined;
+	let hostName: string;
+	if (input.subjectId) {
+		const item = findItem(input.subjectId);
+		if (!item) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+		const offerRead = BookingBackendService.offer(input.subjectId, actor, { sim });
+		if (!offerRead.ok || !offerRead.data) {
+			return fail(offerRead.status, { message: offerRead.message });
+		}
+		call = offerRead.data.offer.contact.callOffer;
+		hostName = item.owner.name;
+	} else {
+		call = callOfferFor(handle, sim);
+		hostName = "The provider";
 	}
-	const call = offerRead.data.offer.contact.callOffer;
 	if (!call?.acceptsCalls) {
 		return fail(422, {
 			message: "This provider is not taking calls.",
@@ -740,38 +864,84 @@ function bookDiscoveryCall(
 		});
 	}
 
-	const duration = input.callType === "paid"
-		? call.paidDurationMinutes
-		: call.courtesyDurationMinutes;
+	/*
+	 * The platform. A provider with connected platforms takes only one of THEIRS — a room can only be
+	 * minted where a connection exists — and a caller naming another is refused rather than quietly
+	 * moved. With exactly one connected the choice is implied; with none the host arranges the room
+	 * after confirming, and a named platform is then a claim about a connection that does not exist.
+	 */
+	let platform: ConferencingProvider | null = null;
+	if (call.platforms.length > 0) {
+		if (input.platform && !call.platforms.includes(input.platform)) {
+			return fail(422, {
+				message: "This provider does not take calls on that platform.",
+				errors: { platform: "platform_not_offered" },
+			});
+		}
+		platform = input.platform ?? (call.platforms.length === 1 ? call.platforms[0] : null);
+		if (!platform) {
+			return fail(422, {
+				message: "Choose which platform the call should be on.",
+				errors: { platform: "required" },
+			});
+		}
+	} else if (input.platform) {
+		return fail(422, {
+			message: "This provider arranges the call room themselves.",
+			errors: { platform: "platform_not_offered" },
+		});
+	}
 
-	const check = ScheduleBackendService.resolveSlot(
-		{
-			subjectId: input.handle,
-			purpose: "discovery_call",
-			timezone: input.timezone,
-			days: 60,
-		},
-		{
-			sessionCount: 1,
-			durationMinutes: duration,
-			seatsPerSession: null,
-			density: sim?.availability,
-		},
-		input.slotId,
-	);
-	if (!check.ok || !check.data) {
-		return fail(check.status, { message: check.message, errors: check.errors });
+	const duration = callDurationFor(call, input.callType);
+	const query: SlotQuery = {
+		subjectId: handle,
+		purpose: "discovery_call",
+		timezone: input.timezone,
+		days: 60,
+		callType: input.callType,
+	};
+	const gridInput = {
+		sessionCount: 1,
+		durationMinutes: duration,
+		seatsPerSession: null,
+		density: sim?.availability,
+	};
+
+	/*
+	 * The time: a slot the grid offered, or a custom start the grid re-walks. Both go through the
+	 * reader that drew the grid — the only thing that can say yes — and a refusal names the control
+	 * it belongs to (`slotId` or `startsAt`) so the modal pins it to the right one.
+	 */
+	let startsAt: number;
+	let endsAt: number;
+	let viewerTimezone: string | undefined;
+	if (input.startsAt !== undefined) {
+		const check = ScheduleBackendService.resolveCustomStart(query, gridInput, input.startsAt);
+		if (!check.ok || !check.data) {
+			return fail(check.status, { message: check.message, errors: check.errors });
+		}
+		startsAt = check.data.slot.startsAt;
+		endsAt = check.data.slot.endsAt;
+	} else {
+		const check = ScheduleBackendService.resolveSlot(query, gridInput, input.slotId ?? "");
+		if (!check.ok || !check.data) {
+			return fail(check.status, { message: check.message, errors: check.errors });
+		}
+		startsAt = check.data.slot.startsAt;
+		endsAt = check.data.slot.endsAt;
+		viewerTimezone = check.data.grid.viewerTimezone;
 	}
 
 	const booking = requestDiscoveryCall({
-		handle: input.handle,
+		handle,
 		requesterId: actor.userId ?? "anon",
 		subjectId: input.subjectId,
 		callType: input.callType,
-		startsAt: check.data.slot.startsAt,
-		endsAt: check.data.slot.endsAt,
-		timezone: input.timezone ?? check.data.grid.viewerTimezone,
+		startsAt,
+		endsAt,
+		timezone: input.timezone ?? viewerTimezone ?? "UTC",
 		agenda: input.agenda ?? null,
+		platform,
 	});
 
 	return ok({
@@ -785,7 +955,7 @@ function bookDiscoveryCall(
 			 */
 			confirmation: booking.status === "confirmed"
 				? "Your call is booked. It is on your calendar and theirs."
-				: `Requested. ${item.owner.name} will confirm — you will be notified either way.`,
+				: `Requested. ${hostName} will confirm — you will be notified either way.`,
 			navigateTo: null,
 		},
 	}, { status: 201 });

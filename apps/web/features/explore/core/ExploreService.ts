@@ -1,7 +1,7 @@
 import { getExplore } from "./api.ts";
 import { serializeExploreParams } from "./explore-state.ts";
 import type { ExploreParams } from "../types/explore-types.ts";
-import type { ExploreItem, HomeFeed, SearchPayload } from "../types/explore-types.ts";
+import type { EntityView, ExploreItem, HomeFeed, SearchPayload } from "../types/explore-types.ts";
 import type { ExploreResult } from "../types/results.ts";
 
 /**
@@ -42,6 +42,15 @@ export const ExploreService = {
 	/** Look up a single item by id (detail drawer / deep-link prefetch). */
 	item(id: string): Promise<ExploreResult<{ item: ExploreItem }>> {
 		return getExplore<{ item: ExploreItem }>(`/api/explore/item?id=${encodeURIComponent(id)}`);
+	},
+
+	/**
+	 * The composed Entity View projection for one listing — what `/view/[id]` SSRs, fetched on demand
+	 * by the profile's service modal so its preview column renders the SAME projection through the
+	 * same parts. 404 when the id resolves to nothing.
+	 */
+	view(id: string): Promise<ExploreResult<EntityView>> {
+		return getExplore<EntityView>(`/api/explore/view?id=${encodeURIComponent(id)}`);
 	},
 
 	/**

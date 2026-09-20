@@ -380,6 +380,26 @@ CREATE TABLE scheduling.call_settings (
     )
 );
 
+-- The conferencing platforms a host OFFERS for a call, in the order they prefer (Decision #108).
+--
+-- An allow-list, not the truth about what can be minted: a row here offers nothing unless the host
+-- also holds an ACTIVE `integrations.user_connections` row for that provider carrying the
+-- `conferencing` capability, and the public offer (`PublicCallOffer.platforms`) is the INTERSECTION
+-- of the two — a platform the host has not connected is a room nobody can create, and one they
+-- have connected but not listed here is one they chose not to take calls on. No rows at all means
+-- "every connected conferencing provider", which is what a host who never visited the setting gets.
+-- `call_settings.preferred_provider_slug` stays the default pick within the offered set.
+--
+-- A join table rather than a `text[]` on `call_settings` so the provider reference is a real FK: a
+-- slug that names no provider is unrepresentable rather than silently unofferable.
+CREATE TABLE scheduling.call_platforms (
+    schedule_id uuid NOT NULL REFERENCES scheduling.schedules (id) ON DELETE CASCADE,
+    provider_slug text NOT NULL REFERENCES integrations.providers (slug) ON DELETE CASCADE,
+    position smallint NOT NULL DEFAULT 0 CHECK (position >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT call_platforms_pkey PRIMARY KEY (schedule_id, provider_slug)
+);
+
 CREATE TABLE scheduling.discovery_calls (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     host_schedule_id uuid NOT NULL REFERENCES scheduling.schedules (id) ON DELETE CASCADE,
@@ -393,6 +413,11 @@ CREATE TABLE scheduling.discovery_calls (
     confirmed_end timestamptz,
     requester_timezone text,
     agenda text,
+    -- The listing the call was booked ABOUT, when it was booked from one (`/view/[id]`'s Contact
+    -- menu); NULL when it was booked from the seller's profile (Decision #108) — a call about the
+    -- seller rather than any one service. Context for the host, never a gate: the offer is the
+    -- host's, and the same call settings govern both doors.
+    service_blueprint_id uuid REFERENCES marketplace.service_blueprints (id) ON DELETE SET NULL,
     provider_slug text REFERENCES integrations.providers (slug) ON DELETE SET NULL,
     connection_id uuid REFERENCES integrations.user_connections (id) ON DELETE SET NULL,
     meeting_url text,

@@ -3,11 +3,12 @@ import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren, VNode } from "preact";
 import { Grid } from "@projective/ui/layout";
 import { Button } from "@projective/ui/fields";
-import { Tooltip } from "@projective/ui/feedback";
+import { Drawer, InlineNotice, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { Drawer } from "@projective/ui/feedback";
 import { EmptyState } from "@projective/ui/utils";
 import { useMediaQuery } from "@projective/ui/hooks";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { FilterPanel } from "../components/FilterPanel.tsx";
 import { SortControl } from "../components/SortControl.tsx";
 import { ResultsHeader } from "../components/ResultsHeader.tsx";
@@ -191,7 +192,9 @@ export default function SearchDashboard(
 	 */
 	async function loadMore() {
 		const pl = payload.value;
-		if (loadingMore.value || !pl.isolated || !pl.hasMore) return;
+		// A stalled feed waits for Retry (or the reconnection) rather than re-firing on every
+		// intersection change of a sentinel that is still in view.
+		if (loadingMore.value || stall.blocked.value || !pl.isolated || !pl.hasMore) return;
 		loadingMore.value = true;
 		const res = await ExploreService.search(params.value, {
 			offset: items.value.length,
@@ -202,7 +205,9 @@ export default function SearchDashboard(
 			payload.value = { ...pl, hasMore: res.data.hasMore, poolTotal: res.data.poolTotal };
 		}
 		loadingMore.value = false;
+		stall.settle(res.ok);
 	}
+	const stall = useOfflineStall(loadMore);
 	// #endregion
 
 	// Derived (re-computed on any signal read below).
@@ -296,6 +301,16 @@ export default function SearchDashboard(
 								items={items.value}
 								type={p.category as ExploreEntity}
 								loading={loadingMore.value}
+								tail={stall.stalled.value
+									? (
+										<InlineNotice
+											text={OFFLINE_NOTICE_TEXT}
+											actionLabel="Retry"
+											onAction={stall.retry}
+											busy={stall.retrying.value}
+										/>
+									)
+									: null}
 								onReachEnd={loadMore}
 								onSelect={onSelect}
 								ctx={ctx}
@@ -361,11 +376,13 @@ export default function SearchDashboard(
  * (the parent guards + pages).
  */
 function UnifiedFeed(
-	{ items, type, loading, onReachEnd, onSelect, ctx, authed }: {
+	{ items, type, loading, tail, onReachEnd, onSelect, ctx, authed }: {
 		items: ExploreItem[];
 		type: ExploreEntity;
 		/** Whether a page is actively loading — drives the spinner. */
 		loading: boolean;
+		/** A notice for the foot of the feed (the offline stall), rendered after the sentinel. */
+		tail?: VNode | null;
 		onReachEnd: () => void;
 		onSelect: (item: ExploreItem) => void;
 		ctx: HrefContext;
@@ -445,6 +462,7 @@ function UnifiedFeed(
 		<div class="ex-uni">
 			{body}
 			<div ref={sentinelRef} class="ex-uni__sentinel" aria-hidden="true" />
+			{tail}
 			{loading && (
 				<div class="ex-uni__loader" role="status" aria-live="polite">
 					<span class="ex-uni__spinner" aria-hidden="true" />

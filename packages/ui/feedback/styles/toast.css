@@ -71,21 +71,22 @@
 	transform: translateY(-50%);
 	align-items: flex-end;
 }
+/* The three bottom anchors clear an open status Ribbon (`--ribbon-inset`, 0 otherwise). */
 .ui-toast--bottom-left {
-	inset-block-end: 0;
+	inset-block-end: var(--ribbon-inset, 0px);
 	inset-inline-start: 0;
 	align-items: flex-start;
 	flex-direction: column-reverse;
 }
 .ui-toast--bottom-center {
-	inset-block-end: 0;
+	inset-block-end: var(--ribbon-inset, 0px);
 	inset-inline: 0;
 	margin-inline: auto;
 	align-items: center;
 	flex-direction: column-reverse;
 }
 .ui-toast--bottom-right {
-	inset-block-end: 0;
+	inset-block-end: var(--ribbon-inset, 0px);
 	inset-inline-end: 0;
 	align-items: flex-end;
 	flex-direction: column-reverse;
@@ -302,7 +303,7 @@
 	.ui-toast--bottom-right,
 	.ui-toast--bottom-center {
 		inset-inline: 0;
-		inset-block-end: 0;
+		inset-block-end: var(--ribbon-inset, 0px);
 		margin-inline: auto;
 		align-items: stretch;
 	}

@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import { signal } from "@preact/signals";
 
 /**

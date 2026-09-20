@@ -101,6 +101,9 @@ export default function ScopeBriefModal(
 				// than through an empty string that could be mistaken for an id.
 				assetId: null,
 			})),
+			// The listing page's brief is prose; the seller's intake fields are asked in the profile's
+			// service modal, so there is nothing structured to send from here.
+			answers: {},
 		});
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not stage that. Please try again.";

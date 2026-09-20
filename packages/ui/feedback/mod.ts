@@ -1,7 +1,8 @@
 /**
  * @projective/ui/feedback — status & transient surfaces.
  *
- * Inline status (Message, Messages, Alert/Banner), transient overlays (Toast, Dialog, DynamicDialog,
+ * Inline status (Message, Messages, Alert/Banner, InlineNotice), the session-wide Ribbon, transient
+ * overlays (Toast, Dialog, DynamicDialog,
  * ConfirmDialog, ConfirmPopup, Drawer/Sidebar, Tooltip, Popover/OverlayPanel), and progress
  * indicators (ProgressBar, ProgressSpinner, ProgressRing, Spinner/Loader, Skeleton). Modal overlays
  * coordinate z-index + scroll-lock via `@projective/ui/hooks/useOverlayStack`, trap focus, and defer
@@ -15,6 +16,18 @@ export { Messages } from "./islands/Messages.tsx";
 export type { MessagesProps } from "./islands/Messages.tsx";
 export { Alert, Banner } from "./components/Alert.tsx";
 export type { AlertProps, AlertVariant } from "./components/Alert.tsx";
+export { InlineNotice } from "./components/InlineNotice.tsx";
+export type { InlineNoticeProps } from "./components/InlineNotice.tsx";
+// #endregion
+
+// #region Session-wide status
+/**
+ * {@link Ribbon} — the viewport-pinned bottom strip for a fact about the whole session (offline, a
+ * maintenance window). Controlled and network-agnostic; while open it reserves `--ribbon-inset` for
+ * every other bottom-pinned surface through `:root[data-ribbon="open"]`.
+ */
+export { Ribbon } from "./islands/Ribbon.tsx";
+export type { RibbonProps } from "./islands/Ribbon.tsx";
 // #endregion
 
 // #region Transient overlays

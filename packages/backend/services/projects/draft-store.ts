@@ -38,6 +38,15 @@ interface DraftRow extends PipelineDraft {
 
 const drafts = new Map<string, DraftRow>();
 
+/**
+ * Forget every draft. Tests only — the same seam `resetWriteStore` provides, for the same reason:
+ * the store keys on `(buyer, service)` as well as on the idempotency key, so a draft one test left
+ * behind makes the NEXT test's instantiation resolve to it with `created: false`.
+ */
+export function resetDraftStore(): void {
+	drafts.clear();
+}
+
 /** The per-viewer scope key. `null` (an unresolved account) collapses to a shared anonymous bucket. */
 function ownerKeyOf(userId: string | null, workspaceId: string | null): string {
 	return `${userId ?? "anon"}::${workspaceId ?? "personal"}`;

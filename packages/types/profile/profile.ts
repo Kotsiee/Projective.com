@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { AvailabilityRuleSchema } from "../scheduling/scheduling.ts";
+import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
 
 /**
  * profile.profile — the Zod SSOT for a public profile's header + overview projection
@@ -280,6 +281,15 @@ export const ProfileViewSchema = z.object({
 	 * as the "Free consultation" mark; a paid-only consultation is not one.
 	 */
 	freeConsultation: z.boolean(),
+	/**
+	 * The seller's own intake for being brought INTO a project — the questions a client answers in
+	 * the "Add to project" assignment modal before the invitation is sent (`@projective/types/services`
+	 * `IntakeField`). Seller-authored data, rendered by the modal and held server-side by the same
+	 * rule; empty means the seller asks for nothing beyond the project itself and a message. Optional
+	 * (not defaulted) so every projection built before it existed keeps compiling — an absent list
+	 * reads as an empty one.
+	 */
+	hireIntake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).optional(),
 	/** DUAL-track reputation: `asHelper` (freelancer) AND `asClient` — both may be present. */
 	rating: DualRatingSchema,
 	/** Whether the identity itself is platform-verified. */

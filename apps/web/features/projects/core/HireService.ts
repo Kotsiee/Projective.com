@@ -22,10 +22,17 @@ export const HireService = {
 		return getProjects<{ brief: HireBrief }>(`/api/projects/hire?${qs.toString()}`);
 	},
 
-	/** Send the invitation. The server re-validates it against the brief before recording it. */
+	/**
+	 * Send the invitation. The server re-validates it against the brief before recording it, and
+	 * answers with the invitations recorded, the resolved total, and whether they are PLACEHOLDER
+	 * assignments (a draft project whose terms are settled at publish).
+	 */
 	invite(
 		payload: HireInvitation,
-	): Promise<ProjectsResult<{ invites: MemberInvite[]; total: number }>> {
-		return postProjects<{ invites: MemberInvite[]; total: number }>("/api/projects/hire", payload);
+	): Promise<ProjectsResult<{ invites: MemberInvite[]; total: number; placeholder: boolean }>> {
+		return postProjects<{ invites: MemberInvite[]; total: number; placeholder: boolean }>(
+			"/api/projects/hire",
+			payload,
+		);
 	},
 };

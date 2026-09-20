@@ -12,6 +12,7 @@ import {
 	USERS,
 } from "./fixtures.ts";
 import { parsePriceMajor, PIPELINE_LOW } from "./pricing.ts";
+import { findReownedListing } from "../profile/profile-fixtures.ts";
 import type {
 	ExploreEntity,
 	ExploreItem,
@@ -319,7 +320,10 @@ export function groupResults(items: ExploreItem[]): ResultGroup[] {
 
 /** Look up a single item by id — the standalone `/view/[id]` + detail-drawer source. */
 export function findItem(id: string): ExploreItem | undefined {
-	return allItems().find((it) => it.id === id);
+	// The corpus first; then a profile-scoped copy (`sv-{handle}-{i}`), which the profile's own
+	// derivation resolves to the item its card showed. Without the fallback every listing opened
+	// FROM a profile 404'd (Decision #106(b)).
+	return allItems().find((it) => it.id === id) ?? findReownedListing(id);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { flattenRichText, hasRichTextProse } from "./plain-text.ts";
+import { flattenRichText, hasRichTextProse, plainTextToHtml } from "./plain-text.ts";
 
 // #region Inline formatting must not introduce whitespace
 Deno.test("flattenRichText — the reported case: overlapping inline tags stay one word", () => {
@@ -170,5 +170,19 @@ Deno.test("hasRichTextProse — any reader-visible character is prose", () => {
 	assertEquals(hasRichTextProse("plain"), true);
 	assertEquals(hasRichTextProse({ ops: [{ insert: "a\n" }] }), true);
 	assertEquals(hasRichTextProse({ ops: [{ insert: "\n" }] }), false);
+});
+// #endregion
+
+// #region Plain text → stored HTML
+Deno.test("plainTextToHtml — escapes markup, paragraphs on blank lines, round-trips through the flattener", () => {
+	assertEquals(
+		plainTextToHtml('A <b>brief</b> & "quotes"'),
+		"<p>A &lt;b&gt;brief&lt;/b&gt; &amp; &quot;quotes&quot;</p>",
+	);
+	assertEquals(plainTextToHtml("First\n\nSecond\nline"), "<p>First</p><p>Second<br>line</p>");
+	assertEquals(plainTextToHtml("  \n \n"), "");
+	assertEquals(flattenRichText(plainTextToHtml("First\n\nSecond")), "First\nSecond");
+	// A typed tag never becomes one: the flattened text still shows the angle brackets.
+	assertEquals(flattenRichText(plainTextToHtml("<script>x</script>")), "<script>x</script>");
 });
 // #endregion

@@ -119,6 +119,13 @@ export const MemberInviteSchema = z.object({
 	/** Pre-formatted relative age ("2 days ago"). */
 	invitedLabel: z.string().max(28),
 	status: InviteStatus,
+	/**
+	 * A STAGED assignment on an unpublished project: the seller is attached to the stage now, at no
+	 * stated price, and the terms are settled when the client prices and publishes (root CLAUDE.md
+	 * §8 Decision #108). An attribute of the invitation, not a lifecycle state — it stays `pending`
+	 * and expires like any other. Absent (not `false`) on every invitation built before it existed.
+	 */
+	placeholder: z.boolean().optional(),
 });
 export type MemberInvite = z.infer<typeof MemberInviteSchema>;
 // #endregion

@@ -414,21 +414,44 @@ or focus — and it opens a two-column editor: a circular crop over the picture 
 Ctrl + scroll to zoom, plus a zoom slider, a rotation dial and X ⁄ Y offsets) that can never show
 empty space inside the circle, beside the two places a new picture comes from — this device, or
 the person's own file library. The rig depends on what the entity
-IS: a **seller** (freelancer · team) leads with **Hire** — the prominent primary — with Message and
-Follow folded into compact icon-only secondaries beside it; a **buyer** (client · business ·
-organisation) cannot be hired, so **Message** stays its primary with Follow as its secondary. Hire
-is honest about what it can name: a signed-in client with open projects picks one from a list and
-composes an **invitation in place** — the project's overview and existing members (each with the
-stages they contribute to), an intro message, which stage(s) the seller is invited onto, and the
-compensation offered for each, where the compensation field follows the engagement's shape rather
-than a control: a pipeline offers a per-ticket rate on each selected stage, a multi-stage one-off a
-whole fee per selected stage, and a single-stage one-off one task price — each seeded from the price
-the project already states, so an untouched invitation offers the configured terms. A client with no
-open project lands on the seller's Services row when there is a listing to buy, and opens the
-conversation when there is none — the only way to hire somebody with nothing listed is to ask. A
-**guest** who presses Follow or Message is not bounced off the page: a sign-in prompt explains what
-the action needs and offers the standard sign-in ⁄ create-account flow with a return path back to
-this profile. Following is acknowledged with a brief, decorative micro-interaction (a settle on the
+IS: a **seller** (freelancer · team) carries two conversion controls — **Hire** and **Add to
+project** — with Message and Follow folded into compact icon-only secondaries beside them; a
+**buyer** (client · business · organisation) cannot be hired, so **Message** stays its primary with
+Follow as its secondary. Both conversion controls open a popover **at the button**, never a scroll
+to the Services row. **Hire** lists the seller's listings (thumbnail · title · starting price ·
+rating) and, when the seller takes discovery calls, a "Book consultation" row carrying its price or
+the word Free; it renders only when there is something to list. Picking a listing opens the
+**service modal**: a two-column dialog whose left column holds the buyer's inputs (for a session,
+the date rail and slot picker; an optional message; the seller's own intake questions — text,
+numbers with an optional slider, yes/no, single and multiple choice as dropdowns, radios, pills or
+checkboxes, each required or not as the seller marked it) and whose right column is the listing in
+the entity view's own vocabulary (cover · title · meta line · summary · seller line · the stage run
+or session facts · what is included); the footer states the starting price, the rating and the
+turnaround, and its one primary does what the listing's own page would — a scoped engagement stages
+its brief and continues to checkout, a session books the chosen slot and continues to checkout, a
+pipeline is added to the buyer's projects as a draft. Picking the consultation opens the
+**consultation modal**: the same date rail and slots, a **custom start time** inside the provider's
+open call windows with the end computed from the provider's configured duration (never chosen by
+the buyer), the **platform** restricted to those the provider has connected (one is stated, several
+are chosen, none means the provider arranges the room), an optional message — required when the
+provider asks what the call is about — and a footer carrying the rate or Free beside Confirm
+booking. **Add to project** is always present on a seller: it lists the viewer's open projects,
+published first and drafts after, under a persistent **Create new project** row. Picking a project
+opens the **assignment modal** — the same two-column dialog, with an optional message, the seller's
+own intake for joining a project, and which stage(s) they join, beside the project in the entity
+view's vocabulary (title and lifecycle status · meta · summary · the stage run with each stage's
+configured rate · the roster). There is no compensation field: the terms are the project's own
+configured rates, resolved by one rule the modal and the server both call, and an **unpublished**
+project takes a **placeholder assignment** — the seller is attached to the stages now and the terms
+are settled when the client prices and publishes. Picking Create opens a two-step wizard — a type
+card (Task · One-off project · Pipeline) with a prominent glyph, then the same lightweight setup the
+projects lane's Quick-Init collects (a name, an optional one-line brief, the currency and an optional
+baseline price) — that mints the draft and sends the client to its setup page. A **guest** sees the
+same controls in the same places: the popovers and the modals open (a listing's preview and a
+provider's availability are public), and every claim on the reader's own account — Follow, Message,
+a modal's primary, Create — opens a sign-in prompt explaining what the action needs, with the
+standard sign-in ⁄ create-account flow and a return path back to this profile, rather than bouncing
+them off the page. Following is acknowledged with a brief, decorative micro-interaction (a settle on the
 control and a small burst) that reduced-motion removes. **Message opens the conversation in place,
 never the inbox page**: on desktop a floating, draggable messenger docked in the bottom-end corner
 that persists across every navigation and sends through the inbox's own door — the thread it types

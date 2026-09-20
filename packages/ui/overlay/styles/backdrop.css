@@ -19,6 +19,18 @@
 	transition: opacity var(--dur-medium) var(--ease-standard);
 }
 
+/*
+ * The heavy tier (§B.10.2): the page beneath cannot be used, so the scrim says so before the copy
+ * does. Its own token pair rather than a multiplier on the standard one — `color-mix` will not take a
+ * `calc()`-derived percentage in this engine (the `--fld-disabled-mix` lesson), and a second literal
+ * is also the only way the theme engine can keep dark carrying the heavier of the two.
+ */
+.ui-backdrop--heavy {
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint-heavy), transparent);
+	backdrop-filter: blur(var(--scrim-blur-heavy));
+	-webkit-backdrop-filter: blur(var(--scrim-blur-heavy));
+}
+
 .ui-backdrop[data-state="open"] {
 	opacity: 1;
 }

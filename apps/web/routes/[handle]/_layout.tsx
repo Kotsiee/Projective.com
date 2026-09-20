@@ -20,7 +20,9 @@ import {
 import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
 import { readActor } from "@web/utils/api-session.ts";
+import { toDisplayCurrency } from "@projective/types/finance";
 import {
+	resolveConsultationOffer,
 	resolveHireProjects,
 	resolveProfileProducts,
 	resolveProfileServices,
@@ -46,11 +48,11 @@ import {
  * profile's own sticky element is the section tab bar, pinned flush under whichever shell's header.
  *
  * The services are resolved HERE, once, because they render on every section (above the tabs) and
- * feed two other regions: the hero's Hire control (which lands on them) and the hero's metrics strip
+ * feed two other regions: the hero's Hire popover (which lists them) and the hero's metrics strip
  * (the spend floor). A buyer entity resolves to an empty list and none of the three render anything
- * for it. The VIEWER's open projects are resolved here too, for the same control: a signed-in client
- * looking at a seller gets a Hire that opens a pick-a-project list, and the first byte must already
- * know whether there is one to open (§3 gate 11) — so it is a server read, not an island fetch.
+ * for it. The seller's call offer is resolved here for the same popover's consultation row, and
+ * the VIEWER's open projects for the Add-to-project popover: the first byte must already carry
+ * every row a control can open (§3 gate 11) — so they are server reads, not island fetches.
  *
  * Two routes under the namespace keep their own chrome: the profile-scoped item viewer
  * (`/[handle]/view/[id]`, which resolves ITS lane from the URL like the public `/view/[id]`) and the
@@ -173,8 +175,12 @@ export default define.page(async function ProfileLayout(ctx) {
 	const services = resolveProfileServices(profile.handle);
 	// The products render beneath the services on every section, so they are resolved here too.
 	const products = resolveProfileProducts(profile.handle);
-	// Only a signed-in VISITOR of a seller can hire, so only that viewer pays for the read.
-	const hireProjects = authed && !canEdit && isSellerKind(profile.kind)
+	const seller = isSellerKind(profile.kind);
+	// A seller's call offer feeds the Hire popover's consultation row; a buyer entity takes none.
+	const consultation = seller && !canEdit ? resolveConsultationOffer(profile.handle) : null;
+	// Only a signed-in VISITOR of a seller can add them to a project, so only that viewer pays for
+	// the read.
+	const hireProjects = authed && !canEdit && seller
 		? await resolveHireProjects(readActor(ctx))
 		: [];
 	return shell(
@@ -182,11 +188,14 @@ export default define.page(async function ProfileLayout(ctx) {
 			<div class="pf">
 				<ProfileHero
 					profile={profile}
-					hasServices={services.length > 0}
+					services={services}
+					consultation={consultation}
 					spend={estimatedSpendFor(services)}
 					canEdit={canEdit}
 					authed={authed}
 					hireProjects={hireProjects}
+					defaultCurrency={toDisplayCurrency(context?.displayCurrency)}
+					scopeId={context?.contextId ?? ""}
 				/>
 				<ProfileContextBar profile={profile} canEdit={canEdit} />
 				<ProfileServicesSection services={services} authed={authed} />

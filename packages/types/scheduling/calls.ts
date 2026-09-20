@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ConferencingProviderSchema } from "./meeting.ts";
 import { timestamp, uuid } from "./rows.ts";
 
 /**
@@ -157,6 +158,27 @@ export const UpdateCallSettingsSchema = CallSettingsSchema.omit({
 export type UpdateCallSettings = z.infer<typeof UpdateCallSettingsSchema>;
 
 /**
+ * A row of `scheduling.call_platforms` — one conferencing platform the host OFFERS for a call, in
+ * their preferred order. An allow-list the public offer INTERSECTS with the host's active
+ * `conferencing` connections: a listed platform with no connection offers nothing, and an empty
+ * list means "every connected provider". The seller-side settings surface edits the whole list at
+ * once ({@link UpdateCallPlatformsSchema}); a booker only ever sees the resolved
+ * {@link PublicCallOfferSchema.platforms}.
+ */
+export const CallPlatformSchema = z.object({
+	scheduleId: uuid,
+	providerSlug: ConferencingProviderSchema,
+	position: z.number().int().min(0),
+});
+export type CallPlatform = z.infer<typeof CallPlatformSchema>;
+
+/** Replace the host's offered-platform list wholesale, in order. */
+export const UpdateCallPlatformsSchema = z.object({
+	platforms: z.array(ConferencingProviderSchema).max(8),
+});
+export type UpdateCallPlatforms = z.infer<typeof UpdateCallPlatformsSchema>;
+
+/**
  * The publicly visible slice — what a signed-out visitor may learn before booking: whether calls
  * are offered, how long they run, and what a paid one costs. Never the caps, cooldowns, or buffers.
  */
@@ -169,6 +191,14 @@ export const PublicCallOfferSchema = z.object({
 	feeAmountMinor: minorUnits.nullable(),
 	feeCurrency: currency.nullable(),
 	agendaRequired: z.boolean(),
+	/**
+	 * The conferencing platforms the host can mint a room on — the providers among their connected
+	 * `integrations.user_connections` carrying the `conferencing` capability, in the host's preferred
+	 * order (`preferredProviderSlug` first). A booking modal offers exactly this set and nothing
+	 * else: a platform the host has not connected is a room nobody can create. Empty means the host
+	 * arranges the room themselves after confirming (`MeetingProvider` `custom`).
+	 */
+	platforms: z.array(ConferencingProviderSchema).max(8).default([]),
 });
 export type PublicCallOffer = z.infer<typeof PublicCallOfferSchema>;
 // #endregion
@@ -191,6 +221,11 @@ export const DiscoveryCallSchema = z.object({
 	/** The IANA zone the REQUESTER was viewing in; the host's zone lives on the schedule. */
 	requesterTimezone: z.string().max(60).nullable(),
 	agenda: z.string().max(2000).nullable(),
+	/**
+	 * The listing the call was booked ABOUT, or `null` for a call booked from the seller's profile
+	 * (`DiscoveryCallRequest.subjectId`). Context for the host, never a gate.
+	 */
+	serviceBlueprintId: uuid.nullable(),
 	/** The conferencing provider that minted the room, and the room itself. */
 	providerSlug: z.string().max(40).nullable(),
 	connectionId: uuid.nullable(),

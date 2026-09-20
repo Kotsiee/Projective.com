@@ -1,0 +1,63 @@
+/*
+ * InlineNotice (ui-inline-notice) — the unboxed edge-of-region status line. No fill, no border, no
+ * shadow: the meta register (`--text-sm` / `--text-secondary`) plus spacing is the whole separation
+ * device (§B.4), so a note appended under a list never reads as one more item in it. The one action
+ * is `Button --link` — underlined text — re-inked to the page's ink so the retry is quiet rather than
+ * brand-coloured; the underline, not the colour, is what says it is a control.
+ */
+
+.ui-inline-notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	padding-block: var(--space-4);
+	padding-inline: var(--space-4);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.ui-inline-notice--center {
+	justify-content: center;
+	text-align: center;
+}
+
+.ui-inline-notice--start {
+	justify-content: flex-start;
+}
+
+/* #region Parts */
+.ui-inline-notice__icon {
+	display: inline-flex;
+	flex: none;
+	inline-size: var(--icon-xs);
+	block-size: var(--icon-xs);
+	color: inherit;
+}
+
+.ui-inline-notice__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+.ui-inline-notice__text {
+	min-inline-size: 0;
+}
+
+/*
+ * The link variant reads `--btn-accent` for its ink, so the override is the two custom properties
+ * rather than a `color` declaration that would lose to the component's own rule on bundle order.
+ */
+.ui-inline-notice__action {
+	--btn-accent: var(--on-surface);
+	--btn-on: var(--surface);
+	min-block-size: 0;
+	padding-block: 0;
+}
+
+.ui-inline-notice[aria-busy="true"] .ui-inline-notice__text {
+	opacity: var(--fld-loading-alpha, 0.85);
+}
+/* #endregion */

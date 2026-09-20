@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CallRefusalReason } from "./calls.ts";
+import { CallRefusalReason, CallType } from "./calls.ts";
 
 /**
  * scheduling.booking — the **bookable slot grid**: the projection behind the date rail and the slot
@@ -102,6 +102,22 @@ export const SlotPurpose = z.enum(["session", "set_session", "cohort", "discover
 export type SlotPurpose = z.infer<typeof SlotPurpose>;
 
 /**
+ * One open band of a day — a contiguous span the provider takes bookings in, with any blackout
+ * already cut out of it. Absolute epoch ms, like every instant in the grid.
+ *
+ * The bands exist for the CUSTOM start time: the enumerated slots are the provider's offerable
+ * cadence, but a buyer may ask for a start the cadence does not land on, and the picker needs the
+ * span it must fall inside to say so BEFORE the request is sent. They disclose nothing the public
+ * schedule does not already show — a call window's shape is public (§Part 1.4); who holds which
+ * minute of it is not, and that stays on the slots.
+ */
+export const OpenBandSchema = z.object({
+	startsAt: z.number().int(),
+	endsAt: z.number().int(),
+});
+export type OpenBand = z.infer<typeof OpenBandSchema>;
+
+/**
  * The complete picker projection: a window of days, and the slots inside each.
  *
  * `slots` is keyed by the day's own `key` rather than parallel-indexed to `days`, so a rail paged
@@ -126,6 +142,18 @@ export const SlotGridSchema = z.object({
 	days: z.array(RailDaySchema),
 	/** Day key → that day's slots, ascending. A day with none is absent rather than an empty array. */
 	slots: z.record(z.string(), z.array(BookableSlotSchema)),
+	/**
+	 * Day key → that day's open bands, ascending — the spans a custom start time must fall inside.
+	 * Additive: a grid built before bands existed reads as having none, and the custom-start control
+	 * then withdraws rather than offering a span it cannot check against.
+	 */
+	bands: z.record(z.string(), z.array(OpenBandSchema)).default({}),
+	/**
+	 * The minimum-notice floor as an INSTANT — the earliest start a booking may propose. `windowStart`
+	 * is the midnight of the day it falls on (what the rail pages back to); this is the floor itself,
+	 * which the custom-start check needs and a day boundary cannot give it.
+	 */
+	bookableFrom: z.number().int().optional(),
 	/** The first instant the rail can page BACK to (the minimum-notice floor). */
 	windowStart: z.number().int(),
 	/** The last instant the rail can page FORWARD to (the booking horizon). */
@@ -154,6 +182,13 @@ export const SlotQuerySchema = z.object({
 	from: z.number().int().optional(),
 	/** How many days the rail spans. The rail is infinite by paging, not by one enormous read. */
 	days: z.number().int().min(1).max(60).default(14),
+	/**
+	 * `discovery_call` only — which flavour is being booked. A paid consultation runs for the
+	 * provider's `paidDurationMinutes` and a courtesy call for `courtesyDurationMinutes`, so the grid
+	 * has to know which length to cut the windows into. Ignored for every other purpose, whose slot
+	 * length comes from the listing.
+	 */
+	callType: CallType.optional(),
 });
 export type SlotQuery = z.infer<typeof SlotQuerySchema>;
 // #endregion
@@ -328,5 +363,64 @@ export function findSlot(grid: SlotGrid, slotId: string): BookableSlot | null {
 		if (hit) return hit;
 	}
 	return null;
+}
+
+/** The open bands of one day, or an empty array (the same guard as {@link slotsForDay}). */
+export function bandsForDay(grid: SlotGrid, key: string): readonly OpenBand[] {
+	return grid.bands[key] ?? [];
+}
+
+/**
+ * Why a CUSTOM start time cannot be taken, or `null` when it can — the picker's pre-flight check.
+ *
+ * A buyer who types a start the cadence does not land on is asking for a span, not a slot, so the
+ * grid's enumerated slots cannot answer alone: the start plus the grid's duration must fit inside one
+ * open band, sit at or after the notice floor and before the horizon, and not overlap any slot
+ * somebody already holds. The reasons come from the SAME `SlotUnavailableReason` vocabulary a slot
+ * refuses with, so the sentence a buyer reads is the sentence the write would answer with.
+ *
+ * It is a PRE-flight, and honest about being one: the server re-walks the day with the provider's
+ * private buffers on the write, so a start that clears every check here can still be refused as
+ * `slot_unavailable` — but never accepted here and silently moved.
+ */
+export function customStartRefusal(
+	grid: SlotGrid,
+	dayKey: string,
+	startsAt: number,
+): SlotUnavailableReason | null {
+	const endsAt = startsAt + grid.durationMinutes * 60_000;
+	if (grid.bookableFrom !== undefined && startsAt < grid.bookableFrom) {
+		return "inside_minimum_notice";
+	}
+	if (startsAt >= grid.windowEnd) return "beyond_booking_horizon";
+	const inBand = bandsForDay(grid, dayKey).some((b) =>
+		startsAt >= b.startsAt && endsAt <= b.endsAt
+	);
+	if (!inBand) return "outside_call_window";
+	for (const slot of slotsForDay(grid, dayKey)) {
+		if (slot.available) continue;
+		if (slot.reason !== "taken") continue;
+		if (startsAt < slot.endsAt && endsAt > slot.startsAt) return "taken";
+	}
+	return null;
+}
+
+/**
+ * The instant a wall-clock minute of a day falls at, in a zone — the inverse of {@link zonedParts}
+ * for the picker's time control.
+ *
+ * Solved the same way {@link zonedMidnight} is: the naive UTC guess, corrected once by the zone's
+ * offset AT the result, so a start inside a DST transition resolves to the instant the provider's
+ * clock actually shows rather than one an hour off it.
+ */
+export function zonedTimeToInstant(
+	dayStart: number,
+	minutesOfDay: number,
+	timeZone: string,
+): number {
+	const p = zonedParts(dayStart, timeZone);
+	const naive = Date.UTC(p.year, p.month, p.dayOfMonth, 0, minutesOfDay, 0, 0);
+	const firstPass = naive - zoneOffsetMinutes(dayStart, timeZone) * 60_000;
+	return naive - zoneOffsetMinutes(firstPass, timeZone) * 60_000;
 }
 // #endregion

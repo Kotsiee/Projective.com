@@ -208,6 +208,24 @@ WITH
         scheduling.fn_can_manage_schedule (schedule_id)
     );
 
+-- The offered-platform allow-list follows call_settings exactly: visitor-readable where the schedule
+-- is published (a booker chooses a platform BEFORE signing in), owner-managed otherwise. It discloses
+-- only which providers the host offers, never a connection, a token or an account id.
+CREATE POLICY "View call platforms" ON scheduling.call_platforms FOR
+SELECT TO anon,
+authenticated USING (
+        scheduling.fn_schedule_is_public (schedule_id)
+        OR scheduling.fn_can_view_schedule (schedule_id)
+    );
+
+CREATE POLICY "Manage call platforms" ON scheduling.call_platforms FOR ALL TO authenticated USING (
+    scheduling.fn_can_manage_schedule (schedule_id)
+)
+WITH
+    CHECK (
+        scheduling.fn_can_manage_schedule (schedule_id)
+    );
+
 CREATE POLICY "View own discovery calls" ON scheduling.discovery_calls FOR
 SELECT TO authenticated USING (
         host_user_id = auth.uid ()

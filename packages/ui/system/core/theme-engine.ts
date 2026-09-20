@@ -246,6 +246,9 @@ export function buildScheme(
 			"--scrim": hx(core.n1.tone(0)),
 			"--on-scrim": hx(core.n1.tone(100)),
 			"--scrim-tint": "62%",
+			// The heavy tier (§B.10.2): "the page beneath cannot be used". Same darkest neutral, a
+			// deeper step, still per theme so dark keeps carrying the heavier tint.
+			"--scrim-tint-heavy": "80%",
 			"--focus-ring": ringInk,
 			"--focus-ring-halo": ringHalo,
 			"--focus-ring-tint": ringGlow,
@@ -280,6 +283,7 @@ export function buildScheme(
 			"--scrim": hx(core.n1.tone(0)),
 			"--on-scrim": hx(core.n1.tone(100)),
 			"--scrim-tint": "42%",
+			"--scrim-tint-heavy": "64%",
 			"--focus-ring": ringInk,
 			"--focus-ring-halo": ringHalo,
 			"--focus-ring-tint": ringGlow,

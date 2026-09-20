@@ -5,8 +5,9 @@ import { BookingBackendService } from "@server/services/booking/BookingBackendSe
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
 
 /**
- * `GET /api/services/slots?subjectId=&purpose=&timezone=&from=&days=` — the bookable slot grid behind
- * the date rail and the slot picker.
+ * `GET /api/services/slots?subjectId=&purpose=&timezone=&from=&days=&callType=` — the bookable slot
+ * grid behind the date rail and the slot picker. `callType` matters only to a `discovery_call` grid,
+ * whose slot length is the provider's own duration for that flavour.
  *
  * Thin: coerce the query into {@link SlotQuerySchema}, then delegate. The listing's own booking
  * parameters — slot length, block size, seat cap — are resolved SERVER-side from the service view and
@@ -32,6 +33,8 @@ export const handler = define.handlers({
 			// would pin the rail to 1970 rather than falling through to the notice floor.
 			from: p.get("from") ? Number(p.get("from")) : undefined,
 			days: p.get("days") ? Number(p.get("days")) : undefined,
+			// A discovery call's flavour decides its length; ignored for every other purpose.
+			callType: p.get("callType") ?? undefined,
 		});
 		if (!parsed.success) return invalidPayload(parsed.error);
 

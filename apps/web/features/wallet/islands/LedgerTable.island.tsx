@@ -1,8 +1,10 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Tooltip } from "@projective/ui/feedback";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { FundStateDot, fundStateLabel } from "../components/FundStateMark.tsx";
 import { Money } from "../components/Money.tsx";
 import { WalletSkeleton } from "../components/WalletSkeleton.tsx";
@@ -87,7 +89,7 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 	});
 
 	const loadMore = async () => {
-		if (loading.value || !hasMore.value) return;
+		if (loading.value || stall.blocked.value || !hasMore.value) return;
 		loading.value = true;
 		const res = await WalletService.transactions(
 			currentWalletContext(),
@@ -99,7 +101,9 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 			hasMore.value = res.data.page.hasMore;
 		}
 		loading.value = false;
+		stall.settle(res.ok);
 	};
+	const stall = useOfflineStall(loadMore);
 
 	useEffect(() => {
 		const el = sentinel.current;
@@ -235,6 +239,14 @@ export default function LedgerTable(props: LedgerTableProps): JSX.Element {
 				 */
 			}
 			{loading.value && <WalletSkeleton shape="rows" rows={3} />}
+			{stall.stalled.value && (
+				<InlineNotice
+					text={OFFLINE_NOTICE_TEXT}
+					actionLabel="Retry"
+					onAction={stall.retry}
+					busy={stall.retrying.value}
+				/>
+			)}
 		</div>
 	);
 }

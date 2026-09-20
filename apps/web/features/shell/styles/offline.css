@@ -1,0 +1,19 @@
+/*
+ * offline — the interstitial the OfflineBridge opens over a refused navigation. Everything visual is
+ * the shared Dialog's (heavy scrim tier, panel, header, footer); these rules only shape its body copy
+ * and let the footer's focus scope be a scope without becoming a box.
+ */
+
+/* The action group exists for `initialFocusRef` — a scope, not a layout node — so it must not
+   interrupt the footer's own flex row: `display: contents` hands its children straight to it. */
+.offline-interstitial__actions {
+	display: contents;
+}
+
+.offline-interstitial__body {
+	margin: 0;
+	font-size: var(--text-md);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+	text-wrap: pretty;
+}

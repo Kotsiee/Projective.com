@@ -865,6 +865,30 @@
 				"--strictPort"
 			],
 			"port": 12273
+		},
+		{
+			"name": "web-hire2",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"12373",
+				"--strictPort"
+			],
+			"port": 12373
+		},
+		{
+			"name": "web-offline",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"12473",
+				"--strictPort"
+			],
+			"port": 12473
 		}
 	]
 }

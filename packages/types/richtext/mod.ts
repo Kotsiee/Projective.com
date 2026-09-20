@@ -6,6 +6,7 @@
 export {
 	flattenRichText,
 	hasRichTextProse,
+	plainTextToHtml,
 	type RichTextDelta,
 	type RichTextDeltaOp,
 	type RichTextInput,

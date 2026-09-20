@@ -247,6 +247,22 @@ export const CreateProjectSchema = z.object({
 	),
 	format: ProjectCreateFormat,
 	/**
+	 * Whether the engagement is STAGED. `true` (the default, and what the Quick-Init modal always
+	 * sends) mints the format's ordinary structure; `false` mints the stage-less variant — a one-off
+	 * becomes a Direct Deliverable (`single_task`), a pipeline a `single_stage` — through
+	 * `createFormatToColumns`, the one mapping the wizard already uses. It exists so the profile's
+	 * "Create new project" wizard can offer **Task** as a card without a third format vocabulary
+	 * (root CLAUDE.md §8 Decision #86: Task is the `hasStages: false` variant of a one-off).
+	 */
+	hasStages: z.boolean().default(true),
+	/**
+	 * A short plain-text brief, optional. Stored as the project's description (one paragraph of
+	 * escaped HTML, since the column holds rich text) so the Stage-2 surface opens with the sentence
+	 * the client already wrote rather than an empty editor. Never required: a draft may be minted
+	 * before the client knows what to say, and the setup form asks again.
+	 */
+	description: z.string().trim().max(2000, "Keep the brief under 2000 characters.").default(""),
+	/**
 	 * ISO-4217, upper-case. Validated for SHAPE here and narrowed to the offerable set server-side
 	 * through `toDisplayCurrency`, so a client that posts a well-formed but unsupported code gets the
 	 * platform default rather than a refusal it cannot act on.

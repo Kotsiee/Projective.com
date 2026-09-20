@@ -14,6 +14,8 @@
  * - {@link ./pipeline.ts} — instantiating a pipeline template as a draft project, and the 30-day
  *   idle sweep that soft-archives one nobody funds.
  * - {@link ./sim.ts} — the developer simulation overlay, travelling as validated query params.
+ * - {@link ./intake.ts} — the seller-defined requirements a buyer answers before hiring: the field
+ *   vocabulary, the answers, and the ONE validation rule the modal and the fat service both call.
  *
  * # Where this sits
  *
@@ -35,3 +37,4 @@ export * from "./contact.ts";
 export * from "./booking.ts";
 export * from "./pipeline.ts";
 export * from "./sim.ts";
+export * from "./intake.ts";

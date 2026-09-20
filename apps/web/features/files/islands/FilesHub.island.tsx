@@ -20,7 +20,9 @@ import type { Signal } from "@preact/signals";
 import { VirtualGrid } from "@projective/ui/display";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { Button } from "@projective/ui/fields";
-import { Tooltip } from "@projective/ui/feedback";
+import { InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { Icon } from "@projective/ui/icons";
 import {
 	DndContext,
@@ -435,7 +437,10 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 
 	/** Append the next page. Guarded so a fast scroll cannot fire two requests for the same cursor. */
 	async function loadMore(): Promise<void> {
-		if (loadingMore.value || loading.value || !hasMore.value || !nextCursor.value) return;
+		if (
+			loadingMore.value || stall.blocked.value || loading.value || !hasMore.value ||
+			!nextCursor.value
+		) return;
 		const my = reqId.current;
 		loadingMore.value = true;
 		const res = await FilesService.list(listParams(nextCursor.value), simRef.current);
@@ -446,10 +451,16 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		if (res.ok && res.data) {
 			tailError.value = null;
 			appendPage(res.data);
+			stall.settle(true);
+		} else if (stall.settle(false)) {
+			// Offline: the shared stall notice says so and owns the Retry; the danger strip is for a
+			// server that answered badly, not a network that did not answer at all.
+			tailError.value = null;
 		} else {
 			tailError.value = res.message ?? "The next page could not be loaded.";
 		}
 	}
+	const stall = useOfflineStall(loadMore);
 	// #endregion
 
 	// #region Navigation
@@ -784,6 +795,16 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 						<span>{tailError.value}</span>
 						<Button variant="text" size="sm" label="Retry" onClick={() => void loadMore()} />
 					</p>
+				)
+				: null}
+			{stall.stalled.value
+				? (
+					<InlineNotice
+						text={OFFLINE_NOTICE_TEXT}
+						actionLabel="Retry"
+						onAction={stall.retry}
+						busy={stall.retrying.value}
+					/>
 				)
 				: null}
 		</div>

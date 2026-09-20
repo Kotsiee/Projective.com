@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { ServiceItem } from "../types/profile-types.ts";
 import {
-	ctaFor,
+	consultationPriceLabel,
 	estimatedSpendFor,
 	hireProjectsFrom,
 	isFastResponder,
@@ -10,55 +10,99 @@ import {
 	reviewsForStance,
 	reviewStanceCounts,
 	reviewStanceOf,
+	rigFor,
 } from "./profile-model.ts";
 
-Deno.test("ctaFor leads a seller with Hire and a buyer with Message", () => {
-	const hire = (target: "projects" | "services" | "signin") => ({
-		layout: "hire" as const,
-		primary: "Hire" as const,
-		target,
+Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-project is there for a member", () => {
+	// A listing or a consultation is something the Hire popover can show.
+	assertEquals(rigFor("freelancer", { hasServices: true, offersConsultation: false, authed: true }), {
+		layout: "seller",
+		hire: true,
+		addToProject: true,
+		primary: "hire",
 	});
-	const message = { layout: "message" as const, primary: "Message" as const, target: null };
-	const viewer = (authed: boolean, hasServices: boolean, openProjectCount: number) => ({
-		authed,
-		hasServices,
-		openProjectCount,
+	assertEquals(rigFor("team", { hasServices: false, offersConsultation: true, authed: true }), {
+		layout: "seller",
+		hire: true,
+		addToProject: true,
+		primary: "hire",
 	});
-
-	// A guest is intercepted whatever the seller has — the prompt decides what happens next.
-	assertEquals(ctaFor("freelancer", viewer(false, true, 0)), hire("signin"));
-	assertEquals(ctaFor("team", viewer(false, false, 0)), hire("signin"));
-	// Case A — open projects win over listings: the client picks where to bring the seller in.
-	assertEquals(ctaFor("freelancer", viewer(true, true, 2)), hire("projects"));
-	assertEquals(ctaFor("freelancer", viewer(true, false, 1)), hire("projects"));
-	// Case B — nothing to hire into, something to buy.
-	assertEquals(ctaFor("team", viewer(true, true, 0)), hire("services"));
-	// Case C — nothing to hire into and nothing to buy: no Hire, the text pair instead.
-	assertEquals(ctaFor("freelancer", viewer(true, false, 0)), message);
-	// A buyer entity cannot be hired, whatever the viewer holds.
+	// Neither: no Hire (an empty popover is not a control), and Add-to-project takes the primary.
+	assertEquals(rigFor("freelancer", { hasServices: false, offersConsultation: false, authed: true }), {
+		layout: "seller",
+		hire: false,
+		addToProject: true,
+		primary: "add",
+	});
+	// A guest keeps Hire (the press is what opens the sign-in prompt) and never sees Add-to-project.
+	assertEquals(rigFor("freelancer", { hasServices: true, offersConsultation: false, authed: false }), {
+		layout: "seller",
+		hire: true,
+		addToProject: false,
+		primary: "hire",
+	});
+	// A buyer entity cannot be hired or assigned, whatever it offers.
 	for (const kind of ["client", "business", "organisation"] as const) {
-		assertEquals(ctaFor(kind, viewer(true, true, 3)), message);
-		assertEquals(ctaFor(kind, viewer(false, true, 0)), message);
+		assertEquals(rigFor(kind, { hasServices: true, offersConsultation: true, authed: true }), {
+			layout: "buyer",
+			hire: false,
+			addToProject: false,
+			primary: "message",
+		});
 	}
 });
 
-Deno.test("hireProjectsFrom keeps only open engagements, as slim rows", () => {
+Deno.test("consultationPriceLabel: Free whenever a courtesy call exists, else the paid fee", () => {
+	assertEquals(consultationPriceLabel(null), null);
+	assertEquals(
+		consultationPriceLabel({
+			courtesyEnabled: true,
+			paidEnabled: true,
+			feeAmountMinor: 7500,
+			feeCurrency: "GBP",
+		}),
+		"Free",
+	);
+	assertEquals(
+		consultationPriceLabel({
+			courtesyEnabled: false,
+			paidEnabled: true,
+			feeAmountMinor: 7500,
+			feeCurrency: "GBP",
+		}),
+		"£75.00",
+	);
+	assertEquals(
+		consultationPriceLabel({
+			courtesyEnabled: false,
+			paidEnabled: false,
+			feeAmountMinor: null,
+			feeCurrency: null,
+		}),
+		null,
+	);
+});
+
+Deno.test("hireProjectsFrom keeps only open engagements, published first, as slim rows", () => {
 	const row = (slug: string, status: "draft" | "active" | "on_hold" | "completed" | "cancelled") =>
 		({ slug, title: `Project ${slug}`, scopeLabel: "Personal", status }) as never;
 	const rows = hireProjectsFrom([
+		row("prj-c", "draft"),
 		row("prj-a", "active"),
 		row("prj-b", "completed"),
-		row("prj-c", "draft"),
 		row("prj-d", "cancelled"),
 		row("prj-e", "on_hold"),
 	]);
-	assertEquals(rows.map((r) => r.slug), ["prj-a", "prj-c", "prj-e"]);
+	// Published (active · on hold) lead in feed order; the draft follows rather than leading the list.
+	assertEquals(rows.map((r) => r.slug), ["prj-a", "prj-e", "prj-c"]);
 	assertEquals(rows[0], {
 		slug: "prj-a",
 		title: "Project prj-a",
 		scopeLabel: "Personal",
 		status: "active",
+		published: true,
 	});
+	assertEquals(rows[2].published, false);
 });
 
 Deno.test("review stance is the author's role inverted", () => {

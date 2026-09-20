@@ -1,0 +1,127 @@
+/*
+ * Ribbon (ui-ribbon) — the viewport-pinned bottom status strip. Inverted ink-on-surface fill (the
+ * Tooltip idiom, ≥ 14:1 in every theme state by construction), one line, an optional leading glyph
+ * and one trailing action. Enter/exit ride `[data-state]` on transform + opacity only; the closed
+ * state is `visibility: hidden` after the exit so a withdrawn strip is out of the tab order and the
+ * accessibility tree. Token-only.
+ *
+ * It sits at `--z-nav`: above sticky footer bands and the page, below every backdrop and modal —
+ * an open dialog must be able to cover it, and it must never cover a dialog.
+ */
+
+.ui-ribbon {
+	position: fixed;
+	inset-inline: 0;
+	inset-block-end: 0;
+	z-index: var(--z-nav);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3);
+	min-block-size: var(--ribbon-h);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-4);
+	/* The home indicator on a notched phone lives under the strip, not under its text. */
+	padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--surface);
+	background: var(--on-surface);
+	/* Its own top hairline in the page's ink, so the seam between chrome and content is one device. */
+	box-shadow: 0 -1px 0 color-mix(in srgb, var(--surface) 12%, transparent);
+	transform: translateY(0);
+	opacity: 1;
+	visibility: visible;
+	transition:
+		transform var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-medium) var(--ease-standard),
+		visibility 0s linear 0s;
+}
+
+.ui-ribbon[data-state="closed"] {
+	transform: translateY(100%);
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	/* Hide only once the slide has finished, or the exit would be cut off on its first frame. */
+	transition:
+		transform var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-medium) var(--ease-standard),
+		visibility 0s linear var(--dur-medium);
+}
+
+/* #region Parts */
+.ui-ribbon__icon {
+	display: inline-flex;
+	flex: none;
+	inline-size: var(--icon-sm);
+	block-size: var(--icon-sm);
+	color: inherit;
+}
+
+.ui-ribbon__icon svg {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+.ui-ribbon__text {
+	min-inline-size: 0;
+	text-align: center;
+	text-wrap: balance;
+}
+
+.ui-ribbon__action {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	/* A control on the inverted ground takes the ground's ink: the strip is the one place a
+	   `--btn-accent` of the page's surface colour is the RIGHT reading (the §D.7.7 inversion). */
+	--btn-accent: var(--surface);
+	--btn-on: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Reserving the room */
+/*
+ * The document's tail keeps clear of an open strip, so the last line of a page can still be scrolled
+ * into view above it. Bottom-PINNED surfaces (the middle-nav footer band, bottom toast stacks) add
+ * `--ribbon-inset` to their own offsets in their own sheets; this rule is only for the flow.
+ *
+ * Deliberately NOT transitioned: `body` carries the page's `background`/`color`, and declaring a
+ * `transition` here would replace the universal theme-crossfade rule for it (a component-level
+ * `transition` always wins over the `*` rule). The strip animates itself; the tail padding jumps.
+ */
+body {
+	padding-block-end: var(--ribbon-inset, 0px);
+}
+/* #endregion */
+
+/* #region Mobile: sit above the thumb nav (Part D.3) */
+@media (max-width: 767.98px) {
+	/*
+	 * The fixed bottom nav owns the bottom edge on a phone; the strip stacks on top of it rather than
+	 * over it, so no destination is covered. Keyed on the nav's presence rather than on the viewport
+	 * alone because the focus chrome (Part D.6) withholds the nav and the strip must drop back down.
+	 */
+	:root:has(.ui-bottom-nav) .ui-ribbon {
+		inset-block-end: calc(var(--shell-bottomnav-h) + env(safe-area-inset-bottom, 0px));
+		padding-block-end: var(--space-2);
+	}
+}
+/* #endregion */
+
+/* Both reduced-motion channels: jump to the final state (the closed `visibility` delay goes too). */
+@media (prefers-reduced-motion: reduce) {
+	.ui-ribbon,
+	.ui-ribbon[data-state="closed"] {
+		transition-duration: 0ms;
+		transition-delay: 0s;
+	}
+}
+
+:root[data-motion="reduced"] .ui-ribbon,
+:root[data-motion="reduced"] .ui-ribbon[data-state="closed"] {
+	transition-duration: 0ms;
+	transition-delay: 0s;
+}

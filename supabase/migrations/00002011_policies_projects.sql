@@ -946,6 +946,10 @@ SELECT TO authenticated USING (
                 p.id = project_invitations.project_id
                 AND p.owner_user_id = auth.uid ()
         )
+        -- An identity-addressed invitation (a hire from a profile, Decision #108) names its invitee
+        -- directly, so the invitee reads their own row with no email join at all — and only their
+        -- own: `target_user_id` is a FK the owner wrote, not a value the reader can assert.
+        OR target_user_id = auth.uid ()
         OR EXISTS (
             SELECT 1
             FROM org.user_emails ue

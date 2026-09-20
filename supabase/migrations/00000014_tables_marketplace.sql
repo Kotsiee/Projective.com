@@ -84,6 +84,18 @@ CREATE TABLE marketplace.service_blueprints (
     allow_continuous_enrollment boolean NOT NULL DEFAULT false,
     enrollment_window_days integer DEFAULT 7,
     session_template_rules jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- The seller's own INTAKE: the questions a buyer answers on the way to purchase (Decision #108).
+    -- An ORDERED array of `IntakeField` objects — text · textarea · number (optionally with a slider)
+    -- · boolean · select · multiselect · radio · pills · checkboxes — whose element shape is owned by
+    -- the Zod SSOT (`@projective/types/services/intake.ts`, `IntakeFieldSchema`) and validated by every
+    -- fat service that writes or reads it. It is a jsonb DOCUMENT rather than a child table for the
+    -- same reason `session_template_rules` is: the seller authors the list as one unit, every reader
+    -- takes it whole, and nothing ever queries across listings by field. The CHECK below refuses only
+    -- what no reader could interpret at all — a non-array, or more fields than the SSOT's cap
+    -- (`INTAKE_FIELDS_MAX` = 12) — so a stray scalar cannot be stored while the real validation stays
+    -- in one place. Answers never live here: they travel on the purchase (`finance.basket_items.metadata`
+    -- under `answers`) or the invitation (`projects.project_invitations.answers`), keyed by field id.
+    intake_fields jsonb NOT NULL DEFAULT '[]'::jsonb,
     is_published boolean NOT NULL DEFAULT false,
     rating_average numeric(3,2) DEFAULT 0.0,
     rating_count integer DEFAULT 0,
@@ -100,6 +112,9 @@ CREATE TABLE marketplace.service_blueprints (
     CONSTRAINT service_blueprints_freelancer_fkey FOREIGN KEY (freelancer_profile_id) REFERENCES org.freelancer_profiles(user_id),
     CONSTRAINT service_blueprints_owner_team_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id) ON DELETE CASCADE,
     CONSTRAINT service_blueprints_cover_fkey FOREIGN KEY (cover_file_id) REFERENCES files.items(id) ON DELETE SET NULL,
+    CONSTRAINT ck_service_blueprints_intake_shape CHECK (
+        jsonb_typeof(intake_fields) = 'array' AND jsonb_array_length(intake_fields) <= 12
+    ),
     -- The discriminator and the team reference must agree. Storing both without this constraint is
     -- how a row comes to say "team-owned" while pointing at no team, which a reader can only resolve
     -- by guessing which of the two fields to believe.

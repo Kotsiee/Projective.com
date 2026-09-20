@@ -5,6 +5,7 @@ import type { MemberRosterPage } from "./members.ts";
 import { MemberRole } from "./members.ts";
 import { hasStages, pricedAtProjectLevel, type ProjectSetup, ProjectStructure } from "./setup.ts";
 import { flattenRichText } from "../richtext/plain-text.ts";
+import { IntakeAnswersSchema } from "../services/intake.ts";
 
 /**
  * projects.hire — the Zod SSOT behind a client's "Hire" control on a seller's `/[handle]` page: the
@@ -31,11 +32,14 @@ import { flattenRichText } from "../richtext/plain-text.ts";
  *  - a **single-stage one-off** — including a Direct Deliverable — pays ONE task price (`task`) for
  *    the whole engagement, which is its one and only stage.
  *
- * The prices are SEEDED from the stage's configured `unitPriceCents` (the rate `fn_hold_ticket_escrow`
- * reads), so an invitation defaults to the terms the project already states; the client may adjust
- * the offer per invitation. What is typed here is an OFFER, not a ledger figure — the client never
- * totals money the server owns, but a sum of the numbers a person just typed is the form's own
- * arithmetic, and {@link hireInvitationTotalCents} is its one implementation.
+ * The terms are the stage's configured `unitPriceCents` (the rate `fn_hold_ticket_escrow` reads):
+ * an invitation offers what the project already states, resolved by {@link resolveHireOffer} from
+ * the brief rather than typed into the modal, so the figure the seller reads is the figure the
+ * project's own setup form shows. An UNPUBLISHED project may carry no figure yet — its invitation
+ * is then a **placeholder assignment**: the seller is attached to the stage(s) now and the terms
+ * are settled when the client prices and publishes the project (root CLAUDE.md §8 Decision #108).
+ * The client never totals money the server owns; the footer's figure is the resolved offer's own
+ * sum, computed by one function.
  */
 
 // #region Pricing model
@@ -188,10 +192,17 @@ export function buildHireBrief(setup: ProjectSetup, roster: MemberRosterPage): H
 /** The message ceiling — the same bound a chat message body carries. */
 export const HIRE_MESSAGE_MAX = 4000;
 
-/** One selected stage with the price offered for it (minor units). */
+/**
+ * One selected stage, and — optionally — a price offered for it (minor units).
+ *
+ * `priceCents` is nullable, and `null` means **at the project's configured terms**: the assignment
+ * modal no longer collects a compensation figure per stage (root CLAUDE.md §8 Decision #108), so an
+ * offer names the stages and the brief supplies the rate each already states. A caller MAY still
+ * send a figure (an older client, a future negotiation surface), and the resolved offer prefers it.
+ */
 export const HireStageOfferSchema = z.object({
 	stageId: z.string().min(1).max(80),
-	priceCents: z.number().int().min(0),
+	priceCents: z.number().int().min(0).nullable().default(null),
 });
 export type HireStageOffer = z.infer<typeof HireStageOfferSchema>;
 
@@ -200,9 +211,14 @@ export type HireStageOffer = z.infer<typeof HireStageOfferSchema>;
  *
  * `stages` and `taskPriceCents` are the two halves of one offer, and which half applies is decided
  * by the engagement's pricing model rather than by the caller: a stage model carries at least one
- * stage offer and no task price; a `task` model carries the task price and no stage offers. The
+ * stage and no task price; a `task` model carries at most a task price and no stage offers. The
  * shape admits both so ONE schema validates either, and {@link hireInvitationRefusal} — the rule the
  * modal and the service both call — refuses the mismatch.
+ *
+ * `answers` are the client's answers to the SELLER's own intake (`ProfileView.hireIntake`) — the
+ * questions the seller asks before joining anybody's project. They ride the invitation rather than
+ * a follow-up message so the seller reads them with the offer, and the fat service holds them to
+ * the seller's list through the same `intakeRefusal` the modal ran.
  */
 export const HireInvitationSchema = z.object({
 	projectId: z.string().min(1).max(120),
@@ -212,6 +228,7 @@ export const HireInvitationSchema = z.object({
 	message: z.string().max(HIRE_MESSAGE_MAX).default(""),
 	stages: z.array(HireStageOfferSchema).max(50).default([]),
 	taskPriceCents: z.number().int().min(0).nullable().default(null),
+	answers: IntakeAnswersSchema.default({}),
 });
 export type HireInvitation = z.infer<typeof HireInvitationSchema>;
 
@@ -222,12 +239,76 @@ export interface HireRefusal {
 }
 
 /**
+ * The offer as it will be RECORDED: every selected stage with the price that applies to it, and
+ * whether the whole thing is a placeholder.
+ *
+ * `placeholder` is the "staged assignment" of an UNPUBLISHED project: the seller is attached to the
+ * stage(s) now and the terms are settled when the client prices and publishes the project — there is
+ * no live engagement to invite them into yet, whatever the stages happen to be priced at today. It is
+ * derived from the BRIEF (`status === "draft"`, or a selected stage with no configured rate) and
+ * never chosen by the caller, because a caller who could mark a live project's invitation
+ * "placeholder" could invite somebody onto a priced stage while stating no price. A live project with
+ * an unpriced stage never reaches here: {@link hireInvitationRefusal} refuses it first.
+ */
+export interface HireOffer {
+	stages: Array<{ stageId: string; priceCents: number | null }>;
+	taskPriceCents: number | null;
+	/**
+	 * True on an unpublished project, and whenever at least one selected stage (or the task) has no
+	 * price yet. The recorded invitation stays pending until the client publishes.
+	 */
+	placeholder: boolean;
+	/**
+	 * The sum of every priced stage (or the task price), or `null` while anything is unpriced. A
+	 * PRICED draft carries its total — the figures exist and the modal prints them — beside
+	 * `placeholder: true`; the two answer different questions.
+	 */
+	totalCents: number | null;
+}
+
+/**
+ * Resolve the effective offer from the brief and the input: a caller-supplied figure wins, else the
+ * stage's configured rate, else nothing. Pure and total — it decides nothing about legality, which
+ * is {@link hireInvitationRefusal}'s job; it only answers "at what terms".
+ */
+export function resolveHireOffer(brief: HireBrief, input: HireInvitation): HireOffer {
+	const draft = brief.status === "draft";
+	if (brief.pricingModel === "task") {
+		const taskPriceCents = input.taskPriceCents ?? brief.taskPriceCents;
+		return {
+			stages: [],
+			taskPriceCents,
+			placeholder: draft || taskPriceCents === null,
+			totalCents: taskPriceCents,
+		};
+	}
+	const configured = new Map(brief.stages.map((s) => [s.id, s.unitPriceCents]));
+	const stages = input.stages.map((offer) => ({
+		stageId: offer.stageId,
+		priceCents: offer.priceCents ?? configured.get(offer.stageId) ?? null,
+	}));
+	const unpriced = stages.some((s) => s.priceCents === null);
+	return {
+		stages,
+		taskPriceCents: null,
+		placeholder: draft || unpriced,
+		totalCents: unpriced ? null : stages.reduce((sum, s) => sum + (s.priceCents ?? 0), 0),
+	};
+}
+
+/**
  * Why an invitation cannot be sent against this brief, or `null` when it can.
  *
- * The ONE implementation of the rule: the modal calls it to gate its Send control and to explain a
- * refusal in place, and the fat service calls it again on the way in, so a form that lets something
- * through is not a form that gets it accepted. Every stage offered must be a stage of the project,
- * offered once, and priced; a `task` model needs its single price and nothing else.
+ * The ONE implementation of the rule: the modal calls it to gate its primary control and to explain
+ * a refusal in place, and the fat service calls it again on the way in, so a form that lets
+ * something through is not a form that gets it accepted. Every stage offered must be a stage of the
+ * project, offered once; a `task` model takes no stage offers and a stage model no task price.
+ *
+ * **A price is required on a PUBLISHED project and not on a draft.** A draft's invitation is a
+ * placeholder — the seller is attached now and the terms are settled at publish — so an unpriced
+ * stage is a state the flow expects. A live project's stage with no price is a configuration gap
+ * the client must close first: an invitation onto a priced-per-ticket stage that states no rate is
+ * an offer of nothing, and the seller would accept it without knowing what they agreed to.
  */
 export function hireInvitationRefusal(brief: HireBrief, input: HireInvitation): HireRefusal | null {
 	if (!brief.canInvite) {
@@ -236,17 +317,18 @@ export function hireInvitationRefusal(brief: HireBrief, input: HireInvitation): 
 			errors: { projectId: "not_invitable" },
 		};
 	}
+	const draft = brief.status === "draft";
 	if (brief.pricingModel === "task") {
-		if (input.taskPriceCents === null) {
-			return {
-				message: "Set the task price before sending.",
-				errors: { taskPriceCents: "required" },
-			};
-		}
 		if (input.stages.length > 0) {
 			return {
 				message: "A single-stage project takes one task price, not stage prices.",
 				errors: { stages: "not_applicable" },
+			};
+		}
+		if (!draft && resolveHireOffer(brief, input).taskPriceCents === null) {
+			return {
+				message: "Set the task price on the project before inviting anyone.",
+				errors: { taskPriceCents: "required" },
 			};
 		}
 		return null;
@@ -280,6 +362,16 @@ export function hireInvitationRefusal(brief: HireBrief, input: HireInvitation): 
 		}
 		seen.add(offer.stageId);
 	}
+	if (!draft) {
+		const unpriced = resolveHireOffer(brief, input).stages.find((s) => s.priceCents === null);
+		if (unpriced) {
+			const name = known.get(unpriced.stageId)?.name ?? "a selected stage";
+			return {
+				message: `Price ${name} on the project before inviting anyone to it.`,
+				errors: { stages: "unpriced" },
+			};
+		}
+	}
 	return null;
 }
 
@@ -288,10 +380,12 @@ export function hireInvitationRefusal(brief: HireBrief, input: HireInvitation): 
  *
  * A pipeline's per-ticket rates are summed as ONE ticket per selected stage, which is what "the
  * cost of one pass through the selected stages" means; how many tickets a client eventually
- * commissions is not known at invitation time and is not pretended to be.
+ * commissions is not known at invitation time and is not pretended to be. A figure the caller left
+ * `null` contributes nothing here — the RESOLVED total, which fills in the configured rates, is
+ * {@link resolveHireOffer}'s `totalCents`.
  */
 export function hireInvitationTotalCents(input: HireInvitation): number {
 	if (input.taskPriceCents !== null) return input.taskPriceCents;
-	return input.stages.reduce((sum, offer) => sum + offer.priceCents, 0);
+	return input.stages.reduce((sum, offer) => sum + (offer.priceCents ?? 0), 0);
 }
 // #endregion

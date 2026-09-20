@@ -1,8 +1,10 @@
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
+import { BookingBackendService } from "@server/services/booking/BookingBackendService.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
+import type { PublicCallOffer } from "@projective/types/scheduling";
 import { DEFAULT_PROJECT_PARAMS } from "@features/projects/core/projects-state.ts";
 import { type HireProject, hireProjectsFrom } from "./profile-model.ts";
 
@@ -45,14 +47,27 @@ export function resolveProfileProducts(handle: string): ProductItem[] {
 }
 
 /**
- * Resolve the VIEWER's open projects for the hero's Hire control — the engagements they own or
- * administer, across every workspace they belong to, still open to new members. Resolved server-side
- * so the first byte already knows which of the three Hire shapes to paint (§3 gate 11: a control that
- * changes what it does after hydration is a control that was wrong for the first second).
+ * Resolve a seller's public call offer for SSR — the Hire popover's "Book consultation" row and the
+ * consultation modal it opens. `null` when the entity takes no calls (the row is then absent, never
+ * disabled — the capability does not exist). The SAME derivation the listing's Contact menu reads,
+ * so the profile cannot advertise a free call beside a listing whose menu offers only a paid one.
+ */
+export function resolveConsultationOffer(handle: string): PublicCallOffer | null {
+	const res = BookingBackendService.callOffer(handle);
+	return res.ok && res.data ? res.data.callOffer : null;
+}
+
+/**
+ * Resolve the VIEWER's open projects for the hero's Add-to-project control — the engagements they
+ * own or administer, across every workspace they belong to, still open to new members, published
+ * first. Resolved server-side so the first byte already paints the popover's rows (§3 gate 11: a
+ * control that changes what it does after hydration is a control that was wrong for the first
+ * second).
  *
  * Reads the SAME feed the `/projects` lane renders (`ProjectBackendService.list`) under the actor's
- * own JWT, so what the popover offers is exactly what the client would find in their own feed. A
- * guest resolves to `[]` without a read — there is nothing to hire from.
+ * own JWT — `involvement: "owner"` is the feed's own "engagements I own, commission or administer"
+ * axis, which is exactly "projects I may hire into" — so what the popover offers is what the client
+ * would find in their own feed. A guest resolves to `[]` without a read.
  */
 export async function resolveHireProjects(actor: ReadActor): Promise<HireProject[]> {
 	if (!actor.userId) return [];
