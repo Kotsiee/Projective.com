@@ -56,6 +56,20 @@ export const SessionKeys = {
 	 * text instead of discarding it. Session-scoped: an unsent question should not outlive the tab.
 	 */
 	VIEW_INQUIRY_DRAFT: "pj.session.view.inquiryDraft",
+	/**
+	 * The Explore tree's visit stack — a JSON array of `pathname + search` entries for `/explore`,
+	 * `/view/[id]` and the `/[handle]` namespace, with an empty string marking where the chain was
+	 * broken by a visit outside the tree. Read by the contextual Back control
+	 * (`features/explore/core/explore-history.ts`), which walks it to the previous page WITH its
+	 * filters intact. Session-scoped: a chain of browsing does not outlive the tab.
+	 */
+	EXPLORE_HISTORY: "pj.session.explore.history",
+	/**
+	 * The URL the Back control is navigating to, written just before it navigates. The tracker on the
+	 * arriving page reads it to treat that arrival as a RETURN (the stack is walked back to the entry)
+	 * rather than as a fresh forward visit that would push a duplicate. Removed on read.
+	 */
+	EXPLORE_HISTORY_POP: "pj.session.explore.historyPop",
 } as const;
 // #endregion
 

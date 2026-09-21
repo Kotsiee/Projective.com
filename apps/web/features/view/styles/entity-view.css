@@ -237,29 +237,15 @@
     --evp-pin-lift: 0px;
 }
 
-/* An SVG arrow does not mirror itself under `dir="rtl"` — the glyph is drawn, so it is flipped. */
-[dir="rtl"] .evp__back .ui-icon {
-    transform: scaleX(-1);
-}
-
+/*
+ * The back control is the explore feature's `ExploreBackNav` (rendered through `BackLink`): its
+ * colour, hover and the RTL glyph flip come from its own `back-nav.css`. This sheet only PLACES the
+ * two copies — the page copy's grid row and withdrawal, the band copy's entrance — and every rule
+ * on the band copy is two selectors deep so it outranks the control's own `.ex-back--text`
+ * declarations (same specificity, and the two sheets ride different island bundles).
+ */
 .evp__back {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
     align-self: flex-start;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
-}
-
-.evp__back:hover {
-    color: var(--on-surface);
-}
-
-.evp__back:focus-visible {
-    outline: none;
-    box-shadow: none;
 }
 
 /*
@@ -327,10 +313,12 @@
  * into the header rather than blinking on inside it. Under either reduced-motion channel the band
  * jumps to final and so does this.
  */
-.evp__back--band {
+.evp-stickyhead .evp__back--band {
     flex: none;
     align-self: center;
     font-size: var(--text-xs);
+    /* Glass-safe ink: the band's 76% veil composites against whatever scrolls beneath. */
+    color: var(--on-surface-variant);
     opacity: 0;
     transform: translateX(calc(-1 * var(--space-3)));
     transition:
@@ -338,7 +326,11 @@
         transform var(--dur-medium) var(--spring-standard);
 }
 
-[dir="rtl"] .evp__back--band {
+.evp-stickyhead .evp__back--band:hover {
+    color: var(--on-surface);
+}
+
+[dir="rtl"] .evp-stickyhead .evp__back--band {
     transform: translateX(var(--space-3));
 }
 

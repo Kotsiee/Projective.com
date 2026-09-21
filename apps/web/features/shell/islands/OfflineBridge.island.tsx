@@ -28,7 +28,7 @@ import {
  *
  * Mounted once, globally, from `routes/_app.tsx` beside the other bridges, because connectivity is a
  * property of the SESSION and not of any route: a guest reading a listing and an owner editing a
- * project lose the network the same way. It does four things, and renders nothing at all while the
+ * project lose the network the same way. It does four things, and renders nothing visible while the
  * connection is fine:
  *
  * 1. Keeps the shared `isOnline` signal (`utils/network.ts`) in step with the browser.
@@ -36,7 +36,9 @@ import {
  *    internal navigations, and the `fetch` wrapper that refuses user-facing writes.
  * 3. Draws the status **Ribbon** — pinned to the bottom, "You are offline…" while the connection is
  *    gone and a brief "Back online." when it returns — which also reserves its own height for the
- *    footer bands and toast stacks beneath it.
+ *    footer bands and toast stacks beneath it. By default the strip is EMPTY: "Back online." is a
+ *    transition OUT of an offline state, never a greeting, and until an outage has actually been
+ *    established the strip is handed no words at all.
  * 4. Hosts the offline **interstitial**: the `Dialog` a refused navigation opens, on the heavy scrim
  *    tier, with the same words the service worker's fallback page uses; and the notice stack that
  *    says a write was not sent.
@@ -60,12 +62,15 @@ const REFUSAL_DEDUPE_MS = 4_000;
 
 type RibbonPhase = "hidden" | "offline" | "restored";
 
+/** The two phases that put words on the strip. */
+type RibbonNotice = Exclude<RibbonPhase, "hidden">;
+
 /**
  * The strip's phase on the FIRST client render. Read from the browser directly rather than from the
  * signal (which starts optimistic) so a page opened while already offline hydrates with the strip
  * open — and keeps the `data-ribbon` reservation `_app.tsx` pre-painted — instead of first closing
  * it and then re-opening it a frame later, which moved the footer band down and back up under the
- * reader. Under SSR there is no `navigator`, and the strip renders closed.
+ * reader. Under SSR there is no `navigator`, and the strip renders closed and empty.
  */
 function initialPhase(): RibbonPhase {
 	const nav = (globalThis as { navigator?: { onLine?: boolean } }).navigator;
@@ -74,7 +79,15 @@ function initialPhase(): RibbonPhase {
 // #endregion
 
 export default function OfflineBridge(): JSX.Element {
-	const phase = useSignal<RibbonPhase>(initialPhase());
+	const initial = initialPhase();
+	const phase = useSignal<RibbonPhase>(initial);
+	/**
+	 * The last notice the strip carried, held across the `hidden` phase so the exit slide leaves with
+	 * the words it arrived with. `null` until the first offline state — and while it is null the strip
+	 * is given no content, so "Back online." cannot be drawn before an outage has actually happened,
+	 * whatever the phase machine does.
+	 */
+	const lastNotice = useSignal<RibbonNotice | null>(initial === "offline" ? "offline" : null);
 	/** Mounted only once there is a notice, and never beside a stack another island already put up. */
 	const toastMounted = useSignal(false);
 	const toast = useToast();
@@ -94,6 +107,10 @@ export default function OfflineBridge(): JSX.Element {
 				restoredTimer.current = null;
 			}
 		};
+		const show = (notice: RibbonNotice) => {
+			lastNotice.value = notice;
+			phase.value = notice;
+		};
 
 		// `subscribe` fires once with the current value: a page opened while already offline shows the
 		// strip immediately, while a page opened online shows nothing — the "restored" confirmation
@@ -101,11 +118,11 @@ export default function OfflineBridge(): JSX.Element {
 		const stopPhase = isOnline.subscribe((online) => {
 			if (!online) {
 				clearRestored();
-				phase.value = "offline";
+				show("offline");
 				return;
 			}
 			if (phase.peek() !== "offline") return;
-			phase.value = "restored";
+			show("restored");
 			restoredTimer.current = setTimeout(() => {
 				phase.value = "hidden";
 				restoredTimer.current = null;
@@ -154,15 +171,21 @@ export default function OfflineBridge(): JSX.Element {
 	};
 	// #endregion
 
-	const offline = phase.value === "offline";
+	// #region Ribbon content
+	// The words are the LAST notice's, not a function of "online right now": while hidden the strip
+	// keeps them only for the exit slide, and before any outage there are none to keep.
+	const current = phase.value;
+	const notice = current === "hidden" ? lastNotice.value : current;
+	const offline = notice === "offline";
+	// #endregion
 
 	return (
 		<>
 			<Ribbon
-				visible={phase.value !== "hidden"}
+				visible={current !== "hidden"}
 				live={offline ? "assertive" : "polite"}
-				icon={<Icon name={offline ? "cloud-off" : "check"} />}
-				text={offline ? OFFLINE_RIBBON_TEXT : ONLINE_RIBBON_TEXT}
+				icon={notice ? <Icon name={offline ? "cloud-off" : "check"} /> : null}
+				text={notice ? (offline ? OFFLINE_RIBBON_TEXT : ONLINE_RIBBON_TEXT) : undefined}
 			/>
 
 			<Dialog

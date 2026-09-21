@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import type { ExploreEntity, ExploreItem } from "../types/explore-types.ts";
 
 /**
@@ -26,6 +28,26 @@ function isProfileEntity(type: ExploreEntity): boolean {
 /** A profile deep-link: `/@handle` (handles already carry the leading `@`). */
 export function profileHref(handle: string): string {
 	return `/${handle}`;
+}
+
+/**
+ * The bare, lower-cased handle a pathname addresses in the profile namespace — `/@Juno/reviews` →
+ * `juno` — or `null` when the path is not a profile at all. The `/[handle]` wildcard only ever
+ * receives an `@`-prefixed first segment (Decision #3), so the prefix is the whole test; a
+ * percent-encoded `@` is decoded first because a URL pasted from elsewhere may carry it that way.
+ */
+export function profileHandleOf(pathname: string): string | null {
+	const first = pathname.split("/").filter(Boolean)[0];
+	if (!first) return null;
+	let segment = first;
+	try {
+		segment = decodeURIComponent(first);
+	} catch {
+		// A malformed escape is not a handle; fall through with the raw segment.
+	}
+	if (!segment.startsWith("@")) return null;
+	const handle = segment.replace(/^@+/, "").trim().toLowerCase();
+	return handle.length > 0 ? handle : null;
 }
 
 /**

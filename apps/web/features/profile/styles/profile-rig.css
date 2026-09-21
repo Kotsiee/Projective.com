@@ -1,0 +1,157 @@
+/*
+ * profile-rig — the action rig the hero AND the sticky header band render (`ProfileRig`): Hire ·
+ * Add to project · Message · Follow for a seller, Message · Follow for a buyer, Settings · Share for
+ * the owner. One sheet for both mount points, so the band's copy and the hero's copy cannot drift.
+ *
+ * READS NO `--pf-*` TOKEN. The band mounts in the SHELL's header slot, outside `.pf`, so a token
+ * scoped there would silently fall back for exactly one of the two rigs (the `--wlt-*` lesson,
+ * Decision #60). Everything here is on the global ramp: the ink pair for the monochrome CTAs, the
+ * `--btn-*` hooks the shared `Button` base reads, the motion tokens.
+ *
+ * The CTAs are monochrome on purpose (Decision #96): the primary is the page's ink as its fill
+ * (`--btn-accent: --on-surface` / `--btn-on: --surface`, the inverted-surface idiom `Tooltip` uses),
+ * and the secondaries are outlined in the same ink. No brand teal on the profile chrome. The follow
+ * acknowledgement moves `transform` and `opacity` only (§B.12) and is removed by both reduced-motion
+ * channels.
+ */
+
+/* #region Rig */
+.pf-rig {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* The condensed band's rig: one row, never wrapping — the band is one line tall by contract. */
+.pf-rig--band {
+    flex-wrap: nowrap;
+    flex: none;
+}
+
+.ui-button.pf-rig__cta {
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-normal);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ui-button.pf-rig__cta--primary {
+    --btn-accent: var(--on-surface);
+    --btn-on: var(--surface);
+    --btn-mix-hover: 88%;
+    --btn-mix-active: 80%;
+    --btn-shade: var(--surface);
+}
+
+.ui-button.pf-rig__cta--primary:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+    border-color: transparent;
+}
+
+.ui-button.pf-rig__cta--secondary {
+    --btn-accent: var(--on-surface);
+    --btn-on: var(--surface);
+}
+
+.ui-button.pf-rig__cta--secondary[aria-pressed="true"] {
+    color: var(--text-secondary);
+    border-color: var(--hairline-strong-color);
+}
+
+/* The seller rig's compact secondaries: a circle of the primary's height, glyph-only. */
+.ui-button.pf-rig__cta--icon {
+    flex: none;
+}
+
+.ui-button.pf-rig__cta--icon .ui-button__icon {
+    display: inline-flex;
+}
+
+.pf-rig__status {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
+/* #endregion */
+
+/* #region Follow acknowledgement */
+/* The wrapper is the burst's anchor; the control inside keeps its own box untouched. */
+.pf-rig__follow {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+}
+
+.pf-rig__follow[data-celebrate="true"] .ui-button.pf-rig__cta--follow {
+    animation: pf-follow-settle var(--dur-medium) var(--ease-standard) both;
+}
+
+.pf-burst {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.pf-burst__dot {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    inline-size: var(--space-1);
+    block-size: var(--space-1);
+    margin: calc(-1 * var(--space-1) / 2);
+    border-radius: var(--radius-full);
+    background: var(--on-surface);
+    opacity: 0;
+    transform: rotate(calc(var(--pf-burst-i) * 60deg)) translateY(0) scale(0.4);
+    animation: pf-burst-fly var(--dur-slow) var(--ease-standard) both;
+}
+
+/* A settle, not a bounce: from the lifted size straight back to rest (§B.5 — no overshoot). */
+@keyframes pf-follow-settle {
+    from {
+        transform: scale(1.15);
+    }
+
+    to {
+        transform: scale(1);
+    }
+}
+
+/* Each dot flies outward along its own spoke and fades — the position it ends at is never shown. */
+@keyframes pf-burst-fly {
+    0% {
+        opacity: 0;
+        transform: rotate(calc(var(--pf-burst-i) * 60deg)) translateY(0) scale(0.4);
+    }
+
+    20% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: rotate(calc(var(--pf-burst-i) * 60deg)) translateY(calc(-1 * var(--space-7)))
+            scale(1);
+    }
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-rig__follow[data-celebrate="true"] .ui-button.pf-rig__cta--follow,
+    .pf-burst__dot {
+        animation: none;
+        transform: none;
+    }
+}
+
+:root[data-motion="reduced"] .pf-rig__follow[data-celebrate="true"] .ui-button.pf-rig__cta--follow,
+:root[data-motion="reduced"] .pf-burst__dot {
+    animation: none;
+    transform: none;
+}
+
+/* #endregion */

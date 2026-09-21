@@ -1,5 +1,7 @@
 import type { BottomNavItem } from "@projective/ui/navigation";
+import type { UserContext } from "@projective/types/auth";
 import { NavIcon } from "./nav-icons.tsx";
+import { isExploreSurface } from "./explore-surface.ts";
 
 /**
  * bottom-nav-model — the mobile thumb-nav's exactly-five primaries (DESIGN_SYSTEM.md Part D.3): Home ·
@@ -11,15 +13,23 @@ function on(path: string, base: string): boolean {
 	return path === base || path.startsWith(`${base}/`);
 }
 
-/** The mobile bottom-nav destinations for a given pathname. */
-export function bottomNavItems(path: string): BottomNavItem[] {
+/**
+ * The mobile bottom-nav destinations for a given pathname. Explore lights on the same surfaces the
+ * desktop rail lights it on — the search, the entity viewer, another entity's profile — so the two
+ * bars never disagree about where the reader is (`context` is what tells a stranger's profile from
+ * the viewer's own; without it every profile reads as Explore's).
+ */
+export function bottomNavItems(
+	path: string,
+	context: Pick<UserContext, "handle"> = { handle: null },
+): BottomNavItem[] {
 	return [
 		{ href: "/home", label: "Home", icon: <NavIcon name="home" />, active: on(path, "/home") },
 		{
 			href: "/explore",
 			label: "Explore",
 			icon: <NavIcon name="explore" />,
-			active: on(path, "/explore"),
+			active: isExploreSurface(path, context),
 		},
 		{
 			href: "/create",

@@ -80,6 +80,31 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   Hire control is a real anchor to it, so it works with JavaScript off), and the Reviews stance filter
   mirrors into `/[handle]/reviews?as=freelancer|client` (`parseReviewStance`; SSR honours it, the
   island keeps it in step with `replaceState`, and anything else reads as "all").
+- **The Explore tree has one Back, and it is not `history.back()`.** `/explore` (with its query),
+  `/view/[id]` and every page under a `/@handle` form one discovery tree, and the contextual Back
+  control on a profile or a listing (`features/explore/islands/ExploreBackNav.island.tsx`) walks a
+  **session-scoped stack** of the visitor's own visits to it (`features/explore/core/explore-history.ts`,
+  key `SessionKeys.EXPLORE_HISTORY`): the previous page of the tree, **`pathname + search`**, so a
+  filtered search comes back with its filters; `/explore` when nothing eligible is beneath, or when
+  the page before was outside the tree (an excursion records a BREAK marker, never a cleared stack —
+  the browser's own Back may land on the page before the excursion, whose chain is still intact). A
+  global tracker island (`_app.tsx`) records every page once; a page that re-writes its own URL in
+  place (`/explore` refining a filter, the Reviews stance switch) is re-recorded at `pagehide`.
+  Arrivals are told apart by the browser's navigation TYPE: a `back_forward` arrival (or the
+  control's own pop, marked in `SessionKeys.EXPLORE_HISTORY_POP`) walks the stack back to the entry;
+  a forward link pushes, even to a page visited earlier. The control is a real anchor to the SSR
+  fallback (`backHrefFor` — Explore, or the profile a listing sits under) until hydration, so
+  middle-click and open-in-new-tab always work; its visible word is always "Back" and the
+  destination is its accessible name. When the browser's own previous history entry IS the target
+  (the Navigation API says so exactly; the referrer is deliberately NOT used as a proxy, because the
+  ticket deep link pushes entries on top of the page it opens on) it leaves through
+  `history.back()` and the page returns from the back-forward cache as it was left; otherwise a real
+  navigation. Do not mint a second back-link builder: `backHrefFor` is the fallback, the stack is
+  the answer.
+- **Another entity's profile is Explore's territory in the navigation.** The rail and the phone's
+  bottom bar light **Explore** on `/explore`, on `/view/[id]`, and on a `/[handle]` the acting
+  context does not own (`features/shell/core/explore-surface.ts` — one predicate for both bars,
+  decided on the chrome context's `handle`); the viewer's own profile lights nothing.
 - **The project workspace has two view modes, and each is a URL.** `/projects/:projectSlug` is
   **Details** (the owner's edit surface) and `/projects/:projectSlug/preview` is **Preview** (the
   live public/buyer view). The `Details ⇄ Preview` control in the middle-nav header band is a pair of

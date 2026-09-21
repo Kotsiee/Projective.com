@@ -9,6 +9,20 @@
  * itself knows nothing about `navigator.onLine`, which is what keeps it portable and what keeps the
  * one source of truth for "are we offline" in the app that owns that answer.
  *
+ * ## Hidden means EMPTY, not merely styled away
+ *
+ * The strip's box is always in the DOM, but its content — glyph, statement, action — is rendered
+ * only while it is visible or on its way out. A hidden strip that still carried its words relied on
+ * the stylesheet to keep them off screen, and the stylesheet arrives with the island bundle: on
+ * every load there is a window before it applies in which a closed strip painted as a plain line of
+ * text at the bottom of the page. An empty element paints nothing with no CSS at all, so the
+ * hidden state is invisible by construction rather than by timing.
+ *
+ * The box stays mounted, rather than the whole strip unmounting, because it is a `role="status"`
+ * live region: assistive tech announces content ADDED to a region that already exists, and is
+ * inconsistent about a region that appears with its text already inside it. So the region is
+ * always there, and a notice is an insertion into it.
+ *
  * ## The fill is the page's ink, not a severity
  *
  * The bar draws `--on-surface` on `--surface` inverted — the same idiom `Tooltip` uses — so it is
@@ -31,20 +45,25 @@
  * the strip at 375px (measured). So the island also writes the strip's MEASURED height as an inline
  * `--ribbon-inset` on the root while it is open, re-measured by a `ResizeObserver`, and removes it on
  * close. The reservation is then exactly what is drawn, at every width, with the stylesheet value as
- * the floor for the frame before the first measurement lands.
+ * the floor for the frame before the first measurement lands. The observer watches the box, which
+ * is always present, so the measurement follows the content in on the render after it mounts.
  *
  * ## Motion
  *
- * Enter and exit both animate off `[data-state]`, on `transform`/`opacity` only. The closed state is
- * `visibility: hidden` (delayed until the exit has run), so a withdrawn strip is out of the
- * accessibility tree and the tab order — an action inside it must not remain reachable by keyboard
- * after the bar has left the screen. Reduced motion collapses both transitions through the
- * duration tokens and jumps straight to the final state.
+ * Enter and exit both animate off `[data-state]`, on `transform`/`opacity` only, driven by
+ * `usePresence`: the content mounts while the box is still closed and the state flips to open on
+ * the next frame, so the slide-in runs; on exit the state flips to closed at once and the content
+ * is dropped after the exit grace (`--dur-medium`), so the strip leaves carrying the words it
+ * arrived with. The closed state is `visibility: hidden` (delayed until the exit has run), so a
+ * withdrawn strip is out of the accessibility tree and the tab order — an action inside it must not
+ * remain reachable by keyboard after the bar has left the screen. Reduced motion collapses both
+ * transitions through the duration tokens and jumps straight to the final state.
  */
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/ribbon.css";
 import { cx } from "../../core/cx.ts";
+import { usePresence } from "../../overlay/core/usePresence.ts";
 
 // #region Props
 /** Props for {@link Ribbon}. */
@@ -71,13 +90,22 @@ export interface RibbonProps {
 // #endregion
 
 /**
- * Renders a `role="status"` strip pinned to the bottom of the viewport. It stays mounted while
- * hidden so the exit can animate; the closed state removes it from the accessibility tree.
+ * The exit grace before a withdrawn strip's content is dropped — the same instant the closed
+ * state's delayed `visibility: hidden` lands (`--dur-medium`).
+ */
+const EXIT_MS = 250;
+
+/**
+ * Renders a `role="status"` strip pinned to the bottom of the viewport. The box is always mounted
+ * — it is the live region — and EMPTY whenever the strip is hidden; its content is present only
+ * while visible or during the exit transition.
  */
 export function Ribbon(props: RibbonProps): JSX.Element {
 	const { visible, icon, text, children, action, live = "polite", id, class: className } = props;
 	const content = children ?? text;
 	const stripRef = useRef<HTMLDivElement>(null);
+	// `mounted` gates the CONTENT, not the box: true while visible and for the exit grace after.
+	const { mounted, state } = usePresence(visible, EXIT_MS);
 
 	// Reserve the room (see the docblock). Written from an effect, so SSR paints nothing and the
 	// attribute only ever reflects a strip that is actually on screen.
@@ -115,14 +143,14 @@ export function Ribbon(props: RibbonProps): JSX.Element {
 			ref={stripRef}
 			id={id}
 			class={cx("ui-ribbon", className)}
-			data-state={visible ? "open" : "closed"}
+			data-state={state}
 			role="status"
 			aria-live={live}
 			aria-atomic="true"
 		>
-			{icon && <span class="ui-ribbon__icon" aria-hidden="true">{icon}</span>}
-			<span class="ui-ribbon__text">{content}</span>
-			{action !== undefined && <span class="ui-ribbon__action">{action}</span>}
+			{mounted && icon && <span class="ui-ribbon__icon" aria-hidden="true">{icon}</span>}
+			{mounted && content !== undefined && <span class="ui-ribbon__text">{content}</span>}
+			{mounted && action !== undefined && <span class="ui-ribbon__action">{action}</span>}
 		</div>
 	);
 }

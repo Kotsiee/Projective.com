@@ -10,6 +10,7 @@ import ArticleMediaGallery from "../islands/ArticleMediaGallery.island.tsx";
 import ArticleComments from "../islands/ArticleComments.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
 import { backHrefFor, backLabelFor, ENTITY_LABEL, signInHref } from "../core/view-model.ts";
+import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
 import type { ArticleViewExtra, EntityView } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
@@ -48,10 +49,12 @@ export function ArticleViewScreen(
 			<ViewStyleAnchor />
 
 			<div class="vw__back-row">
-				<a class="vw__back" href={backHrefFor(ctx)}>
-					<Icon name="arrow-left" size="sm" class="vw__back-arrow" />
-					<span>{backLabelFor(ctx)}</span>
-				</a>
+				<ExploreBackNav
+					variant="text"
+					fallback={backHrefFor(ctx)}
+					fallbackLabel={backLabelFor(ctx)}
+					class="vw__back"
+				/>
 			</div>
 
 			<header class="art-header">

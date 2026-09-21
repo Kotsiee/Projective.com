@@ -2,6 +2,7 @@ import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icons.tsx";
 import { getAccountCapabilities, getOfferings, getWorkspacesByKind } from "./nav-fixtures.ts";
+import { isExploreSurface } from "./explore-surface.ts";
 
 /**
  * nav-model — the single source of truth for the global sidebar's destinations, their glyphs, active
@@ -114,9 +115,12 @@ export function globalNav(
 
 	const items: Array<NavModelItem | null> = [
 		{ key: "home", label: "Home", href: "/home", icon: "home", active: isActive(path, "/home") },
-		// Explore — and the entity viewer it opens into. `/view/[id]` is Explore's DETAIL surface, not
+		// Explore — and the two surfaces it opens into. `/view/[id]` is Explore's DETAIL surface, not
 		// a destination of its own: every card on `/explore` links there and it carries no rail entry,
-		// so without this the rail goes wholly unhighlighted the moment a reader opens a result.
+		// so without this the rail goes wholly unhighlighted the moment a reader opens a result. And
+		// ANOTHER entity's profile (`/@juno`) is the other thing a card opens — every profile-shaped
+		// card links there — so it lights Explore too; the viewer's OWN profile is not a discovery
+		// destination and lights nothing (`isForeignProfilePath`).
 		//
 		// Gated on authentication because the rail is not the only navigation carrying an Explore link:
 		// the guest `SiteHeader` resolves its own, and that one must keep answering for the public
@@ -129,7 +133,7 @@ export function globalNav(
 			label: "Explore",
 			href: "/explore",
 			icon: "explore",
-			active: isActive(path, "/explore") || (isAuthed && isActive(path, "/view")),
+			active: isActive(path, "/explore") || (isAuthed && isExploreSurface(path, context)),
 		},
 		{
 			key: "messages",

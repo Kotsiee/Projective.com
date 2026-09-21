@@ -1,8 +1,7 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
 import "../styles/profile.css";
 import { availabilityAt, hoursSummary, localTimeLabel, wallClockAt } from "../core/hours.ts";
+import { useMinuteClock } from "../hooks/useMinuteClock.ts";
 import type { ProfileHours } from "../types/profile-types.ts";
 
 /**
@@ -10,10 +9,11 @@ import type { ProfileHours } from "../types/profile-types.ts";
  * the live "Available now ⁄ Away" badge with its next edge, the seller's current local time, and the
  * weekly schedule summary, plus the way through to the full bookable calendar.
  *
- * An island only because two of its facts are a function of the CLOCK. It re-derives them on every
- * minute boundary (a timer aligned to `:00`, not a 60-second drift) and on tab re-focus, so a page
- * left open overnight shows the right badge in the morning. The schedule lines and the timezone are
- * static and would be a server component on their own; they ride along so the block has one owner.
+ * An island only because two of its facts are a function of the CLOCK — the shared `useMinuteClock`,
+ * which re-derives them on every minute boundary and on tab re-focus, so a page left open overnight
+ * shows the right badge in the morning, and which the sticky header band ticks on too, so the two
+ * readouts cannot disagree. The schedule lines and the timezone are static and would be a server
+ * component on their own; they ride along so the block has one owner.
  *
  * Every string comes from the pure, clock-injected `core/hours.ts` in one fixed locale, so the
  * server's first byte and the island's first render agree character for character.
@@ -24,8 +24,6 @@ export interface ProfileAvailabilityProps {
 	calendarHref: string | null;
 }
 
-const MINUTE_MS = 60_000;
-
 function pad(n: number): string {
 	return n < 10 ? `0${n}` : String(n);
 }
@@ -33,24 +31,7 @@ function pad(n: number): string {
 export default function ProfileAvailability(
 	{ hours, calendarHref }: ProfileAvailabilityProps,
 ): JSX.Element {
-	const now = useSignal(Date.now());
-
-	useEffect(() => {
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const tick = () => {
-			now.value = Date.now();
-			timer = setTimeout(tick, MINUTE_MS - (Date.now() % MINUTE_MS));
-		};
-		tick();
-		const onVisible = () => {
-			if (document.visibilityState === "visible") now.value = Date.now();
-		};
-		document.addEventListener("visibilitychange", onVisible);
-		return () => {
-			clearTimeout(timer);
-			document.removeEventListener("visibilitychange", onVisible);
-		};
-	}, []);
+	const now = useMinuteClock();
 
 	const state = availabilityAt(hours, now.value);
 	const clock = wallClockAt(hours.timezone, now.value);

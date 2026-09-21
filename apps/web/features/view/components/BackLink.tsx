@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
-import { Icon } from "@projective/ui/icons";
 import type { HrefContext } from "@features/explore/core/routing.ts";
+import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
 import { backHrefFor, backLabelFor } from "../core/view-model.ts";
 
 export interface BackLinkProps {
@@ -15,19 +15,28 @@ export interface BackLinkProps {
 
 /**
  * BackLink — the ONE way out of an entity view, rendered by the page and by the migrated sticky
- * header from a single component so the two homes cannot drift (same href, same label, same glyph).
+ * header from a single component so the two homes cannot drift (same destination, same label, same
+ * glyph).
  *
- * Only one of the two is ever reachable: the page copy withdraws (`visibility`) the moment the band
- * reveals, and the band is itself gated the same way while collapsed, so a keyboard or screen-reader
- * user meets exactly one "Back" on the page whatever the scroll position (§D.7.4 — moved, not
- * duplicated). It is a real anchor with a real href, so middle-click and open-in-new-tab work and a
- * no-JS reader still has the route back.
+ * The control itself is the Explore tree's contextual `ExploreBackNav`: a real anchor to
+ * `backHrefFor(ctx)` — Explore, or the profile a listing sits under — until hydration, and then to the
+ * exact page of the tree the visitor came from, filters intact (`explore-history.ts`). So it works
+ * with JavaScript off, on a middle-click and in a new tab, and it still lands on the search the
+ * reader left rather than on a bare `/explore`.
+ *
+ * Only one of the two placements is ever reachable: the page copy withdraws (`visibility`) the
+ * moment the band reveals, and the band is itself gated the same way while collapsed, so a keyboard
+ * or screen-reader user meets exactly one "Back" on the page whatever the scroll position (§D.7.4 —
+ * moved, not duplicated). This component owns the PLACEMENT class only; the control's colour, hover
+ * and RTL glyph flip are `back-nav.css`'s.
  */
 export function BackLink({ ctx, placement }: BackLinkProps): JSX.Element {
 	return (
-		<a class={`evp__back evp__back--${placement}`} href={backHrefFor(ctx)}>
-			<Icon name="arrow-left" size="sm" aria-hidden />
-			<span>{backLabelFor(ctx)}</span>
-		</a>
+		<ExploreBackNav
+			variant="text"
+			fallback={backHrefFor(ctx)}
+			fallbackLabel={backLabelFor(ctx)}
+			class={`evp__back evp__back--${placement}`}
+		/>
 	);
 }

@@ -1,0 +1,198 @@
+/*
+ * profile-band — the LAYOUT of the profile's migrated sticky header (`ProfileStickyHeader`): the
+ * contextual Back circle · avatar · name + crest · `@handle` and kind · the live availability badge
+ * and local time · the rating jump · the compact rig, on one 48px line.
+ *
+ * The reveal transition, the `visibility`-based tab-order gating, the authenticated band's glass
+ * and the guest shell's glass slab all come from `.pf-stickyhead` (profile-skeleton.css) and the two
+ * shells' own sheets — this block only lays the content out. It mounts OUTSIDE `.pf`, so it reads no
+ * `--pf-*` token (the `--wlt-*` lesson, Decision #60): everything here is on the global ramp.
+ *
+ * Monochrome, like the hero it condenses (Decision #96): the crest is ink with the band's own ground
+ * cut out of it, the badge's pip is a solid ⁄ hollow disc rather than a colour, and the star is ink.
+ *
+ * SECONDARY TEXT ON GLASS IS `--on-surface-variant`, NEVER `--text-secondary`. The band's ground is
+ * a 76% veil over whatever scrolls beneath it, and the veil scale's own note records the arithmetic:
+ * at that opacity `--on-surface-variant` still clears 4.5:1 over a white tile in dark mode and
+ * `--text-secondary` does not (measured here: 4.83:1 against 3.59:1). The variant is the secondary
+ * ink this surface can afford.
+ */
+
+/* #region Row */
+.pf-band {
+    gap: var(--space-3);
+    /* The Back circle at the band's own control height. */
+    --ex-back-size: var(--fld-h-sm);
+}
+
+/* Two selectors deep, so the glass-safe ink outranks the control's own regardless of bundle order. */
+.pf-band .pf-band__back {
+    color: var(--on-surface-variant);
+}
+
+.pf-band .pf-band__back:hover {
+    color: var(--on-surface);
+}
+
+.pf-band__id {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.pf-band__avatar {
+    flex: none;
+}
+
+/*
+ * Native truncation. All three of `overflow`, `white-space` and a bounded box are required —
+ * `text-overflow` alone does nothing — and `min-inline-size: 0` on the flex ancestors, or the item
+ * refuses to shrink below its content and the ellipsis never appears.
+ */
+.pf-band__name {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-tight, 1.2);
+    color: var(--on-surface);
+}
+
+.pf-band__crest {
+    flex: none;
+    color: var(--on-surface);
+    /* The ground the knocked-out check is cut out of — the band's own surface. */
+    --icon-knockout: var(--surface-1);
+}
+
+/* `@handle · Kind`, unboxed — what a thing permanently is is text (§B.11.2). */
+.pf-band__meta {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--on-surface-variant);
+    white-space: nowrap;
+}
+
+.pf-band__handle {
+    font-variant-numeric: tabular-nums;
+}
+
+.pf-band__dot,
+.pf-band__sep {
+    color: var(--on-surface-variant);
+}
+
+/* #endregion */
+
+/* #region Facts — availability · local time · rating */
+.pf-band__facts {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--on-surface-variant);
+    white-space: nowrap;
+}
+
+.pf-band__avail {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* The pip: a solid disc while available, the same disc hollowed while away — a shape, not a hue. */
+.pf-band__pip {
+    flex: none;
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--on-surface);
+    box-shadow: inset 0 0 0 1px var(--on-surface);
+}
+
+.pf-band__avail[data-state="away"] .pf-band__pip {
+    background: transparent;
+}
+
+.pf-band__availtext {
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.pf-band__avail[data-state="away"] .pf-band__availtext {
+    font-weight: var(--fw-normal);
+    color: var(--on-surface-variant);
+}
+
+.pf-band__clock time {
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+}
+
+/* The rating is its own control — one jump to the reviews, like the entity band's. */
+.pf-band__rating {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    color: var(--on-surface-variant);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.pf-band__rating:hover {
+    color: var(--on-surface);
+}
+
+.pf-band__rating:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* The shared stars paint their fill in the brand hue; on this surface every star is ink. */
+.pf-band .ui-ratingstars__row--fill,
+.pf-band .ui-ratingstars--compact .ui-ratingstars__meter {
+    color: var(--on-surface);
+}
+
+.pf-band__actions {
+    flex: none;
+}
+
+/* #endregion */
+
+/* #region Density */
+/*
+ * The name and the rig are the two facts that identify what is on screen and what can be done; the
+ * kind line and the facts are the first to go as the row runs out of width. Below the tablet cusp
+ * the kind goes; below the phone cusp the facts go with it and Add to project folds to its glyph —
+ * its accessible name is the label it just lost, so nothing is lost to a screen reader.
+ */
+@media (max-width: 1100px) {
+    .pf-band__meta {
+        display: none;
+    }
+}
+
+@media (max-width: 767px) {
+    .pf-band__facts {
+        display: none;
+    }
+
+    .pf-band .pf-rig__cta--add {
+        --btn-px: var(--space-2);
+    }
+
+    .pf-band .pf-rig__cta--add .ui-button__label {
+        display: none;
+    }
+}
+
+/* #endregion */

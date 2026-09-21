@@ -34,9 +34,11 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * place for that flow to drift.
  *
  * The band LEADS with the page's one back control — the same {@link BackLink} the frame renders at
- * rest — so the way out migrates into the header exactly as the identity does: the page copy withdraws
- * as this one reveals (`.evp[data-header-condensed]`, written by the probe), and only one is ever in
- * the tab order. It is a real anchor, so route-back works with JavaScript off and on a middle-click.
+ * rest, which is the Explore tree's contextual `ExploreBackNav` — so the way out migrates into the
+ * header exactly as the identity does: the page copy withdraws as this one reveals
+ * (`.evp[data-header-condensed]`, written by the probe), and only one is ever in the tab order. It is a
+ * real anchor, so route-back works with JavaScript off and on a middle-click, and after hydration it
+ * points at the exact page of the tree the visitor came from, filters intact.
  *
  * Its other interactive element besides the seller link is the rating, and it is a real anchor to
  * `#evp-reviews` whose handler only UPGRADES the jump — it cancels the hash navigation and scrolls to a
