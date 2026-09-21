@@ -58,8 +58,12 @@ export type MemberPresence = z.infer<typeof MemberPresence>;
 export const MemberScope = z.enum(["channel", "project", "conversation"]);
 export type MemberScope = z.infer<typeof MemberScope>;
 
-/** The lifecycle of a pending invitation. */
-export const InviteStatus = z.enum(["pending", "expired"]);
+/**
+ * The lifecycle of an invitation as the queue renders it. `declined` is the invitee's own answer —
+ * it stays in the queue (so a client can see WHY they cannot re-invite) and starts the
+ * re-invitation cooldown (`INVITE_COOLDOWN_DAYS`, `hire.ts`).
+ */
+export const InviteStatus = z.enum(["pending", "expired", "declined"]);
 export type InviteStatus = z.infer<typeof InviteStatus>;
 // #endregion
 
@@ -126,6 +130,12 @@ export const MemberInviteSchema = z.object({
 	 * and expires like any other. Absent (not `false`) on every invitation built before it existed.
 	 */
 	placeholder: z.boolean().optional(),
+	/**
+	 * When the invitee DECLINED — ISO, set iff `status === "declined"` (the DB pairs the two with
+	 * `ck_project_invitations_declined_at`). The instant the re-invitation cooldown counts from.
+	 * Optional (not defaulted) for the same reason as `handle`.
+	 */
+	declinedAt: z.string().nullable().optional(),
 });
 export type MemberInvite = z.infer<typeof MemberInviteSchema>;
 // #endregion

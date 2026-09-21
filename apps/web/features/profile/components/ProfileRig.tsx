@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import type { RefObject } from "preact";
+import { headerCondensed } from "@features/shell/core/migrating-header.ts";
 import { Button } from "@projective/ui/fields";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -20,7 +21,13 @@ import {
 	shareProfile,
 	toggleFollow,
 } from "../core/rig-actions.ts";
-import { followCelebrating, following, rigStatus } from "../core/profile-state.ts";
+import {
+	addMenuOpen,
+	followCelebrating,
+	following,
+	hireMenuOpen,
+	rigStatus,
+} from "../core/profile-state.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 
 /**
@@ -39,7 +46,19 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  *
  * Both conversion controls open a POPOVER at the button — never a scroll to the Services row — and
  * the popover's rows write to the shared flow signals, so a row picked in the band's popover opens
- * exactly the modal a row picked in the hero's would. Each rig owns only its popovers' open state.
+ * exactly the modal a row picked in the hero's would.
+ *
+ * # An open popover follows the rig that is on screen
+ *
+ * The open state of each popover is ONE shared signal (`hireMenuOpen` ⁄ `addMenuOpen`), and each
+ * rig presents it only while it is the page's active rig — the hero's until the band has revealed
+ * (`headerCondensed`), the band's after. A `Popover` re-anchors on every scroll, so left alone the
+ * hero's panel would ride its button up under the sticky header and sit there over the content the
+ * reader scrolled to; instead the hero's instance closes the moment the band takes over and the
+ * band's opens at ITS button, in the same frame the band reveals, and the reverse on the way back.
+ * Each rig keeps a local mirror for its own `Popover` (a controlled signal the popover may write)
+ * and forwards a user-driven change to the shared one; a change the mirror made itself is not a
+ * user's dismissal and is never forwarded.
  */
 export interface ProfileRigProps {
 	profile: ProfileView;
@@ -66,9 +85,24 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	const viewer: RigViewer = { authed, name: profile.name };
 	const compact = variant === "band";
 	const size = compact ? "sm" : "md";
-	/** The two popovers' open states — controlled, so picking a row can close them. */
+	/**
+	 * The two popovers' open states, as THIS rig's `Popover`s see them: the shared fact, gated on
+	 * this rig being the active one. Controlled, so picking a row can close them.
+	 */
 	const hireOpen = useSignal(false);
 	const addOpen = useSignal(false);
+	useSignalEffect(() => {
+		const mine = (headerCondensed.value ? "band" : "hero") === variant;
+		hireOpen.value = hireMenuOpen.value && mine;
+		addOpen.value = addMenuOpen.value && mine;
+	});
+	/** A user's open ⁄ dismiss on this rig's popover becomes the shared fact. */
+	function forward(shared: { value: boolean }): (open: boolean) => void {
+		return (open) => {
+			const mine = (headerCondensed.peek() ? "band" : "hero") === variant;
+			if (mine) shared.value = open;
+		};
+	}
 
 	const rig = rigFor(profile.kind, {
 		hasServices: services.length > 0,
@@ -129,13 +163,13 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		</>
 	);
 
-	/** Picking a row closes the popover it was picked in, then opens the flow. */
+	/** Picking a row closes the popover it was picked in — for BOTH rigs — then opens the flow. */
 	function pick<A extends unknown[]>(
-		open: { value: boolean },
+		shared: { value: boolean },
 		act: (...args: A) => void,
 	): (...args: A) => void {
 		return (...args) => {
-			open.value = false;
+			shared.value = false;
 			act(...args);
 		};
 	}
@@ -168,6 +202,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 						{rig.hire && (
 							<Popover
 								open={hireOpen}
+								onOpenChange={forward(hireMenuOpen)}
 								placement="bottom-start"
 								class="pf-hiremenu-pop"
 								label={`Hire ${profile.name}`}
@@ -195,14 +230,15 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 									services={services}
 									consultation={consultation}
 									sellerName={profile.name}
-									onPickService={pick(hireOpen, pickService)}
-									onPickConsultation={pick(hireOpen, pickConsultation)}
+									onPickService={pick(hireMenuOpen, pickService)}
+									onPickConsultation={pick(hireMenuOpen, pickConsultation)}
 								/>
 							</Popover>
 						)}
 						{rig.addToProject && (
 							<Popover
 								open={addOpen}
+								onOpenChange={forward(addMenuOpen)}
 								placement="bottom-start"
 								class="pf-addmenu-pop"
 								label={`Add ${profile.name} to a project`}
@@ -234,8 +270,8 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 								<AddToProjectMenu
 									projects={hireProjects}
 									sellerName={profile.name}
-									onPickProject={pick(addOpen, pickProject)}
-									onCreate={pick(addOpen, () => openWizard(viewer))}
+									onPickProject={pick(addMenuOpen, pickProject)}
+									onCreate={pick(addMenuOpen, () => openWizard(viewer))}
 								/>
 							</Popover>
 						)}

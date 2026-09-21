@@ -1,81 +1,18 @@
 import type { JSX } from "preact";
-import { useEffect, useRef } from "preact/hooks";
-import { viewHeaderCondensed } from "../core/view-state.ts";
+import { useRef } from "preact/hooks";
+import { useMigratingHeader } from "@features/shell/hooks/useMigratingHeader.ts";
 
 /**
- * EntityHeroProbe — the scroll sentinel that drives the migrated sticky header (§D.7.6).
+ * EntityHeroProbe — the anchor of the entity view's scroll-migrated sticky header (§D.7.6).
  *
  * `EntityViewPage` is a SERVER component and the hero has no island of its own, so the probe is a
- * zero-UI island rendered as the hero's last child. It flips the shared {@link viewHeaderCondensed}
- * signal, which `EntityStickyHeader` in the middle-nav header band reads to reveal itself.
- *
- * **Why a scroll listener and not an IntersectionObserver.** An observer is the more efficient
- * mechanism — no per-event layout read, work done off the main thread — and it was built that way
- * first. It was replaced deliberately. This repo's preview harness does not composite, and in it
- * BOTH observer callbacks and `scroll` events measure zero occurrences while `scrollY` moves
- * normally, so neither mechanism can be verified here. Faced with two unverifiable options, the right
- * one is the one the product already ships and runs in production on the profile and project views —
- * not the one that is theoretically nicer. The observer can replace this once there is somewhere to
- * prove it works.
- *
- * **`measure()` runs once on mount, before any event.** That is what makes the initial state correct
- * even if no scroll event ever arrives — a deep link into the middle of a page, a restored scroll
- * position, or an environment that throttles events. An observer-only version has no equivalent.
- *
- * **It also writes `data-header-condensed` onto the page root (`.evp`).** The band is a separate
- * hydration root outside the page, so the signal alone cannot reach the page's own back control; the
- * attribute is what lets the static `BackLink` withdraw (`visibility`) the instant the band's copy
- * reveals, keeping exactly one way out in the tab order. `.evp` is server-rendered and owned by no
- * island, so the DOM write reconciles with nothing.
- *
- * **The chrome height branches per shell**, which is the one real improvement over the precedent it
- * copies. The band is pinned beneath the sticky chrome, so the crossing that matters is "went under
- * the chrome", not "left the viewport" — and the authed frame pins at `--shell-topbar-h` (48px) while
- * the guest shell pins at `--site-header-h` (~88px). Reading one and applying it to both condenses
- * the guest band ~40px late, which reads as lag rather than a bug and is correspondingly hard to spot.
+ * zero-UI island rendered as the hero's last child: a zero-height sentinel whose bottom edge IS the
+ * hero's bottom edge. The shared `useMigratingHeader` hook does the rest — the same rule, the same
+ * hysteresis and the same back-control hand-over the profile's hero runs on its rig — so the two
+ * surfaces cannot condense on different terms.
  */
 export default function EntityHeroProbe(): JSX.Element {
 	const sentinel = useRef<HTMLDivElement>(null);
-
-	useEffect(() => {
-		const el = sentinel.current;
-		if (!el) return;
-
-		// Which chrome this page is pinned under — the guest shell and the authed frame differ.
-		const isGuest = !!document.querySelector(".guest-shell");
-		const root = document.documentElement;
-		const raw = getComputedStyle(root)
-			.getPropertyValue(isGuest ? "--site-header-h" : "--shell-topbar-h")
-			.trim();
-		// The tokens are authored in both px and rem, so resolve the unit rather than assuming one:
-		// `parseInt("5.5rem")` is 5, and the band would then condense almost immediately and never settle.
-		const rootPx = Number.parseFloat(getComputedStyle(root).fontSize) || 16;
-		const num = Number.parseFloat(raw) || (isGuest ? 88 : 48);
-		const threshold = (raw.endsWith("rem") ? num * rootPx : num) + 24;
-
-		const page = el.closest<HTMLElement>(".evp");
-		const reflect = (condensed: boolean): void => {
-			viewHeaderCondensed.value = condensed;
-			if (page) page.dataset.headerCondensed = condensed ? "true" : "false";
-		};
-
-		const measure = (): void => {
-			const node = sentinel.current;
-			if (!node) return;
-			reflect(node.getBoundingClientRect().top <= threshold);
-		};
-
-		measure();
-		globalThis.addEventListener("scroll", measure, { passive: true });
-		globalThis.addEventListener("resize", measure);
-		return () => {
-			globalThis.removeEventListener("scroll", measure);
-			globalThis.removeEventListener("resize", measure);
-			// Leaving must not strand the band open — the signal is module-level, so a same-tab
-			// navigation into a listing whose header band is `null` would otherwise inherit `true`.
-			reflect(false);
-		};
-	}, []);
-
+	useMigratingHeader(sentinel);
 	return <div ref={sentinel} class="evp-hero__probe" aria-hidden="true" />;
 }

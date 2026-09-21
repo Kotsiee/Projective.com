@@ -259,6 +259,34 @@
 	color: color-mix(in srgb, var(--success) 72%, var(--on-surface));
 }
 
+/*
+ * A project under the seller's re-invitation cooldown: rendered and refused. The ink steps down to
+ * the disabled mix (the field contract's one disabled opacity, §A.7) and the press feedback is
+ * withheld — acknowledging a press the row then refuses would report a success for a refusal
+ * (§B.12). The cursor says so too. The reopen date is the row's own meta, not a tooltip alone.
+ */
+.pf-addmenu__item[data-locked="true"] {
+	cursor: not-allowed;
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix, 55%), transparent);
+}
+
+.pf-addmenu__item[data-locked="true"]:hover {
+	background: transparent;
+}
+
+.pf-addmenu__item[data-locked="true"]:active {
+	transform: scale(1);
+}
+
+.pf-addmenu__item[data-locked="true"] .pf-addmenu__status,
+.pf-addmenu__item[data-locked="true"] .pf-addmenu__meta {
+	color: inherit;
+}
+
+.pf-addmenu__cooldown {
+	white-space: nowrap;
+}
+
 /* #endregion */
 
 /* #region Split modal — the shared two-column frame */

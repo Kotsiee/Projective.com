@@ -1,9 +1,14 @@
 import { assert, assertEquals } from "@std/assert";
 import { z } from "zod";
-import { ProjectBackendService } from "./ProjectBackendService.ts";
+import { hireLimiter, ProjectBackendService } from "./ProjectBackendService.ts";
 import { resetWriteStore } from "./write-store.ts";
 import { resetDraftStore } from "./draft-store.ts";
-import { CreateProjectSchema } from "@projective/types/projects";
+import {
+	cooldownMessage,
+	CreateProjectSchema,
+	HIRE_RATE_LIMIT,
+	HIRE_RATE_LIMIT_MESSAGE,
+} from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import type { CreateProject, HireInvitation, ProjectFeedParams } from "@projective/types/projects";
 
@@ -246,5 +251,90 @@ Deno.test("archiving an instantiated draft removes it from the feed", async () =
 	const feed = await ProjectBackendService.list(feedParams(), ALICE);
 	assert(feed.ok && feed.data);
 	assertEquals(feed.data.items.some((item) => item.slug === slug), false);
+});
+// #endregion
+
+// #region Re-invitation cooldown + rate limit
+Deno.test("hireCooldowns: a seller who declined inside 48 days is locked on that project, and only there", async () => {
+	resetWriteStore();
+	hireLimiter.reset();
+	// `@juno` has a 5-day-old decline on every third fixture project; `@kenji`'s declines are 60
+	// days old everywhere, so nothing of theirs is active.
+	const juno = await ProjectBackendService.hireCooldowns("@juno", ALICE);
+	const kenji = await ProjectBackendService.hireCooldowns("kenji", ALICE);
+	assert(Object.keys(juno).length > 0, "expected at least one locked project for @juno");
+	assertEquals(kenji, {});
+	for (const until of Object.values(juno)) assert(Date.parse(until) > Date.now());
+	// A guest has sent nothing.
+	assertEquals(
+		await ProjectBackendService.hireCooldowns("@juno", {
+			userId: "",
+			contextId: "",
+			contextType: "personal",
+		}),
+		{},
+	);
+});
+
+Deno.test("hire: a locked project refuses the send with the date it lifts; the brief carries it", async () => {
+	resetWriteStore();
+	hireLimiter.reset();
+	const cooldowns = await ProjectBackendService.hireCooldowns("@juno", ALICE);
+	const [slug, until] = Object.entries(cooldowns)[0];
+	const brief = await ProjectBackendService.hireBrief(slug, ALICE, "@juno");
+	assert(brief.ok && brief.data, brief.message);
+	assertEquals(brief.data.brief.cooldownUntil, until);
+	const stage = brief.data.brief.stages[0];
+	const refused = await ProjectBackendService.hire(
+		inviteOf(slug, stage ? [{ stageId: stage.id, priceCents: null }] : []),
+		ALICE,
+	);
+	assertEquals(refused.ok, false);
+	assertEquals(refused.status, 422);
+	assertEquals(refused.errors, { projectId: "cooldown" });
+	assertEquals(refused.message, cooldownMessage(until));
+	// The same project is open to somebody who never declined.
+	const other = await ProjectBackendService.hireBrief(slug, ALICE, "@kenji");
+	assert(other.ok && other.data);
+	assertEquals(other.data.brief.cooldownUntil, null);
+});
+
+Deno.test("hire: the eleventh send inside ten minutes is refused, and a refused offer never counts", async () => {
+	resetWriteStore();
+	hireLimiter.reset();
+	const created = await ProjectBackendService.create(payloadOf(), ALICE);
+	assert(created.ok && created.data);
+	const brief = await ProjectBackendService.hireBrief(created.data.slug, ALICE);
+	assert(brief.ok && brief.data);
+	const stage = brief.data.brief.stages[0];
+	const good = inviteOf(created.data.slug, [{ stageId: stage.id, priceCents: null }]);
+	// A refused offer (an unknown stage) spends nothing.
+	const bad = await ProjectBackendService.hire(
+		inviteOf(created.data.slug, [{ stageId: "stg-nope", priceCents: null }]),
+		ALICE,
+	);
+	assertEquals(bad.status, 422);
+	for (let i = 0; i < HIRE_RATE_LIMIT.max; i++) {
+		const sent = await ProjectBackendService.hire(good, ALICE);
+		assertEquals(sent.status, 201, `send ${i + 1}: ${sent.message}`);
+	}
+	const limited = await ProjectBackendService.hire(good, ALICE);
+	assertEquals(limited.ok, false);
+	assertEquals(limited.status, 429);
+	assertEquals(limited.message, HIRE_RATE_LIMIT_MESSAGE);
+	// Another client is not the one being limited.
+	const bobCreated = await ProjectBackendService.create(payloadOf(), BOB);
+	assert(bobCreated.ok && bobCreated.data);
+	const bobBrief = await ProjectBackendService.hireBrief(bobCreated.data.slug, BOB);
+	assert(bobBrief.ok && bobBrief.data);
+	const bobSent = await ProjectBackendService.hire(
+		inviteOf(bobCreated.data.slug, [{
+			stageId: bobBrief.data.brief.stages[0].id,
+			priceCents: null,
+		}]),
+		BOB,
+	);
+	assertEquals(bobSent.status, 201);
+	hireLimiter.reset();
 });
 // #endregion

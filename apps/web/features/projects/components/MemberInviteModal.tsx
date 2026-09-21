@@ -159,8 +159,16 @@ export function MemberInviteModal(props: MemberInviteModalProps): JSX.Element {
 													<MemberRoleBadge role={inv.role} />
 													{inv.stageName && <span class="mem-stagechip">{inv.stageName}</span>}
 													<Tag
-														value={inv.status === "expired" ? "Expired" : "Pending"}
-														severity={inv.status === "expired" ? "warning" : "info"}
+														value={inv.status === "expired"
+															? "Expired"
+															: inv.status === "declined"
+															? "Declined"
+															: "Pending"}
+														severity={inv.status === "expired"
+															? "warning"
+															: inv.status === "declined"
+															? "danger"
+															: "info"}
 														variant="subtle"
 														rounded
 													/>
@@ -168,14 +176,20 @@ export function MemberInviteModal(props: MemberInviteModalProps): JSX.Element {
 												</span>
 											</div>
 											<div class="mem-pending__actions">
-												<button
-													type="button"
-													class="mem-iconbtn"
-													aria-label={`Resend invite to ${inv.email}`}
-													onClick={() => props.onResend(inv.id)}
-												>
-													{ResendIcon}
-												</button>
+												{
+													/* A declined invitation is the invitee's answer: resending it is exactly what
+													   the re-invitation cooldown refuses, so the control is absent, not disabled. */
+												}
+												{inv.status !== "declined" && (
+													<button
+														type="button"
+														class="mem-iconbtn"
+														aria-label={`Resend invite to ${inv.email}`}
+														onClick={() => props.onResend(inv.id)}
+													>
+														{ResendIcon}
+													</button>
+												)}
 												<button
 													type="button"
 													class="mem-iconbtn mem-iconbtn--danger"

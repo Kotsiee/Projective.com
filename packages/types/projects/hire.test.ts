@@ -1,6 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
 import {
+	activeInviteCooldown,
 	buildHireBrief,
+	cooldownActive,
+	cooldownDateLabel,
 	type HireBrief,
 	type HireInvitation,
 	hireInvitationRefusal,
@@ -276,4 +279,84 @@ Deno.test("resolveHireOffer: a caller's figure wins over the configured rate, el
 		placeholder: false,
 		totalCents: 90_000,
 	});
+});
+
+Deno.test("activeInviteCooldown: a decline inside 48 days locks the pair; older, pending or other people do not", () => {
+	const NOW = Date.parse("2026-07-17T16:20:00.000Z");
+	const day = 86_400_000;
+	const declined = (daysAgo: number, handle = "@juno") => ({
+		status: "declined" as const,
+		declinedAt: new Date(NOW - daysAgo * day).toISOString(),
+		handle,
+	});
+	// Five days ago → lifts 43 days from now.
+	const until = activeInviteCooldown([declined(5)], "juno", NOW);
+	assertEquals(until, new Date(NOW + 43 * day).toISOString());
+	assertEquals(cooldownActive(until, NOW), true);
+	assertEquals(cooldownActive(until, NOW + 43 * day), false);
+	assertEquals(cooldownDateLabel(until as string), "29 Aug 2026");
+	// The LATEST decline governs when there are several.
+	assertEquals(
+		activeInviteCooldown([declined(30), declined(2)], "@juno", NOW),
+		new Date(NOW + 46 * day).toISOString(),
+	);
+	// Elapsed, pending, expired, and somebody else's decline all start nothing.
+	assertEquals(activeInviteCooldown([declined(60)], "juno", NOW), null);
+	assertEquals(activeInviteCooldown([declined(48)], "juno", NOW), null);
+	assertEquals(
+		activeInviteCooldown([{ status: "pending", declinedAt: null, handle: "@juno" }], "juno", NOW),
+		null,
+	);
+	assertEquals(activeInviteCooldown([declined(5, "@kenji")], "juno", NOW), null);
+	// Handle matching is bare and case-insensitive: `@Juno` and `juno` name one person.
+	assertEquals(activeInviteCooldown([declined(5, "Juno")], "@JUNO", NOW) !== null, true);
+});
+
+Deno.test("hireInvitationRefusal: an active cooldown refuses with the date it lifts", () => {
+	const NOW = Date.parse("2026-07-17T16:20:00.000Z");
+	const day = 86_400_000;
+	const withCooldown: MemberRosterPage = {
+		...roster,
+		invites: [{
+			id: "inv-declined",
+			email: "@juno",
+			handle: "@juno",
+			role: "freelancer",
+			stageId: "stg-a",
+			stageName: "Stage 1",
+			invitedBy: "Mara Ellison",
+			invitedAt: new Date(NOW - 6 * day).toISOString(),
+			invitedLabel: "6 days ago",
+			status: "declined",
+			declinedAt: new Date(NOW - 5 * day).toISOString(),
+		}],
+	};
+	const locked = buildHireBrief(setupFor("pipeline", "standard"), withCooldown, {
+		handle: "juno",
+		nowMs: NOW,
+	});
+	assertEquals(locked.cooldownUntil, new Date(NOW + 43 * day).toISOString());
+	const refused = hireInvitationRefusal(
+		locked,
+		offer([{ stageId: "stg-a", priceCents: null }]),
+		NOW,
+	);
+	assertEquals(refused?.errors, { projectId: "cooldown" });
+	assertEquals(
+		refused?.message,
+		"You can invite this freelancer to this project again after 29 Aug 2026.",
+	);
+	// Once it has lifted, the same brief admits the same offer.
+	assertEquals(
+		hireInvitationRefusal(locked, offer([{ stageId: "stg-a", priceCents: null }]), NOW + 44 * day),
+		null,
+	);
+	// A brief built for ANOTHER seller carries no cooldown from Juno's decline.
+	const other = buildHireBrief(setupFor("pipeline", "standard"), withCooldown, {
+		handle: "kenji",
+		nowMs: NOW,
+	});
+	assertEquals(other.cooldownUntil, null);
+	// And a brief built for nobody carries none at all.
+	assertEquals(buildHireBrief(setupFor("pipeline", "standard"), withCooldown).cooldownUntil, null);
 });

@@ -19,10 +19,22 @@
 /* #endregion */
 
 /* #region Client proof strip */
+/*
+ * Each client is its MARK and its NAME side by side — the brandmark alone asks the reader to
+ * recognise a logo they may never have seen, and the name alone throws away the one thing a logo
+ * is good for. Grayscale and muted at rest (a client is a fact about the profile, not a colour
+ * accent), full ink on hover ⁄ focus. A verified working relationship carries the crest AFTER the
+ * name, at the meta size — an earned signal, never a chip (§B.11). The row stays one line and
+ * scrolls sideways when it overflows; below the phone cusp the marks step down one size and the
+ * gap tightens so three or four names still fit the first screen.
+ */
 .pf-proof {
+    --pf-proof-mark: 1.75rem;
+    --pf-proof-gap: var(--space-6);
+
     display: flex;
     align-items: center;
-    gap: var(--space-6);
+    gap: var(--pf-proof-gap);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -40,9 +52,11 @@
     flex: none;
 }
 
+.pf-proof__mark,
 .pf-proof__link {
     display: inline-flex;
     align-items: center;
+    gap: var(--space-2);
     border-radius: var(--radius-xs);
     color: inherit;
     text-decoration: none;
@@ -55,16 +69,20 @@
 
 .pf-proof__logo {
     display: block;
-    block-size: 1.75rem;
-    inline-size: auto;
-    object-fit: contain;
+    flex: none;
+    inline-size: var(--pf-proof-mark);
+    block-size: var(--pf-proof-mark);
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
     filter: grayscale(100%);
     opacity: var(--pf-logo-opacity);
-    transition: opacity var(--dur-fast) var(--ease-standard);
+    transition: opacity var(--dur-fast) var(--ease-standard), filter var(--dur-fast) var(--ease-standard);
 }
 
 .pf-proof__item:hover .pf-proof__logo,
 .pf-proof__link:focus-visible .pf-proof__logo {
+    filter: none;
     opacity: 1;
 }
 
@@ -80,6 +98,19 @@
 .pf-proof__item:hover .pf-proof__name,
 .pf-proof__link:focus-visible .pf-proof__name {
     color: var(--on-surface);
+}
+
+.pf-proof__crest {
+    flex: none;
+    color: var(--on-surface);
+    --icon-knockout: var(--surface);
+}
+
+@media (max-width: 767px) {
+    .pf-proof {
+        --pf-proof-mark: 1.5rem;
+        --pf-proof-gap: var(--space-4);
+    }
 }
 
 /* #endregion */
@@ -338,12 +369,15 @@
     background: transparent;
 }
 
+/*
+ * The reused explore cards keep the CARD CONTRACT's radii (`--card-radius-media` on the shell,
+ * `--card-radius` on the media tile — `explore.css`). The reduced `--pf-tile-radius` belongs to the
+ * Selected-work masonry tile (`.pf-tile`) and to nothing else: a service or product card on this
+ * page is the same card the reader met on /explore, and rounding it differently here would make
+ * one card two cards.
+ */
 .pf .ex-card {
     --ex-accent: var(--on-surface);
-}
-
-.pf .ex-media {
-    border-radius: var(--pf-tile-radius);
 }
 
 .pf .ex-status,

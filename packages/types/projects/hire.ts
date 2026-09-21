@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CurrencyCode } from "./create.ts";
 import { ProjectFormat, ProjectPartySchema, ProjectStatus } from "./summary.ts";
-import type { MemberRosterPage } from "./members.ts";
+import type { MemberInvite, MemberRosterPage } from "./members.ts";
 import { MemberRole } from "./members.ts";
 import { hasStages, pricedAtProjectLevel, type ProjectSetup, ProjectStructure } from "./setup.ts";
 import { flattenRichText } from "../richtext/plain-text.ts";
@@ -72,6 +72,94 @@ export const HIRE_PRICE_NOTE: Record<HirePricingModel, string> = {
 };
 // #endregion
 
+// #region Re-invitation cooldown
+/**
+ * How long a client waits before inviting the SAME seller to the SAME project again after the seller
+ * declined. Counted from the decline (`MemberInvite.declinedAt`), not from the invitation, and per
+ * (project, seller) — a decline on one project says nothing about another.
+ */
+export const INVITE_COOLDOWN_DAYS = 48;
+
+const DAY_MS = 86_400_000;
+
+/** The instant a declined invitation's cooldown ends, in epoch ms; `null` for a non-decline. */
+export function inviteCooldownEndsAt(
+	invite: Pick<MemberInvite, "status" | "declinedAt">,
+): number | null {
+	if (invite.status !== "declined" || !invite.declinedAt) return null;
+	const declined = Date.parse(invite.declinedAt);
+	if (!Number.isFinite(declined)) return null;
+	return declined + INVITE_COOLDOWN_DAYS * DAY_MS;
+}
+
+/** Bare-handle equality: `@Juno` and `juno` name one person. */
+function sameHandle(a: string | null | undefined, b: string): boolean {
+	if (!a) return false;
+	return a.replace(/^@+/, "").toLowerCase() === b.replace(/^@+/, "").toLowerCase();
+}
+
+/**
+ * The ACTIVE cooldown a seller is under on one project, or `null` — the LATEST decline that is still
+ * inside its window, as an ISO instant. Pure over the roster's invitation list, so the brief, the
+ * popover's rows and the fat service's refusal all read one rule. A cooldown that has already
+ * elapsed is not a cooldown, and a pending or expired invitation starts none.
+ */
+export function activeInviteCooldown(
+	invites: readonly Pick<MemberInvite, "status" | "declinedAt" | "handle">[],
+	handle: string,
+	nowMs: number,
+): string | null {
+	let latest: number | null = null;
+	for (const invite of invites) {
+		if (!sameHandle(invite.handle, handle)) continue;
+		const until = inviteCooldownEndsAt(invite);
+		if (until === null || until <= nowMs) continue;
+		if (latest === null || until > latest) latest = until;
+	}
+	return latest === null ? null : new Date(latest).toISOString();
+}
+
+/** Whether an ISO cooldown instant is still ahead of `nowMs`. */
+export function cooldownActive(until: string | null | undefined, nowMs: number): boolean {
+	if (!until) return false;
+	const at = Date.parse(until);
+	return Number.isFinite(at) && at > nowMs;
+}
+
+/**
+ * The date a cooldown lifts, as the interface prints it — UTC-derived so SSR and the island agree
+ * character for character (the `joinedLabel` precedent).
+ */
+export function cooldownDateLabel(until: string): string {
+	const at = new Date(until);
+	if (!Number.isFinite(at.getTime())) return "";
+	return at.toLocaleDateString("en-GB", {
+		day: "numeric",
+		month: "short",
+		year: "numeric",
+		timeZone: "UTC",
+	});
+}
+
+/** The sentence a disabled project row and a refused send both carry. */
+export function cooldownMessage(until: string): string {
+	return `You can invite this freelancer to this project again after ${cooldownDateLabel(until)}.`;
+}
+// #endregion
+
+// #region Rate limit
+/**
+ * The anti-spam ceiling on invitations: at most `max` sends per client inside a sliding window of
+ * `windowMs`. Counted per ACTING identity (the write-store owner), across every project and seller —
+ * the thing being limited is one person's outbound volume, not one thread.
+ */
+export const HIRE_RATE_LIMIT = { max: 10, windowMs: 10 * 60_000 } as const;
+
+/** What a refused send says once the ceiling is hit. */
+export const HIRE_RATE_LIMIT_MESSAGE =
+	"You've sent too many requests recently. Please wait a bit before sending more.";
+// #endregion
+
 // #region Brief (the read)
 /** One stage a freelancer can be invited onto. */
 export const HireStageSchema = z.object({
@@ -122,6 +210,12 @@ export const HireBriefSchema = z.object({
 	members: z.array(HireMemberSchema),
 	/** Whether the viewer may send invitations here — re-derived server-side from the roster caps. */
 	canInvite: z.boolean(),
+	/**
+	 * The ISO instant an ACTIVE re-invitation cooldown for THIS seller lifts, or `null`. Derived by
+	 * {@link activeInviteCooldown} from the roster's invitations; the modal gates its primary on it
+	 * and the service refuses on it.
+	 */
+	cooldownUntil: z.string().nullable().default(null),
 });
 export type HireBrief = z.infer<typeof HireBriefSchema>;
 
@@ -143,8 +237,15 @@ function preview(html: string, max: number): string {
  * is a list of stage names — the roster's own summary column), and the stage list's names are
  * unique within one engagement. A `task` model exposes exactly its root stage so the invitation's
  * stage id is still a real stage the live path can assign to.
+ *
+ * `seller` names whose cooldown the brief carries: the roster's declined invitations to that handle
+ * decide `cooldownUntil`. Absent, the brief carries none — a brief with no subject has no cooldown.
  */
-export function buildHireBrief(setup: ProjectSetup, roster: MemberRosterPage): HireBrief {
+export function buildHireBrief(
+	setup: ProjectSetup,
+	roster: MemberRosterPage,
+	seller?: { handle: string; nowMs?: number },
+): HireBrief {
 	const pricingModel = hirePricingModelFor(setup.format, setup.structure);
 	const ordered = [...setup.stages].sort((a, b) => a.order - b.order);
 	const root = ordered[0];
@@ -184,6 +285,9 @@ export function buildHireBrief(setup: ProjectSetup, roster: MemberRosterPage): H
 			assignedStages: m.assignedStages,
 		})),
 		canInvite: roster.viewerCaps.canInvite,
+		cooldownUntil: seller
+			? activeInviteCooldown(roster.invites, seller.handle, seller.nowMs ?? Date.now())
+			: null,
 	};
 }
 // #endregion
@@ -309,12 +413,26 @@ export function resolveHireOffer(brief: HireBrief, input: HireInvitation): HireO
  * stage is a state the flow expects. A live project's stage with no price is a configuration gap
  * the client must close first: an invitation onto a priced-per-ticket stage that states no rate is
  * an offer of nothing, and the seller would accept it without knowing what they agreed to.
+ *
+ * **A declined invitation locks the pair for {@link INVITE_COOLDOWN_DAYS} days.** The brief carries
+ * the instant that lock lifts, and the refusal names it, so the client reads a date rather than a
+ * bare no. `nowMs` is injectable so the rule is testable at a fixed clock.
  */
-export function hireInvitationRefusal(brief: HireBrief, input: HireInvitation): HireRefusal | null {
+export function hireInvitationRefusal(
+	brief: HireBrief,
+	input: HireInvitation,
+	nowMs: number = Date.now(),
+): HireRefusal | null {
 	if (!brief.canInvite) {
 		return {
 			message: "You cannot invite people to this project.",
 			errors: { projectId: "not_invitable" },
+		};
+	}
+	if (cooldownActive(brief.cooldownUntil, nowMs)) {
+		return {
+			message: cooldownMessage(brief.cooldownUntil as string),
+			errors: { projectId: "cooldown" },
 		};
 	}
 	const draft = brief.status === "draft";

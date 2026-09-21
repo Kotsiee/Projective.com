@@ -888,6 +888,12 @@ expires_at timestamp with time zone,
 -- status says what, this says when — and when somebody joined is a question the roster asks.
 accepted_at timestamp with time zone,
 
+-- The audit half of status = 'declined' — the invitee's own refusal, which is what the RE-INVITATION
+-- COOLDOWN counts from (48 days per (project, invitee); `INVITE_COOLDOWN_DAYS` in
+-- `packages/types/projects/hire.ts`, the one implementation). A revoked row is the inviter's act
+-- and starts no cooldown; a declined one is the invitee's, so the inviter waits.
+declined_at timestamp with time zone,
+
   CONSTRAINT project_invitations_pkey PRIMARY KEY (id),
   CONSTRAINT project_invitations_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE CASCADE,
   CONSTRAINT project_invitations_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id) ON DELETE CASCADE,
@@ -898,10 +904,13 @@ accepted_at timestamp with time zone,
   CONSTRAINT ck_project_invitations_offer_price CHECK (offer_price_cents IS NULL OR offer_price_cents >= 0),
   CONSTRAINT ck_project_invitations_answers_shape CHECK (jsonb_typeof(answers) = 'object'),
   CONSTRAINT project_invitations_role_check CHECK (role IN ('client', 'owner', 'admin', 'manager', 'freelancer', 'member', 'guest')),
-  CONSTRAINT project_invitations_status_check CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
+  CONSTRAINT project_invitations_status_check CHECK (status IN ('pending', 'accepted', 'declined', 'expired', 'revoked')),
   -- An accepted invitation carries its timestamp and an outstanding one does not. Without this the
   -- two halves can disagree, and the row then answers "was this accepted?" differently depending on
   -- which column the reader happens to look at.
-  CONSTRAINT ck_project_invitations_accepted_at CHECK ((status = 'accepted') = (accepted_at IS NOT NULL))
+  CONSTRAINT ck_project_invitations_accepted_at CHECK ((status = 'accepted') = (accepted_at IS NOT NULL)),
+  -- The same pairing for a decline: the cooldown reads `declined_at`, and a declined row with no
+  -- instant would be a refusal the cooldown could not count from.
+  CONSTRAINT ck_project_invitations_declined_at CHECK ((status = 'declined') = (declined_at IS NOT NULL))
 );
 -- #endregion

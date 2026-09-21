@@ -112,7 +112,7 @@ const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at";
  * docblock, point 2). A column not selected is a column that cannot be serialised by accident.
  */
 const INVITATION_COLUMNS =
-	"id, project_stage_id, target_email, target_user_id, role, inviter_user_id, status, created_at, expires_at, placeholder";
+	"id, project_stage_id, target_email, target_user_id, role, inviter_user_id, status, created_at, expires_at, declined_at, placeholder";
 
 /**
  * The `projects.stage_assignments.status` values that mean the seat is HELD.
@@ -250,6 +250,7 @@ interface InvitationRow {
 	status: string;
 	created_at: string;
 	expires_at: string | null;
+	declined_at: string | null;
 }
 
 /** One `comms.project_channels` row, for the routed channel's identity. */
@@ -559,7 +560,10 @@ async function fetchInvitations(
 
 	return open.map((row) => {
 		const declared = toInviteStatus(row.status) ?? "pending";
-		const lapsed = row.expires_at ? Date.parse(row.expires_at) <= nowMs : false;
+		// A decline is an answer, not an outstanding offer: expiry never re-labels it.
+		const lapsed = declared !== "declined" && row.expires_at
+			? Date.parse(row.expires_at) <= nowMs
+			: false;
 		const invitedAt = toIso(row.created_at);
 		const stageId = row.project_stage_id;
 		const invitee = row.target_user_id ? parties.get(row.target_user_id) : undefined;
@@ -580,9 +584,66 @@ async function fetchInvitations(
 			invitedBy: clamp(partyName(parties.get(row.inviter_user_id)), 120),
 			invitedAt,
 			invitedLabel: clamp(agoLabel(invitedAt, nowMs), 28),
-			status: declared === "expired" || lapsed ? "expired" : "pending",
+			status: declared === "declined"
+				? "declined"
+				: declared === "expired" || lapsed
+				? "expired"
+				: "pending",
+			declinedAt: declared === "declined" ? toIso(row.declined_at) : null,
 		};
 	});
+}
+
+/**
+ * Every DECLINED invitation this viewer sent to one seller, across every project, keyed by the
+ * project's route slug — the one read behind the profile's Add-to-project rows and the hire brief's
+ * cooldown. ONE query over `project_invitations` (own rows as inviter, identity-addressed to the
+ * seller, `status = 'declined'`) plus one slug lookup, rather than a roster read per open project:
+ * the profile resolves this for every signed-in visitor of every seller, and a roster read is five
+ * queries.
+ *
+ * A seller the platform does not know (no `org.users_public` row for the handle) has no
+ * invitations to decline, so the answer is `{}` — not a failure. A failure degrades to `{}` too:
+ * a missing cooldown lets a client re-send an invitation a day early, which the fat service's own
+ * refusal on the brief still catches; a thrown read would take the whole profile down.
+ */
+export async function fetchDeclinedInvitations(
+	actor: ReadActor & { accessToken: string },
+	handle: string,
+): Promise<Record<string, { declinedAt: string }[]>> {
+	const bare = handle.replace(/^@+/, "").toLowerCase();
+	if (!bare) return {};
+	const { data: seller } = await orgDb(actor)
+		.from("users_public")
+		.select("user_id")
+		.eq("username", bare)
+		.maybeSingle();
+	const sellerId = (seller as { user_id?: string } | null)?.user_id;
+	if (!sellerId) return {};
+
+	const db = projectsDb(actor);
+	const { data, error } = await db
+		.from("project_invitations")
+		.select("project_id, declined_at")
+		.eq("inviter_user_id", actor.userId)
+		.eq("target_user_id", sellerId)
+		.eq("status", "declined");
+	if (error || !data?.length) return {};
+	const rows = data as { project_id: string; declined_at: string | null }[];
+
+	const ids = [...new Set(rows.map((r) => r.project_id))];
+	const { data: projects } = await db.from("projects").select("id, slug").in("id", ids);
+	const slugOf = new Map(
+		((projects ?? []) as { id: string; slug: string }[]).map((p) => [p.id, p.slug]),
+	);
+
+	const out: Record<string, { declinedAt: string }[]> = {};
+	for (const row of rows) {
+		const slug = slugOf.get(row.project_id);
+		if (!slug || !row.declined_at) continue;
+		(out[slug] ??= []).push({ declinedAt: toIso(row.declined_at) });
+	}
+	return out;
 }
 
 // #endregion

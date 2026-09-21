@@ -7,9 +7,12 @@ import { Icon } from "@projective/ui/icons";
 // reveal transition plus the `visibility`-based tab-order gating. A band that drops `.pf-stickyhead`
 // renders unstyled for guests while looking correct when signed in — the worst kind of regression.
 import "@features/profile/styles/profile-skeleton.css";
+// The migrating back control's withdrawal/entrance rules ride THIS island: the page copy is a server
+// component and cannot carry a stylesheet (Decision #39), and the band is always mounted beside it.
+import "@features/shell/styles/migrating-back.css";
 import "../styles/entity-view.css";
 import { ARCHETYPE_LABEL, type EntityArchetype } from "../core/entity-archetype.ts";
-import { viewHeaderCondensed } from "../core/view-state.ts";
+import { headerCondensed } from "@features/shell/core/migrating-header.ts";
 import { scrollToId } from "../core/scroll-to.ts";
 import { BackLink } from "../components/BackLink.tsx";
 import type { ExploreItem } from "@projective/types/explore";
@@ -19,8 +22,9 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * EntityStickyHeader — the condensed listing identity that MIGRATES into the middle-nav frame's header
  * band as the body hero scrolls away (`DESIGN_SYSTEM.md` §D.7.6).
  *
- * It reads the shared {@link viewHeaderCondensed} signal, which the body {@link EntityHeroProbe} flips
- * from an IntersectionObserver on `.evp-hero`. Reveal is driven by `min-block-size`/`max-block-size`,
+ * It reads the shell's shared {@link headerCondensed} signal, which the body `EntityHeroProbe` flips
+ * through the shared `useMigratingHeader` probe (the same hook the profile hero runs on its rig).
+ * Reveal is driven by `min-block-size`/`max-block-size`,
  * **never `block-size`** — the band sits in the frame's grid context, which overrides an explicit
  * height, so only the min/max logical constraints are honoured (verified and recorded in `profile-skeleton.css`).
  *
@@ -34,11 +38,12 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * place for that flow to drift.
  *
  * The band LEADS with the page's one back control — the same {@link BackLink} the frame renders at
- * rest, which is the Explore tree's contextual `ExploreBackNav` — so the way out migrates into the
- * header exactly as the identity does: the page copy withdraws as this one reveals
- * (`.evp[data-header-condensed]`, written by the probe), and only one is ever in the tab order. It is a
- * real anchor, so route-back works with JavaScript off and on a middle-click, and after hydration it
- * points at the exact page of the tree the visitor came from, filters intact.
+ * rest, in its compact band presentation (the shell's `MigratingBack`) — so the way out migrates
+ * into the header exactly as the identity does: the page copy withdraws as this one reveals
+ * (`:root[data-header-condensed]`, written by the probe), only one is ever in the tab order, and
+ * focus follows the hand-over. It is a real anchor, so route-back works with JavaScript off and on a
+ * middle-click, and after hydration it points at the exact page of the tree the visitor came from,
+ * filters intact.
  *
  * Its other interactive element besides the seller link is the rating, and it is a real anchor to
  * `#evp-reviews` whose handler only UPGRADES the jump — it cancels the hash navigation and scrolls to a
@@ -55,7 +60,7 @@ export interface EntityStickyHeaderProps {
 export default function EntityStickyHeader(
 	{ item, archetype, ctx }: EntityStickyHeaderProps,
 ): JSX.Element {
-	const condensed = viewHeaderCondensed.value;
+	const condensed = headerCondensed.value;
 	const owner = item.owner;
 	const handle = owner.handle.replace(/^@/, "");
 	const rating = item.rating?.asHelper ?? item.rating?.asClient ?? null;

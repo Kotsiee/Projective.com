@@ -19,6 +19,13 @@ every custom enum type with its literal values.
 > `reviews` — document it, or confirm it is dead and remove it from the init migration — needs a
 > human (root `CLAUDE.md` §8).
 
+## Development seed
+
+[Seed.md](Seed.md) documents the generated development world that `supabase db reset` loads —
+seventeen sign-in-able personas (`<username>@projective.dev` / `password123`), teams, businesses,
+projects, money, messages, notifications and the storage-backed images — and how to regenerate it
+from `supabase/seeds/gen/world.ts`.
+
 ## Structure
 
 Each domain below gets its own folder with up to four files: `Tables.md`, `Policies.md`,

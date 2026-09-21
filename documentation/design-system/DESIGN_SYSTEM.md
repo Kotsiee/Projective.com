@@ -2586,13 +2586,37 @@ Four things about it are rules rather than choices:
 - **The probe measures once on mount, before any event.** A deep link into the middle of a page, a
   restored scroll position, or a throttling environment must still resolve the correct initial state.
 
+**The probe, the signal and the back control are the SHELL's, shared by every surface that registers
+a band** (`apps/web/features/shell/{core/migrating-header.ts,hooks/useMigratingHeader.ts,components/MigratingBack.tsx,styles/migrating-back.css}`,
+Decision #112). One `headerCondensed` signal and one `useMigratingHeader(anchor)` hook — the entity
+view attaches it to its hero (a zero-height sentinel as the hero's last child), the profile to its
+hero's action rig — so the two surfaces condense on one rule: the band reveals when the anchor's
+bottom edge passes under the line the band itself pins to (measured off the band element, never a
+token), leaves one band-height lower in the authenticated frame (the hysteresis below), and never
+condenses at all where no band is rendered (a guest phone, whose sub-header is `display: none`) —
+which is what lets the page keep its own back control there without a per-shell CSS exception.
+
+**The way out is ONE control with two homes.** `MigratingBack` renders the Explore tree's contextual
+`ExploreBackNav` as the page copy (arrow + "Back", in the meta register, near the top of the content
+area) and as the band copy (the compact circle, §B.6, with the destination in a portal `Tooltip` +
+`aria-label`). The probe's write withdraws the page copy with `visibility` on
+`:root[data-header-condensed]` — its box left in place, so nothing shifts on the crossing — in the
+same instant `.pf-stickyhead`'s own `visibility` gating reveals the band copy, so a keyboard or
+screen-reader user meets exactly one "Back" at every scroll position (§D.7.4 — moved, never
+duplicated). **Focus follows the hand-over**: if the copy about to withdraw holds focus, the copy
+taking over receives it, with `preventScroll` so the hand-over never moves the page — and it is
+deferred one macrotask, because the signal write only QUEUES the band's re-render and a synchronous
+`focus()` lands on a band still `visibility: hidden` (measured: focus fell to `<body>`). The band's
+box is `inline-size: 100%` of its header container in the authenticated frame with no margin or cap
+of its own; the `--space-4` inline inset is the skeleton's content gutter, declared once.
+
 **The profile's band is the one exception to the control rule, and the reason is structural, not a
 preference.** `ProfileStickyHeader` (`/[handle]`, Decision #111) carries the hero's own action rig
 in its compact size — Hire · Add to project · Message · Follow, or Message · Follow, or Settings ·
 Share — because a profile has no body-side transactional block for the duty to transfer to: the
 rig IS the hero's, and once it has scrolled away nothing else on the page can open the
 conversation or the hire flow. What keeps §B.8.2 whole is the **probe's threshold**: it watches the
-rig itself (`hooks/useCondenseProbe.ts`), so the band reveals exactly as the rig's bottom edge
+rig itself (the shell's `useMigratingHeader`, anchored on the rig), so the band reveals exactly as the rig's bottom edge
 passes under the band's pinned line and the two copies of the filled Hire are mutually exclusive
 by render condition. The rig is ONE component (`ProfileRig`) rendered twice, its handlers ONE
 module (`core/rig-actions.ts`), and its modals are mounted once, in the hero, on shared signals —

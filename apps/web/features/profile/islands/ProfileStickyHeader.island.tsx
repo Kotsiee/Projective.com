@@ -9,15 +9,19 @@ import type { PublicCallOffer } from "@projective/types/scheduling";
 // entity view's band rides). `profile-rig.css` is the rig's own sheet; it reads no `--pf-*` token,
 // because this island mounts in the SHELL's header slot, outside `.pf`.
 import "../styles/profile-skeleton.css";
+// The migrating back control's withdrawal/entrance rules ride THIS island — the band is where the
+// hand-over is drawn, and it is always mounted beside the hero's copy.
+import "@features/shell/styles/migrating-back.css";
 import "../styles/profile-rig.css";
 import "../styles/profile-band.css";
-import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
+import { MigratingBack } from "@features/shell/components/MigratingBack.tsx";
 import { EXPLORE_FALLBACK } from "@features/explore/core/explore-history.ts";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ENTITY_META } from "../components/profile-glyphs.tsx";
 import { availabilityAt, localTimeLabel, wallClockAt } from "../core/hours.ts";
 import { type HireProject, reviewsHref } from "../core/profile-model.ts";
-import { editedAvatar, liveConsultation, profileHeaderCondensed } from "../core/profile-state.ts";
+import { headerCondensed } from "@features/shell/core/migrating-header.ts";
+import { editedAvatar, liveConsultation } from "../core/profile-state.ts";
 import { useMinuteClock } from "../hooks/useMinuteClock.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 
@@ -28,8 +32,9 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  * `EntityStickyHeader` has (§D.7.6), so a listing and the seller behind it condense into one shape
  * of strip.
  *
- * It reads the shared {@link profileHeaderCondensed} signal, which the hero flips from a scroll
- * probe on its rig (`hooks/useCondenseProbe.ts`). Reveal is driven by `min-block-size` ⁄
+ * It reads the shell's shared {@link headerCondensed} signal, which the hero flips from the shared
+ * scroll probe on its rig (`@features/shell/hooks/useMigratingHeader.ts` — the same hook the entity
+ * view runs on its hero). Reveal is driven by `min-block-size` ⁄
  * `max-block-size`, never `block-size` — the band sits in the frame's grid context, which
  * overrides an explicit height (recorded in `profile-skeleton.css`).
  *
@@ -72,7 +77,7 @@ function pad(n: number): string {
 
 export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JSX.Element {
 	const { profile, canEdit, authed, services, hireProjects } = props;
-	const condensed = profileHeaderCondensed.value;
+	const condensed = headerCondensed.value;
 	const avatar = editedAvatar.value ?? profile.avatar;
 	const consultation = liveConsultation.value === undefined
 		? props.consultation
@@ -92,11 +97,10 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 			data-condensed={condensed ? "true" : "false"}
 			aria-hidden={condensed ? undefined : "true"}
 		>
-			<ExploreBackNav
-				variant="icon"
+			<MigratingBack
+				placement="band"
 				fallback={EXPLORE_FALLBACK}
 				fallbackLabel="Back to Explore"
-				class="pf-band__back"
 			/>
 
 			<div class="pf-band__id">

@@ -16,9 +16,12 @@ import type { ProjectsResult } from "../types/results.ts";
  * would be one more `fetch` to keep in step with `respond.ts`.
  */
 export const HireService = {
-	/** The invitation brief for one of the viewer's own projects, by route slug. */
-	brief(projectId: string): Promise<ProjectsResult<{ brief: HireBrief }>> {
-		const qs = new URLSearchParams({ projectId });
+	/**
+	 * The invitation brief for one of the viewer's own projects, by route slug — FOR one seller, so
+	 * the brief carries that seller's re-invitation cooldown on this project.
+	 */
+	brief(projectId: string, handle: string): Promise<ProjectsResult<{ brief: HireBrief }>> {
+		const qs = new URLSearchParams({ projectId, handle });
 		return getProjects<{ brief: HireBrief }>(`/api/projects/hire?${qs.toString()}`);
 	},
 

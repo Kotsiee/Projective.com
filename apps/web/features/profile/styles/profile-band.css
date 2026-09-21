@@ -1,7 +1,7 @@
 /*
  * profile-band — the LAYOUT of the profile's migrated sticky header (`ProfileStickyHeader`): the
- * contextual Back circle · avatar · name + crest · `@handle` and kind · the live availability badge
- * and local time · the rating jump · the compact rig, on one 48px line.
+ * shell's migrating Back circle · avatar · name + crest · `@handle` and kind · the live availability
+ * badge and local time · the rating jump · the compact rig, on one 48px line.
  *
  * The reveal transition, the `visibility`-based tab-order gating, the authenticated band's glass
  * and the guest shell's glass slab all come from `.pf-stickyhead` (profile-skeleton.css) and the two
@@ -19,19 +19,9 @@
  */
 
 /* #region Row */
+/* The Back circle is the shell's `MigratingBack` — its size, ink and entrance are `migrating-back.css`'s. */
 .pf-band {
     gap: var(--space-3);
-    /* The Back circle at the band's own control height. */
-    --ex-back-size: var(--fld-h-sm);
-}
-
-/* Two selectors deep, so the glass-safe ink outranks the control's own regardless of bundle order. */
-.pf-band .pf-band__back {
-    color: var(--on-surface-variant);
-}
-
-.pf-band .pf-band__back:hover {
-    color: var(--on-surface);
 }
 
 .pf-band__id {

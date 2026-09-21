@@ -46,7 +46,7 @@
     --evp-seat-gap: var(--space-px);
 
     /*
-	* THE FOUR-TRACK FRAME: nav strip · media · hero · conversion lane.
+	* THE THREE-TRACK FRAME: media · hero · conversion lane (the back control is the frame's first ROW).
 	*
 	* The lane is no longer a shell slot, so its width is stated HERE rather than passed to a
 	* splitter — one number for both shells, which is the point of moving it into the page.
@@ -238,11 +238,9 @@
 }
 
 /*
- * The back control is the explore feature's `ExploreBackNav` (rendered through `BackLink`): its
- * colour, hover and the RTL glyph flip come from its own `back-nav.css`. This sheet only PLACES the
- * two copies — the page copy's grid row and withdrawal, the band copy's entrance — and every rule
- * on the band copy is two selectors deep so it outranks the control's own `.ex-back--text`
- * declarations (same specificity, and the two sheets ride different island bundles).
+ * The back control is the shell's `MigratingBack` (rendered through `BackLink`): its colour, hover
+ * and RTL glyph flip come from the explore feature's `back-nav.css`, and its withdrawal from the page
+ * as the band takes over from the shell's `migrating-back.css`. This sheet only PLACES the page copy.
  */
 .evp__back {
     align-self: flex-start;
@@ -276,90 +274,20 @@
  * ── THE BACK LINK ──
  *
  * ONE control, at every width. It is the first grid row (`back`) above the fold, and once the hero
- * scrolls under the chrome the migrated sticky header renders the same `BackLink` in the band while
- * this copy withdraws — `visibility`, so it leaves the tab order without its box moving anything
- * (no layout shift on the crossing). The probe writes `data-header-condensed` on `.evp` for exactly
- * this rule; the band's own copy is gated the same way by `.pf-stickyhead`'s `visibility`, so at
- * any scroll position exactly one way out is reachable (§D.7.4 — moved, never duplicated).
+ * scrolls under the chrome the migrated sticky header renders the same control in the band while
+ * this copy withdraws. The hand-over itself is the SHELL's — `migrating-back.css` withdraws the page
+ * copy on `:root[data-header-condensed]` and slides the band copy in, the same rules the profile
+ * rides — so this sheet places the page copy in its grid row and nothing more.
  */
-.evp__back--page {
-    transition: opacity var(--dur-fast) var(--ease-standard);
-}
-
-.evp[data-header-condensed="true"] .evp__back--page {
-    visibility: hidden;
-    opacity: 0;
-}
-
-/*
- * The hand-over only holds where the band can take the control. The GUEST sub-header is
- * `display: none` below `--bp-md` (guest-shell.css) while the authenticated band still renders there,
- * so on a guest phone the band copy never appears — and a page copy that withdrew anyway would leave
- * the page with NO way back once the hero scrolled off (measured: zero reachable back links). The
- * page copy therefore stays in the tab order on that one shell at that one width; its box never
- * moved, so nothing shifts either way.
- */
-@media (max-width: 767px) {
-    .guest-shell .evp[data-header-condensed="true"] .evp__back--page {
-        visibility: visible;
-        opacity: 1;
-    }
-}
-
-/*
- * The band copy. Compact — the band is 48px and carries the identity beside it — and it ENTERS with
- * the band: a short slide from the start edge on `transform`/`opacity` only, the two channels an
- * interaction may move (§B.12), timed to the band's own reveal so the control reads as arriving
- * into the header rather than blinking on inside it. Under either reduced-motion channel the band
- * jumps to final and so does this.
- */
-.evp-stickyhead .evp__back--band {
-    flex: none;
-    align-self: center;
-    font-size: var(--text-xs);
-    /* Glass-safe ink: the band's 76% veil composites against whatever scrolls beneath. */
-    color: var(--on-surface-variant);
-    opacity: 0;
-    transform: translateX(calc(-1 * var(--space-3)));
-    transition:
-        opacity var(--dur-medium) var(--ease-standard),
-        transform var(--dur-medium) var(--spring-standard);
-}
-
-.evp-stickyhead .evp__back--band:hover {
-    color: var(--on-surface);
-}
-
-[dir="rtl"] .evp-stickyhead .evp__back--band {
-    transform: translateX(var(--space-3));
-}
-
-.pf-stickyhead[data-condensed="true"] .evp__back--band {
-    opacity: 1;
-    transform: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .evp__back--page,
-    .evp__back--band {
-        transition: none;
-    }
-}
-
-[data-motion="reduced"] .evp__back--page,
-[data-motion="reduced"] .evp__back--band {
-    transition: none;
-}
 
 /* ============================================================================
- * THE FOUR-TRACK FRAME
+ * THE THREE-TRACK FRAME
  *
- *   nav strip · media column · hero · conversion lane
+ *   media column · hero · conversion lane — under a first ROW that holds the back control
  *
- * Mobile-first: ONE column, in reading order — back link, hero, media, body. The nav strip and the
- * lane are not rendered at all below `--bp-md` (the strip's duty transfers to the inline back link,
- * the lane's to `EntityBuyBar`), so the phone layout is the base case and the desktop tracks are the
- * addition rather than the other way round.
+ * Mobile-first: ONE column, in reading order — back link, hero, media, body. The lane is not
+ * rendered at all below `--bp-md` (its duty transfers to `EntityBuyBar`), so the phone layout is the
+ * base case and the desktop tracks are the addition rather than the other way round.
  * ========================================================================== */
 .evp-frame {
     display: grid;
@@ -373,8 +301,10 @@
     min-inline-size: 0;
 }
 
-.evp-frame > .evp__back--page {
+.evp-frame > .evp__back {
     grid-area: back;
+    /* A grid item is stretched by default — the link's hit area is its content, not the whole row. */
+    justify-self: start;
 }
 
 .evp-hero {
@@ -2377,7 +2307,7 @@ a.evp-cta__btn--inverted {
     gap: var(--space-4);
     inline-size: 100%;
     min-inline-size: 0;
-    padding-inline: var(--space-4);
+    /* The inline inset is the skeleton's (`.pf-stickyhead`), declared once for every band. */
 }
 
 /*
@@ -2388,7 +2318,7 @@ a.evp-cta__btn--inverted {
  * them (§D.7.2). Neither reservation applies any more:
  *
  *   start — the strip is gone; the back control lives in the frame's first row and, once the band
- *           reveals, INSIDE the band itself (`.evp__back--band`), so there is nothing to begin after.
+ *           reveals, INSIDE the band itself (the shell's `.shell-back--band`), so there is nothing to begin after.
  *   end   — the band-offset rule below steps the lane DOWN below the revealed band in this shell, so
  *           the two never share a row and there is nothing to stop short of.
  *

@@ -12,23 +12,12 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * full navigation reloads the page and resets them, which is the intended transient scope.
  */
 
-// #region Entity view — scroll-migrated header
-/**
- * Whether the body identity region has scrolled up under the sticky chrome, so the middle-nav header
- * band should reveal the condensed identity.
- *
- * Every non-article archetype — the five commerce bodies and a project — shares it: the body
- * `EntityHeroProbe` flips it and `EntityStickyHeader` in the band reads it. That is safe because
- * `viewHeaderFor` returns exactly ONE band per URL, so only one producer and one consumer are ever
- * mounted together.
- *
- * The band expands from 0 via `min-block-size`/`max-block-size` — never `block-size`, which the
- * frame's grid context overrides (recorded in `profile-skeleton.css`). Reusing the `.pf-stickyhead` skeleton is
- * load-bearing rather than cosmetic: the GUEST shell keys its glass underlay, hairline and elevation
- * off the literal selector `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, so a
- * band that drops that class renders unstyled for guests while looking correct when signed in.
+// #region Entity view — apply stub
+/*
+ * The scroll-migrated header's condensed state is NOT here any more: it is the shell's shared
+ * `headerCondensed` (`@features/shell/core/migrating-header.ts`), one signal for every surface that
+ * registers a band, so the entity view and the profile condense on one rule.
  */
-export const viewHeaderCondensed = signal(false);
 
 /**
  * Whether the viewer has applied to / expressed interest in this project — optimistic client stub

@@ -70,6 +70,16 @@ export const SessionKeys = {
 	 * rather than as a fresh forward visit that would push a duplicate. Removed on read.
 	 */
 	EXPLORE_HISTORY_POP: "pj.session.explore.historyPop",
+	/**
+	 * The place a profile TAB switch leaves from — `{ handle, offset, at }`, the reader's distance
+	 * below the tab bar's natural top —
+	 * written by the tab bar just before its anchor navigates and read (then removed) by the tab bar
+	 * on the arriving section, which restores the position when it still lands inside the tab
+	 * content and otherwise settles at the top of the tab container
+	 * (`features/profile/core/tab-scroll.ts`). Session-scoped and removed on read: it describes one
+	 * navigation, never a reload.
+	 */
+	PROFILE_TAB_SCROLL: "pj.session.profile.tabScroll",
 } as const;
 // #endregion
 

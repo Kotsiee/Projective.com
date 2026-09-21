@@ -5,9 +5,10 @@ import { MoneyView } from "@projective/ui/display/money";
 import { Button, Checkbox, Textarea } from "@projective/ui/fields";
 import { Message } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { formatMoney } from "@projective/types/finance";
 import type { HireBrief, HireInvitation, HireRefusal } from "@projective/types/projects";
 import {
+	cooldownActive,
+	cooldownMessage,
 	HIRE_MESSAGE_MAX,
 	hireInvitationRefusal,
 	resolveHireOffer,
@@ -15,8 +16,8 @@ import {
 import type { IntakeAnswers, IntakeField, IntakeRefusal } from "@projective/types/services";
 import { emptyIntakeAnswers, intakeRefusal } from "@projective/types/services";
 import { HireService } from "@features/projects/core/HireService.ts";
-import { type HireProject, hireProjectHref } from "../../core/profile-model.ts";
-import { focusFirstRefused, focusSuccessAction, IntakeFields } from "./IntakeFields.tsx";
+import type { HireProject } from "../../core/profile-model.ts";
+import { focusFirstRefused, IntakeFields } from "./IntakeFields.tsx";
 import { ProjectBriefPreview } from "./ProjectBriefPreview.tsx";
 import { SplitModal } from "./SplitModal.tsx";
 
@@ -44,7 +45,18 @@ import { SplitModal } from "./SplitModal.tsx";
  *
  * `hireInvitationRefusal` gates the primary and explains a refusal in place, and the service runs
  * it again on the way in; `intakeRefusal` does the same for the seller's questions. Nothing this
- * form lets through is refused for a rule it did not know.
+ * form lets through is refused for a rule it did not know. A seller under a RE-INVITATION COOLDOWN
+ * on this project (they declined inside the last 48 days — `brief.cooldownUntil`) gets the date it
+ * lifts in place of the primary; the popover already disabled the row, so reaching here means a
+ * stale menu, and the server refuses on the same rule regardless.
+ *
+ * # Dispatch closes the modal
+ *
+ * A successful send CLOSES the modal at once and hands the outcome to the host (`onAssigned`), which
+ * says it as a toast — the client asked for one thing and got it, and a dialog that lingers to
+ * congratulate them is a second click they did not ask for. A failed send keeps the modal open with
+ * the inputs intact and hands the reason to `onFailed` for the same toast stack, pinning any
+ * field-keyed refusal to its control so the fix is one edit away.
  */
 export interface ProjectAssignModalProps {
 	/** The project picked in the Add-to-project popover, or `null` while closed. */
@@ -53,12 +65,14 @@ export interface ProjectAssignModalProps {
 	seller: { name: string; handle: string };
 	/** The seller's own intake — what they ask before joining a project. */
 	intake: readonly IntakeField[];
-	/** Fired once the assignment has been recorded. */
+	/** Fired once the assignment has been recorded — the modal has already closed. */
 	onAssigned: (project: HireProject, placeholder: boolean) => void;
+	/** Fired when the server refused or the send failed — the modal stays open. */
+	onFailed: (message: string) => void;
 }
 
 export default function ProjectAssignModal(
-	{ project, seller, intake, onAssigned }: ProjectAssignModalProps,
+	{ project, seller, intake, onAssigned, onFailed }: ProjectAssignModalProps,
 ): JSX.Element {
 	const open = useSignal(false);
 	const brief = useSignal<HireBrief | null>(null);
@@ -72,12 +86,6 @@ export default function ProjectAssignModal(
 	const sending = useSignal(false);
 	const refusal = useSignal<HireRefusal | null>(null);
 	const attempted = useSignal(false);
-	/** The recorded assignment, once sent — the success state renders from it. */
-	const sent = useSignal<
-		{ placeholder: boolean; stageCount: number; totalCents: number | null } | null
-	>(
-		null,
-	);
 	const firstFieldRef = useRef<HTMLDivElement>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	/** Counts refused attempts; the focus move is keyed on it so it runs AFTER the marks render. */
@@ -101,15 +109,11 @@ export default function ProjectAssignModal(
 		focusFirstRefused(bodyRef.current);
 	}, [refusedAttempts.value]);
 
-	useEffect(() => {
-		if (sent.value) focusSuccessAction(bodyRef.current);
-	}, [sent.value]);
-
 	async function load(slug: string): Promise<void> {
 		loading.value = true;
 		loadError.value = null;
 		brief.value = null;
-		const res = await HireService.brief(slug);
+		const res = await HireService.brief(slug, seller.handle);
 		if (project.value?.slug !== slug) return; // another project was picked meanwhile
 		loading.value = false;
 		if (!res.ok || !res.data) {
@@ -134,7 +138,6 @@ export default function ProjectAssignModal(
 		intakeBlock.value = null;
 		refusal.value = null;
 		attempted.value = false;
-		sent.value = null;
 		sending.value = false;
 		void load(picked.slug);
 	}, [picked?.slug]);
@@ -179,20 +182,40 @@ export default function ProjectAssignModal(
 		sending.value = true;
 		const res = await HireService.invite(input);
 		sending.value = false;
+		// The project may have been swapped or the modal closed while the request was in flight.
+		if (project.value?.slug !== picked.slug) return;
 		if (!res.ok || !res.data) {
-			refusal.value = {
-				message: res.message ?? "The assignment could not be recorded.",
-				errors: res.errors ?? {},
-			};
+			const message = res.message ?? "The assignment could not be recorded.";
+			refusal.value = { message, errors: res.errors ?? {} };
+			onFailed(message);
+			// A field-keyed refusal (an intake answer the server held to a rule) lands on its control.
+			if (res.errors && Object.keys(res.errors).some((k) => k.startsWith("answers."))) {
+				intakeBlock.value = intakeRefusalFromServer(intake, res.errors);
+				refusedAttempts.value++;
+			}
 			return;
 		}
-		const offer = resolveHireOffer(b, input);
-		sent.value = {
-			placeholder: res.data.placeholder,
-			stageCount: res.data.invites.length,
-			totalCents: offer.totalCents,
-		};
+		close();
 		onAssigned(picked, res.data.placeholder);
+	}
+
+	/** Re-shape a server's `answers.<fieldId>` refusal onto the intake renderer's contract. */
+	function intakeRefusalFromServer(
+		fields: readonly IntakeField[],
+		errors: Record<string, string>,
+	): IntakeRefusal | null {
+		for (const [key, code] of Object.entries(errors)) {
+			if (!key.startsWith("answers.")) continue;
+			const fieldId = key.slice("answers.".length);
+			const field = fields.find((f) => f.id === fieldId);
+			if (!field) continue;
+			return {
+				fieldId,
+				code: code as IntakeRefusal["code"],
+				message: `Check “${field.label}”.`,
+			};
+		}
+		return null;
 	}
 
 	// ---- Derived presentation ----
@@ -208,8 +231,10 @@ export default function ProjectAssignModal(
 	 */
 	const noStages = staged && b.stages.length === 0;
 	const stagesRefused = attempted.value && refusal.value?.errors.stages !== undefined;
+	/** The seller declined this project inside the cooldown: the primary is withheld, the date shown. */
+	const cooldownUntil = b && cooldownActive(b.cooldownUntil, Date.now()) ? b.cooldownUntil : null;
 
-	const summary = b && offer && !sent.value
+	const summary = b && offer
 		? (
 			<>
 				<span class="pf-split__summarymain">
@@ -236,168 +261,160 @@ export default function ProjectAssignModal(
 		)
 		: null;
 
-	const actions = sent.value
-		? <Button variant="filled" severity="primary" label="Done" onClick={close} />
-		: (
-			<>
-				<Button variant="text" severity="secondary" label="Cancel" onClick={close} />
-				<Button
-					variant="filled"
-					severity="primary"
-					label={sending.value ? "Assigning…" : "Assign to project"}
-					loading={sending.value}
-					disabled={!b || loading.value || sending.value || (staged && selectedCount === 0)}
-					onClick={() => void send()}
-				/>
-			</>
-		);
+	const actions = (
+		<>
+			<Button variant="text" severity="secondary" label="Cancel" onClick={close} />
+			{cooldownUntil
+				? (
+					<Button
+						variant="filled"
+						severity="primary"
+						label="Assign to project"
+						disabled
+						aria-describedby="pf-asg-cooldown"
+					/>
+				)
+				: (
+					<Button
+						variant="filled"
+						severity="primary"
+						label={sending.value ? "Assigning…" : "Assign to project"}
+						loading={sending.value}
+						disabled={!b || loading.value || sending.value || (staged && selectedCount === 0)}
+						onClick={() => void send()}
+					/>
+				)}
+		</>
+	);
 
-	const left = sent.value && picked
-		? (
-			<div class="pf-split__sent" role="status">
-				<span class="pf-split__sent-mark" aria-hidden="true">
-					<Icon name="check" size="md" />
-				</span>
-				<h3 class="pf-split__sent-title">
-					{sent.value.placeholder
-						? `${seller.name} is staged on ${picked.title}`
-						: `Invitation sent to ${seller.name}`}
-				</h3>
-				<p class="pf-split__sent-body">
-					{sent.value.placeholder
-						? "They are attached to the project now. The terms are settled when you price and publish it, and they will be invited then."
-						: `${
-							sent.value.stageCount > 1 ? `${sent.value.stageCount} stages` : "One stage"
-						} offered${
-							sent.value.totalCents !== null && b
-								? ` — ${formatMoney(sent.value.totalCents, b.currency)}`
-								: ""
-						}. They will see the invitation and your message; you can manage it from the project's roster.`}
-				</p>
-				<a class="pf-split__sent-link" href={hireProjectHref(picked)}>Open the project roster</a>
-			</div>
-		)
-		: (
-			<div class="pf-split__form">
-				<section class="pf-split__section" aria-labelledby="pf-asg-message-label">
-					<div ref={firstFieldRef} tabIndex={-1} class="pf-split__field">
-						<label class="pf-split__label" id="pf-asg-message-label" for="pf-asg-message">
-							Message to {seller.name}
-							<span class="pf-split__optional">Optional</span>
-						</label>
-						<Textarea
-							id="pf-asg-message"
-							fluid
-							autoResize
-							rows={3}
-							maxRows={8}
-							maxLength={HIRE_MESSAGE_MAX}
-							placeholder={`Tell ${seller.name} what you need and why you thought of them…`}
-							value={message}
-							disabled={loading.value}
-						/>
-					</div>
+	const left = (
+		<div class="pf-split__form">
+			{cooldownUntil && (
+				<div class="pf-split__error" id="pf-asg-cooldown">
+					<Message severity="warning" variant="subtle" size="sm">
+						{seller.name} declined an invitation to this project. {cooldownMessage(cooldownUntil)}
+					</Message>
+				</div>
+			)}
+			<section class="pf-split__section" aria-labelledby="pf-asg-message-label">
+				<div ref={firstFieldRef} tabIndex={-1} class="pf-split__field">
+					<label class="pf-split__label" id="pf-asg-message-label" for="pf-asg-message">
+						Message to {seller.name}
+						<span class="pf-split__optional">Optional</span>
+					</label>
+					<Textarea
+						id="pf-asg-message"
+						fluid
+						autoResize
+						rows={3}
+						maxRows={8}
+						maxLength={HIRE_MESSAGE_MAX}
+						placeholder={`Tell ${seller.name} what you need and why you thought of them…`}
+						value={message}
+						disabled={loading.value}
+					/>
+				</div>
+			</section>
+
+			{intake.length > 0 && (
+				<section class="pf-split__section" aria-labelledby="pf-asg-intake">
+					<h3 class="pf-split__label" id="pf-asg-intake">{seller.name} asks</h3>
+					<IntakeFields
+						fields={intake}
+						answers={answers}
+						refusal={attempted.value ? intakeBlock.value : null}
+						disabled={loading.value || sending.value}
+						idPrefix="pf-asg"
+					/>
 				</section>
+			)}
 
-				{intake.length > 0 && (
-					<section class="pf-split__section" aria-labelledby="pf-asg-intake">
-						<h3 class="pf-split__label" id="pf-asg-intake">{seller.name} asks</h3>
-						<IntakeFields
-							fields={intake}
-							answers={answers}
-							refusal={attempted.value ? intakeBlock.value : null}
-							disabled={loading.value || sending.value}
-							idPrefix="pf-asg"
-						/>
-					</section>
-				)}
+			{noStages && b && picked && (
+				<section class="pf-split__section" aria-labelledby="pf-asg-stages">
+					<h3 class="pf-split__label" id="pf-asg-stages">Which stages</h3>
+					<p class="pf-split__hint">
+						This project has no stages yet, so there is nothing to attach {seller.name}{" "}
+						to. Add at least one on the project page, then come back.
+					</p>
+					<a class="pf-split__sent-link" href={`/projects/${picked.slug}`}>
+						Open the project setup
+					</a>
+				</section>
+			)}
 
-				{noStages && b && picked && (
-					<section class="pf-split__section" aria-labelledby="pf-asg-stages">
-						<h3 class="pf-split__label" id="pf-asg-stages">Which stages</h3>
-						<p class="pf-split__hint">
-							This project has no stages yet, so there is nothing to attach {seller.name}{" "}
-							to. Add at least one on the project page, then come back.
-						</p>
-						<a class="pf-split__sent-link" href={`/projects/${picked.slug}`}>
-							Open the project setup
-						</a>
-					</section>
-				)}
+			{staged && !noStages && b && (
+				<section class="pf-split__section" aria-labelledby="pf-asg-stages">
+					<h3 class="pf-split__label" id="pf-asg-stages">Which stages</h3>
+					<ul
+						class="pf-split__stages"
+						role="list"
+						data-refused={stagesRefused ? "true" : undefined}
+					>
+						{b.stages.map((stage) => {
+							const on = !!selected.value[stage.id];
+							return (
+								<li
+									key={`${b.projectId}:${stage.id}`}
+									class="pf-split__stage"
+									data-selected={on ? "true" : undefined}
+								>
+									<Checkbox
+										label={stage.name}
+										value={on}
+										onValueChange={(next: boolean) => {
+											selected.value = { ...selected.value, [stage.id]: next };
+										}}
+										disabled={sending.value}
+									/>
+									<span class="pf-split__stagemeta">
+										{stage.unitPriceCents !== null
+											? (
+												<MoneyView
+													minor={stage.unitPriceCents}
+													currency={b.currency}
+													size="micro"
+													hideOrigin
+												/>
+											)
+											: <span class="pf-split__pending">Priced at publish</span>}
+										{stage.memberNames.length > 0 && (
+											<>
+												<span class="pf-split__dot" aria-hidden="true">·</span>
+												<span>{stage.memberNames.join(", ")}</span>
+											</>
+										)}
+									</span>
+								</li>
+							);
+						})}
+					</ul>
+				</section>
+			)}
 
-				{staged && !noStages && b && (
-					<section class="pf-split__section" aria-labelledby="pf-asg-stages">
-						<h3 class="pf-split__label" id="pf-asg-stages">Which stages</h3>
-						<ul
-							class="pf-split__stages"
-							role="list"
-							data-refused={stagesRefused ? "true" : undefined}
-						>
-							{b.stages.map((stage) => {
-								const on = !!selected.value[stage.id];
-								return (
-									<li
-										key={`${b.projectId}:${stage.id}`}
-										class="pf-split__stage"
-										data-selected={on ? "true" : undefined}
-									>
-										<Checkbox
-											label={stage.name}
-											value={on}
-											onValueChange={(next: boolean) => {
-												selected.value = { ...selected.value, [stage.id]: next };
-											}}
-											disabled={sending.value}
-										/>
-										<span class="pf-split__stagemeta">
-											{stage.unitPriceCents !== null
-												? (
-													<MoneyView
-														minor={stage.unitPriceCents}
-														currency={b.currency}
-														size="micro"
-														hideOrigin
-													/>
-												)
-												: <span class="pf-split__pending">Priced at publish</span>}
-											{stage.memberNames.length > 0 && (
-												<>
-													<span class="pf-split__dot" aria-hidden="true">·</span>
-													<span>{stage.memberNames.join(", ")}</span>
-												</>
-											)}
-										</span>
-									</li>
-								);
-							})}
-						</ul>
-					</section>
-				)}
+			{refusal.value && (
+				<div class="pf-split__error">
+					<Message
+						severity="danger"
+						variant="subtle"
+						size="sm"
+						closable
+						onClose={() => (refusal.value = null)}
+					>
+						{refusal.value.message}
+					</Message>
+				</div>
+			)}
 
-				{refusal.value && (
-					<div class="pf-split__error">
-						<Message
-							severity="danger"
-							variant="subtle"
-							size="sm"
-							closable
-							onClose={() => (refusal.value = null)}
-						>
-							{refusal.value.message}
-						</Message>
-					</div>
-				)}
-
-				<p class="pf-split__disclosure">
-					<Icon name="info" size="xs" aria-hidden />
-					<span>
-						{picked?.published
-							? `Nothing is charged now. ${seller.name} sees the project's stated terms; escrow is funded when work is claimed.`
-							: `Nothing is charged now. ${seller.name} is attached as a placeholder until you price and publish the project.`}
-					</span>
-				</p>
-			</div>
-		);
+			<p class="pf-split__disclosure">
+				<Icon name="info" size="xs" aria-hidden />
+				<span>
+					{picked?.published
+						? `Nothing is charged now. ${seller.name} sees the project's stated terms; escrow is funded when work is claimed.`
+						: `Nothing is charged now. ${seller.name} is attached as a placeholder until you price and publish the project.`}
+				</span>
+			</p>
+		</div>
+	);
 
 	const right = b
 		? <ProjectBriefPreview brief={b} />

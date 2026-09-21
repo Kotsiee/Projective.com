@@ -901,6 +901,18 @@
 				"--strictPort"
 			],
 			"port": 12573
+		},
+		{
+			"name": "web-stickyhead",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"12673",
+				"--strictPort"
+			],
+			"port": 12673
 		}
 	]
 }

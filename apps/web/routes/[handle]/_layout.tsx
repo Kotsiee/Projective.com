@@ -185,7 +185,7 @@ export default define.page(async function ProfileLayout(ctx) {
 	// Only a signed-in VISITOR of a seller can add them to a project, so only that viewer pays for
 	// the read.
 	const hireProjects = authed && !canEdit && seller
-		? await resolveHireProjects(readActor(ctx))
+		? await resolveHireProjects(readActor(ctx), profile.handle)
 		: [];
 	// The migrated sticky header — resolved HERE, from the same reads the hero takes, so the band's
 	// rig and the hero's rig are hydrated from one answer and cannot offer different controls.

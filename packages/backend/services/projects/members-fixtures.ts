@@ -35,6 +35,8 @@ import { findStageChannel } from "@projective/types/projects";
 /** A fixed reference "now" so derived join dates / invite ages are SSR==client stable (no `Date.now`). */
 const NOW = Date.parse("2026-07-17T16:20:00.000Z");
 const DAY = 86_400_000;
+/** The REAL clock, read once per process — the declined invitations are dated against it (see `buildInvites`). */
+const TODAY = Date.now();
 
 const FACE = (id: string) => mockAvatar(id);
 
@@ -340,30 +342,75 @@ function visibleTo(
 // #endregion
 
 // #region Invitations
-/** A deterministic pending-invitation queue (only surfaced to a managing viewer). */
+/**
+ * A deterministic pending-invitation queue (only surfaced to a managing viewer).
+ *
+ * Every third project also carries a DECLINED identity-addressed invitation to `@juno` (declined
+ * 5 days ago — inside the 48-day re-invitation cooldown) and every project one to `@kenji` declined
+ * 60 days ago (outside it), so both sides of the cooldown rule are reachable from the stub: on
+ * `/@juno` a third of the viewer's Add-to-project rows are locked with the date, on `/@kenji` none.
+ *
+ * The two declines are dated against the REAL clock, not the corpus's pinned `NOW` — the one
+ * deliberate exception in this file. A cooldown is a relation to today (the write path and the
+ * refusal both read `Date.now()`), so a decline pinned to the corpus clock would have stopped being
+ * active 48 days after the corpus was written and the locked row would be unreachable from the stub
+ * for good. Their `invitedLabel` is fixed text for the same reason.
+ */
 function buildInvites(detail: ProjectDetail, stages: MemberStageRef[]): MemberInvite[] {
 	const seed = hash(detail.slug);
 	const inviter = detail.owner.name;
 	const seeds: ReadonlyArray<
-		{ email: string; role: MemberRole; withStage: boolean; ageDays: number }
+		{
+			email: string;
+			handle?: string;
+			role: MemberRole;
+			withStage: boolean;
+			ageDays: number;
+			declinedDaysAgo?: number;
+		}
 	> = [
 		{ email: "casey.wong@studio.co", role: "freelancer", withStage: true, ageDays: 2 },
 		{ email: "m.alvarez@agency.io", role: "member", withStage: true, ageDays: 5 },
 		{ email: "riley.finance@corp.com", role: "manager", withStage: false, ageDays: 9 },
+		...(seed % 3 === 0
+			? [{
+				email: "@juno",
+				handle: "@juno",
+				role: "freelancer" as const,
+				withStage: true,
+				ageDays: 6,
+				declinedDaysAgo: 5,
+			}]
+			: []),
+		{
+			email: "@kenji",
+			handle: "@kenji",
+			role: "freelancer",
+			withStage: true,
+			ageDays: 62,
+			declinedDaysAgo: 60,
+		},
 	];
+	const today = TODAY;
 	return seeds.map((s, i) => {
 		const stage = s.withStage && stages.length > 0 ? stages[(seed + i) % stages.length] : null;
-		const at = NOW - s.ageDays * DAY;
+		const declined = s.declinedDaysAgo !== undefined;
+		const at = (declined ? today : NOW) - s.ageDays * DAY;
+		const declinedAt = declined
+			? new Date(today - (s.declinedDaysAgo as number) * DAY).toISOString()
+			: null;
 		return {
 			id: `${detail.slug}-inv-${i}`,
 			email: s.email,
+			handle: s.handle ?? null,
 			role: s.role,
 			stageId: stage?.id ?? null,
 			stageName: stage?.name ?? null,
 			invitedBy: inviter,
 			invitedAt: new Date(at).toISOString(),
-			invitedLabel: agoLabel(at),
-			status: s.ageDays > 7 ? "expired" : "pending",
+			invitedLabel: declined ? `${s.ageDays} days ago` : agoLabel(at),
+			status: declined ? "declined" : s.ageDays > 7 ? "expired" : "pending",
+			declinedAt,
 		};
 	});
 }

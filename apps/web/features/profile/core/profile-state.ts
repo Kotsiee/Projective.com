@@ -15,15 +15,11 @@ import type { ServiceItem } from "../types/profile-types.ts";
  * client's edits on top of them.
  */
 
-// #region Scroll-migrated header
-/**
- * Whether the hero's action rig has scrolled up under the shell's chrome, so the middle-nav header
- * band should reveal the condensed identity + the same rig. The hero flips it from its scroll probe
- * (`hooks/useCondenseProbe.ts`); the `ProfileStickyHeader` island in the band reads it — the same
- * producer/consumer shape as the entity view's `viewHeaderCondensed`.
+/*
+ * The scroll-migrated header's condensed state is NOT here: it is the shell's shared
+ * `headerCondensed` (`@features/shell/core/migrating-header.ts`), one signal for every surface that
+ * registers a band, so the profile and the entity view condense on one rule.
  */
-export const profileHeaderCondensed = signal(false);
-// #endregion
 
 // #region The rig's flows — opened from the hero OR the band, mounted once in the hero
 /**
@@ -35,6 +31,18 @@ export const pickedService = signal<ServiceItem | null>(null);
 
 /** The project picked in an Add-to-project popover; non-null opens the assignment modal. */
 export const pickedProject = signal<HireProject | null>(null);
+
+/**
+ * Whether the **Hire** popover is open — ONE fact for the two rigs. The popover itself is anchored
+ * to whichever rig is currently the page's (the hero's until the band takes over, then the
+ * band's), so an open popover FOLLOWS the control as the reader scrolls instead of trailing the
+ * hero's button under the sticky header. Each rig mirrors this into its own `Popover` and presents
+ * it only while it is the active rig (`ProfileRig`).
+ */
+export const hireMenuOpen = signal(false);
+
+/** The same, for the **Add to project** popover. */
+export const addMenuOpen = signal(false);
 
 /** Whether the consultation booking modal is open. */
 export const consultOpen = signal(false);

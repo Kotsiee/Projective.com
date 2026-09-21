@@ -339,9 +339,14 @@ export const DELIVERED_STAGE_STATUS: ReadonlySet<string> = new Set(["approved", 
  * invitation is not an expired one, and the queue this feeds is the PENDING queue. A caller filters
  * a `null` out rather than displaying a lie.
  */
-export function toInviteStatus(raw: string | null | undefined): "pending" | "expired" | null {
+export function toInviteStatus(
+	raw: string | null | undefined,
+): "pending" | "expired" | "declined" | null {
 	if (raw === "pending") return "pending";
 	if (raw === "expired") return "expired";
+	// A decline stays in the queue: it is the invitee's answer, it explains why the client cannot
+	// re-invite them yet, and the re-invitation cooldown is counted from its `declined_at`.
+	if (raw === "declined") return "declined";
 	// 'accepted' and 'revoked' are resolved states; they leave the pending queue rather than
 	// appearing in it under a borrowed label.
 	return null;

@@ -15,12 +15,15 @@ import {
 
 Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-project is there for a member", () => {
 	// A listing or a consultation is something the Hire popover can show.
-	assertEquals(rigFor("freelancer", { hasServices: true, offersConsultation: false, authed: true }), {
-		layout: "seller",
-		hire: true,
-		addToProject: true,
-		primary: "hire",
-	});
+	assertEquals(
+		rigFor("freelancer", { hasServices: true, offersConsultation: false, authed: true }),
+		{
+			layout: "seller",
+			hire: true,
+			addToProject: true,
+			primary: "hire",
+		},
+	);
 	assertEquals(rigFor("team", { hasServices: false, offersConsultation: true, authed: true }), {
 		layout: "seller",
 		hire: true,
@@ -28,19 +31,25 @@ Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-p
 		primary: "hire",
 	});
 	// Neither: no Hire (an empty popover is not a control), and Add-to-project takes the primary.
-	assertEquals(rigFor("freelancer", { hasServices: false, offersConsultation: false, authed: true }), {
-		layout: "seller",
-		hire: false,
-		addToProject: true,
-		primary: "add",
-	});
+	assertEquals(
+		rigFor("freelancer", { hasServices: false, offersConsultation: false, authed: true }),
+		{
+			layout: "seller",
+			hire: false,
+			addToProject: true,
+			primary: "add",
+		},
+	);
 	// A guest keeps Hire (the press is what opens the sign-in prompt) and never sees Add-to-project.
-	assertEquals(rigFor("freelancer", { hasServices: true, offersConsultation: false, authed: false }), {
-		layout: "seller",
-		hire: true,
-		addToProject: false,
-		primary: "hire",
-	});
+	assertEquals(
+		rigFor("freelancer", { hasServices: true, offersConsultation: false, authed: false }),
+		{
+			layout: "seller",
+			hire: true,
+			addToProject: false,
+			primary: "hire",
+		},
+	);
 	// A buyer entity cannot be hired or assigned, whatever it offers.
 	for (const kind of ["client", "business", "organisation"] as const) {
 		assertEquals(rigFor(kind, { hasServices: true, offersConsultation: true, authed: true }), {
@@ -101,8 +110,20 @@ Deno.test("hireProjectsFrom keeps only open engagements, published first, as sli
 		scopeLabel: "Personal",
 		status: "active",
 		published: true,
+		cooldownUntil: null,
 	});
 	assertEquals(rows[2].published, false);
+});
+
+Deno.test("hireProjectsFrom keeps a locked project in the list and carries its cooldown", () => {
+	const row = (slug: string, status: "draft" | "active") =>
+		({ slug, title: `Project ${slug}`, scopeLabel: "Personal", status }) as never;
+	const until = "2026-09-04T16:20:00.000Z";
+	const rows = hireProjectsFrom([row("prj-a", "active"), row("prj-c", "draft")], {
+		"prj-a": until,
+	});
+	// Locked, not hidden: an absent row would read as "you have no such project".
+	assertEquals(rows.map((r) => [r.slug, r.cooldownUntil]), [["prj-a", until], ["prj-c", null]]);
 });
 
 Deno.test("review stance is the author's role inverted", () => {

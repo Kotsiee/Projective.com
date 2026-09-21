@@ -161,10 +161,11 @@ export function EntityViewPage(
 				  A single labelled anchor at the top of the frame, above the fold, in the frame's own
 				  first row. It is the ONLY back control on the page: the migrated sticky header renders
 				  the same `BackLink` once the hero scrolls away, and this copy withdraws at that moment
-				  (`.evp[data-header-condensed="true"]`, written by `EntityHeroProbe`), so the control
-				  moves into the band rather than being duplicated beside it (§D.7.4). The start strip
-				  that used to carry a circular glyph in its own sticky column is gone — one control with
-				  two homes is one control that can drift.
+				  (`:root[data-header-condensed="true"]`, written by the shell's shared probe through
+				  `EntityHeroProbe`), so the control moves into the band rather than being duplicated
+				  beside it (§D.7.4) — the same hand-over the profile makes. The start strip that used to
+				  carry a circular glyph in its own sticky column is gone — one control with two homes is
+				  one control that can drift.
 				*/
 				}
 				<BackLink ctx={ctx} placement="page" />

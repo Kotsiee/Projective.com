@@ -6,10 +6,11 @@ import { toProjectsBody, toProjectsResponse } from "@features/projects/core/resp
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 
 /**
- * `GET | HEAD | OPTIONS /api/projects/hire?projectId=<slug>` — the brief a client's profile-side
- * "Hire" invitation modal opens on: the project overview, its stages with their configured prices,
- * the existing roster with each member's stages, and the pricing model the engagement's shape
- * implies. Delegates to the fat {@link ProjectBackendService.hireBrief}, which COMPOSES the two
+ * `GET | HEAD | OPTIONS /api/projects/hire?projectId=<slug>&handle=<@seller>` — the brief a
+ * client's profile-side "Hire" invitation modal opens on: the project overview, its stages with
+ * their configured prices, the existing roster with each member's stages, the pricing model the
+ * engagement's shape implies, and — for the named seller — the re-invitation cooldown they are
+ * under, if any. Delegates to the fat {@link ProjectBackendService.hireBrief}, which COMPOSES the two
  * reads the owner already has rather than reading the project a fourth way.
  *
  * `POST /api/projects/hire` — send the invitation: Zod-validate the payload and delegate to the fat
@@ -26,7 +27,8 @@ const read = defineReadRoute<{ brief: HireBrief }>({
 		if (!projectId) {
 			return Response.json({ ok: false, message: "Missing projectId." }, { status: 400 });
 		}
-		return ProjectBackendService.hireBrief(projectId, readActor(ctx));
+		const handle = ctx.url.searchParams.get("handle") ?? undefined;
+		return ProjectBackendService.hireBrief(projectId, readActor(ctx), handle);
 	},
 	toBody: toProjectsBody,
 	// This route also serves POST (send the invitation), so `Allow` and the preflight must say so.

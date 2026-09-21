@@ -940,6 +940,14 @@ There are two primary ways an engagement begins:
   team that matches their needs and sends a direct **Invitation** to join a specific project or
   stage.
 
+  > **An invitation is not a doorbell.** A provider who **declines** an invitation cannot be
+  > re-invited to the SAME project by that client for **48 days** from the decline — the control
+  > that would send it is rendered locked with the date it reopens, and the server refuses the send
+  > on the same rule. A client's outbound invitations are further capped at **10 per 10 minutes**
+  > across every project and provider; past the cap the send is refused with a plain sentence
+  > ("You've sent too many requests recently. Please wait a bit before sending more."). Both
+  > guards exist so that saying no once is enough.
+
 ##### Discovery & Courtesy Calls (the third path)
 
 Before either party commits to a negotiation, they may simply **talk**. A discovery call is a

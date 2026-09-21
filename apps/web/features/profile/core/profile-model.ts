@@ -210,6 +210,12 @@ export interface HireProject {
 	 * assignment that is priced when the project is published.
 	 */
 	published: boolean;
+	/**
+	 * The ISO instant an ACTIVE re-invitation cooldown lifts — this seller declined an invitation to
+	 * this project inside the last `INVITE_COOLDOWN_DAYS` — or `null`. A locked row renders disabled
+	 * with the date; the server refuses the send regardless (`hireInvitationRefusal`).
+	 */
+	cooldownUntil: string | null;
 }
 
 /** The lifecycle states a project can still be hired into. */
@@ -226,14 +232,22 @@ export function isOpenProject(project: Pick<ProjectSummary, "status">): boolean 
  * Published before draft, and stable within each group (the feed's own order), because a client
  * hiring somebody almost always means into a project that is already live; the drafts follow so
  * they are never lost, but they never push the live work down the list.
+ *
+ * `cooldowns` is the server's per-slug answer to "is this seller locked out here" — a locked project
+ * keeps its place in the list (absence would read as "you have no such project") and renders
+ * disabled with the date.
  */
-export function hireProjectsFrom(items: readonly ProjectSummary[]): HireProject[] {
+export function hireProjectsFrom(
+	items: readonly ProjectSummary[],
+	cooldowns: Readonly<Record<string, string>> = {},
+): HireProject[] {
 	const rows = items.filter(isOpenProject).map((p) => ({
 		slug: p.slug,
 		title: p.title,
 		scopeLabel: p.scopeLabel,
 		status: p.status,
 		published: p.status !== "draft",
+		cooldownUntil: cooldowns[p.slug] ?? null,
 	}));
 	return [...rows.filter((r) => r.published), ...rows.filter((r) => !r.published)];
 }

@@ -1,0 +1,80 @@
+/*
+ * migrating-back — the PLACEMENT of the shell's one migrating back control (`MigratingBack`), in
+ * its two homes: the page copy near the top of the content area, and the band copy inside the
+ * scroll-migrated sticky header (`.pf-stickyhead`, DESIGN_SYSTEM.md §D.7.6).
+ *
+ * The control's own colour, hover, geometry and RTL glyph flip are `back-nav.css`'s (the explore
+ * feature owns the control); every rule on the band copy here is two selectors deep so it outranks
+ * those declarations regardless of bundle order. It reads no feature token: the page copy mounts
+ * inside `.evp` on one surface and `.pf` on the other, and the band copy inside neither.
+ *
+ * ── THE HAND-OVER ──
+ *
+ * ONE control at every scroll position. The probe (`hooks/useMigratingHeader.ts`) writes
+ * `data-header-condensed` on `:root` the moment the page's anchor scrolls under the band's line —
+ * the page copy withdraws with `visibility` (out of the tab order and the accessibility tree, its
+ * box left in place so nothing shifts on the crossing) while `.pf-stickyhead`'s own `visibility`
+ * gating reveals the band copy in the same instant. The probe never condenses where no band is
+ * rendered (the guest sub-header below 768px), so the page copy needs no per-shell exception here.
+ */
+
+/* #region Page copy */
+.shell-back--page {
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+:root[data-header-condensed="true"] .shell-back--page {
+    visibility: hidden;
+    opacity: 0;
+}
+/* #endregion */
+
+/* #region Band copy */
+/*
+ * The compact circle, at the band's own control height, and it ENTERS with the band: a short slide
+ * from the start edge on `transform`/`opacity` only — the two channels an interaction may move
+ * (§B.12) — timed to the band's own reveal, so the control reads as arriving into the header rather
+ * than blinking on inside it. Glass-safe ink: the band's 76% veil composites against whatever
+ * scrolls beneath, and `--on-surface-variant` is the secondary ink that surface can afford.
+ */
+.pf-stickyhead .shell-back--band {
+    flex: none;
+    align-self: center;
+    --ex-back-size: var(--fld-h-sm);
+    color: var(--on-surface-variant);
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--space-3)));
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard),
+        opacity var(--dur-medium) var(--ease-standard),
+        transform var(--dur-medium) var(--spring-standard);
+}
+
+.pf-stickyhead .shell-back--band:hover {
+    color: var(--on-surface);
+}
+
+[dir="rtl"] .pf-stickyhead .shell-back--band {
+    transform: translateX(var(--space-3));
+}
+
+.pf-stickyhead[data-condensed="true"] .shell-back--band {
+    opacity: 1;
+    transform: none;
+}
+/* #endregion */
+
+/* #region Reduced motion — jump to final under BOTH channels */
+@media (prefers-reduced-motion: reduce) {
+    .shell-back--page,
+    .pf-stickyhead .shell-back--band {
+        transition: none;
+    }
+}
+
+:root[data-motion="reduced"] .shell-back--page,
+:root[data-motion="reduced"] .pf-stickyhead .shell-back--band {
+    transition: none;
+}
+/* #endregion */

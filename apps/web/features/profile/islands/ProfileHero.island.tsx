@@ -2,14 +2,14 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Avatar } from "@projective/ui/display";
-import { Tooltip } from "@projective/ui/feedback";
+import { Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import SignInPrompt from "@features/auth/islands/SignInPrompt.island.tsx";
-import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
+import { MigratingBack } from "@features/shell/components/MigratingBack.tsx";
 import { EXPLORE_FALLBACK } from "@features/explore/core/explore-history.ts";
 import { BookingService } from "@features/view/core/BookingService.ts";
 import { useBookingSeam } from "@features/view/core/booking-seam.ts";
@@ -34,16 +34,18 @@ import ServiceDetailModal from "../components/hire/ServiceDetailModal.tsx";
 import { type EstimatedSpend, type HireProject, isSellerKind } from "../core/profile-model.ts";
 import { announce, NOTE_TTL_MS } from "../core/rig-actions.ts";
 import {
+	addMenuOpen,
 	consultOpen,
 	editedAvatar,
 	editedShowcase,
+	hireMenuOpen,
 	liveConsultation,
 	pickedProject,
 	pickedService,
 	wizardOpen,
 } from "../core/profile-state.ts";
 import { withPrimaryImage } from "../core/showcase-model.ts";
-import { useCondenseProbe } from "../hooks/useCondenseProbe.ts";
+import { useMigratingHeader } from "@features/shell/hooks/useMigratingHeader.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import { useReturnFocus } from "../hooks/useReturnFocus.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
@@ -66,10 +68,12 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  *
  * # The scroll probe lives on the rig
  *
- * `useCondenseProbe` watches the action row: the moment its bottom edge scrolls under the line the
- * header band pins to, the band reveals with the same identity and the same rig — so the controls
- * the reader just lost come back where they went, and the two copies of the filled Hire are never
- * on screen together (§B.8.2, mutually exclusive by render condition).
+ * The shell's shared `useMigratingHeader` watches the action row: the moment its bottom edge scrolls
+ * under the line the header band pins to, the band reveals with the same identity and the same rig —
+ * so the controls the reader just lost come back where they went, and the two copies of the filled
+ * Hire are never on screen together (§B.8.2, mutually exclusive by render condition). The same write
+ * withdraws the hero's Back control as the band's copy enters (`MigratingBack`), so there is one way
+ * out at every scroll position — the rule the entity view runs on its hero.
  *
  * # A guest is intercepted, not bounced
  *
@@ -126,6 +130,13 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	);
 	const bareHandle = profile.handle.replace(/^@+/, "");
 	const editorOpen = useSignal(false);
+	/**
+	 * The toast stack the assignment flow reports into. Mounted lazily and only when no other island
+	 * has put one up: every `<Toast>` renders the SAME module-level list, so a second stack at another
+	 * anchor would draw every toast twice (the `ProjectNoticeHost` precedent).
+	 */
+	const toastMounted = useSignal(false);
+	const toast = useToast();
 	/** The live call offer — the server's until the developer seam re-reads it. */
 	const consultation = liveConsultation.value === undefined
 		? props.consultation
@@ -143,7 +154,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	useReturnFocus(addFlowOpen);
 
 	// The band's probe watches the action row itself.
-	useCondenseProbe(rigHost);
+	useMigratingHeader(rigHost);
 
 	const reduced = useReducedMotion();
 
@@ -164,6 +175,8 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		pickedProject.value = null;
 		consultOpen.value = false;
 		wizardOpen.value = false;
+		hireMenuOpen.value = false;
+		addMenuOpen.value = false;
 		liveConsultation.value = undefined;
 	}, []);
 
@@ -187,13 +200,35 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		else announce("Profile photo updated");
 	}
 
+	function ensureToastStack(): void {
+		if (!toastMounted.value && !document.querySelector(".ui-toast")) toastMounted.value = true;
+	}
+
+	/*
+	 * The assignment's outcome is a TOAST, not the rig's status line: the modal has already closed,
+	 * so the reader's eye is nowhere in particular, and a toast row carries its own `role="status"`
+	 * — saying it on the rig's live region as well would announce it twice.
+	 */
 	function onAssigned(project: HireProject, placeholder: boolean): void {
-		announce(
-			placeholder
-				? `${profile.name} staged on ${project.title} — priced when you publish`
-				: `Invitation to ${project.title} sent to ${profile.name}`,
-			NOTE_TTL_MS,
-		);
+		ensureToastStack();
+		toast.show({
+			severity: "success",
+			summary: placeholder ? "Assignment staged" : "Invitation sent successfully",
+			detail: placeholder
+				? `${profile.name} is staged on ${project.title} — priced when you publish.`
+				: `${profile.name} has been invited to ${project.title}.`,
+			life: 5000,
+		});
+	}
+
+	function onAssignFailed(message: string): void {
+		ensureToastStack();
+		toast.show({
+			severity: "danger",
+			summary: "Invitation not sent",
+			detail: message,
+			life: 7000,
+		});
 	}
 
 	const tier = TIER_META[profile.tier];
@@ -208,8 +243,8 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					    identity. A real anchor to `/explore` until hydration, then to the exact page
 					    the visitor came from (their search, filters intact). */
 					}
-					<ExploreBackNav
-						variant="text"
+					<MigratingBack
+						placement="page"
 						fallback={EXPLORE_FALLBACK}
 						fallbackLabel="Back to Explore"
 						class="pf-hero__back"
@@ -331,7 +366,9 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						seller={{ name: profile.name, handle: profile.handle }}
 						intake={profile.hireIntake ?? []}
 						onAssigned={onAssigned}
+						onFailed={onAssignFailed}
 					/>
+					{toastMounted.value && <Toast position="bottom-center" />}
 					{consultation && (
 						<ConsultationModal
 							open={consultOpen}

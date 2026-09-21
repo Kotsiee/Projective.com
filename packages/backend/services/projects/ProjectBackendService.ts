@@ -14,7 +14,11 @@ import { fetchProjectBySlug, fetchProjectRows, scopesFromRows } from "./live-que
 import { fetchBoardPage, fetchTicketLocation } from "./live-board.ts";
 import { fetchProjectDetail } from "./live-detail.ts";
 import { fetchFilePage } from "./live-files.ts";
-import { fetchMemberRoster as fetchLiveMemberRoster } from "./live-members.ts";
+import {
+	fetchDeclinedInvitations,
+	fetchMemberRoster as fetchLiveMemberRoster,
+} from "./live-members.ts";
+import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import { fetchChannelMessagePage } from "./live-messages.ts";
 import { fetchSubmissionPage } from "./live-submissions.ts";
 import { fetchProjectOverview } from "./live-overview.ts";
@@ -102,6 +106,7 @@ import type {
 	PipelineDraft,
 } from "@projective/types/services";
 import {
+	activeInviteCooldown,
 	blankStage,
 	buildHireBrief,
 	buildProjectTimeline,
@@ -109,6 +114,8 @@ import {
 	createFormatToColumns,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
+	HIRE_RATE_LIMIT,
+	HIRE_RATE_LIMIT_MESSAGE,
 	hireInvitationRefusal,
 	providerScopedPage,
 	reconcileSetup,
@@ -219,6 +226,32 @@ function buildLiveFeed(
  * fixtures could still render; swallowed, a permanently broken live path is indistinguishable from a
  * working one. Falling back cannot disclose anything — the fixture corpus belongs to nobody.
  */
+/**
+ * The outbound-invitation ceiling, per acting identity (`HIRE_RATE_LIMIT`: 10 sends per sliding 10
+ * minutes). In-process — the same lifetime as the write-store the invitations land in — and reset
+ * with it by tests.
+ */
+export const hireLimiter = new SlidingWindowLimiter(HIRE_RATE_LIMIT);
+
+/** The feed query "every open engagement I own, across every workspace" — the Add-to-project rows. */
+const OPEN_OWNED_FEED: ProjectFeedParams = {
+	q: "",
+	view: "projects",
+	involvement: "owner",
+	sort: "recent",
+	scope: "global",
+	scopeType: null,
+	scopeId: "",
+	workspaces: [],
+	roles: [],
+	formats: [],
+	kinds: [],
+	statuses: ["draft", "active", "on_hold"],
+	quick: [],
+	requests: [],
+	serviceId: "",
+};
+
 function liveFailed(method: string, error: unknown): void {
 	const reason = error instanceof Error ? error.message : String(error);
 	console.warn(`[ProjectBackendService.${method}] live read failed, serving fixtures: ${reason}`);
@@ -942,10 +975,15 @@ export class ProjectBackendService {
 	 *
 	 * A viewer who is not the client of the engagement gets a 404 from the setup read (it is the
 	 * owner's projection), which is the right answer: there is nothing here for them to hire into.
+	 *
+	 * `handle` names the seller the brief is FOR, so it carries their re-invitation cooldown
+	 * (`cooldownUntil`) — from the roster's declined invitations on the stub branch, from ONE
+	 * `project_invitations` read on the live one. Absent, the brief carries none.
 	 */
 	static async hireBrief(
 		slug: string,
 		actor: ReadActor,
+		handle?: string,
 	): Promise<ServiceResult<{ brief: HireBrief }>> {
 		const denied = requireIdentity<{ brief: HireBrief }>(actor, "invite someone to a project");
 		if (denied) return denied;
@@ -963,7 +1001,72 @@ export class ProjectBackendService {
 		if (setup.archivedAt) {
 			return fail(409, { message: "This project is archived — nobody can be invited to it." });
 		}
-		return ok({ brief: buildHireBrief(setup, rosterRead.data.page) });
+		const bare = handle?.replace(/^@+/, "") ?? "";
+		const brief = buildHireBrief(
+			setup,
+			rosterRead.data.page,
+			bare ? { handle: bare } : undefined,
+		);
+		if (bare && brief.cooldownUntil === null) {
+			// The live queue is the same rows, but the roster read may have withheld the queue from a
+			// non-managing viewer; the dedicated read answers for the inviter regardless.
+			const cooldowns = await this.hireCooldowns(bare, actor);
+			brief.cooldownUntil = cooldowns[brief.projectId] ?? null;
+		}
+		return ok({ brief });
+	}
+
+	/**
+	 * Every ACTIVE re-invitation cooldown this viewer is under for one seller, keyed by project slug —
+	 * the read behind the profile's Add-to-project rows, which disable a locked project and print the
+	 * date it reopens. One query on the live branch ({@link fetchDeclinedInvitations}); on the stub
+	 * branch the declined invitations in each open project's roster, through the SAME
+	 * `activeInviteCooldown` the brief and the write use. A guest has sent nothing and gets `{}`.
+	 */
+	static async hireCooldowns(
+		handle: string,
+		actor: ReadActor,
+	): Promise<Record<string, string>> {
+		if (!actor.userId) return {};
+		const bare = handle.replace(/^@+/, "");
+		if (!bare) return {};
+		const nowMs = Date.now();
+
+		const live = await liveRead(
+			"hireCooldowns",
+			actor,
+			"projects.hireCooldowns",
+			{ handle: bare },
+			(a) => fetchDeclinedInvitations(a, bare),
+		);
+		if (live !== undefined && live !== null) {
+			const out: Record<string, string> = {};
+			for (const [slug, declines] of Object.entries(live)) {
+				const until = activeInviteCooldown(
+					declines.map((d) => ({
+						status: "declined" as const,
+						declinedAt: d.declinedAt,
+						handle: bare,
+					})),
+					bare,
+					nowMs,
+				);
+				if (until) out[slug] = until;
+			}
+			return out;
+		}
+
+		const feed = await this.list(OPEN_OWNED_FEED, actor);
+		if (!feed.ok || !feed.data) return {};
+		const out: Record<string, string> = {};
+		for (const row of feed.data.items) {
+			const page = findMemberRoster({ projectId: row.slug }) ??
+				createdMemberRoster(row.slug, actor);
+			if (!page) continue;
+			const until = activeInviteCooldown(overlayMemberRoster(page, actor).invites, bare, nowMs);
+			if (until) out[row.slug] = until;
+		}
+		return out;
 	}
 
 	/**
@@ -994,15 +1097,27 @@ export class ProjectBackendService {
 			"invite someone to a project",
 		);
 		if (denied) return denied;
-		const briefRead = await this.hireBrief(input.projectId, actor);
+		const handle = input.handle.replace(/^@/, "");
+
+		/*
+		 * The anti-spam ceiling, checked BEFORE the brief is read: a caller at the limit must not be able
+		 * to spend the server's reads finding that out, and PEEKED rather than taken — the send counts
+		 * only once it has actually been accepted below, so a refused offer (a wrong stage, a cooldown)
+		 * does not eat into the allowance of the corrected one.
+		 */
+		const owner = writeOwnerOf(actor);
+		if (!hireLimiter.peek(owner).allowed) {
+			return fail(429, { message: HIRE_RATE_LIMIT_MESSAGE, errors: { form: "rate_limited" } });
+		}
+
+		const briefRead = await this.hireBrief(input.projectId, actor, handle);
 		if (!briefRead.ok || !briefRead.data) {
 			return fail(briefRead.status, { message: briefRead.message });
 		}
 		const brief = briefRead.data.brief;
+		// The cooldown rides the brief (`cooldownUntil`), so the refusal below names the date it lifts.
 		const refusal = hireInvitationRefusal(brief, input);
 		if (refusal) return fail(422, { message: refusal.message, errors: refusal.errors });
-
-		const handle = input.handle.replace(/^@/, "");
 
 		/*
 		 * The SELLER's own intake, held by the same rule the modal ran.
@@ -1026,10 +1141,16 @@ export class ProjectBackendService {
 			});
 		}
 
+		// Everything about the offer is acceptable: NOW the send counts against the ceiling. Two
+		// checks rather than one `take` up front, so the race a `peek` leaves (a burst that passes the
+		// peek together) still resolves to exactly `max` accepted sends.
+		if (!hireLimiter.take(owner).allowed) {
+			return fail(429, { message: HIRE_RATE_LIMIT_MESSAGE, errors: { form: "rate_limited" } });
+		}
+
 		// The terms as they will be RECORDED — the project's configured rates, or a placeholder on a
 		// draft that has none yet. Resolved by the SSOT, never summed here.
 		const offer = resolveHireOffer(brief, input);
-		const owner = writeOwnerOf(actor);
 		const now = Date.now();
 		const at = new Date(now).toISOString();
 		const base = hireInviteCount(owner, brief.projectId);

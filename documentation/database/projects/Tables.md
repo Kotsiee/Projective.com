@@ -356,8 +356,9 @@ Project-scoped invitations, deliberately **not** `org.org_invitations` (which is
 |                    |             | are settled at publish. An attribute, never a status.                 |
 | `role`             | text        | CHECK-constrained to the roles the accept path can actually grant.    |
 | `token`            | text UNIQUE | **The capability.** Whoever holds it can accept.                      |
-| `status`           | text        | `pending`, `accepted`, `expired`, `revoked`.                          |
+| `status`           | text        | `pending`, `accepted`, `declined`, `expired`, `revoked`.              |
 | `accepted_at`      | timestamptz | Set iff `status = 'accepted'` (`ck_project_invitations_accepted_at`). |
+| `declined_at`      | timestamptz | Set iff `status = 'declined'` (`ck_project_invitations_declined_at`). The invitee's refusal; the instant the **48-day re-invitation cooldown** counts from. |
 
 **Exactly one addressee** — `ck_project_invitations_addressee` requires `target_email` XOR
 `target_user_id`. Email-addressed rows are the pre-existing "invite someone who may have no
@@ -370,6 +371,13 @@ price. One OPEN offer per seat: `uq_project_invitations_open_seat` is a partial 
 `(project_id, project_stage_id, target_user_id) NULLS NOT DISTINCT WHERE status = 'pending'`, so a
 double-press cannot stack a second pending offer under the first, and two whole-project offers
 (`project_stage_id` NULL) collide too.
+
+**Re-invitation cooldown.** A `declined` row locks the `(project, invitee)` pair for
+`INVITE_COOLDOWN_DAYS` (48) days from `declined_at` — the fat service refuses a new invitation to
+that person on that project until it lifts (`activeInviteCooldown` / `hireInvitationRefusal`,
+`packages/types/projects/hire.ts`), and the profile's Add-to-project rows are disabled with the
+date. `revoked` is the INVITER's act and starts no cooldown. Outbound invitations are additionally
+rate-limited per acting identity (`HIRE_RATE_LIMIT`: 10 per sliding 10 minutes, in-process).
 
 ⚠️ Because `token` is the capability and RLS is row-level, **any policy that admits a row admits its
 token**. The SELECT policy is therefore limited to the project owner and to the invited identity —

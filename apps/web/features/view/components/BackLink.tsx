@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import type { HrefContext } from "@features/explore/core/routing.ts";
-import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
+import { MigratingBack } from "@features/shell/components/MigratingBack.tsx";
 import { backHrefFor, backLabelFor } from "../core/view-model.ts";
 
 export interface BackLinkProps {
@@ -14,29 +14,22 @@ export interface BackLinkProps {
 }
 
 /**
- * BackLink — the ONE way out of an entity view, rendered by the page and by the migrated sticky
- * header from a single component so the two homes cannot drift (same destination, same label, same
- * glyph).
+ * BackLink — the entity view's way out, resolved from its {@link HrefContext}: the shell's shared
+ * `MigratingBack` pointed at `backHrefFor(ctx)` — Explore, or the profile a listing sits under.
  *
- * The control itself is the Explore tree's contextual `ExploreBackNav`: a real anchor to
- * `backHrefFor(ctx)` — Explore, or the profile a listing sits under — until hydration, and then to the
- * exact page of the tree the visitor came from, filters intact (`explore-history.ts`). So it works
- * with JavaScript off, on a middle-click and in a new tab, and it still lands on the search the
- * reader left rather than on a bare `/explore`.
- *
- * Only one of the two placements is ever reachable: the page copy withdraws (`visibility`) the
- * moment the band reveals, and the band is itself gated the same way while collapsed, so a keyboard
- * or screen-reader user meets exactly one "Back" on the page whatever the scroll position (§D.7.4 —
- * moved, not duplicated). This component owns the PLACEMENT class only; the control's colour, hover
- * and RTL glyph flip are `back-nav.css`'s.
+ * The page and the migrated sticky header both render it, so the two homes cannot drift (same
+ * destination, same label, same glyph), and the hand-over between them — the page copy withdrawing
+ * as the band copy enters, focus following — is the shell's (`migrating-back.css`,
+ * `core/migrating-header.ts`), identical to the profile's. This component adds only the page's
+ * own grid placement (`evp__back`) to the page copy.
  */
 export function BackLink({ ctx, placement }: BackLinkProps): JSX.Element {
 	return (
-		<ExploreBackNav
-			variant="text"
+		<MigratingBack
+			placement={placement}
 			fallback={backHrefFor(ctx)}
 			fallbackLabel={backLabelFor(ctx)}
-			class={`evp__back evp__back--${placement}`}
+			class={placement === "page" ? "evp__back" : undefined}
 		/>
 	);
 }

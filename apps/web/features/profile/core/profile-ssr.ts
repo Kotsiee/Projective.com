@@ -68,15 +68,25 @@ export function resolveConsultationOffer(handle: string): PublicCallOffer | null
  * own JWT — `involvement: "owner"` is the feed's own "engagements I own, commission or administer"
  * axis, which is exactly "projects I may hire into" — so what the popover offers is what the client
  * would find in their own feed. A guest resolves to `[]` without a read.
+ *
+ * `handle` is the seller on whose page the rows render: their re-invitation cooldowns (a declined
+ * invitation inside the last 48 days, per project) ride the rows so a locked project paints
+ * disabled in the first byte rather than refusing on press.
  */
-export async function resolveHireProjects(actor: ReadActor): Promise<HireProject[]> {
+export async function resolveHireProjects(
+	actor: ReadActor,
+	handle: string,
+): Promise<HireProject[]> {
 	if (!actor.userId) return [];
-	const res = await ProjectBackendService.list({
-		...DEFAULT_PROJECT_PARAMS,
-		view: "projects",
-		involvement: "owner",
-		scope: "global",
-		statuses: ["draft", "active", "on_hold"],
-	}, actor);
-	return res.ok && res.data ? hireProjectsFrom(res.data.items) : [];
+	const [res, cooldowns] = await Promise.all([
+		ProjectBackendService.list({
+			...DEFAULT_PROJECT_PARAMS,
+			view: "projects",
+			involvement: "owner",
+			scope: "global",
+			statuses: ["draft", "active", "on_hold"],
+		}, actor),
+		ProjectBackendService.hireCooldowns(handle, actor),
+	]);
+	return res.ok && res.data ? hireProjectsFrom(res.data.items, cooldowns) : [];
 }
