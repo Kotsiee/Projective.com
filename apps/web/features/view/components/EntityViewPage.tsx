@@ -1,7 +1,5 @@
 import type { JSX } from "preact";
 import { EmptyState } from "@projective/ui/utils";
-import { Icon } from "@projective/ui/icons";
-import { Tooltip } from "@projective/ui/feedback";
 import "@features/explore/styles/explore.css";
 import "@features/explore/styles/explore-results.css";
 import "../styles/entity-view.css";
@@ -22,6 +20,7 @@ import { RelatedSection } from "./RelatedRail.tsx";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
 import { ProjectBody, ProjectHero } from "./project-view-parts.tsx";
+import { BackLink } from "./BackLink.tsx";
 import {
 	MetaLine,
 	PermissionLedger,
@@ -31,7 +30,6 @@ import {
 	SellerLine,
 	SpecLedger,
 } from "./entity-view-parts.tsx";
-import { backHrefFor, backLabelFor } from "../core/view-model.ts";
 import { headlinePriceFor } from "../core/view-pricing.ts";
 import { resolveBookingOffer } from "../core/booking-ssr.ts";
 import {
@@ -158,39 +156,18 @@ export function EntityViewPage(
 			<div class={noMedia ? "evp-frame evp-frame--nomedia" : "evp-frame"}>
 				{
 					/*
-				  ---- The START strip: one control, and it is the way out ----
+				  ---- The way out: ONE back control ----
 
-				  A thin rail carrying a single circular ghost affordance back to Explore (or to the
-				  profile, in the profile-scoped namespace). It is a real anchor with a real href, so
-				  middle-click and open-in-new-tab work, and its accessible name is the sentence the
-				  visible glyph cannot say. Below the frame breakpoint the strip collapses and the same
-				  link renders inline at the top of the body — moved, not duplicated.
+				  A single labelled anchor at the top of the frame, above the fold, in the frame's own
+				  first row. It is the ONLY back control on the page: the migrated sticky header renders
+				  the same `BackLink` once the hero scrolls away, and this copy withdraws at that moment
+				  (`.evp[data-header-condensed="true"]`, written by `EntityHeroProbe`), so the control
+				  moves into the band rather than being duplicated beside it (§D.7.4). The start strip
+				  that used to carry a circular glyph in its own sticky column is gone — one control with
+				  two homes is one control that can drift.
 				*/
 				}
-				<div class="evp-navstrip">
-					{
-						/*
-					  A portal `Tooltip`, never a native `title` (§B.8.5). The glyph says "back" but not
-					  back to WHAT, and that differs by render context — Explore or the seller's profile.
-					  `Tooltip` is a registered island, so it hydrates on its own here even though this
-					  component is server-rendered.
-					*/
-					}
-					<Tooltip content={backLabelFor(ctx)} placement="right">
-						<a
-							class="evp-navstrip__back"
-							href={backHrefFor(ctx)}
-							aria-label={backLabelFor(ctx)}
-						>
-							<Icon name="arrow-left" size="md" aria-hidden />
-						</a>
-					</Tooltip>
-				</div>
-
-				<a class="evp__back evp__back--laned" href={backHrefFor(ctx)}>
-					<Icon name="arrow-left" size="sm" aria-hidden />
-					<span>{backLabelFor(ctx)}</span>
-				</a>
+				<BackLink ctx={ctx} placement="page" />
 
 				{
 					/*
@@ -573,10 +550,7 @@ function NotFound({ ctx }: { ctx: HrefContext }): JSX.Element {
 	return (
 		<div class="evp evp--empty">
 			<ViewStyleAnchor />
-			<a class="evp__back" href={backHrefFor(ctx)}>
-				<Icon name="arrow-left" size="sm" aria-hidden />
-				<span>{backLabelFor(ctx)}</span>
-			</a>
+			<BackLink ctx={ctx} placement="page" />
 			<EmptyState
 				title="Item not found"
 				description="This item may have been removed, or the link is out of date. Explore live work to find something similar."

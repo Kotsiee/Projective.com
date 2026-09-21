@@ -8,16 +8,27 @@
 /* #region Dashboard shell */
 /* Full-bleed results layout — no max-width, minimal side gutters, so the grid uses the whole viewport. */
 .ex-dash {
+	/* The results pane's side gutter, named so the header band below can cancel it exactly. */
+	--ex-dash-pad-x: clamp(1rem, 2.5vw, 2rem);
 	max-inline-size: none;
 	margin-inline: 0;
-	padding: var(--space-6) clamp(1rem, 2.5vw, 2rem) clamp(3rem, 6vw, 5rem);
+	padding: var(--space-6) var(--ex-dash-pad-x) clamp(3rem, 6vw, 5rem);
 }
 /* #endregion */
 
 /* #region Dribbble-style results header */
-/* Centered query title band, set clearly apart from the results below by a hairline + generous space. */
+/*
+ * Centered query title band, set clearly apart from the results below by a hairline + generous space.
+ * The band BLEEDS across the whole results pane: it cancels the dashboard's side gutter with a negative
+ * inline margin and restores it as its own padding, so the hairline runs edge to edge while the title
+ * and the search bar keep their measure. `inline-size: auto` (never `100%`) — a percentage would be
+ * resolved against the padded content box and leave the negative margins overflowing on one side.
+ */
 .ex-results-head {
 	position: relative;
+	inline-size: auto;
+	margin-inline: calc(-1 * var(--ex-dash-pad-x));
+	padding-inline: var(--ex-dash-pad-x);
 	text-align: center;
 	padding-block: var(--space-4) clamp(1.75rem, 3.5vw, 2.75rem);
 	margin-block-end: clamp(1.75rem, 3.5vw, 2.75rem);
@@ -258,6 +269,16 @@
 	margin-block-end: var(--space-5);
 }
 
+/* The count and the guest sidebar toggle read as ONE line — the toggle sits inline, directly after the
+   figure, and wraps beneath it only when the bar is too narrow for both. */
+.ex-dash__lead {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	min-inline-size: 0;
+}
+
 .ex-dash__count {
 	margin: 0;
 	font-size: var(--text-base);
@@ -294,13 +315,26 @@
 	outline: none;
 }
 
-/* The guest desktop sidebar toggle — a ghost icon-only control; the glyph (funnel vs struck funnel)
-   carries the state, the Button's own corner badge carries the active count (§B.11.3). */
-.ex-dash__sidebar-toggle {
-	color: var(--on-surface-variant);
+/*
+ * The guest desktop sidebar toggle — a quiet, labelled ghost control beside the result count. It is
+ * set in the meta register (`--text-xs`, medium weight, muted ink) at a 1.75rem height with minimal
+ * padding so it reads as a footnote to the figure rather than a peer of the Sort control on the far
+ * side. The Button's accent pair is re-pointed at the muted ink so its text-variant hover tint stays
+ * neutral; the glyph (funnel vs struck funnel) and the label both carry the state. The extra `.ex-dash__lead`
+ * hop outranks the package's own `.ui-button` weight/size declarations, which sit at (0,1,0).
+ */
+.ex-dash__lead .ex-dash__sidebar-toggle {
+	--btn-accent: var(--on-surface-variant);
+	--btn-height: 1.75rem;
+	--btn-px: var(--space-2);
+	--btn-font: var(--text-xs);
+	--btn-radius: var(--radius-sm);
+	gap: var(--space-1);
+	font-weight: var(--fw-medium);
 }
 
-.ex-dash__sidebar-toggle[aria-pressed="true"] {
+.ex-dash__lead .ex-dash__sidebar-toggle:hover:not(:disabled),
+.ex-dash__lead .ex-dash__sidebar-toggle[aria-pressed="true"] {
 	color: var(--on-surface);
 }
 

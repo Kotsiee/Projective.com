@@ -3,7 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren, VNode } from "preact";
 import { Grid } from "@projective/ui/layout";
 import { Button } from "@projective/ui/fields";
-import { Drawer, InlineNotice, Tooltip } from "@projective/ui/feedback";
+import { Drawer, InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { EmptyState } from "@projective/ui/utils";
 import { useMediaQuery } from "@projective/ui/hooks";
@@ -249,10 +249,37 @@ export default function SearchDashboard(
 			/>
 
 			<div class="ex-dash__bar">
-				<p class="ex-dash__count">
-					<strong>{pl.count}</strong> {pl.count === 1 ? "result" : "results"}
-					{p.q && <span class="ex-muted">for "{p.q}"</span>}
-				</p>
+				<div class="ex-dash__lead">
+					<p class="ex-dash__count">
+						<strong>{pl.count}</strong> {pl.count === 1 ? "result" : "results"}
+						{p.q && (
+							<>
+								{" "}
+								<span class="ex-muted">for "{p.q}"</span>
+							</>
+						)}
+					</p>
+					{
+						/* The guest desktop sidebar toggle sits directly beside the count as a quiet, labelled
+					    ghost control — the label carries the state and the applied count, so it needs neither a
+					    Tooltip nor the Button's corner badge. */
+					}
+					{showSidebarToggle && (
+						<Button
+							class="ex-dash__sidebar-toggle"
+							variant="text"
+							severity="secondary"
+							size="sm"
+							icon={<Icon name={sidebarHidden ? "filter-off" : "filter"} size="2xs" />}
+							label={`${sidebarHidden ? "Show" : "Hide"} filters${
+								activeCount > 0 ? ` (${activeCount})` : ""
+							}`}
+							aria-pressed={!sidebarHidden}
+							aria-controls="explore-filter-lane"
+							onClick={() => setFiltersHidden(!sidebarHidden)}
+						/>
+					)}
+				</div>
 				<div class="ex-dash__tools">
 					{/* Filters live in the navigation sidebar on desktop; mobile (no aside) opens a bottom sheet. */}
 					{isMobile && (
@@ -264,23 +291,6 @@ export default function SearchDashboard(
 						>
 							Filters{activeCount > 0 ? ` (${activeCount})` : ""}
 						</button>
-					)}
-					{showSidebarToggle && (
-						<Tooltip content={sidebarHidden ? "Show filters" : "Hide filters"}>
-							<Button
-								class="ex-dash__sidebar-toggle"
-								variant="text"
-								severity="secondary"
-								size="sm"
-								iconOnly
-								icon={<Icon name={sidebarHidden ? "filter-off" : "filter"} size="sm" />}
-								aria-label={sidebarHidden ? "Show filters" : "Hide filters"}
-								aria-pressed={!sidebarHidden}
-								aria-controls="explore-filter-lane"
-								badge={activeCount > 0 ? activeCount : undefined}
-								onClick={() => setFiltersHidden(!sidebarHidden)}
-							/>
-						</Tooltip>
 					)}
 					<SortControl value={p.sort} onChange={setSort} />
 				</div>

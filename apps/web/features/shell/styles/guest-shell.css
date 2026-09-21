@@ -72,6 +72,22 @@
 }
 
 /*
+ * The filter lane pins FLUSH under the scrolled header. The base aside pins to the RESERVED header
+ * band (`--site-header-h`, 5.5rem), which is what the page clears at rest — but the header the
+ * reader actually scrolls beneath is the floating pill, whose bottom edge is `--site-header-pinned-h`
+ * (4.25rem, site-shell.css). Pinning to the band left a 1.25rem void between the pill and the panel
+ * on every scrolled page. The panel keeps the same `--guest-inset` gap below the pill it keeps from
+ * the viewport edges, and its height is re-based on the same edge so the bottom inset still lands on
+ * the viewport (measured: pill bottom 68px, panel 80px → 888px in a 900px window). The lane inside
+ * owns the overflow (`.ex-filters-lane`, explore-results.css), so a facet list taller than the
+ * viewport scrolls within the pinned panel rather than pushing it off screen.
+ */
+.guest-shell:has(.ex-filters-lane) .ui-guest-aside {
+	inset-block-start: calc(var(--site-header-pinned-h, 4.25rem) + var(--guest-inset));
+	block-size: calc(100dvh - var(--site-header-pinned-h, 4.25rem) - var(--guest-inset) * 2);
+}
+
+/*
  * Hidden by the results bar's "Filters" toggle (`features/explore/core/filter-visibility.ts`), off the
  * PRE-PAINTED `:root[data-explore-filters]` attribute so the choice survives a navigation with no
  * flash. The aside keeps its box while its width, opacity and the region gap transition to nothing,

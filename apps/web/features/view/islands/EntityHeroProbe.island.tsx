@@ -22,6 +22,12 @@ import { viewHeaderCondensed } from "../core/view-state.ts";
  * even if no scroll event ever arrives — a deep link into the middle of a page, a restored scroll
  * position, or an environment that throttles events. An observer-only version has no equivalent.
  *
+ * **It also writes `data-header-condensed` onto the page root (`.evp`).** The band is a separate
+ * hydration root outside the page, so the signal alone cannot reach the page's own back control; the
+ * attribute is what lets the static `BackLink` withdraw (`visibility`) the instant the band's copy
+ * reveals, keeping exactly one way out in the tab order. `.evp` is server-rendered and owned by no
+ * island, so the DOM write reconciles with nothing.
+ *
  * **The chrome height branches per shell**, which is the one real improvement over the precedent it
  * copies. The band is pinned beneath the sticky chrome, so the crossing that matters is "went under
  * the chrome", not "left the viewport" — and the authed frame pins at `--shell-topbar-h` (48px) while
@@ -47,10 +53,16 @@ export default function EntityHeroProbe(): JSX.Element {
 		const num = Number.parseFloat(raw) || (isGuest ? 88 : 48);
 		const threshold = (raw.endsWith("rem") ? num * rootPx : num) + 24;
 
+		const page = el.closest<HTMLElement>(".evp");
+		const reflect = (condensed: boolean): void => {
+			viewHeaderCondensed.value = condensed;
+			if (page) page.dataset.headerCondensed = condensed ? "true" : "false";
+		};
+
 		const measure = (): void => {
 			const node = sentinel.current;
 			if (!node) return;
-			viewHeaderCondensed.value = node.getBoundingClientRect().top <= threshold;
+			reflect(node.getBoundingClientRect().top <= threshold);
 		};
 
 		measure();
@@ -61,7 +73,7 @@ export default function EntityHeroProbe(): JSX.Element {
 			globalThis.removeEventListener("resize", measure);
 			// Leaving must not strand the band open — the signal is module-level, so a same-tab
 			// navigation into a listing whose header band is `null` would otherwise inherit `true`.
-			viewHeaderCondensed.value = false;
+			reflect(false);
 		};
 	}, []);
 

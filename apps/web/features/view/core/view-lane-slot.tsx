@@ -24,7 +24,7 @@ import { LocalKeys } from "@web/utils/storage-keys.ts";
  * constructed at all and the frame's `auto minmax(0, 1fr)` grid resolves column 1 to 0px — the
  * checkout focus mode's mechanism (Decision #70), and the reason this is a `null` rather than a
  * `display: none`: an un-rendered lane costs no track, no seam term and no splitter, where a hidden
- * one keeps all three. The back link lives in the page's own `.evp-navstrip` instead.
+ * one keeps all three. The back link is the page's own `BackLink`, in the frame's first row.
  *
  * A caller that wants to know the difference between "the view owns this route" and "this is not a
  * view route" asks {@link viewOwnsLaneSlot} — a `null` here does not mean the latter.

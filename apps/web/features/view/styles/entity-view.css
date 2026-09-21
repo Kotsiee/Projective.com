@@ -53,7 +53,6 @@
 	*/
     --evp-lane-pad: var(--space-5);
     --evp-lane-w: 22rem;
-    --evp-navstrip-w: 3rem;
     --evp-frame-gap: var(--space-5);
     /*
 	* The lead-in above the archetype body — the space between the hero row and the Stages section.
@@ -239,8 +238,7 @@
 }
 
 /* An SVG arrow does not mirror itself under `dir="rtl"` — the glyph is drawn, so it is flipped. */
-[dir="rtl"] .evp__back .ui-icon,
-[dir="rtl"] .evp-navstrip__back .ui-icon {
+[dir="rtl"] .evp__back .ui-icon {
     transform: scaleX(-1);
 }
 
@@ -278,35 +276,87 @@
  * — narrower than the same page renders on a phone — while the guest shell at the identical width had
  * far more to spend. A container query asks the box that is actually too narrow.
  *
- * ── WHY THERE IS NOW ONE OF THEM ──
+ * ── THE NUMBER ──
  *
- * There used to be two: 1112 for the guest frame and 1040 for the authenticated one, because the two
- * shells put the back link in different places and so paid for different fixed tracks —
+ *   352 lane + 2 gutters (48) = 400   ->  400 + 640 = 1040
  *
- *   guest   48 strip + 352 lane + 3 gutters (72) = 472   ->  472 + 640 = 1112
- *   authed             352 lane + 2 gutters (48) = 400   ->  400 + 640 = 1040
+ * where 640px is what the media + hero pair needs before either is starved. It used to be 1112,
+ * because the frame paid a fourth track — a 48px start strip plus its 24px gutter — for a single
+ * circular back glyph. That strip is gone: the back control is a labelled link in the frame's own
+ * first row (see below) and migrates into the sticky header band on scroll, so the frame pays for
+ * three tracks in both shells and the threshold is the three-track arithmetic. The number is a
+ * literal because a container-query condition cannot read a custom property.
  *
- * — where 640px is the requirement both shells share: what the media + hero pair needs before either
- * is starved. The authenticated shell's back link has moved into the page's own start strip, so both
- * frames now pay for the same four tracks and 1112 is the answer for both. The number is a literal
- * because a container-query condition cannot read a custom property.
+ * ── THE BACK LINK ──
  *
- * ── THE INLINE BACK LINK ──
- *
- * It is the START strip's duty at narrow widths, where the strip is not rendered — moved, not
- * duplicated, so only one of the two is ever in the accessibility tree. ONE query owns that handover
- * now, and it is the same one that renders the strip, which is what keeps them exclusive AND exhaustive.
- *
- * It used to take a second, `.ui-page-canvas__body`-scoped media query at 768px, because above that
- * width the authenticated shell's own nav rail was the owner and the page had to stand down for it.
- * Removing that rail without removing this rule left a real hole: between a 768px viewport and the
- * 1112px container threshold the strip was not rendered, the inline link was still suppressed, and a
- * signed-in reader had no way back at all (measured at 1024 — zero back controls on the page).
+ * ONE control, at every width. It is the first grid row (`back`) above the fold, and once the hero
+ * scrolls under the chrome the migrated sticky header renders the same `BackLink` in the band while
+ * this copy withdraws — `visibility`, so it leaves the tab order without its box moving anything
+ * (no layout shift on the crossing). The probe writes `data-header-condensed` on `.evp` for exactly
+ * this rule; the band's own copy is gated the same way by `.pf-stickyhead`'s `visibility`, so at
+ * any scroll position exactly one way out is reachable (§D.7.4 — moved, never duplicated).
  */
-@container evp-body (min-width: 1112px) {
-    .evp__back--laned {
-        display: none;
+.evp__back--page {
+    transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.evp[data-header-condensed="true"] .evp__back--page {
+    visibility: hidden;
+    opacity: 0;
+}
+
+/*
+ * The hand-over only holds where the band can take the control. The GUEST sub-header is
+ * `display: none` below `--bp-md` (guest-shell.css) while the authenticated band still renders there,
+ * so on a guest phone the band copy never appears — and a page copy that withdrew anyway would leave
+ * the page with NO way back once the hero scrolled off (measured: zero reachable back links). The
+ * page copy therefore stays in the tab order on that one shell at that one width; its box never
+ * moved, so nothing shifts either way.
+ */
+@media (max-width: 767px) {
+    .guest-shell .evp[data-header-condensed="true"] .evp__back--page {
+        visibility: visible;
+        opacity: 1;
     }
+}
+
+/*
+ * The band copy. Compact — the band is 48px and carries the identity beside it — and it ENTERS with
+ * the band: a short slide from the start edge on `transform`/`opacity` only, the two channels an
+ * interaction may move (§B.12), timed to the band's own reveal so the control reads as arriving
+ * into the header rather than blinking on inside it. Under either reduced-motion channel the band
+ * jumps to final and so does this.
+ */
+.evp__back--band {
+    flex: none;
+    align-self: center;
+    font-size: var(--text-xs);
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--space-3)));
+    transition:
+        opacity var(--dur-medium) var(--ease-standard),
+        transform var(--dur-medium) var(--spring-standard);
+}
+
+[dir="rtl"] .evp__back--band {
+    transform: translateX(var(--space-3));
+}
+
+.pf-stickyhead[data-condensed="true"] .evp__back--band {
+    opacity: 1;
+    transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .evp__back--page,
+    .evp__back--band {
+        transition: none;
+    }
+}
+
+[data-motion="reduced"] .evp__back--page,
+[data-motion="reduced"] .evp__back--band {
+    transition: none;
 }
 
 /* ============================================================================
@@ -331,7 +381,7 @@
     min-inline-size: 0;
 }
 
-.evp-frame > .evp__back--laned {
+.evp-frame > .evp__back--page {
     grid-area: back;
 }
 
@@ -368,86 +418,22 @@
 }
 
 /*
- * The START strip. One circular ghost affordance, pinned so the way out is always reachable — a
- * viewport-height media column means a reader can be several screens from the top of the document
- * while still looking at the first thing on it.
- */
-.evp-navstrip {
-    display: none;
-    grid-area: nav;
-    position: sticky;
-    /* Pinned on the lane's line, and it stands clear of the revealed header band on the same terms —
-	 * see the `--evp-band-offset` block near the foot of this sheet. The two pinned edges of the frame
-	 * are meant to sit level, so a rule that moved one and not the other would break the alignment the
-	 * lift below exists to establish. */
-    inset-block-start: calc(var(--evp-pin-top) + var(--evp-band-offset));
-    /* Lifted with the lane, so the two pinned edges of the frame sit on one line. */
-    margin-block-start: calc(-1 * var(--evp-pin-lift));
-    inline-size: var(--evp-navstrip-w);
-    transition: inset-block-start var(--dur-medium) var(--spring-standard);
-}
-
-/*
- * BOTH SHELLS RENDER THIS STRIP, and that is the point of it.
- *
- * The authenticated shell used to carry the back link in its middle-nav lane instead (`EntityNavRail`,
- * deleted) — one control with two homes, and a whole 70px column of the content region spent on a
- * single 48px glyph. `viewLaneFor` now returns `null` for a commerce archetype in both shells, so the
- * lane is not constructed at all and the frame's `auto minmax(0, 1fr)` grid resolves column 1 to 0px.
- * The way out is this strip everywhere: one transparent affordance in the page's own start column,
- * with no rail, no background and no container around it.
- */
-
-.evp-navstrip__back {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--evp-navstrip-w);
-    block-size: var(--evp-navstrip-w);
-    border-radius: var(--radius-full);
-    color: var(--text-secondary);
-    background: transparent;
-    text-decoration: none;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard);
-}
-
-.evp-navstrip__back:hover {
-    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-    color: var(--on-surface);
-}
-
-.evp-navstrip__back:focus-visible {
-    outline: none;
-    box-shadow: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .evp-navstrip__back {
-        transition: none;
-    }
-}
-
-/*
  * Jump-to-final on both reduced-motion channels. `transition: none`, not a zeroed duration: the token
  * layer already zeroes `--dur-*` under the media query, and a surface that relies on that alone still
  * animates for a reader who set the preference through `[data-motion="reduced"]` instead (§B.12).
  */
 @media (prefers-reduced-motion: reduce) {
-    .evp-navstrip,
     .evp-laneslot {
         transition: none;
     }
 }
 
-[data-motion="reduced"] .evp-navstrip,
 [data-motion="reduced"] .evp-laneslot {
     transition: none;
 }
 
 /*
- * ---- THE FRAME: all four tracks, and the ONE place this deviates from §D.7.8 ----
+ * ---- THE FRAME: the three tracks, and the ONE place this deviates from §D.7.8 ----
  *
  * §D.7.8 asks for a content-first canvas — structured information leading, media trailing, reversed
  * in the DOM, "never with `order`/`direction`". The requested layout puts the media column BEFORE the
@@ -464,26 +450,17 @@
  * stack, rather than splitting a track that would starve both — see the note on the inline back link
  * for why the threshold is a CONTAINER width and not a viewport one.
  */
-@container evp-body (min-width: 1112px) {
-    .evp-navstrip {
-        display: block;
-        /*
-		* `start`, explicitly. The strip's area spans every row, and a stretched grid item would take
-		* that whole height — measured at 11,755px in the intermediate layout this replaces, which
-		* also silently disabled its own `sticky` (an element as tall as its containing block has
-		* nothing to stick within). `align-items: start` below covers it too; both are stated because
-		* the failure is invisible until something scrolls.
-		*/
-        align-self: start;
-    }
-
+@container evp-body (min-width: 1040px) {
+    /*
+     * The back link is the frame's FIRST row, spanning the two content tracks; the lane spans every
+     * row from the first, so its pinned top and the back link's top sit on one line at rest.
+     */
     .evp-frame {
-        grid-template-columns:
-            var(--evp-navstrip-w) minmax(0, 1fr) minmax(0, 1.05fr)
-            var(--evp-lane-w);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) var(--evp-lane-w);
         grid-template-areas:
-            "nav media hero lane"
-            "nav main  main lane";
+            "back  back lane"
+            "media hero lane"
+            "main  main lane";
         align-items: start;
     }
 
@@ -493,10 +470,11 @@
      * client's banner strip inside the hero (see `.evp-banner`).
      */
     .evp-frame--nomedia {
-        grid-template-columns: var(--evp-navstrip-w) minmax(0, 1fr) var(--evp-lane-w);
+        grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
         grid-template-areas:
-            "nav hero lane"
-            "nav main lane";
+            "back lane"
+            "hero lane"
+            "main lane";
     }
 
     /*
@@ -519,17 +497,11 @@
 /*
  * ---- ONE FRAME, BOTH SHELLS ----
  *
- * There used to be a second, `.ui-page-canvas__body`-scoped block here declaring a THREE-track frame at
- * a 1040px threshold, because the authenticated shell had no start strip: its middle-nav lane carried
- * the back link, so leaving the `nav` column declared would have spent 48px plus a 24px gutter on an
- * element that was `display: none` — a grid track is sized by its declaration, not by whether anything
- * visible occupies it.
- *
- * That lane is gone (`viewLaneFor` returns `null` for a commerce archetype now), the strip renders in
- * both shells, and the two declarations had become identical. Two identical blocks at two thresholds
- * is not a redundancy, it is a fork: between 1040 and 1112 the authed frame would have declared a `nav`
- * track whose strip was still hidden, which is the exact 72px of dead column the split existed to
- * avoid. One block, one threshold, and the frame cannot disagree with itself about which shell it is in.
+ * There used to be a second, `.ui-page-canvas__body`-scoped block here declaring a different frame at
+ * a different threshold, because the two shells once put the back link in different places and so paid
+ * for different fixed tracks. Both now render the same three tracks — the back link is a row of the
+ * frame, not a column — so there is one declaration and one threshold, and the frame cannot disagree
+ * with itself about which shell it is in.
  */
 
 /*
@@ -1590,7 +1562,7 @@
     z-index: calc(var(--z-sticky) + 1);
 }
 
-@container evp-body (min-width: 1112px) {
+@container evp-body (min-width: 1040px) {
     .evp-laneslot {
         display: block;
     }
@@ -2417,81 +2389,50 @@ a.evp-cta__btn--inverted {
 }
 
 /*
- * THE BAND SPANS THE MEDIA + HERO COLUMNS, AND NOTHING ELSE.
+ * THE AUTHENTICATED BAND SPANS ITS WHOLE HEADER CONTAINER.
  *
- * It used to run the full width of the content region and reserve room for the lane with
- * `padding-inline-end`, which insets the CONTENT but leaves the BOX — and therefore the glass slab
- * that paints it — running underneath the pinned lane. Two pinned regions in one content region have
- * to tile, not stack (§D.7.2), so the box itself now stops where the lane begins and starts where the
- * media column does: the band, the start rail and the lane read as one row of three panels.
+ * It used to be inset on both sides — a start margin for the page's start strip and an end margin for
+ * the conversion lane — so the glass slab tiled beside those two pinned panels instead of running under
+ * them (§D.7.2). Neither reservation applies any more:
  *
- * The reservations are the frame's own arithmetic, in the frame's own tokens, so a change to the lane
- * width or the strip width moves the band with it rather than leaving a number here to drift:
+ *   start — the strip is gone; the back control lives in the frame's first row and, once the band
+ *           reveals, INSIDE the band itself (`.evp__back--band`), so there is nothing to begin after.
+ *   end   — the band-offset rule below steps the lane DOWN below the revealed band in this shell, so
+ *           the two never share a row and there is nothing to stop short of.
  *
- *   start = page gutter + start strip + frame gap    (guest only — see below)
- *   end   = page gutter + lane        + frame gap
+ * So `.ui-middle-nav__header` takes its natural width — the full middle-nav header column, with no
+ * margin of its own — and `.evp-stickyhead` is `inline-size: 100%` of it. The band inherits no padding
+ * from the frame either: `.ui-middle-nav__header` is a grid track of the shell, not a descendant of
+ * `.evp`, so the page's own `padding-inline` cannot reach it.
  *
- * ── Why the START inset is guest-only ──
+ * THE GUEST BAND IS DIFFERENT, ON PURPOSE. `.guest-shell__subheader` is `position: fixed` and floats
+ * over the content; its lane pins to the SAME line (see the `--evp-pin-*` note), so the two still tile
+ * as one row of floating panels and the END reservation stays. Only the START reservation for the
+ * retired strip is dropped — the band begins at the page gutter, where the back link's row does.
  *
- * The authenticated band is grid column 2 of `.ui-middle-nav`, so the shell's own lane has ALREADY
- * begun it after the nav rail; insetting again would double the gutter. The guest band is
- * `position: fixed` across the whole content gutter and has nothing to begin after, so it does its own.
+ * ── Why a viewport gate for a container-driven layout ──
  *
- * ── Why a viewport gate for a container-driven layout, and why there are two of them ──
- *
- * Whether the lane is rendered is a CONTAINER question (`@container evp-body`), but neither band is a
- * descendant of that container, so no container query can reach them, and `:has(.evp-laneslot)` matches
+ * Whether the lane is rendered is a CONTAINER question (`@container evp-body`), but the band is not a
+ * descendant of that container, so no container query can reach it, and `:has(.evp-laneslot)` matches
  * on the element EXISTING rather than on it being displayed. The gate is therefore a viewport
- * approximation of the container threshold, translated through the chrome each shell spends first:
+ * approximation of the container threshold, translated through the chrome the guest shell spends first:
  *
- *   guest   1112 container + 48 page gutter                        → measured crossover 1166 viewport
- *   authed  1040 container + 48 gutter + 64 global rail + 56 lane   → measured crossover 1214 viewport
+ *   guest   1040 container + 48 page gutter  → crossover ≈ 1088 viewport
  *
- * One gate cannot serve both: set it at the guest's number and the authenticated band reserves 376px
- * for a lane that is not there across a ~50px band of widths; set it at the authenticated one and the
- * guest band is covered by its own lane for the same distance in the other direction.
- *
- * Both are biased LOW, deliberately, because the two possible mismatches are not symmetric:
+ * Biased LOW, deliberately, because the two possible mismatches are not symmetric:
  *
  *   reserving when the lane is hidden  → a cosmetic gap at the band's end edge
  *   NOT reserving when it is shown     → the band's own identity row is covered by an opaque panel
  *
- * A hidden row is a defect; a gap is not. The crossovers above were measured with a 6px overlay
- * scrollbar; a platform with 15px classic scrollbars moves them ~9px further out, which widens the
- * cosmetic window and never the other one — which is the whole reason the bias runs this way.
- *
- * Both numbers also sit well above the mobile band, which is only ~358px wide and would be crushed to
- * nothing by a 376px reservation.
+ * A hidden row is a defect; a gap is not. A platform with 15px classic scrollbars moves the crossover
+ * ~9px further out, which widens the cosmetic window and never the other one — which is the whole
+ * reason the bias runs this way. The number also sits well above the mobile band, which is only ~358px
+ * wide and would be crushed to nothing by a 376px reservation.
  */
-@media (min-width: 1150px) {
+@media (min-width: 1075px) {
     .guest-shell:has(.evp-laneslot) .guest-shell__subheader {
-        inset-inline-start: calc(
-            var(--space-5) + var(--evp-navstrip-w) + var(--evp-frame-gap)
-        );
+        inset-inline-start: var(--space-5);
         inset-inline-end: calc(
-            var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
-        );
-    }
-}
-
-@media (min-width: 1224px) {
-    /*
-	 * `margin-inline`, not `padding-inline`: the band's `::before` glass underlay is `inset: 0` on this
-	 * element, so only shrinking the BOX takes the slab out from under the lane. A margin on a grid item
-	 * shrinks its used size within its area, which is exactly the effect wanted, and the
-	 * `minmax(0, 1fr)` content track absorbs it without re-sizing the lane track beside it.
-	 *
-	 * Both reservations are the frame's own arithmetic now, the same pair the guest band uses. The START
-	 * inset used to be the page gutter alone, because the shell's own middle-nav lane had already begun
-	 * this column after the nav rail. That lane is gone and the page's own start strip took its place —
-	 * inside this column, not before it — so the band has to begin after it exactly as the guest band
-	 * does, or the glass slab paints over the one control that leaves the page.
-	 */
-    .ui-middle-nav:has(.evp-laneslot) .ui-middle-nav__header {
-        margin-inline-start: calc(
-            var(--space-5) + var(--evp-navstrip-w) + var(--evp-frame-gap)
-        );
-        margin-inline-end: calc(
             var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
         );
     }
@@ -2865,7 +2806,7 @@ a.evp-cta__btn--inverted {
     border-block: var(--hairline);
 }
 
-@container evp-body (min-width: 1112px) {
+@container evp-body (min-width: 1040px) {
     .evp-buybar {
         display: none;
     }

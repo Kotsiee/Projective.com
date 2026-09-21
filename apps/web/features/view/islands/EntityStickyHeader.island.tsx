@@ -11,6 +11,7 @@ import "../styles/entity-view.css";
 import { ARCHETYPE_LABEL, type EntityArchetype } from "../core/entity-archetype.ts";
 import { viewHeaderCondensed } from "../core/view-state.ts";
 import { scrollToId } from "../core/scroll-to.ts";
+import { BackLink } from "../components/BackLink.tsx";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
@@ -32,7 +33,12 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * to the region that owns the offer; a third trigger in a strip half the readers cannot see is a third
  * place for that flow to drift.
  *
- * Its ONE interactive element besides the seller link is the rating, and it is a real anchor to
+ * The band LEADS with the page's one back control — the same {@link BackLink} the frame renders at
+ * rest — so the way out migrates into the header exactly as the identity does: the page copy withdraws
+ * as this one reveals (`.evp[data-header-condensed]`, written by the probe), and only one is ever in
+ * the tab order. It is a real anchor, so route-back works with JavaScript off and on a middle-click.
+ *
+ * Its other interactive element besides the seller link is the rating, and it is a real anchor to
  * `#evp-reviews` whose handler only UPGRADES the jump — it cancels the hash navigation and scrolls to a
  * position that clears the pinned chrome, which a bare `#hash` cannot do. Same control, same target and
  * the same `scrollToId` the lane's `.evp-lane__rating` uses, so the two cannot land in different places.
@@ -45,7 +51,7 @@ export interface EntityStickyHeaderProps {
 }
 
 export default function EntityStickyHeader(
-	{ item, archetype }: EntityStickyHeaderProps,
+	{ item, archetype, ctx }: EntityStickyHeaderProps,
 ): JSX.Element {
 	const condensed = viewHeaderCondensed.value;
 	const owner = item.owner;
@@ -58,6 +64,8 @@ export default function EntityStickyHeader(
 			data-condensed={condensed ? "true" : "false"}
 			aria-hidden={condensed ? undefined : "true"}
 		>
+			<BackLink ctx={ctx} placement="band" />
+
 			<div class="evp-stickyhead__lead">
 				{
 					/*
