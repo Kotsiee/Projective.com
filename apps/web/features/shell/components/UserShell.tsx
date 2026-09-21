@@ -206,7 +206,7 @@ export function UserShell(
 				   bar leaves a 56px dead gap under the step's commit action until the paired focus
 				   rules in `middle-nav.css` / `page-canvas.css` drop the reservation too. */
 			}
-			{focus ? null : <BottomNav items={bottomNavItems(path)} label="Primary" />}
+			{focus ? null : <BottomNav items={bottomNavItems(path, context)} label="Primary" />}
 			{/* The one share modal every Share control on the page opens (share-request bridge). */}
 			<ShareHost authed returnTo={path} />
 		</>

@@ -6,11 +6,12 @@ import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 import ProfileHero from "@features/profile/islands/ProfileHero.island.tsx";
+import ProfileStickyHeader from "@features/profile/islands/ProfileStickyHeader.island.tsx";
+import ProfileTabs from "@features/profile/islands/ProfileTabs.island.tsx";
 import ProfileStyleAnchor from "@features/profile/islands/ProfileStyleAnchor.island.tsx";
 import { ProfileContextBar } from "@features/profile/components/ProfileContextBar.tsx";
 import { ProfileServicesSection } from "@features/profile/components/ProfileServicesSection.tsx";
 import { ProfileProductsSection } from "@features/profile/components/ProfileProductsSection.tsx";
-import { ProfileTabs } from "@features/profile/components/ProfileTabs.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
 import {
 	viewLaneFor,
@@ -42,10 +43,13 @@ import {
  *
  * The surface is ONE column in the native window scroll (root CLAUDE.md §8 Decision #96): the split
  * hero → the context bar → a seller's Services row → the four-section tab bar → the routed section
- * body. There is no middle-nav lane, no splitter and no migrating sticky header — the profile mounts
- * nothing in the shell's lane slot, so the authenticated {@link UserShell} renders a bare
- * {@link PageCanvas} and the guest {@link GuestShell} its lane-less header + body + footer flow; the
- * profile's own sticky element is the section tab bar, pinned flush under whichever shell's header.
+ * body. There is no middle-nav lane and no splitter — the profile mounts nothing in the shell's lane
+ * slot — but it DOES register a migrated sticky header (Decision #111): the {@link ProfileStickyHeader}
+ * is threaded into the shell's header slot (the authenticated frame's `ui-middle-nav__header` band,
+ * the guest shell's floating sub-header — the same two homes the entity view's band has) and
+ * reveals as the hero's action rig scrolls away, carrying the identity, the live availability and
+ * the same rig. The section tab bar is the page's own sticky element, pinning a small gap beneath
+ * that band and floating as a glass pill while stuck.
  *
  * The services are resolved HERE, once, because they render on every section (above the tabs) and
  * feed two other regions: the hero's Hire popover (which lists them) and the hero's metrics strip
@@ -67,8 +71,8 @@ export default define.page(async function ProfileLayout(ctx) {
 	const handleParam = ctx.params.handle ?? path.split("/").filter(Boolean)[0] ?? "";
 
 	/**
-	 * Wrap body content in the auth-appropriate shell. `lane`/`header` are only ever set by the item
-	 * viewer branch; the profile itself passes neither.
+	 * Wrap body content in the auth-appropriate shell. `lane` is only ever set by the item viewer
+	 * branch; `header` by the item viewer AND the profile itself (its migrated sticky header).
 	 *
 	 * `footer` renders the marketing footer at the body's end — off for the full-page calendars, which
 	 * fill the content region and own their own scrolling. The authed branch composes it with the
@@ -183,6 +187,18 @@ export default define.page(async function ProfileLayout(ctx) {
 	const hireProjects = authed && !canEdit && seller
 		? await resolveHireProjects(readActor(ctx))
 		: [];
+	// The migrated sticky header — resolved HERE, from the same reads the hero takes, so the band's
+	// rig and the hero's rig are hydrated from one answer and cannot offer different controls.
+	const stickyHeader = (
+		<ProfileStickyHeader
+			profile={profile}
+			canEdit={canEdit}
+			authed={authed}
+			services={services}
+			consultation={consultation}
+			hireProjects={hireProjects}
+		/>
+	);
 	return shell(
 		<div class="pf-scope">
 			<div class="pf">
@@ -212,5 +228,6 @@ export default define.page(async function ProfileLayout(ctx) {
 				</section>
 			</div>
 		</div>,
+		{ header: stickyHeader },
 	);
 });

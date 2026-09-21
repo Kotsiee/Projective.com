@@ -11,6 +11,8 @@ import "../styles/entity-view.css";
 import { ARCHETYPE_LABEL, type EntityArchetype } from "../core/entity-archetype.ts";
 import { viewHeaderCondensed } from "../core/view-state.ts";
 import { scrollToId } from "../core/scroll-to.ts";
+import { backHrefFor, backLabelFor } from "../core/view-model.ts";
+import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 
@@ -32,10 +34,12 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * to the region that owns the offer; a third trigger in a strip half the readers cannot see is a third
  * place for that flow to drift.
  *
- * Its ONE interactive element besides the seller link is the rating, and it is a real anchor to
- * `#evp-reviews` whose handler only UPGRADES the jump — it cancels the hash navigation and scrolls to a
- * position that clears the pinned chrome, which a bare `#hash` cannot do. Same control, same target and
- * the same `scrollToId` the lane's `.evp-lane__rating` uses, so the two cannot land in different places.
+ * Its interactive elements besides the seller link are the rating — a real anchor to `#evp-reviews`
+ * whose handler only UPGRADES the jump: it cancels the hash navigation and scrolls to a position
+ * that clears the pinned chrome, which a bare `#hash` cannot do; same control, same target and the
+ * same `scrollToId` the lane's `.evp-lane__rating` uses, so the two cannot land in different places —
+ * and the compact contextual Back (`ExploreBackNav`) at its start, the same control the page's start
+ * rail carries, so the way out is reachable while the rail has scrolled off the screen.
  */
 export interface EntityStickyHeaderProps {
 	item: ExploreItem;
@@ -45,7 +49,7 @@ export interface EntityStickyHeaderProps {
 }
 
 export default function EntityStickyHeader(
-	{ item, archetype }: EntityStickyHeaderProps,
+	{ item, archetype, ctx }: EntityStickyHeaderProps,
 ): JSX.Element {
 	const condensed = viewHeaderCondensed.value;
 	const owner = item.owner;
@@ -58,6 +62,12 @@ export default function EntityStickyHeader(
 			data-condensed={condensed ? "true" : "false"}
 			aria-hidden={condensed ? undefined : "true"}
 		>
+			<ExploreBackNav
+				variant="icon"
+				fallback={backHrefFor(ctx)}
+				fallbackLabel={backLabelFor(ctx)}
+				class="evp-stickyhead__back"
+			/>
 			<div class="evp-stickyhead__lead">
 				{
 					/*

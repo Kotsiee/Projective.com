@@ -1,0 +1,86 @@
+/*
+ * back-nav — the contextual Back control of the Explore tree (`ExploreBackNav`), in its two
+ * presentations: the arrow + "Back" text link, and the compact circular glyph for a strip that has
+ * no room for a word (the sticky header bands, the entity view's start rail).
+ *
+ * Token-only, strict BEM (root CLAUDE.md §3), and it reads NO feature token: the control mounts on
+ * the profile (inside `.pf`), on the entity view (inside `.evp`) and in the shell's header slot
+ * (inside neither), so anything scoped to a surface would fall back for one of them. The host
+ * places it (a margin, a grid area, a size) and this sheet draws it.
+ *
+ * The circle's size is a custom property the host may re-declare (`--ex-back-size`) — the entity
+ * view's start rail runs it at the rail's own width — rather than a class the host would have to
+ * out-specify.
+ */
+
+/* #region Shared */
+.ex-back {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition:
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-back:hover {
+    color: var(--on-surface);
+}
+
+.ex-back:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+/* An SVG arrow does not mirror itself under `dir="rtl"` — the glyph is drawn, so it is flipped. */
+[dir="rtl"] .ex-back .ui-icon {
+    transform: scaleX(-1);
+}
+
+/* #endregion */
+
+/* #region Text — arrow + "Back" */
+.ex-back--text {
+    gap: var(--space-2);
+    align-self: flex-start;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    border-radius: var(--radius-sm);
+}
+
+/* #endregion */
+
+/* #region Icon — a compact circle */
+/*
+ * The default size is a `var()` FALLBACK, never a declaration on the element: a custom property
+ * declared here would beat one inherited from a host that re-declares it on an ancestor, and the
+ * override would be unreachable while looking exactly like a default.
+ */
+.ex-back--icon {
+    justify-content: center;
+    flex: none;
+    inline-size: var(--ex-back-size, 2rem);
+    block-size: var(--ex-back-size, 2rem);
+    border-radius: var(--radius-full);
+    background: transparent;
+}
+
+.ex-back--icon:hover {
+    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .ex-back {
+        transition: none;
+    }
+}
+
+:root[data-motion="reduced"] .ex-back {
+    transition: none;
+}
+
+/* #endregion */

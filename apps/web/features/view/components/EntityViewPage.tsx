@@ -1,7 +1,5 @@
 import type { JSX } from "preact";
 import { EmptyState } from "@projective/ui/utils";
-import { Icon } from "@projective/ui/icons";
-import { Tooltip } from "@projective/ui/feedback";
 import "@features/explore/styles/explore.css";
 import "@features/explore/styles/explore-results.css";
 import "../styles/entity-view.css";
@@ -16,6 +14,7 @@ import ProjectLane from "../islands/ProjectLane.island.tsx";
 import ProjectApplyBar from "../islands/ProjectApplyBar.island.tsx";
 import SessionSchedulerStage from "../islands/SessionSchedulerStage.island.tsx";
 import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
+import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
 import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
@@ -170,27 +169,27 @@ export function EntityViewPage(
 				<div class="evp-navstrip">
 					{
 						/*
-					  A portal `Tooltip`, never a native `title` (§B.8.5). The glyph says "back" but not
-					  back to WHAT, and that differs by render context — Explore or the seller's profile.
-					  `Tooltip` is a registered island, so it hydrates on its own here even though this
-					  component is server-rendered.
+					  The contextual Back control (`ExploreBackNav`): a real anchor to Explore or the
+					  seller's profile until hydration, then to the exact page of the Explore tree the
+					  visitor came from, filters intact. Its portal `Tooltip` names the destination the
+					  glyph cannot (§B.8.5, never a native `title`).
 					*/
 					}
-					<Tooltip content={backLabelFor(ctx)} placement="right">
-						<a
-							class="evp-navstrip__back"
-							href={backHrefFor(ctx)}
-							aria-label={backLabelFor(ctx)}
-						>
-							<Icon name="arrow-left" size="md" aria-hidden />
-						</a>
-					</Tooltip>
+					<ExploreBackNav
+						variant="icon"
+						fallback={backHrefFor(ctx)}
+						fallbackLabel={backLabelFor(ctx)}
+						class="evp-navstrip__back"
+						placement="right"
+					/>
 				</div>
 
-				<a class="evp__back evp__back--laned" href={backHrefFor(ctx)}>
-					<Icon name="arrow-left" size="sm" aria-hidden />
-					<span>{backLabelFor(ctx)}</span>
-				</a>
+				<ExploreBackNav
+					variant="text"
+					fallback={backHrefFor(ctx)}
+					fallbackLabel={backLabelFor(ctx)}
+					class="evp__back evp__back--laned"
+				/>
 
 				{
 					/*
@@ -573,10 +572,12 @@ function NotFound({ ctx }: { ctx: HrefContext }): JSX.Element {
 	return (
 		<div class="evp evp--empty">
 			<ViewStyleAnchor />
-			<a class="evp__back" href={backHrefFor(ctx)}>
-				<Icon name="arrow-left" size="sm" aria-hidden />
-				<span>{backLabelFor(ctx)}</span>
-			</a>
+			<ExploreBackNav
+				variant="text"
+				fallback={backHrefFor(ctx)}
+				fallbackLabel={backLabelFor(ctx)}
+				class="evp__back"
+			/>
 			<EmptyState
 				title="Item not found"
 				description="This item may have been removed, or the link is out of date. Explore live work to find something similar."

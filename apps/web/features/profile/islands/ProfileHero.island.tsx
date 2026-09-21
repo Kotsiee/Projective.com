@@ -1,23 +1,16 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import type { RefObject } from "preact";
 import { Avatar } from "@projective/ui/display";
-import { Button } from "@projective/ui/fields";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
-import { profileHref } from "@features/explore/core/routing.ts";
 import SignInPrompt from "@features/auth/islands/SignInPrompt.island.tsx";
-import { requestShare } from "@web/features/share/core/share-request.ts";
-import {
-	currentPath,
-	requestSignIn,
-	type SignInIntent,
-} from "@features/auth/core/sign-in-prompt.ts";
+import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
+import { EXPLORE_FALLBACK } from "@features/explore/core/explore-history.ts";
 import { BookingService } from "@features/view/core/BookingService.ts";
 import { useBookingSeam } from "@features/view/core/booking-seam.ts";
 // The service modal's preview renders the `/view` page's own parts and the booking modals reuse its
@@ -31,49 +24,52 @@ import "../styles/profile.css";
 import "../styles/profile-hire.css";
 import { AvatarEditor } from "../components/AvatarEditor.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
+import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
 import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
-import { AddToProjectMenu } from "../components/hire/AddToProjectMenu.tsx";
-import { HireMenu } from "../components/hire/HireMenu.tsx";
 import ConsultationModal from "../components/hire/ConsultationModal.tsx";
 import CreateProjectWizard from "../components/hire/CreateProjectWizard.tsx";
 import ProjectAssignModal from "../components/hire/ProjectAssignModal.tsx";
 import ServiceDetailModal from "../components/hire/ServiceDetailModal.tsx";
-import { type EstimatedSpend, type HireProject, rigFor } from "../core/profile-model.ts";
+import { type EstimatedSpend, type HireProject, isSellerKind } from "../core/profile-model.ts";
+import { announce, NOTE_TTL_MS } from "../core/rig-actions.ts";
 import {
+	consultOpen,
 	editedAvatar,
 	editedShowcase,
-	following,
-	quickMessageOpen,
+	liveConsultation,
+	pickedProject,
+	pickedService,
+	wizardOpen,
 } from "../core/profile-state.ts";
 import { withPrimaryImage } from "../core/showcase-model.ts";
+import { useCondenseProbe } from "../hooks/useCondenseProbe.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
+import { useReturnFocus } from "../hooks/useReturnFocus.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
 
 /**
- * ProfileHero — the split hero of the `/[handle]` profile: the identity column (72px avatar · name +
- * trust crest · `@handle` and entity kind · the action rig · the inline metrics strip) beside the
- * showcase frame, which is simply absent — no placeholder — when the profile has no showreel or
- * cover.
+ * ProfileHero — the split hero of the `/[handle]` profile: the identity column (the contextual Back
+ * control · 72px avatar · name + trust crest · `@handle` and entity kind · the action rig · the
+ * inline metrics strip) beside the showcase frame, which is simply absent — no placeholder — when
+ * the profile has no showreel or cover.
  *
- * # The rig (root CLAUDE.md §8 Decision #108)
+ * # The rig (root CLAUDE.md §8 Decision #108) is shared, and the flows are mounted HERE
  *
- * A SELLER leads with **Hire** and **Add to project**, with Message + Follow folded into icon-only
- * secondaries beside them (each with the portal `Tooltip` + `aria-label` §B.6 requires). Both
- * conversion controls open a POPOVER at the button — never a scroll to the Services row:
+ * The controls are the {@link ProfileRig} — the same component the sticky header band renders once
+ * the hero has scrolled away — and what they do lives in `core/rig-actions.ts`. This island is
+ * where the flows those controls open are MOUNTED, exactly once: the {@link ServiceDetailModal}, the
+ * {@link ProjectAssignModal}, the {@link ConsultationModal} and the {@link CreateProjectWizard} all
+ * open on the shared signals in `core/profile-state.ts`, so a Hire row picked in the band's popover
+ * opens the same modal a row picked here does, with no second copy of the buyer's inputs.
  *
- *  - **Hire** lists the seller's listings (thumbnail · title · starting price · rating), and a
- *    "Book consultation" row carrying its price or Free when the seller takes calls. A listing opens
- *    the {@link ServiceDetailModal}; the consultation opens the {@link ConsultationModal}. It renders
- *    only when there is something to show — a listing or a consultation.
- *  - **Add to project** lists the viewer's open projects, published first, under a persistent
- *    "Create new project" row, behind a leading `plus` glyph. A project opens the
- *    {@link ProjectAssignModal}; Create opens the {@link CreateProjectWizard}. Present for a
- *    SIGNED-IN viewer only — its rows are the viewer's own projects, and a guest has none.
+ * # The scroll probe lives on the rig
  *
- * Which is the filled primary is `rigFor`'s decision. A BUYER keeps Message as its text primary
- * with Follow beside it. The OWNER sees Settings + Share and the two image pickers.
+ * `useCondenseProbe` watches the action row: the moment its bottom edge scrolls under the line the
+ * header band pins to, the band reveals with the same identity and the same rig — so the controls
+ * the reader just lost come back where they went, and the two copies of the filled Hire are never
+ * on screen together (§B.8.2, mutually exclusive by render condition).
  *
  * # A guest is intercepted, not bounced
  *
@@ -88,14 +84,9 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  *
  * The SSR paint carries the server's call offer; the `callOffer` axis of the Dev Context Switcher
  * is a CLIENT seam the server never saw, so the hero re-reads the offer through
- * `/api/services/call-offer` whenever the seam changes (the `BookingPanels` precedent), and the
- * Hire popover's consultation row appears or withdraws with it — no reload.
- *
- * # Following is acknowledged
- *
- * A successful follow plays a brief, purely decorative acknowledgement — a `scale(1.15) → 1` settle
- * on the control and a six-dot burst behind it, on `transform` and `opacity` only (§B.12), removed by
- * both reduced-motion channels. The pressed state itself carries the fact; the motion decorates it.
+ * `/api/services/call-offer` whenever the seam changes (the `BookingPanels` precedent) and writes
+ * the answer to the shared `liveConsultation` signal, so BOTH rigs' consultation rows appear or
+ * withdraw with it — no reload.
  *
  * An owner changes the profile photo through the {@link AvatarEditor} — the avatar itself is the
  * trigger — and the showcase's primary still through the Asset Picker; each edit lands in a shared
@@ -123,11 +114,6 @@ export interface ProfileHeroProps {
 }
 
 const PICKER_ID = "profile-image";
-const STATUS_TTL_MS = 2500;
-/** A note about a saved photo or a sent assignment needs longer than a two-word acknowledgement. */
-const NOTE_TTL_MS = 8000;
-const CELEBRATE_MS = 700;
-const BURST_DOTS = 6;
 
 export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	const { profile, canEdit, authed, services, spend, hireProjects, defaultCurrency, scopeId } =
@@ -140,61 +126,46 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	);
 	const bareHandle = profile.handle.replace(/^@+/, "");
 	const editorOpen = useSignal(false);
-	/** The two popovers' open states — controlled, so picking a row can close them. */
-	const hireOpen = useSignal(false);
-	const addOpen = useSignal(false);
-	/** The listing picked in the Hire popover; non-null opens the service modal. */
-	const pickedService = useSignal<ServiceItem | null>(null);
-	/** The project picked in the Add-to-project popover; non-null opens the assignment modal. */
-	const pickedProject = useSignal<HireProject | null>(null);
-	const consultOpen = useSignal(false);
-	const wizardOpen = useSignal(false);
-	/** The live call offer — the SSR one until the developer seam re-reads it. */
-	const consultation = useSignal<PublicCallOffer | null>(props.consultation);
-	const status = useSignal("");
-	const celebrating = useSignal(false);
-	const statusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	const celebrateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	/** The live call offer — the server's until the developer seam re-reads it. */
+	const consultation = liveConsultation.value === undefined
+		? props.consultation
+		: liveConsultation.value;
+	const rigHost = useRef<HTMLDivElement>(null);
 
 	/**
-	 * The two rig triggers, for focus RETURN. Every flow here is opened from a popover ROW, and the
-	 * row closes with its popover the moment it is picked — so when the modal it opened closes,
-	 * the dialog's own restore finds the element it remembered disconnected and does nothing, and
-	 * focus falls to `<body>` (the Decision #68 defect). Hand it back to the rig control that
-	 * opened the popover instead — only on an open → closed transition, and only when focus was
-	 * actually lost, so the page's own load focus is never touched.
+	 * Focus RETURN for the four flows: when the one in progress closes and focus has fallen to
+	 * `<body>`, hand it back to the rig control — in the hero or in the band — that opened the
+	 * popover it started from.
 	 */
-	const hireTriggerRef = useRef<HTMLButtonElement | null>(null);
-	const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const hireFlowOpen = pickedService.value !== null || consultOpen.value;
 	const addFlowOpen = pickedProject.value !== null || wizardOpen.value;
-	useReturnFocus(hireFlowOpen, hireTriggerRef);
-	useReturnFocus(addFlowOpen, addTriggerRef);
+	useReturnFocus(hireFlowOpen);
+	useReturnFocus(addFlowOpen);
+
+	// The band's probe watches the action row itself.
+	useCondenseProbe(rigHost);
 
 	const reduced = useReducedMotion();
 
-	useEffect(() => () => {
-		clearTimeout(statusTimer.current);
-		clearTimeout(celebrateTimer.current);
-	}, []);
-
 	// Re-read the call offer when the Dev Context Switcher's `callOffer` axis changes. Inert in
 	// production (`useBookingSeam` never fires there); a seam flip re-resolves the SAME derivation the
-	// server used, so the consultation row appears or withdraws without a reload.
+	// server used, so the consultation row appears or withdraws without a reload — in both rigs.
 	useBookingSeam((sim) => {
 		void (async () => {
 			const res = await BookingService.callOffer(bareHandle, sim);
-			if (res.ok && res.data) consultation.value = res.data.callOffer;
+			if (res.ok && res.data) liveConsultation.value = res.data.callOffer;
 		})();
 	});
 
-	function announce(text: string, ttl = STATUS_TTL_MS): void {
-		status.value = text;
-		clearTimeout(statusTimer.current);
-		statusTimer.current = setTimeout(() => {
-			status.value = "";
-		}, ttl);
-	}
+	// The shared flow signals are module-level; leaving the page must not strand a modal open for
+	// the next profile this tab renders.
+	useEffect(() => () => {
+		pickedService.value = null;
+		pickedProject.value = null;
+		consultOpen.value = false;
+		wizardOpen.value = false;
+		liveConsultation.value = undefined;
+	}, []);
 
 	function chooseShowcase(): void {
 		openPicker({
@@ -216,49 +187,6 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		else announce("Profile photo updated");
 	}
 
-	/**
-	 * Share opens the platform-wide share modal (the `ShareHost` every shell mounts): the ranked people
-	 * picker, the external intents and Copy link in one place — the same sheet a listing or a project
-	 * card opens, so a profile is not the one thing on the site with a private share vocabulary.
-	 */
-	function share(): void {
-		requestShare({ href: profileHref(profile.handle), title: profile.name, noun: "profile" });
-	}
-
-	/** A guest's account-bound press opens the prompt; `true` when it was intercepted. */
-	function gate(intent: SignInIntent): boolean {
-		if (authed) return false;
-		requestSignIn({ intent, returnTo: currentPath(), subject: profile.name });
-		return true;
-	}
-
-	function openMessage(): void {
-		if (gate("message")) return;
-		quickMessageOpen.value = true;
-	}
-
-	// ---- The two popovers' rows ----
-	function pickService(service: ServiceItem): void {
-		hireOpen.value = false;
-		pickedService.value = service;
-	}
-
-	function pickConsultation(): void {
-		hireOpen.value = false;
-		consultOpen.value = true;
-	}
-
-	function pickProject(project: HireProject): void {
-		addOpen.value = false;
-		pickedProject.value = project;
-	}
-
-	function openWizard(): void {
-		addOpen.value = false;
-		if (gate("hire")) return;
-		wizardOpen.value = true;
-	}
-
 	function onAssigned(project: HireProject, placeholder: boolean): void {
 		announce(
 			placeholder
@@ -268,83 +196,25 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		);
 	}
 
-	function toggleFollow(): void {
-		if (gate("follow")) return;
-		const next = !following.value;
-		following.value = next;
-		announce(next ? `Following ${profile.name}` : `Unfollowed ${profile.name}`);
-		clearTimeout(celebrateTimer.current);
-		celebrating.value = next;
-		if (next) {
-			celebrateTimer.current = setTimeout(() => {
-				celebrating.value = false;
-			}, CELEBRATE_MS);
-		}
-	}
-
-	const rig = rigFor(profile.kind, {
-		hasServices: services.length > 0,
-		offersConsultation: consultation.value !== null,
-		authed,
-	});
-	const isFollowing = following.value;
 	const tier = TIER_META[profile.tier];
-	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
-	const followText = isFollowing ? "Following" : "Follow";
-	const filled =
-		"ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded";
-	const outlined =
-		"ui-button ui-button--primary ui-button--outlined ui-button--size-md ui-button--rounded";
-
-	const burst = celebrating.value
-		? (
-			<span class="pf-burst" aria-hidden="true">
-				{Array.from(
-					{ length: BURST_DOTS },
-					(_, i) => <i class="pf-burst__dot" key={i} style={`--pf-burst-i:${i}`} />,
-				)}
-			</span>
-		)
-		: null;
-
-	/** The seller rig's icon-only Message + Follow pair. */
-	const iconPair = (
-		<>
-			<Tooltip content="Message" placement="bottom">
-				<Button
-					rounded
-					iconOnly
-					size="md"
-					variant="outlined"
-					class="pf-hero__cta pf-hero__cta--secondary pf-hero__cta--icon"
-					aria-label={`Message ${profile.name}`}
-					icon={<Icon name="message" size="sm" />}
-					onClick={openMessage}
-				/>
-			</Tooltip>
-			<span class="pf-hero__follow" data-celebrate={celebrating.value ? "true" : undefined}>
-				<Tooltip content={followText} placement="bottom">
-					<Button
-						rounded
-						iconOnly
-						size="md"
-						variant="outlined"
-						class="pf-hero__cta pf-hero__cta--secondary pf-hero__cta--icon pf-hero__cta--follow"
-						aria-label={followLabel}
-						aria-pressed={isFollowing}
-						icon={<Icon name={isFollowing ? "check" : "user-plus"} size="sm" />}
-						onClick={toggleFollow}
-					/>
-				</Tooltip>
-				{burst}
-			</span>
-		</>
-	);
+	const seller = !canEdit && isSellerKind(profile.kind);
 
 	return (
 		<>
 			<header class="pf-hero" data-showcase={showcase ? "true" : "false"}>
 				<div class="pf-hero__id">
+					{
+						/* The breadcrumb position: the way back into the Explore tree, above the
+					    identity. A real anchor to `/explore` until hydration, then to the exact page
+					    the visitor came from (their search, filters intact). */
+					}
+					<ExploreBackNav
+						variant="text"
+						fallback={EXPLORE_FALLBACK}
+						fallbackLabel="Back to Explore"
+						class="pf-hero__back"
+					/>
+
 					<div class="pf-hero__avatarwrap">
 						{canEdit
 							? (
@@ -405,136 +275,21 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						<span>{ENTITY_META[profile.kind].label}</span>
 					</p>
 
-					<div class="pf-hero__actions" data-rig={canEdit ? "owner" : rig.layout}>
-						{canEdit
-							? (
-								<>
-									<a class={`${filled} pf-hero__cta pf-hero__cta--primary`} href="/settings">
-										<span class="ui-button__label">Settings</span>
-									</a>
-									<Button
-										rounded
-										size="md"
-										variant="outlined"
-										class="pf-hero__cta pf-hero__cta--secondary"
-										onClick={share}
-									>
-										Share
-									</Button>
-								</>
-							)
-							: rig.layout === "seller"
-							? (
-								<>
-									{rig.hire && (
-										<Popover
-											open={hireOpen}
-											placement="bottom-start"
-											class="pf-hiremenu-pop"
-											label={`Hire ${profile.name}`}
-											trigger={(api) => (
-												// A native element: `Button` is a plain function component, so a `ref` on it
-												// never reaches the DOM node the popover has to measure.
-												<button
-													type="button"
-													ref={bindTrigger(api.ref as RefObject<HTMLButtonElement>, hireTriggerRef)}
-													class={`${filled} pf-hero__cta pf-hero__cta--primary pf-hero__cta--hire`}
-													aria-haspopup="dialog"
-													aria-expanded={api.expanded ? "true" : "false"}
-													aria-controls={api.panelId}
-													onClick={() => {
-														if (gate("hire")) return;
-														api.toggle();
-													}}
-												>
-													<span class="ui-button__label">Hire</span>
-												</button>
-											)}
-										>
-											<HireMenu
-												services={services}
-												consultation={consultation.value}
-												sellerName={profile.name}
-												onPickService={pickService}
-												onPickConsultation={pickConsultation}
-											/>
-										</Popover>
-									)}
-									{rig.addToProject && (
-										<Popover
-											open={addOpen}
-											placement="bottom-start"
-											class="pf-addmenu-pop"
-											label={`Add ${profile.name} to a project`}
-											trigger={(api) => (
-												<button
-													type="button"
-													ref={bindTrigger(api.ref as RefObject<HTMLButtonElement>, addTriggerRef)}
-													class={`${rig.primary === "add" ? filled : outlined} pf-hero__cta ${
-														rig.primary === "add"
-															? "pf-hero__cta--primary"
-															: "pf-hero__cta--secondary"
-													} pf-hero__cta--add`}
-													aria-haspopup="dialog"
-													aria-expanded={api.expanded ? "true" : "false"}
-													aria-controls={api.panelId}
-													onClick={api.toggle}
-												>
-													<span class="ui-button__icon">
-														<Icon name="plus" size="sm" aria-hidden />
-													</span>
-													<span class="ui-button__label">Add to project</span>
-												</button>
-											)}
-										>
-											<AddToProjectMenu
-												projects={hireProjects}
-												sellerName={profile.name}
-												onPickProject={pickProject}
-												onCreate={openWizard}
-											/>
-										</Popover>
-									)}
-									{iconPair}
-								</>
-							)
-							: (
-								<>
-									<Button
-										rounded
-										size="md"
-										class="pf-hero__cta pf-hero__cta--primary"
-										onClick={openMessage}
-									>
-										Message
-									</Button>
-									<span
-										class="pf-hero__follow"
-										data-celebrate={celebrating.value ? "true" : undefined}
-									>
-										<Button
-											rounded
-											size="md"
-											variant="outlined"
-											class="pf-hero__cta pf-hero__cta--secondary pf-hero__cta--follow"
-											aria-pressed={isFollowing}
-											aria-label={followLabel}
-											icon={isFollowing ? <Icon name="check" size="sm" /> : undefined}
-											onClick={toggleFollow}
-										>
-											{followText}
-										</Button>
-										{burst}
-									</span>
-								</>
-							)}
-						<p
-							class={status.value ? "pf-hero__status" : "pf-hero__status ui-visually-hidden"}
-							role="status"
-							aria-live="polite"
-						>
-							{status.value}
-						</p>
+					{
+						/* The probe's subject is the wrapper, not the rig: the rig renders its own root and
+					    a ref on a function component never reaches a DOM node. */
+					}
+					<div ref={rigHost} class="pf-hero__rigslot">
+						<ProfileRig
+							profile={profile}
+							canEdit={canEdit}
+							authed={authed}
+							services={services}
+							consultation={consultation}
+							hireProjects={hireProjects}
+							variant="hero"
+							class="pf-hero__actions"
+						/>
 					</div>
 
 					<ProfileMetrics profile={profile} spend={spend} />
@@ -562,7 +317,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 			</header>
 
 			{!canEdit && authed && <ProfileMessagePopover profile={profile} />}
-			{!canEdit && rig.layout === "seller" && (
+			{seller && (
 				<>
 					<ServiceDetailModal
 						service={pickedService}
@@ -577,12 +332,12 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						intake={profile.hireIntake ?? []}
 						onAssigned={onAssigned}
 					/>
-					{consultation.value && (
+					{consultation && (
 						<ConsultationModal
 							open={consultOpen}
 							handle={bareHandle}
 							sellerName={profile.name}
-							offer={consultation.value}
+							offer={consultation}
 							authed={authed}
 							onNotice={(text) => announce(text, NOTE_TTL_MS)}
 						/>
@@ -610,56 +365,3 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		</>
 	);
 }
-
-// #region Focus return
-/** Write one DOM node into two refs: the popover's own (it measures the trigger) and ours. */
-function bindTrigger(
-	popoverRef: RefObject<HTMLButtonElement>,
-	own: { current: HTMLButtonElement | null },
-): (el: HTMLButtonElement | null) => void {
-	return (el) => {
-		(popoverRef as { current: HTMLButtonElement | null }).current = el;
-		own.current = el;
-	};
-}
-
-/**
- * When `open` goes true → false and focus has fallen to `<body>`, focus `trigger`.
- *
- * Not immediately: the closing dialog stays MOUNTED for its exit motion — focus still sits on the
- * control that dismissed it and its trap keeps the background `inert` — and a focus call on an
- * inert element is silently ignored. So this polls until the dialog has let go (focus has fallen
- * to `<body>` and the trigger is out from under `[inert]`), because the trap releases from an
- * effect cleanup that fires no event, and gives up after a bounded wait rather than holding a
- * timer for a dialog that never unmounts. Focus that lands anywhere OUTSIDE a dialog meanwhile is
- * somebody else's decision and wins.
- */
-function useReturnFocus(open: boolean, trigger: { current: HTMLButtonElement | null }): void {
-	const wasOpen = useRef(false);
-	useEffect(() => {
-		const before = wasOpen.current;
-		wasOpen.current = open;
-		if (open || !before) return;
-		const deadline = Date.now() + RETURN_FOCUS_WAIT_MS;
-		let id: ReturnType<typeof setTimeout> | undefined;
-		const tick = () => {
-			const el = trigger.current;
-			if (!el) return;
-			const active = document.activeElement;
-			const inDialog = !!active?.closest('[role="dialog"]');
-			if (active && active !== document.body && !inDialog) return;
-			if (inDialog || el.closest("[inert]")) {
-				if (Date.now() < deadline) id = setTimeout(tick, RETURN_FOCUS_POLL_MS);
-				return;
-			}
-			el.focus();
-		};
-		id = setTimeout(tick, 0);
-		return () => clearTimeout(id);
-	}, [open]);
-}
-
-/** How long a closing dialog may keep the background inert before the focus return gives up. */
-const RETURN_FOCUS_WAIT_MS = 1500;
-const RETURN_FOCUS_POLL_MS = 40;
-// #endregion

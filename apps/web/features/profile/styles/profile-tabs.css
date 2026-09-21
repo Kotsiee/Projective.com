@@ -1,47 +1,152 @@
 /*
- * profile-tabs — the four-section tab bar, the profile's one sticky element. Underlined text tabs on
- * ONE shared hairline: the strip draws the hairline, the active tab draws a 2px `--on-surface`
- * underline that lands exactly on it (`inset-block-end: -1px`), so the boundary is one device
- * (§B.4 / §D.4). No pill, no box, no teal.
+ * profile-tabs — the four-section tab bar, in its two states.
  *
- * STICKY, FLUSH UNDER THE HEADER. The bar pins with a zero gap to the bottom edge of whichever shell's
- * header is above it: the authenticated top bar (`--shell-topbar-h`, 48px), or the guest header's
- * SCROLLED pill (`--site-header-pinned-h`) — not the guest header's reserved flow band, which is
- * 1.25rem taller than the floating pill it reserves room for and left a visible seam the tiles
- * scrolled through. The tabs only ever pin once the page has scrolled well past the pill's
- * threshold, so the pinned height is the right one at every moment the bar is stuck.
+ * UNSTUCK (in flow) it is a full-width strip: transparent, sharp-cornered, closed by ONE shared
+ * hairline. The strip draws the hairline, the active tab draws a 2px `--on-surface` underline that
+ * lands exactly on it (`inset-block-end: -1px`), so the boundary is one device (§B.4 / §D.4). No
+ * pill, no box, no teal.
  *
- * FULL-BLEED GROUND, CENTRED CONTENT. The bar sits inside the page gutter, so it bleeds back out by
- * that gutter and pads inward again — its SOLID `--surface` ground (never glass, §B.4.3) then covers
- * the whole column and the tiles scroll cleanly beneath it edge to edge. The list is centred on the
- * OUTER row, never on the scroller: `justify-content: center` on an overflowing scroll container
- * splits the overflow across both ends and strands the first tab, so the row centres and the list
- * shrinks to content, degrading to a start-anchored scroller only when the tabs genuinely do not fit.
+ * STUCK it is a floating pill: the strip lets go of its hairline while the `.pf-tabs__pill` around
+ * the tabs takes the header band's own glass — the same `--surface-1` veil at `--glass-veil-chrome`,
+ * the same `--glass-blur` and `--glass-saturate`, the same `--hairline` contour — on a `::before`
+ * underlay (§B.4.3), plus `--elevation-medium`, because a pill that genuinely floats over scrolling
+ * content is owed the shadow (the guest sub-header's own weight). It is the tabs' own content width,
+ * centred.
+ *
+ * ONE BOX FOR BOTH. The pill has the same geometry in both states — the strip's inline inset became
+ * the pill's padding, and the pill's hairline is drawn on the underlay rather than as a border —
+ * so the transition moves only `border-color`, `opacity` and `box-shadow`. No width, padding or
+ * height animates, the tabs do not move a pixel, and the page beneath never shifts (CLS 0 by
+ * construction — `position: sticky` keeps the bar in flow, so no placeholder is needed to hold its
+ * room). While stuck the transparent strip around the pill lets pointer events fall through to the
+ * content scrolling beneath it; the pill takes them back.
+ *
+ * WHERE IT PINS. A small gap beneath the migrated header band (`--pf-tabs-gap`), which in the
+ * authenticated frame sits under the top bar (`--shell-topbar-h` + `--shell-midnav-header-h`) and in
+ * the guest shell floats under the site header's reserved band (`--site-header-h` +
+ * `--shell-midnav-header-h`). Below the phone cusp the guest shell renders no sub-header at all, so
+ * the bar pins under the SCROLLED pill's bottom edge (`--site-header-pinned-h`) — not the reserved
+ * flow band, which is 1.25rem taller than the pill it reserves room for. The island reads the
+ * resolved value back from the computed `top`, so the offset lives here and nowhere else.
+ *
+ * The list is centred on the OUTER row, never on the scroller: `justify-content: center` on an
+ * overflowing scroll container splits the overflow across both ends and strands the first tab, so
+ * the row centres and the list shrinks to content, degrading to a start-anchored scroller only when
+ * the tabs genuinely do not fit.
  */
+
+/* #region Dock + sentinel */
+/* No box of its own: the bar's sticky containing block must be the SECTION, or it could never pin. */
+.pf-tabsdock {
+    display: contents;
+}
+
+/* Zero height, no margin — it marks the bar's natural position and nothing else. */
+.pf-tabs__sentinel {
+    block-size: 0;
+}
+
+/* #endregion */
 
 /* #region Strip */
 .pf-tabs {
     --pf-tabs-inset: var(--space-6);
+    --pf-tabs-gap: var(--space-2);
+    --pf-tabs-top: calc(
+        var(--shell-topbar-h, 3rem) + var(--shell-midnav-header-h, 3rem) + var(--pf-tabs-gap)
+    );
 
     position: sticky;
-    inset-block-start: var(--shell-topbar-h, 3rem);
+    inset-block-start: var(--pf-tabs-top);
     z-index: var(--z-raised, 2);
     display: flex;
     justify-content: center;
     margin-inline: calc(-1 * var(--pf-gutter));
-    padding-inline: var(--pf-tabs-inset);
-    background: var(--surface);
+    background: transparent;
     border-block-end: var(--hairline);
+    transition: border-color var(--dur-medium) var(--ease-standard);
 }
 
 .guest-shell .pf-tabs {
-    inset-block-start: var(--site-header-pinned-h, 4.25rem);
+    --pf-tabs-top: calc(
+        var(--site-header-h, 5.5rem) + var(--shell-midnav-header-h, 3rem) + var(--pf-tabs-gap)
+    );
+}
+
+@media (max-width: 767px) {
+    .guest-shell .pf-tabs {
+        --pf-tabs-top: calc(var(--site-header-pinned-h, 4.25rem) + var(--pf-tabs-gap));
+    }
 }
 
 @container pf (max-width: 44rem) {
     .pf-tabs {
         --pf-tabs-inset: var(--space-4);
     }
+}
+
+/* Stuck: the strip's hairline goes, and the strip stops catching the pointer around the pill. */
+.pf-tabs[data-stuck="true"] {
+    border-block-end-color: transparent;
+    pointer-events: none;
+}
+
+/*
+ * On the glass an inactive tab takes `--on-surface-variant`: the pill's 76% veil composites against
+ * whatever scrolls beneath it, and over a white tile in dark mode `--text-secondary` measures
+ * 3.59:1 where the variant measures 4.83:1 (the veil scale's own arithmetic). The ink follows the
+ * ground; the active tab is already the page's ink.
+ */
+.pf-tabs[data-stuck="true"] .pf-tab:not([data-active="true"]) {
+    color: var(--on-surface-variant);
+}
+
+.pf-tabs[data-stuck="true"] .pf-tab:hover {
+    color: var(--on-surface);
+}
+
+/* #endregion */
+
+/* #region Pill */
+.pf-tabs__pill {
+    position: relative;
+    display: flex;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding-inline: var(--pf-tabs-inset);
+    border-radius: var(--radius-full);
+    pointer-events: auto;
+    transition: box-shadow var(--dur-medium) var(--ease-standard);
+}
+
+/*
+ * The glass, on an underlay — never `backdrop-filter` on the pill itself, which would re-base any
+ * `position: fixed` descendant (the fixed-overlay trap). Invisible in flow; it fades in when stuck.
+ * The hairline is drawn HERE, inside the underlay's box, so it costs the pill no border width and
+ * the active tab's underline still lands where it always has.
+ */
+.pf-tabs__pill::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    border: var(--hairline);
+    background: color-mix(in srgb, var(--surface-1) var(--glass-veil-chrome), transparent);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-medium) var(--ease-standard);
+}
+
+.pf-tabs[data-stuck="true"] .pf-tabs__pill {
+    box-shadow: var(--elevation-medium);
+}
+
+.pf-tabs[data-stuck="true"] .pf-tabs__pill::before {
+    opacity: 1;
 }
 
 .pf-tabs__list {
@@ -116,13 +221,19 @@
 
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
+    .pf-tabs,
+    .pf-tabs__pill,
+    .pf-tabs__pill::before,
     .pf-tab::after {
-        transition-duration: 0ms;
+        transition: none;
     }
 }
 
+:root[data-motion="reduced"] .pf-tabs,
+:root[data-motion="reduced"] .pf-tabs__pill,
+:root[data-motion="reduced"] .pf-tabs__pill::before,
 :root[data-motion="reduced"] .pf-tab::after {
-    transition-duration: 0ms;
+    transition: none;
 }
 
 /* #endregion */

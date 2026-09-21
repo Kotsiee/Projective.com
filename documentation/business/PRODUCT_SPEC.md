@@ -384,6 +384,35 @@ on "Show all". A product tile is the work tile's register — a prominent pictur
 metadata beneath it — and is sized from the picture's own measured ratio inside the showcase band
 (§Assets & Attachments), so the same picture is the same shape on the profile, on Explore and in an
 entity view's rails.
+
+**The chrome follows the reader down the page.** The hero's controls are the page's one conversion
+rig, and a visitor who has scrolled to the portfolio has scrolled past them — so the moment the rig
+leaves the screen, a condensed identity **migrates into the shell's header band** (the same strip a
+listing's identity condenses into on its own page): the way back, the avatar, the name and its
+crest, `@handle` and the entity kind, the live **Available now ⁄ Away** badge with the seller's
+local time, the rating as one jump to the reviews, and **the same rig** in its compact size. It is
+the hero's rig, not a copy: a listing picked from the band opens the modal a listing picked in the
+hero opens, and the band reveals exactly as the hero's controls leave, so the two are never on
+screen together. Beneath it the four-section tab bar is the page's own sticky element: a plain
+full-width strip in flow, and — once it has scrolled up to a small gap under the band — a floating
+glass pill of the tabs' own width, the same glass as the band, over the content scrolling beneath.
+Nothing about the bar's box changes between the two states, so the page never shifts under the
+reader. On a guest's phone the shell renders no header band, so the hero's rig scrolls away like
+any in-flow control; the tab bar still pins.
+
+**Every page in the Explore tree knows the way back.** A profile and a listing both carry a
+contextual **Back** — in the page's own header (a quiet arrow + "Back" above the profile's avatar;
+the listing's start rail and inline link) and as a compact circle at the start of the migrated
+band. It walks a session-scoped stack of the visitor's own Explore visits (`/explore` with its
+query, `/view/[id]`, and every page under a `/@handle`) — so from a listing it returns to the
+profile it was opened from, and from the profile to the exact `/explore?category=…&price=…` the
+visitor left, filters intact — and falls back to `/explore` when there is nothing beneath it, or
+when the page before was somewhere outside the tree (a project board, the inbox): "back" from a
+profile reached from a project is Explore's root, never a search abandoned ten pages ago. The
+browser's own Back and Forward walk the same stack, and the control prefers the browser's cached
+history entry when it IS the target, so the page comes back as it was left. In the signed-in
+shell, another entity's profile lights **Explore** in the rail and the phone's bottom bar — a
+stranger's page is a discovery destination; the viewer's own profile lights nothing.
 **Work** (the index) shows the client proof, the completed projects, the portfolio, and — for a
 team, business or organisation — the roster. A portfolio tile whose piece is a video carries the
 same control set's compact pair — play ⁄ pause and mute — in its top corner, revealed with the

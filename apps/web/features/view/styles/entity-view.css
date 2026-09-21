@@ -238,30 +238,13 @@
     --evp-pin-lift: 0px;
 }
 
-/* An SVG arrow does not mirror itself under `dir="rtl"` — the glyph is drawn, so it is flipped. */
-[dir="rtl"] .evp__back .ui-icon,
-[dir="rtl"] .evp-navstrip__back .ui-icon {
-    transform: scaleX(-1);
-}
-
+/*
+ * Both Back controls are the explore feature's `ExploreBackNav` (colour, hover, the RTL glyph flip
+ * and the circle's geometry come from its own `back-nav.css`); this sheet only PLACES them — the
+ * inline link's alignment here, the rail's circle size on `.evp-navstrip` below.
+ */
 .evp__back {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
     align-self: flex-start;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
-}
-
-.evp__back:hover {
-    color: var(--on-surface);
-}
-
-.evp__back:focus-visible {
-    outline: none;
-    box-shadow: none;
 }
 
 /*
@@ -304,7 +287,8 @@
  * signed-in reader had no way back at all (measured at 1024 — zero back controls on the page).
  */
 @container evp-body (min-width: 1112px) {
-    .evp__back--laned {
+    /* Two selectors deep, so it outranks the control's own `display` regardless of bundle order. */
+    .evp-frame > .evp__back--laned {
         display: none;
     }
 }
@@ -373,6 +357,9 @@
  * while still looking at the first thing on it.
  */
 .evp-navstrip {
+    /* The rail's Back circle runs at the rail's own width (read by `.ex-back--icon`). */
+    --ex-back-size: var(--evp-navstrip-w);
+
     display: none;
     grid-area: nav;
     position: sticky;
@@ -397,37 +384,6 @@
  * The way out is this strip everywhere: one transparent affordance in the page's own start column,
  * with no rail, no background and no container around it.
  */
-
-.evp-navstrip__back {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--evp-navstrip-w);
-    block-size: var(--evp-navstrip-w);
-    border-radius: var(--radius-full);
-    color: var(--text-secondary);
-    background: transparent;
-    text-decoration: none;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard);
-}
-
-.evp-navstrip__back:hover {
-    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-    color: var(--on-surface);
-}
-
-.evp-navstrip__back:focus-visible {
-    outline: none;
-    box-shadow: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .evp-navstrip__back {
-        transition: none;
-    }
-}
 
 /*
  * Jump-to-final on both reduced-motion channels. `transition: none`, not a zeroed duration: the token
@@ -2414,6 +2370,23 @@ a.evp-cta__btn--inverted {
     inline-size: 100%;
     min-inline-size: 0;
     padding-inline: var(--space-4);
+}
+
+/* The compact contextual Back at the band's start — the start rail's control, reachable once the
+   rail has scrolled away. Sized to the band's control height (`.ex-back--icon` reads the token). */
+.evp-stickyhead__back {
+    flex: none;
+    --ex-back-size: var(--fld-h-sm);
+}
+
+/* Glass-safe ink (the band's 76% veil composites against whatever scrolls beneath); two selectors
+   deep so it outranks the control's own regardless of bundle order. */
+.evp-stickyhead .evp-stickyhead__back {
+    color: var(--on-surface-variant);
+}
+
+.evp-stickyhead .evp-stickyhead__back:hover {
+    color: var(--on-surface);
 }
 
 /*

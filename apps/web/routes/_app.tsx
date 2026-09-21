@@ -6,6 +6,7 @@ import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.ts
 import ServiceWorkerBridge from "@web/features/shell/islands/ServiceWorkerBridge.island.tsx";
 import ImageFallbackBridge from "@web/features/shell/islands/ImageFallbackBridge.island.tsx";
 import OfflineBridge from "@web/features/shell/islands/OfflineBridge.island.tsx";
+import ExploreHistoryTracker from "@web/features/explore/islands/ExploreHistoryTracker.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
@@ -199,6 +200,13 @@ export default define.page(function App({ Component, state }) {
 				    dropped connection is a property of the session, not of a route. */
 				}
 				<OfflineBridge />
+				{
+					/* The Explore tree's visit stack — what the contextual Back control on a profile or a
+				    listing walks. Records every page (an excursion outside the tree marks the chain as
+				    broken), so it is global for the same reason the bridges above are: the page that
+				    most needs remembering — a filtered `/explore` — renders no Back control itself. */
+				}
+				<ExploreHistoryTracker />
 				{
 					/* The per-request currency for SERVER-rendered money. Context, not the module-level
 				    signal store: a server process renders many viewers concurrently, and a shared signal

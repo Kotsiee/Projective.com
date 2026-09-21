@@ -889,6 +889,18 @@
 				"--strictPort"
 			],
 			"port": 12473
+		},
+		{
+			"name": "web-pfsticky",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"12573",
+				"--strictPort"
+			],
+			"port": 12573
 		}
 	]
 }
