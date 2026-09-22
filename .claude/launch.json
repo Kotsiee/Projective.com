@@ -913,6 +913,40 @@
 				"--strictPort"
 			],
 			"port": 12673
+		},
+		{
+			"name": "web-exlane",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev:mock",
+				"--port",
+				"12773",
+				"--strictPort"
+			],
+			"port": 12773
+		},
+		{
+			"name": "web-invites",
+			"runtimeExecutable": "deno",
+			"runtimeArgs": [
+				"task",
+				"dev",
+				"--port",
+				"12873",
+				"--strictPort"
+			],
+			"port": 12873
+		},
+		{
+			"name": "web-invites-envfix",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = (Get-Content .env | Where-Object { $_ -like 'SUPABASE_SERVICE_ROLE_KEY=*' } | Select-Object -First 1); $env:SUPABASE_SERVICE_ROLE_KEY = $line.Substring($line.IndexOf('=') + 1).Trim('\"'); deno task dev --port 12973 --strictPort"
+			],
+			"port": 12973
 		}
 	]
 }

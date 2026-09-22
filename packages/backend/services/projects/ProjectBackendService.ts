@@ -18,6 +18,14 @@ import {
 	fetchDeclinedInvitations,
 	fetchMemberRoster as fetchLiveMemberRoster,
 } from "./live-members.ts";
+import {
+	applyInviteAction,
+	fetchSentInvitations,
+	forceInviteDecision,
+	insertInvitations,
+	removeMemberRow,
+} from "./live-invites.ts";
+import { serverEnv } from "../../core/env.ts";
 import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import { fetchChannelMessagePage } from "./live-messages.ts";
 import { fetchSubmissionPage } from "./live-submissions.ts";
@@ -68,6 +76,9 @@ import {
 	overlaySummary,
 	putTicketCard,
 	recordCreatedProject,
+	recordInviteAction,
+	recordInviteDecision,
+	recordMemberRemoval,
 	recordProjectArchive,
 	sentMessageCount,
 	setupPatchFrom,
@@ -117,6 +128,9 @@ import {
 	HIRE_RATE_LIMIT,
 	HIRE_RATE_LIMIT_MESSAGE,
 	hireInvitationRefusal,
+	inviteActionFor,
+	invitesForScope,
+	NO_REMOVAL_IMPACT,
 	providerScopedPage,
 	reconcileSetup,
 	resolveHireOffer,
@@ -140,6 +154,8 @@ import type {
 	FileListParams,
 	HireBrief,
 	HireInvitation,
+	InviteActionInput,
+	InviteDecisionInput,
 	MemberInvite,
 	MemberRosterPage,
 	MemberRosterParams,
@@ -150,10 +166,14 @@ import type {
 	ProjectDetail,
 	ProjectFeedParams,
 	ProjectFeedPayload,
+	ProjectMemberRow,
 	ProjectOverview,
 	ProjectSetup,
 	ProjectSummary,
+	RemoveMemberInput,
+	RemoveMemberResult,
 	SendProjectMessage,
+	SentInvitesPage,
 	SubmissionListPage,
 	SubmissionListParams,
 	SubmissionUnit,
@@ -255,6 +275,61 @@ const OPEN_OWNED_FEED: ProjectFeedParams = {
 function liveFailed(method: string, error: unknown): void {
 	const reason = error instanceof Error ? error.message : String(error);
 	console.warn(`[ProjectBackendService.${method}] live read failed, serving fixtures: ${reason}`);
+}
+
+/**
+ * Narrow a roster's invitation list to the routed stage — `invitesForScope`, applied ONCE here for
+ * both branches so the fixture roster, the live roster and the stub overlay all answer a stage page
+ * with the same rule: in a stage channel only the invitations addressed to THAT stage; in project
+ * scope every one; dismissed records nowhere.
+ */
+function scopeInvites(page: MemberRosterPage): MemberRosterPage {
+	const invites = invitesForScope(page.invites, page.stageId);
+	return invites.length === page.invites.length ? page : { ...page, invites };
+}
+
+/**
+ * The roster row a forced acceptance seats on the STUB roster.
+ *
+ * Built from the invitation alone — the person's handle (or the address they were invited at), the
+ * role the invitation promised, the stage it named — with every count at zero: they have only just
+ * joined, so there is nothing to attribute to them yet and nothing a removal would touch. The id is
+ * minted the way `members-fixtures.ts` mints a cast member's (`{slug}-mem-{handle}`), so a fixture
+ * accepted invitation that already names its member resolves to the same row rather than a twin.
+ */
+function stubJoinedMember(
+	page: MemberRosterPage,
+	invite: MemberInvite,
+	nowMs: number,
+): ProjectMemberRow {
+	const bare = invite.handle?.replace(/^@+/, "") ?? null;
+	const local = invite.email.includes("@") && !invite.email.startsWith("@")
+		? invite.email.split("@")[0]
+		: null;
+	const seed = bare ?? local ?? invite.id;
+	const name = bare
+		? bare.split(/[-_.]+/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")
+		: local
+		? local.split(/[-_.]+/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")
+		: "New member";
+	const joinedAt = new Date(nowMs).toISOString();
+	const d = new Date(nowMs);
+	const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+	return {
+		id: `${page.projectId}-mem-${seed}`,
+		party: { name, avatar: null, handle: bare },
+		email: local ? invite.email : "",
+		role: invite.role,
+		assignment: null,
+		presence: "offline",
+		assignedStages: invite.stageName ? [invite.stageName] : [],
+		openTickets: 0,
+		ticketsLabel: "—",
+		joinedAt,
+		joinedLabel: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`,
+		isViewer: false,
+		impact: NO_REMOVAL_IMPACT,
+	};
 }
 
 /**
@@ -954,7 +1029,7 @@ export class ProjectBackendService {
 			if (!live) {
 				return fail(404, { message: `No project found for id "${params.projectId}".` });
 			}
-			return ok({ page: live });
+			return ok({ page: scopeInvites(live) });
 		}
 		// A project this viewer drafted in the stub store has no fixture roster; it answers with its
 		// creator as the sole member, so the profile's assignment modal can open on it.
@@ -963,8 +1038,232 @@ export class ProjectBackendService {
 		if (!page) {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
-		// Invitations sent from a seller's profile fold onto the pending queue (fixture branch only).
-		return ok({ page: overlayMemberRoster(page, actor) });
+		// Invitations sent from a seller's profile, and every stub-path transition on them, fold onto
+		// the list (fixture branch only) BEFORE the stage scoping — a hire may address another stage.
+		return ok({ page: scopeInvites(overlayMemberRoster(page, actor)) });
+	}
+
+	/**
+	 * The client's act on one invitation they sent: `cancel` an open offer, or `dismiss` an answered
+	 * or lapsed record. Which act a row admits is `inviteActionFor`'s decision, re-checked here so the
+	 * list and the write cannot disagree — a stale client that rendered Dismiss on a row the invitee
+	 * has since accepted is refused, not obeyed.
+	 *
+	 * Live: an UPDATE under the owner's own RLS (`live-invites.ts`). Stub: an overlay in the write
+	 * store, so the change survives a reload exactly as a live one would.
+	 */
+	static async inviteAction(
+		input: InviteActionInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ inviteId: string; action: InviteActionInput["action"] }>> {
+		const denied = requireIdentity<{ inviteId: string; action: InviteActionInput["action"] }>(
+			actor,
+			"manage invitations",
+		);
+		if (denied) return denied;
+		const done = { inviteId: input.inviteId, action: input.action };
+		const message = input.action === "cancel" ? "Invitation cancelled." : "Invitation dismissed.";
+
+		const live = await liveWrite(
+			"inviteAction",
+			actor,
+			input.inviteId,
+			message,
+			async (a) => {
+				const outcome = await applyInviteAction(a, input);
+				if (outcome === null) return null;
+				if ("refusal" in outcome) return outcome;
+				return { data: done };
+			},
+			"invitation",
+		);
+		if (live !== undefined) return live;
+
+		const located = this.stubInvite(input.projectId, input.inviteId, actor);
+		if (!located) return notFound("invitation", input.inviteId);
+		const admitted = inviteActionFor(located.invite.status);
+		if (admitted !== input.action) {
+			return fail(409, {
+				message: input.action === "cancel"
+					? `This invitation has already been ${located.invite.status}; it can no longer be cancelled.`
+					: "An open invitation is cancelled, not dismissed.",
+				errors: { inviteId: input.action === "cancel" ? "not_pending" : "still_pending" },
+			});
+		}
+		recordInviteAction(writeOwnerOf(actor), located.page.projectId, input.inviteId, input.action);
+		invalidateProjects(actor);
+		return ok(done, { message });
+	}
+
+	/**
+	 * FORCE an invitee's answer — the Dev Tools Invites window's Accept / Reject, so an invite flow can
+	 * be walked through every state without a second account.
+	 *
+	 * Gated twice, on the SERVER's word: `DENO_ENV` must say development (a request cannot assert its
+	 * way past this — a forced acceptance that shipped to production would be a client granting itself
+	 * a seat on a stranger's project), and the caller must OWN the invitation. The live path then runs
+	 * `projects.fn_apply_invitation_decision` through the service role — the ONE implementation of an
+	 * acceptance, the body the invitee's own RPC runs — so the rows written are the rows a real answer
+	 * writes. The stub path records the same transition in the write store and, on an acceptance, seats
+	 * the invitee on the roster.
+	 */
+	static async decideInvite(
+		input: InviteDecisionInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ invite: MemberInvite | null }>> {
+		if (serverEnv().appEnv !== "development") {
+			return fail(404, { message: "Not found." });
+		}
+		const denied = requireIdentity<{ invite: MemberInvite | null }>(actor, "manage invitations");
+		if (denied) return denied;
+		const message = input.decision === "accept"
+			? "Invitation accepted on the invitee's behalf."
+			: "Invitation declined on the invitee's behalf.";
+
+		const live = await liveWrite(
+			"decideInvite",
+			actor,
+			input.inviteId,
+			message,
+			async (a) => {
+				const outcome = await forceInviteDecision(a, input);
+				if (outcome === null) return null;
+				if ("refusal" in outcome) return outcome;
+				return { data: { invite: outcome.data } };
+			},
+			"invitation",
+		);
+		if (live !== undefined) return live;
+
+		const located = this.stubInvite(input.projectId, input.inviteId, actor);
+		if (!located) return notFound("invitation", input.inviteId);
+		if (located.invite.status !== "pending") {
+			return fail(409, {
+				message: `This invitation has already been ${located.invite.status}.`,
+				errors: { inviteId: "not_pending" },
+			});
+		}
+		const owner = writeOwnerOf(actor);
+		const now = Date.now();
+		const joined = input.decision === "accept"
+			? stubJoinedMember(located.page, located.invite, now)
+			: null;
+		recordInviteDecision(owner, located.page.projectId, input.inviteId, input.decision, joined, now);
+		invalidateProjects(actor);
+		const after = this.stubInvite(input.projectId, input.inviteId, actor);
+		return ok({ invite: after?.invite ?? null }, { message });
+	}
+
+	/**
+	 * Remove an active participant from the engagement, or unassign them from one stage — the action
+	 * an ACCEPTED invitation's row and a member's own kebab both offer.
+	 *
+	 * The consequences are `PRODUCT_SPEC.md` §Freelancer Removal Mid-Ticket, APPLIED on the live path by
+	 * `projects.remove_project_member` (escrow to the freelancer, tickets back to New, assignments
+	 * released, the participant row gone on a whole-project removal) and reported back as the counts
+	 * it touched. The stub path records the removal in the write store and reports the counts the
+	 * roster row already carried, since it has no tickets to move.
+	 */
+	static async removeMember(
+		input: RemoveMemberInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<RemoveMemberResult>> {
+		const denied = requireIdentity<RemoveMemberResult>(actor, "manage members");
+		if (denied) return denied;
+		const message = input.stageId ? "Unassigned from the stage." : "Removed from the project.";
+
+		const live = await liveWrite(
+			"removeMember",
+			actor,
+			input.memberId,
+			message,
+			(a) => removeMemberRow(a, input),
+			"member",
+		);
+		if (live !== undefined) return live;
+
+		const page = this.stubRoster(input.projectId, actor);
+		if (!page) return noSuchProject(input.projectId);
+		const row = page.members.find((m) => m.id === input.memberId);
+		if (!row) return notFound("member", input.memberId);
+		if (row.isViewer) {
+			return fail(409, { message: "You cannot remove yourself.", errors: { memberId: "self" } });
+		}
+		if (row.role === "owner" || row.role === "client") {
+			return fail(409, {
+				message: "The client side of the engagement cannot be removed here.",
+				errors: { memberId: "client_side" },
+			});
+		}
+		if (input.stageId && !page.stages.some((stage) => stage.id === input.stageId)) {
+			return fail(422, {
+				message: "That stage is not part of this project.",
+				errors: { stageId: "unknown_stage" },
+			});
+		}
+		recordMemberRemoval(writeOwnerOf(actor), page.projectId, row.id, input.stageId);
+		invalidateProjects(actor);
+		return ok(
+			{
+				memberId: row.id,
+				removedFrom: input.stageId ? "stage" : "project",
+				impact: row.impact ?? NO_REMOVAL_IMPACT,
+			},
+			{ message },
+		);
+	}
+
+	/**
+	 * Every invitation the caller has sent, grouped by project — the Dev Tools Invites window's read.
+	 * Development-only on the server, like `decideInvite`, because it exists to feed a forcing control
+	 * that must not exist anywhere else.
+	 */
+	static async sentInvites(actor: ReadActor): Promise<ServiceResult<{ page: SentInvitesPage }>> {
+		if (serverEnv().appEnv !== "development") {
+			return fail(404, { message: "Not found." });
+		}
+		const denied = requireIdentity<{ page: SentInvitesPage }>(actor, "see your invitations");
+		if (denied) return denied;
+
+		if (isProjectsBackendLive() && canReadLive(actor)) {
+			try {
+				return ok({ page: await fetchSentInvitations(actor) });
+			} catch (error) {
+				liveFailed("sentInvites", error);
+				return fail(502, { message: "Your invitations could not be read — please try again." });
+			}
+		}
+
+		const feed = await this.list(OPEN_OWNED_FEED, actor);
+		if (!feed.ok || !feed.data) return fail(feed.status, { message: feed.message });
+		const projects: SentInvitesPage["projects"] = [];
+		let total = 0;
+		for (const row of feed.data.items) {
+			const page = this.stubRoster(row.slug, actor);
+			if (!page) continue;
+			const invites = invitesForScope(page.invites, null);
+			total += invites.length;
+			projects.push({ id: row.slug, title: row.title, status: row.status, invites });
+		}
+		return ok({ page: { projects, total } });
+	}
+
+	/** The stub roster for a project slug, with every write-store overlay applied, or `null`. */
+	private static stubRoster(projectId: string, actor: ReadActor): MemberRosterPage | null {
+		const page = findMemberRoster({ projectId }) ?? createdMemberRoster(projectId, actor);
+		return page ? overlayMemberRoster(page, actor) : null;
+	}
+
+	/** One invitation on the stub roster, located by id, or `null` when the project or row is not there. */
+	private static stubInvite(
+		projectId: string,
+		inviteId: string,
+		actor: ReadActor,
+	): { page: MemberRosterPage; invite: MemberInvite } | null {
+		const page = this.stubRoster(projectId, actor);
+		if (!page) return null;
+		const invite = page.invites.find((row) => row.id === inviteId);
+		return invite ? { page, invite } : null;
 	}
 
 	/**
@@ -1063,7 +1362,13 @@ export class ProjectBackendService {
 			const page = findMemberRoster({ projectId: row.slug }) ??
 				createdMemberRoster(row.slug, actor);
 			if (!page) continue;
-			const until = activeInviteCooldown(overlayMemberRoster(page, actor).invites, bare, nowMs);
+			// DISMISSED declines included: a client who acknowledged a refusal still waits out its
+			// cooldown, exactly as the live read — which queries the table, not the list — makes them.
+			const until = activeInviteCooldown(
+				overlayMemberRoster(page, actor, { keepDismissed: true }).invites,
+				bare,
+				nowMs,
+			);
 			if (until) out[row.slug] = until;
 		}
 		return out;
@@ -1151,6 +1456,37 @@ export class ProjectBackendService {
 		// The terms as they will be RECORDED — the project's configured rates, or a placeholder on a
 		// draft that has none yet. Resolved by the SSOT, never summed here.
 		const offer = resolveHireOffer(brief, input);
+		const sentMessage = offer.placeholder ? "Assignment staged." : "Invitation sent.";
+
+		// LIVE: one `projects.invite_to_project` call per stage, each committing the row and routing the
+		// `stage.invite` notification to the invitee through `comms.fn_notify` — the recipient's channel,
+		// quiet-hours, mute and digest preferences are the router's to honour, in one transaction with the
+		// row. The RPC re-derives `placeholder` and re-checks the cooldown; a refusal there is the
+		// database's own sentence, passed through. A thrown live write is a 502, never a fall-through to
+		// the stub (`liveWrite`): an invitation recorded in memory over a database that refused it would
+		// be a send that never happened reported as one that did.
+		const live = await liveWrite<{ invites: MemberInvite[]; total: number; placeholder: boolean }>(
+			"hire",
+			actor,
+			input.projectId,
+			sentMessage,
+			async (a) => {
+				const outcome = await insertInvitations(a, input, offer);
+				if (outcome === null) return null;
+				if ("refusal" in outcome) return outcome;
+				return {
+					data: {
+						invites: outcome.data,
+						total: offer.totalCents ?? 0,
+						placeholder: offer.placeholder,
+					},
+				};
+			},
+		);
+		if (live !== undefined) {
+			return live.ok ? { ...live, status: 201 } : live;
+		}
+
 		const now = Date.now();
 		const at = new Date(now).toISOString();
 		const base = hireInviteCount(owner, brief.projectId);
@@ -1176,10 +1512,7 @@ export class ProjectBackendService {
 		invalidateProjects(actor);
 		return ok(
 			{ invites, total: offer.totalCents ?? 0, placeholder: offer.placeholder },
-			{
-				message: offer.placeholder ? "Assignment staged." : "Invitation sent.",
-				status: 201,
-			},
+			{ message: sentMessage, status: 201 },
 		);
 	}
 

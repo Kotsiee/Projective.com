@@ -317,6 +317,11 @@
 	font-size: var(--text-sm);
 	color: var(--warning);
 }
+/* A ladder row the shape carries but does not require: the hint is a note in the meta register, not
+   the amber "publishing is waiting on this" — see `Section.hintTone`. */
+.psu-section__hint[data-tone="note"] {
+	color: var(--text-secondary);
+}
 
 /* The measure moved up to `.psu`, which centres on it — see the note there on why there is only one. */
 .psu-section__body {

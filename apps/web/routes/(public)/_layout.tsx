@@ -26,11 +26,12 @@ export default define.page(function PublicLayout(ctx) {
 	if (AUTH_PATHS.has(ctx.url.pathname)) {
 		return <ctx.Component />;
 	}
-	// The Search Results filters are relocated out of the page body into the navigation sidebar: the
-	// authed middle-nav lane, or the guest floating aside. Resolved per URL (State B on `/explore` only).
+	// The Search Results filters mount in the AUTHENTICATED frame's middle-nav lane, resolved per URL
+	// (State B on `/explore` only). A guest gets no shell aside here: the dashboard renders its filter
+	// column inside the results body, aligned to the results bar, so the results head spans the page.
 	// The Entity View action panel (`/view/[id]`) mounts in the SAME sidebar slot — the two are mutually
 	// exclusive by route, so the first non-null resolver wins.
-	const filterLane = exploreFilterLaneFor(ctx.url) ??
+	const filterLane = exploreFilterLaneFor(ctx.url, !!ctx.state.isAuthenticated) ??
 		viewLaneFor(ctx.url, !!ctx.state.isAuthenticated, ctx.state.userContext);
 	// Every non-article Entity View mounts its scroll-migrated header in the middle-nav header band;
 	// every other route resolves to `null` (no band).

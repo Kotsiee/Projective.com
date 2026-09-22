@@ -640,6 +640,150 @@
 }
 /* #endregion */
 
+/* #region Invitations list
+   The Invitations region of the Members tab. Separated from the roster above it by SPACING and a
+   section header (§B.4 tier 1 + type register), never a box; rows are divided by one hairline
+   (§B.4 tier 5, one device per boundary). The lifecycle badge is the row's one container — a
+   status is what §B.11 reserves containers for — and every other fact on the row is inline
+   `--text-secondary` text separated by middots. Type sits on the ramp (§A.4): a section-header
+   register for the title, body for the invitee, meta for the facts. */
+.mem-invites {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin-block-start: var(--space-5);
+}
+.mem-invites__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.mem-invites__title {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+/* A count is one of the four things a container may hold (§B.11.3). */
+.mem-invites__count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: 1.5rem;
+	padding: 0 var(--space-2);
+	block-size: 1.35rem;
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+}
+.mem-invites__sub,
+.mem-invites__empty {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+.mem-invites__empty {
+	padding-block: var(--space-4);
+}
+.mem-invites__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.mem-invites__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-block: var(--space-3);
+}
+.mem-invites__row + .mem-invites__row {
+	border-block-start: var(--hairline);
+}
+.mem-invites__main {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+.mem-invites__who {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.mem-invites__meta {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+.mem-invites__note,
+.mem-invites__facts {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.mem-invites__facts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+}
+.mem-invites__actions {
+	display: inline-flex;
+	gap: 2px;
+	flex: none;
+}
+/* A row whose only control is disabled while its write is in flight reads as settled, not broken. */
+.mem-invites__actions .mem-iconbtn:disabled {
+	opacity: var(--fld-disabled-alpha, 0.5);
+	cursor: progress;
+}
+/* #endregion */
+
+/* #region Removal confirmation
+   The consequence list inside `ConfirmDialog`. Prose and a plain list — no box, no severity fill;
+   the accept button's `danger` severity carries the weight, the copy carries the money. */
+.mem-remove {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.mem-remove__lead {
+	margin: 0;
+	color: var(--on-surface);
+}
+.mem-remove__label {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+.mem-remove__label[data-money="true"] {
+	color: var(--warning);
+}
+.mem-remove__notices {
+	margin: 0;
+	padding-inline-start: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+/* #endregion */
+
 /* #region Empty state */
 .mem-empty {
 	display: flex;

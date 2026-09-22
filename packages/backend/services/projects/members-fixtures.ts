@@ -9,11 +9,12 @@ import type {
 	ProjectFormat,
 	ProjectMemberRow,
 	ProjectParty,
+	RemovalImpact,
 	StageAssignment,
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar } from "../../mocks/assets.ts";
-import { findStageChannel } from "@projective/types/projects";
+import { findStageChannel, NO_REMOVAL_IMPACT } from "@projective/types/projects";
 
 /**
  * projects members fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Members
@@ -236,6 +237,7 @@ function baseRows(detail: ProjectDetail, stages: MemberStageRef[]): ProjectMembe
 		}
 		const openTickets = isContributor ? (seed + i * 7) % 5 : 0;
 		const joinedMs = NOW - ((seed % 40) + i * 6 + 3) * DAY;
+		const stagesHeld = [...new Set(assigned)];
 		return {
 			id,
 			party: p.party,
@@ -243,14 +245,34 @@ function baseRows(detail: ProjectDetail, stages: MemberStageRef[]): ProjectMembe
 			role: p.role,
 			assignment: null, // resolved per-channel in `scopeRows`
 			presence: presenceOf(id),
-			assignedStages: [...new Set(assigned)],
+			assignedStages: stagesHeld,
 			openTickets,
 			ticketsLabel: openTickets > 0 ? `${openTickets} open` : "—",
 			joinedAt: new Date(joinedMs).toISOString(),
 			joinedLabel: dateLabel(joinedMs),
 			isViewer: false,
+			impact: impactOf(seed + i, openTickets, stagesHeld.length),
 		};
 	});
+}
+
+/**
+ * What removing this participant would touch, derived from the same seed as their workload.
+ *
+ * Spread deliberately so every branch of `removalNotices` is reachable from the stub: a contributor's
+ * open tickets split between claimed and submitted on the seed, a held stage counts as started on
+ * alternate rows, and leadership — with no tickets and no stages — lands on the "no financial
+ * consequence" sentence. Nothing here is a claim about a real ticket; it is the fixture's answer to
+ * the question the live path counts from `projects.tickets` and `project_stages.status`.
+ */
+function impactOf(seed: number, openTickets: number, stagesHeld: number): RemovalImpact {
+	if (openTickets === 0 && stagesHeld === 0) return NO_REMOVAL_IMPACT;
+	const submittedTickets = openTickets > 0 && seed % 3 === 0 ? 1 : 0;
+	return {
+		claimedTickets: Math.max(0, openTickets - submittedTickets),
+		submittedTickets,
+		startedStages: stagesHeld > 0 ? Math.min(stagesHeld, 1 + (seed % 2)) : 0,
+	};
 }
 
 /**
@@ -392,7 +414,7 @@ function buildInvites(detail: ProjectDetail, stages: MemberStageRef[]): MemberIn
 		},
 	];
 	const today = TODAY;
-	return seeds.map((s, i) => {
+	const invites: MemberInvite[] = seeds.map((s, i) => {
 		const stage = s.withStage && stages.length > 0 ? stages[(seed + i) % stages.length] : null;
 		const declined = s.declinedDaysAgo !== undefined;
 		const at = (declined ? today : NOW) - s.ageDays * DAY;
@@ -413,32 +435,84 @@ function buildInvites(detail: ProjectDetail, stages: MemberStageRef[]): MemberIn
 			declinedAt,
 		};
 	});
+
+	/*
+	 * One ACCEPTED invitation, linked to the row it brought in — Theo Marsh, the supporting cast's
+	 * freelancer, whose participant id `baseRows` mints from his handle. It is addressed to the stage he
+	 * contributes to, so a stage-scoped roster of that stage lists it and a sibling stage's does not,
+	 * and the "Remove" action on an accepted record has a real member to act on. Pinned to the corpus
+	 * clock like every non-decline.
+	 */
+	const theo = stages.find((s) => s.name === stageNameFor(detail, stages, "theo")) ??
+		stages[0] ?? null;
+	const acceptedAt = NOW - 4 * DAY;
+	invites.push({
+		id: `${detail.slug}-inv-accepted`,
+		email: "@theo",
+		handle: "@theo",
+		role: "freelancer",
+		stageId: theo?.id ?? null,
+		stageName: theo?.name ?? null,
+		invitedBy: inviter,
+		invitedAt: new Date(acceptedAt - 2 * DAY).toISOString(),
+		invitedLabel: agoLabel(acceptedAt - 2 * DAY),
+		status: "accepted",
+		acceptedAt: new Date(acceptedAt).toISOString(),
+		memberId: `${detail.slug}-mem-theo`,
+	});
+	return invites;
+}
+
+/**
+ * The name of the FIRST stage a cast member contributes to, by the same arithmetic `baseRows` uses to
+ * assign it — so the accepted invitation above names a stage its member is actually on. `undefined`
+ * when the person is not on the roster or holds no stage.
+ */
+function stageNameFor(
+	detail: ProjectDetail,
+	stages: MemberStageRef[],
+	handle: string,
+): string | undefined {
+	return baseRows(detail, stages).find((r) => r.party.handle === handle)?.assignedStages[0];
 }
 // #endregion
 
 // #region Public builder
-/** Resolve the routed channel's identity (name + kind + whether it is a stage), or null in project scope. */
+/**
+ * Resolve the routed channel's identity (name + kind + whether it is a stage, and which), or null in
+ * project scope. `stageId` is the stage's OWN id (`StageChannel.stageId`, the key the roster's stages
+ * and invitations carry) — equal to the channel id in this corpus, and still read from its own field
+ * so a consumer that later meets a real `comms` channel id is not surprised.
+ */
 function channelIdentity(
 	detail: ProjectDetail,
 	channelId: string | null,
-): { name: string | null; kind: MemberRosterPage["channelKind"]; isStage: boolean } {
-	if (!channelId) return { name: null, kind: null, isStage: false };
+): {
+	name: string | null;
+	kind: MemberRosterPage["channelKind"];
+	isStage: boolean;
+	stageId: string | null;
+} {
+	const none = { name: null, kind: null, isStage: false, stageId: null };
+	if (!channelId) return none;
 	const { general, stages, teams, dms } = detail.channels;
 	for (const c of general) {
-		if (c.id === channelId) return { name: c.name, kind: "general", isStage: false };
+		if (c.id === channelId) return { name: c.name, kind: "general", isStage: false, stageId: null };
 	}
 	const stage = findStageChannel(stages, channelId);
-	if (stage) return { name: stage.name, kind: "stage", isStage: true };
+	if (stage) return { name: stage.name, kind: "stage", isStage: true, stageId: stage.stageId };
 	for (const t of teams) {
 		for (const c of t.channels) {
-			if (c.id === channelId) return { name: c.name, kind: "team", isStage: false };
+			if (c.id === channelId) return { name: c.name, kind: "team", isStage: false, stageId: null };
 		}
 	}
 	for (const d of dms) {
-		if (d.chatId === channelId) return { name: d.party.name, kind: "dm", isStage: false };
+		if (d.chatId === channelId) {
+			return { name: d.party.name, kind: "dm", isStage: false, stageId: null };
+		}
 	}
 	// An unknown segment (e.g. the roster reached via `/projects/{slug}/members`) — treat as project scope.
-	return { name: null, kind: null, isStage: false };
+	return none;
 }
 
 /** Build the full {@link MemberRosterPage} for the request (the stub read path). */
@@ -472,6 +546,7 @@ export function findMemberRoster(params: MemberRosterParams): MemberRosterPage |
 		channelId: scope === "channel" ? channelId : null,
 		channelName: scope === "channel" ? identity.name : null,
 		channelKind: scope === "channel" ? identity.kind : null,
+		stageId: scope === "channel" ? identity.stageId : null,
 		projectTitle: detail.title,
 		format,
 		members: visible,

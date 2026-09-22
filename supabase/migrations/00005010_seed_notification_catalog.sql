@@ -46,6 +46,12 @@ VALUES
 ('application.received',     '{}',                'work',      'medium',   ARRAY['in_app','push']::comms.notification_channel[],         false, false, true,  false, '1 hour',          '/projects/{context_id}',                    NULL, 'Someone applied to your project or stage.'),
 ('application.accepted',     '{}',                'work',      'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              '/projects/{context_id}',                    NULL, 'Your application was accepted.'),
 ('application.declined',     '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              '/projects',                                 NULL, 'Your application was declined.'),
+-- The inviter's side of `stage.invite`: the invitee's answer to an outbound invitation. The accept is
+-- high-signal (a seat just filled and money may move next); the decline is routine and digestible.
+-- Templates are NULL because the router cannot address a project by slug — the emitter passes an
+-- explicit slug-addressed `/projects/{slug}/members` link (Decision #88 retired the uuid address).
+('invitation.accepted',      '{}',                'work',      'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              NULL,                                        NULL, 'Someone accepted your invitation to a project or stage.'),
+('invitation.declined',      '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              NULL,                                        NULL, 'Someone declined your invitation to a project or stage.'),
 -- ── messages ──────────────────────────────────────────────────────────────────────────────────
 ('message.new',              '{}',                'messages',  'medium',   ARRAY['in_app','push']::comms.notification_channel[],         false, false, true,  false, '5 minutes',       '/messages/{entity_id}',                     NULL, 'A new message arrived in a conversation.'),
 ('message.mention',          '{}',                'messages',  'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, '5 minutes',       '/messages/{entity_id}',                     NULL, 'You were @mentioned.'),

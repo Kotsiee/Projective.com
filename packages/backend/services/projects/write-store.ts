@@ -8,6 +8,7 @@ import {
 	type CommitTicket,
 	type CreateSubmission,
 	formatTicketMoney,
+	type InviteStatus,
 	type MemberInvite,
 	type MemberRosterPage,
 	type MessageAttachment,
@@ -17,6 +18,7 @@ import {
 	normaliseSeats,
 	type ProjectDetail,
 	type ProjectFeedPayload,
+	type ProjectMemberRow,
 	type ProjectOverview,
 	type ProjectSetup,
 	type ProjectSetupPatch,
@@ -166,6 +168,34 @@ interface OwnerBucket {
 	 * built from the same slug. On the stub path the two are one string.
 	 */
 	hires: Map<string, MemberInvite[]>;
+	/**
+	 * Transitions applied OVER an invitation — a fixture's or a hire's — keyed by project slug, then
+	 * by invitation id. The invitation itself is never rewritten (the fixtures are shared module state);
+	 * the overlay is folded onto it at read time, so a forced acceptance from the Dev Tools window, a
+	 * cancel or a dismiss all survive a reload exactly the way a moved ticket does.
+	 */
+	invites: Map<string, Map<string, InviteOverlay>>;
+	/** Members an ACCEPTED invitation brought onto the roster, keyed by project slug, newest first. */
+	joined: Map<string, ProjectMemberRow[]>;
+	/**
+	 * Members the client removed, keyed by project slug then by roster row id. `"project"` means they
+	 * left the engagement; a set of stage ids means they were unassigned from those stages only.
+	 */
+	removed: Map<string, Map<string, "project" | Set<string>>>;
+}
+
+/** The stub path's record of what happened to one invitation after it was issued. */
+interface InviteOverlay {
+	/** `accepted` or `declined` — the invitee's (or the Dev Tools window's forced) answer. */
+	status?: Extract<InviteStatus, "accepted" | "declined">;
+	acceptedAt?: string;
+	declinedAt?: string;
+	/** The client acknowledged an answered/lapsed record and took it off the list. */
+	dismissedAt?: string;
+	/** The client withdrew the open offer — the row leaves the list and starts no cooldown. */
+	revoked?: boolean;
+	/** The roster row an acceptance produced. */
+	memberId?: string | null;
 }
 
 /**
@@ -196,6 +226,9 @@ function bucketFor(owner: string): OwnerBucket {
 		messages: new Map(),
 		submissions: new Map(),
 		hires: new Map(),
+		invites: new Map(),
+		joined: new Map(),
+		removed: new Map(),
 	};
 	buckets.set(owner, fresh);
 	return fresh;
@@ -464,6 +497,110 @@ export function appendHireInvites(owner: string, projectId: string, invites: Mem
 export function hireInviteCount(owner: string, projectId: string): number {
 	return peekBucket(owner)?.hires.get(projectId)?.length ?? 0;
 }
+
+/** The overlay slot for one invitation, created on first write. */
+function inviteOverlay(owner: string, projectId: string, inviteId: string): InviteOverlay {
+	const bucket = bucketFor(owner);
+	const byProject = bucket.invites.get(projectId) ?? new Map<string, InviteOverlay>();
+	bucket.invites.set(projectId, byProject);
+	const existing = byProject.get(inviteId);
+	if (existing) return existing;
+	const fresh: InviteOverlay = {};
+	byProject.set(inviteId, fresh);
+	return fresh;
+}
+
+/**
+ * Record the client's act on one invitation: `cancel` withdraws an open offer (it leaves the list
+ * and starts no cooldown); `dismiss` acknowledges an answered or lapsed one (it leaves the list and
+ * keeps its answer — a decline still counts toward the re-invitation cooldown).
+ */
+export function recordInviteAction(
+	owner: string,
+	projectId: string,
+	inviteId: string,
+	action: "cancel" | "dismiss",
+	now: number = Date.now(),
+): void {
+	const overlay = inviteOverlay(owner, projectId, inviteId);
+	if (action === "cancel") overlay.revoked = true;
+	else overlay.dismissedAt = new Date(now).toISOString();
+}
+
+/**
+ * Record an invitation's answer. An acceptance carries the roster row it brought in, which is
+ * appended to the project's members (once — a second acceptance of the same person is a no-op on
+ * the roster).
+ */
+export function recordInviteDecision(
+	owner: string,
+	projectId: string,
+	inviteId: string,
+	decision: "accept" | "decline",
+	joined: ProjectMemberRow | null,
+	now: number = Date.now(),
+): void {
+	const overlay = inviteOverlay(owner, projectId, inviteId);
+	const at = new Date(now).toISOString();
+	if (decision === "decline") {
+		overlay.status = "declined";
+		overlay.declinedAt = at;
+		return;
+	}
+	overlay.status = "accepted";
+	overlay.acceptedAt = at;
+	overlay.memberId = joined?.id ?? null;
+	if (!joined) return;
+	const bucket = bucketFor(owner);
+	const rows = bucket.joined.get(projectId) ?? [];
+	if (!rows.some((row) => row.id === joined.id)) rows.unshift(joined);
+	bucket.joined.set(projectId, rows);
+	// A person who was removed and then re-invited and re-accepted is back.
+	bucket.removed.get(projectId)?.delete(joined.id);
+}
+
+/**
+ * Record a removal: from the whole project (`stageId` null — the row disappears from every roster
+ * and the accepted record that brought them in leaves the list) or from one stage (the row loses
+ * that stage and disappears from that stage's roster alone).
+ */
+export function recordMemberRemoval(
+	owner: string,
+	projectId: string,
+	memberId: string,
+	stageId: string | null,
+	now: number = Date.now(),
+): void {
+	const bucket = bucketFor(owner);
+	const byProject = bucket.removed.get(projectId) ?? new Map<string, "project" | Set<string>>();
+	bucket.removed.set(projectId, byProject);
+	if (stageId === null) {
+		byProject.set(memberId, "project");
+	} else {
+		const current = byProject.get(memberId);
+		if (current === "project") return;
+		const stages = current ?? new Set<string>();
+		stages.add(stageId);
+		byProject.set(memberId, stages);
+	}
+	// The accepted invitations this undoes leave the list; their acceptance stays as history.
+	const overlays = bucket.invites.get(projectId);
+	if (!overlays) return;
+	for (const overlay of overlays.values()) {
+		if (overlay.status === "accepted" && overlay.memberId === memberId && !overlay.dismissedAt) {
+			overlay.dismissedAt = new Date(now).toISOString();
+		}
+	}
+}
+
+/** The stored overlay for one invitation, or `undefined` — the read path must not create one. */
+export function storedInviteOverlay(
+	owner: string,
+	projectId: string,
+	inviteId: string,
+): Readonly<InviteOverlay> | undefined {
+	return peekBucket(owner)?.invites.get(projectId)?.get(inviteId);
+}
 // #endregion
 
 // #region Submission writes
@@ -664,6 +801,7 @@ export function createdMemberRoster(ref: string, actor?: ReadActor): MemberRoste
 		channelId: null,
 		channelName: null,
 		channelKind: null,
+		stageId: null,
 		projectTitle: setup.title,
 		format: setup.format,
 		members: [{
@@ -1042,20 +1180,138 @@ export function overlayMessagePage(
  * workspace opens on a submission that was just created rather than reporting nothing there.
  */
 /**
- * Fold this viewer's profile-side invitations onto a derived {@link MemberRosterPage}.
+ * Fold this viewer's stub-path membership writes onto a derived {@link MemberRosterPage}.
  *
- * Prepended to the pending queue, newest first, only on the fixture branch (the live roster reads
- * the real `projects.project_invitations` rows). Only a MANAGING viewer sees the queue at all, which
- * the fixtures decide by emitting or withholding it — a row is added here only where the page
- * already carries one, so a member who cannot see invitations is not shown their own.
+ * Four overlays, in the order they depend on one another, all on the fixture branch only (the live
+ * roster reads the real tables):
+ *
+ *  1. the invitations sent from a seller's profile join the list, newest first;
+ *  2. every invitation — fixture or hire — takes its recorded transition: a forced or real answer
+ *     (`accepted`/`declined` with its instant and, for an acceptance, the member it produced), a
+ *     cancel (the row leaves), or a dismiss (the row leaves, its answer kept);
+ *  3. the members an acceptance brought in join the roster, taking a contributor seat on a stage
+ *     channel whose stage they were invited to;
+ *  4. the members the client removed leave the roster (whole project) or lose the stage they were
+ *     unassigned from — disappearing from THAT stage's roster and keeping every other seat — and an
+ *     accepted record whose member was removed is retired from the list like a dismissed one.
+ *
+ * Only a MANAGING viewer sees the invitation list at all, which the fixtures decide by emitting or
+ * withholding it; invitations are only ever added where the page already carries a list, so a member
+ * who cannot see invitations is not shown their own. Scoping the list to a stage (`invitesForScope`)
+ * is the service's job, after this, because a hire may address a stage other than the routed one.
+ *
+ * `keepDismissed` keeps a dismissed or retired record on the list WITH its `dismissedAt` instead of
+ * dropping it. It exists for one reader: the re-invitation cooldown, which counts from a decline
+ * whether or not the client has acknowledged it — on the live path that reader queries the table
+ * directly and never sees the list's filter, and the stub must not be more forgiving than the
+ * database. Every roster render leaves it off.
  */
-export function overlayMemberRoster(page: MemberRosterPage, actor?: ReadActor): MemberRosterPage {
-	if (!page.viewerCaps.canInvite) return page;
-	const sent = peekBucket(writeOwnerOf(actor))?.hires.get(page.projectId);
-	if (!sent?.length) return page;
-	const fresh = sent.filter((invite) => !page.invites.some((i) => i.id === invite.id));
-	if (fresh.length === 0) return page;
-	return { ...page, invites: [...fresh, ...page.invites] };
+export function overlayMemberRoster(
+	page: MemberRosterPage,
+	actor?: ReadActor,
+	options: { keepDismissed?: boolean } = {},
+): MemberRosterPage {
+	const bucket = peekBucket(writeOwnerOf(actor));
+	if (!bucket) return page;
+	const slug = page.projectId;
+	let out = page;
+
+	if (page.viewerCaps.canInvite) {
+		const sent = bucket.hires.get(slug) ?? [];
+		const fresh = sent.filter((invite) => !page.invites.some((i) => i.id === invite.id));
+		const overlays = bucket.invites.get(slug);
+		const removed = bucket.removed.get(slug);
+		const invites = [...fresh, ...page.invites]
+			.map((invite) =>
+				applyInviteOverlay(invite, overlays?.get(invite.id), removed, options.keepDismissed === true)
+			)
+			.filter((invite): invite is MemberInvite => invite !== null);
+		out = { ...out, invites };
+	}
+
+	const joined = bucket.joined.get(slug) ?? [];
+	const removed = bucket.removed.get(slug);
+	if (joined.length === 0 && (!removed || removed.size === 0)) return out;
+
+	const stageChannel = out.scope === "channel" && out.channelKind === "stage";
+	const stageNameById = new Map(out.stages.map((stage) => [stage.id, stage.name]));
+	let members = [...out.members];
+	let total = out.total;
+
+	for (const row of joined) {
+		if (members.some((m) => m.id === row.id)) continue;
+		if (removed?.get(row.id) === "project") continue;
+		members.push(
+			stageChannel
+				? {
+					...row,
+					assignment: out.channelName && row.assignedStages.includes(out.channelName)
+						? "contributor"
+						: "observer",
+				}
+				: row,
+		);
+		total += 1;
+	}
+
+	if (removed) {
+		members = members.flatMap((row) => {
+			const mark = removed.get(row.id);
+			if (!mark) return [row];
+			if (mark === "project") {
+				total = Math.max(0, total - 1);
+				return [];
+			}
+			const lostNames = new Set(
+				[...mark].map((stageId) => stageNameById.get(stageId)).filter((n): n is string => !!n),
+			);
+			// Unassigned from the routed stage: they no longer have access to THIS stage's roster.
+			if (stageChannel && out.stageId && mark.has(out.stageId)) return [];
+			return [{ ...row, assignedStages: row.assignedStages.filter((name) => !lostNames.has(name)) }];
+		});
+	}
+
+	return { ...out, members, total };
+}
+
+/**
+ * One invitation with its stub-path transition folded on, or `null` when it has left the list.
+ *
+ * A record whose member was REMOVED is retired like a dismissed one (`removed` names the roster row
+ * an accepted invitation produced, whether the acceptance was the fixture's or a forced one) — a
+ * whole-project removal retires every accepted record for that person, a stage removal only the one
+ * addressed to that stage.
+ */
+function applyInviteOverlay(
+	invite: MemberInvite,
+	overlay: InviteOverlay | undefined,
+	removed: ReadonlyMap<string, "project" | Set<string>> | undefined,
+	keepDismissed: boolean,
+): MemberInvite | null {
+	// A withdrawn offer is gone for every reader: it was never answered, so nothing counts from it.
+	if (overlay?.revoked) return null;
+	let next: MemberInvite = invite;
+	if (overlay?.status === "declined") {
+		next = { ...next, status: "declined", declinedAt: overlay.declinedAt ?? null, memberId: null };
+	} else if (overlay?.status === "accepted") {
+		next = {
+			...next,
+			status: "accepted",
+			acceptedAt: overlay.acceptedAt ?? null,
+			memberId: overlay.memberId ?? null,
+		};
+	}
+	let dismissedAt: string | null = overlay?.dismissedAt ?? next.dismissedAt ?? null;
+	if (!dismissedAt && next.status === "accepted" && next.memberId && removed) {
+		const mark = removed.get(next.memberId);
+		if (mark === "project" || (mark && next.stageId && mark.has(next.stageId))) {
+			// Retired by the removal — the store records no instant for it, so the retirement is dated
+			// to the acceptance it undid rather than invented.
+			dismissedAt = next.acceptedAt ?? next.invitedAt;
+		}
+	}
+	if (!dismissedAt) return next;
+	return keepDismissed ? { ...next, dismissedAt } : null;
 }
 
 export function overlaySubmissionPage(

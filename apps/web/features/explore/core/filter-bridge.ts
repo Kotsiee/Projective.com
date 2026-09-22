@@ -4,10 +4,11 @@ import type { Facet } from "../types/explore-types.ts";
 
 /**
  * filter-bridge — the cross-island channel that connects the relocated Search filter lane (rendered in
- * the navigation sidebar by the shell) to the {@link SearchDashboard} island (which owns the query
- * state + fetching, in the page body). The two are separate hydration roots, but both import this
- * singleton module, so the signals below are one shared instance across them (the same pattern the
- * project board/view/submission islands use — CLAUDE.md Decisions #33/#35).
+ * the AUTHENTICATED shell's middle-nav lane) to the {@link SearchDashboard} island (which owns the
+ * query state + fetching, in the page body). The two are separate hydration roots, but both import
+ * this singleton module, so the signals below are one shared instance across them (the same pattern
+ * the project board/view/submission islands use — CLAUDE.md Decisions #33/#35). A guest's filter
+ * column is rendered by the dashboard itself and never crosses this bridge.
  *
  * Data flows one loop:
  *   SearchDashboard  ──(publishes params + commit on mount/change)──▶  bridge  ──▶  filter lane reads

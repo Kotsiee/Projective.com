@@ -230,6 +230,20 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > (`packages/types/projects/hire.ts`) — never chosen by the caller — and a PUBLISHED project with
 > an unpriced stage is refused rather than staged (root CLAUDE.md §8 Decision #108).
 >
+> **A dismissed record is likewise an ATTRIBUTE, not a state** (2026-09-21). `dismissed_at` records
+> that the client took a `declined`/`expired` record off their Invitations list, or that
+> `remove_project_member` retired an `accepted` one whose member was removed. The status underneath
+> is untouched — a dismissed decline still starts its cooldown, because the cooldown read consults
+> `declined_at` and never the dismissal (`ck_project_invitations_dismissed` keeps it off a `pending`
+> row: an open offer is cancelled, never dismissed). The client's three acts on a record are decided
+> by its status alone (`inviteActionFor`): cancel a pending offer (`→ revoked`), dismiss an answered
+> or lapsed one, remove the freelancer an accepted one brought in. An invitee's answer has ONE
+> implementation, `projects.fn_apply_invitation_decision`, reached by the invitee's own RPC and — in
+> development only — by the Dev Tools Invites window, so a forced answer writes the same rows a real
+> one does. Both grains of invitation emit `stage.invite` to the invitee; the answer emits
+> `invitation.accepted` / `invitation.declined` to the inviter — all through `comms.fn_notify`, so
+> the recipient's channel, quiet-hours, mute and digest preferences are the router's to honour.
+>
 > **Post-onboarding immutability is a CONSTRAINT over the stage-assignment row above, not a
 > lifecycle of its own** — which is why it has no row. Once a seat has genuinely been taken, the
 > engagement's **project type** freezes project-wide and each stage's **ticket price** freezes with

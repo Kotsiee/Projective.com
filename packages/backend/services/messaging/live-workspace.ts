@@ -1105,6 +1105,7 @@ export async function fetchConversationRoster(
 		channelId: conversationId,
 		channelName: title,
 		channelKind: "general",
+		stageId: null,
 		projectTitle: title,
 		format: "one_off",
 		members,

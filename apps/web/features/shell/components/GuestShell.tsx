@@ -7,9 +7,12 @@ import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
 export interface GuestShellProps {
 	/**
 	 * Optional route lane (Green side nav). When present it mounts in a glassmorphic {@link GuestAside}
-	 * on the left — NO drag-resize handle, collapse driven by the lane's own footer toggle. Used by the
-	 * `/[handle]` profile lane and the `/explore` Search Results filters (relocated out of the body).
-	 * Absent on lane-less routes (`/`, the Explore Home feed, …), which render just the header + body.
+	 * on the left — NO drag-resize handle, collapse driven by the lane's own footer toggle. Today only an
+	 * article's table of contents uses it (`viewLaneFor`): the profile mounts none (Decision #96), every
+	 * other Entity View renders its conversion rail as a page column, and the `/explore` Search Results
+	 * render their filter column inside the results body, aligned to the results bar — the shell could
+	 * only place a lane beside the whole body, head included. Absent on lane-less routes (`/`,
+	 * `/explore`, …), which render just the header + body.
 	 *
 	 * When a lane is present the shell switches to a flex-column layout: the aside + body sit in a
 	 * `.guest-shell__region` above a **full-width** `PublicFooter`, and the aside terminates cleanly above

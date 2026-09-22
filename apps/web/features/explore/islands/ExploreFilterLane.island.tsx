@@ -14,11 +14,12 @@ export interface ExploreFilterLaneProps {
 const FIGURE_LOCALE = "en-US";
 
 /**
- * ExploreFilterLane — the Search filters, RELOCATED out of the results body into the navigation sidebar
- * (the guest `ui-guest-aside` for signed-out visitors, the authed middle-nav lane for signed-in ones).
- * The shell mounts it via the route lane slot; it renders the SAME controlled {@link FilterPanel} the
- * dashboard's mobile sheet uses, so the filter design/patterns are unchanged — only the render location
- * moved.
+ * ExploreFilterLane — the Search filters for a SIGNED-IN viewer, RELOCATED out of the results body
+ * into the authenticated shell's middle-nav lane (`exploreFilterLaneFor` mounts it through the route
+ * lane slot). It renders the SAME controlled {@link FilterPanel} the dashboard renders in its guest
+ * column and its mobile sheet, so the filter design/patterns are unchanged — only the render location
+ * differs by shell. A guest never mounts this island: their column is the dashboard's own
+ * (`.ex-dash__aside`), which is why it needs no bridge.
  *
  * State stays in real-time lockstep with the results through the {@link bridgeParams}/{@link bridgeCommit}
  * signal bridge: the lane reads the live params (falling back to its SSR `initialParams` before the

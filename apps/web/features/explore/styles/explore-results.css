@@ -338,12 +338,118 @@
 	color: var(--on-surface);
 }
 
-/* The facet sidebar moved to the navigation rail (guest aside / middle-nav lane), so the results grid is
-   now a single full-width column — the main reclaims the whole content pane. */
+/* The results grid is a single full-width column of its content column — the facet filters are a
+   column of their own (a guest's `.ex-dash__aside`, below) or the shell's middle-nav lane. */
 .ex-dash__grid {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 }
+
+/* #region Results body — the guest filter column beside the bar + feed */
+/*
+ * Below the full-width results head the body is a row: a guest's filter column at the inline-start
+ * edge, then the bar and the feed. The column is a PAGE column, not the shell's floating aside. The
+ * shell can only place a lane beside the whole body, head included, and this one must start where
+ * the results bar starts so the head above it spans the page — a lane whose placement is a
+ * function of the page's own layout is the page's to render (the `/view` conversion rail
+ * precedent). The dashboard renders it for a guest only (the authenticated frame keeps its
+ * middle-nav lane, fed by the `ExploreFilterLane` island) and on desktop only (the bottom sheet is
+ * the phone's filter surface).
+ *
+ * Flex rather than grid, deliberately: the hidden state below pulls the content column over the
+ * collapsed gap with a NEGATIVE inline-end margin, which flex honours on the item's outer size
+ * where a grid track clamps at zero and would leave the gap standing.
+ */
+.ex-dash__body {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--ex-aside-gap);
+}
+
+.ex-dash__content {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+/*
+ * The column's geometry is the guest shell's floating aside geometry (`.ui-guest-aside`,
+ * guest-shell.css), re-homed: an in-flow `position: sticky` item pinned FLUSH under the scrolled
+ * header pill (`--site-header-pinned-h`, site-shell.css — the reserved flow band above it is
+ * 1.25rem taller than the pill it reserves room for), one gap below the pill, its height re-based
+ * on the same edge so the bottom inset lands on the viewport. In flow it starts at the body's top —
+ * the results bar's top — and pins once the page has scrolled that far; a flex item's sticky box is
+ * bounded by the flex CONTAINER, so it comes to rest at the body's foot, above the dashboard's
+ * bottom padding and the footer.
+ *
+ * `flex: 0 0 auto` so `inline-size` is the ONE width the panel has — a `flex-basis` of its own
+ * would override `inline-size` and snap while the width transition ran beside it, unwatched.
+ *
+ * The surface is a SOLID tonal step and a large radius — ONE separation device, and it is the ramp
+ * (§B.4). No shadow: the pin is what makes the panel float, and a second device on a boundary the
+ * tonal step already draws is the §B.4 finding. No glass either: §B.4.3 permits `backdrop-filter`
+ * on viewport-pinned top bars, floating sheets/scrims and marks over photography, and a sticky
+ * in-page panel is none of the three. The shell's aside is grandfathered (Decision #78(d));
+ * extending that to a new panel would choose the wrong side of a rule that is only being
+ * tolerated — the `/view` conversion rail took the same position for the same reason. The
+ * scrollbar track follows the surface it now has (Decision #81: the track is a per-surface fact).
+ */
+.ex-dash__aside {
+	--ex-aside-cur-w: var(--ex-aside-w);
+	position: sticky;
+	inset-block-start: calc(var(--site-header-pinned-h, 4.25rem) + var(--ex-aside-gap));
+	flex: 0 0 auto;
+	inline-size: var(--ex-aside-cur-w);
+	block-size: calc(100dvh - var(--site-header-pinned-h, 4.25rem) - var(--ex-aside-gap) * 2);
+	margin-inline-end: 0;
+	z-index: var(--z-sticky);
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	/* The lane inside owns its OWN scroll (`.ex-filters-lane`); the panel just clips + rounds. */
+	overflow: hidden;
+	--scrollbar-track: var(--surface-1);
+	background: var(--surface-1);
+	border-radius: var(--radius-container-lg);
+	transition:
+		inline-size var(--dur-medium) var(--spring-standard),
+		margin-inline-end var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * Hidden by the results bar's "Hide filters" toggle (`core/filter-visibility.ts`), off the
+ * PRE-PAINTED `:root[data-explore-filters]` attribute so the choice survives a navigation with no
+ * flash. The column keeps its box while its width, opacity and the row gap transition to nothing,
+ * then leaves the accessibility tree and the tab order (`visibility: hidden`, delayed to the end of
+ * the width transition on the way out and immediate on the way back in — a hidden column whose
+ * controls were still focusable would be a keyboard trap into an invisible panel). The content
+ * column reclaims the full inline size because the width collapses with it.
+ */
+:root[data-explore-filters="hidden"] .ex-dash__aside {
+	--ex-aside-cur-w: 0px;
+	opacity: 0;
+	visibility: hidden;
+	margin-inline-end: calc(-1 * var(--ex-aside-gap));
+	transition:
+		inline-size var(--dur-medium) var(--spring-standard),
+		margin-inline-end var(--dur-medium) var(--spring-standard),
+		opacity var(--dur-fast) var(--ease-standard),
+		visibility 0s linear var(--dur-medium);
+}
+
+/* Jump-to-final under BOTH reduced-motion channels (§B.12). */
+@media (prefers-reduced-motion: reduce) {
+	.ex-dash__aside,
+	:root[data-explore-filters="hidden"] .ex-dash__aside {
+		transition: none;
+	}
+}
+
+[data-motion="reduced"] .ex-dash__aside,
+:root[data-motion="reduced"][data-explore-filters="hidden"] .ex-dash__aside {
+	transition: none;
+}
+/* #endregion */
 
 .ex-dash__main {
 	min-inline-size: 0;
@@ -606,19 +712,20 @@
 }
 /* #endregion */
 
-/* #region Relocated filter lane (nav sidebar host) */
+/* #region Filter lane wrapper (both desktop hosts) */
 /*
- * The FilterPanel, RELOCATED out of the results body into the navigation sidebar — the guest floating
- * `.ui-guest-aside` for signed-out visitors, the authed middle-nav lane (`.ui-splitter__body`) for
- * signed-in ones. It's the same controlled `.ex-filters` panel; this wrapper just gives it padding and,
- * in the guest aside, fills the fixed-height glass panel with its own internal scroll.
+ * The FilterPanel's wrapper in its two desktop hosts: the authenticated shell's middle-nav lane
+ * (`.ui-splitter__body`, mounted there by the `ExploreFilterLane` island) and a guest's own
+ * `.ex-dash__aside` column above. It is the same controlled `.ex-filters` panel in both; this
+ * wrapper just gives it padding and, inside the guest column, fills the fixed-height panel with its
+ * own internal scroll.
  */
 .ex-filters-lane {
 	padding: var(--space-4);
 }
 
-/* Guest floating aside: a fixed-height flex column that clips — the lane fills it and owns its scroll. */
-.ui-guest-aside .ex-filters-lane {
+/* Guest column: a fixed-height flex column that clips — the lane fills it and owns its scroll. */
+.ex-dash__aside .ex-filters-lane {
 	flex: 1 1 auto;
 	min-block-size: 0;
 	block-size: 100%;
@@ -965,6 +1072,12 @@
 @media (max-width: 767.98px) {
 	.ex-dash__grid {
 		grid-template-columns: 1fr;
+	}
+
+	/* The guest filter column is a desktop surface (the bottom sheet is the phone's). The island stops
+	   rendering it once hydrated; this covers the SSR HTML in the moment before. */
+	.ex-dash__aside {
+		display: none;
 	}
 
 	/* Rails stay horizontal on mobile; give cells a comfortable peek. The unified feed's column count

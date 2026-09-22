@@ -894,6 +894,17 @@ accepted_at timestamp with time zone,
 -- and starts no cooldown; a declined one is the invitee's, so the inviter waits.
 declined_at timestamp with time zone,
 
+-- The CLIENT took this record off their Invitations list. An ATTRIBUTE of the record, never a status —
+-- the answer underneath is kept exactly as it was. Two paths set it: the client acknowledging a
+-- declined or expired record ("Dismiss"), and `projects.remove_project_member` retiring an ACCEPTED
+-- record whose member has just been removed — the acceptance stays on the row as history
+-- (`accepted_at` is untouched), it simply no longer describes a current member. The decline underneath
+-- a dismissed record still starts the re-invitation cooldown: the cooldown read consults `declined_at`
+-- and never this column, so a client cannot re-invite a day early by dismissing the refusal. A CHECK
+-- below keeps it off an OPEN offer — a pending invitation is cancelled (`revoked`), not dismissed,
+-- because hiding a live offer from the one person who can withdraw it is not an acknowledgement.
+dismissed_at timestamp with time zone,
+
   CONSTRAINT project_invitations_pkey PRIMARY KEY (id),
   CONSTRAINT project_invitations_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE CASCADE,
   CONSTRAINT project_invitations_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id) ON DELETE CASCADE,
@@ -911,6 +922,9 @@ declined_at timestamp with time zone,
   CONSTRAINT ck_project_invitations_accepted_at CHECK ((status = 'accepted') = (accepted_at IS NOT NULL)),
   -- The same pairing for a decline: the cooldown reads `declined_at`, and a declined row with no
   -- instant would be a refusal the cooldown could not count from.
-  CONSTRAINT ck_project_invitations_declined_at CHECK ((status = 'declined') = (declined_at IS NOT NULL))
+  CONSTRAINT ck_project_invitations_declined_at CHECK ((status = 'declined') = (declined_at IS NOT NULL)),
+  -- A dismissal is only ever of a record that is no longer an open offer. Dismissing a pending one
+  -- would hide a live invitation from the one person who can withdraw it.
+  CONSTRAINT ck_project_invitations_dismissed CHECK (dismissed_at IS NULL OR status <> 'pending')
 );
 -- #endregion

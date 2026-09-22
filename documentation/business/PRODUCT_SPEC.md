@@ -948,6 +948,24 @@ There are two primary ways an engagement begins:
   > ("You've sent too many requests recently. Please wait a bit before sending more."). Both
   > guards exist so that saying no once is enough.
 
+  > **The invitation IS the message.** Sending one notifies the invitee through the notification
+  > engine (`stage.invite` — in-app, push and email by default, intersected with THEIR channel,
+  > quiet-hours, mute and digest preferences); the client's intro text rides the invitation itself
+  > and is quoted in that notice. No direct message is posted on the client's behalf — a message the
+  > client did not write is not theirs. The invitee's answer notifies the client the same way
+  > (`invitation.accepted` / `invitation.declined`).
+
+  > **Managing what you sent.** The project's Members page — and each stage's, which lists only the
+  > invitations addressed to THAT stage — shows every invitation with its state (`Pending` ·
+  > `Accepted` · `Declined` · `Expired`) and the one thing the client may do about it: **cancel** an
+  > open offer; **dismiss** a declined or expired record (the decline still counts toward the
+  > cooldown — acknowledging a refusal does not shorten it); and, for an accepted one, **remove** the
+  > freelancer it brought in — from that stage, or from the whole project — behind a confirmation
+  > that states the consequences before they happen: every ticket they hold that is claimed, in
+  > progress or submitted for review has its escrow released to them in full and returns to New (see
+  > §Freelancer Removal Mid-Ticket), a seat on a stage already under way opens up again, and a person
+  > with no work under way is removed at no financial consequence — which the confirmation says too.
+
 ##### Discovery & Courtesy Calls (the third path)
 
 Before either party commits to a negotiation, they may simply **talk**. A discovery call is a
@@ -1381,6 +1399,16 @@ A stepper would impose an order on decisions that have none, and would hide from
 much is left. The setup ladder measures progress instead, and its **required** subset (title, type,
 pricing, one staffing answer) is the narrower gate that opens Preview — so a project can read well
 short of 100% and still be previewable.
+
+**A one-off without milestones relaxes the staffing answer** (2026-09-21). A one-off that does not
+break into stages — a Direct Deliverable staffed by roles, or a flat one-off priced on its single
+stage — is one fixed piece of work, and a client may hire a single freelancer against the brief
+with no team assembled at all. So its **Team roles are optional**: the ladder keeps the row (its
+length does not change with the shape) but no longer gates Preview on it, and the section says so
+rather than implying an omission. The project-level **Timeline preset** is absent on that shape for
+the same reason — it describes how stages run against one another, and there is no run. A pipeline
+that merely has one stage so far is not this: it is a run that has not been built yet, and the form
+keeps asking (`teamRolesRequired` / `timelinePresetApplies`, `packages/types/projects/setup.ts`).
 
 ---
 

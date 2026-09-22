@@ -345,6 +345,15 @@ export const LocalKeys = {
 	/** DEV-ONLY. Whether the Log & API Inspector window is currently OPEN (`"1"`|`"0"`). */
 	DEV_INSPECTOR_WINDOW_OPEN: "pj.local.dev.inspectorWindowOpen",
 	/**
+	 * DEV-ONLY. The Dev Tools Invites window — the draggable QA panel that lists every invitation the
+	 * developer has sent and can FORCE an invitee's answer without a second account. Position (`{x,y}`),
+	 * size (`{w,h}`) and open flag, persisted like the two sibling windows. Inert in production (the Dev
+	 * Tools are build-excluded, and the server answers its endpoints 404 outside development).
+	 */
+	DEV_INVITES_WINDOW_POS: "pj.local.dev.invitesWindowPos",
+	DEV_INVITES_WINDOW_SIZE: "pj.local.dev.invitesWindowSize",
+	DEV_INVITES_WINDOW_OPEN: "pj.local.dev.invitesWindowOpen",
+	/**
 	 * DEV-ONLY. The persisted dev log ring buffer (a JSON `LogEntry[]`), so captured logs survive page
 	 * navigations and hard refreshes (F5). Written through by the logger while "keep logs on refresh" is
 	 * on, and flushed on page unload when it is off. Inert in production (the logger keeps no history

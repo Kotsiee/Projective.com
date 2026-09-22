@@ -26,8 +26,15 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 81 keys
-are seeded (money · work · messages · schedule · discovery · account · system · marketing).
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 83 keys
+are seeded (money · work · messages · schedule · discovery · account · system · marketing) — the two
+added 2026-09-21 are `invitation.accepted` / `invitation.declined`, the inviter's side of
+`stage.invite`, emitted by `projects.fn_apply_invitation_decision` with an explicit slug-addressed
+link (their `action_url_template` is NULL because the router cannot address a project by slug).
+`stage.invite` itself is emitted by `projects.invite_to_project` for BOTH grains — a whole-project
+invitation is the same product event addressed to the whole engagement — with the inviter's DM
+(`/messages/dm-{username}`) as its link, since the catalog's `/projects/{context_id}` template mints
+a uuid address the router no longer serves.
 
 ⚠️ **Deliberately NOT referenced by a foreign key** from `comms.notifications.type`. An unregistered
 key must never raise inside a money-movement RPC — `fn_notify` auto-registers it as

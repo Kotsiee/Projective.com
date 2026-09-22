@@ -51,8 +51,8 @@ const DB_STAGE_STATUS = [
 	"cancelled",
 ] as const;
 
-/** `projects.project_invitations.status` CHECK. */
-const DB_INVITE_STATUS = ["pending", "accepted", "expired", "revoked"] as const;
+/** `projects.project_invitations.status` CHECK (`00000015_tables_projects.sql`). */
+const DB_INVITE_STATUS = ["pending", "accepted", "declined", "expired", "revoked"] as const;
 
 /** The Zod `ProjectStatus` members a stage projection can carry. */
 const ZOD_PROJECT_STATUS = ["draft", "active", "on_hold", "completed", "cancelled"];
@@ -147,21 +147,25 @@ Deno.test("an unknown stage status is active, not draft — the safer way to be 
 
 // #endregion
 
-// #region Invite status — four DB values, two Zod members
+// #region Invite status — five DB values, four Zod members
 
-Deno.test("toInviteStatus returns null for the two states Zod cannot express", () => {
-	assertEquals(toInviteStatus("accepted"), null);
+Deno.test("toInviteStatus returns null only for `revoked`, the client's own withdrawal", () => {
 	assertEquals(toInviteStatus("revoked"), null);
-	// Coercing them to `expired` would be a lie: an accepted invitation is not an expired one, and
-	// this feeds the PENDING queue.
+	// Coercing it to `expired` would be a lie: a withdrawn invitation is not an expired one.
 	assertEquals(toInviteStatus("pending"), "pending");
 	assertEquals(toInviteStatus("expired"), "expired");
+	assertEquals(toInviteStatus("declined"), "declined");
+	// An acceptance stays on the list, badged — the client's action on it is to remove the person.
+	assertEquals(toInviteStatus("accepted"), "accepted");
 });
 
 Deno.test("toInviteStatus handles every value the DB CHECK allows without throwing", () => {
 	for (const member of DB_INVITE_STATUS) {
 		const out = toInviteStatus(member);
-		assert(out === null || out === "pending" || out === "expired");
+		assert(
+			out === null || out === "pending" || out === "accepted" || out === "declined" ||
+				out === "expired",
+		);
 	}
 });
 

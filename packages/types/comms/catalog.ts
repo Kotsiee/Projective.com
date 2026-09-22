@@ -72,6 +72,8 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"application.received",
 	"application.accepted",
 	"application.declined",
+	"invitation.accepted",
+	"invitation.declined",
 	// messages
 	"message.new",
 	"message.mention",

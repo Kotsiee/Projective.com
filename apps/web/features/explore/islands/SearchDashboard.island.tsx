@@ -56,11 +56,22 @@ const CATEGORY_TITLE: Record<ExploreCategory, string> = {
 /**
  * SearchDashboard — the State B orchestrator (the one heavy island). Owns the results dashboard: a
  * `params` signal synced to the URL (`history.pushState` + `popstate`, so refining is instant and
- * shareable), an adaptive collapsible sidebar (→ an iOS bottom-sheet on mobile), the two feed modes
- * (grouped rows, or a window-scrolled infinite feed for an isolated category), and the split-pane
- * detail drawer. THIN: it holds no discovery logic — first paint comes from the SSR `initial`
- * {@link SearchPayload}, and every refinement/page is fetched from `/api/explore/*` via the dumb
- * {@link ExploreService}. The fat {@link ExploreBackendService} owns all ranking/grouping/paging.
+ * shareable), the filter surface (a guest's pinned filter column beside the results, an iOS
+ * bottom-sheet on mobile, and — for a signed-in viewer — the bridge to the shell's middle-nav lane),
+ * the two feed modes (grouped rows, or a window-scrolled infinite feed for an isolated category),
+ * and the split-pane detail drawer. THIN: it holds no discovery logic — first paint comes from the
+ * SSR `initial` {@link SearchPayload}, and every refinement/page is fetched from `/api/explore/*`
+ * via the dumb {@link ExploreService}. The fat {@link ExploreBackendService} owns all
+ * ranking/grouping/paging.
+ *
+ * **Where the filters render is decided by the shell a viewer is in.** The authenticated frame keeps
+ * its middle-nav lane (the `ExploreFilterLane` island, fed through `filter-bridge.ts`) — a full-height
+ * column beside the content pane, where that frame keeps every laned surface's navigation. A GUEST's
+ * column is this island's own: the inline-start column of `.ex-dash__body`, so it starts exactly
+ * where the results bar starts and the results head above spans the whole page. The guest shell's
+ * floating aside could only ever sit beside the whole body, head included, which is why the page
+ * declines that slot (`exploreFilterLaneFor`) and renders the column itself — the `/view`
+ * conversion rail precedent.
  */
 
 // #region Layout constants
@@ -147,9 +158,11 @@ export default function SearchDashboard(
 	// #endregion
 
 	// #region Filter bridge
-	// The facet filters render in the navigation sidebar (guest aside / middle-nav lane) as a separate
+	// For a signed-in viewer the facet filters render in the shell's middle-nav lane as a separate
 	// island. Publish the live params (so the lane reflects state in real time) and this island's commit
 	// (so a facet change there fetches through the SAME path) across the shared filter-bridge signals.
+	// A guest's column is rendered below, in this island, and needs no bridge; publishing is harmless
+	// there (nothing reads it), and keeping one path keeps the two shells from drifting.
 	useSignalEffect(() => {
 		bridgeParams.value = params.value;
 	});
@@ -216,14 +229,18 @@ export default function SearchDashboard(
 	const facets = activeFilterConfigs(p.category, pl.facets);
 	const activeCount = activeFilterCount(p, facets);
 	const headTitle = p.q || CATEGORY_TITLE[p.category];
-	// The sidebar toggle is a GUEST desktop control: the guest aside is the only lane host whose
-	// hidden state this island owns (see filter-visibility.ts); the authed lane belongs to the shell.
-	const showSidebarToggle = !authed && !isMobile;
+	// The guest filter column and its show/hide toggle exist together or not at all: ONE predicate,
+	// so the toggle can never point (`aria-controls`) at a column that is not there. Guest-only —
+	// the authed lane belongs to the shell — and desktop-only, where the mobile sheet is the filter
+	// surface. `isMobile` is `false` on the server, so the column SSRs and the sheet does not; the
+	// stylesheet hides the column below the phone cusp for the moment before hydration removes it.
+	const guestSidebar = !authed && !isMobile;
 	const sidebarHidden = filtersHidden.value;
 
 	// A fresh element per call — never share one VNode instance across render locations, or Preact skips
-	// the second render (the mobile drawer body would come up empty). Used by the mobile filter sheet;
-	// the desktop filters render in the navigation sidebar via the separate ExploreFilterLane island.
+	// the second render (the mobile drawer body would come up empty). Used by the guest column AND
+	// the mobile filter sheet; the signed-in desktop filters render in the shell's middle-nav lane via
+	// the separate ExploreFilterLane island.
 	const renderFilters = () => (
 		<FilterPanel
 			facets={facets}
@@ -248,100 +265,115 @@ export default function SearchDashboard(
 				onRelated={(term) => commit({ ...p, q: term })}
 			/>
 
-			<div class="ex-dash__bar">
-				<div class="ex-dash__lead">
-					<p class="ex-dash__count">
-						<strong>{pl.count}</strong> {pl.count === 1 ? "result" : "results"}
-						{p.q && (
-							<>
-								{" "}
-								<span class="ex-muted">for "{p.q}"</span>
-							</>
-						)}
-					</p>
-					{
-						/* The guest desktop sidebar toggle sits directly beside the count as a quiet, labelled
+			<div class="ex-dash__body">
+				{
+					/* The guest's pinned filter column — the results body's inline-start column, so its top
+				    is the results bar's top. Same controlled FilterPanel as the sheet; the `.ex-filters-lane`
+				    inner box owns the scroll while the aside clips and rounds (explore-results.css). The id
+				    is what the toggle's `aria-controls` names. */
+				}
+				{guestSidebar && (
+					<aside class="ex-dash__aside" id="explore-filter-lane" aria-label="Search filters">
+						<div class="ex-filters-lane">{renderFilters()}</div>
+					</aside>
+				)}
+				<div class="ex-dash__content">
+					<div class="ex-dash__bar">
+						<div class="ex-dash__lead">
+							<p class="ex-dash__count">
+								<strong>{pl.count}</strong> {pl.count === 1 ? "result" : "results"}
+								{p.q && (
+									<>
+										{" "}
+										<span class="ex-muted">for "{p.q}"</span>
+									</>
+								)}
+							</p>
+							{
+								/* The guest desktop sidebar toggle sits directly beside the count as a quiet, labelled
 					    ghost control — the label carries the state and the applied count, so it needs neither a
 					    Tooltip nor the Button's corner badge. */
-					}
-					{showSidebarToggle && (
-						<Button
-							class="ex-dash__sidebar-toggle"
-							variant="text"
-							severity="secondary"
-							size="sm"
-							icon={<Icon name={sidebarHidden ? "filter-off" : "filter"} size="2xs" />}
-							label={`${sidebarHidden ? "Show" : "Hide"} filters${
-								activeCount > 0 ? ` (${activeCount})` : ""
-							}`}
-							aria-pressed={!sidebarHidden}
-							aria-controls="explore-filter-lane"
-							onClick={() => setFiltersHidden(!sidebarHidden)}
-						/>
-					)}
-				</div>
-				<div class="ex-dash__tools">
-					{/* Filters live in the navigation sidebar on desktop; mobile (no aside) opens a bottom sheet. */}
-					{isMobile && (
-						<button
-							type="button"
-							class="ex-dash__filter-btn"
-							onClick={() => (mobileFilters.value = true)}
-							aria-haspopup="dialog"
-						>
-							Filters{activeCount > 0 ? ` (${activeCount})` : ""}
-						</button>
-					)}
-					<SortControl value={p.sort} onChange={setSort} />
-				</div>
-			</div>
+							}
+							{guestSidebar && (
+								<Button
+									class="ex-dash__sidebar-toggle"
+									variant="text"
+									severity="secondary"
+									size="sm"
+									icon={<Icon name={sidebarHidden ? "filter-off" : "filter"} size="2xs" />}
+									label={`${sidebarHidden ? "Show" : "Hide"} filters${
+										activeCount > 0 ? ` (${activeCount})` : ""
+									}`}
+									aria-pressed={!sidebarHidden}
+									aria-controls="explore-filter-lane"
+									onClick={() => setFiltersHidden(!sidebarHidden)}
+								/>
+							)}
+						</div>
+						<div class="ex-dash__tools">
+							{/* Desktop filters are the guest column or the signed-in shell lane; a phone has neither and opens a bottom sheet. */}
+							{isMobile && (
+								<button
+									type="button"
+									class="ex-dash__filter-btn"
+									onClick={() => (mobileFilters.value = true)}
+									aria-haspopup="dialog"
+								>
+									Filters{activeCount > 0 ? ` (${activeCount})` : ""}
+								</button>
+							)}
+							<SortControl value={p.sort} onChange={setSort} />
+						</div>
+					</div>
 
-			<div class="ex-dash__grid">
-				<main class="ex-dash__main">
-					{pl.count === 0
-						? (
-							<EmptyState
-								title="No results yet"
-								description="Try a broader search, clear some filters, or explore a different category."
-							/>
-						)
-						: pl.isolated
-						? (
-							<UnifiedFeed
-								items={items.value}
-								type={p.category as ExploreEntity}
-								loading={loadingMore.value}
-								tail={stall.stalled.value
-									? (
-										<InlineNotice
-											text={OFFLINE_NOTICE_TEXT}
-											actionLabel="Retry"
-											onAction={stall.retry}
-											busy={stall.retrying.value}
-										/>
-									)
-									: null}
-								onReachEnd={loadMore}
-								onSelect={onSelect}
-								ctx={ctx}
-								authed={authed}
-							/>
-						)
-						: (
-							<div class="ex-dash__groups">
-								{pl.groups.map((g) => (
-									<ResultsGroupRow
-										key={g.key}
-										group={g}
-										showAllHref={serializeExploreParams({ ...p, category: g.primary })}
+					<div class="ex-dash__grid">
+						<main class="ex-dash__main">
+							{pl.count === 0
+								? (
+									<EmptyState
+										title="No results yet"
+										description="Try a broader search, clear some filters, or explore a different category."
+									/>
+								)
+								: pl.isolated
+								? (
+									<UnifiedFeed
+										items={items.value}
+										type={p.category as ExploreEntity}
+										loading={loadingMore.value}
+										tail={stall.stalled.value
+											? (
+												<InlineNotice
+													text={OFFLINE_NOTICE_TEXT}
+													actionLabel="Retry"
+													onAction={stall.retry}
+													busy={stall.retrying.value}
+												/>
+											)
+											: null}
+										onReachEnd={loadMore}
 										onSelect={onSelect}
 										ctx={ctx}
 										authed={authed}
 									/>
-								))}
-							</div>
-						)}
-				</main>
+								)
+								: (
+									<div class="ex-dash__groups">
+										{pl.groups.map((g) => (
+											<ResultsGroupRow
+												key={g.key}
+												group={g}
+												showAllHref={serializeExploreParams({ ...p, category: g.primary })}
+												onSelect={onSelect}
+												ctx={ctx}
+												authed={authed}
+											/>
+										))}
+									</div>
+								)}
+						</main>
+					</div>
+				</div>
 			</div>
 
 			{isMobile && (

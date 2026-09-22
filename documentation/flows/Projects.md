@@ -261,7 +261,7 @@ money path — the money path is `finance.escrows.deadline_bonus_*`.
 | :------------- | :----------------------- | :--------------- | :------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Stage price    | T2 pipeline / T1 one-off | `unitPriceCents` | `unit_price_cents`                    | Minor units, non-negative (CHECK). §4.5                                                                                                                                       |
 | Seats          | T2                       | `seatLimit`      | `seat_limit`                          | `NULL` = **Unlimited**; `DEFAULT 3` = limited; `CHECK (> 0)`. **Absent and `null` mean different things** on the payload — absent takes the default 3, `null` means unlimited |
-| Team roles     | T2                       | `roles[]`        | `projects.stage_staffing_roles`       | Max 20. The staffing model a **stage-less** engagement takes instead of stages (`staffedByRoles(structure)`)                                                                  |
+| Team roles     | T3                       | `roles[]`        | `projects.stage_staffing_roles`       | Max 20. The staffing model a **stage-less** engagement takes instead of stages (`staffedByRoles(structure)`). **Optional on a one-off without milestones** (`teamRolesRequired(format, structure)`, 2026-09-21): one fixed deliverable may be hired against with no team assembled, so the ladder row stays but no longer gates Preview. The project-level Timeline preset is likewise **absent** on that shape (`timelinePresetApplies(structure)`) — it describes how stages run against one another, and there is no run |
 | Project budget | —                        | `budget`         | `budget_type` + `budget_amount_cents` | `fixed_price \| hourly_cap`; a `NULL` amount is "not priced yet", which is a different fact from zero                                                                         |
 
 #### 4.5 The stage price reuses `unit_price_cents`
@@ -282,10 +282,11 @@ No controls of its own (`WIZARD_STEP_FIELDS.review` is empty). It renders two de
 
 - **The readiness ladder** — `setupSteps` / `setupCompleteness` / `previewReady` /
   `outstandingSteps` in `packages/types/projects/setup.ts`. Seven rows (Title · Project type ·
-  Description · Pricing · Stages-or-Roles · Rules · Publish), of which four are `required`. The
-  Stages row swaps to a Roles row on `single_task`. The percentage is rounded once, at the one place
-  it is computed, so the bar's `aria-valuenow`, its visible `NN%` and its geometry are the same
-  number.
+  Description · Pricing · Stages-or-Roles · Rules · Publish), of which four are `required` — three
+  on a one-off without milestones, where the Roles row is carried but optional
+  (`teamRolesRequired`). The Stages row swaps to a Roles row on `single_task`. The percentage is
+  rounded once, at the one place it is computed, so the bar's `aria-valuenow`, its visible `NN%`
+  and its geometry are the same number.
 - **The effective-visibility disclosure** (§5).
 
 The draft is created at `status = 'draft'`; publication is

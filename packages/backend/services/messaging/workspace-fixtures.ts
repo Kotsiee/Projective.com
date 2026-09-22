@@ -343,6 +343,7 @@ export function findConversationRoster(conversationId: string): MemberRosterPage
 		channelId: detail.id,
 		channelName: detail.title,
 		channelKind: "general",
+		stageId: null,
 		projectTitle: detail.title,
 		format: "one_off",
 		members: rows,

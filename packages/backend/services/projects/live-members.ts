@@ -10,6 +10,7 @@ import type {
 	MemberViewerCaps,
 	ProjectFormat,
 	ProjectMemberRow,
+	RemovalImpact,
 	StageAssignment,
 } from "@projective/types/projects";
 import {
@@ -112,7 +113,7 @@ const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at";
  * docblock, point 2). A column not selected is a column that cannot be serialised by accident.
  */
 const INVITATION_COLUMNS =
-	"id, project_stage_id, target_email, target_user_id, role, inviter_user_id, status, created_at, expires_at, declined_at, placeholder";
+	"id, project_stage_id, target_email, target_user_id, role, inviter_user_id, status, created_at, expires_at, accepted_at, declined_at, dismissed_at, placeholder";
 
 /**
  * The `projects.stage_assignments.status` values that mean the seat is HELD.
@@ -222,11 +223,29 @@ interface ParticipantRow {
 	created_at: string;
 }
 
-/** One `projects.project_stages` row, reduced to what the stage filter and picker need. */
+/** One `projects.project_stages` row, reduced to what the stage filter, the picker and the removal impact need. */
 interface StageRow {
 	id: string;
 	name: string | null;
 	sort_order: number | null;
+	/** `stage_status` — whether the work on it has started, for `RemovalImpact.startedStages`. */
+	status: string | null;
+}
+
+/**
+ * The `stage_status` members that mean work on the stage is UNDER WAY — the stages a removal counts as
+ * started. `open`/`assigned` have not begun; `approved`/`paid`/`cancelled` have ended.
+ */
+const STARTED_STAGE_STATUS: ReadonlySet<string> = new Set(["in_progress", "submitted", "revisions"]);
+
+/** Per-assignee ticket counts, split the way the removal notices read them. */
+interface TicketTally {
+	/** Every open ticket — the roster's workload figure. */
+	open: number;
+	/** `claimed` + `in_progress` — work the person is doing now. */
+	claimed: number;
+	/** `in_review` — submitted and awaiting the client. */
+	submitted: number;
 }
 
 /** One `projects.stage_assignments` row. `status` is free text — see {@link HELD_ASSIGNMENT_STATUS}. */
@@ -250,7 +269,10 @@ interface InvitationRow {
 	status: string;
 	created_at: string;
 	expires_at: string | null;
+	accepted_at: string | null;
 	declined_at: string | null;
+	/** The client's acknowledgement of a declined/expired record — such a row leaves the list. */
+	dismissed_at: string | null;
 }
 
 /** One `comms.project_channels` row, for the routed channel's identity. */
@@ -381,7 +403,7 @@ function capsFor(role: MemberRole): MemberViewerCaps {
 async function fetchStages(db: SupabaseClient, projectId: string): Promise<StageRow[]> {
 	const { data, error } = await db
 		.from("project_stages")
-		.select("id, name, sort_order")
+		.select("id, name, sort_order, status")
 		.eq("project_id", projectId)
 		.order("sort_order", { ascending: true });
 	if (error) return [];
@@ -431,23 +453,27 @@ async function fetchOpenTicketCounts(
 	db: SupabaseClient,
 	projectId: string,
 	userIds: readonly string[],
-): Promise<Map<string, number>> {
-	const counts = new Map<string, number>();
+): Promise<Map<string, TicketTally>> {
+	const counts = new Map<string, TicketTally>();
 	if (userIds.length === 0) return counts;
 
 	const { data, error } = await db
 		.from("tickets")
-		.select("current_assignee_id")
+		.select("current_assignee_id, status")
 		.eq("project_id", projectId)
 		.in("current_assignee_id", userIds as string[])
 		.in("status", OPEN_TICKET_STATUS as string[])
 		.limit(TICKET_SCAN_CAP);
 	if (error) return counts;
 
-	for (const row of (data ?? []) as { current_assignee_id: string | null }[]) {
+	for (const row of (data ?? []) as { current_assignee_id: string | null; status: string }[]) {
 		const id = row.current_assignee_id;
 		if (!id) continue;
-		counts.set(id, (counts.get(id) ?? 0) + 1);
+		const tally = counts.get(id) ?? { open: 0, claimed: 0, submitted: 0 };
+		tally.open += 1;
+		if (row.status === "claimed" || row.status === "in_progress") tally.claimed += 1;
+		if (row.status === "in_review") tally.submitted += 1;
+		counts.set(id, tally);
 	}
 	return counts;
 }
@@ -522,27 +548,36 @@ async function resolveChannel(
  * nicety: RLS is disabled and `authenticated` holds a blanket grant (module docblock, point 2), so
  * nothing below this function withholds another participant's invitee list.
  *
- * Two status shapes are reconciled. {@link toInviteStatus} drops `accepted` and `revoked`, which are
- * resolved states with no representation in the Zod enum and no business in a PENDING queue.
- * Separately, a row may still say `pending` while its `expires_at` has passed — the column comment is
- * explicit that expiry is a timestamp precisely so a reader can tell "expires next Tuesday" from
- * "expired last Tuesday" without a sweep having run, and `status = 'expired'` is only the sweep's
- * record that it noticed. The timestamp therefore wins over the flag.
+ * Two status shapes are reconciled. {@link toInviteStatus} drops `revoked` — the client's own
+ * withdrawal, which has no business on the client's own list — and keeps `accepted`, which the list
+ * renders badged with a link to the member it brought in ({@link MemberInvite.memberId}), because the
+ * client's action on it is now to remove that person. Separately, a row may still say `pending` while
+ * its `expires_at` has passed — the column comment is explicit that expiry is a timestamp precisely so
+ * a reader can tell "expires next Tuesday" from "expired last Tuesday" without a sweep having run, and
+ * `status = 'expired'` is only the sweep's record that it noticed. The timestamp therefore wins over
+ * the flag.
+ *
+ * A DISMISSED record (`dismissed_at`) is dropped here rather than carried and filtered later: the client
+ * has already acknowledged it, and the only reader that still needs it — the re-invitation cooldown —
+ * reads the table itself (`fetchDeclinedInvitations`), never this list.
  *
  * A failure degrades to `[]`: an empty queue is what a project with no outstanding invitations shows,
  * and a roster is still a roster without it.
  */
-async function fetchInvitations(
+export async function fetchInvitations(
 	actor: ReadActor & { accessToken: string },
 	db: SupabaseClient,
 	projectId: string,
 	stageNames: ReadonlyMap<string, string>,
 	nowMs: number,
+	/** `user_id → roster row id`, so an accepted invitation can point at the member it produced. */
+	seatIdByUser: ReadonlyMap<string, string>,
 ): Promise<MemberInvite[]> {
 	const { data, error } = await db
 		.from("project_invitations")
 		.select(INVITATION_COLUMNS)
 		.eq("project_id", projectId)
+		.is("dismissed_at", null)
 		.order("created_at", { ascending: false });
 	if (error) return [];
 
@@ -560,8 +595,8 @@ async function fetchInvitations(
 
 	return open.map((row) => {
 		const declared = toInviteStatus(row.status) ?? "pending";
-		// A decline is an answer, not an outstanding offer: expiry never re-labels it.
-		const lapsed = declared !== "declined" && row.expires_at
+		// An answer — a decline or an acceptance — is not an outstanding offer: expiry never re-labels it.
+		const lapsed = declared !== "declined" && declared !== "accepted" && row.expires_at
 			? Date.parse(row.expires_at) <= nowMs
 			: false;
 		const invitedAt = toIso(row.created_at);
@@ -586,10 +621,20 @@ async function fetchInvitations(
 			invitedLabel: clamp(agoLabel(invitedAt, nowMs), 28),
 			status: declared === "declined"
 				? "declined"
+				: declared === "accepted"
+				? "accepted"
 				: declared === "expired" || lapsed
 				? "expired"
 				: "pending",
 			declinedAt: declared === "declined" ? toIso(row.declined_at) : null,
+			acceptedAt: declared === "accepted" ? toIso(row.accepted_at) : null,
+			// The participant the acceptance created, when the viewer can see them. An accepted
+			// invitation whose person is not on the roster the viewer reads keeps `null`, and the list
+			// renders the badge without a Remove control rather than a control that reaches nobody.
+			memberId: declared === "accepted" && row.target_user_id
+				? seatIdByUser.get(row.target_user_id) ?? null
+				: null,
+			dismissedAt: null,
 		};
 	});
 }
@@ -714,10 +759,11 @@ function buildRows(
 	parties: ReadonlyMap<string, PartyRow>,
 	assignments: ReadonlyMap<string, Set<string>>,
 	stageNames: ReadonlyMap<string, string>,
-	tickets: ReadonlyMap<string, number>,
+	tickets: ReadonlyMap<string, TicketTally>,
 	viewerUserId: string,
 	viewerEmail: string,
 	channelStageId: string | null,
+	startedStageIds: ReadonlySet<string>,
 ): RosterEntry[] {
 	const entries: RosterEntry[] = seats.map(({ id, userId, role, joinedAt }) => {
 		const held = assignments.get(userId);
@@ -726,7 +772,15 @@ function buildRows(
 				.map((stageId) => stageNames.get(stageId))
 				.filter((name): name is string => !!name)
 			: [];
-		const openTickets = tickets.get(userId) ?? 0;
+		const tally = tickets.get(userId) ?? { open: 0, claimed: 0, submitted: 0 };
+		const openTickets = tally.open;
+		// Counted from the tables, never inferred from `openTickets`: a removal's consequences are the
+		// facts the client is warned about, and a guess here is a warning about the wrong thing.
+		const impact: RemovalImpact = {
+			claimedTickets: tally.claimed,
+			submittedTickets: tally.submitted,
+			startedStages: held ? [...held].filter((stageId) => startedStageIds.has(stageId)).length : 0,
+		};
 		const isViewer = viewerUserId.length > 0 && userId === viewerUserId;
 
 		let assignment: StageAssignment | null = null;
@@ -747,6 +801,7 @@ function buildRows(
 			joinedAt,
 			joinedLabel: clamp(dateLabel(joinedAt), 28),
 			isViewer,
+			impact,
 		};
 		return { userId, row };
 	});
@@ -858,6 +913,10 @@ export async function fetchMemberRoster(
 
 	const seats = mergeParticipants(project, participants);
 	const userIds = seats.map((seat) => seat.userId);
+	const seatIdByUser = new Map(seats.map((seat) => [seat.userId, seat.id]));
+	const startedStageIds = new Set(
+		stageRows.filter((stage) => STARTED_STAGE_STATUS.has(stage.status ?? "")).map((s) => s.id),
+	);
 
 	// Five independent lookups over one already-resolved project. Issued together rather than in
 	// series: none depends on another's result, and awaiting them one at a time would add all five
@@ -883,6 +942,7 @@ export async function fetchMemberRoster(
 		actor.userId,
 		viewerEmail,
 		channelStageId,
+		startedStageIds,
 	);
 
 	// The viewer's own row is the source of their role. A caller holding neither the owner seat nor a
@@ -911,7 +971,7 @@ export async function fetchMemberRoster(
 
 	// The queue is a management concern AND, on this table, an access control — see `fetchInvitations`.
 	const invites = viewerCaps.canInvite
-		? await fetchInvitations(actor, db, project.id, stageNames, nowMs)
+		? await fetchInvitations(actor, db, project.id, stageNames, nowMs, seatIdByUser)
 		: [];
 
 	return {
@@ -920,6 +980,10 @@ export async function fetchMemberRoster(
 		channelId: channel ? clamp(channel.id, 120) : null,
 		channelName: channel ? clamp(channel.name, 160) : null,
 		channelKind,
+		// The stage's ROW id, which is what the invitation rows and the stage picker carry — not the
+		// channel id the URL routed, which is a `comms.project_channels` key. `invitesForScope` narrows
+		// the list on this.
+		stageId: channelStageId ? clamp(channelStageId, 120) : null,
 		projectTitle: clampOr(project.title, 160, "Untitled project"),
 		format: toFormat(project.format),
 		members,

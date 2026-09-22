@@ -850,6 +850,58 @@ export function structureForStages(on: boolean, format: ProjectFormat): ProjectS
 }
 
 /**
+ * Whether this engagement is a one-off WITHOUT milestones — a fixed piece of work that neither breaks
+ * into stages nor runs a sequence.
+ *
+ * The one relaxed shape on the setup surface. Both stage-less structures qualify: a Direct Deliverable
+ * (`single_task`, staffed by roles) and a flat one-off (`single_stage`, priced on its root stage). What
+ * they share is the absence of a stage RUN, and that absence is what the two rules below are keyed on
+ * — nothing about a shape with one unit of execution needs a team assembled before it can be offered,
+ * and nothing about it has a timeline for stages to depend on. A pipeline that merely happens to have
+ * one stage today is NOT this: it is a run that has not been built yet, and the form keeps asking.
+ *
+ * Read by {@link teamRolesRequired} and {@link timelinePresetApplies}. One predicate rather than a
+ * test restated at each site, so the ladder, the section and the Rules form cannot disagree about
+ * which engagement is the relaxed one.
+ */
+export function isFlatOneOff(format: ProjectFormat, structure: ProjectStructure): boolean {
+	return format === "one_off" && !hasStages(structure);
+}
+
+/**
+ * Whether the ladder holds this engagement's publish gate against having a team role.
+ *
+ * Roles are the staffing model a role-staffed engagement (`single_task`) takes instead of stages, so
+ * they are only ever ASKED FOR there — a staged run has no roles section at all. Within that, a
+ * one-off without milestones ({@link isFlatOneOff}) makes them OPTIONAL: a client commissioning one
+ * fixed deliverable may name the seats they want filled, and may equally hire a single freelancer
+ * against the brief with no team at all. Requiring a role there is requiring a decision the work does
+ * not need made.
+ *
+ * Total over every pairing: a role-staffed engagement whose `format` is not `one_off` — a legacy or
+ * hand-written row the create path cannot produce — keeps the requirement, which is the conservative
+ * answer for a shape nobody has reasoned about.
+ */
+export function teamRolesRequired(format: ProjectFormat, structure: ProjectStructure): boolean {
+	return staffedByRoles(structure) && !isFlatOneOff(format, structure);
+}
+
+/**
+ * Whether the project-level Timeline preset (`sequential` · `simultaneous` · `staggered` · `custom`)
+ * has anything to describe.
+ *
+ * The preset says how the STAGES run against one another. An engagement that does not break its work
+ * into stages ({@link hasStages} false) has no sequence for it to describe, so the control would be a
+ * live affordance whose value nothing reads (root CLAUDE.md §3 gate 11) — the same reasoning
+ * {@link stageTimingApplies} applies to a stage's own relative-timing fields. Keyed on the structure
+ * alone, deliberately: a staged run with one stage so far is a run in progress and will read the
+ * preset the moment its second stage exists.
+ */
+export function timelinePresetApplies(structure: ProjectStructure): boolean {
+	return hasStages(structure);
+}
+
+/**
  * Whether every PRIMARY price this engagement owes has been set.
  *
  * "Primary" means the figure escrow actually reads: `project_stages.unit_price_cents` for a staged
@@ -1144,9 +1196,11 @@ export const PUBLISH_LOCK_NOTICES: readonly string[] = [
 /**
  * Build the ladder from a configuration.
  *
- * The `required` set is Title · Format · Pricing · one staffing step. `format` is required AND
- * satisfied from creation: it carries a default at the create modal, so it is what "pre-fill baseline
- * progress from the creation modal" means rather than a step the owner has to go and do.
+ * The `required` set is Title · Format · Pricing · one staffing step — except that the staffing step
+ * is OPTIONAL on a one-off without milestones ({@link teamRolesRequired}), where a fixed deliverable
+ * needs no team assembled before it can be offered. `format` is required AND satisfied from creation:
+ * it carries a default at the create modal, so it is what "pre-fill baseline progress from the
+ * creation modal" means rather than a step the owner has to go and do.
  *
  * `rules` is the same class — every field in {@link ProjectRulesSchema} carries a real term and an
  * empty restriction list is a legitimate answer, so the row records that the terms exist rather than
@@ -1155,6 +1209,8 @@ export const PUBLISH_LOCK_NOTICES: readonly string[] = [
  */
 export function setupSteps(input: ProjectSetupStepsInput): ProjectSetupStep[] {
 	const byRoles = staffedByRoles(input.structure);
+	const rolesRequired = teamRolesRequired(input.format, input.structure);
+	const flat = !byRoles && !hasStages(input.structure);
 	const stageLabel = STAGE_SECTION_LABEL[input.format];
 	const stageItem = STAGE_ITEM_LABEL[input.format];
 	const priced = pricingSatisfied(input);
@@ -1186,15 +1242,28 @@ export function setupSteps(input: ProjectSetupStepsInput): ProjectSetupStep[] {
 			label: "Pricing",
 			done: priced,
 			required: true,
-			hint: byRoles ? "Set the engagement's budget." : `Give every ${stageItem} a price.`,
+			// A flat engagement prices its ONE unit of execution and has no stage or milestone to name, so
+			// the hint names the field the Details section actually draws (`Budget` / `Ticket price`).
+			hint: byRoles
+				? "Set the engagement's budget."
+				: flat
+				? (input.format === "one_off" ? "Set the project's budget." : "Set the ticket price.")
+				: `Give every ${stageItem} a price.`,
 		},
 		byRoles
 			? {
 				key: "roles" as const,
 				label: ROLE_SECTION_LABEL,
 				done: input.roles.length > 0,
-				required: true,
-				hint: "Add at least one team role.",
+				// OPTIONAL on a one-off without milestones (`teamRolesRequired`): one fixed deliverable
+				// may be hired against with no team assembled. The row stays on the ladder either way so
+				// its length does not change with the shape — the same reason the `stages` row stays
+				// `required` for a stage-less run — and `done` still records whether roles exist, so the
+				// bar reflects the work the owner chose to do without gating Preview on it.
+				required: rolesRequired,
+				hint: rolesRequired
+					? "Add at least one team role."
+					: "Optional — add named roles if the work needs specific seats.",
 			}
 			: {
 				key: "stages" as const,

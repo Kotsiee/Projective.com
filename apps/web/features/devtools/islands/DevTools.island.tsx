@@ -10,6 +10,7 @@ import { LocalKeys, readStored, type StorageKey, writeStored } from "@web/utils/
 import { devOverrides, hydrateDevContext, patchDevContext } from "../core/dev-context.ts";
 import { DevContextPanel } from "../components/DevContextPanel.tsx";
 import { LogInspector } from "../components/LogInspector.tsx";
+import { DevInvitesPanel } from "../components/DevInvitesPanel.tsx";
 import {
 	IconClearCache,
 	IconDevTools,
@@ -78,10 +79,17 @@ function writeOpen(key: StorageKey, open: boolean): void {
 /**
  * DevTools — the root Developer-Tools island. Renders the reused `@projective/ui/fields`
  * {@link SpeedDial} — a corner FAB that fans round, icon-only, tooltip-labelled actions out on a
- * quarter-circle arc — that open the Context Switcher and the Log & API Inspector (each a non-modal
- * {@link DraggablePopover}), plus quick "Toggle Ownership" and "Clear Cache" actions. On mount it
- * hydrates the dev-context store and installs the dev-only network + global-error capture (uninstalled
- * on unmount).
+ * quarter-circle arc — that open the Context Switcher, the Log & API Inspector and the **Invites**
+ * window (each a non-modal {@link DraggablePopover}), plus quick "Toggle Ownership" and "Clear Cache"
+ * actions. On mount it hydrates the dev-context store and installs the dev-only network + global-error
+ * capture (uninstalled on unmount).
+ *
+ * The Invites window REPLACES the former "Toggle Pending Invites" quick action. That toggle flipped a
+ * fixture switch (`hasPendingInvites`, still on the Context Switcher panel, because the members page
+ * simulates from it): it could hide or show the seeded queue and nothing more. The window lists the
+ * invitations the developer has actually sent and can FORCE an invitee's answer through the same
+ * server path a real answer takes, which is what testing an invite flow without a second account
+ * needs.
  *
  * **Production guardrail.** This island is mounted only through {@link DevMount}, which renders `null`
  * when `!IS_DEV`, and the Vite config drops `features/devtools/**` from the island manifest in
@@ -92,6 +100,7 @@ function writeOpen(key: StorageKey, open: boolean): void {
 export default function DevTools(props: DevToolsProps): JSX.Element {
 	const contextOpen = useSignal(false);
 	const inspectorOpen = useSignal(false);
+	const invitesOpen = useSignal(false);
 
 	useEffect(() => {
 		hydrateDevContext();
@@ -100,6 +109,7 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 		// effect — never during render — so it can't cause a hydration mismatch against the SSR markup.
 		if (readOpen(LocalKeys.DEV_CONTEXT_WINDOW_OPEN)) contextOpen.value = true;
 		if (readOpen(LocalKeys.DEV_INSPECTOR_WINDOW_OPEN)) inspectorOpen.value = true;
+		if (readOpen(LocalKeys.DEV_INVITES_WINDOW_OPEN)) invitesOpen.value = true;
 		const offNetwork = logger.installNetworkCapture();
 		const offErrors = logger.installGlobalErrorCapture();
 		logger.info("Dev Tools ready", { context: props.context?.contextType ?? "guest" });
@@ -111,10 +121,6 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 
 	const toggleOwnership = () => {
 		patchDevContext({ enabled: true, isOwner: !devOverrides.value.isOwner });
-	};
-
-	const togglePendingInvites = () => {
-		patchDevContext({ enabled: true, hasPendingInvites: !devOverrides.value.hasPendingInvites });
 	};
 
 	const clearCaches = () => {
@@ -146,7 +152,11 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 			onClick: () => openWindow(inspectorOpen, LocalKeys.DEV_INSPECTOR_WINDOW_OPEN),
 		},
 		{ label: "Toggle Ownership", icon: <IconOwnership />, onClick: toggleOwnership },
-		{ label: "Toggle Pending Invites", icon: <IconInvites />, onClick: togglePendingInvites },
+		{
+			label: "Invites",
+			icon: <IconInvites />,
+			onClick: () => openWindow(invitesOpen, LocalKeys.DEV_INVITES_WINDOW_OPEN),
+		},
 		{ label: "Clear Cache", icon: <IconClearCache />, onClick: clearCaches },
 	];
 
@@ -192,6 +202,21 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 				class="dev-window"
 			>
 				<LogInspector />
+			</DraggablePopover>
+			<DraggablePopover
+				open={invitesOpen}
+				onOpenChange={(o) => writeOpen(LocalKeys.DEV_INVITES_WINDOW_OPEN, o)}
+				title="Invites"
+				icon={<IconInvites />}
+				width="24rem"
+				height="26rem"
+				defaultPosition={readPos(LocalKeys.DEV_INVITES_WINDOW_POS) ?? { x: vw - 420, y: 140 }}
+				onPositionChange={savePos(LocalKeys.DEV_INVITES_WINDOW_POS)}
+				defaultSize={readSize(LocalKeys.DEV_INVITES_WINDOW_SIZE)}
+				onSizeChange={saveSize(LocalKeys.DEV_INVITES_WINDOW_SIZE)}
+				class="dev-window"
+			>
+				{invitesOpen.value ? <DevInvitesPanel /> : null}
 			</DraggablePopover>
 		</>
 	);

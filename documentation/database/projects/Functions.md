@@ -314,3 +314,78 @@ rule in TypeScript, because with `PROJECTS_BACKEND_LIVE` off there is no databas
 a rule that only exists on the path nobody exercises is a rule nobody has tested. Both call the
 SSOT's own `draftIsStale`, and `packages/types/services/pipeline_test.ts` pins the predicate so the
 pair cannot drift into different definitions of "stale".
+
+## Invitations
+
+The client-led half of `PRODUCT_SPEC.md` §The Hiring Process ("The Outbound Invitation"), landed
+2026-09-21 in `00001130_functions_projects_stages.sql` §10. Four DEFINER functions, one transaction
+each, so an invitation and the notification that announces it — or an acceptance and the participant
+row it grants — cannot exist without each other. Authorisation is made explicitly inside each body
+(DEFINER bypasses RLS), and matches the `Owner manages invitations` policy: the owner alone.
+
+### `projects.invite_to_project(p_project_id uuid, p_stage_id uuid, p_target_user_id uuid, p_role text, p_message text DEFAULT '', p_offer_price_cents bigint DEFAULT NULL, p_answers jsonb DEFAULT '{}') → uuid`
+
+Issues ONE identity-addressed invitation (one row, one stage — `NULL` for a whole-project offer) as
+the project owner, and emits `stage.invite` to the invitee through `comms.fn_notify` in the same
+transaction. Refuses, in the database's own words: a non-owner (`insufficient_privilege`), a closed
+project, the owner inviting themself, a role the accept path cannot grant, a stage of another project,
+a seat the person already holds, and the **48-day re-invitation cooldown** (`check_violation`, naming
+the date it lifts). A duplicate open seat is re-raised from `uq_project_invitations_open_seat` as a
+readable `unique_violation`.
+
+`placeholder` is DERIVED — `status = 'draft'`, or no figure anywhere (`COALESCE(p_offer_price_cents,
+stage unit price | project budget)`) — never accepted from a caller. `token` is minted
+(`gen_random_bytes(32)`), `expires_at = now() + 14 days`. Records `invitation_sent` on
+`project_activity`.
+
+Why an RPC and not an owner-RLS INSERT from the fat service: `comms.fn_notify` is EXECUTE-granted to
+`service_role` only, so a DEFINER body is the only place an application write can route through the
+notification ROUTER — the one implementation of the recipient's channel, quiet-hours, mute and digest
+preferences. The notification's deep link is the inviter's DM (`/messages/dm-{username}`), where the
+invitee can answer today; the catalog's `/projects/{context_id}` template would mint a uuid address
+the router no longer serves (Decision #88). `EXECUTE` → `authenticated`.
+
+### `projects.fn_apply_invitation_decision(p_invitation_id uuid, p_accept boolean, p_actor uuid) → jsonb`
+
+**The one implementation of an invitation's answer.** Locks the row; refuses anything not `pending`
+(and marks a lapsed `expires_at` as `expired` before refusing); refuses an email-addressed row (those
+are accepted through their link). A **decline** stamps `declined_at`, logs `invitation_declined` and
+notifies the inviter (`invitation.declined`). An **accept** stamps `accepted_at`, enrols the invitee
+as a `project_participants` row (`role = 'assignee'` for a freelancer — the staffing RPC's own
+vocabulary — else the invitation's role verbatim), takes the stage seat for a freelancer invited to a
+stage (`stage_assignments`, `status = 'pending_funding'` on a placeholder or draft, else `assigned`;
+refuses a person with no `org.freelancer_profiles` row), moves an `open` stage to `assigned` on a live
+project, logs `invitation_accepted`, and notifies the inviter (`invitation.accepted`) with the
+slug-addressed `/projects/{slug}/members`. Returns `{id, status, participant_id, assignment_id}`.
+
+**No client grant** (`EXECUTE` → `service_role` only). `p_actor` is who the decision is recorded AS;
+the caller has already established who may make it. Two doors reach it: the invitee's wrapper below,
+and — in DEVELOPMENT only — the fat service's `decideInvite`, through the service-role client, after
+the row has been read back under the caller's RLS as its inviter. That is what lets the Dev Tools
+Invites window force an answer that writes exactly the rows a real answer writes.
+
+### `projects.respond_to_project_invitation(p_invitation_id uuid, p_accept boolean) → jsonb`
+
+The invitee's own door: the row must be addressed to `auth.uid()` (`insufficient_privilege`
+otherwise); delegates to `fn_apply_invitation_decision`. `EXECUTE` → `authenticated`. No application
+surface calls it yet — the freelancer-side accept UI is the deferred half.
+
+### `projects.remove_project_member(p_project_id uuid, p_participant_id uuid, p_stage_id uuid DEFAULT NULL) → jsonb`
+
+The client removes a hired freelancer from ONE stage (`p_stage_id`) or from the whole project
+(`NULL`). Owner-only; refuses a non-freelancer participant (a business participant is the paying
+side). Applies `PRODUCT_SPEC.md` §Freelancer Removal Mid-Ticket: every ticket the person holds within
+the scope — `claimed`, `in_progress` or `in_review` — goes through `projects.release_ticket_to_backlog`
+(escrow released to them in full, ticket back to New), their held `stage_assignments` in scope become
+`released`, the accepted invitations the removal undoes gain `dismissed_at` (their acceptance kept as
+history), and a whole-project removal deletes the `project_participants` row — the only thing
+`has_project_access` reads, and therefore the only way access is actually withdrawn. Logs
+`member_removed` / `member_unassigned`. Returns the counts it APPLIED (`claimed_tickets`,
+`submitted_tickets`, `started_stages`) so the confirmation the client saw can be read back against
+what happened. `EXECUTE` → `authenticated`.
+
+🚨 **`projects.release_ticket_to_backlog(uuid)` had the default `PUBLIC` EXECUTE and no caller check
+of its own** — any signed-in caller who knew a ticket id could release its escrow and un-claim it (the
+`reorder_stages` class, Decision #84). It had no application caller. `00002510` now revokes its
+EXECUTE from `public`/`anon`/`authenticated`; `remove_project_member` still reaches it because a
+DEFINER function executes as its owner.

@@ -331,24 +331,26 @@ export const DELIVERED_STAGE_STATUS: ReadonlySet<string> = new Set(["approved", 
 /**
  * `projects.project_invitations.status` → the Zod `InviteStatus`.
  *
- * The CHECK allows `('pending','accepted','expired','revoked')`; the Zod enum has only
- * `('pending','expired')`. Two storable values have no representation at all, so a naive read fails
- * to parse on any invitation that was ever answered.
+ * The CHECK allows `('pending','accepted','declined','expired','revoked')`; the Zod enum carries the
+ * first four. `revoked` has no representation, deliberately: it is the client's own withdrawal of an
+ * offer, and the client's Invitations list has no reason to show them the offer they withdrew.
  *
- * Returning `null` for those two is deliberate rather than coercing them into `expired`: an accepted
- * invitation is not an expired one, and the queue this feeds is the PENDING queue. A caller filters
- * a `null` out rather than displaying a lie.
+ * Returning `null` for it is deliberate rather than coercing it into `expired`: a withdrawn
+ * invitation is not an expired one. A caller filters a `null` out rather than displaying a lie.
  */
 export function toInviteStatus(
 	raw: string | null | undefined,
-): "pending" | "expired" | "declined" | null {
+): "pending" | "accepted" | "expired" | "declined" | null {
 	if (raw === "pending") return "pending";
 	if (raw === "expired") return "expired";
-	// A decline stays in the queue: it is the invitee's answer, it explains why the client cannot
+	// A decline stays in the list: it is the invitee's answer, it explains why the client cannot
 	// re-invite them yet, and the re-invitation cooldown is counted from its `declined_at`.
 	if (raw === "declined") return "declined";
-	// 'accepted' and 'revoked' are resolved states; they leave the pending queue rather than
-	// appearing in it under a borrowed label.
+	// An acceptance stays too, badged, because the client's action on it is now to remove the person
+	// it brought in — a roster act the list offers from the record that caused it.
+	if (raw === "accepted") return "accepted";
+	// 'revoked' is the inviter's own act; it leaves the list rather than appearing under a borrowed
+	// label.
 	return null;
 }
 

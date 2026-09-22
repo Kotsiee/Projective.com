@@ -7,10 +7,10 @@ import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
  * The state is expressed on `:root[data-explore-filters]`, the same way the guest aside's rail
  * width (`data-guest-nav`) and the authed rail (`data-sidebar`) are: `_app.tsx` pre-paints it from
  * {@link LocalKeys.EXPLORE_FILTERS_HIDDEN} before first paint, so a reader who hid the filters does
- * not watch them appear and slide away on every navigation, and `guest-shell.css` collapses the
- * `.ui-guest-aside` off that one attribute. This module is the ONE writer: the toggle in the results
- * bar (a `SearchDashboard` control) and the lane itself both read the shared signal, and either may
- * flip it.
+ * not watch them appear and slide away on every navigation, and `explore-results.css` collapses the
+ * guest's `.ex-dash__aside` column off that one attribute. This module is the ONE writer: the toggle
+ * in the results bar and the column it controls are both `SearchDashboard` controls reading the
+ * shared signal.
  *
  * Guest-only by construction: the authenticated middle-nav lane is owned by the shell's splitter
  * (`MiddleNavSplitter`), whose collapsed state is a rail, not an absence, and whose width is an

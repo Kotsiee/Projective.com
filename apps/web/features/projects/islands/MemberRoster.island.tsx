@@ -3,7 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/members.css";
 import { Button, InputText, MultiSelect, Select } from "@projective/ui/fields";
-import { ConfirmDialog, Tooltip } from "@projective/ui/feedback";
+import { Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import type {
 	MemberInvite,
 	MemberRole,
@@ -18,7 +18,6 @@ import {
 	filterMembers,
 	type MemberSortKey,
 	ROLE_FILTER_OPTIONS,
-	roleMeta,
 	sortMembers,
 } from "../core/member-model.ts";
 import { MemberTable } from "../components/MemberTable.tsx";
@@ -26,6 +25,8 @@ import { MemberCard } from "../components/MemberCard.tsx";
 import { MemberActionsMenu } from "../components/MemberActionsMenu.tsx";
 import { MemberEditDialog } from "../components/MemberEditDialog.tsx";
 import { MemberInviteModal } from "../components/MemberInviteModal.tsx";
+import { InvitationList } from "../components/InvitationList.tsx";
+import { RemoveMemberDialog } from "../components/RemoveMemberDialog.tsx";
 import { MembersIcon } from "../components/detail-glyphs.tsx";
 import { SearchIcon } from "../components/glyphs.tsx";
 import { GridIcon, ListIcon, UserPlusIcon } from "../components/member-glyphs.tsx";
@@ -40,10 +41,14 @@ import { type DevSeamState, readDevSeam, subscribeDevSeam } from "@web/utils/dev
  * Switcher changes the simulated acting-member role, project type, or pending-invite state (task §4) —
  * mirroring the `/projects` lane's dev-seam integration.
  *
- * The management surfaces (row actions menu · Edit member · Invite / Pending invitations · Remove
- * confirmation) are gated on the server-derived {@link MemberRosterPage.viewerCaps}, so a freelancer /
- * observer never sees them. Every mutation is OPTIMISTIC — persistence lands with the live members
- * backend behind `PROJECTS_BACKEND_LIVE` (root CLAUDE.md §10). Dumb island: no DB/Supabase, no @server.
+ * The management surfaces (row actions menu · Edit member · Invite / Pending invitations · the
+ * Invitations list · Remove confirmation) are gated on the server-derived
+ * {@link MemberRosterPage.viewerCaps}, so a freelancer / observer never sees them. Edit and the stage
+ * quick-toggle remain OPTIMISTIC; the invitation acts (cancel · dismiss) and a removal go through the
+ * thin {@link MembersService} to the fat service, which applies them on the live path and records them
+ * in the write store on the stub path — the local list follows the SERVER's answer, never precedes it,
+ * because a removal moves escrow and a row that disappeared before the write landed would be a
+ * removal the client believes happened. Dumb island: no DB/Supabase, no @server.
  */
 export interface MemberRosterProps {
 	/**
@@ -96,6 +101,14 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 	const inviteOpen = useSignal(false);
 	const removeOpen = useSignal(false);
 	const removeMember = useSignal<ProjectMemberRow | null>(null);
+	/** The stage a pending removal is scoped to — an accepted stage invitation unassigns; a kebab removes. */
+	const removeStage = useSignal<{ id: string; name: string } | null>(null);
+	/** Invitation ids with a write in flight — their control is disabled until the server answers. */
+	const busyInvites = useSignal<ReadonlySet<string>>(new Set<string>());
+	const removing = useRef(false);
+	/** Mounted only once there is something to say, and never beside a stack another island put up. */
+	const toastMounted = useSignal(false);
+	const toast = useToast();
 
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
@@ -180,14 +193,96 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 			r.id === m.id ? { ...r, assignment: assign ? "contributor" : "observer" } : r
 		);
 	}
-	function askRemove(m: ProjectMemberRow): void {
+	function say(severity: "success" | "danger" | "warning", summary: string): void {
+		if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({ severity, summary, life: 4000 });
+	}
+	function markBusy(id: string, on: boolean): void {
+		const next = new Set(busyInvites.value);
+		if (on) next.add(id);
+		else next.delete(id);
+		busyInvites.value = next;
+	}
+
+	/** Open the consequence-aware confirmation for a member — from their kebab, or from an accepted invitation. */
+	function askRemove(m: ProjectMemberRow, stage: { id: string; name: string } | null = null): void {
 		removeMember.value = m;
+		removeStage.value = stage;
 		removeOpen.value = true;
 	}
-	function confirmRemove(): void {
-		const id = removeMember.value?.id;
-		if (id) members.value = members.value.filter((m) => m.id !== id);
+	/**
+	 * Apply a confirmed removal. The list follows the SERVER's answer: on a whole-project removal the row
+	 * leaves; on a stage-scoped one it loses that stage, and leaves THIS roster only when this roster is
+	 * that stage's. Every accepted invitation the removal undid leaves the Invitations list with it.
+	 */
+	async function confirmRemove(): Promise<void> {
+		const target = removeMember.value;
+		const stage = removeStage.value;
+		if (!target || removing.current) return;
+		removing.current = true;
+		const res = await MembersService.removeMember({
+			projectId,
+			memberId: target.id,
+			stageId: stage?.id ?? null,
+		});
+		removing.current = false;
 		removeMember.value = null;
+		removeStage.value = null;
+		if (!res.ok || !res.data) {
+			say("danger", res.message ?? "That member could not be removed.");
+			return;
+		}
+		const here = roster?.stageId;
+		if (res.data.removedFrom === "project" || (stage && here && stage.id === here)) {
+			members.value = members.value.filter((m) => m.id !== target.id);
+		} else if (stage) {
+			members.value = members.value.map((m) =>
+				m.id === target.id
+					? { ...m, assignedStages: m.assignedStages.filter((name) => name !== stage.name) }
+					: m
+			);
+		}
+		invites.value = invites.value.filter((inv) =>
+			!(inv.status === "accepted" && inv.memberId === target.id &&
+				(res.data!.removedFrom === "project" || inv.stageId === stage?.id))
+		);
+		say("success", res.message ?? "Removed.");
+	}
+
+	/** The roster row an accepted invitation brought in, when this roster can see them. */
+	function memberOf(inv: MemberInvite): ProjectMemberRow | null {
+		if (!inv.memberId) return null;
+		return members.value.find((m) => m.id === inv.memberId) ?? null;
+	}
+	function removeInvitee(inv: MemberInvite): void {
+		const m = memberOf(inv);
+		if (!m) return;
+		const stage = inv.stageId && inv.stageName ? { id: inv.stageId, name: inv.stageName } : null;
+		askRemove(m, stage);
+	}
+	async function cancelInviteRow(inv: MemberInvite): Promise<void> {
+		if (busyInvites.value.has(inv.id)) return;
+		markBusy(inv.id, true);
+		const res = await MembersService.cancelInvite(projectId, inv.id);
+		markBusy(inv.id, false);
+		if (!res.ok) {
+			say("danger", res.message ?? "The invitation could not be cancelled.");
+			return;
+		}
+		invites.value = invites.value.filter((row) => row.id !== inv.id);
+		say("success", res.message ?? "Invitation cancelled.");
+	}
+	async function dismissInviteRow(inv: MemberInvite): Promise<void> {
+		if (busyInvites.value.has(inv.id)) return;
+		markBusy(inv.id, true);
+		const res = await MembersService.dismissInvite(projectId, inv.id);
+		markBusy(inv.id, false);
+		if (!res.ok) {
+			say("danger", res.message ?? "The invitation could not be dismissed.");
+			return;
+		}
+		invites.value = invites.value.filter((row) => row.id !== inv.id);
+		say("success", res.message ?? "Invitation dismissed.");
 	}
 
 	function invite(emails: string[], role: MemberRole, stageId: string | null): void {
@@ -212,8 +307,12 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 			inv.id === id ? { ...inv, status: "pending", invitedLabel: "Just now" } : inv
 		);
 	}
+	/** The modal's Cancel control routes through the same server write as the list's. */
 	function cancelInvite(id: string): void {
-		invites.value = invites.value.filter((inv) => inv.id !== id);
+		const inv = invites.value.find((row) => row.id === id);
+		if (!inv) return;
+		if (inv.status === "pending") void cancelInviteRow(inv);
+		else void dismissInviteRow(inv);
 	}
 	// #endregion
 
@@ -386,6 +485,20 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 					</div>
 				)}
 
+			{/* Invitations — every record for THIS scope, with its lifecycle badge and one action (task §2.2) */}
+			{caps.canInvite && roster.scope !== "conversation" && (
+				<InvitationList
+					invites={invites.value}
+					caps={caps}
+					stageScoped={stageChannel}
+					canRemove={(inv) => memberOf(inv) !== null && !memberOf(inv)?.isViewer}
+					onCancel={(inv) => void cancelInviteRow(inv)}
+					onDismiss={(inv) => void dismissInviteRow(inv)}
+					onRemove={removeInvitee}
+					busy={busyInvites.value}
+				/>
+			)}
+
 			{/* Management surfaces (task §2.2 / §3) */}
 			<MemberEditDialog
 				open={editOpen}
@@ -404,20 +517,17 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 				onCancel={cancelInvite}
 				onClose={() => {}}
 			/>
-			<ConfirmDialog
+			<RemoveMemberDialog
 				visible={removeOpen}
-				header="Remove member"
-				message={removeMember.value
-					? `Remove ${removeMember.value.party.name} (${
-						roleMeta(removeMember.value.role).label
-					}) from this project? They'll lose access to all its channels and stages.`
-					: ""}
-				acceptLabel="Remove"
-				rejectLabel="Cancel"
-				acceptSeverity="danger"
-				onAccept={confirmRemove}
-				onReject={() => (removeMember.value = null)}
+				member={removeMember.value}
+				stageName={removeStage.value?.name ?? null}
+				onAccept={() => void confirmRemove()}
+				onReject={() => {
+					removeMember.value = null;
+					removeStage.value = null;
+				}}
 			/>
+			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</section>
 	);
 }

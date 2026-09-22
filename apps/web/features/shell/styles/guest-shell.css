@@ -11,8 +11,11 @@
  *
  * Delivery: imported by the `GuestAside` island so the CSS ships in the client bundle (a server
  * component's CSS import never enters an island's graph — the same pattern user-shell.css uses via the
- * ShellSidebar island). Lane-less guest routes (`/`, `/explore`, …) need none of this: they render the
- * plain `.site` base, and `.guest-shell` / `.guest-shell__body` are then inert class names.
+ * ShellSidebar island). Lane-less guest routes (`/`, `/explore` in BOTH states, …) need none of this:
+ * they render the plain `.site` base, and `.guest-shell` / `.guest-shell__body` are then inert class
+ * names. (The Explore Search Results' filter column is the results page's OWN column, beside its
+ * results bar and below its full-width head — `.ex-dash__aside`, explore-results.css — so that
+ * route supplies no shell lane; today only an article's table of contents does.)
  *
  * The collapsed/expanded width is driven by the PRE-PAINTED `:root[data-guest-nav]` attribute
  * (`_app.tsx`, keyed off `LocalKeys.GUEST_NAV_COLLAPSED`) so the panel paints at the cached width with
@@ -62,53 +65,6 @@
 .guest-shell[data-has-aside="true"] {
 	display: flex;
 	flex-direction: column;
-}
-
-/* The Search filter lane carries no rail presentation, so the aside is either fully expanded or
-   HIDDEN — never the collapsed icon rail (which would crush the facet controls). The extra `:root`
-   raises specificity above the collapsed-width rule. */
-:root .guest-shell:has(.ex-filters-lane) {
-	--guest-aside-cur-w: var(--guest-aside-w-expanded);
-}
-
-/*
- * The filter lane pins FLUSH under the scrolled header. The base aside pins to the RESERVED header
- * band (`--site-header-h`, 5.5rem), which is what the page clears at rest — but the header the
- * reader actually scrolls beneath is the floating pill, whose bottom edge is `--site-header-pinned-h`
- * (4.25rem, site-shell.css). Pinning to the band left a 1.25rem void between the pill and the panel
- * on every scrolled page. The panel keeps the same `--guest-inset` gap below the pill it keeps from
- * the viewport edges, and its height is re-based on the same edge so the bottom inset still lands on
- * the viewport (measured: pill bottom 68px, panel 80px → 888px in a 900px window). The lane inside
- * owns the overflow (`.ex-filters-lane`, explore-results.css), so a facet list taller than the
- * viewport scrolls within the pinned panel rather than pushing it off screen.
- */
-.guest-shell:has(.ex-filters-lane) .ui-guest-aside {
-	inset-block-start: calc(var(--site-header-pinned-h, 4.25rem) + var(--guest-inset));
-	block-size: calc(100dvh - var(--site-header-pinned-h, 4.25rem) - var(--guest-inset) * 2);
-}
-
-/*
- * Hidden by the results bar's "Filters" toggle (`features/explore/core/filter-visibility.ts`), off the
- * PRE-PAINTED `:root[data-explore-filters]` attribute so the choice survives a navigation with no
- * flash. The aside keeps its box while its width, opacity and the region gap transition to nothing,
- * then leaves the accessibility tree and the tab order (`visibility: hidden`) — a hidden sidebar
- * whose controls were still focusable would be a keyboard trap into an invisible panel. The body
- * reclaims the full inline size because `--guest-aside-cur-w` collapses with it.
- */
-:root[data-explore-filters="hidden"] .guest-shell:has(.ex-filters-lane) {
-	--guest-aside-cur-w: 0px;
-}
-
-:root[data-explore-filters="hidden"] .guest-shell:has(.ex-filters-lane) .ui-guest-aside {
-	opacity: 0;
-	visibility: hidden;
-	margin-inline-end: calc(-1 * var(--guest-inset));
-	box-shadow: none;
-	transition:
-		inline-size var(--dur-medium) var(--spring-standard),
-		margin-inline-end var(--dur-medium) var(--spring-standard),
-		opacity var(--dur-fast) var(--ease-standard),
-		visibility 0s linear var(--dur-medium);
 }
 
 /* #region Floating side nav (the route lane) — no splitter handle; glass on a ::before underlay */
@@ -320,7 +276,6 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.ui-guest-aside,
-	:root[data-explore-filters="hidden"] .guest-shell:has(.ex-filters-lane) .ui-guest-aside,
 	.guest-shell__subheader,
 	.guest-shell__subheader::before,
 	.guest-shell[data-has-aside="true"] .guest-shell__body {

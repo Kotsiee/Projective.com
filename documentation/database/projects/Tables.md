@@ -359,6 +359,7 @@ Project-scoped invitations, deliberately **not** `org.org_invitations` (which is
 | `status`           | text        | `pending`, `accepted`, `declined`, `expired`, `revoked`.              |
 | `accepted_at`      | timestamptz | Set iff `status = 'accepted'` (`ck_project_invitations_accepted_at`). |
 | `declined_at`      | timestamptz | Set iff `status = 'declined'` (`ck_project_invitations_declined_at`). The invitee's refusal; the instant the **48-day re-invitation cooldown** counts from. |
+| `dismissed_at`     | timestamptz | The CLIENT took the record off their Invitations list (`ck_project_invitations_dismissed`: never on a `pending` row). Set by the client's "Dismiss" on a declined/expired record, and by `remove_project_member` retiring an accepted record whose member was removed. The answer underneath is kept — a dismissed decline still starts the cooldown (the cooldown read consults `declined_at`, never this column). An attribute, never a status. |
 
 **Exactly one addressee** — `ck_project_invitations_addressee` requires `target_email` XOR
 `target_user_id`. Email-addressed rows are the pre-existing "invite someone who may have no
@@ -375,9 +376,20 @@ double-press cannot stack a second pending offer under the first, and two whole-
 **Re-invitation cooldown.** A `declined` row locks the `(project, invitee)` pair for
 `INVITE_COOLDOWN_DAYS` (48) days from `declined_at` — the fat service refuses a new invitation to
 that person on that project until it lifts (`activeInviteCooldown` / `hireInvitationRefusal`,
-`packages/types/projects/hire.ts`), and the profile's Add-to-project rows are disabled with the
-date. `revoked` is the INVITER's act and starts no cooldown. Outbound invitations are additionally
-rate-limited per acting identity (`HIRE_RATE_LIMIT`: 10 per sliding 10 minutes, in-process).
+`packages/types/projects/hire.ts`), the profile's Add-to-project rows are disabled with the date,
+and `projects.invite_to_project` refuses it a second time in the database (the SQL's `interval '48
+days'` is pinned to the TypeScript constant by `hire.contract.test.ts`). `revoked` is the INVITER's
+act and starts no cooldown. Outbound invitations are additionally rate-limited per acting identity
+(`HIRE_RATE_LIMIT`: 10 per sliding 10 minutes, in-process).
+
+**The client's three acts on a record** (2026-09-21) are decided by its status alone
+(`inviteActionFor`, `packages/types/projects/members.ts`): a `pending` offer is **cancelled**
+(`status → revoked`, an UPDATE under the owner's own policy); a `declined`/`expired` record is
+**dismissed** (`dismissed_at`, the answer kept); an `accepted` record's action is to **remove the
+freelancer it brought in** (`projects.remove_project_member`, see [Functions.md](Functions.md)),
+which retires the record with `dismissed_at`. A stage-scoped Members page lists only the
+invitations addressed to that stage (`invitesForScope`); a whole-project invitation appears in
+project scope alone.
 
 ⚠️ Because `token` is the capability and RLS is row-level, **any policy that admits a row admits its
 token**. The SELECT policy is therefore limited to the project owner and to the invited identity —

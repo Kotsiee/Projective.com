@@ -1,0 +1,189 @@
+/*
+ * Dev Invites window (dev-inv) — the body of the Dev Tools Invites window. Token-only, BEM, in the
+ * same register as the Context Switcher (`dev-ctx`): compact sans, a meta-register group head,
+ * hairline-divided rows, and full borders on the two interactive forcing controls only (§B.4).
+ * Development-only: this sheet rides the build-excluded DevTools island.
+ */
+
+.dev-inv {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.dev-inv__head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+.dev-inv__lead {
+	display: flex;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.dev-inv__icon {
+	display: inline-flex;
+	flex: none;
+	margin-block-start: 1px;
+	color: var(--primary);
+}
+
+/* Interactive → a full hairline border is permitted (§B.4). */
+.dev-inv__refresh,
+.dev-inv__btn {
+	flex: none;
+	padding: var(--space-1) var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	line-height: 1.4;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+.dev-inv__refresh:hover,
+.dev-inv__btn:hover {
+	background: var(--surface-3);
+}
+/* Press feedback moves `transform` and nothing else (§B.12). */
+.dev-inv__refresh:active,
+.dev-inv__btn:active {
+	transform: scale(0.97);
+}
+.dev-inv__refresh:disabled,
+.dev-inv__btn:disabled {
+	opacity: var(--fld-disabled-alpha, 0.5);
+	cursor: progress;
+	transform: none;
+}
+/* The two forcing controls are told apart by their border, never by a fill the label would have to
+   clear — a filled `--success`/`--danger` measures ~3.2:1 in light (Decision #76). */
+.dev-inv__btn[data-tone="accept"] {
+	border-color: var(--success);
+}
+.dev-inv__btn[data-tone="reject"] {
+	border-color: var(--danger);
+}
+
+.dev-inv__error,
+.dev-inv__empty,
+.dev-inv__none,
+.dev-inv__note {
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+.dev-inv__error {
+	color: var(--danger);
+}
+
+.dev-inv__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.dev-inv__grouphead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+.dev-inv__project {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--on-surface);
+	text-decoration: none;
+}
+.dev-inv__project:hover {
+	color: var(--primary);
+	text-decoration: underline;
+}
+.dev-inv__meta {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.dev-inv__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.dev-inv__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding-block: var(--space-2);
+}
+.dev-inv__row + .dev-inv__row {
+	border-block-start: var(--hairline);
+}
+.dev-inv__main {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+.dev-inv__who {
+	font-weight: var(--fw-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dev-inv__facts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+/* The state is the one word on the row allowed a colour — a lifecycle status, and only its ink. */
+.dev-inv__status[data-status="accepted"] {
+	color: var(--success);
+}
+.dev-inv__status[data-status="declined"] {
+	color: var(--danger);
+}
+.dev-inv__status[data-status="expired"] {
+	color: var(--warning);
+}
+.dev-inv__actions {
+	display: inline-flex;
+	gap: var(--space-1);
+	flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dev-inv__refresh,
+	.dev-inv__btn {
+		transition: none;
+	}
+	.dev-inv__refresh:active,
+	.dev-inv__btn:active {
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .dev-inv__refresh:active,
+:root[data-motion="reduced"] .dev-inv__btn:active {
+	transform: none;
+}

@@ -2355,15 +2355,16 @@ For **guests** the shell is not the nested L-frame — it is one floating compos
 (`apps/web/features/shell/`), used verbatim on every guest-reachable route (the `(public)` surfaces
 and `/[handle]`). It layers floating, glassmorphic panels over a **full-bleed body**, reusing the
 marketing `.site` / `.site__main` base (the fixed → pill-on-scroll `SiteHeader`, the reserved header
-band, and `overflow-x: clip`), so lane-less routes (`/`, the Explore Home feed) are structurally
-unchanged (the Explore **Search Results** now supply a filter lane — Decision #40):
+band, and `overflow-x: clip`), so lane-less routes (`/`, both Explore states) are structurally
+unchanged:
 
 - **Floating pill header.** The unchanged `SiteHeader` (full-width, morphing to a glass pill on
   scroll, discovery megamenus intact) is the top chrome on **all** guest routes — replacing both the
   prior marketing-only header and the guest `AppShell` `ui-shell-topbar`.
-- **Side nav (route-driven).** When a route supplies a lane (today: the Entity View action lane on
-  `/[handle]/view/[id]`; the Explore Search filters — Decision #40; the profile itself mounts NONE
-  since Decision #96) it mounts in a glass `.ui-guest-aside` (rounded, glass) —
+- **Side nav (route-driven).** When a route supplies a lane (today only an article's table of
+  contents, `viewLaneFor`; every other Entity View renders its conversion rail as a page column
+  — §D.7 — the profile mounts NONE since Decision #96, and the Explore Search filters mount none
+  since Decision #115) it mounts in a glass `.ui-guest-aside` (rounded, glass) —
   the guest counterpart of the middle-nav lane, but with **no drag-resize splitter handle**. It is
   an **in-flow `position: sticky`** flex item of `.guest-shell__region` (Decision #40 changed it
   from `position: fixed`): it pins below the header while the page scrolls, but is bounded by the
@@ -2371,8 +2372,19 @@ unchanged (the Explore **Search Results** now supply a filter lane — Decision 
   Collapse/expand is the lane's own footer toggle, driving the same `MIDDLE_LANE_TOGGLE_EVENT`; the
   state is cached (`LocalKeys.GUEST_NAV_COLLAPSED`) and expressed on the **pre-painted**
   `:root[data-guest-nav]` (mirroring the authed rail's `:root[data-sidebar]`), so the width paints
-  correctly on the first byte (no flash-of-wrong-width). The filter lane has no toggle, so it forces
-  the aside expanded.
+  correctly on the first byte (no flash-of-wrong-width).
+- **A lane whose placement is a function of the page's own layout is the page's to render.** The
+  shell can place a lane beside the whole body and nowhere else, so a panel that must align with
+  something INSIDE the body is not a shell lane. The Explore Search Results are the worked case
+  (Decision #115): a guest's filter column is the results body's inline-start column
+  (`.ex-dash__aside`, rendered by the dashboard island), so its top is the results bar's top and the
+  results head above it spans the page; the shell's floating aside would have sat beside the head as
+  well and forced it to two-thirds width. The column takes the aside's geometry — the same
+  `position: sticky` pin under the scrolled pill (`--site-header-pinned-h`), the same gap and
+  viewport-based height — but its surface is a SOLID `--surface-1` step, no shadow and no glass:
+  §B.4.3's grandfathering covers the shell's aside only, and the `/view` conversion rail took the same
+  position for the same reason. The signed-in frame is untouched — its middle-nav lane is a full-height
+  column beside the whole content pane by design, and the Explore filters still mount there.
 - **Full-width footer + flex-column region (Decision #40).** On lane routes GuestShell is a flex
   column: the aside + body share a growing `.guest-shell__region` (`flex: 1 0 auto`) above a
   **full-width `PublicFooter`** that is a sibling of the region — so the footer spans the whole

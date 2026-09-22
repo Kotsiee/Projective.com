@@ -392,3 +392,14 @@ GRANT EXECUTE ON FUNCTION comms.create_group_thread(text, uuid[]) TO authenticat
 REVOKE ALL ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) TO authenticated;
+
+
+-- --- freelancer removal (00001120: release_ticket_to_backlog) ---
+
+-- 🚨 `projects.release_ticket_to_backlog` is SECURITY DEFINER, releases a ticket's held escrow to
+-- its assignee and resets the ticket to New — and it carried the default PUBLIC EXECUTE with NO
+-- caller check of its own, so any signed-in caller who knew a ticket id could pay out its escrow
+-- and un-claim it (the `reorder_stages` class, Decision #84). It has no application caller: its
+-- one reachable door is `projects.remove_project_member` (00001130), a DEFINER function whose
+-- owner still executes it after this revoke, and which checks project ownership first.
+REVOKE ALL ON FUNCTION projects.release_ticket_to_backlog(uuid) FROM public, anon, authenticated;

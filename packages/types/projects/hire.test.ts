@@ -59,6 +59,7 @@ const roster: MemberRosterPage = {
 	channelId: null,
 	channelName: null,
 	channelKind: null,
+	stageId: null,
 	projectTitle: "Helia wallet redesign",
 	format: "pipeline",
 	members: [

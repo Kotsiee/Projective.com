@@ -6,9 +6,11 @@ import {
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
 	hasStages,
+	isFlatOneOff,
 	liveVisibilityFor,
 	lockedStagePriceIds,
 	ONBOARDED_ASSIGNMENT_EXCLUDED,
+	outstandingSteps,
 	previewReady,
 	pricedAtProjectLevel,
 	pricedStages,
@@ -28,6 +30,8 @@ import {
 	stagePredecessorOptions,
 	stageTimingApplies,
 	structureForStages,
+	teamRolesRequired,
+	timelinePresetApplies,
 	wouldCycle,
 } from "./setup.ts";
 
@@ -96,12 +100,60 @@ Deno.test("a staged structure asks for stages and never mentions roles", () => {
 	assertEquals(requiredKeys(steps), ["title", "format", "pricing", "stages"]);
 });
 
-Deno.test("a Direct Deliverable asks for ROLES instead of stages", () => {
+Deno.test("a Direct Deliverable asks for ROLES instead of stages — and does not REQUIRE them", () => {
 	const steps = setupSteps({ ...base, format: "one_off", structure: "single_task" });
 	// A Direct Deliverable takes no stages at all, so a Stages row would be a requirement its owner
 	// could never satisfy.
 	assertFalse(keys(steps).includes("stages"));
-	assertEquals(requiredKeys(steps), ["title", "format", "pricing", "roles"]);
+	assert(keys(steps).includes("roles"), "the roles row is still ON the ladder");
+	// It is a one-off without milestones, so the roles are OPTIONAL: one fixed deliverable may be
+	// hired against with no team assembled. The row stays (a ladder whose length moved with the
+	// shape would make its own percentage jump), but it no longer gates Preview.
+	assertEquals(requiredKeys(steps), ["title", "format", "pricing"]);
+	assertEquals(step(steps, "roles")?.required, false);
+	assertEquals(step(steps, "roles")?.done, false, "no roles yet is still recorded as not done");
+	assert(step(steps, "roles")?.hint.startsWith("Optional"), "the hint says so rather than asking");
+});
+
+Deno.test("a role-staffed row whose format is NOT a one-off keeps the roles requirement", () => {
+	// The create path cannot produce this pairing; a legacy or hand-written row can. The conservative
+	// answer for a shape nobody has reasoned about is to keep asking.
+	const steps = setupSteps({ ...base, format: "pipeline", structure: "single_task" });
+	assertEquals(step(steps, "roles")?.required, true);
+	assertEquals(step(steps, "roles")?.hint, "Add at least one team role.");
+	assert(teamRolesRequired("pipeline", "single_task"));
+	assertFalse(teamRolesRequired("one_off", "single_task"));
+});
+
+Deno.test("isFlatOneOff names exactly the stage-less one-offs", () => {
+	assert(isFlatOneOff("one_off", "single_task"));
+	assert(isFlatOneOff("one_off", "single_stage"));
+	assertFalse(isFlatOneOff("one_off", "one_off"), "a one-off WITH milestones runs a sequence");
+	assertFalse(isFlatOneOff("pipeline", "single_stage"), "a flat pipeline is not a one-off");
+	assertFalse(isFlatOneOff("pipeline", "standard"));
+	assertFalse(isFlatOneOff("session", "single_stage"));
+	// It reads `hasStages`, not a literal list, so the toggle and the predicate cannot drift.
+	assertFalse(isFlatOneOff("one_off", structureForStages(true, "one_off")));
+	assert(isFlatOneOff("one_off", structureForStages(false, "one_off")));
+});
+
+Deno.test("the pricing hint names what the shape actually prices", () => {
+	// A flat engagement draws ONE price field, which its Details section labels `Budget` (one-off) or
+	// `Ticket price` (pipeline) — a hint asking for "every milestone" there names a thing the shape
+	// does not have. A staged run keeps the per-item wording; a role-staffed one keeps its own.
+	const hint = (format: "one_off" | "pipeline", structure: typeof base.structure) =>
+		step(setupSteps({ ...base, format, structure }), "pricing")?.hint;
+	assertEquals(hint("one_off", "single_stage"), "Set the project's budget.");
+	assertEquals(hint("pipeline", "single_stage"), "Set the ticket price.");
+	assertEquals(hint("one_off", "one_off"), "Give every milestone a price.");
+	assertEquals(hint("pipeline", "standard"), "Give every stage a price.");
+	assertEquals(hint("one_off", "single_task"), "Set the engagement's budget.");
+});
+
+Deno.test("the Timeline preset applies only where there is a stage run to describe", () => {
+	for (const structure of ["standard", "one_off", "single_stage", "single_task"] as const) {
+		assertEquals(timelinePresetApplies(structure), hasStages(structure), structure);
+	}
 });
 
 Deno.test("a session keeps the stage rule unchanged — a session IS the stage list", () => {
@@ -411,7 +463,9 @@ Deno.test("an incomplete project can still be previewable — the bar is not the
 	assert(setupCompleteness(steps) < 100);
 });
 
-Deno.test("a Direct Deliverable with no roles is NOT previewable", () => {
+Deno.test("a titled, priced Direct Deliverable with no roles IS previewable", () => {
+	// A one-off without milestones: the roles are optional, so the gate waits only on the title and
+	// the price. The bar still reads short of 100% — the row is on the ladder and not done.
 	const steps = setupSteps({
 		...base,
 		format: "one_off",
@@ -419,7 +473,19 @@ Deno.test("a Direct Deliverable with no roles is NOT previewable", () => {
 		title: "Poster",
 		budget: { ...DEFAULT_PROJECT_BUDGET, amountCents: 200_00 },
 	});
+	assertEquals(previewReady(steps), true);
+	assert(setupCompleteness(steps) < 100);
+});
+
+Deno.test("an UNPRICED Direct Deliverable is still not previewable — relaxing roles did not relax pricing", () => {
+	const steps = setupSteps({
+		...base,
+		format: "one_off",
+		structure: "single_task",
+		title: "Poster",
+	});
 	assertEquals(previewReady(steps), false);
+	assertEquals(outstandingSteps(steps).map((s) => s.key), ["pricing"]);
 });
 
 // #endregion

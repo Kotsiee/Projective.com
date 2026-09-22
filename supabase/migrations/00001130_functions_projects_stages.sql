@@ -969,3 +969,535 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'pg_cron unavailable — projects.fn_archive_stale_service_drafts must be scheduled manually.';
 END $$;
+
+-- #region 10. Project invitations — issue, answer, and the removal that undoes an acceptance
+--
+-- The client-led half of `PRODUCT_SPEC.md` §The Hiring Process ("The Outbound Invitation"). Four
+-- functions, one transaction each, so an invitation and the notification that announces it — or an
+-- acceptance and the participant row it grants — cannot exist without each other.
+--
+-- Why RPCs rather than the fat service writing the table through PostgREST under the owner's RLS:
+--   1. `comms.fn_notify` is EXECUTE-granted to `service_role` only (00002510), so the only place an
+--      application-tier write can emit through the notification ROUTER — the one implementation of
+--      the recipient's channel, quiet-hours, mute and digest preferences — is a DEFINER function.
+--      Issuing the row and routing the notice in one body is what makes "an invitation the invitee
+--      was never told about" and "a notice about an invitation that rolled back" both impossible.
+--   2. An acceptance touches THREE tables (the invitation, `project_participants`, `stage_assignments`)
+--      and PostgREST gives one statement per round trip with no transaction around them.
+--   3. `placeholder` is DERIVED here, never accepted from a caller (see the column comment): a caller
+--      who could mark a live project's invitation "placeholder" could invite somebody onto a priced
+--      stage while stating no price.
+--
+-- Authorisation is the owner's alone, matching the `Owner manages invitations` policy on the table:
+-- DEFINER bypasses RLS, so the check the policy would have made is made here, explicitly, first.
+-- ---------------------------------------------------------------------------------------------
+
+-- projects.invite_to_project(project, stage, target, role, message, offer, answers) -> invitation id
+--
+-- One row, one stage (or NULL for a whole-project invitation). The invitee is addressed by IDENTITY
+-- (Decision #108/#109) — the fat service resolved the `@handle` to a user id — so `target_email`
+-- stays NULL. The re-invitation cooldown is enforced HERE as well as in the fat service: 48 days from
+-- the latest decline for this (project, invitee), the same figure as `INVITE_COOLDOWN_DAYS` in
+-- `packages/types/projects/hire.ts` (a contract test pins the two together). Refused as
+-- `check_violation` with the date it lifts, in the same words the service uses.
+CREATE OR REPLACE FUNCTION projects.invite_to_project(
+    p_project_id        uuid,
+    p_stage_id          uuid,
+    p_target_user_id    uuid,
+    p_role              text,
+    p_message           text DEFAULT '',
+    p_offer_price_cents bigint DEFAULT NULL,
+    p_answers           jsonb DEFAULT '{}'::jsonb
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, comms, org, auth
+AS $$
+DECLARE
+    v_actor        uuid := auth.uid();
+    v_project      projects.projects%ROWTYPE;
+    v_stage_name   text;
+    v_stage_price  bigint;
+    v_price        bigint;
+    v_placeholder  boolean;
+    v_cooldown_end timestamptz;
+    v_inviter_name text;
+    v_inviter_slug text;
+    v_id           uuid;
+    v_title        text;
+    v_body         text;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to invite someone to a project.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    SELECT * INTO v_project FROM projects.projects WHERE id = p_project_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_project.owner_user_id <> v_actor THEN
+        RAISE EXCEPTION 'Only the project owner may invite people to it.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF v_project.status IN ('archived', 'cancelled', 'completed') THEN
+        RAISE EXCEPTION 'This project is closed — nobody can be invited to it.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF p_target_user_id = v_actor THEN
+        RAISE EXCEPTION 'You are already on this project.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF p_role IS NULL OR p_role NOT IN ('admin', 'manager', 'freelancer', 'member', 'guest') THEN
+        RAISE EXCEPTION 'That is not a role an invitation can grant.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    -- The stage, when named, must be THIS project's. The FK only names the table.
+    IF p_stage_id IS NOT NULL THEN
+        SELECT s.name, s.unit_price_cents INTO v_stage_name, v_stage_price
+        FROM projects.project_stages s
+        WHERE s.id = p_stage_id AND s.project_id = p_project_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'That stage is not part of this project.' USING ERRCODE = 'check_violation';
+        END IF;
+        -- A seat they already hold is not one they can be invited to.
+        IF EXISTS (
+            SELECT 1 FROM projects.stage_assignments sa
+            WHERE sa.project_stage_id = p_stage_id
+                AND sa.assignee_type = 'freelancer'
+                AND sa.freelancer_profile_id = p_target_user_id
+                AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed')
+        ) THEN
+            RAISE EXCEPTION 'This person is already assigned to that stage.' USING ERRCODE = 'unique_violation';
+        END IF;
+    ELSIF EXISTS (
+        SELECT 1 FROM projects.project_participants pp
+        WHERE pp.project_id = p_project_id AND pp.profile_type = 'freelancer' AND pp.profile_id = p_target_user_id
+    ) THEN
+        RAISE EXCEPTION 'This person is already on the project.' USING ERRCODE = 'unique_violation';
+    END IF;
+
+    -- The re-invitation cooldown — the invitee's no is honoured for 48 days from the decline.
+    SELECT max(i.declined_at) + interval '48 days' INTO v_cooldown_end
+    FROM projects.project_invitations i
+    WHERE i.project_id = p_project_id
+        AND i.target_user_id = p_target_user_id
+        AND i.status = 'declined';
+    IF v_cooldown_end IS NOT NULL AND v_cooldown_end > now() THEN
+        RAISE EXCEPTION 'You can invite this freelancer to this project again after %.',
+            to_char(v_cooldown_end AT TIME ZONE 'UTC', 'FMDD Mon YYYY')
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    -- The terms as RECORDED: a stated figure, else the stage's configured rate (the project budget for
+    -- a whole-project offer). A draft, or an offer with no figure anywhere, is a placeholder.
+    v_price := COALESCE(p_offer_price_cents, CASE WHEN p_stage_id IS NULL THEN v_project.budget_amount_cents ELSE v_stage_price END);
+    v_placeholder := v_project.status = 'draft' OR v_price IS NULL;
+
+    BEGIN
+        INSERT INTO projects.project_invitations (
+            project_id, project_stage_id, target_user_id, role, inviter_user_id, token,
+            message, offer_price_cents, answers, placeholder, status, expires_at
+        ) VALUES (
+            -- Schema-qualified: pgcrypto is installed into `extensions`, which this function's
+            -- search_path deliberately does not include, and an unqualified call raises 42883 at
+            -- RUN time (plpgsql defers resolution) — the function creates cleanly and fails on
+            -- its first real call.
+            p_project_id, p_stage_id, p_target_user_id, p_role, v_actor, encode(extensions.gen_random_bytes(32), 'hex'),
+            COALESCE(p_message, ''), p_offer_price_cents, COALESCE(p_answers, '{}'::jsonb), v_placeholder,
+            'pending', now() + interval '14 days'
+        )
+        RETURNING id INTO v_id;
+    EXCEPTION WHEN unique_violation THEN
+        -- `uq_project_invitations_open_seat`: one open offer per (project, stage, person).
+        RAISE EXCEPTION 'An invitation to this person for this stage is already pending.' USING ERRCODE = 'unique_violation';
+    END;
+
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        p_project_id, v_actor, 'invitation_sent',
+        jsonb_build_object('invitation_id', v_id, 'stage_id', p_stage_id, 'target_user_id', p_target_user_id,
+                           'role', p_role, 'placeholder', v_placeholder),
+        'projects.project_invitations', v_id
+    );
+
+    -- Tell the invitee, through the router. `stage.invite` is the catalog's invitation event for both
+    -- grains — a whole-project offer is the same product event addressed to the whole engagement —
+    -- and its policy (work · high · in_app + push + email · mutable) is what the recipient's
+    -- preferences are intersected with. The deep link is the conversation the two share, which is
+    -- where the invitee can answer today; the catalog's `/projects/{context_id}` template would mint
+    -- a uuid address the router no longer serves (Decision #88).
+    SELECT trim(coalesce(up.first_name, '') || ' ' || coalesce(up.last_name, '')), up.username
+        INTO v_inviter_name, v_inviter_slug
+    FROM org.users_public up WHERE up.user_id = v_actor;
+    v_inviter_name := NULLIF(v_inviter_name, '');
+    v_title := format('%s invited you to %s',
+        COALESCE(v_inviter_name, 'A client'),
+        COALESCE(v_stage_name, v_project.title));
+    v_body := v_project.title
+        || CASE WHEN v_stage_name IS NOT NULL THEN ' · ' || v_stage_name ELSE '' END
+        || CASE WHEN COALESCE(p_message, '') <> '' THEN ' — ' || left(p_message, 140) ELSE '' END;
+
+    PERFORM comms.fn_notify(
+        p_target_user_id,
+        'stage.invite',
+        v_title,
+        v_body,
+        'projects.project_invitations',
+        v_id,
+        jsonb_build_object(
+            'project_slug', v_project.slug,
+            'project_title', v_project.title,
+            'stage_id', p_stage_id,
+            'stage_name', v_stage_name,
+            'offer_price_cents', v_price,
+            'currency', v_project.currency,
+            'placeholder', v_placeholder
+        ),
+        v_actor,
+        'project',
+        p_project_id,
+        NULL,
+        CASE WHEN v_inviter_slug IS NOT NULL THEN '/messages/dm-' || v_inviter_slug ELSE NULL END
+    );
+
+    RETURN v_id;
+END;
+$$;
+
+COMMENT ON FUNCTION projects.invite_to_project(uuid, uuid, uuid, text, text, bigint, jsonb) IS
+'Issues one identity-addressed project (or stage) invitation as the project owner, derives `placeholder` from the project status and the resolved offer, enforces the 48-day re-invitation cooldown, and emits a `stage.invite` notification to the invitee through comms.fn_notify in the same transaction. Owner-only.';
+
+REVOKE ALL ON FUNCTION projects.invite_to_project(uuid, uuid, uuid, text, text, bigint, jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.invite_to_project(uuid, uuid, uuid, text, text, bigint, jsonb) TO authenticated;
+
+-- projects.fn_apply_invitation_decision(invitation, accept, actor) -> jsonb
+--
+-- The ONE implementation of an invitation's answer, written to be called from two doors:
+-- `respond_to_project_invitation` (the invitee, below) and — in DEVELOPMENT ONLY, through the
+-- service-role client — the Dev Tools Invites window, which forces a decision so an invite flow can
+-- be walked through every state without a second account. Neither door has a copy of the body, which
+-- is how the forced path is guaranteed to write exactly the rows a real acceptance writes.
+--
+-- No client grant. `p_actor` is who the decision is recorded AS; the caller has already established
+-- who may make it. A function that trusted a caller-supplied actor and was reachable from PostgREST
+-- would be a forgery primitive, so it is reachable only by `service_role` and by the invitee's
+-- wrapper.
+CREATE OR REPLACE FUNCTION projects.fn_apply_invitation_decision(
+    p_invitation_id uuid,
+    p_accept        boolean,
+    p_actor         uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, comms, org, auth
+AS $$
+DECLARE
+    v_inv          projects.project_invitations%ROWTYPE;
+    v_project      projects.projects%ROWTYPE;
+    v_participant  uuid;
+    v_assignment   uuid;
+    v_stage_name   text;
+    v_invitee_name text;
+    v_type         text;
+    v_title        text;
+BEGIN
+    SELECT * INTO v_inv FROM projects.project_invitations WHERE id = p_invitation_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Invitation % not found.', p_invitation_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_inv.status <> 'pending' THEN
+        RAISE EXCEPTION 'This invitation has already been %.', v_inv.status USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_inv.expires_at IS NOT NULL AND v_inv.expires_at <= now() THEN
+        -- The reader noticed what the sweep has not yet: record it, then refuse.
+        UPDATE projects.project_invitations SET status = 'expired' WHERE id = p_invitation_id;
+        RAISE EXCEPTION 'This invitation has expired.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_inv.target_user_id IS NULL THEN
+        RAISE EXCEPTION 'An email-addressed invitation is accepted through its link.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    SELECT * INTO v_project FROM projects.projects WHERE id = v_inv.project_id;
+    IF v_inv.project_stage_id IS NOT NULL THEN
+        SELECT s.name INTO v_stage_name FROM projects.project_stages s WHERE s.id = v_inv.project_stage_id;
+    END IF;
+    SELECT NULLIF(trim(coalesce(up.first_name, '') || ' ' || coalesce(up.last_name, '')), '')
+        INTO v_invitee_name
+    FROM org.users_public up WHERE up.user_id = v_inv.target_user_id;
+
+    IF NOT p_accept THEN
+        UPDATE projects.project_invitations
+        SET status = 'declined', declined_at = now()
+        WHERE id = p_invitation_id;
+
+        INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+        VALUES (v_inv.project_id, p_actor, 'invitation_declined',
+                jsonb_build_object('invitation_id', p_invitation_id, 'stage_id', v_inv.project_stage_id),
+                'projects.project_invitations', p_invitation_id);
+
+        v_type := 'invitation.declined';
+        v_title := format('%s declined your invitation to %s',
+            COALESCE(v_invitee_name, 'The freelancer'), COALESCE(v_stage_name, v_project.title));
+    ELSE
+        UPDATE projects.project_invitations
+        SET status = 'accepted', accepted_at = now()
+        WHERE id = p_invitation_id;
+
+        -- The seat. A freelancer joins the project's roster the way the staffing RPC enrols one —
+        -- `role = 'assignee'`, the only vocabulary `project_participants.role` has ever been written
+        -- in — and takes the stage the invitation named. Any other role joins the roster as itself and
+        -- holds no delivery seat: a manager invited to a stage oversees it rather than contributing.
+        SELECT pp.id INTO v_participant
+        FROM projects.project_participants pp
+        WHERE pp.project_id = v_inv.project_id AND pp.profile_type = 'freelancer' AND pp.profile_id = v_inv.target_user_id;
+        IF v_participant IS NULL THEN
+            INSERT INTO projects.project_participants (project_id, profile_type, profile_id, role)
+            VALUES (v_inv.project_id, 'freelancer', v_inv.target_user_id,
+                    CASE WHEN v_inv.role = 'freelancer' THEN 'assignee' ELSE v_inv.role END)
+            RETURNING id INTO v_participant;
+        END IF;
+
+        IF v_inv.role = 'freelancer' AND v_inv.project_stage_id IS NOT NULL THEN
+            IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_inv.target_user_id) THEN
+                RAISE EXCEPTION 'This person does not have a freelancer profile yet.' USING ERRCODE = 'check_violation';
+            END IF;
+            SELECT sa.id INTO v_assignment
+            FROM projects.stage_assignments sa
+            WHERE sa.project_stage_id = v_inv.project_stage_id
+                AND sa.assignee_type = 'freelancer'
+                AND sa.freelancer_profile_id = v_inv.target_user_id
+                AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed');
+            IF v_assignment IS NULL THEN
+                INSERT INTO projects.stage_assignments
+                    (project_stage_id, assignee_type, freelancer_profile_id, team_id, assigned_by, is_client_managed, status)
+                VALUES
+                    (v_inv.project_stage_id, 'freelancer', v_inv.target_user_id, NULL, v_inv.inviter_user_id, false,
+                     -- A placeholder acceptance parks the seat until the client prices and publishes
+                     -- (Decision #80's `pending_funding`); a live one takes the seat outright.
+                     CASE WHEN v_inv.placeholder OR v_project.status = 'draft' THEN 'pending_funding' ELSE 'assigned' END)
+                RETURNING id INTO v_assignment;
+            END IF;
+
+            -- An open stage moves to "assigned" the moment its first seat is filled (the staffing RPC's own rule).
+            UPDATE projects.project_stages
+            SET status = 'assigned'::stage_status
+            WHERE id = v_inv.project_stage_id AND status = 'open'::stage_status
+                AND v_project.status <> 'draft';
+        END IF;
+
+        INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+        VALUES (v_inv.project_id, p_actor, 'invitation_accepted',
+                jsonb_build_object('invitation_id', p_invitation_id, 'stage_id', v_inv.project_stage_id,
+                                   'participant_id', v_participant, 'assignment_id', v_assignment),
+                'projects.project_invitations', p_invitation_id);
+
+        v_type := 'invitation.accepted';
+        v_title := format('%s accepted your invitation to %s',
+            COALESCE(v_invitee_name, 'The freelancer'), COALESCE(v_stage_name, v_project.title));
+    END IF;
+
+    -- Tell the inviter, through the router, with the members page as the deep link (slug-addressed).
+    PERFORM comms.fn_notify(
+        v_inv.inviter_user_id,
+        v_type,
+        v_title,
+        v_project.title || CASE WHEN v_stage_name IS NOT NULL THEN ' · ' || v_stage_name ELSE '' END,
+        'projects.project_invitations',
+        p_invitation_id,
+        jsonb_build_object('project_slug', v_project.slug, 'project_title', v_project.title,
+                           'stage_id', v_inv.project_stage_id, 'stage_name', v_stage_name,
+                           'accepted', p_accept),
+        p_actor,
+        'project',
+        v_inv.project_id,
+        NULL,
+        '/projects/' || v_project.slug || '/members'
+    );
+
+    RETURN jsonb_build_object(
+        'id', p_invitation_id,
+        'status', CASE WHEN p_accept THEN 'accepted' ELSE 'declined' END,
+        'participant_id', v_participant,
+        'assignment_id', v_assignment
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.fn_apply_invitation_decision(uuid, boolean, uuid) IS
+'The one implementation of an invitation''s answer: records accept/decline with its timestamp, enrols an accepted freelancer as a participant and stage assignee, and notifies the inviter through comms.fn_notify. No client grant — reached through respond_to_project_invitation (the invitee) or the service role (development-only forcing).';
+
+REVOKE ALL ON FUNCTION projects.fn_apply_invitation_decision(uuid, boolean, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.fn_apply_invitation_decision(uuid, boolean, uuid) TO service_role;
+
+-- projects.respond_to_project_invitation(invitation, accept) -> jsonb
+-- The invitee's own door. The only caller check that matters: the row must be addressed to `auth.uid()`.
+CREATE OR REPLACE FUNCTION projects.respond_to_project_invitation(p_invitation_id uuid, p_accept boolean)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, comms, org, auth
+AS $$
+DECLARE
+    v_actor  uuid := auth.uid();
+    v_target uuid;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to answer an invitation.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    SELECT target_user_id INTO v_target FROM projects.project_invitations WHERE id = p_invitation_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Invitation % not found.', p_invitation_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_target IS DISTINCT FROM v_actor THEN
+        RAISE EXCEPTION 'Only the person invited may answer this invitation.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN projects.fn_apply_invitation_decision(p_invitation_id, p_accept, v_actor);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.respond_to_project_invitation(uuid, boolean) IS
+'Accept or decline an identity-addressed project invitation as its invitee. Delegates to fn_apply_invitation_decision.';
+
+REVOKE ALL ON FUNCTION projects.respond_to_project_invitation(uuid, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.respond_to_project_invitation(uuid, boolean) TO authenticated;
+
+-- projects.remove_project_member(project, participant, stage) -> jsonb
+--
+-- The client removes an active freelancer from ONE stage (p_stage_id) or from the whole project
+-- (NULL). The consequences are `PRODUCT_SPEC.md` §"Freelancer Removal Mid-Ticket", applied rather than
+-- described: every ticket the person holds within the scope — claimed, in progress, or submitted and
+-- awaiting review — has its escrow released to them in full and returns to New for someone else to
+-- claim (`release_ticket_to_backlog`, whose body is exactly that rule); their held assignments within
+-- the scope are `released`; a whole-project removal also deletes the participant row, which is the
+-- only thing `has_project_access` reads and therefore the only way access is actually withdrawn.
+-- Every accepted invitation the removal undoes is retired from the Invitations list (`dismissed_at`),
+-- its acceptance kept as history.
+--
+-- Returns the counts the confirmation dialog warned about, as they were APPLIED — so a client who was
+-- told "1 claimed ticket" can read back that one was released.
+CREATE OR REPLACE FUNCTION projects.remove_project_member(
+    p_project_id     uuid,
+    p_participant_id uuid,
+    p_stage_id       uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, finance, comms, org, auth
+AS $$
+DECLARE
+    v_actor     uuid := auth.uid();
+    v_owner     uuid;
+    v_user      uuid;
+    v_type      profile_type;
+    v_stages    uuid[];
+    v_claimed   integer := 0;
+    v_submitted integer := 0;
+    v_started   integer := 0;
+    v_ticket    record;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to manage members.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    SELECT owner_user_id INTO v_owner FROM projects.projects WHERE id = p_project_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_owner <> v_actor THEN
+        RAISE EXCEPTION 'Only the project owner may remove members.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    SELECT pp.profile_id, pp.profile_type INTO v_user, v_type
+    FROM projects.project_participants pp
+    WHERE pp.id = p_participant_id AND pp.project_id = p_project_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That person is not on this project.' USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_type <> 'freelancer' THEN
+        -- A business participant is the paying side of the engagement, not a hire.
+        RAISE EXCEPTION 'Only a hired person can be removed here.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF p_stage_id IS NOT NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM projects.project_stages s WHERE s.id = p_stage_id AND s.project_id = p_project_id) THEN
+            RAISE EXCEPTION 'That stage is not part of this project.' USING ERRCODE = 'check_violation';
+        END IF;
+        v_stages := ARRAY[p_stage_id];
+    ELSE
+        SELECT COALESCE(array_agg(s.id), '{}'::uuid[]) INTO v_stages
+        FROM projects.project_stages s WHERE s.project_id = p_project_id;
+    END IF;
+
+    -- Stages under way that they were contributing to — a seat opening mid-stage, counted before the
+    -- assignments below are released.
+    SELECT count(*) INTO v_started
+    FROM projects.stage_assignments sa
+    JOIN projects.project_stages s ON s.id = sa.project_stage_id
+    WHERE sa.project_stage_id = ANY (v_stages)
+        AND sa.assignee_type = 'freelancer'
+        AND sa.freelancer_profile_id = v_user
+        AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed')
+        AND s.status IN ('in_progress', 'submitted', 'revisions');
+
+    -- Held tickets within the scope: escrow to them in full, ticket back to New.
+    FOR v_ticket IN
+        SELECT t.id, t.status
+        FROM projects.tickets t
+        WHERE t.project_id = p_project_id
+            AND t.current_assignee_id = v_user
+            AND t.status IN ('claimed', 'in_progress', 'in_review')
+            AND (p_stage_id IS NULL OR t.current_stage_id = p_stage_id)
+    LOOP
+        IF v_ticket.status = 'in_review' THEN
+            v_submitted := v_submitted + 1;
+        ELSE
+            v_claimed := v_claimed + 1;
+        END IF;
+        PERFORM projects.release_ticket_to_backlog(v_ticket.id);
+    END LOOP;
+
+    UPDATE projects.stage_assignments sa
+    SET status = 'released'
+    WHERE sa.project_stage_id = ANY (v_stages)
+        AND sa.assignee_type = 'freelancer'
+        AND sa.freelancer_profile_id = v_user
+        AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed');
+
+    -- The accepted invitations this undoes leave the list; their acceptance stays as history.
+    UPDATE projects.project_invitations i
+    SET dismissed_at = now()
+    WHERE i.project_id = p_project_id
+        AND i.target_user_id = v_user
+        AND i.status = 'accepted'
+        AND i.dismissed_at IS NULL
+        AND (p_stage_id IS NULL OR i.project_stage_id = p_stage_id);
+
+    IF p_stage_id IS NULL THEN
+        DELETE FROM projects.project_participants WHERE id = p_participant_id;
+    END IF;
+
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        p_project_id, v_actor,
+        CASE WHEN p_stage_id IS NULL THEN 'member_removed' ELSE 'member_unassigned' END,
+        jsonb_build_object('participant_id', p_participant_id, 'user_id', v_user, 'stage_id', p_stage_id,
+                           'claimed_tickets', v_claimed, 'submitted_tickets', v_submitted, 'started_stages', v_started),
+        'projects.project_participants', p_participant_id
+    );
+
+    RETURN jsonb_build_object(
+        'participant_id', p_participant_id,
+        'removed_from', CASE WHEN p_stage_id IS NULL THEN 'project' ELSE 'stage' END,
+        'claimed_tickets', v_claimed,
+        'submitted_tickets', v_submitted,
+        'started_stages', v_started
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.remove_project_member(uuid, uuid, uuid) IS
+'Removes a hired freelancer from one stage or the whole project as its owner: releases the escrow of every ticket they hold in scope to them and returns those tickets to New (PRODUCT_SPEC §Freelancer Removal Mid-Ticket), releases their assignments, retires the accepted invitations it undoes, and deletes the participant row on a whole-project removal. Returns the applied counts.';
+
+REVOKE ALL ON FUNCTION projects.remove_project_member(uuid, uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.remove_project_member(uuid, uuid, uuid) TO authenticated;
+
+-- #endregion

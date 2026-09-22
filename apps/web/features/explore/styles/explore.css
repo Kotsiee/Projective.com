@@ -38,6 +38,13 @@
 	--ex-tag-bg: color-mix(in srgb, var(--on-surface) 8%, var(--surface-2));
 	--ex-tag-ink: var(--on-surface-variant);
 	--ex-pad-x: clamp(1.25rem, 3vw, 2rem);
+	/*
+	 * The guest filter column beside the Search Results (explore-results.css): its expanded width,
+	 * matched to the guest shell's floating aside so the two read as one panel family, and the gap it
+	 * keeps from the header pill, the results beside it and the viewport foot.
+	 */
+	--ex-aside-w: 17.5rem;
+	--ex-aside-gap: var(--space-3);
 }
 
 .ex {

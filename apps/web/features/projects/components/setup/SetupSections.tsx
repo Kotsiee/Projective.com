@@ -49,6 +49,8 @@ import {
 	stagePredecessorOptions,
 	stageTimingApplies,
 	structureForStages,
+	teamRolesRequired,
+	timelinePresetApplies,
 } from "../../types/projects-types.ts";
 import type {
 	IpOwnershipMode,
@@ -496,13 +498,21 @@ export function Section(props: {
 	title: string;
 	/** The ladder hint for this section, shown only while the requirement is outstanding. */
 	hint?: string;
+	/**
+	 * How the hint reads. `gate` (the default) is the amber "publishing is waiting on this"; `note` is
+	 * the meta register, for a row the ladder carries but does not require — painting an OPTIONAL
+	 * step's hint amber would report a requirement the ladder one region away says does not exist.
+	 */
+	hintTone?: "gate" | "note";
 	children: ComponentChildren;
 }): JSX.Element {
 	return (
 		<section id={anchorId(props.sectionKey)} class="psu-section">
 			<div class="psu-section__head">
 				<h2 class="psu-section__title">{props.title}</h2>
-				{props.hint && <p class="psu-section__hint">{props.hint}</p>}
+				{props.hint && (
+					<p class="psu-section__hint" data-tone={props.hintTone ?? "gate"}>{props.hint}</p>
+				)}
 			</div>
 			<div class="psu-section__body">{props.children}</div>
 		</section>
@@ -2203,12 +2213,20 @@ export function FlatDetailsSection(
 // #endregion
 
 // #region Role list
-/** The staffing roles a Direct Deliverable takes instead of a stage run. */
+/**
+ * The staffing roles a Direct Deliverable takes instead of a stage run.
+ *
+ * On a one-off without milestones the roles are OPTIONAL (`teamRolesRequired`, the same rule the
+ * ladder reads): the empty state says so rather than implying an omission, because the section's
+ * hint and its empty copy are the two places an owner learns whether the list is standing between
+ * them and publishing.
+ */
 export function RoleListSection(
 	{ setup, hint }: { setup: ProjectSetup; hint?: string },
 ): JSX.Element {
 	const currency = setup.budget.currency;
 	const exponent = currencyExponent(currency);
+	const optional = !teamRolesRequired(setup.format, setup.structure);
 
 	const add = () => {
 		patchSetup({
@@ -2231,7 +2249,12 @@ export function RoleListSection(
 	};
 
 	return (
-		<Section sectionKey="roles" title={ROLE_SECTION_LABEL} hint={hint}>
+		<Section
+			sectionKey="roles"
+			title={ROLE_SECTION_LABEL}
+			hint={hint}
+			hintTone={optional ? "note" : "gate"}
+		>
 			<ul class="psu-list" aria-label={ROLE_SECTION_LABEL}>
 				{setup.roles.map((role) => {
 					const nameKey = `role:${role.id}:name`;
@@ -2314,7 +2337,9 @@ export function RoleListSection(
 				})}
 				{setup.roles.length === 0 && (
 					<li class="psu-list__empty">
-						No roles yet. A direct deliverable is staffed by roles rather than by stages.
+						{optional
+							? "No roles yet — and none are needed to publish. Add one only if this deliverable calls for specific seats."
+							: "No roles yet. A direct deliverable is staffed by roles rather than by stages."}
 					</li>
 				)}
 			</ul>
@@ -2844,10 +2869,17 @@ export function RulesSection(
 	const isDraft = setup.status === "draft";
 	const hidden = setup.liveVisibility !== "public";
 	const deferred = isDraft || setup.liveVisibility !== rules.visibility;
+	/*
+	 * The Timeline preset describes how the STAGES run against one another, so on an engagement that
+	 * does not break into stages — a one-off without milestones — it is ABSENT rather than disabled.
+	 * Absence is for a capability that does not exist here; a greyed dropdown would advertise a
+	 * sequence the work does not have (the same rule the deadline-bonus toggle below follows).
+	 */
+	const timed = timelinePresetApplies(setup.structure);
 
 	return (
 		<Section sectionKey="rules" title="Terms & visibility" hint={hint}>
-			<div class="psu-row">
+			<PairRow paired={timed}>
 				<Field
 					label="Visibility on publish"
 					hint={deferred
@@ -2862,16 +2894,18 @@ export function RulesSection(
 						aria-label="Visibility on publish"
 					/>
 				</Field>
-				<Field label="Timeline">
-					<Select
-						options={optionsOf(TIMELINE_LABEL)}
-						value={rules.timelinePreset}
-						onValueChange={(v: string) =>
-							patchSetup({ rules: { timelinePreset: v as TimelinePreset } })}
-						aria-label="Timeline"
-					/>
-				</Field>
-			</div>
+				{timed && (
+					<Field label="Timeline">
+						<Select
+							options={optionsOf(TIMELINE_LABEL)}
+							value={rules.timelinePreset}
+							onValueChange={(v: string) =>
+								patchSetup({ rules: { timelinePreset: v as TimelinePreset } })}
+							aria-label="Timeline"
+						/>
+					</Field>
+				)}
+			</PairRow>
 
 			{deferred && (
 				<Note>
