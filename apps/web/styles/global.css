@@ -162,7 +162,7 @@ body {
 .fx-modal__panel,
 .fx-modal__menu,
 .fx-modal__aside,
-.qim__panel,
+.pjc__panel,
 .proj-modifier__menu,
 .proj-combo__menu,
 .subm-review__panel,
@@ -306,6 +306,37 @@ summary:focus-visible,
 
 .ui-button--raised:hover:not(:disabled):focus-visible {
 	box-shadow: var(--elevation-medium) !important;
+}
+
+/*
+ * FORM CONTROLS keep a focus indicator, and they are the one family that does.
+ *
+ * The blanket above is about chrome: a link, a card, a nav item, an icon button. It is not about the
+ * controls somebody fills in. A person working through a project's configuration with the keyboard
+ * has no pointer to say where they are, and a text field's hover tint is the same tint it shows the
+ * mouse — so without this the caret's position was genuinely unreadable on a form.
+ *
+ * `--fld-focus-glow` is a soft wash rather than the two-tone ring this file removed, so it honours
+ * the minimal treatment the rest of the product asked for while still being unmistakable. Every
+ * control listed also moves its BORDER to `--fld-focus-bd` in its own sheet; the glow is the second
+ * channel, not the only one.
+ *
+ * ONLY the controls that are genuinely blocked are listed. Anything wrapped in `.ui-field` — text,
+ * number, textarea, select, multiselect, autocomplete, date — draws its indicator on a `<div>` and
+ * never matched the blanket in the first place, and a checkbox's or radio's box is a `<span>` beside
+ * the input rather than the input itself. What is left is the four `<button>`/`<input>` controls
+ * that ARE their own focus target, plus the create modal's type cards, which are a radio group in
+ * card clothing.
+ *
+ * `!important` for the same reason the elevation restores above use it: it is answering an
+ * `!important`, and a specificity fight against a runtime-injected `:root` block is not winnable by
+ * source order.
+ */
+.ui-switch__track:focus-visible,
+.ui-select__filter-input:focus-visible,
+.ui-select-button__option:focus-visible,
+.pjc__type:focus-visible {
+	box-shadow: var(--fld-focus-glow) !important;
 }
 
 /* #endregion */

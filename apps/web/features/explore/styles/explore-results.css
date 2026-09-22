@@ -741,55 +741,26 @@
 /* #endregion */
 
 /* #region Grouped feed (merged sections) */
-.ex-group__head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--space-4);
-	margin-block-end: var(--space-4);
-}
-
-.ex-group__title {
-	margin: 0;
-	font-size: var(--text-xl);
-	font-weight: var(--fw-semibold);
-	letter-spacing: var(--tracking-tight);
-}
-
-/* Card sections present as an elegant horizontal rail — native scroll-snap, no enclosing boxes. */
-.ex-group__rail {
-	display: flex;
-	gap: var(--space-4);
-	overflow-x: auto;
-	scroll-snap-type: x proximity;
-	/* Nudge the first card in so it isn't flush against the container edge. */
-	padding-inline-start: var(--space-1);
-	padding-block-end: var(--space-2);
-	scroll-padding-inline-start: var(--space-1);
-	scrollbar-width: none;
-}
-
-.ex-group__rail::-webkit-scrollbar {
-	display: none;
-}
-
-.ex-group__rail-cell {
-	flex: 0 0 clamp(15rem, 20vw, 17.5rem);
-	scroll-snap-align: start;
-}
-
-.ex-group__rail-cell > .ex-card {
-	block-size: 100%;
-}
-
-/* Projects present as a clean divider-line list, never a media rail. */
-.ex-group__list {
-	display: flex;
-	flex-direction: column;
-}
-
-.ex-group__list [role="listitem"]:last-child .ex-projrow {
-	border-block-end: 0;
+/*
+ * The cross-category feed is the Home's section module (`RailFrame` / `HomeGrid`, explore-home.css),
+ * so a reader who learned the interaction on the discovery Home does not learn a second one here.
+ * Everything the module needs travels with it; what stays behind is the ONE thing that cannot be
+ * shared — the page gutter.
+ *
+ * A rail BLEEDS its trailing edge past the measure so the next card is cut by the viewport rather
+ * than by a margin: that peek is the whole affordance saying "this row continues". Home spends
+ * `--ex-pad-x` on it. This pane's gutter is its own (`--ex-dash-pad-x`, set on `.ex-dash`), which is
+ * why the rule is restated here rather than Home's `.ex-home__section` wrapper being reused — that
+ * wrapper would pad a second time over a gutter `.ex-dash` has already spent, and bleed by a
+ * distance this page does not use.
+ *
+ * Scoped to the TRACK, so the grid variant takes none of it. A fixed grid has no next card and no
+ * scroll; bleeding it would push its second column under the gutter and clip the card, which is the
+ * one thing it must never do.
+ */
+.ex-dash__groups .ex-rail__track {
+	margin-inline-end: calc(var(--ex-dash-pad-x) * -1);
+	padding-inline-end: var(--ex-dash-pad-x);
 }
 /* #endregion */
 
@@ -1078,12 +1049,6 @@
 	   rendering it once hydrated; this covers the SSR HTML in the moment before. */
 	.ex-dash__aside {
 		display: none;
-	}
-
-	/* Rails stay horizontal on mobile; give cells a comfortable peek. The unified feed's column count
-	   is JS-driven (2 for cards, 1 for the projects list), so it is intentionally NOT overridden. */
-	.ex-group__rail-cell {
-		flex-basis: min(72vw, 16rem);
 	}
 }
 /* #endregion */

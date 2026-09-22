@@ -757,8 +757,7 @@
 }
 
 .ex-card--product[data-layout="fixed"] .ex-media--product,
-.ex-rail__track .ex-media--product,
-.ex-group__rail .ex-media--product {
+.ex-rail__track .ex-media--product {
 	aspect-ratio: 16 / 10;
 }
 

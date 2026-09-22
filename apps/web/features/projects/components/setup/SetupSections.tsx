@@ -28,6 +28,7 @@ import { openPicker } from "@web/features/files/core/files-state.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import {
 	blankStage,
+	columnsForProjectType,
 	DEADLINE_BONUS_RATE,
 	hasStages,
 	lockedStagePriceIds,
@@ -37,7 +38,11 @@ import {
 	pricedAtProjectLevel,
 	priceLockReasonFor,
 	PROJECT_PRICE_LOCK_REASON,
+	PROJECT_TYPE_HINT,
+	PROJECT_TYPE_LABEL,
 	projectPriceLocked,
+	ProjectTypeChoice,
+	projectTypeOf,
 	ROLE_INSTRUCTIONS_MAX,
 	ROLE_SECTION_LABEL,
 	SHAPE_LOCK_REASON,
@@ -48,7 +53,6 @@ import {
 	STAGE_SECTION_LABEL,
 	stagePredecessorOptions,
 	stageTimingApplies,
-	structureForStages,
 	teamRolesRequired,
 	timelinePresetApplies,
 } from "../../types/projects-types.ts";
@@ -79,10 +83,7 @@ import { patchSetup, setupReveal } from "../../core/setup-state.ts";
 import { FieldGuard, fieldStatus } from "../../core/setup-validation.ts";
 import { formatBytes } from "../../core/composer-model.ts";
 import { fileDragActive, filesFrom } from "../../core/file-drag.ts";
-import {
-	type PendingAttachment,
-	useAttachmentUpload,
-} from "../../hooks/useAttachmentUpload.ts";
+import { type PendingAttachment, useAttachmentUpload } from "../../hooks/useAttachmentUpload.ts";
 
 /**
  * SetupSections — the Stage-2 workspace's form body: every section of the owner's configuration, and
@@ -191,44 +192,63 @@ function optionsOf<K extends string>(labels: Record<K, string>): Option[] {
 }
 
 /**
- * The two work-flows a client can commission, plus `session` when the engagement ALREADY is one.
+ * The SESSION segment, appended only to an engagement that already is one.
  *
- * A session is a service a freelancer sells, not a project a client posts — which is why the Quick-Init
- * modal's `ProjectCreateFormat` has two members. Offering it here as a target would reintroduce
- * exactly what the modal refuses: a buyer minting an engagement with no seller and no schedule. An
- * existing session still has to be editable, so the option appears only on a project that is one, and
- * is then the value it is already set to rather than a destination.
+ * A session is a service a freelancer sells, not a project a client posts — which is why
+ * {@link ProjectTypeChoice} has three members and none of them is this. Offering it here as a target
+ * would reintroduce exactly what the create modal refuses: a buyer minting an engagement with no
+ * seller and no schedule. An existing session still has to be editable, so the option appears only
+ * on a project that is one, and is then the value it is already set to rather than a destination.
  */
-function formatOptions(format: ProjectFormat): Option[] {
-	const base: Option[] = [
-		{ value: "pipeline", label: "Pipeline" },
-		{ value: "one_off", label: "One-off" },
-	];
-	return format === "session" ? [...base, { value: "session", label: "Sessions" }] : base;
+const SESSION_TYPE_VALUE = "session";
+
+/**
+ * The type segments this engagement may show: the three the product offers, plus `session` where the
+ * engagement already is one.
+ *
+ * Derived from the SSOT enum's own members rather than restated, so the settings selector, the create
+ * modal and the lane's create menu are three renderings of one list.
+ */
+function typeOptions(format: ProjectFormat): Option[] {
+	const base: Option[] = ProjectTypeChoice.options.map((value) => ({
+		value,
+		label: PROJECT_TYPE_LABEL[value],
+	}));
+	return format === "session" ? [...base, { value: SESSION_TYPE_VALUE, label: "Sessions" }] : base;
 }
 
-const FORMAT_HINT: Record<ProjectFormat, string> = {
-	pipeline: "A multi-stage workflow. Freelancers claim tickets stage by stage.",
-	one_off: "A fixed engagement delivered against milestones.",
-	session: "Booked time rather than tickets — one-to-one or a cohort.",
-};
+/**
+ * The sentence under the selector. The three product types read theirs from the SSOT; a session gets
+ * its own, because it is a shape this form can describe and never offer.
+ */
+function typeHint(setup: ProjectSetup): string {
+	const type = projectTypeOf(setup.format, setup.structure);
+	return type
+		? PROJECT_TYPE_HINT[type]
+		: "Booked time rather than tickets — one-to-one or a cohort.";
+}
 
 /*
- * The four-segment Shape control that used to live here is retired, and with it the `shapeOf` /
- * `shapeOptionsFor` / `structureForShape` resolvers in the SSOT.
+ * TWO retired controls, and the one that replaced them.
  *
- * It asked one question in two vocabularies: a pipeline chose between "Staged" and "Single stage"
- * while a one-off chose between "Milestones" and "Direct deliverable", and the four segments encoded
- * one bit — does this engagement break its work into parts? A reader had to learn two words for yes
- * and two for no, and switching format switched the vocabulary underneath them. It is now the single
- * {@link BasicsSection} toggle, which asks that bit directly and reads it back through the same
- * `hasStages` the section list and the ladder already consult.
+ * First a four-segment Shape control asked one question in two vocabularies — a pipeline chose
+ * between "Staged" and "Single stage" while a one-off chose between "Milestones" and "Direct
+ * deliverable" — so a reader had to learn two words for yes and two for no, and switching format
+ * switched the vocabulary underneath them. It became a Type selector plus a has-stages TOGGLE, which
+ * asked the bit directly but still spent two controls and four combinations on three products: one
+ * combination (a pipeline with stages off) named a shape nothing in the product has a word for, and
+ * two others were the same product stored differently depending on which surface minted it.
  *
- * The consequence worth stating: `single_task` — the Direct Deliverable — is no longer reachable from
- * the form, because {@link structureForStages} never returns it. A project already stored that way
- * keeps its role editor (`setupSections` still routes it to `roles`) and its toggle reads OFF;
- * turning it ON converts it to a staged engagement, which is a one-way move and the only escape the
- * shape now has.
+ * Both are now the single three-segment selector in {@link BasicsSection}. `columnsForProjectType` is
+ * the one mapping onto the stored pair and `projectTypeOf` reads it back, so the form, the create
+ * modal and the lane's create menu are three renderings of one list.
+ *
+ * Two consequences worth stating. `single_task` — the Direct Deliverable — is reachable again, and
+ * deliberately: it is what **Task** writes. And `single_stage` is no longer reachable at all, because
+ * no type maps to it; a project already stored that way keeps rendering (`setupSections` still routes
+ * a stage-less engagement to `details`) and reads as the type its FORMAT implies, so a stage-less
+ * one-off shows as a Task and a stage-less pipeline as a Pipeline. Picking a different type converts
+ * it, which is the escape.
  */
 
 /** The uplift the deadline-bonus offer is stated as, from the one constant that carries the rate. */
@@ -773,57 +793,58 @@ function arrayMove<T>(arr: readonly T[], from: number, to: number): T[] {
 
 // #region Basics
 /**
- * The three shape axes, held consistent in ONE patch.
+ * The three shape axes, held consistent in ONE patch, from the ONE type the owner picked.
  *
- * `structure` and `sessionKind` are each meaningful inside one format only, so a format change that
- * left either behind would let the ladder and the section set disagree about what is being sold. The
- * owner's has-stages decision is CARRIED ACROSS the change rather than reset — switching a staged
- * pipeline to a one-off is a change of flow, not a statement that the milestones should be discarded.
+ * This replaces a pair of controls — a two-segment Type selector and a "Break this into stages"
+ * toggle — that between them encoded three products in four combinations, one of which (a pipeline
+ * with stages off) had no name anywhere in the product. The toggle is gone and the missing third
+ * product, Task, is a segment: `columnsForProjectType` is the single mapping onto the stored pair,
+ * and it is the same one the create write uses, so a Task minted from a profile and a Task converted
+ * here are the same row.
+ *
+ * `structure` and `sessionKind` are each meaningful inside one format only, so a change that left
+ * either behind would let the ladder and the section set disagree about what is being sold — which
+ * is why all three are written together rather than patched one at a time.
+ *
+ * `session` never reaches here as a destination: {@link typeOptions} only ever offers it on a project
+ * that already is one, where re-picking it is the value it already holds and fires no change.
  */
-function normalisedShape(
-	setup: ProjectSetup,
-	format: ProjectFormat,
+function shapeForProjectType(
+	type: ProjectTypeChoice,
 ): Pick<ProjectSetup, "format" | "structure" | "sessionKind"> {
-	if (format === "one_off" && setup.structure === "single_task") {
-		return { format, structure: "single_task", sessionKind: "none" };
-	}
-	return {
-		format,
-		structure: structureForStages(hasStages(setup.structure), format),
-		sessionKind: format === "session"
-			? (setup.sessionKind === "group" ? "group" : "normal")
-			: "none",
-	};
+	return { ...columnsForProjectType(type), sessionKind: "none" };
 }
 
 /** Identity and shape. */
 export function BasicsSection(
 	{ setup, hint }: { setup: ProjectSetup; hint?: string },
 ): JSX.Element {
-	const staged = hasStages(setup.structure);
-	const itemLabel = STAGE_ITEM_LABEL[setup.format];
-	// A session is not divisible into stages, so it is offered no such choice — the control is ABSENT
-	// rather than rendered and disabled, which would state a decision its author never made.
-	const divisible = setup.format !== "session";
 	/*
-	 * The shape freeze, and why these two controls are LOCKED rather than removed.
+	 * The one type this engagement reads as, and it is a DERIVATION rather than a stored field: the
+	 * columns are the truth and `projectTypeOf` is what turns them into the word the owner chose.
+	 * `null` is the session — a shape this form can describe and never offer — and the selector shows
+	 * it the value it already holds.
+	 */
+	const type = projectTypeOf(setup.format, setup.structure);
+	/*
+	 * The shape freeze, and why the control is LOCKED rather than removed.
 	 *
-	 * Absence is how this form expresses a capability that does not apply (the session's missing
-	 * has-stages toggle, two lines up). This is the other case: the shape is still the owner's, it is
-	 * simply no longer theirs to CHANGE, and hiding it would delete the answer along with the control
-	 * — an owner returning to a staffed pipeline would find no statement anywhere of what they are
-	 * selling. Locked keeps the value on screen and puts the reason next to it.
+	 * Absence is how this form expresses a capability that does not apply. This is the other case: the
+	 * shape is still the owner's, it is simply no longer theirs to CHANGE, and hiding it would delete
+	 * the answer along with the control — an owner returning to a staffed pipeline would find no
+	 * statement anywhere of what they are selling. Locked keeps the value on screen and puts the
+	 * reason next to it.
 	 *
-	 * One predicate for both, because `normalisedShape` writes `format` and `structure` together and
-	 * `structureForStages` writes `structure` alone: freezing the type while leaving the toggle open
-	 * would be a lock somebody could walk around by turning stages off, stranding every freelancer
-	 * hired onto stages 2..n.
+	 * ONE control to freeze now, where there used to be two. The type selector and the has-stages
+	 * toggle each wrote part of the same shape, so freezing one while leaving the other open was a
+	 * lock somebody could walk around by turning stages off — stranding every freelancer hired onto
+	 * stages 2..n. Collapsing them into the three-way selector removes that hazard by construction.
 	 */
 	const shapeFrozen = shapeLocked(setup);
-	// Order is Type -> Shape -> Title, and it is a sequence rather than an arrangement: the first two
-	// decide WHICH sections the rest of the form renders, so answering them first means the page stops
-	// changing shape underneath the owner once they start writing. The name is the thing they are most
-	// likely to revise later, which is why it no longer leads.
+	// Order is Type -> Title, and it is a sequence rather than an arrangement: the type decides WHICH
+	// sections the rest of the form renders, so answering it first means the page stops changing
+	// shape underneath the owner once they start writing. The name is the thing they are most likely
+	// to revise later, which is why it no longer leads.
 	return (
 		<Section sectionKey="basics" title="Basics" hint={hint}>
 			<Field label="Project name" htmlFor="psu-title" fieldKey="title">
@@ -849,51 +870,38 @@ export function BasicsSection(
 				 * moment the control refuses.
 				 */
 			}
+			{
+				/*
+				 * THE type control: three segments, and no toggle beside it.
+				 *
+				 * "Break this into milestones" used to sit under this selector as a separate switch, and
+				 * between them the two controls encoded the product's three offerings in four
+				 * combinations — one of which (a pipeline with stages off) is a shape nothing in the
+				 * product has a name for, and two of which (a one-off with stages off, and a Task) are
+				 * the same thing stored two different ways depending on which surface minted it.
+				 *
+				 * Picking **Task** is what turns milestones off; picking **One-off** is what turns them
+				 * on. The bit is still recorded on the same `structure_variation` column it always was —
+				 * nothing about the storage changed — it simply stopped being a question asked twice.
+				 */
+			}
 			<Field
 				label="Project type"
-				hint={shapeFrozen ? SHAPE_LOCK_REASON : FORMAT_HINT[setup.format]}
+				hint={shapeFrozen ? SHAPE_LOCK_REASON : typeHint(setup)}
 			>
 				<SelectButton
-					options={formatOptions(setup.format)}
-					value={setup.format}
-					onValueChange={(v: string | string[]) =>
-						patchSetup(normalisedShape(setup, v as ProjectFormat))}
+					options={typeOptions(setup.format)}
+					value={type ?? SESSION_TYPE_VALUE}
+					onValueChange={(v: string | string[]) => {
+						const next = Array.isArray(v) ? v[0] : v;
+						// `session` is only ever the value already held, so a change to it is not a change.
+						if (next === SESSION_TYPE_VALUE) return;
+						patchSetup(shapeForProjectType(next as ProjectTypeChoice));
+					}}
 					disabled={shapeFrozen}
 					aria-label="Project type"
 				/>
 			</Field>
-
-			{
-				/*
-				 * The toggle drives the EXISTING `structure` axis rather than a boolean of its own.
-				 * `projects.structure_variation` already carries `single_stage` for exactly this, and a
-				 * parallel flag would be a second answer to one question — the pair would eventually
-				 * disagree, and nothing would say which one the board should believe.
-				 *
-				 * It lives HERE, in Basics, rather than inside the stage section it governs: a control
-				 * that can hide the section it sits in is a control the owner cannot use to bring that
-				 * section back, and reaching it would mean knowing it was in a place that is no longer
-				 * on the page.
-				 */
-			}
-			{divisible && (
-				<Field
-					label={`Break this into ${itemLabel}s`}
-					hint={shapeFrozen
-						? SHAPE_LOCK_REASON
-						: staged
-						? `Each ${itemLabel} is priced, scoped and staffed on its own.`
-						: "The project's own scope and price are the whole unit of work."}
-				>
-					<ToggleSwitch
-						value={staged}
-						onValueChange={(on: boolean) =>
-							patchSetup({ structure: structureForStages(on, setup.format) })}
-						disabled={shapeFrozen}
-						label={`Use ${STAGE_SECTION_LABEL[setup.format]}`}
-					/>
-				</Field>
-			)}
 
 			{setup.format === "session" && (
 				<Field label="Session kind" hint="A group session seats a cohort in the same booking.">
@@ -1265,9 +1273,7 @@ function TaskList(props: {
 			<div class="psu-tasks">
 				<DndContext
 					onDragStart={(e) => {
-						dragIndex.value = stage.tasks.findIndex((t) =>
-							t.id === taskIdOf(String(e.active.id))
-						);
+						dragIndex.value = stage.tasks.findIndex((t) => t.id === taskIdOf(String(e.active.id)));
 					}}
 					onDragOver={(e) => {
 						overIndex.value = e.over === null
@@ -1296,8 +1302,10 @@ function TaskList(props: {
 									stageId={stage.id}
 									task={task}
 									index={index}
-									onText={(text: string) => patchTask(task.id, text)}
-									onRemove={() => removeTask(task.id)}
+									onText={(text: string) =>
+										patchTask(task.id, text)}
+									onRemove={() =>
+										removeTask(task.id)}
 									onKeyDown={(event) => onRowKeyDown(event, index)}
 								/>
 								<DropIndicator active={seamAfter === index} />

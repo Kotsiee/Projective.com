@@ -122,6 +122,7 @@
 	box-shadow: none;
 	outline: none;
 	--field-bg: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	--field-border: var(--fld-focus-bd);
 }
 
 /*
@@ -141,11 +142,35 @@
  * behaviour being removed.
  *
  * Specificity ties with `.ui-field:focus-within` at (0,2,0), so this MUST stay below it — source
- * order is the only thing that lets it re-open the `outline: none` set above.
+ * order is the only thing that lets it re-open the `box-shadow` set above.
+ *
+ * What it adds over the rule above is the HALO, and the split is the point: the rule above fires on
+ * a pointer click too, where the tint and the accent contour are the right weight, and this one adds
+ * the glow only for the modality that has no pointer to say where it is. Two states that look
+ * identical are one state as far as a keyboard user is concerned.
+ *
+ * An outline is deliberately NOT used. `outline` cannot follow a composite control's radius on every
+ * engine and it paints outside the margin box, so on a control sitting in a grid gap the ring would
+ * be clipped by whatever comes next; a spread `box-shadow` hugs `border-radius` exactly.
  */
 .ui-field:has(:focus-visible) {
-	box-shadow: none;
 	outline: none;
+	box-shadow: var(--fld-focus-glow);
+	--field-border: var(--fld-focus-bd);
+}
+
+/*
+ * The bare variant keeps its promise: a hairline NEVER paints on it, focused or not. It still takes
+ * the halo — its own docblock calls for "focus only a soft ring" — so the state is legible without
+ * the contour the toolbar treatment exists to avoid.
+ *
+ * It MUST sit below the two rules above rather than beside the other `--bare` rules: both of those
+ * tie with it at (0,2,0), and a tie is settled by source order alone.
+ */
+.ui-field--bare.ui-field--focused,
+.ui-field--bare:focus-within,
+.ui-field--bare:has(:focus-visible) {
+	--field-border: transparent;
 }
 
 /*

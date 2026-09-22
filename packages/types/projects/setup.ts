@@ -836,18 +836,102 @@ export function hasStages(structure: ProjectStructure): boolean {
 	return structure !== "single_stage" && structure !== "single_task";
 }
 
-/**
- * The structure a project takes when the owner flips the Has-stages toggle.
+/*
+ * `structureForStages(on, format)` is retired, and with it the has-stages toggle it served.
  *
- * Returns `standard` rather than restoring whatever multi-stage structure was there before, because
- * `one_off` and `standard` differ in how a FORMAT presents its list and that is re-derived from
- * the format on the next render anyway. `single_task` is deliberately unreachable from here: it is
- * a role-staffed engagement, which is a staffing decision and not a stage-count one.
+ * It wrote `single_stage` for a stage-less engagement of either format, which is how the setup form
+ * and the create path came to store the SAME product two different ways: a Task minted from a
+ * seller's profile arrived as `single_task` while the same product converted here arrived as
+ * `single_stage`. The two differ in how the work is staffed, so the two Tasks rendered different
+ * sections — a divergence nothing in the product could see, because each half was individually
+ * correct.
+ *
+ * Its replacement is {@link columnsForProjectType}, which routes through `createFormatToColumns` —
+ * the mapping the create write already used — so there is exactly one answer to what a type stores.
+ * `single_stage` is consequently unreachable going forward; rows already holding it keep rendering
+ * through {@link hasStages}, which is unchanged.
  */
-export function structureForStages(on: boolean, format: ProjectFormat): ProjectStructure {
-	if (!on) return "single_stage";
-	return format === "one_off" ? "one_off" : "standard";
+
+/**
+ * The THREE types a client picks between, everywhere a project is created or configured.
+ *
+ * This is the vocabulary a person reads, and it is deliberately not the vocabulary a row stores. The
+ * columns are two axes — `format` (`projects.project_format`) and `structure_variation`
+ * ({@link ProjectStructure}) — and expressing the product's three choices as those two axes is what
+ * produced the control this enum replaces: a Type selector beside a "Break this into stages" toggle,
+ * where two of the four combinations were the same product and one of them had no name at all.
+ *
+ *  - `task`     — one deliverable, one price, no stages. Stored as `one_off` + `single_task`.
+ *  - `one_off`  — a fixed scope delivered against milestones. Stored as `one_off` + `one_off`.
+ *  - `pipeline` — ongoing work, ticket by ticket, across stages. Stored as `pipeline` + `standard`.
+ *
+ * A Task IS a one-off with milestones off — the brief's own words — which is why it takes no third
+ * `project_format` member and why {@link createFormatToColumns} is still the one mapping that writes
+ * the pair. `session` is absent for the reason it is absent from {@link ProjectCreateFormat}: it is a
+ * service a freelancer SELLS, reaching `projects.projects` only by instantiation, so it can be
+ * DISPLAYED on a project that already is one but never chosen.
+ */
+export const ProjectTypeChoice = z.enum(["task", "one_off", "pipeline"]);
+export type ProjectTypeChoice = z.infer<typeof ProjectTypeChoice>;
+
+/**
+ * The type a STORED project reads as — the read direction of {@link columnsForProjectType}.
+ *
+ * Total over every stored pair, including the two the create path can no longer produce. A
+ * stage-less one-off is a Task whichever structure records it: `single_task` (role-staffed) and
+ * `single_stage` (priced on its root stage) differ in how the work is STAFFED, not in what the
+ * client bought, and {@link isFlatOneOff} already treats them as one shape. A stage-less PIPELINE
+ * still reads as a pipeline, because its format is the thing the client chose and calling it a Task
+ * would state a decision they never made.
+ *
+ * `session` has no member here. A caller rendering a type control has to handle that case itself —
+ * see `formatOptions` in the setup form, which appends the option only to a project that is one.
+ */
+export function projectTypeOf(
+	format: ProjectFormat,
+	structure: ProjectStructure,
+): ProjectTypeChoice | null {
+	if (format === "session") return null;
+	if (format === "one_off") return hasStages(structure) ? "one_off" : "task";
+	return "pipeline";
 }
+
+/**
+ * The columns a type writes — the ONE place the three choices become two axes.
+ *
+ * Routed through {@link createFormatToColumns} rather than returning literals, so the settings
+ * selector and the create modal cannot disagree about what a Task is. They did: the wizard's Task
+ * card minted `single_task` while the setup form's has-stages toggle minted `single_stage`, so the
+ * same product arrived in two shapes depending on which surface the client happened to use.
+ */
+export function columnsForProjectType(
+	type: ProjectTypeChoice,
+): { format: ProjectFormat; structure: ProjectStructure } {
+	return createFormatToColumns(...createInputForType(type));
+}
+
+/**
+ * The create payload's two fields for a type, as the argument pair {@link createFormatToColumns}
+ * takes. Returned as a tuple so the two call sites — the create write and
+ * {@link columnsForProjectType} — spread the same value rather than each naming the fields again.
+ */
+export function createInputForType(type: ProjectTypeChoice): [ProjectCreateFormat, boolean] {
+	return type === "pipeline" ? ["pipeline", true] : ["one_off", type === "one_off"];
+}
+
+/** What each type is called, in the one place both the modal and the settings selector read it. */
+export const PROJECT_TYPE_LABEL: Record<ProjectTypeChoice, string> = {
+	task: "Task",
+	one_off: "One-off",
+	pipeline: "Pipeline",
+};
+
+/** One sentence per type, shown beneath the selector that chose it. */
+export const PROJECT_TYPE_HINT: Record<ProjectTypeChoice, string> = {
+	task: "One deliverable for one price. No milestones to set up.",
+	one_off: "A fixed scope delivered against milestones, each funded as it starts.",
+	pipeline: "Ongoing work, ticket by ticket, across as many stages as you need.",
+};
 
 /**
  * Whether this engagement is a one-off WITHOUT milestones — a fixed piece of work that neither breaks

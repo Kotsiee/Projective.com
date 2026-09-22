@@ -506,6 +506,26 @@
 	visibility: hidden;
 }
 
+/*
+ * The optional trailing action — the Search Results feed's "Show all" into the isolated
+ * single-category feed. Home passes none: there the heading IS the link, and a second control saying
+ * the same thing beside it is one device too many (§B.4).
+ *
+ * It sits between the progress track and the arrows, and takes no auto margin: the track is
+ * `flex: 1 1 auto` and has already eaten the free space, so the action is simply the next item along.
+ */
+.ex-rail__action {
+	flex: 0 0 auto;
+	/*
+	 * Pinned to the trailing edge. In a RAIL that is already true — the progress track is
+	 * `flex: 1 1 auto` and has eaten the free space, so this margin resolves to zero. In the GRID
+	 * variant there is no progress track, and without it the action would sit immediately after the
+	 * heading text, floating mid-header while every rail beside it puts the same control on the far
+	 * edge.
+	 */
+	margin-inline-start: auto;
+}
+
 .ex-rail__nav {
 	flex: 0 0 auto;
 	display: flex;
@@ -856,6 +876,13 @@
 
 	/* The progress track needs room the phone header does not have; the arrows carry the state alone. */
 	.ex-rail__progress {
+		display: none;
+	}
+
+	/* Same room problem, and the heading is already a link to the same place — so the action folds
+	   away entirely rather than collapsing to a bare icon, which would owe a tooltip and a label
+	   (§B.6) for a destination the reader can already reach by tapping the title. */
+	.ex-rail__action {
 		display: none;
 	}
 

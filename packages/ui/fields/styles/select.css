@@ -90,6 +90,8 @@
 }
 .ui-select__clear:focus-visible {
 	outline: none;
+	/* The indicator belongs to the `.ui-field` wrapper this sits inside; a second glow on the
+	   child would draw a concentric ring around the same control. */
 	box-shadow: none;
 }
 /* #endregion */
@@ -172,7 +174,7 @@
 .ui-select__filter-input:focus-visible {
 	outline: none;
 	border-color: var(--primary);
-	box-shadow: none;
+	box-shadow: var(--fld-focus-glow);
 }
 .ui-select__filter-input::placeholder {
 	color: var(--text-secondary);

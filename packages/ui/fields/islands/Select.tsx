@@ -301,7 +301,10 @@ export function Select(props: SelectProps): JSX.Element {
 	const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLElement>) => {
 		if (disabled || readOnly) return;
 		if (!open) {
-			if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+			// ArrowUp opens too, which is what the combobox pattern specifies and what a reader who
+			// reaches for the arrows to "cycle the options" expects to find. Without it, half of the
+			// gesture did nothing at all on a closed control.
+			if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") {
 				e.preventDefault();
 				openPanel();
 			}

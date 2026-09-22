@@ -1,0 +1,359 @@
+/*
+ * ProjectCreateModal (`.pjc`) — the one surface that mints a project.
+ *
+ * A focused dialog, not a workspace: one column sized `--overlay-w-md`, with the panel height driven
+ * by its content and capped so a short viewport scrolls the body rather than the chrome.
+ * BodyPortal-mounted; the enter transform is SELF-CLEARING (it reverts to `none` when open) so any
+ * `position: fixed` panel a field opens resolves against the viewport instead of re-basing onto a
+ * transformed ancestor.
+ *
+ * §B.4: the fields are separated by spacing alone — no card, no box, no tonal plate around static
+ * content. The only hairlines here are the two that separate the header and footer chrome from the
+ * scrollable body, which is one device per boundary. The type cards carry a full contour because
+ * they ARE interactive (§B.4 tier 5), and the invited-freelancer row carries a tonal fill for the
+ * same reason a lane row does — it is the one block that states a party rather than a setting.
+ * §B.11: the one containered non-control is the "Optional" disclosure on the description label,
+ * which is a required disclosure rather than metadata; every hint is plain inline text.
+ * §B.12: every press acknowledges through `transform` alone.
+ */
+.pjc {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: clamp(0px, 3vw, var(--space-6));
+}
+
+.pjc__panel {
+	position: relative;
+	inline-size: var(--overlay-w-md);
+	max-block-size: var(--overlay-h-md);
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border-radius: var(--overlay-radius-lg);
+	box-shadow: var(--elevation-high);
+	opacity: 0;
+	transform: translateY(8px) scale(0.99);
+	transition:
+		opacity var(--dur-medium) var(--ease-emphasized),
+		transform var(--dur-medium) var(--spring-standard);
+}
+.pjc__panel[data-state="open"] {
+	opacity: 1;
+	transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.pjc__panel {
+		transition: none;
+	}
+}
+:root[data-motion="reduced"] .pjc__panel {
+	transition: none;
+}
+
+/* #region Header */
+.pjc__top {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-4) var(--space-3);
+	border-block-end: var(--hairline);
+}
+.pjc__heading {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+.pjc__close {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--icon-md);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+.pjc__close:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--on-surface);
+}
+.pjc__close:active {
+	transform: scale(var(--btn-press-scale-icon));
+}
+.pjc__close:focus-visible {
+	outline: none;
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+/* #endregion */
+
+/* #region Body — one column, spacing-separated */
+.pjc__body {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	padding: var(--space-5) var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.pjc__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.pjc__label {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+/*
+ * "Optional" is a required disclosure about the control beside it, not metadata about the project —
+ * so it is the one contained element in the body (§B.11.3). Neutral tonal, never a severity hue: it
+ * announces the absence of a requirement, not a state.
+ */
+.pjc__optional {
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-full);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-normal);
+	letter-spacing: var(--tracking-normal);
+	text-transform: none;
+	line-height: var(--leading-relaxed);
+}
+
+.pjc__hint {
+	margin: 0;
+	min-block-size: var(--fld-hint-min-h);
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+.pjc__hint--error {
+	color: var(--danger);
+}
+/* #endregion */
+
+/* #region Type cards */
+/*
+ * Three equal columns above the phone cusp, stacking below it. A container query rather than a
+ * viewport one: the panel is `--overlay-w-md` on a desktop and full-bleed on a phone, so what
+ * decides whether three cards fit is the PANEL's width and never the window's.
+ */
+.pjc__types {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--space-2);
+}
+
+@media (max-width: 420px) {
+	.pjc__types {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+.pjc__type {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding: var(--space-4) var(--space-3);
+	border: var(--fld-bw) solid var(--fld-outline);
+	border-radius: var(--radius-lg);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+
+.pjc__type:hover {
+	border-color: var(--fld-hover-bd);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.pjc__type:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+/*
+ * The chosen card, and the contrast reasoning behind it. The fill is a TINT of the brand over the
+ * dialog's own surface rather than the brand itself: `--primary` is mode-invariant and measures
+ * 3.05:1 against `--surface-3` in dark, so a solid fill here would carry its label on the one pair
+ * §A.1.1 holds to AA rather than AAA. A tint leaves the label on `--on-surface` — 17:1 in light,
+ * 14.9:1 in dark — and lets the CONTOUR carry the state, which is the channel with room to spare.
+ */
+.pjc__type[aria-checked="true"] {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
+}
+
+.pjc__type:focus-visible {
+	outline: none;
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--fld-focus-glow);
+}
+
+.pjc__type-glyph {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pjc__type[aria-checked="true"] .pjc__type-glyph {
+	color: var(--primary);
+}
+
+.pjc__type-label {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pjc__type,
+	.pjc__close {
+		transition: none;
+		transform: none;
+	}
+	.pjc__type:active,
+	.pjc__close:active {
+		transform: none;
+	}
+}
+:root[data-motion="reduced"] .pjc__type,
+:root[data-motion="reduced"] .pjc__close {
+	transition: none;
+	transform: none;
+}
+:root[data-motion="reduced"] .pjc__type:active,
+:root[data-motion="reduced"] .pjc__close:active {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Invited freelancer */
+.pjc__invitee {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+}
+
+.pjc__invitee-text {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.pjc__invitee-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.pjc__invitee-handle {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Footer */
+/*
+ * The actions own the end of the row by declaration, never by a sibling acting as a spacer — the
+ * note is a live region whose text changes, and a layout that depended on it would move the primary
+ * action the moment the message emptied.
+ */
+.pjc__foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	border-block-start: var(--hairline);
+}
+.pjc__note {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+.pjc__note[data-tone="error"] {
+	color: var(--danger);
+}
+.pjc__actions {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+/* #endregion */
+
+@media (max-width: 480px) {
+	.pjc {
+		padding: 0;
+		align-items: flex-end;
+	}
+	.pjc__panel {
+		inline-size: 100%;
+		max-block-size: 92dvh;
+		border-end-start-radius: 0;
+		border-end-end-radius: 0;
+	}
+	.pjc__foot {
+		flex-wrap: wrap;
+	}
+	.pjc__actions {
+		inline-size: 100%;
+		justify-content: flex-end;
+	}
+}

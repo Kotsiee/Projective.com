@@ -311,3 +311,109 @@ Deno.test("field.css — the focus state still declares a ring of its own", () =
 	);
 });
 // #endregion
+
+// #region The keyboard focus indicator
+/**
+ * Every form control spends the SAME focus token, and it is not `none`.
+ *
+ * The product draws no `--focus-ring-shadow` anywhere any more, so for a while these seven rules all
+ * read `box-shadow: none` and a keyboard user had nothing but the hover tint to tell them where the
+ * caret was. `--fld-focus-glow` is what replaced it, and the failure mode if one sheet drifts back is
+ * exactly the one that is hardest to notice: six controls mark themselves and the seventh does not,
+ * on a form where the seventh is the only one somebody tabs into blind.
+ *
+ * Each entry is (sheet, selector fragment). A rule renamed out from under this list fails loudly
+ * rather than silently opting its control out.
+ */
+const FOCUS_INDICATOR_RULES: readonly [string, string][] = [
+	["field.css", ".ui-field:has(:focus-visible)"],
+	["switch.css", ".ui-switch__track:focus-visible"],
+	["select.css", ".ui-select__filter-input:focus-visible"],
+	["select-button.css", ".ui-select-button__option:focus-visible"],
+	["checkbox.css", ".ui-checkbox__input:focus-visible"],
+	["radio.css", ".ui-radio__input:focus-visible"],
+];
+
+for (const [sheet, fragment] of FOCUS_INDICATOR_RULES) {
+	Deno.test(`${sheet} — \`${fragment}\` spends the focus glow`, async () => {
+		const rules = rulesIn(rulesOf(await Deno.readTextFile(new URL(sheet, stylesDir))));
+		const matching = rules.filter((r) => r.selector.includes(fragment));
+		assert(matching.length > 0, `no rule in ${sheet} selects \`${fragment}\` any more.`);
+		for (const rule of matching) {
+			assert(
+				rule.body.includes("var(--fld-focus-glow)"),
+				`\`${rule.selector}\` in ${sheet} does not spend \`--fld-focus-glow\`. A control that ` +
+					`draws no indicator is invisible to a keyboard user, and the type checker cannot see it.`,
+			);
+		}
+	});
+}
+
+Deno.test("index.css — the focus glow is declared, and paints outside the control", () => {
+	const tokens = Deno.readTextFileSync(new URL("../../styles/index.css", import.meta.url));
+	const declared = tokens.match(/--fld-focus-glow:([^;]*);/);
+	assert(declared, "\`--fld-focus-glow\` is not declared; every rule above resolves to nothing.");
+	const value = declared[1];
+	assert(
+		value.includes("--primary"),
+		"the glow no longer carries the accent, so there is nothing to distinguish it from a shadow.",
+	);
+	// An OUTER box-shadow is clipped to the outside of its border box, which is the whole reason a
+	// glow is safe on a control with a solid fill — but an INSET one is not, and would wash the
+	// label of a checked switch or a selected segment.
+	assertEquals(
+		value.includes("inset"),
+		false,
+		"an inset glow paints ON the control's own fill, over the label it is meant to be marking.",
+	);
+	// \`--focus-ring-halo\` is forced to \`transparent !important\` by the app's focus neutralisation,
+	// so a layer composed from it paints nothing at all. This pins that the glow never depends on it.
+	assertEquals(
+		value.includes("--focus-ring-halo"),
+		false,
+		"the glow composes \`--focus-ring-halo\`, which the app forces to \`transparent !important\` — " +
+			"that layer would silently paint nothing.",
+	);
+});
+
+/**
+ * The app's focus neutralisation must keep letting a FORM control draw its indicator.
+ *
+ * \`apps/web/styles/global.css\` removes every focus ring in the product with \`box-shadow: none
+ * !important\` on a list of element types, and that list includes \`button\` and \`input\`. Four of the
+ * controls above ARE their own focus target, so the rules in their own sheets were written, shipped
+ * and completely inert — the glow rendered nowhere the blanket could reach, and no sheet-reading
+ * test could see it, because each half was individually correct.
+ *
+ * This is the half that reads the OTHER file. It is deliberately in the package's test rather than
+ * the app's: the package is what promises the indicator, so the package is what should fail when
+ * something downstream quietly withdraws it.
+ */
+Deno.test("global.css — the focus neutralisation exempts the form controls", () => {
+	const url = new URL("../../../../apps/web/styles/global.css", import.meta.url);
+	const css = rulesOf(Deno.readTextFileSync(url));
+	const restoring = rulesIn(css).filter((r) => r.body.includes("var(--fld-focus-glow)"));
+	assert(
+		restoring.length > 0,
+		"nothing in global.css restores \`--fld-focus-glow\`, so every control whose focus target is a " +
+			"<button> or an <input> draws no indicator at all.",
+	);
+	const selectors = restoring.map((r) => r.selector).join(" ");
+	for (
+		const control of [
+			".ui-switch__track",
+			".ui-select__filter-input",
+			".ui-select-button__option",
+		]
+	) {
+		assert(
+			selectors.includes(control),
+			`\`${control}\` is not exempted from the focus neutralisation, so its focus rule is inert.`,
+		);
+	}
+	assert(
+		restoring.every((r) => r.body.includes("!important")),
+		"the restore does not carry \`!important\`, so it loses to the neutralisation it is answering.",
+	);
+});
+// #endregion

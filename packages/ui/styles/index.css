@@ -739,6 +739,30 @@
     --fld-placeholder-fg: var(--text-secondary);
 
     /*
+	* The keyboard focus glow for FORM CONTROLS — a soft wash, never an outline.
+	*
+	* The product draws no `--focus-ring-shadow` anywhere any more (`apps/web/styles/global.css`
+	* neutralises it product-wide), so a control had nothing but its surface tint to say the caret was
+	* in it — and that tint is also its HOVER state, so a keyboard user moving through a form could not
+	* tell where they WERE from where the pointer happened to be resting. This is the channel that
+	* separates the two, and it is deliberately soft rather than a 2px ring.
+	*
+	* It never travels alone: every control that spends it also moves its border to `--fld-focus-bd`
+	* in the same rule. The contour is what carries the state for anyone who cannot resolve a 30% wash,
+	* and it is a solid `--primary` against the field's own fill.
+	*
+	* One layer, and it needs no halo gap beneath it. An OUTER `box-shadow` is clipped to the outside
+	* of its element's border box, so a glow at zero offset never paints over the control's own fill —
+	* not even on a checked switch, which is a solid `--primary` pill. A halo layer was written first
+	* on the assumption that it did, and it could not have worked in any case: `--focus-ring-halo` is
+	* forced to `transparent !important` by that same neutralisation, so the layer painted nothing.
+	*
+	* Zero offset and zero blur, so the indicator hugs the control's radius exactly and cannot read as
+	* the elevation shadow of a panel. Its softness comes from the alpha.
+	*/
+    --fld-focus-glow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+
+    /*
 	* Disabled — ONE alpha, everywhere. The taxonomy had five (0.40/0.45/0.50/0.55 plus a bare
 	* colour swap), which measured 2.30:1 on a disabled calendar day and 3.26:1 on a disabled
 	* placeholder. 0.55 measures 5.04:1 against --surface: legible enough to read, plainly inert.

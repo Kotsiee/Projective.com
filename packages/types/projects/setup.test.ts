@@ -1,8 +1,11 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import {
 	blankStage,
+	columnsForProjectType,
 	countsAsOnboarded,
 	CREATED_PUBLISH_VISIBILITY,
+	createFormatToColumns,
+	createInputForType,
 	DEFAULT_PROJECT_BUDGET,
 	DEFAULT_PROJECT_RULES,
 	hasStages,
@@ -17,11 +20,15 @@ import {
 	priceLockReasonFor,
 	pricingSatisfied,
 	PROJECT_PRICE_LOCK_REASON,
+	PROJECT_TYPE_HINT,
+	PROJECT_TYPE_LABEL,
 	projectOnboarded,
 	projectPriceLocked,
 	type ProjectSetupPatch,
 	type ProjectSetupStep,
 	type ProjectSetupStepsInput,
+	ProjectTypeChoice,
+	projectTypeOf,
 	reconcileSetup,
 	setupCompleteness,
 	setupSteps,
@@ -29,7 +36,6 @@ import {
 	STAGE_PRICE_LOCK_REASON,
 	stagePredecessorOptions,
 	stageTimingApplies,
-	structureForStages,
 	teamRolesRequired,
 	timelinePresetApplies,
 	wouldCycle,
@@ -132,9 +138,10 @@ Deno.test("isFlatOneOff names exactly the stage-less one-offs", () => {
 	assertFalse(isFlatOneOff("pipeline", "single_stage"), "a flat pipeline is not a one-off");
 	assertFalse(isFlatOneOff("pipeline", "standard"));
 	assertFalse(isFlatOneOff("session", "single_stage"));
-	// It reads `hasStages`, not a literal list, so the toggle and the predicate cannot drift.
-	assertFalse(isFlatOneOff("one_off", structureForStages(true, "one_off")));
-	assert(isFlatOneOff("one_off", structureForStages(false, "one_off")));
+	// Read through the type mapping, not a literal list, so the selector and the predicate cannot
+	// drift: whatever columns a type writes are the ones tested.
+	assertFalse(isFlatOneOff("one_off", columnsForProjectType("one_off").structure));
+	assert(isFlatOneOff("one_off", columnsForProjectType("task").structure));
 });
 
 Deno.test("the pricing hint names what the shape actually prices", () => {
@@ -637,46 +644,83 @@ Deno.test("a created project's intent is public and is not DEFAULT_PROJECT_RULES
 });
 // #endregion
 
-// #region Shape control
+// #region The three project types
 /**
- * The Shape segments and the structure they write, pinned.
+ * The three types the product offers, and the two columns each one stores.
  *
- * These exist because the form's Shape handler shipped with both arguments hardcoded —
- * `structureForStages(true, "one_off")` — so every segment of every format wrote `one_off`. The
- * round-trip property below is the one that broke: pressing "Single stage" on a PIPELINE produced
- * `one_off`, which is not one of a pipeline's shapes, so the control resolved back to "Staged" and the
- * press silently set the wrong column. Each of these fails against that code.
+ * These pin a rule that was WRONG in the shipped code for as long as both surfaces existed: the
+ * create wizard's Task card minted `single_task` while the setup form's has-stages toggle minted
+ * `single_stage`, so the same product arrived in two shapes depending on which surface a client
+ * happened to use — and the two render different sections, because one is staffed by roles and the
+ * other prices its root stage. Nothing could see it: each half was individually correct.
+ *
+ * Every assertion here is therefore about AGREEMENT between the two directions, not about either one
+ * in isolation.
  */
-Deno.test("the toggle writes a stage-bearing structure on and a stage-less one off", () => {
-	// The Shape control this replaced encoded one bit in four segments and two vocabularies. The
-	// toggle asks the bit directly, and `hasStages` is the read direction — the same function the
-	// section list and the ladder consult, so the three cannot disagree about what is on the page.
-	for (const format of ["pipeline", "one_off"] as const) {
-		assert(hasStages(structureForStages(true, format)), `${format} lost its stages when turned on`);
-		assertFalse(
-			hasStages(structureForStages(false, format)),
-			`${format} kept its stages when turned off`,
+Deno.test("each type round-trips through its stored columns", () => {
+	for (const type of ProjectTypeChoice.options) {
+		const { format, structure } = columnsForProjectType(type);
+		assertEquals(
+			projectTypeOf(format, structure),
+			type,
+			`${type} stored as ${format}/${structure} and read back as something else`,
 		);
 	}
 });
 
-Deno.test("a pipeline can actually become stage-less", () => {
-	assertEquals(structureForStages(false, "pipeline"), "single_stage");
-	assertEquals(structureForStages(true, "pipeline"), "standard");
+Deno.test("a Task is a one-off with milestones off, and the ONLY one", () => {
+	assertEquals(columnsForProjectType("task"), { format: "one_off", structure: "single_task" });
+	assertFalse(hasStages(columnsForProjectType("task").structure));
+	// The other two both carry a stage run. A type that lost its stages would silently take its
+	// engagement's whole stage section off the page.
+	assert(hasStages(columnsForProjectType("one_off").structure));
+	assert(hasStages(columnsForProjectType("pipeline").structure));
 });
 
-Deno.test("the toggle never produces a Direct Deliverable", () => {
-	// `single_task` is a STAFFING decision, not a stage-count one, and it is no longer reachable from
-	// the form: a project already stored that way keeps its role editor, and turning the toggle on is
-	// its one-way escape. A toggle that could write it would silently discard a role-staffed project's
-	// roles on the way past.
-	for (const format of ["pipeline", "one_off"] as const) {
-		for (const on of [true, false]) {
-			assert(
-				structureForStages(on, format) !== "single_task",
-				`${format}/${on} wrote single_task`,
-			);
-		}
+Deno.test("the type control writes the same columns the create payload does", () => {
+	// One mapping, reached two ways: the settings selector goes through `columnsForProjectType` and
+	// the create write through `createFormatToColumns`. They must not be two implementations.
+	for (const type of ProjectTypeChoice.options) {
+		const [format, staged] = createInputForType(type);
+		assertEquals(
+			createFormatToColumns(format, staged),
+			columnsForProjectType(type),
+			`${type} is minted and converted into different shapes`,
+		);
+	}
+});
+
+Deno.test("no type writes the orphaned single_stage shape", () => {
+	// `single_stage` was what the retired toggle wrote for a stage-less engagement of either format,
+	// and nothing in the product has a word for a pipeline with no stages. Rows already holding it
+	// still render; nothing may CREATE another.
+	for (const type of ProjectTypeChoice.options) {
+		assertEquals(
+			columnsForProjectType(type).structure === "single_stage",
+			false,
+			`${type} wrote single_stage`,
+		);
+	}
+});
+
+Deno.test("a stored shape the selector cannot write still reads as a type", () => {
+	// Total over every legacy pair, because the selector renders whatever this returns: a stage-less
+	// one-off is a Task however it was recorded, and a stage-less PIPELINE is still a pipeline —
+	// calling it a Task would state a decision its owner never made.
+	assertEquals(projectTypeOf("one_off", "single_stage"), "task");
+	assertEquals(projectTypeOf("pipeline", "single_stage"), "pipeline");
+	// A session is the one shape with no type. It is described by the form and never offered by it,
+	// so the caller has to handle the absence rather than being handed a wrong word.
+	assertEquals(projectTypeOf("session", "single_stage"), null);
+	assertEquals(projectTypeOf("session", "standard"), null);
+});
+
+Deno.test("every type has a label and a hint", () => {
+	// The maps are what three surfaces render. A member added to the enum without an entry here would
+	// type-check and then paint an empty segment.
+	for (const type of ProjectTypeChoice.options) {
+		assert(PROJECT_TYPE_LABEL[type].trim().length > 0, `${type} has no label`);
+		assert(PROJECT_TYPE_HINT[type].trim().length > 0, `${type} has no hint`);
 	}
 });
 // #endregion
@@ -954,14 +998,15 @@ Deno.test("a structure that does not use stages never asks, however many rows it
 	assertFalse(stageTimingApplies("single_task", leftovers));
 });
 
-Deno.test("stage timing tracks the has-stages toggle in both directions", () => {
-	// Read through `structureForStages` rather than against literals, so the predicate and the toggle
-	// that drives it cannot drift apart: whatever structure the toggle produces is the one tested.
+Deno.test("stage timing tracks the project type in both directions", () => {
+	// Read through the type mapping rather than against literals, so the predicate and the selector
+	// that drives it cannot drift apart: whatever structure a type produces is the one tested.
 	const stages = [priced("a", 0, 1), priced("b", 1, 1)];
-	assert(stageTimingApplies(structureForStages(true, "pipeline"), stages));
-	assertFalse(stageTimingApplies(structureForStages(false, "pipeline"), stages));
-	assert(stageTimingApplies(structureForStages(true, "one_off"), stages));
-	assertFalse(stageTimingApplies(structureForStages(false, "one_off"), stages));
+	assert(stageTimingApplies(columnsForProjectType("pipeline").structure, stages));
+	assert(stageTimingApplies(columnsForProjectType("one_off").structure, stages));
+	assertFalse(stageTimingApplies(columnsForProjectType("task").structure, stages));
+	// The orphaned shape keeps its answer: a stored stage-less pipeline has no sequence either.
+	assertFalse(stageTimingApplies("single_stage", stages));
 });
 
 Deno.test("stage timing agrees with hasStages wherever hasStages has an opinion", () => {

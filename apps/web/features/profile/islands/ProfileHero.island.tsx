@@ -28,7 +28,7 @@ import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
 import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
 import ConsultationModal from "../components/hire/ConsultationModal.tsx";
-import CreateProjectWizard from "../components/hire/CreateProjectWizard.tsx";
+import { ProjectCreateModal } from "@features/projects/components/ProjectCreateModal.tsx";
 import ProjectAssignModal from "../components/hire/ProjectAssignModal.tsx";
 import ServiceDetailModal from "../components/hire/ServiceDetailModal.tsx";
 import { type EstimatedSpend, type HireProject, isSellerKind } from "../core/profile-model.ts";
@@ -62,7 +62,7 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  * The controls are the {@link ProfileRig} — the same component the sticky header band renders once
  * the hero has scrolled away — and what they do lives in `core/rig-actions.ts`. This island is
  * where the flows those controls open are MOUNTED, exactly once: the {@link ServiceDetailModal}, the
- * {@link ProjectAssignModal}, the {@link ConsultationModal} and the {@link CreateProjectWizard} all
+ * {@link ProjectAssignModal}, the {@link ConsultationModal} and the {@link ProjectCreateModal} all
  * open on the shared signals in `core/profile-state.ts`, so a Hire row picked in the band's popover
  * opens the same modal a row picked here does, with no second copy of the buyer's inputs.
  *
@@ -179,6 +179,18 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		addMenuOpen.value = false;
 		liveConsultation.value = undefined;
 	}, []);
+
+	/**
+	 * A minted draft — leave for its Stage-2 workspace by **slug**, the only address that routes
+	 * (Decision #88). A full navigation rather than a client-side push: the destination is a different
+	 * shell with a different lane, and nothing on this page survives the move.
+	 */
+	function openCreatedProject(slug: string): void {
+		wizardOpen.value = false;
+		try {
+			globalThis.location.assign(`/projects/${slug}`);
+		} catch { /* no `location` — non-fatal, the modal simply closes */ }
+	}
 
 	function chooseShowcase(): void {
 		openPicker({
@@ -380,11 +392,29 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						/>
 					)}
 					{authed && (
-						<CreateProjectWizard
-							open={wizardOpen}
-							sellerName={profile.name}
+						/*
+						 * The SAME modal `/projects` mints from, with one extra field: the seller whose page
+						 * this is. A profile-side create used to run its own two-step wizard collecting its own
+						 * field set, which is how the two surfaces came to disagree about what a Task is — the
+						 * wizard had one and the lane did not.
+						 *
+						 * It redirects rather than assigning, and that is a product rule rather than a
+						 * shortcut: a seller cannot be attached to an engagement with no scope and no price,
+						 * so the modal's job is to reach the workspace where those are decided. The invited
+						 * freelancer row says who is waiting at the other end of it.
+						 */
+						<ProjectCreateModal
+							open={wizardOpen.value}
+							initialType="pipeline"
 							defaultCurrency={defaultCurrency}
 							scopeId={scopeId}
+							seller={{
+								name: profile.name,
+								handle: profile.handle,
+								avatar: profile.avatar,
+							}}
+							onClose={() => (wizardOpen.value = false)}
+							onCreated={openCreatedProject}
 						/>
 					)}
 				</>

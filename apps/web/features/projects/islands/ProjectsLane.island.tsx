@@ -22,7 +22,7 @@ import { UtilityShortcuts } from "../components/UtilityShortcuts.tsx";
 import { IncomingRequests } from "../components/IncomingRequests.tsx";
 import { FilterPanel } from "../components/FilterPanel.tsx";
 import { CreateMenu } from "../components/CreateMenu.tsx";
-import { QuickInitModal } from "../components/QuickInitModal.tsx";
+import { ProjectCreateModal } from "../components/ProjectCreateModal.tsx";
 import { PlusIcon, SearchIcon, SlidersIcon } from "../components/glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
@@ -36,11 +36,11 @@ import {
 } from "../core/projects-state.ts";
 import type { ProjectFeedParams } from "../core/projects-state.ts";
 import type {
-	ProjectCreateFormat,
 	ProjectFeedPayload,
 	ProjectInvolvement,
 	ProjectQuickFilter,
 	ProjectSummary,
+	ProjectTypeChoice,
 	ProjectView,
 	ScopeOption,
 } from "../types/projects-types.ts";
@@ -160,7 +160,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	// has to SURVIVE the close: the modal animates out, and clearing the work-flow at the moment the
 	// dialog starts leaving would repaint its fields under the reader's cursor on the way.
 	const modalOpen = useSignal<boolean>(false);
-	const modalFormat = useSignal<ProjectCreateFormat>("pipeline");
+	const modalType = useSignal<ProjectTypeChoice>("pipeline");
 	const filterOpen = useSignal<boolean>(false);
 	const collapsed = useSignal<boolean>(false);
 	/** DEV-ONLY. The active simulated persona (from the Dev Tools Context Switcher), or `null` for the
@@ -261,7 +261,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 			if (url.searchParams.get("create") !== "1") return;
 			url.searchParams.delete("create");
 			globalThis.history?.replaceState(null, "", `${url.pathname}${url.search}`);
-			modalFormat.value = "pipeline";
+			modalType.value = "pipeline";
 			modalOpen.value = true;
 		} catch { /* SSR / no location — non-fatal */ }
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,16 +344,16 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	}
 
 	/**
-	 * Launch the Quick-Init modal (replacing the retired `/projects/create` page) with the picked
-	 * work-flow preselected. The kind arrives already narrowed to {@link ProjectCreateFormat}, so
-	 * there is no fold from a wider vocabulary and nothing to guess.
+	 * Launch the create modal (replacing the retired `/projects/create` page) with the picked type
+	 * preselected. The kind arrives already narrowed to {@link ProjectTypeChoice} — the three the
+	 * product offers — so there is no fold from a wider vocabulary and nothing to guess.
 	 */
 	// The footer's label is "Create project" on BOTH tabs. This menu only mints projects — a service
 	// listing is authored provider-side in the catalogue composer — and a button reading "Create
 	// service" while opening a project form names something the surface behind it cannot make.
-	function openCreate(kind: ProjectCreateFormat): void {
+	function openCreate(kind: ProjectTypeChoice): void {
 		createOpen.value = false;
-		modalFormat.value = kind;
+		modalType.value = kind;
 		modalOpen.value = true;
 	}
 
@@ -516,9 +516,9 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 				</LaneFooterActions>
 			</LaneFooter>
 
-			<QuickInitModal
+			<ProjectCreateModal
 				open={modalOpen.value}
-				initialFormat={modalFormat.value}
+				initialType={modalType.value}
 				defaultCurrency={props.defaultCurrency}
 				scopeId={props.activeContextId}
 				onClose={() => (modalOpen.value = false)}

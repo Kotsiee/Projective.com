@@ -22,7 +22,7 @@ import {
 	setupDraft,
 	watchOnboardingSim,
 } from "../core/setup-state.ts";
-import { advanceOnEnter } from "../core/setup-validation.ts";
+import { formFocusEntry, formKeyNav, formPointerDown } from "../core/form-keys.ts";
 import { useSetupAutoSave } from "../hooks/useSetupAutoSave.ts";
 
 /**
@@ -146,7 +146,12 @@ export default function StageDetailsForm({ setup, stageId }: StageDetailsFormPro
 		 * textarea, a rich-text editor, a chip editor and a combobox live in one place instead of once
 		 * per call site.
 		 */
-		<div class="psu" onKeyDownCapture={advanceOnEnter}>
+		<div
+			class="psu"
+			onKeyDownCapture={formKeyNav}
+			onFocusInCapture={formFocusEntry}
+			onPointerDownCapture={formPointerDown}
+		>
 			{
 				/*
 				 * The only level-1 heading on the surface, visually hidden, carrying the stage's own name.

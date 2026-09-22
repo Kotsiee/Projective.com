@@ -17,7 +17,7 @@ import {
 	watchOfflineFlush,
 	watchOnboardingSim,
 } from "../core/setup-state.ts";
-import { advanceOnEnter } from "../core/setup-validation.ts";
+import { formFocusEntry, formKeyNav, formPointerDown } from "../core/form-keys.ts";
 import { watchFileDrag } from "../core/file-drag.ts";
 import { useSetupAutoSave } from "../hooks/useSetupAutoSave.ts";
 
@@ -105,12 +105,21 @@ export default function ProjectSetupForm({ setup }: ProjectSetupFormProps): JSX.
 
 	return (
 		/*
-		 * Enter-advances-focus is wired ONCE here, in the capture phase, rather than per field. A stage
-		 * added mid-session is covered by construction, and the bail-out rules — a textarea, a rich-text
-		 * editor, a chip editor, a combobox all own Enter for themselves — exist in one place instead of
-		 * once per call site.
+		 * The whole keyboard rule is wired ONCE here, in the capture phase, rather than per field
+		 * (`core/form-keys.ts`). A stage added mid-session is covered by construction, and the bail-out
+		 * rules — a textarea and a rich-text editor keep Enter for their newline, a chip editor commits
+		 * with it, a closed combobox opens with it — exist in one place instead of once per call site.
+		 *
+		 * Capture rather than bubble, and that is load-bearing: it is what lets Enter on a switch and
+		 * the arrows on a switch be answered before `ToggleSwitch`'s own handler sees them, so the
+		 * traversal rule changes nothing about that component anywhere else in the product.
 		 */
-		<div class="psu" onKeyDownCapture={advanceOnEnter}>
+		<div
+			class="psu"
+			onKeyDownCapture={formKeyNav}
+			onFocusInCapture={formFocusEntry}
+			onPointerDownCapture={formPointerDown}
+		>
 			{
 				/*
 				 * The visible "Project setup" eyebrow and the explanatory lede are gone — identity belongs

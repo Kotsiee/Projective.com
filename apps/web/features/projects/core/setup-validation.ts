@@ -1,14 +1,9 @@
 import { type ComponentChildren, h, type JSX } from "preact";
 import { signal } from "@preact/signals";
-import { getTabbable } from "@projective/ui/hooks";
 import type { FieldStatus } from "@projective/ui/fields";
 
 /**
- * setup-validation — when the owner's Stage-2 workspace is allowed to tell them a field is wrong,
- * and what the Enter key does on it.
- *
- * Two rules live here, and both exist because the setup surface is a form somebody types into for
- * twenty minutes rather than one they submit in ten seconds.
+ * setup-validation — when the owner's Stage-2 workspace is allowed to tell them a field is wrong.
  *
  * **Blur-gated verdicts.** A field is only ever marked while the person is NOT in it and has already
  * left it once. Painting `required` on an empty Project name the instant the page loads accuses the
@@ -17,15 +12,14 @@ import type { FieldStatus } from "@projective/ui/fields";
  * a direct function of how fast they type. The verdict itself is still computed by the caller from
  * the SSOT; this module only decides WHEN it is allowed to show.
  *
- * **Enter advances focus.** On a single-line input Enter has no native meaning inside a form with no
- * submit button, so it is dead. Making it step to the next control is what a keyboard-first person
- * expects from a long configuration form. It is deliberately conservative: an allow-list of input
- * types, and a bail-out for every element where Enter already means something (a textarea's newline,
- * a rich-text editor's paragraph, a button's press, a chip editor's commit, a combobox's selection).
- * Advancing out of one of those would DESTROY an interaction rather than adding one.
+ * The keyboard half moved to `./form-keys.ts`, which the create modal needs too: one rule about what
+ * Enter, the arrows and Tab do inside a project form, delegated from whichever root renders it. It
+ * left because it had nothing to do with a verdict and everything to do with traversal, and because
+ * a modal that imported it from here would have dragged this module's whole touched/focused store in
+ * with it.
  *
  * No `@server/*` import and no JSX beyond the one wrapper, so the module is safe on both sides of the
- * island boundary and the two rules can be reasoned about without a DOM.
+ * island boundary and the rule can be reasoned about without a DOM.
  */
 
 // #region The touched / focused model
@@ -98,94 +92,6 @@ export function fieldStatus(fieldKey: string, verdict: FieldStatus): FieldStatus
 export function resetFieldValidation(): void {
 	touchedKeys.value = new Set<string>();
 	focusedKey.value = null;
-}
-// #endregion
-
-// #region Enter advances focus
-/**
- * Input types Enter may advance out of.
- *
- * An allow-list rather than a deny-list: a type added to HTML tomorrow is one nobody here has
- * reasoned about, and the safe answer for an unknown control is to leave its Enter alone.
- */
-const ADVANCEABLE_INPUT_TYPES: ReadonlySet<string> = new Set([
-	"text",
-	"search",
-	"url",
-	"tel",
-	"email",
-	"number",
-	"password",
-]);
-
-/**
- * Containers whose descendants own Enter for themselves.
- *
- * `.ui-chips` commits the chip being typed; anything with `role="combobox"` selects the active
- * option; a rich-text editor's contenteditable starts a paragraph; `.psu-tasks` inserts the next
- * step. Each of those is a real interaction that advancing focus would silently replace.
- *
- * The task list is the case that shows why this list has to exist at all rather than being handled
- * at the call site. This handler runs in the CAPTURE phase on the form root, so it fires before any
- * listener the list itself binds — a row that tried to claim Enter for itself would find focus
- * already moved and the event already default-prevented. Worse than nothing happening: the next
- * tabbable after a step's input is that step's own delete button, so the natural keystroke for "next
- * item" left the reader one space bar from destroying the item they had just written.
- */
-const ENTER_OWNERS =
-	'.ui-chips, [role="combobox"], [contenteditable="true"], .ql-editor, .psu-tasks';
-
-/** The nearest boundary the advance may walk within, so Enter never leaves the form for the chrome. */
-const ADVANCE_SCOPE = "form, .psu, .psu-shell";
-
-/** Whether Enter on this element means "I am done here", as opposed to something of its own. */
-function acceptsEnterAdvance(el: HTMLElement): boolean {
-	if (el.isContentEditable) return false;
-	if (!(el instanceof HTMLInputElement)) return false;
-	if (el.readOnly || el.disabled) return false;
-	if (!ADVANCEABLE_INPUT_TYPES.has(el.type)) return false;
-	if (el.getAttribute("role") === "combobox") return false;
-	return el.closest(ENTER_OWNERS) === null;
-}
-
-/**
- * Move focus to the next tabbable control when Enter is pressed on a single-line input.
- *
- * Wired ONCE, in the capture phase, on the form root — rather than per field. A control that mounts
- * later (a stage added mid-session) is covered by construction, and there is one implementation of
- * the bail-out rules instead of one per call site that could each be written slightly differently.
- *
- * `getTabbable` is the package's own tabbable resolver, reused rather than reimplemented: a second
- * selector would drift from the one every overlay's focus trap uses, and the two would then disagree
- * about what is reachable on the same page.
- *
- * Nothing is prevented unless a next control is actually found, so on the last field Enter keeps
- * whatever native meaning it had (submitting a real form, or nothing).
- */
-export function advanceOnEnter(event: KeyboardEvent): void {
-	if (event.key !== "Enter" || event.isComposing) return;
-	// A modified Enter is somebody asking for something else entirely; leave it to the browser.
-	if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-
-	const target = event.target as HTMLElement | null;
-	if (!target || !acceptsEnterAdvance(target)) return;
-
-	// Never `document.body` as a fallback. A control that is inside no form boundary reached this
-	// handler through a portal — an overlay panel rendered out of the tree it was opened from — and
-	// walking the whole document from there would step focus out of that overlay entirely.
-	const host = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-	const scope = target.closest<HTMLElement>(ADVANCE_SCOPE) ?? host;
-	if (!scope || !scope.contains(target)) return;
-
-	const order = getTabbable(scope);
-	const index = order.indexOf(target);
-	if (index === -1) return;
-
-	const next = order[index + 1];
-	if (!next) return;
-
-	event.preventDefault();
-	next.focus();
 }
 // #endregion
 

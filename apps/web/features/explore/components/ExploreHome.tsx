@@ -9,6 +9,7 @@ import { SponsoredFrame } from "./promos/SponsoredFrame.tsx";
 import { HelpArticlesStrip } from "./promos/HelpArticlesStrip.tsx";
 import { CtaBanner } from "./promos/CtaBanner.tsx";
 import { HomeGrid } from "./HomeGrid.tsx";
+import { RailCell as Cell } from "./RailCell.tsx";
 import CategoryChips from "../islands/CategoryChips.island.tsx";
 import RecommendedPanel from "../islands/RecommendedPanel.island.tsx";
 import ContinueRail from "../islands/ContinueRail.island.tsx";
@@ -171,11 +172,6 @@ export function ExploreHome(
 			</div>
 		</>
 	);
-}
-
-/** One rail cell — the fixed-width, stretch-height slot that gives a row its flat top and bottom. */
-function Cell({ children }: { children: JSX.Element }): JSX.Element {
-	return <div class="ex-rail__cell" role="listitem">{children}</div>;
 }
 
 /**
